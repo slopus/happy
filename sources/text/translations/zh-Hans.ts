@@ -191,6 +191,9 @@ export const zhHans: TranslationStructure = {
         experimentalFeaturesDisabled: '仅使用稳定功能',
         webFeatures: 'Web 功能',
         webFeaturesDescription: '仅在应用的 Web 版本中可用的功能。',
+        enterToSend: '回车发送',
+        enterToSendEnabled: '按回车发送（Shift+回车换行）',
+        enterToSendDisabled: '回车换行',
         commandPalette: '命令面板',
         commandPaletteEnabled: '按 ⌘K 打开',
         commandPaletteDisabled: '快速命令访问已禁用',
@@ -483,6 +486,7 @@ export const zhHans: TranslationStructure = {
             reasoning: '推理',
             applyChanges: '更新文件',
             viewDiff: '当前文件更改',
+            question: '问题',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `终端(命令: ${cmd})`,
@@ -500,6 +504,10 @@ export const zhHans: TranslationStructure = {
             modifyingFiles: ({ count }: { count: number }) => `正在修改 ${count} 个文件`,
             modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} 和其他 ${count} 个`,
             showingDiff: '显示更改',
+        },
+        askUserQuestion: {
+            submit: '提交答案',
+            multipleQuestions: ({ count }: { count: number }) => `${count} 个问题`,
         }
     },
 

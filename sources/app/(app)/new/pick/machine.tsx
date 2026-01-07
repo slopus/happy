@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { Typography } from '@/constants/Typography';
@@ -10,7 +11,6 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
-import { callbacks } from '../index';
 import { ItemList } from '@/components/ItemList';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -70,11 +70,19 @@ export default function MachinePickerScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const router = useRouter();
+    const navigation = useNavigation();
     const params = useLocalSearchParams<{ selectedId?: string }>();
     const machines = useAllMachines();
 
     const handleSelectMachine = (machineId: string) => {
-        callbacks.onMachineSelected(machineId);
+        const state = navigation.getState();
+        const previousRoute = state.routes[state.index - 1];
+        if (previousRoute) {
+            navigation.dispatch({
+                ...CommonActions.setParams({ machineId }),
+                source: previousRoute.key,
+            } as never);
+        }
         router.back();
     };
 

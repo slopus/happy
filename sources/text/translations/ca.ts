@@ -189,6 +189,9 @@ export const ca: TranslationStructure = {
         experimentalFeaturesDisabled: 'Utilitzant només funcions estables',
         webFeatures: 'Funcions web',
         webFeaturesDescription: 'Funcions disponibles només a la versió web de l\'app.',
+        enterToSend: 'Enter per enviar',
+        enterToSendEnabled: 'Prem Enter per enviar (Maj+Enter per a una nova línia)',
+        enterToSendDisabled: 'Enter insereix una nova línia',
         commandPalette: 'Paleta de comandes',
         commandPaletteEnabled: 'Prem ⌘K per obrir',
         commandPaletteDisabled: 'Accés ràpid a comandes desactivat',
@@ -481,6 +484,7 @@ export const ca: TranslationStructure = {
             reasoning: 'Raonament',
             applyChanges: 'Actualitza fitxer',
             viewDiff: 'Canvis del fitxer actual',
+            question: 'Pregunta',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
@@ -498,6 +502,10 @@ export const ca: TranslationStructure = {
             modifyingFiles: ({ count }: { count: number }) => `Modificant ${count} fitxers`,
             modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} i ${count} més`,
             showingDiff: 'Mostrant canvis',
+        },
+        askUserQuestion: {
+            submit: 'Envia resposta',
+            multipleQuestions: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'pregunta', plural: 'preguntes' })}`,
         }
     },
 

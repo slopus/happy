@@ -189,6 +189,9 @@ export const en = {
         experimentalFeaturesDisabled: 'Using stable features only',
         webFeatures: 'Web Features',
         webFeaturesDescription: 'Features available only in the web version of the app.',
+        enterToSend: 'Enter to Send',
+        enterToSendEnabled: 'Press Enter to send (Shift+Enter for a new line)',
+        enterToSendDisabled: 'Enter inserts a new line',
         commandPalette: 'Command Palette',
         commandPaletteEnabled: 'Press ⌘K to open',
         commandPaletteDisabled: 'Quick command access disabled',
@@ -481,6 +484,11 @@ export const en = {
             reasoning: 'Reasoning',
             applyChanges: 'Update file',
             viewDiff: 'Current file changes',
+            question: 'Question',
+        },
+        askUserQuestion: {
+            submit: 'Submit Answer',
+            multipleQuestions: ({ count }: { count: number }) => `${count} questions`,
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
