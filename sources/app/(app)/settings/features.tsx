@@ -9,6 +9,7 @@ import { t } from '@/text';
 
 export default function FeaturesSettingsScreen() {
     const [experiments, setExperiments] = useSettingMutable('experiments');
+    const [agentInputEnterToSend, setAgentInputEnterToSend] = useSettingMutable('agentInputEnterToSend');
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
@@ -64,6 +65,18 @@ export default function FeaturesSettingsScreen() {
                     title={t('settingsFeatures.webFeatures')}
                     footer={t('settingsFeatures.webFeaturesDescription')}
                 >
+                    <Item
+                        title={t('settingsFeatures.enterToSend')}
+                        subtitle={agentInputEnterToSend ? t('settingsFeatures.enterToSendEnabled') : t('settingsFeatures.enterToSendDisabled')}
+                        icon={<Ionicons name="return-down-forward-outline" size={29} color="#007AFF" />}
+                        rightElement={
+                            <Switch
+                                value={agentInputEnterToSend}
+                                onValueChange={setAgentInputEnterToSend}
+                            />
+                        }
+                        showChevron={false}
+                    />
                     <Item
                         title={t('settingsFeatures.commandPalette')}
                         subtitle={commandPaletteEnabled ? t('settingsFeatures.commandPaletteEnabled') : t('settingsFeatures.commandPaletteDisabled')}
