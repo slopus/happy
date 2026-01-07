@@ -6,7 +6,7 @@ import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
-import { Session, Machine } from './storageTypes';
+import { Session, Machine, PendingMessage } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from '@/platform/randomUUID';
@@ -396,6 +396,190 @@ class Sync {
             sentFrom,
             permissionMode: permissionMode || 'default'
         });
+    }
+
+    async abortSession(sessionId: string): Promise<void> {
+        await apiSocket.sessionRPC(sessionId, 'abort', {
+            reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`
+        });
+    }
+
+    async submitMessage(sessionId: string, text: string, displayText?: string): Promise<void> {
+        const mode = storage.getState().settings.messageSendMode;
+        if (mode === 'interrupt') {
+            try { await this.abortSession(sessionId); } catch { }
+            await this.sendMessage(sessionId, text, displayText);
+            return;
+        }
+        if (mode === 'server_pending') {
+            await this.enqueuePendingMessage(sessionId, text, displayText);
+            return;
+        }
+        await this.sendMessage(sessionId, text, displayText);
+    }
+
+    async fetchPendingMessages(sessionId: string): Promise<void> {
+        const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) return;
+
+        const session = storage.getState().sessions[sessionId];
+        if (!session) return;
+
+        const result = await apiSocket.emitWithAck<{
+            ok: boolean;
+            error?: string;
+            messages?: Array<{
+                id: string;
+                localId: string | null;
+                message: string;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+        }>('pending-list', { sid: sessionId, limit: 200 });
+
+        if (!result?.ok || !Array.isArray(result.messages)) {
+            storage.getState().applyPendingLoaded(sessionId);
+            return;
+        }
+
+        const pending: PendingMessage[] = [];
+        for (const m of result.messages) {
+            const raw = await encryption.decryptRaw(m.message);
+            const text = (raw as any)?.content?.text;
+            if (typeof text !== 'string') continue;
+            pending.push({
+                id: m.id,
+                localId: typeof m.localId === 'string' ? m.localId : null,
+                createdAt: m.createdAt,
+                updatedAt: m.updatedAt,
+                text,
+                displayText: typeof (raw as any)?.meta?.displayText === 'string' ? (raw as any).meta.displayText : undefined,
+                rawRecord: raw as any,
+            });
+        }
+
+        storage.getState().applyPendingMessages(sessionId, pending);
+    }
+
+    async enqueuePendingMessage(sessionId: string, text: string, displayText?: string): Promise<void> {
+        const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            throw new Error(`Session ${sessionId} not found`);
+        }
+
+        const session = storage.getState().sessions[sessionId];
+        if (!session) {
+            throw new Error(`Session ${sessionId} not found in storage`);
+        }
+
+        const permissionMode = session.permissionMode || 'default';
+        const model: string | null = null;
+        const fallbackModel: string | null = null;
+
+        const localId = randomUUID();
+
+        let sentFrom: string;
+        if (Platform.OS === 'web') {
+            sentFrom = 'web';
+        } else if (Platform.OS === 'android') {
+            sentFrom = 'android';
+        } else if (Platform.OS === 'ios') {
+            sentFrom = isRunningOnMac() ? 'mac' : 'ios';
+        } else {
+            sentFrom = 'web';
+        }
+
+        const content: RawRecord = {
+            role: 'user',
+            content: {
+                type: 'text',
+                text
+            },
+            meta: {
+                sentFrom,
+                permissionMode: permissionMode || 'default',
+                model,
+                fallbackModel,
+                appendSystemPrompt: systemPrompt,
+                ...(displayText && { displayText }),
+            }
+        };
+
+        const encryptedRawRecord = await encryption.encryptRawRecord(content);
+        const ack = await apiSocket.emitWithAck<{ ok: boolean; id?: string; error?: string }>('pending-enqueue', {
+            sid: sessionId,
+            message: encryptedRawRecord,
+            localId,
+        });
+
+        if (!ack?.ok || !ack.id) {
+            throw new Error(ack?.error || 'Failed to enqueue pending message');
+        }
+
+        const now = Date.now();
+        storage.getState().upsertPendingMessage(sessionId, {
+            id: ack.id,
+            localId,
+            createdAt: now,
+            updatedAt: now,
+            text,
+            displayText,
+            rawRecord: content,
+        });
+    }
+
+    async updatePendingMessage(sessionId: string, pendingId: string, text: string): Promise<void> {
+        const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            throw new Error(`Session ${sessionId} not found`);
+        }
+
+        const existing = storage.getState().sessionPending[sessionId]?.messages?.find((m) => m.id === pendingId);
+        if (!existing) {
+            throw new Error('Pending message not found');
+        }
+
+        const content: RawRecord = existing.rawRecord ? {
+            ...(existing.rawRecord as any),
+            content: {
+                type: 'text',
+                text
+            },
+        } : {
+            role: 'user',
+            content: { type: 'text', text },
+            meta: {
+                appendSystemPrompt: systemPrompt,
+            }
+        };
+
+        const encryptedRawRecord = await encryption.encryptRawRecord(content);
+        const ack = await apiSocket.emitWithAck<{ ok: boolean; error?: string }>('pending-update', {
+            sid: sessionId,
+            id: pendingId,
+            message: encryptedRawRecord,
+        });
+        if (!ack?.ok) {
+            throw new Error(ack?.error || 'Failed to update pending message');
+        }
+
+        storage.getState().upsertPendingMessage(sessionId, {
+            ...existing,
+            text,
+            updatedAt: Date.now(),
+            rawRecord: content,
+        });
+    }
+
+    async deletePendingMessage(sessionId: string, pendingId: string): Promise<void> {
+        const ack = await apiSocket.emitWithAck<{ ok: boolean; error?: string }>('pending-delete', {
+            sid: sessionId,
+            id: pendingId,
+        });
+        if (!ack?.ok) {
+            throw new Error(ack?.error || 'Failed to delete pending message');
+        }
+        storage.getState().removePendingMessage(sessionId, pendingId);
     }
 
     applySettings = (delta: Partial<Settings>) => {
@@ -2214,6 +2398,17 @@ class Sync {
             }
         }
 
+        // Handle pending queue count updates (ephemeral)
+        if (updateData.type === 'pending-queue') {
+            const session = storage.getState().sessions[updateData.id];
+            if (session) {
+                this.applySessions([{
+                    ...session,
+                    pendingCount: updateData.count
+                }]);
+            }
+        }
+
         // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity
     }
 
@@ -2242,7 +2437,16 @@ class Sync {
         presence?: "online" | number;
     })[]) => {
         const active = storage.getState().getActiveSessions();
-        storage.getState().applySessions(sessions);
+        const existing = storage.getState().sessions;
+        const patchedSessions = sessions.map((s) => {
+            const prev = existing[s.id];
+            const hasPendingCount = Object.prototype.hasOwnProperty.call(s as any, 'pendingCount');
+            if (!hasPendingCount && prev?.pendingCount !== undefined) {
+                return { ...(s as any), pendingCount: prev.pendingCount };
+            }
+            return s;
+        });
+        storage.getState().applySessions(patchedSessions);
         const newActive = storage.getState().getActiveSessions();
         this.applySessionDiff(active, newActive);
     }

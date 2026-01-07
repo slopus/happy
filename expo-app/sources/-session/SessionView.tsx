@@ -1,5 +1,6 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { AgentInput } from '@/components/AgentInput';
+import { PendingQueueIndicator } from '@/components/PendingQueueIndicator';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
@@ -12,7 +13,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionPendingMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -187,6 +188,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
+    const { messages: pendingMessages, isLoaded: pendingLoaded } = useSessionPendingMessages(sessionId);
     const experiments = useSetting('experiments');
     const expFileViewer = useSetting('expFileViewer');
 
@@ -196,6 +198,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     React.useEffect(() => {
         storage.getState().markSessionViewed(sessionId);
     }, [sessionId]);
+
+    React.useEffect(() => {
+        if (!pendingLoaded) {
+            void sync.fetchPendingMessages(sessionId).catch(() => { });
+        }
+    }, [sessionId, pendingLoaded]);
 
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
@@ -294,53 +302,67 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     ) : null;
 
     const input = (
-        <AgentInput
-            placeholder={t('session.inputPlaceholder')}
-            value={message}
-            onChangeText={setMessage}
-            sessionId={sessionId}
-            permissionMode={permissionMode}
-            onPermissionModeChange={updatePermissionMode}
-            modelMode={modelMode}
-            onModelModeChange={updateModelMode}
-            metadata={session.metadata}
-            connectionStatus={{
-                text: sessionStatus.statusText,
-                color: sessionStatus.statusColor,
-                dotColor: sessionStatus.statusDotColor,
-                isPulsing: sessionStatus.isPulsing
-            }}
-            onSend={() => {
-                if (message.trim()) {
+        <View>
+            <PendingQueueIndicator
+                sessionId={sessionId}
+                count={(session.pendingCount ?? 0) || (pendingLoaded ? pendingMessages.length : 0)}
+            />
+            <AgentInput
+                placeholder={t('session.inputPlaceholder')}
+                value={message}
+                onChangeText={setMessage}
+                sessionId={sessionId}
+                permissionMode={permissionMode}
+                onPermissionModeChange={updatePermissionMode}
+                modelMode={modelMode}
+                onModelModeChange={updateModelMode}
+                metadata={session.metadata}
+                connectionStatus={{
+                    text: sessionStatus.statusText,
+                    color: sessionStatus.statusColor,
+                    dotColor: sessionStatus.statusDotColor,
+                    isPulsing: sessionStatus.isPulsing
+                }}
+                onSend={() => {
+                    const text = message.trim();
+                    if (!text) return;
                     setMessage('');
                     clearDraft();
-                    sync.sendMessage(sessionId, message);
                     trackMessageSent();
-                }
-            }}
-            onMicPress={micButtonState.onMicPress}
-            isMicActive={micButtonState.isMicActive}
-            onAbort={() => sessionAbort(sessionId)}
-            showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
-            onFileViewerPress={(experiments && expFileViewer) ? () => router.push(`/session/${sessionId}/files`) : undefined}
-            // Autocomplete configuration
-            autocompletePrefixes={['@', '/']}
-            autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
-            usageData={sessionUsage ? {
-                inputTokens: sessionUsage.inputTokens,
-                outputTokens: sessionUsage.outputTokens,
-                cacheCreation: sessionUsage.cacheCreation,
-                cacheRead: sessionUsage.cacheRead,
-                contextSize: sessionUsage.contextSize
-            } : session.latestUsage ? {
-                inputTokens: session.latestUsage.inputTokens,
-                outputTokens: session.latestUsage.outputTokens,
-                cacheCreation: session.latestUsage.cacheCreation,
-                cacheRead: session.latestUsage.cacheRead,
-                contextSize: session.latestUsage.contextSize
-            } : undefined}
-            alwaysShowContextSize={alwaysShowContextSize}
-        />
+
+                    void (async () => {
+                        try {
+                            await sync.submitMessage(sessionId, text);
+                        } catch (e) {
+                            setMessage(text);
+                            Modal.alert('Error', e instanceof Error ? e.message : 'Failed to send message');
+                        }
+                    })();
+                }}
+                onMicPress={micButtonState.onMicPress}
+                isMicActive={micButtonState.isMicActive}
+                onAbort={() => sessionAbort(sessionId)}
+                showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
+                onFileViewerPress={(experiments && expFileViewer) ? () => router.push(`/session/${sessionId}/files`) : undefined}
+                // Autocomplete configuration
+                autocompletePrefixes={['@', '/']}
+                autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
+                usageData={sessionUsage ? {
+                    inputTokens: sessionUsage.inputTokens,
+                    outputTokens: sessionUsage.outputTokens,
+                    cacheCreation: sessionUsage.cacheCreation,
+                    cacheRead: sessionUsage.cacheRead,
+                    contextSize: sessionUsage.contextSize
+                } : session.latestUsage ? {
+                    inputTokens: session.latestUsage.inputTokens,
+                    outputTokens: session.latestUsage.outputTokens,
+                    cacheCreation: session.latestUsage.cacheCreation,
+                    cacheRead: session.latestUsage.cacheRead,
+                    contextSize: session.latestUsage.contextSize
+                } : undefined}
+                alwaysShowContextSize={alwaysShowContextSize}
+            />
+        </View>
     );
 
 

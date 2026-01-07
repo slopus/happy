@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
-import { Session, Machine, GitStatus } from "./storageTypes";
+import { Session, Machine, GitStatus, PendingMessage } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
@@ -59,6 +59,11 @@ interface SessionMessages {
     isLoaded: boolean;
 }
 
+interface SessionPending {
+    messages: PendingMessage[];
+    isLoaded: boolean;
+}
+
 // Machine type is now imported from storageTypes - represents persisted machine data
 
 export type { SessionListViewItem } from './sessionListViewData';
@@ -76,6 +81,7 @@ interface StorageState {
     sessionsData: SessionListItem[] | null;  // Legacy - to be removed
     sessionListViewData: SessionListViewItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
+    sessionPending: Record<string, SessionPending>;
     sessionGitStatus: Record<string, GitStatus | null>;
     machines: Record<string, Machine>;
     artifacts: Record<string, DecryptedArtifact>;  // New artifacts storage
@@ -107,6 +113,10 @@ interface StorageState {
     applyReady: () => void;
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
     applyMessagesLoaded: (sessionId: string) => void;
+    applyPendingLoaded: (sessionId: string) => void;
+    applyPendingMessages: (sessionId: string, messages: PendingMessage[]) => void;
+    upsertPendingMessage: (sessionId: string, message: PendingMessage) => void;
+    removePendingMessage: (sessionId: string, pendingId: string) => void;
     applySettings: (settings: Settings, version: number) => void;
     replaceSettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
@@ -216,6 +226,7 @@ export const storage = create<StorageState>()((set, get) => {
         sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
         sessionMessages: {},
+        sessionPending: {},
         sessionGitStatus: {},
         realtimeStatus: 'disconnected',
         realtimeMode: 'idle',
@@ -501,6 +512,31 @@ export const storage = create<StorageState>()((set, get) => {
                     break;
                 }
 
+                // Clear server-pending items once we see the corresponding user message in the transcript.
+                // We key this off localId, which is preserved when a pending item is materialized into a SessionMessage.
+                let updatedSessionPending = state.sessionPending;
+                const pendingState = state.sessionPending[sessionId];
+                if (pendingState && pendingState.messages.length > 0) {
+                    const localIdsToClear = new Set<string>();
+                    for (const m of processedMessages) {
+                        if (m.kind === 'user-text' && m.localId) {
+                            localIdsToClear.add(m.localId);
+                        }
+                    }
+                    if (localIdsToClear.size > 0) {
+                        const filtered = pendingState.messages.filter((p) => !p.localId || !localIdsToClear.has(p.localId));
+                        if (filtered.length !== pendingState.messages.length) {
+                            updatedSessionPending = {
+                                ...state.sessionPending,
+                                [sessionId]: {
+                                    ...pendingState,
+                                    messages: filtered
+                                }
+                            };
+                        }
+                    }
+                }
+
                 // Update session with todos and latestUsage
                 // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
                 // This ensures latestUsage is available immediately on load, even before messages are fully loaded
@@ -557,7 +593,8 @@ export const storage = create<StorageState>()((set, get) => {
                             reducerState: existingSession.reducerState, // Explicitly include the mutated reducer state
                             isLoaded: true
                         }
-                    }
+                    },
+                    sessionPending: updatedSessionPending
                 };
             });
 
@@ -632,6 +669,60 @@ export const storage = create<StorageState>()((set, get) => {
 
             return result;
         }),
+        applyPendingLoaded: (sessionId: string) => set((state) => {
+            const existing = state.sessionPending[sessionId];
+            return {
+                ...state,
+                sessionPending: {
+                    ...state.sessionPending,
+                    [sessionId]: {
+                        messages: existing?.messages ?? [],
+                        isLoaded: true
+                    }
+                }
+            };
+        }),
+        applyPendingMessages: (sessionId: string, messages: PendingMessage[]) => set((state) => ({
+            ...state,
+            sessionPending: {
+                ...state.sessionPending,
+                [sessionId]: {
+                    messages,
+                    isLoaded: true
+                }
+            }
+        })),
+        upsertPendingMessage: (sessionId: string, message: PendingMessage) => set((state) => {
+            const existing = state.sessionPending[sessionId] ?? { messages: [], isLoaded: false };
+            const idx = existing.messages.findIndex((m) => m.id === message.id);
+            const next = idx >= 0
+                ? [...existing.messages.slice(0, idx), message, ...existing.messages.slice(idx + 1)]
+                : [...existing.messages, message].sort((a, b) => a.createdAt - b.createdAt);
+            return {
+                ...state,
+                sessionPending: {
+                    ...state.sessionPending,
+                    [sessionId]: {
+                        messages: next,
+                        isLoaded: existing.isLoaded
+                    }
+                }
+            };
+        }),
+        removePendingMessage: (sessionId: string, pendingId: string) => set((state) => {
+            const existing = state.sessionPending[sessionId];
+            if (!existing) return state;
+            return {
+                ...state,
+                sessionPending: {
+                    ...state.sessionPending,
+                    [sessionId]: {
+                        ...existing,
+                        messages: existing.messages.filter((m) => m.id !== pendingId)
+                    }
+                }
+            };
+        }),
         applySettingsLocal: (delta: Partial<Settings>) => set((state) => {
             const newSettings = applySettings(state.settings, delta);
             saveSettings(newSettings, state.settingsVersion ?? 0);
@@ -652,7 +743,6 @@ export const storage = create<StorageState>()((set, get) => {
                     sessionListViewData
                 };
             }
-
             return {
                 ...state,
                 settings: newSettings
@@ -1206,6 +1296,16 @@ export function useHasUnreadMessages(sessionId: string): boolean {
         const messages = state.sessionMessages[sessionId]?.messages;
         return computeHasUnreadMessages({ lastViewedAt, messages });
     });
+}
+
+export function useSessionPendingMessages(sessionId: string): { messages: PendingMessage[], isLoaded: boolean } {
+    return storage(useShallow((state) => {
+        const pending = state.sessionPending[sessionId];
+        return {
+            messages: pending?.messages ?? emptyArray,
+            isLoaded: pending?.isLoaded ?? false
+        };
+    }));
 }
 
 export function useMessage(sessionId: string, messageId: string): Message | null {

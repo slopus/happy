@@ -176,9 +176,7 @@ describe('settings', () => {
     describe('applySettings', () => {
         it('should apply delta to existing settings', () => {
             const currentSettings = makeSettings({ schemaVersion: 1, avatarStyle: 'gradient' });
-            const delta: Partial<Settings> = {
-                viewInline: true
-            };
+            const delta: Partial<Settings> = { viewInline: true };
             expect(applySettings(currentSettings, delta)).toEqual({
                 ...currentSettings,
                 schemaVersion: 1, // Preserved from currentSettings
@@ -194,9 +192,7 @@ describe('settings', () => {
 
         it('should override existing values with delta', () => {
             const currentSettings = makeSettings({ schemaVersion: 1, avatarStyle: 'gradient', viewInline: true });
-            const delta: Partial<Settings> = {
-                viewInline: false
-            };
+            const delta: Partial<Settings> = { viewInline: false };
             expect(applySettings(currentSettings, delta)).toEqual({
                 ...currentSettings,
                 viewInline: false
@@ -297,6 +293,7 @@ describe('settings', () => {
                 lastUsedModelMode: null,
                 profiles: [],
                 lastUsedProfile: null,
+                messageSendMode: 'agent_queue',
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 favoriteProfiles: [],

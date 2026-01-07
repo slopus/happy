@@ -84,6 +84,7 @@ export interface Session {
         id: string;
     }>;
     draft?: string | null; // Local draft message, not synced to server
+    pendingCount?: number; // Server-side pending queue count (ephemeral)
     permissionMode?: PermissionMode | null; // Local permission mode, not synced to server
     permissionModeUpdatedAt?: number | null; // Local timestamp to coordinate inferred (from last message) vs user-selected mode, not synced to server
     modelMode?: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | null; // Local model mode, not synced to server
@@ -98,6 +99,16 @@ export interface Session {
         contextSize: number;
         timestamp: number;
     } | null;
+}
+
+export interface PendingMessage {
+    id: string;
+    localId: string | null;
+    createdAt: number;
+    updatedAt: number;
+    text: string;
+    displayText?: string;
+    rawRecord: any;
 }
 
 export interface DecryptedMessage {

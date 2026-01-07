@@ -399,6 +399,12 @@ export const SettingsView = React.memo(function SettingsView() {
                     onPress={() => router.push('/(app)/settings/voice')}
                 />
                 <Item
+                    title="Message sending"
+                    subtitle="Pending queue and interrupt behavior"
+                    icon={<Ionicons name="send-outline" size={29} color="#007AFF" />}
+                    onPress={() => router.push('/settings/message-sending' as any)}
+                />
+                <Item
                     title={t('settings.featuresTitle')}
                     subtitle={t('settings.featuresSubtitle')}
                     icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
