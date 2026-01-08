@@ -5,12 +5,12 @@
  * Handles tool permission requests, responses, and state management.
  */
 
+import { isDeepStrictEqual } from 'node:util';
 import { logger } from "@/lib";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "../sdk";
 import { PermissionResult } from "../sdk/types";
 import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
 import { Session } from "../session";
-import { deepEqual } from "@/utils/deepEqual";
 import { getToolName } from "./getToolName";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
@@ -266,7 +266,7 @@ export class PermissionHandler {
         // Search in reverse (most recent first)
         for (let i = this.toolCalls.length - 1; i >= 0; i--) {
             const call = this.toolCalls[i];
-            if (call.name === name && deepEqual(call.input, args)) {
+            if (call.name === name && isDeepStrictEqual(call.input, args)) {
                 if (call.used) {
                     return null;
                 }
