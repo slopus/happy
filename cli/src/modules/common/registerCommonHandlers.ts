@@ -152,7 +152,9 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         logger.debug('Shell command request:', data.command);
 
         // Validate cwd if provided
-        if (data.cwd) {
+        // Special case: "/" means "use shell's default cwd" (used by CLI detection)
+        // Security: Still validate all other paths to prevent directory traversal
+        if (data.cwd && data.cwd !== '/') {
             const validation = validatePath(data.cwd, workingDirectory);
             if (!validation.valid) {
                 return { success: false, error: validation.error };
@@ -162,19 +164,29 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         try {
             // Build options with shell enabled by default
             // Note: ExecOptions doesn't support boolean for shell, but exec() uses the default shell when shell is undefined
+            // If cwd is "/", use undefined to let shell use its default (respects user's PATH)
             const options: ExecOptions = {
-                cwd: data.cwd,
+                cwd: data.cwd === '/' ? undefined : data.cwd,
                 timeout: data.timeout || 30000, // Default 30 seconds timeout
             };
 
+            logger.debug('Shell command executing...', { cwd: options.cwd, timeout: options.timeout });
             const { stdout, stderr } = await execAsync(data.command, options);
+            logger.debug('Shell command executed, processing result...');
 
-            return {
+            const result = {
                 success: true,
                 stdout: stdout ? stdout.toString() : '',
                 stderr: stderr ? stderr.toString() : '',
                 exitCode: 0
             };
+            logger.debug('Shell command result:', {
+                success: true,
+                exitCode: 0,
+                stdoutLen: result.stdout.length,
+                stderrLen: result.stderr.length
+            });
+            return result;
         } catch (error) {
             const execError = error as NodeJS.ErrnoException & {
                 stdout?: string;
@@ -185,23 +197,37 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
 
             // Check if the error was due to timeout
             if (execError.code === 'ETIMEDOUT' || execError.killed) {
-                return {
+                const result = {
                     success: false,
                     stdout: execError.stdout || '',
                     stderr: execError.stderr || '',
                     exitCode: typeof execError.code === 'number' ? execError.code : -1,
                     error: 'Command timed out'
                 };
+                logger.debug('Shell command timed out:', {
+                    success: false,
+                    exitCode: result.exitCode,
+                    error: 'Command timed out'
+                });
+                return result;
             }
 
             // If exec fails, it includes stdout/stderr in the error
-            return {
+            const result = {
                 success: false,
                 stdout: execError.stdout ? execError.stdout.toString() : '',
                 stderr: execError.stderr ? execError.stderr.toString() : execError.message || 'Command failed',
                 exitCode: typeof execError.code === 'number' ? execError.code : 1,
                 error: execError.message || 'Command failed'
             };
+            logger.debug('Shell command failed:', {
+                success: false,
+                exitCode: result.exitCode,
+                error: result.error,
+                stdoutLen: result.stdout.length,
+                stderrLen: result.stderr.length
+            });
+            return result;
         }
     });
 
