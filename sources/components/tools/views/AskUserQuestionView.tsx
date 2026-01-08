@@ -24,6 +24,147 @@ interface AskUserQuestionInput {
     questions: Question[];
 }
 
+// Styles MUST be defined outside the component to prevent infinite re-renders
+// with react-native-unistyles. The theme is passed as a function parameter.
+const styles = StyleSheet.create((theme) => ({
+    container: {
+        gap: 16,
+    },
+    questionSection: {
+        gap: 8,
+    },
+    headerChip: {
+        alignSelf: 'flex-start',
+        backgroundColor: theme.colors.surfaceHighest,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 4,
+        marginBottom: 4,
+    },
+    headerText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: theme.colors.textSecondary,
+        textTransform: 'uppercase',
+    },
+    questionText: {
+        fontSize: 15,
+        fontWeight: '500',
+        color: theme.colors.text,
+        marginBottom: 8,
+    },
+    optionsContainer: {
+        gap: 4,
+    },
+    optionButton: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        paddingVertical: 12,
+        paddingHorizontal: 12,
+        borderRadius: 8,
+        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        gap: 10,
+        minHeight: 44, // Minimum touch target for mobile
+    },
+    optionButtonSelected: {
+        backgroundColor: theme.colors.surfaceHigh,
+        borderColor: theme.colors.radio.active,
+    },
+    optionButtonDisabled: {
+        opacity: 0.6,
+    },
+    radioOuter: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        borderWidth: 2,
+        borderColor: theme.colors.textSecondary,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 2,
+    },
+    radioOuterSelected: {
+        borderColor: theme.colors.radio.active,
+    },
+    radioInner: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: theme.colors.radio.dot,
+    },
+    checkboxOuter: {
+        width: 20,
+        height: 20,
+        borderRadius: 4,
+        borderWidth: 2,
+        borderColor: theme.colors.textSecondary,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 2,
+    },
+    checkboxOuterSelected: {
+        borderColor: theme.colors.radio.active,
+        backgroundColor: theme.colors.radio.active,
+    },
+    optionContent: {
+        flex: 1,
+    },
+    optionLabel: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: theme.colors.text,
+    },
+    optionDescription: {
+        fontSize: 13,
+        color: theme.colors.textSecondary,
+        marginTop: 2,
+    },
+    actionsContainer: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 8,
+        justifyContent: 'flex-end',
+    },
+    submitButton: {
+        backgroundColor: theme.colors.button.primary.background,
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        borderRadius: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        minHeight: 44, // Minimum touch target for mobile
+    },
+    submitButtonDisabled: {
+        opacity: 0.5,
+    },
+    submitButtonText: {
+        color: theme.colors.button.primary.tint,
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    submittedContainer: {
+        gap: 8,
+    },
+    submittedItem: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    submittedHeader: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: theme.colors.textSecondary,
+    },
+    submittedValue: {
+        fontSize: 13,
+        color: theme.colors.text,
+        flex: 1,
+    },
+}));
+
 export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
     const { theme } = useUnistyles();
     const [selections, setSelections] = React.useState<Map<number, Set<number>>>(new Map());
@@ -107,145 +248,6 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
             setIsSubmitting(false);
         }
     }, [sessionId, questions, selections, allQuestionsAnswered, isSubmitting, tool.permission?.id]);
-
-    const styles = StyleSheet.create({
-        container: {
-            gap: 16,
-        },
-        questionSection: {
-            gap: 8,
-        },
-        headerChip: {
-            alignSelf: 'flex-start',
-            backgroundColor: theme.colors.surfaceHighest,
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            borderRadius: 4,
-            marginBottom: 4,
-        },
-        headerText: {
-            fontSize: 12,
-            fontWeight: '600',
-            color: theme.colors.textSecondary,
-            textTransform: 'uppercase',
-        },
-        questionText: {
-            fontSize: 15,
-            fontWeight: '500',
-            color: theme.colors.text,
-            marginBottom: 8,
-        },
-        optionsContainer: {
-            gap: 4,
-        },
-        optionButton: {
-            flexDirection: 'row',
-            alignItems: 'flex-start',
-            paddingVertical: 12,
-            paddingHorizontal: 12,
-            borderRadius: 8,
-            backgroundColor: 'transparent',
-            borderWidth: 1,
-            borderColor: theme.colors.divider,
-            gap: 10,
-            minHeight: 44, // Minimum touch target for mobile
-        },
-        optionButtonSelected: {
-            backgroundColor: theme.colors.surfaceHigh,
-            borderColor: theme.colors.radio.active,
-        },
-        optionButtonDisabled: {
-            opacity: 0.6,
-        },
-        radioOuter: {
-            width: 20,
-            height: 20,
-            borderRadius: 10,
-            borderWidth: 2,
-            borderColor: theme.colors.textSecondary,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginTop: 2,
-        },
-        radioOuterSelected: {
-            borderColor: theme.colors.radio.active,
-        },
-        radioInner: {
-            width: 10,
-            height: 10,
-            borderRadius: 5,
-            backgroundColor: theme.colors.radio.dot,
-        },
-        checkboxOuter: {
-            width: 20,
-            height: 20,
-            borderRadius: 4,
-            borderWidth: 2,
-            borderColor: theme.colors.textSecondary,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginTop: 2,
-        },
-        checkboxOuterSelected: {
-            borderColor: theme.colors.radio.active,
-            backgroundColor: theme.colors.radio.active,
-        },
-        optionContent: {
-            flex: 1,
-        },
-        optionLabel: {
-            fontSize: 14,
-            fontWeight: '500',
-            color: theme.colors.text,
-        },
-        optionDescription: {
-            fontSize: 13,
-            color: theme.colors.textSecondary,
-            marginTop: 2,
-        },
-        actionsContainer: {
-            flexDirection: 'row',
-            gap: 12,
-            marginTop: 8,
-            justifyContent: 'flex-end',
-        },
-        submitButton: {
-            backgroundColor: theme.colors.button.primary.background,
-            paddingHorizontal: 20,
-            paddingVertical: 12,
-            borderRadius: 8,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-            minHeight: 44, // Minimum touch target for mobile
-        },
-        submitButtonDisabled: {
-            opacity: 0.5,
-        },
-        submitButtonText: {
-            color: theme.colors.button.primary.tint,
-            fontSize: 14,
-            fontWeight: '600',
-        },
-        submittedContainer: {
-            gap: 8,
-        },
-        submittedItem: {
-            flexDirection: 'row',
-            gap: 8,
-        },
-        submittedHeader: {
-            fontSize: 13,
-            fontWeight: '600',
-            color: theme.colors.textSecondary,
-        },
-        submittedValue: {
-            fontSize: 13,
-            color: theme.colors.text,
-            flex: 1,
-        },
-    });
 
     // Show submitted state
     if (isSubmitted || tool.state === 'completed') {
