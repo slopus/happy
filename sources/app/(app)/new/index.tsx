@@ -1041,9 +1041,10 @@ function NewSessionWizard() {
             cliStatus: includeCLI ? {
                 claude: cliAvailability.claude,
                 codex: cliAvailability.codex,
+                ...(experimentsEnabled && { gemini: cliAvailability.gemini }),
             } : undefined,
         };
-    }, [selectedMachine, selectedMachineId, cliAvailability, theme]);
+    }, [selectedMachine, selectedMachineId, cliAvailability, experimentsEnabled, theme]);
 
     // ========================================================================
     // CONTROL A: Simpler AgentInput-driven layout (flag OFF)
