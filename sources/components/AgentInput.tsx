@@ -319,6 +319,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
         : null;
 
+    const agentInputEnterToSend = useSetting('agentInputEnterToSend');
+
 
     // Abort button state
     const [isAborting, setIsAborting] = React.useState(false);
@@ -463,7 +465,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         // Original key handling
         if (Platform.OS === 'web') {
-            if (event.key === 'Enter' && !event.shiftKey) {
+            if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey) {
                 if (props.value.trim()) {
                     props.onSend();
                     return true; // Key was handled
@@ -483,7 +485,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [props.value, props.onSend, props.permissionMode, props.onPermissionModeChange, suggestions, selected, handleSuggestionSelect, moveUp, moveDown, props.showAbortButton, props.onAbort, isAborting, handleAbortPress]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange]);
 
 
 

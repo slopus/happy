@@ -34,6 +34,7 @@ import { MultiTextInput } from '@/components/MultiTextInput';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
 import { SearchableListSelector, SelectorConfig } from '@/components/SearchableListSelector';
+import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -257,7 +258,12 @@ function NewSessionWizard() {
     const { theme, rt } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
-    const { prompt, dataId } = useLocalSearchParams<{ prompt?: string; dataId?: string }>();
+    const { prompt, dataId, machineId: machineIdParam, path: pathParam } = useLocalSearchParams<{
+        prompt?: string;
+        dataId?: string;
+        machineId?: string;
+        path?: string;
+    }>();
 
     // Try to get data from temporary store first
     const tempSessionData = React.useMemo(() => {
@@ -266,6 +272,9 @@ function NewSessionWizard() {
         }
         return null;
     }, [dataId]);
+
+    // Load persisted draft state (survives remounts/screen navigation)
+    const persistedDraft = React.useRef(loadNewSessionDraft()).current;
 
     // Settings and state
     const recentMachinePaths = useSetting('recentMachinePaths');
@@ -353,19 +362,21 @@ function NewSessionWizard() {
         return 'default';
     });
 
-    // Reset permission mode when agent type changes
-    React.useEffect(() => {
-        setPermissionMode('default');
-    }, [agentType]);
+    // NOTE: Permission mode reset on agentType change is handled by the validation useEffect below (lines ~670-681)
+    // which intelligently resets only when the current mode is invalid for the new agent type.
+    // A duplicate unconditional reset here was removed to prevent race conditions.
 
     const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
         const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
         const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'default', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
+        const validGeminiModes: ModelMode[] = ['default'];
 
         if (lastUsedModelMode) {
             if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
                 return lastUsedModelMode as ModelMode;
             } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedModelMode as ModelMode)) {
+                return lastUsedModelMode as ModelMode;
+            } else if (agentType === 'gemini' && validGeminiModes.includes(lastUsedModelMode as ModelMode)) {
                 return lastUsedModelMode as ModelMode;
             }
         }
@@ -401,10 +412,36 @@ function NewSessionWizard() {
         return getRecentPathForMachine(selectedMachineId, recentMachinePaths);
     });
     const [sessionPrompt, setSessionPrompt] = React.useState(() => {
-        return tempSessionData?.prompt || prompt || '';
+        return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
     });
     const [isCreating, setIsCreating] = React.useState(false);
     const [showAdvanced, setShowAdvanced] = React.useState(false);
+
+    // Handle machineId route param from picker screens (main's navigation pattern)
+    React.useEffect(() => {
+        if (typeof machineIdParam !== 'string' || machines.length === 0) {
+            return;
+        }
+        if (!machines.some(m => m.id === machineIdParam)) {
+            return;
+        }
+        if (machineIdParam !== selectedMachineId) {
+            setSelectedMachineId(machineIdParam);
+            const bestPath = getRecentPathForMachine(machineIdParam, recentMachinePaths);
+            setSelectedPath(bestPath);
+        }
+    }, [machineIdParam, machines, recentMachinePaths, selectedMachineId]);
+
+    // Handle path route param from picker screens (main's navigation pattern)
+    React.useEffect(() => {
+        if (typeof pathParam !== 'string') {
+            return;
+        }
+        const trimmedPath = pathParam.trim();
+        if (trimmedPath && trimmedPath !== selectedPath) {
+            setSelectedPath(trimmedPath);
+        }
+    }, [pathParam, selectedPath]);
 
     // Path selection state - initialize with formatted selected path
 
@@ -990,6 +1027,9 @@ function NewSessionWizard() {
             });
 
             if ('sessionId' in result && result.sessionId) {
+                // Clear draft state on successful session creation
+                clearNewSessionDraft();
+
                 await sync.refreshSessions();
 
                 // Set permission mode on the session
@@ -1045,6 +1085,31 @@ function NewSessionWizard() {
             } : undefined,
         };
     }, [selectedMachine, selectedMachineId, cliAvailability, experimentsEnabled, theme]);
+
+    // Persist the current wizard state so it survives remounts and screen navigation
+    // Uses debouncing to avoid excessive writes
+    const draftSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    React.useEffect(() => {
+        if (draftSaveTimerRef.current) {
+            clearTimeout(draftSaveTimerRef.current);
+        }
+        draftSaveTimerRef.current = setTimeout(() => {
+            saveNewSessionDraft({
+                input: sessionPrompt,
+                selectedMachineId,
+                selectedPath,
+                agentType,
+                permissionMode,
+                sessionType,
+                updatedAt: Date.now(),
+            });
+        }, 250);
+        return () => {
+            if (draftSaveTimerRef.current) {
+                clearTimeout(draftSaveTimerRef.current);
+            }
+        };
+    }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType]);
 
     // ========================================================================
     // CONTROL A: Simpler AgentInput-driven layout (flag OFF)

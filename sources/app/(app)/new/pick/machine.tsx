@@ -1,13 +1,13 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, useSessions } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
-import { callbacks } from '../index';
 import { ItemList } from '@/components/ItemList';
 import { SearchableListSelector } from '@/components/SearchableListSelector';
 
@@ -34,6 +34,7 @@ export default function MachinePickerScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const router = useRouter();
+    const navigation = useNavigation();
     const params = useLocalSearchParams<{ selectedId?: string }>();
     const machines = useAllMachines();
     const sessions = useSessions();
@@ -41,7 +42,19 @@ export default function MachinePickerScreen() {
     const selectedMachine = machines.find(m => m.id === params.selectedId) || null;
 
     const handleSelectMachine = (machine: typeof machines[0]) => {
-        callbacks.onMachineSelected(machine.id);
+        // Support both callback pattern (feature branch wizard) and navigation params (main)
+        const machineId = machine.id;
+
+        // Navigation params approach from main for backward compatibility
+        const state = navigation.getState();
+        const previousRoute = state.routes[state.index - 1];
+        if (previousRoute) {
+            navigation.dispatch({
+                ...CommonActions.setParams({ machineId }),
+                source: previousRoute.key,
+            } as never);
+        }
+
         router.back();
     };
 

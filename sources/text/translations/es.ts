@@ -195,6 +195,9 @@ export const es: TranslationStructure = {
         experimentalFeaturesDisabled: 'Usando solo características estables',
         webFeatures: 'Características web',
         webFeaturesDescription: 'Características disponibles solo en la versión web de la aplicación.',
+        enterToSend: 'Enter para enviar',
+        enterToSendEnabled: 'Presiona Enter para enviar (Shift+Enter para una nueva línea)',
+        enterToSendDisabled: 'Enter inserta una nueva línea',
         commandPalette: 'Paleta de comandos',
         commandPaletteEnabled: 'Presione ⌘K para abrir',
         commandPaletteDisabled: 'Acceso rápido a comandos deshabilitado',
@@ -500,6 +503,7 @@ export const es: TranslationStructure = {
             reasoning: 'Razonamiento',
             applyChanges: 'Actualizar archivo',
             viewDiff: 'Cambios del archivo actual',
+            question: 'Pregunta',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
@@ -517,6 +521,10 @@ export const es: TranslationStructure = {
             modifyingFiles: ({ count }: { count: number }) => `Modificando ${count} archivos`,
             modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} y ${count} más`,
             showingDiff: 'Mostrando cambios',
+        },
+        askUserQuestion: {
+            submit: 'Enviar respuesta',
+            multipleQuestions: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'pregunta', plural: 'preguntas' })}`,
         }
     },
 
