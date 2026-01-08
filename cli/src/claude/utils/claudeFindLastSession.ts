@@ -2,11 +2,12 @@ import { readdirSync, statSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getProjectPath } from './path';
 import { claudeCheckSession } from './claudeCheckSession';
+import { logger } from '@/ui/logger';
 
 /**
  * Finds the most recently modified VALID session in the project directory.
  * A valid session must:
- * 1. Contain at least one message with a uuid field
+ * 1. Contain at least one message with a uuid, messageId, or leafUuid field
  * 2. Have a session ID in UUID format (Claude Code v2.0.65+ requires this for --resume)
  *
  * Note: Agent sessions (agent-*) are excluded because --resume only accepts UUID format.
@@ -44,7 +45,8 @@ export function claudeFindLastSession(workingDirectory: string): string | null {
             .sort((a, b) => b.mtime - a.mtime); // Most recent valid session first
 
         return files.length > 0 ? files[0].sessionId : null;
-    } catch {
+    } catch (e) {
+        logger.debug('[claudeFindLastSession] Error finding sessions:', e);
         return null;
     }
 }

@@ -181,10 +181,10 @@ export async function claudeLocal(opts: {
                     args.push('--session-id', newSessionId)
                 }
             } else {
-                // Normal mode with hook: Only add --resume if we have existing session and user didn't pass their own flags
-                // For fresh starts, let Claude create its own session ID (reported via hook)
-                if (!hasUserSessionControl && startFrom) {
-                    args.push('--resume', startFrom)
+                // Normal mode with hook: Add --resume if we found a session to resume
+                // (Flags have been extracted, so we re-add --resume with the session ID we found)
+                if (startFrom) {
+                    args.push('--resume', startFrom);
                 }
             }
             // If hasResumeFlag && !startFrom: --resume is in claudeArgs, let Claude handle it
