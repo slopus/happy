@@ -10,6 +10,7 @@ import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
+import type { JsRuntime } from "./runClaude";
 
 export async function claudeRemote(opts: {
 
@@ -24,6 +25,8 @@ export async function claudeRemote(opts: {
     canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }) => Promise<PermissionResult>,
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string,
+    /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
+    jsRuntime?: JsRuntime,
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
@@ -121,7 +124,7 @@ export async function claudeRemote(opts: {
         allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: initial.mode.disallowedTools,
         canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal }) => opts.canCallTool(toolName, input, mode, options),
-        executable: 'node',
+        executable: opts.jsRuntime ?? 'node',
         abort: opts.signal,
         pathToClaudeCodeExecutable: (() => {
             return resolve(join(projectPath(), 'scripts', 'claude_remote_launcher.cjs'));

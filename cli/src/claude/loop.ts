@@ -5,6 +5,7 @@ import { Session } from "./session"
 import { claudeLocalLauncher } from "./claudeLocalLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from "@/lib"
+import type { JsRuntime } from "./runClaude"
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
 
@@ -34,6 +35,8 @@ interface LoopOptions {
     onSessionReady?: (session: Session) => void
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string
+    /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
+    jsRuntime?: JsRuntime
 }
 
 export async function loop(opts: LoopOptions) {
@@ -52,7 +55,8 @@ export async function loop(opts: LoopOptions) {
         messageQueue: opts.messageQueue,
         allowedTools: opts.allowedTools,
         onModeChange: opts.onModeChange,
-        hookSettingsPath: opts.hookSettingsPath
+        hookSettingsPath: opts.hookSettingsPath,
+        jsRuntime: opts.jsRuntime
     });
 
     // Notify that session is ready

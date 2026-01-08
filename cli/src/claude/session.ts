@@ -2,6 +2,7 @@ import { ApiClient, ApiSessionClient } from "@/lib";
 import { MessageQueue2 } from "@/utils/MessageQueue2";
 import { EnhancedMode } from "./loop";
 import { logger } from "@/ui/logger";
+import type { JsRuntime } from "./runClaude";
 
 export class Session {
     readonly path: string;
@@ -16,6 +17,8 @@ export class Session {
     readonly _onModeChange: (mode: 'local' | 'remote') => void;
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     readonly hookSettingsPath: string;
+    /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
+    readonly jsRuntime: JsRuntime;
 
     sessionId: string | null;
     mode: 'local' | 'remote' = 'local';
@@ -41,6 +44,8 @@ export class Session {
         allowedTools?: string[],
         /** Path to temporary settings file with SessionStart hook (required for session tracking) */
         hookSettingsPath: string,
+        /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
+        jsRuntime?: JsRuntime,
     }) {
         this.path = opts.path;
         this.api = opts.api;
@@ -54,6 +59,7 @@ export class Session {
         this.allowedTools = opts.allowedTools;
         this._onModeChange = opts.onModeChange;
         this.hookSettingsPath = opts.hookSettingsPath;
+        this.jsRuntime = opts.jsRuntime ?? 'node';
 
         // Start keep alive
         this.client.keepAlive(this.thinking, this.mode);
