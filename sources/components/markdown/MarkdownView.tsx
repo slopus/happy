@@ -166,7 +166,10 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
                     selectable={props.selectable}
                 />
             </ScrollView>
-            <View style={[style.copyButtonWrapper, isHovered && style.copyButtonWrapperVisible]} className='copy-button-wrapper'>
+            <View
+                style={[style.copyButtonWrapper, isHovered && style.copyButtonWrapperVisible]}
+                {...(Platform.OS === 'web' ? ({ className: 'copy-button-wrapper' } as any) : {})}
+            >
                 <Pressable
                     style={style.copyButton}
                     onPress={copyCode}

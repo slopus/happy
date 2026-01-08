@@ -76,8 +76,8 @@ export default function MachinePickerScreen() {
 
     const handleSelectMachine = (machineId: string) => {
         const state = navigation.getState();
-        const previousRoute = state.routes[state.index - 1];
-        if (previousRoute) {
+        const previousRoute = state?.routes?.[state.index - 1];
+        if (state && state.index > 0 && previousRoute) {
             navigation.dispatch({
                 ...CommonActions.setParams({ machineId }),
                 source: previousRoute.key,
