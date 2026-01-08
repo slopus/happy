@@ -321,22 +321,21 @@ function NewSessionWizard() {
     });
 
     // Agent cycling handler (for cycling through claude -> codex -> gemini)
+    // Note: Does NOT persist immediately - persistence is handled by useEffect below
     const handleAgentClick = React.useCallback(() => {
         setAgentType(prev => {
             // Cycle: claude -> codex -> gemini (if experiments) -> claude
-            let newAgent: 'claude' | 'codex' | 'gemini';
-            if (prev === 'claude') {
-                newAgent = 'codex';
-            } else if (prev === 'codex') {
-                newAgent = experimentsEnabled ? 'gemini' : 'claude';
-            } else {
-                newAgent = 'claude';
-            }
-            // Save the new selection immediately
-            sync.applySettings({ lastUsedAgent: newAgent });
-            return newAgent;
+            if (prev === 'claude') return 'codex';
+            if (prev === 'codex') return experimentsEnabled ? 'gemini' : 'claude';
+            return 'claude';
         });
     }, [experimentsEnabled]);
+
+    // Persist agent selection changes (separate from setState to avoid race condition)
+    // This runs after agentType state is updated, ensuring the value is stable
+    React.useEffect(() => {
+        sync.applySettings({ lastUsedAgent: agentType });
+    }, [agentType]);
 
     const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
@@ -419,6 +418,28 @@ function NewSessionWizard() {
     // CLI Detection - automatic, non-blocking detection of installed CLIs on selected machine
     const cliAvailability = useCLIDetection(selectedMachineId);
 
+    // Auto-correct invalid agent selection after CLI detection completes
+    // This handles the case where lastUsedAgent was 'codex' but codex is not installed
+    React.useEffect(() => {
+        // Only act when detection has completed (timestamp > 0)
+        if (cliAvailability.timestamp === 0) return;
+
+        // Check if currently selected agent is available
+        const agentAvailable = cliAvailability[agentType];
+
+        if (agentAvailable === false) {
+            // Current agent not available - find first available
+            const availableAgent: 'claude' | 'codex' | 'gemini' =
+                cliAvailability.claude === true ? 'claude' :
+                cliAvailability.codex === true ? 'codex' :
+                (cliAvailability.gemini === true && experimentsEnabled) ? 'gemini' :
+                'claude'; // Fallback to claude (will fail at spawn with clear error)
+
+            console.warn(`[AgentSelection] ${agentType} not available, switching to ${availableAgent}`);
+            setAgentType(availableAgent);
+        }
+    }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, agentType, experimentsEnabled]);
+
     // Extract all ${VAR} references from profiles to query daemon environment
     const envVarRefs = React.useMemo(() => {
         const refs = new Set<string>();
@@ -433,10 +454,10 @@ function NewSessionWizard() {
     const { variables: daemonEnv } = useEnvironmentVariables(selectedMachineId, envVarRefs);
 
     // Temporary banner dismissal (X button) - resets when component unmounts or machine changes
-    const [hiddenBanners, setHiddenBanners] = React.useState<{ claude: boolean; codex: boolean }>({ claude: false, codex: false });
+    const [hiddenBanners, setHiddenBanners] = React.useState<{ claude: boolean; codex: boolean; gemini: boolean }>({ claude: false, codex: false, gemini: false });
 
     // Helper to check if CLI warning has been dismissed (checks both global and per-machine)
-    const isWarningDismissed = React.useCallback((cli: 'claude' | 'codex'): boolean => {
+    const isWarningDismissed = React.useCallback((cli: 'claude' | 'codex' | 'gemini'): boolean => {
         // Check global dismissal first
         if (dismissedCLIWarnings.global?.[cli] === true) return true;
         // Check per-machine dismissal
@@ -445,7 +466,7 @@ function NewSessionWizard() {
     }, [selectedMachineId, dismissedCLIWarnings]);
 
     // Unified dismiss handler for all three button types (easy to use correctly, hard to use incorrectly)
-    const handleCLIBannerDismiss = React.useCallback((cli: 'claude' | 'codex', type: 'temporary' | 'machine' | 'global') => {
+    const handleCLIBannerDismiss = React.useCallback((cli: 'claude' | 'codex' | 'gemini', type: 'temporary' | 'machine' | 'global') => {
         if (type === 'temporary') {
             // X button: Hide for current session only (not persisted)
             setHiddenBanners(prev => ({ ...prev, [cli]: true }));
@@ -479,7 +500,12 @@ function NewSessionWizard() {
     const isProfileAvailable = React.useCallback((profile: AIBackendProfile): { available: boolean; reason?: string } => {
         // Check profile compatibility with selected agent type
         if (!validateProfileForAgent(profile, agentType)) {
-            const required = agentType === 'claude' ? 'Codex' : 'Claude';
+            // Build list of agents this profile supports (excluding current)
+            // Uses Object.entries to iterate over compatibility flags - scales automatically with new agents
+            const supportedAgents = (Object.entries(profile.compatibility) as [string, boolean][])
+                .filter(([agent, supported]) => supported && agent !== agentType)
+                .map(([agent]) => agent.charAt(0).toUpperCase() + agent.slice(1)); // 'claude' -> 'Claude'
+            const required = supportedAgents.join(' or ') || 'another agent';
             return {
                 available: false,
                 reason: `requires-agent:${required}`,
@@ -487,9 +513,12 @@ function NewSessionWizard() {
         }
 
         // Check if required CLI is detected on machine (only if detection completed)
-        const requiredCLI = profile.compatibility.claude && !profile.compatibility.codex ? 'claude'
-            : !profile.compatibility.codex && profile.compatibility.claude ? 'codex'
-            : null; // Profile supports both CLIs
+        // Determine required CLI: if profile supports exactly one CLI, that CLI is required
+        // Uses Object.entries to iterate - scales automatically when new agents are added
+        const supportedCLIs = (Object.entries(profile.compatibility) as [string, boolean][])
+            .filter(([, supported]) => supported)
+            .map(([agent]) => agent);
+        const requiredCLI = supportedCLIs.length === 1 ? supportedCLIs[0] as 'claude' | 'codex' | 'gemini' : null;
 
         if (requiredCLI && cliAvailability[requiredCLI] === false) {
             return {
@@ -607,12 +636,25 @@ function NewSessionWizard() {
         // Check both custom profiles and built-in profiles
         const profile = profileMap.get(profileId) || getBuiltInProfile(profileId);
         if (profile) {
-            // Auto-select agent based on profile compatibility
-            if (profile.compatibility.claude && !profile.compatibility.codex) {
-                setAgentType('claude');
-            } else if (profile.compatibility.codex && !profile.compatibility.claude) {
-                setAgentType('codex');
+            // Auto-select agent based on profile's EXCLUSIVE compatibility
+            // Only switch if profile supports exactly one CLI - scales automatically with new agents
+            const supportedCLIs = (Object.entries(profile.compatibility) as [string, boolean][])
+                .filter(([, supported]) => supported)
+                .map(([agent]) => agent);
+
+            if (supportedCLIs.length === 1) {
+                const requiredAgent = supportedCLIs[0] as 'claude' | 'codex' | 'gemini';
+                // Check if this agent is available and allowed
+                const isAvailable = cliAvailability[requiredAgent] !== false;
+                const isAllowed = requiredAgent !== 'gemini' || experimentsEnabled;
+
+                if (isAvailable && isAllowed) {
+                    setAgentType(requiredAgent);
+                }
+                // If the required CLI is unavailable or not allowed, keep current agent (profile will show as unavailable)
             }
+            // If supportedCLIs.length > 1, profile supports multiple CLIs - don't force agent switch
+
             // Set session type from profile's default
             if (profile.defaultSessionType) {
                 setSessionType(profile.defaultSessionType);
@@ -622,7 +664,7 @@ function NewSessionWizard() {
                 setPermissionMode(profile.defaultPermissionMode as PermissionMode);
             }
         }
-    }, [profileMap]);
+    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, experimentsEnabled]);
 
     // Reset permission mode to 'default' when agent type changes and current mode is invalid for new agent
     React.useEffect(() => {
@@ -875,6 +917,18 @@ function NewSessionWizard() {
         router.push('/new/pick/machine');
     }, [router]);
 
+    const handlePathClick = React.useCallback(() => {
+        if (selectedMachineId) {
+            router.push({
+                pathname: '/new/pick/path',
+                params: {
+                    machineId: selectedMachineId,
+                    selectedPath,
+                },
+            });
+        }
+    }, [selectedMachineId, selectedPath, router]);
+
     // Session creation
     const handleCreateSession = React.useCallback(async () => {
         if (!selectedMachineId) {
@@ -1037,7 +1091,7 @@ function NewSessionWizard() {
                                 machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                                 onMachineClick={handleMachineClick}
                                 currentPath={selectedPath}
-                                onPathClick={handleMachineClick}
+                                onPathClick={handlePathClick}
                             />
                         </View>
                     </View>
@@ -1113,6 +1167,16 @@ function NewSessionWizard() {
                                                 codex
                                             </Text>
                                         </View>
+                                        {experimentsEnabled && (
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                    {cliAvailability.gemini ? '✓' : '✗'}
+                                                </Text>
+                                                <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                    gemini
+                                                </Text>
+                                            </View>
+                                        )}
                                     </View>
                                 </View>
                             )}
@@ -1266,6 +1330,78 @@ function NewSessionWizard() {
                                         }}>
                                             <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
                                                 View Installation Guide →
+                                            </Text>
+                                        </Pressable>
+                                    </View>
+                                </View>
+                            )}
+
+                            {selectedMachineId && cliAvailability.gemini === false && experimentsEnabled && !isWarningDismissed('gemini') && !hiddenBanners.gemini && (
+                                <View style={{
+                                    backgroundColor: theme.colors.box.warning.background,
+                                    borderRadius: 10,
+                                    padding: 12,
+                                    marginBottom: 12,
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.box.warning.border,
+                                }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
+                                        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
+                                            <Ionicons name="warning" size={16} color={theme.colors.warning} />
+                                            <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
+                                                Gemini CLI Not Detected
+                                            </Text>
+                                            <View style={{ flex: 1, minWidth: 20 }} />
+                                            <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                Don't show this popup for
+                                            </Text>
+                                            <Pressable
+                                                onPress={() => handleCLIBannerDismiss('gemini', 'machine')}
+                                                style={{
+                                                    borderRadius: 4,
+                                                    borderWidth: 1,
+                                                    borderColor: theme.colors.textSecondary,
+                                                    paddingHorizontal: 8,
+                                                    paddingVertical: 3,
+                                                }}
+                                            >
+                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                    this machine
+                                                </Text>
+                                            </Pressable>
+                                            <Pressable
+                                                onPress={() => handleCLIBannerDismiss('gemini', 'global')}
+                                                style={{
+                                                    borderRadius: 4,
+                                                    borderWidth: 1,
+                                                    borderColor: theme.colors.textSecondary,
+                                                    paddingHorizontal: 8,
+                                                    paddingVertical: 3,
+                                                }}
+                                            >
+                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                    any machine
+                                                </Text>
+                                            </Pressable>
+                                        </View>
+                                        <Pressable
+                                            onPress={() => handleCLIBannerDismiss('gemini', 'temporary')}
+                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                        >
+                                            <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
+                                        </Pressable>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                            Install gemini CLI if available •
+                                        </Text>
+                                        <Pressable onPress={() => {
+                                            if (Platform.OS === 'web') {
+                                                window.open('https://ai.google.dev/gemini-api/docs/get-started', '_blank');
+                                            }
+                                        }}>
+                                            <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
+                                                View Gemini Docs →
                                             </Text>
                                         </Pressable>
                                     </View>
