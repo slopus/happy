@@ -60,6 +60,9 @@ export const ja: TranslationStructure = {
         fileViewer: 'ファイルビューアー',
         loading: '読み込み中...',
         retry: '再試行',
+        delete: '削除',
+        optional: '任意',
+        saveAs: '名前を付けて保存',
     },
 
     profile: {
@@ -69,6 +72,36 @@ export const ja: TranslationStructure = {
         lastName: '姓',
         username: 'ユーザー名',
         status: 'ステータス',
+    },
+
+    profiles: {
+        title: 'プロファイル',
+        subtitle: 'セッション用の環境変数プロファイルを管理',
+        noProfile: 'プロファイルなし',
+        noProfileDescription: 'デフォルトの環境設定を使用',
+        defaultModel: 'デフォルトモデル',
+        addProfile: 'プロファイルを追加',
+        profileName: 'プロファイル名',
+        enterName: 'プロファイル名を入力',
+        baseURL: 'ベースURL',
+        authToken: '認証トークン',
+        enterToken: '認証トークンを入力',
+        model: 'モデル',
+        tmuxSession: 'Tmuxセッション',
+        enterTmuxSession: 'tmuxセッション名を入力',
+        tmuxTempDir: 'Tmux一時ディレクトリ',
+        enterTmuxTempDir: '一時ディレクトリのパスを入力',
+        tmuxUpdateEnvironment: '環境を自動更新',
+        nameRequired: 'プロファイル名は必須です',
+        deleteConfirm: 'プロファイル「{name}」を削除してもよろしいですか？',
+        editProfile: 'プロファイルを編集',
+        addProfileTitle: '新しいプロファイルを追加',
+        delete: {
+            title: 'プロファイルを削除',
+            message: ({ name }: { name: string }) => `「${name}」を削除してもよろしいですか？この操作は元に戻せません。`,
+            confirm: '削除',
+            cancel: 'キャンセル',
+        },
     },
 
     status: {
@@ -133,6 +166,8 @@ export const ja: TranslationStructure = {
         exchangingTokens: 'トークンを交換中...',
         usage: '使用状況',
         usageSubtitle: 'API使用量とコストを確認',
+        profiles: 'プロファイル',
+        profilesSubtitle: 'セッション用の環境変数プロファイルを管理',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service}アカウントが接続されました`,
@@ -192,6 +227,9 @@ export const ja: TranslationStructure = {
         experimentalFeaturesDisabled: '安定版機能のみを使用',
         webFeatures: 'Web機能',
         webFeaturesDescription: 'Webバージョンでのみ利用可能な機能。',
+        enterToSend: 'Enterで送信',
+        enterToSendEnabled: 'Enterで送信（Shift+Enterで改行）',
+        enterToSendDisabled: 'Enterで改行を挿入',
         commandPalette: 'コマンドパレット',
         commandPaletteEnabled: '⌘Kで開く',
         commandPaletteDisabled: 'クイックコマンドアクセスは無効',
@@ -199,6 +237,9 @@ export const ja: TranslationStructure = {
         markdownCopyV2Subtitle: '長押しでコピーモーダルを開く',
         hideInactiveSessions: '非アクティブセッションを非表示',
         hideInactiveSessionsSubtitle: 'アクティブなチャットのみをリストに表示',
+        enhancedSessionWizard: '拡張セッションウィザード',
+        enhancedSessionWizardEnabled: 'プロファイル優先セッションランチャーが有効',
+        enhancedSessionWizardDisabled: '標準セッションランチャーを使用',
     },
 
     errors: {
@@ -410,6 +451,16 @@ export const ja: TranslationStructure = {
             badgeSafeYolo: 'セーフYOLO',
             badgeYolo: 'YOLO',
         },
+        codexModel: {
+            title: 'CODEXモデル',
+            gpt5CodexLow: 'gpt-5-codex 低',
+            gpt5CodexMedium: 'gpt-5-codex 中',
+            gpt5CodexHigh: 'gpt-5-codex 高',
+            gpt5Minimal: 'GPT-5 最小',
+            gpt5Low: 'GPT-5 低',
+            gpt5Medium: 'GPT-5 中',
+            gpt5High: 'GPT-5 高',
+        },
         geminiPermissionMode: {
             title: 'GEMINI権限モード',
             default: 'デフォルト',
@@ -484,6 +535,11 @@ export const ja: TranslationStructure = {
             reasoning: '推論',
             applyChanges: 'ファイルを更新',
             viewDiff: '現在のファイル変更',
+            question: '質問',
+        },
+        askUserQuestion: {
+            submit: '回答を送信',
+            multipleQuestions: ({ count }: { count: number }) => `${count}件の質問`,
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `ターミナル(cmd: ${cmd})`,
