@@ -378,6 +378,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                     archiveReason: 'User terminated'
                 }));
                 
+                // Cleanup session resources (intervals, callbacks)
+                currentSession?.cleanup();
+
                 // Send session death message
                 session.sendSessionDeath();
                 await session.flush();
@@ -450,6 +453,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         claudeArgs: options.claudeArgs,
         hookSettingsPath
     });
+
+    // Cleanup session resources (intervals, callbacks) - prevents memory leak
+    // Note: currentSession is set by onSessionReady callback during loop()
+    (currentSession as Session | null)?.cleanup();
 
     // Send session death message
     session.sendSessionDeath();
