@@ -71,6 +71,9 @@ export const pt: TranslationStructure = {
         machine: 'máquina',
         clearSearch: 'Limpar pesquisa',
         refresh: 'Atualizar',
+        share: 'Compartilhar',
+        sharing: 'Compartilhando',
+        sharedSessions: 'Sessões compartilhadas',
     },
 
     dropdown: {
@@ -337,6 +340,12 @@ export const pt: TranslationStructure = {
         failedToSendRequest: 'Falha ao enviar solicitação de amizade',
         failedToResumeSession: 'Falha ao retomar a sessão',
         failedToSendMessage: 'Falha ao enviar a mensagem',
+        cannotShareWithSelf: 'Não é possível compartilhar consigo mesmo',
+        canOnlyShareWithFriends: 'Só é possível compartilhar com amigos',
+        shareNotFound: 'Compartilhamento não encontrado',
+        publicShareNotFound: 'Link público não encontrado ou expirado',
+        consentRequired: 'Consentimento necessário para acesso',
+        maxUsesReached: 'Máximo de usos atingido',
             missingPermissionId: 'Falta o id de permissão',
             codexResumeNotInstalledTitle: 'O Codex resume não está instalado nesta máquina',
             codexResumeNotInstalledMessage:
@@ -345,6 +354,7 @@ export const pt: TranslationStructure = {
             codexAcpNotInstalledMessage:
                 'Para usar o experimento Codex ACP, instale o codex-acp na máquina de destino (Detalhes da máquina → Codex ACP) ou desative o experimento.',
         },
+    },
 
     deps: {
         installNotSupported: 'Atualize o Happy CLI para instalar esta dependência.',
@@ -544,6 +554,31 @@ export const pt: TranslationStructure = {
         machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
             `“${machine}” está offline, então o Happy ainda não consegue retomar esta sessão. Traga a máquina de volta online para continuar.`,
         machineOfflineCannotResume: 'A máquina está offline. Traga-a de volta online para retomar esta sessão.',
+        sharing: {
+            title: 'Compartilhamento de sessão',
+            shareWith: 'Compartilhar com...',
+            sharedWith: 'Compartilhado com',
+            shareSession: 'Compartilhar sessão',
+            stopSharing: 'Parar de compartilhar',
+            accessLevel: 'Nível de acesso',
+            publicLink: 'Link público',
+            createPublicLink: 'Criar link público',
+            deletePublicLink: 'Excluir link público',
+            copyLink: 'Copiar link',
+            linkCopied: 'Link copiado!',
+            viewOnly: 'Somente visualização',
+            canEdit: 'Pode editar',
+            canManage: 'Pode gerenciar',
+            sharedBy: ({ name }: { name: string }) => `Compartilhado por ${name}`,
+            expiresAt: ({ date }: { date: string }) => `Expira em: ${date}`,
+            maxUses: ({ count, used }: { count: number; used: number }) => `${used} / ${count} usos`,
+            unlimited: 'Ilimitado',
+            requireConsent: 'Exigir consentimento para registro de acesso',
+            consentRequired: 'Este link requer seu consentimento para registrar informações de acesso (endereço IP e user agent)',
+            giveConsent: 'Eu consinto com o registro de acesso',
+            shareWithFriends: 'Compartilhar apenas com amigos',
+            friendsOnly: 'Apenas amigos podem ser adicionados',
+        },
     },
 
     commandPalette: {

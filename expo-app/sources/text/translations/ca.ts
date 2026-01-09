@@ -71,6 +71,9 @@ export const ca: TranslationStructure = {
         machine: 'màquina',
         clearSearch: 'Neteja la cerca',
         refresh: 'Actualitza',
+        share: 'Compartir',
+        sharing: 'Compartint',
+        sharedSessions: 'Sessions compartides',
     },
 
     dropdown: {
@@ -337,6 +340,12 @@ export const ca: TranslationStructure = {
         failedToSendRequest: 'No s\'ha pogut enviar la sol·licitud d\'amistat',
         failedToResumeSession: 'No s’ha pogut reprendre la sessió',
         failedToSendMessage: 'No s’ha pogut enviar el missatge',
+        cannotShareWithSelf: 'No pots compartir amb tu mateix',
+        canOnlyShareWithFriends: 'Només pots compartir amb amics',
+        shareNotFound: 'Compartició no trobada',
+        publicShareNotFound: 'Enllaç públic no trobat o expirat',
+        consentRequired: 'Es requereix consentiment per a l\'accés',
+        maxUsesReached: 'S\'ha assolit el màxim d\'usos',
             missingPermissionId: 'Falta l’identificador de permís',
             codexResumeNotInstalledTitle: 'Codex resume no està instal·lat en aquesta màquina',
             codexResumeNotInstalledMessage:
@@ -345,6 +354,7 @@ export const ca: TranslationStructure = {
             codexAcpNotInstalledMessage:
                 'Per fer servir l’experiment de Codex ACP, instal·la codex-acp a la màquina de destinació (Detalls de la màquina → Codex ACP) o desactiva l’experiment.',
         },
+    },
 
     deps: {
         installNotSupported: 'Actualitza Happy CLI per instal·lar aquesta dependència.',
@@ -544,6 +554,31 @@ export const ca: TranslationStructure = {
         machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
             `“${machine}” està fora de línia, així que Happy encara no pot reprendre aquesta sessió. Torna-la a posar en línia per continuar.`,
         machineOfflineCannotResume: 'La màquina està fora de línia. Torna-la a posar en línia per reprendre aquesta sessió.',
+        sharing: {
+            title: 'Compartir sessió',
+            shareWith: 'Compartir amb...',
+            sharedWith: 'Compartit amb',
+            shareSession: 'Compartir sessió',
+            stopSharing: 'Deixar de compartir',
+            accessLevel: 'Nivell d\'accés',
+            publicLink: 'Enllaç públic',
+            createPublicLink: 'Crear enllaç públic',
+            deletePublicLink: 'Eliminar enllaç públic',
+            copyLink: 'Copiar enllaç',
+            linkCopied: 'Enllaç copiat!',
+            viewOnly: 'Només visualització',
+            canEdit: 'Pot editar',
+            canManage: 'Pot gestionar',
+            sharedBy: ({ name }: { name: string }) => `Compartit per ${name}`,
+            expiresAt: ({ date }: { date: string }) => `Expira: ${date}`,
+            maxUses: ({ count, used }: { count: number; used: number }) => `${used} / ${count} usos`,
+            unlimited: 'Il·limitat',
+            requireConsent: 'Requerir consentiment per al registre d\'accés',
+            consentRequired: 'Aquest enllaç requereix el teu consentiment per registrar informació d\'accés (adreça IP i user agent)',
+            giveConsent: 'Dono el meu consentiment per al registre d\'accés',
+            shareWithFriends: 'Compartir només amb amics',
+            friendsOnly: 'Només es poden afegir amics',
+        },
     },
 
     commandPalette: {

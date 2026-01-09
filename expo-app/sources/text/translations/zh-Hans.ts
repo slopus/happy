@@ -73,6 +73,9 @@ export const zhHans: TranslationStructure = {
         machine: '机器',
         clearSearch: '清除搜索',
         refresh: '刷新',
+        share: '分享',
+        sharing: '分享中',
+        sharedSessions: '共享会话',
     },
 
     dropdown: {
@@ -339,6 +342,12 @@ export const zhHans: TranslationStructure = {
         failedToSendRequest: '发送好友请求失败',
         failedToResumeSession: '恢复会话失败',
         failedToSendMessage: '发送消息失败',
+        cannotShareWithSelf: '不能与自己分享',
+        canOnlyShareWithFriends: '只能与好友分享',
+        shareNotFound: '未找到分享',
+        publicShareNotFound: '公开分享未找到或已过期',
+        consentRequired: '需要同意才能访问',
+        maxUsesReached: '已达到最大使用次数',
             missingPermissionId: '缺少权限请求 ID',
             codexResumeNotInstalledTitle: '此机器未安装 Codex resume',
             codexResumeNotInstalledMessage:
@@ -347,6 +356,7 @@ export const zhHans: TranslationStructure = {
             codexAcpNotInstalledMessage:
                 '要使用 Codex ACP 实验功能，请在目标机器上安装 codex-acp（机器详情 → Codex ACP），或关闭实验开关。',
         },
+    },
 
     deps: {
         installNotSupported: '请更新 Happy CLI 以安装此依赖项。',
@@ -546,6 +556,31 @@ export const zhHans: TranslationStructure = {
         machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
             `“${machine}” 处于离线状态，因此 Happy 目前无法恢复此会话。请将机器恢复在线后继续。`,
         machineOfflineCannotResume: '机器离线。请将其恢复在线后再恢复此会话。',
+        sharing: {
+            title: '会话共享',
+            shareWith: '分享给...',
+            sharedWith: '已分享给',
+            shareSession: '分享会话',
+            stopSharing: '停止分享',
+            accessLevel: '访问级别',
+            publicLink: '公开链接',
+            createPublicLink: '创建公开链接',
+            deletePublicLink: '删除公开链接',
+            copyLink: '复制链接',
+            linkCopied: '链接已复制！',
+            viewOnly: '仅查看',
+            canEdit: '可编辑',
+            canManage: '可管理',
+            sharedBy: ({ name }: { name: string }) => `由 ${name} 分享`,
+            expiresAt: ({ date }: { date: string }) => `过期时间：${date}`,
+            maxUses: ({ count, used }: { count: number; used: number }) => `${used} / ${count} 次使用`,
+            unlimited: '无限制',
+            requireConsent: '需要同意访问日志记录',
+            consentRequired: '此链接需要您同意记录访问信息（IP 地址和用户代理）',
+            giveConsent: '我同意访问日志记录',
+            shareWithFriends: '仅与好友分享',
+            friendsOnly: '只能添加好友',
+        },
     },
 
     commandPalette: {

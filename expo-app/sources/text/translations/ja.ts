@@ -64,6 +64,9 @@ export const ja: TranslationStructure = {
         clearSearch: '検索をクリア',
         refresh: '更新',
         saveAs: '名前を付けて保存',
+        share: '共有',
+        sharing: '共有中',
+        sharedSessions: '共有セッション',
     },
 
     dropdown: {
@@ -584,6 +587,12 @@ export const ja: TranslationStructure = {
         failedToSendRequest: '友達リクエストの送信に失敗しました',
         failedToResumeSession: 'セッションの再開に失敗しました',
         failedToSendMessage: 'メッセージの送信に失敗しました',
+        cannotShareWithSelf: '自分自身とは共有できません',
+        canOnlyShareWithFriends: '友達とのみ共有できます',
+        shareNotFound: '共有が見つかりません',
+        publicShareNotFound: '公開共有が見つからないか期限切れです',
+        consentRequired: 'アクセスには同意が必要です',
+        maxUsesReached: '最大使用回数に達しました',
             missingPermissionId: '権限リクエストIDがありません',
             codexResumeNotInstalledTitle: 'このマシンには Codex resume がインストールされていません',
             codexResumeNotInstalledMessage:
@@ -592,6 +601,7 @@ export const ja: TranslationStructure = {
             codexAcpNotInstalledMessage:
                 'Codex ACP の実験機能を使うには、対象のマシンに codex-acp をインストールしてください（マシン詳細 → Codex ACP）。または実験機能を無効にしてください。',
         },
+    },
 
     deps: {
         installNotSupported: 'この依存関係をインストールするには Happy CLI を更新してください。',
@@ -791,6 +801,31 @@ export const ja: TranslationStructure = {
         machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
             `“${machine}” がオフラインのため、Happy はまだこのセッションを再開できません。オンラインに戻して続行してください。`,
         machineOfflineCannotResume: 'マシンがオフラインです。オンラインに戻してこのセッションを再開してください。',
+        sharing: {
+            title: 'セッション共有',
+            shareWith: '共有先...',
+            sharedWith: '共有中',
+            shareSession: 'セッションを共有',
+            stopSharing: '共有を停止',
+            accessLevel: 'アクセスレベル',
+            publicLink: '公開リンク',
+            createPublicLink: '公開リンクを作成',
+            deletePublicLink: '公開リンクを削除',
+            copyLink: 'リンクをコピー',
+            linkCopied: 'リンクをコピーしました！',
+            viewOnly: '閲覧のみ',
+            canEdit: '編集可能',
+            canManage: '管理可能',
+            sharedBy: ({ name }: { name: string }) => `${name}さんが共有`,
+            expiresAt: ({ date }: { date: string }) => `有効期限: ${date}`,
+            maxUses: ({ count, used }: { count: number; used: number }) => `${used} / ${count} 回使用`,
+            unlimited: '無制限',
+            requireConsent: 'アクセスログの記録に同意を求める',
+            consentRequired: 'このリンクはアクセス情報（IPアドレスとユーザーエージェント）のログ記録への同意が必要です',
+            giveConsent: 'アクセスログの記録に同意します',
+            shareWithFriends: '友達のみと共有',
+            friendsOnly: '友達のみ追加可能',
+        },
     },
 
     commandPalette: {

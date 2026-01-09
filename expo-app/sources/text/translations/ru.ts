@@ -82,6 +82,9 @@ export const ru: TranslationStructure = {
         machine: 'машина',
         clearSearch: 'Очистить поиск',
         refresh: 'Обновить',
+        share: 'Поделиться',
+        sharing: 'Общий доступ',
+        sharedSessions: 'Общие сессии',
     },
 
     dropdown: {
@@ -319,6 +322,12 @@ export const ru: TranslationStructure = {
         failedToSendRequest: 'Не удалось отправить запрос в друзья',
         failedToResumeSession: 'Не удалось возобновить сессию',
         failedToSendMessage: 'Не удалось отправить сообщение',
+        cannotShareWithSelf: 'Нельзя поделиться с самим собой',
+        canOnlyShareWithFriends: 'Можно делиться только с друзьями',
+        shareNotFound: 'Общий доступ не найден',
+        publicShareNotFound: 'Публичная ссылка не найдена или истекла',
+        consentRequired: 'Требуется согласие для доступа',
+        maxUsesReached: 'Достигнут лимит использований',
             missingPermissionId: 'Отсутствует идентификатор запроса разрешения',
             codexResumeNotInstalledTitle: 'Codex resume не установлен на этой машине',
             codexResumeNotInstalledMessage:
@@ -327,6 +336,7 @@ export const ru: TranslationStructure = {
             codexAcpNotInstalledMessage:
                 'Чтобы использовать эксперимент Codex ACP, установите codex-acp на целевой машине (Детали машины → Codex ACP) или отключите эксперимент.',
         },
+    },
 
     deps: {
         installNotSupported: 'Обновите Happy CLI, чтобы установить эту зависимость.',
@@ -687,6 +697,31 @@ export const ru: TranslationStructure = {
         machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
             `“${machine}” не в сети, поэтому Happy пока не может возобновить эту сессию. Подключите машину, чтобы продолжить.`,
         machineOfflineCannotResume: 'Машина не в сети. Подключите её, чтобы возобновить эту сессию.',
+        sharing: {
+            title: 'Общий доступ к сессии',
+            shareWith: 'Поделиться с...',
+            sharedWith: 'Доступ предоставлен',
+            shareSession: 'Поделиться сессией',
+            stopSharing: 'Прекратить доступ',
+            accessLevel: 'Уровень доступа',
+            publicLink: 'Публичная ссылка',
+            createPublicLink: 'Создать публичную ссылку',
+            deletePublicLink: 'Удалить публичную ссылку',
+            copyLink: 'Скопировать ссылку',
+            linkCopied: 'Ссылка скопирована!',
+            viewOnly: 'Только просмотр',
+            canEdit: 'Редактирование',
+            canManage: 'Управление',
+            sharedBy: ({ name }: { name: string }) => `Поделился ${name}`,
+            expiresAt: ({ date }: { date: string }) => `Истекает: ${date}`,
+            maxUses: ({ count, used }: { count: number; used: number }) => `${used} / ${count} использований`,
+            unlimited: 'Без ограничений',
+            requireConsent: 'Требовать согласие на логирование доступа',
+            consentRequired: 'Эта ссылка требует вашего согласия на запись информации о доступе (IP-адрес и user agent)',
+            giveConsent: 'Я согласен на логирование доступа',
+            shareWithFriends: 'Поделиться только с друзьями',
+            friendsOnly: 'Можно добавить только друзей',
+        },
     },
 
     commandPalette: {

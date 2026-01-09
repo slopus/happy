@@ -82,6 +82,9 @@ export const pl: TranslationStructure = {
         machine: 'maszyna',
         clearSearch: 'Wyczyść wyszukiwanie',
         refresh: 'Odśwież',
+        share: 'Udostępnij',
+        sharing: 'Udostępnianie',
+        sharedSessions: 'Udostępnione sesje',
     },
 
     dropdown: {
@@ -348,6 +351,12 @@ export const pl: TranslationStructure = {
         failedToSendRequest: 'Nie udało się wysłać zaproszenia do znajomych',
         failedToResumeSession: 'Nie udało się wznowić sesji',
         failedToSendMessage: 'Nie udało się wysłać wiadomości',
+        cannotShareWithSelf: 'Nie możesz udostępnić sobie',
+        canOnlyShareWithFriends: 'Można udostępniać tylko znajomym',
+        shareNotFound: 'Udostępnienie nie zostało znalezione',
+        publicShareNotFound: 'Publiczne udostępnienie nie zostało znalezione lub wygasło',
+        consentRequired: 'Wymagana zgoda na dostęp',
+        maxUsesReached: 'Osiągnięto maksymalną liczbę użyć',
             missingPermissionId: 'Brak identyfikatora prośby o uprawnienie',
             codexResumeNotInstalledTitle: 'Codex resume nie jest zainstalowane na tej maszynie',
             codexResumeNotInstalledMessage:
@@ -356,6 +365,7 @@ export const pl: TranslationStructure = {
             codexAcpNotInstalledMessage:
                 'Aby użyć eksperymentu Codex ACP, zainstaluj codex-acp na maszynie docelowej (Szczegóły maszyny → Codex ACP) lub wyłącz eksperyment.',
         },
+    },
 
     deps: {
         installNotSupported: 'Zaktualizuj Happy CLI, aby zainstalować tę zależność.',
@@ -555,6 +565,31 @@ export const pl: TranslationStructure = {
         machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
             `“${machine}” jest offline, więc Happy nie może jeszcze wznowić tej sesji. Przywróć maszynę online, aby kontynuować.`,
         machineOfflineCannotResume: 'Maszyna jest offline. Przywróć ją online, aby wznowić tę sesję.',
+        sharing: {
+            title: 'Udostępnianie sesji',
+            shareWith: 'Udostępnij...',
+            sharedWith: 'Udostępniono',
+            shareSession: 'Udostępnij sesję',
+            stopSharing: 'Zatrzymaj udostępnianie',
+            accessLevel: 'Poziom dostępu',
+            publicLink: 'Link publiczny',
+            createPublicLink: 'Utwórz link publiczny',
+            deletePublicLink: 'Usuń link publiczny',
+            copyLink: 'Kopiuj link',
+            linkCopied: 'Link skopiowany!',
+            viewOnly: 'Tylko podgląd',
+            canEdit: 'Może edytować',
+            canManage: 'Może zarządzać',
+            sharedBy: ({ name }: { name: string }) => `Udostępnione przez ${name}`,
+            expiresAt: ({ date }: { date: string }) => `Wygasa: ${date}`,
+            maxUses: ({ count, used }: { count: number; used: number }) => `${used} / ${count} użyć`,
+            unlimited: 'Bez limitu',
+            requireConsent: 'Wymagaj zgody na logowanie dostępu',
+            consentRequired: 'Ten link wymaga Twojej zgody na rejestrowanie informacji o dostępie (adres IP i user agent)',
+            giveConsent: 'Wyrażam zgodę na logowanie dostępu',
+            shareWithFriends: 'Udostępnij tylko znajomym',
+            friendsOnly: 'Można dodać tylko znajomych',
+        },
     },
 
     commandPalette: {
