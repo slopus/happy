@@ -59,6 +59,17 @@ const rawToolResultContentSchema = z.object({
 });
 export type RawToolResultContent = z.infer<typeof rawToolResultContentSchema>;
 
+/**
+ * Extended thinking content from Claude API
+ * Contains model's reasoning process before generating the final response
+ * Uses .passthrough() to preserve signature and other unknown fields
+ */
+const rawThinkingContentSchema = z.object({
+    type: z.literal('thinking'),
+    thinking: z.string(),
+}).passthrough();  // ROBUST: Accept signature and future fields
+export type RawThinkingContent = z.infer<typeof rawThinkingContentSchema>;
+
 // ============================================================================
 // WOLOG: Type-Safe Content Normalization via Zod Transform
 // ============================================================================
@@ -99,11 +110,13 @@ type RawHyphenatedToolResult = z.infer<typeof rawHyphenatedToolResultSchema>;
 
 /**
  * Input schema accepting ALL formats (both hyphenated and canonical)
+ * Including Claude's extended thinking content type
  */
 const rawAgentContentInputSchema = z.discriminatedUnion('type', [
     rawTextContentSchema,           // type: 'text' (canonical)
     rawToolUseContentSchema,        // type: 'tool_use' (canonical)
     rawToolResultContentSchema,     // type: 'tool_result' (canonical)
+    rawThinkingContentSchema,       // type: 'thinking' (canonical)
     rawHyphenatedToolCallSchema,    // type: 'tool-call' (hyphenated)
     rawHyphenatedToolResultSchema,  // type: 'tool-call-result' (hyphenated)
 ]);
@@ -160,11 +173,11 @@ function normalizeToToolResult(input: RawHyphenatedToolResult): RawToolResultCon
  * Schema that accepts both hyphenated and canonical formats,
  * transforms all to canonical format during validation.
  *
- * Input: 'text' | 'tool_use' | 'tool_result' | 'tool-call' | 'tool-call-result'
- * Output: 'text' | 'tool_use' | 'tool_result' (always canonical)
+ * Input: 'text' | 'tool_use' | 'tool_result' | 'thinking' | 'tool-call' | 'tool-call-result'
+ * Output: 'text' | 'tool_use' | 'tool_result' | 'thinking' (always canonical)
  */
 const rawAgentContentSchema = rawAgentContentInputSchema.transform(
-    (input): RawTextContent | RawToolUseContent | RawToolResultContent => {
+    (input): RawTextContent | RawToolUseContent | RawToolResultContent | RawThinkingContent => {
         // Transform hyphenated types to canonical
         if (input.type === 'tool-call') {
             return normalizeToToolUse(input);
@@ -172,7 +185,7 @@ const rawAgentContentSchema = rawAgentContentInputSchema.transform(
         if (input.type === 'tool-call-result') {
             return normalizeToToolResult(input);
         }
-        // Canonical types pass through unchanged
+        // Canonical types (text, tool_use, tool_result, thinking) pass through unchanged
         return input;
     }
 );
@@ -192,7 +205,7 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
         isMeta: z.boolean().nullish(),
         uuid: z.string().nullish(),
         parentUuid: z.string().nullish(),
-    })),
+    }).passthrough()),  // ROBUST: Accept CLI metadata fields (userType, cwd, sessionId, version, gitBranch, slug, requestId, timestamp)
 }), z.object({
     type: z.literal('event'),
     id: z.string(),
@@ -248,6 +261,11 @@ type NormalizedAgentContent =
     {
         type: 'text';
         text: string;
+        uuid: string;
+        parentUUID: string | null;
+    } | {
+        type: 'thinking';
+        thinking: string;
         uuid: string;
         parentUUID: string | null;
     } | {
@@ -346,6 +364,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 for (let c of raw.content.data.message.content) {
                     if (c.type === 'text') {
                         content.push({ type: 'text', text: c.text, uuid: raw.content.data.uuid, parentUUID: raw.content.data.parentUuid ?? null });
+                    } else if (c.type === 'thinking') {
+                        content.push({ type: 'thinking', thinking: c.thinking, uuid: raw.content.data.uuid, parentUUID: raw.content.data.parentUuid ?? null });
                     } else if (c.type === 'tool_use') {
                         let description: string | null = null;
                         if (typeof c.input === 'object' && c.input !== null && 'description' in c.input && typeof c.input.description === 'string') {
