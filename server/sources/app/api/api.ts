@@ -18,10 +18,11 @@ import { accessKeysRoutes } from "./routes/accessKeysRoutes";
 import { enableMonitoring } from "./utils/enableMonitoring";
 import { enableErrorHandlers } from "./utils/enableErrorHandlers";
 import { enableAuthentication } from "./utils/enableAuthentication";
+import { enableOptionalStatics } from "./utils/enableOptionalStatics";
 import { userRoutes } from "./routes/userRoutes";
 import { feedRoutes } from "./routes/feedRoutes";
 import { kvRoutes } from "./routes/kvRoutes";
-import { enableOptionalStatics } from "./utils/enableOptionalStatics";
+import { shareRoutes } from "./routes/shareRoutes";
 
 export async function startApi() {
 
@@ -66,6 +67,7 @@ export async function startApi() {
     userRoutes(typed);
     feedRoutes(typed);
     kvRoutes(typed);
+    shareRoutes(typed);
 
     // Start HTTP 
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
