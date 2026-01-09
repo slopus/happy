@@ -59,6 +59,12 @@ export function shareRoutes(app: Fastify) {
      */
     app.post('/v1/sessions/:sessionId/shares', {
         preHandler: app.authenticate,
+        config: {
+            rateLimit: {
+                max: 20,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             params: z.object({
                 sessionId: z.string()

@@ -20,6 +20,12 @@ export function publicShareRoutes(app: Fastify) {
      */
     app.post('/v1/sessions/:sessionId/public-share', {
         preHandler: app.authenticate,
+        config: {
+            rateLimit: {
+                max: 10,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             params: z.object({
                 sessionId: z.string()
@@ -206,6 +212,12 @@ export function publicShareRoutes(app: Fastify) {
      * If isConsentRequired is true, client must pass consent=true query param
      */
     app.get('/v1/public-share/:token', {
+        config: {
+            rateLimit: {
+                max: 10,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             params: z.object({
                 token: z.string()
