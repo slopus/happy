@@ -1299,6 +1299,12 @@ export const ca: TranslationStructure = {
         cancelRequestConfirm: ({ name }: { name: string }) => `Cancel·lar la teva sol·licitud d\'amistat a ${name}?`,
         denyRequest: 'Rebutjar sol·licitud',
         nowFriendsWith: ({ name }: { name: string }) => `Ara ets amic de ${name}`,
+        searchFriends: 'Cercar amics',
+        noFriendsFound: 'No s\'han trobat amics',
+    },
+
+    sessionSharing: {
+        addShare: 'Afegir compartició',
     },
 
     usage: {

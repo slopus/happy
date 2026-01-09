@@ -1323,6 +1323,12 @@ export const pl: TranslationStructure = {
         cancelRequestConfirm: ({ name }: { name: string }) => `Anulować zaproszenie do znajomych wysłane do ${name}?`,
         denyRequest: 'Odrzuć zaproszenie',
         nowFriendsWith: ({ name }: { name: string }) => `Teraz jesteś w gronie znajomych z ${name}`,
+        searchFriends: 'Szukaj znajomych',
+        noFriendsFound: 'Nie znaleziono znajomych',
+    },
+
+    sessionSharing: {
+        addShare: 'Dodaj udostępnienie',
     },
 
     usage: {
