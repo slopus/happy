@@ -1580,6 +1580,8 @@ export const it: TranslationStructure = {
         directSharing: 'Condivisione diretta',
         publicLinkActive: 'Link pubblico attivo',
         createPublicLink: 'Crea link pubblico',
+        viewOnlyMode: 'Modalità di sola lettura',
+        noEditPermission: 'Non hai il permesso di modificare questa sessione',
     },
 
     usage: {

@@ -906,6 +906,8 @@ export const en = {
         directSharing: 'Direct Sharing',
         publicLinkActive: 'Public link active',
         createPublicLink: 'Create public link',
+        viewOnlyMode: 'View-only mode',
+        noEditPermission: 'You don\'t have permission to edit this session',
     },
 
     usage: {

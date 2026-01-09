@@ -1327,6 +1327,8 @@ export const ca: TranslationStructure = {
         directSharing: 'Compartició directa',
         publicLinkActive: 'Enllaç públic actiu',
         createPublicLink: 'Crear enllaç públic',
+        viewOnlyMode: 'Mode de només lectura',
+        noEditPermission: 'No tens permís per editar aquesta sessió',
     },
 
     usage: {
