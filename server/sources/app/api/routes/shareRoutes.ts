@@ -1,7 +1,7 @@
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
 import { z } from "zod";
-import { checkSessionAccess, canManageSharing, isSessionOwner } from "@/app/share/accessControl";
+import { checkSessionAccess, canManageSharing, isSessionOwner, areFriends } from "@/app/share/accessControl";
 import { ShareAccessLevel } from "@prisma/client";
 import { logSessionShareAccess, getIpAddress, getUserAgent } from "@/app/share/accessLogger";
 import { PROFILE_SELECT } from "@/app/share/types";
@@ -91,6 +91,11 @@ export function shareRoutes(app: Fastify) {
 
         if (!targetUser) {
             return reply.code(404).send({ error: 'User not found' });
+        }
+
+        // Check if users are friends
+        if (!await areFriends(ownerId, userId)) {
+            return reply.code(403).send({ error: 'Can only share with friends' });
         }
 
         // Create or update share

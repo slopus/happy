@@ -153,6 +153,28 @@ export async function isSessionOwner(
 }
 
 /**
+ * Check if two users are friends
+ *
+ * @param userId1 - First user ID
+ * @param userId2 - Second user ID
+ * @returns True if users are friends
+ */
+export async function areFriends(
+    userId1: string,
+    userId2: string
+): Promise<boolean> {
+    const relationship = await db.userRelationship.findFirst({
+        where: {
+            OR: [
+                { fromUserId: userId1, toUserId: userId2, status: 'friend' },
+                { fromUserId: userId2, toUserId: userId1, status: 'friend' }
+            ]
+        }
+    });
+    return relationship !== null;
+}
+
+/**
  * Check public share access with blocking and limits
  *
  * Public shares are always view-only for security

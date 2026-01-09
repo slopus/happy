@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { checkSessionAccess, checkPublicShareAccess, isSessionOwner, canManageSharing } from './accessControl';
+import { checkSessionAccess, checkPublicShareAccess, isSessionOwner, canManageSharing, areFriends } from './accessControl';
 import { db } from '@/storage/db';
 
 vi.mock('@/storage/db', () => ({
@@ -12,6 +12,9 @@ vi.mock('@/storage/db', () => ({
         },
         publicSessionShare: {
             findUnique: vi.fn()
+        },
+        userRelationship: {
+            findFirst: vi.fn()
         }
     }
 }));
@@ -243,6 +246,48 @@ describe('accessControl', () => {
             vi.mocked(db.sessionShare.findUnique).mockResolvedValue(null);
 
             const result = await canManageSharing('user-1', 'session-1');
+
+            expect(result).toBe(false);
+        });
+    });
+
+    describe('areFriends', () => {
+        it('should return true when users are friends (from->to)', async () => {
+            vi.mocked(db.userRelationship.findFirst).mockResolvedValue({
+                fromUserId: 'user-1',
+                toUserId: 'user-2',
+                status: 'friend'
+            } as any);
+
+            const result = await areFriends('user-1', 'user-2');
+
+            expect(result).toBe(true);
+        });
+
+        it('should return true when users are friends (to->from)', async () => {
+            vi.mocked(db.userRelationship.findFirst).mockResolvedValue({
+                fromUserId: 'user-2',
+                toUserId: 'user-1',
+                status: 'friend'
+            } as any);
+
+            const result = await areFriends('user-1', 'user-2');
+
+            expect(result).toBe(true);
+        });
+
+        it('should return false when users are not friends', async () => {
+            vi.mocked(db.userRelationship.findFirst).mockResolvedValue(null);
+
+            const result = await areFriends('user-1', 'user-2');
+
+            expect(result).toBe(false);
+        });
+
+        it('should return false when relationship is pending', async () => {
+            vi.mocked(db.userRelationship.findFirst).mockResolvedValue(null);
+
+            const result = await areFriends('user-1', 'user-2');
 
             expect(result).toBe(false);
         });
