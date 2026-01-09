@@ -59,11 +59,123 @@ const rawToolResultContentSchema = z.object({
 });
 export type RawToolResultContent = z.infer<typeof rawToolResultContentSchema>;
 
-const rawAgentContentSchema = z.discriminatedUnion('type', [
-    rawTextContentSchema,
-    rawToolUseContentSchema,
-    rawToolResultContentSchema
+// ============================================================================
+// WOLOG: Type-Safe Content Normalization via Zod Transform
+// ============================================================================
+// Accepts both hyphenated (Codex/Gemini) and underscore (Claude) formats
+// Transforms all to canonical underscore format during validation
+// Full type safety - no `unknown` types
+// Source: Part D of the Expo Mobile Testing & Package Manager Agnostic System plan
+// ============================================================================
+
+/**
+ * Hyphenated tool-call format from Codex/Gemini agents
+ * Transforms to canonical tool_use format during validation
+ * Uses .passthrough() to preserve unknown fields for future API compatibility
+ */
+const rawHyphenatedToolCallSchema = z.object({
+    type: z.literal('tool-call'),
+    callId: z.string(),
+    id: z.string().optional(), // Some messages have both
+    name: z.string(),
+    input: z.any(),
+}).passthrough();  // ROBUST: Accept and preserve unknown fields
+type RawHyphenatedToolCall = z.infer<typeof rawHyphenatedToolCallSchema>;
+
+/**
+ * Hyphenated tool-call-result format from Codex/Gemini agents
+ * Transforms to canonical tool_result format during validation
+ * Uses .passthrough() to preserve unknown fields for future API compatibility
+ */
+const rawHyphenatedToolResultSchema = z.object({
+    type: z.literal('tool-call-result'),
+    callId: z.string(),
+    tool_use_id: z.string().optional(), // Some messages have both
+    output: z.any(),
+    content: z.any().optional(), // Some messages have both
+    is_error: z.boolean().optional(),
+}).passthrough();  // ROBUST: Accept and preserve unknown fields
+type RawHyphenatedToolResult = z.infer<typeof rawHyphenatedToolResultSchema>;
+
+/**
+ * Input schema accepting ALL formats (both hyphenated and canonical)
+ */
+const rawAgentContentInputSchema = z.discriminatedUnion('type', [
+    rawTextContentSchema,           // type: 'text' (canonical)
+    rawToolUseContentSchema,        // type: 'tool_use' (canonical)
+    rawToolResultContentSchema,     // type: 'tool_result' (canonical)
+    rawHyphenatedToolCallSchema,    // type: 'tool-call' (hyphenated)
+    rawHyphenatedToolResultSchema,  // type: 'tool-call-result' (hyphenated)
 ]);
+type RawAgentContentInput = z.infer<typeof rawAgentContentInputSchema>;
+
+/**
+ * Type-safe transform: Hyphenated tool-call → Canonical tool_use
+ * ROBUST: Preserves all unknown fields for future API compatibility
+ */
+function normalizeToToolUse(input: RawHyphenatedToolCall): RawToolUseContent {
+    const normalized: RawToolUseContent = {
+        type: 'tool_use',
+        id: input.callId,  // Codex uses callId, canonical uses id
+        name: input.name,
+        input: input.input,
+    };
+
+    // PRESERVE unknown fields for future-proofing
+    // If CLI adds new fields in future, they won't be lost
+    const knownFields = new Set(['type', 'callId', 'id', 'name', 'input']);
+    Object.entries(input).forEach(([key, value]) => {
+        if (!knownFields.has(key)) {
+            (normalized as any)[key] = value;  // Type assertion only for unknown field preservation
+        }
+    });
+
+    return normalized;
+}
+
+/**
+ * Type-safe transform: Hyphenated tool-call-result → Canonical tool_result
+ * ROBUST: Preserves all unknown fields for future API compatibility
+ */
+function normalizeToToolResult(input: RawHyphenatedToolResult): RawToolResultContent {
+    const normalized: RawToolResultContent = {
+        type: 'tool_result',
+        tool_use_id: input.callId,  // Codex uses callId, canonical uses tool_use_id
+        content: input.output ?? input.content ?? '',  // Codex uses output, canonical uses content
+        is_error: input.is_error ?? false,
+    };
+
+    // PRESERVE unknown fields
+    const knownFields = new Set(['type', 'callId', 'tool_use_id', 'output', 'content', 'is_error']);
+    Object.entries(input).forEach(([key, value]) => {
+        if (!knownFields.has(key)) {
+            (normalized as any)[key] = value;  // Type assertion only for unknown field preservation
+        }
+    });
+
+    return normalized;
+}
+
+/**
+ * Schema that accepts both hyphenated and canonical formats,
+ * transforms all to canonical format during validation.
+ *
+ * Input: 'text' | 'tool_use' | 'tool_result' | 'tool-call' | 'tool-call-result'
+ * Output: 'text' | 'tool_use' | 'tool_result' (always canonical)
+ */
+const rawAgentContentSchema = rawAgentContentInputSchema.transform(
+    (input): RawTextContent | RawToolUseContent | RawToolResultContent => {
+        // Transform hyphenated types to canonical
+        if (input.type === 'tool-call') {
+            return normalizeToToolUse(input);
+        }
+        if (input.type === 'tool-call-result') {
+            return normalizeToToolResult(input);
+        }
+        // Canonical types pass through unchanged
+        return input;
+    }
+);
 export type RawAgentContent = z.infer<typeof rawAgentContentSchema>;
 
 const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
@@ -191,11 +303,13 @@ export type NormalizedMessage = ({
 };
 
 export function normalizeRawMessage(id: string, localId: string | null, createdAt: number, raw: RawRecord): NormalizedMessage | null {
+    // Zod transform handles normalization during validation
     let parsed = rawRecordSchema.safeParse(raw);
     if (!parsed.success) {
-        console.error('Invalid raw record:');
-        console.error(parsed.error.issues);
-        console.error(raw);
+        console.error('=== VALIDATION ERROR ===');
+        console.error('Zod issues:', JSON.stringify(parsed.error.issues, null, 2));
+        console.error('Raw message:', JSON.stringify(raw, null, 2));
+        console.error('=== END ERROR ===');
         return null;
     }
     raw = parsed.data;
