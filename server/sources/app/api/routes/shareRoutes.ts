@@ -4,6 +4,7 @@ import { z } from "zod";
 import { checkSessionAccess, canManageSharing, isSessionOwner } from "@/app/share/accessControl";
 import { ShareAccessLevel } from "@prisma/client";
 import { logSessionShareAccess, getIpAddress, getUserAgent } from "@/app/share/accessLogger";
+import { PROFILE_SELECT } from "@/app/share/types";
 
 /**
  * Session sharing API routes
@@ -33,10 +34,7 @@ export function shareRoutes(app: Fastify) {
             where: { sessionId },
             include: {
                 sharedWithUser: {
-                    select: {
-                        id: true,
-                        profile: true
-                    }
+                    select: PROFILE_SELECT
                 }
             },
             orderBy: { createdAt: 'desc' }
@@ -45,10 +43,7 @@ export function shareRoutes(app: Fastify) {
         return reply.send({
             shares: shares.map(share => ({
                 id: share.id,
-                sharedWithUser: {
-                    id: share.sharedWithUser.id,
-                    profile: share.sharedWithUser.profile
-                },
+                sharedWithUser: share.sharedWithUser,
                 accessLevel: share.accessLevel,
                 createdAt: share.createdAt.getTime(),
                 updatedAt: share.updatedAt.getTime()
@@ -108,18 +103,15 @@ export function shareRoutes(app: Fastify) {
                 sharedByUserId: ownerId,
                 sharedWithUserId: userId,
                 accessLevel: accessLevel as ShareAccessLevel,
-                encryptedDataKey: Buffer.from(encryptedDataKey, 'base64')
+                encryptedDataKey: new Uint8Array(Buffer.from(encryptedDataKey, 'base64'))
             },
             update: {
                 accessLevel: accessLevel as ShareAccessLevel,
-                encryptedDataKey: Buffer.from(encryptedDataKey, 'base64')
+                encryptedDataKey: new Uint8Array(Buffer.from(encryptedDataKey, 'base64'))
             },
             include: {
                 sharedWithUser: {
-                    select: {
-                        id: true,
-                        profile: true
-                    }
+                    select: PROFILE_SELECT
                 }
             }
         });
@@ -127,10 +119,7 @@ export function shareRoutes(app: Fastify) {
         return reply.send({
             share: {
                 id: share.id,
-                sharedWithUser: {
-                    id: share.sharedWithUser.id,
-                    profile: share.sharedWithUser.profile
-                },
+                sharedWithUser: share.sharedWithUser,
                 accessLevel: share.accessLevel,
                 createdAt: share.createdAt.getTime(),
                 updatedAt: share.updatedAt.getTime()
@@ -167,10 +156,7 @@ export function shareRoutes(app: Fastify) {
             data: { accessLevel: accessLevel as ShareAccessLevel },
             include: {
                 sharedWithUser: {
-                    select: {
-                        id: true,
-                        profile: true
-                    }
+                    select: PROFILE_SELECT
                 }
             }
         });
@@ -178,10 +164,7 @@ export function shareRoutes(app: Fastify) {
         return reply.send({
             share: {
                 id: share.id,
-                sharedWithUser: {
-                    id: share.sharedWithUser.id,
-                    profile: share.sharedWithUser.profile
-                },
+                sharedWithUser: share.sharedWithUser,
                 accessLevel: share.accessLevel,
                 createdAt: share.createdAt.getTime(),
                 updatedAt: share.updatedAt.getTime()
@@ -240,10 +223,7 @@ export function shareRoutes(app: Fastify) {
                     }
                 },
                 sharedByUser: {
-                    select: {
-                        id: true,
-                        profile: true
-                    }
+                    select: PROFILE_SELECT
                 }
             },
             orderBy: { createdAt: 'desc' }
@@ -262,10 +242,7 @@ export function shareRoutes(app: Fastify) {
                     metadata: share.session.metadata,
                     metadataVersion: share.session.metadataVersion
                 },
-                sharedBy: {
-                    id: share.sharedByUser.id,
-                    profile: share.sharedByUser.profile
-                },
+                sharedBy: share.sharedByUser,
                 accessLevel: share.accessLevel,
                 encryptedDataKey: Buffer.from(share.encryptedDataKey).toString('base64'),
                 createdAt: share.createdAt.getTime(),

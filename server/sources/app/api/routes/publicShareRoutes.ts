@@ -4,6 +4,7 @@ import { z } from "zod";
 import { isSessionOwner, checkPublicShareAccess } from "@/app/share/accessControl";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { logPublicShareAccess, getIpAddress, getUserAgent } from "@/app/share/accessLogger";
+import { PROFILE_SELECT } from "@/app/share/types";
 
 /**
  * Public session sharing API routes
@@ -49,7 +50,7 @@ export function publicShareRoutes(app: Fastify) {
             publicShare = await db.publicSessionShare.update({
                 where: { sessionId },
                 data: {
-                    encryptedDataKey: Buffer.from(encryptedDataKey, 'base64'),
+                    encryptedDataKey: new Uint8Array(Buffer.from(encryptedDataKey, 'base64')),
                     expiresAt: expiresAt ? new Date(expiresAt) : null,
                     maxUses: maxUses ?? null,
                     isConsentRequired: isConsentRequired ?? false
@@ -63,7 +64,7 @@ export function publicShareRoutes(app: Fastify) {
                     sessionId,
                     createdByUserId: userId,
                     token,
-                    encryptedDataKey: Buffer.from(encryptedDataKey, 'base64'),
+                    encryptedDataKey: new Uint8Array(Buffer.from(encryptedDataKey, 'base64')),
                     expiresAt: expiresAt ? new Date(expiresAt) : null,
                     maxUses: maxUses ?? null,
                     isConsentRequired: isConsentRequired ?? false
@@ -188,10 +189,13 @@ export function publicShareRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Public share not found or expired' });
         }
 
-        // Check if consent is required
+        // Check if consent is required and get encrypted key
         const publicShare = await db.publicSessionShare.findUnique({
             where: { id: access.publicShareId },
-            select: { isConsentRequired: true }
+            select: {
+                isConsentRequired: true,
+                encryptedDataKey: true
+            }
         });
 
         if (publicShare?.isConsentRequired && !consent) {
@@ -232,12 +236,6 @@ export function publicShareRoutes(app: Fastify) {
         if (!session) {
             return reply.code(404).send({ error: 'Session not found' });
         }
-
-        // Get encrypted key
-        const publicShare = await db.publicSessionShare.findUnique({
-            where: { id: access.publicShareId },
-            select: { encryptedDataKey: true }
-        });
 
         return reply.send({
             session: {
@@ -289,10 +287,7 @@ export function publicShareRoutes(app: Fastify) {
             where: { publicShareId: publicShare.id },
             include: {
                 user: {
-                    select: {
-                        id: true,
-                        profile: true
-                    }
+                    select: PROFILE_SELECT
                 }
             },
             orderBy: { blockedAt: 'desc' }
@@ -301,10 +296,7 @@ export function publicShareRoutes(app: Fastify) {
         return reply.send({
             blockedUsers: blockedUsers.map(bu => ({
                 id: bu.id,
-                user: {
-                    id: bu.user.id,
-                    profile: bu.user.profile
-                },
+                user: bu.user,
                 reason: bu.reason,
                 blockedAt: bu.blockedAt.getTime()
             }))
@@ -352,10 +344,7 @@ export function publicShareRoutes(app: Fastify) {
             },
             include: {
                 user: {
-                    select: {
-                        id: true,
-                        profile: true
-                    }
+                    select: PROFILE_SELECT
                 }
             }
         });
@@ -363,10 +352,7 @@ export function publicShareRoutes(app: Fastify) {
         return reply.send({
             blockedUser: {
                 id: blockedUser.id,
-                user: {
-                    id: blockedUser.user.id,
-                    profile: blockedUser.user.profile
-                },
+                user: blockedUser.user,
                 reason: blockedUser.reason,
                 blockedAt: blockedUser.blockedAt.getTime()
             }
@@ -436,10 +422,7 @@ export function publicShareRoutes(app: Fastify) {
             where: { publicShareId: publicShare.id },
             include: {
                 user: {
-                    select: {
-                        id: true,
-                        profile: true
-                    }
+                    select: PROFILE_SELECT
                 }
             },
             orderBy: { accessedAt: 'desc' },
@@ -449,10 +432,7 @@ export function publicShareRoutes(app: Fastify) {
         return reply.send({
             logs: logs.map(log => ({
                 id: log.id,
-                user: log.user ? {
-                    id: log.user.id,
-                    profile: log.user.profile
-                } : null,
+                user: log.user || null,
                 accessedAt: log.accessedAt.getTime(),
                 ipAddress: log.ipAddress,
                 userAgent: log.userAgent

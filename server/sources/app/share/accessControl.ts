@@ -1,4 +1,4 @@
-import { db } from "@/prisma";
+import { db } from "@/storage/db";
 import { ShareAccessLevel } from "@prisma/client";
 
 /**
