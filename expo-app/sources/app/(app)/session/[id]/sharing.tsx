@@ -27,6 +27,8 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { getFriendsList } from '@/sync/apiFriends';
 import { UserProfile } from '@/sync/friendTypes';
+import { encryptDataKeyForPublicShare } from '@/sync/encryption/publicShareEncryption';
+import { getRandomBytes } from 'expo-crypto';
 
 function SharingManagementContent({ sessionId }: { sessionId: string }) {
     const { theme } = useUnistyles();
@@ -111,15 +113,46 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
     }, [sessionId, loadSharingData]);
 
     // Handle creating public share
-    // NOTE: Public share encryption is not yet implemented
-    // Public shares will be added in a future update
     const handleCreatePublicShare = useCallback(async (options: {
         expiresInDays?: number;
         maxUses?: number;
         isConsentRequired: boolean;
     }) => {
-        throw new HappyError(t('errors.notImplemented'), false);
-    }, []);
+        try {
+            const credentials = sync.getCredentials();
+
+            // Generate random token (12 bytes = 24 hex chars)
+            const tokenBytes = getRandomBytes(12);
+            const token = Array.from(tokenBytes)
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+
+            // Get session data encryption key
+            const dataKey = sync.getSessionDataKey(sessionId);
+            if (!dataKey) {
+                throw new HappyError(t('errors.sessionNotFound'), false);
+            }
+
+            // Encrypt data key with the token
+            const encryptedDataKey = await encryptDataKeyForPublicShare(dataKey, token);
+
+            const expiresAt = options.expiresInDays
+                ? Date.now() + options.expiresInDays * 24 * 60 * 60 * 1000
+                : undefined;
+
+            await createPublicShare(credentials, sessionId, {
+                token,
+                encryptedDataKey,
+                expiresAt,
+                maxUses: options.maxUses,
+                isConsentRequired: options.isConsentRequired,
+            });
+
+            await loadSharingData();
+        } catch (error) {
+            throw new HappyError(t('errors.operationFailed'), false);
+        }
+    }, [sessionId, loadSharingData]);
 
     // Handle deleting public share
     const handleDeletePublicShare = useCallback(async () => {
