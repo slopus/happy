@@ -3,6 +3,7 @@ import { db } from "@/storage/db";
 import { z } from "zod";
 import { checkSessionAccess, canManageSharing, isSessionOwner } from "@/app/share/accessControl";
 import { ShareAccessLevel } from "@prisma/client";
+import { logSessionShareAccess, getIpAddress, getUserAgent } from "@/app/share/accessLogger";
 
 /**
  * Session sharing API routes
@@ -363,6 +364,11 @@ export function shareRoutes(app: Fastify) {
         if (!share) {
             return reply.code(404).send({ error: 'Share not found' });
         }
+
+        // Log access
+        const ipAddress = getIpAddress(request.headers);
+        const userAgent = getUserAgent(request.headers);
+        await logSessionShareAccess(share.id, userId, ipAddress, userAgent);
 
         return reply.send({
             session: {

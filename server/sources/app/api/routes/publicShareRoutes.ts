@@ -3,6 +3,7 @@ import { db } from "@/storage/db";
 import { z } from "zod";
 import { isSessionOwner, checkPublicShareAccess } from "@/app/share/accessControl";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
+import { logPublicShareAccess, getIpAddress, getUserAgent } from "@/app/share/accessLogger";
 
 /**
  * Public session sharing API routes
@@ -23,13 +24,14 @@ export function publicShareRoutes(app: Fastify) {
             body: z.object({
                 encryptedDataKey: z.string(), // base64 encoded
                 expiresAt: z.number().optional(), // timestamp
-                maxUses: z.number().int().positive().optional()
+                maxUses: z.number().int().positive().optional(),
+                isConsentRequired: z.boolean().optional() // require consent for detailed logging
             })
         }
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
-        const { encryptedDataKey, expiresAt, maxUses } = request.body;
+        const { encryptedDataKey, expiresAt, maxUses, isConsentRequired } = request.body;
 
         // Only owner can create public shares
         if (!await isSessionOwner(userId, sessionId)) {
@@ -49,7 +51,8 @@ export function publicShareRoutes(app: Fastify) {
                 data: {
                     encryptedDataKey: Buffer.from(encryptedDataKey, 'base64'),
                     expiresAt: expiresAt ? new Date(expiresAt) : null,
-                    maxUses: maxUses ?? null
+                    maxUses: maxUses ?? null,
+                    isConsentRequired: isConsentRequired ?? false
                 }
             });
         } else {
@@ -62,7 +65,8 @@ export function publicShareRoutes(app: Fastify) {
                     token,
                     encryptedDataKey: Buffer.from(encryptedDataKey, 'base64'),
                     expiresAt: expiresAt ? new Date(expiresAt) : null,
-                    maxUses: maxUses ?? null
+                    maxUses: maxUses ?? null,
+                    isConsentRequired: isConsentRequired ?? false
                 }
             });
         }
@@ -74,6 +78,7 @@ export function publicShareRoutes(app: Fastify) {
                 expiresAt: publicShare.expiresAt?.getTime() ?? null,
                 maxUses: publicShare.maxUses,
                 useCount: publicShare.useCount,
+                isConsentRequired: publicShare.isConsentRequired,
                 createdAt: publicShare.createdAt.getTime(),
                 updatedAt: publicShare.updatedAt.getTime()
             }
@@ -114,6 +119,7 @@ export function publicShareRoutes(app: Fastify) {
                 expiresAt: publicShare.expiresAt?.getTime() ?? null,
                 maxUses: publicShare.maxUses,
                 useCount: publicShare.useCount,
+                isConsentRequired: publicShare.isConsentRequired,
                 createdAt: publicShare.createdAt.getTime(),
                 updatedAt: publicShare.updatedAt.getTime()
             }
@@ -150,15 +156,21 @@ export function publicShareRoutes(app: Fastify) {
 
     /**
      * Access session via public share token (no auth required)
+     *
+     * If isConsentRequired is true, client must pass consent=true query param
      */
     app.get('/v1/public-share/:token', {
         schema: {
             params: z.object({
                 token: z.string()
-            })
+            }),
+            querystring: z.object({
+                consent: z.coerce.boolean().optional()
+            }).optional()
         }
     }, async (request, reply) => {
         const { token } = request.params;
+        const { consent } = request.query || {};
 
         // Try to get user ID if authenticated
         let userId: string | null = null;
@@ -175,6 +187,24 @@ export function publicShareRoutes(app: Fastify) {
         if (!access) {
             return reply.code(404).send({ error: 'Public share not found or expired' });
         }
+
+        // Check if consent is required
+        const publicShare = await db.publicSessionShare.findUnique({
+            where: { id: access.publicShareId },
+            select: { isConsentRequired: true }
+        });
+
+        if (publicShare?.isConsentRequired && !consent) {
+            return reply.code(403).send({
+                error: 'Consent required',
+                requiresConsent: true
+            });
+        }
+
+        // Log access (only log IP/UA if consent was given)
+        const ipAddress = publicShare?.isConsentRequired ? getIpAddress(request.headers) : undefined;
+        const userAgent = publicShare?.isConsentRequired ? getUserAgent(request.headers) : undefined;
+        await logPublicShareAccess(access.publicShareId, userId, ipAddress, userAgent);
 
         // Increment use count
         await db.publicSessionShare.update({

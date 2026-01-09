@@ -439,6 +439,8 @@ model PublicSessionShare {
     maxUses           Int?
     /// Current use count
     useCount          Int                       @default(0)
+    /// Whether user consent is required to view (enables detailed access logging)
+    isConsentRequired Boolean                   @default(false)
     createdAt         DateTime                  @default(now())
     updatedAt         DateTime                  @updatedAt
     accessLogs        PublicShareAccessLog[]
