@@ -422,7 +422,7 @@ model SessionShareAccessLog {
     @@index([accessedAt])
 }
 
-/// Public session share via shareable link
+/// Public session share via shareable link (always view-only for security)
 model PublicSessionShare {
     id                String                    @id @default(cuid())
     sessionId         String                    @unique
@@ -431,7 +431,6 @@ model PublicSessionShare {
     createdByUser     Account                   @relation("PublicSessionShares", fields: [createdByUserId], references: [id])
     /// Random token for URL (e.g., /share/:token)
     token             String                    @unique
-    accessLevel       ShareAccessLevel          @default(view)
     /// Encrypted dataEncryptionKey for public access
     encryptedDataKey  Bytes
     /// Optional expiration time (null = no expiration)

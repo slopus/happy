@@ -155,6 +155,8 @@ export async function isSessionOwner(
 /**
  * Check public share access with blocking and limits
  *
+ * Public shares are always view-only for security
+ *
  * @param token - Public share token
  * @param userId - User ID accessing (null for anonymous)
  * @returns Public share info if valid, null otherwise
@@ -164,7 +166,6 @@ export async function checkPublicShareAccess(
     userId: string | null
 ): Promise<{
     sessionId: string;
-    accessLevel: ShareAccessLevel;
     publicShareId: string;
 } | null> {
     const publicShare = await db.publicSessionShare.findUnique({
@@ -172,7 +173,6 @@ export async function checkPublicShareAccess(
         select: {
             id: true,
             sessionId: true,
-            accessLevel: true,
             expiresAt: true,
             maxUses: true,
             useCount: true,
@@ -204,7 +204,6 @@ export async function checkPublicShareAccess(
 
     return {
         sessionId: publicShare.sessionId,
-        accessLevel: publicShare.accessLevel,
         publicShareId: publicShare.id
     };
 }
