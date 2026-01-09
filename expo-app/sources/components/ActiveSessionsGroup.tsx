@@ -40,6 +40,22 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         shadowRadius: 0,
         elevation: 1,
     },
+    sharedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginLeft: 6,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+        backgroundColor: theme.colors.surfaceHighest,
+    },
+    sharedBadgeText: {
+        fontSize: 11,
+        fontWeight: '500',
+        color: theme.colors.textSecondary,
+        marginLeft: 4,
+        ...Typography.default(),
+    },
     sectionHeader: {
         paddingTop: 12,
         paddingBottom: Platform.select({ ios: 6, default: 8 }),
@@ -95,11 +111,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 4,
+        gap: 4,
     },
     sessionTitle: {
         fontSize: 15,
         fontWeight: '500',
         ...Typography.default('semiBold'),
+        flexShrink: 1,
     },
     sessionTitleConnected: {
         color: theme.colors.text,
@@ -344,6 +362,12 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
 
+    // Check if this is a shared session
+    const isSharedSession = !!session.owner;
+    const ownerName = session.ownerProfile
+        ? (session.ownerProfile.firstName || session.ownerProfile.username)
+        : null;
+
     const [archivingSession, performArchive] = useHappyAction(async () => {
         const result = await sessionArchive(session.id);
         if (!result.success) {
@@ -411,6 +435,14 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     >
                         {sessionName}
                     </Text>
+                    {isSharedSession && ownerName && (
+                        <View style={styles.sharedBadge}>
+                            <Ionicons name="people-outline" size={12} color={styles.sharedBadgeText.color} />
+                            <Text style={styles.sharedBadgeText} numberOfLines={1}>
+                                {ownerName}
+                            </Text>
+                        </View>
+                    )}
                 </View>
 
                 {/* Status line with dot */}
