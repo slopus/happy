@@ -162,17 +162,27 @@ export function publicShareRoutes(app: Fastify) {
             return reply.code(403).send({ error: 'Forbidden' });
         }
 
-        // Check if share exists
-        const existing = await db.publicSessionShare.findUnique({
-            where: { sessionId }
-        });
-
-        if (existing) {
-            await db.publicSessionShare.delete({
+        // Use transaction to ensure consistent state
+        const deleted = await db.$transaction(async (tx) => {
+            // Check if share exists
+            const existing = await tx.publicSessionShare.findUnique({
                 where: { sessionId }
             });
 
-            // Emit real-time update to session owner
+            if (!existing) {
+                return false;
+            }
+
+            // Delete public share
+            await tx.publicSessionShare.delete({
+                where: { sessionId }
+            });
+
+            return true;
+        });
+
+        // Emit real-time update to session owner (outside transaction)
+        if (deleted) {
             const updateSeq = await allocateUserSeq(userId);
             const updatePayload = buildPublicShareDeletedUpdate(
                 sessionId,

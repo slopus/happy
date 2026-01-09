@@ -228,29 +228,39 @@ export function shareRoutes(app: Fastify) {
             return reply.code(403).send({ error: 'Forbidden' });
         }
 
-        // Get share before deleting
-        const share = await db.sessionShare.findUnique({
-            where: { id: shareId, sessionId }
+        // Use transaction to ensure consistent state
+        const result = await db.$transaction(async (tx) => {
+            // Get share before deleting
+            const share = await tx.sessionShare.findUnique({
+                where: { id: shareId, sessionId }
+            });
+
+            if (!share) {
+                return { error: 'Share not found' };
+            }
+
+            // Delete share
+            await tx.sessionShare.delete({
+                where: { id: shareId, sessionId }
+            });
+
+            return { share };
         });
 
-        if (!share) {
-            return reply.code(404).send({ error: 'Share not found' });
+        if ('error' in result) {
+            return reply.code(404).send({ error: result.error });
         }
 
-        await db.sessionShare.delete({
-            where: { id: shareId, sessionId }
-        });
-
-        // Emit real-time update to shared user
-        const updateSeq = await allocateUserSeq(share.sharedWithUserId);
+        // Emit real-time update to shared user (outside transaction)
+        const updateSeq = await allocateUserSeq(result.share.sharedWithUserId);
         const updatePayload = buildSessionShareRevokedUpdate(
-            share.id,
-            share.sessionId,
+            result.share.id,
+            result.share.sessionId,
             updateSeq,
             randomKeyNaked(12)
         );
         eventRouter.emitUpdate({
-            userId: share.sharedWithUserId,
+            userId: result.share.sharedWithUserId,
             payload: updatePayload,
             recipientFilter: { type: 'all-user-authenticated-connections' }
         });
