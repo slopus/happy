@@ -5,6 +5,8 @@ import { isSessionOwner, checkPublicShareAccess } from "@/app/share/accessContro
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { logPublicShareAccess, getIpAddress, getUserAgent } from "@/app/share/accessLogger";
 import { PROFILE_SELECT } from "@/app/share/types";
+import { eventRouter, buildPublicShareCreatedUpdate, buildPublicShareUpdatedUpdate, buildPublicShareDeletedUpdate } from "@/app/events/eventRouter";
+import { allocateUserSeq } from "@/storage/seq";
 
 /**
  * Public session sharing API routes
@@ -45,6 +47,8 @@ export function publicShareRoutes(app: Fastify) {
         });
 
         let publicShare;
+        const isUpdate = !!existing;
+
         if (existing) {
             // Update existing share
             publicShare = await db.publicSessionShare.update({
@@ -71,6 +75,18 @@ export function publicShareRoutes(app: Fastify) {
                 }
             });
         }
+
+        // Emit real-time update to session owner
+        const updateSeq = await allocateUserSeq(userId);
+        const updatePayload = isUpdate
+            ? buildPublicShareUpdatedUpdate(publicShare, updateSeq, randomKeyNaked(12))
+            : buildPublicShareCreatedUpdate(publicShare, updateSeq, randomKeyNaked(12));
+
+        eventRouter.emitUpdate({
+            userId: userId,
+            payload: updatePayload,
+            recipientFilter: { type: 'all-interested-in-session', sessionId }
+        });
 
         return reply.send({
             publicShare: {
@@ -146,11 +162,30 @@ export function publicShareRoutes(app: Fastify) {
             return reply.code(403).send({ error: 'Forbidden' });
         }
 
-        await db.publicSessionShare.delete({
+        // Check if share exists
+        const existing = await db.publicSessionShare.findUnique({
             where: { sessionId }
-        }).catch(() => {
-            // Ignore if doesn't exist
         });
+
+        if (existing) {
+            await db.publicSessionShare.delete({
+                where: { sessionId }
+            });
+
+            // Emit real-time update to session owner
+            const updateSeq = await allocateUserSeq(userId);
+            const updatePayload = buildPublicShareDeletedUpdate(
+                sessionId,
+                updateSeq,
+                randomKeyNaked(12)
+            );
+
+            eventRouter.emitUpdate({
+                userId: userId,
+                payload: updatePayload,
+                recipientFilter: { type: 'all-interested-in-session', sessionId }
+            });
+        }
 
         return reply.send({ success: true });
     });
