@@ -5,6 +5,9 @@ import { checkSessionAccess, canManageSharing, isSessionOwner } from "@/app/shar
 import { ShareAccessLevel } from "@prisma/client";
 import { logSessionShareAccess, getIpAddress, getUserAgent } from "@/app/share/accessLogger";
 import { PROFILE_SELECT } from "@/app/share/types";
+import { eventRouter, buildSessionSharedUpdate, buildSessionShareUpdatedUpdate, buildSessionShareRevokedUpdate } from "@/app/events/eventRouter";
+import { allocateUserSeq } from "@/storage/seq";
+import { randomKeyNaked } from "@/utils/randomKeyNaked";
 
 /**
  * Session sharing API routes
@@ -112,8 +115,20 @@ export function shareRoutes(app: Fastify) {
             include: {
                 sharedWithUser: {
                     select: PROFILE_SELECT
+                },
+                sharedByUser: {
+                    select: PROFILE_SELECT
                 }
             }
+        });
+
+        // Emit real-time update to shared user
+        const updateSeq = await allocateUserSeq(userId);
+        const updatePayload = buildSessionSharedUpdate(share, updateSeq, randomKeyNaked(12));
+        eventRouter.emitUpdate({
+            userId: userId,
+            payload: updatePayload,
+            recipientFilter: { type: 'all-user-authenticated-connections' }
         });
 
         return reply.send({
@@ -161,6 +176,22 @@ export function shareRoutes(app: Fastify) {
             }
         });
 
+        // Emit real-time update to shared user
+        const updateSeq = await allocateUserSeq(share.sharedWithUserId);
+        const updatePayload = buildSessionShareUpdatedUpdate(
+            share.id,
+            share.sessionId,
+            share.accessLevel,
+            share.updatedAt,
+            updateSeq,
+            randomKeyNaked(12)
+        );
+        eventRouter.emitUpdate({
+            userId: share.sharedWithUserId,
+            payload: updatePayload,
+            recipientFilter: { type: 'all-user-authenticated-connections' }
+        });
+
         return reply.send({
             share: {
                 id: share.id,
@@ -192,8 +223,31 @@ export function shareRoutes(app: Fastify) {
             return reply.code(403).send({ error: 'Forbidden' });
         }
 
+        // Get share before deleting
+        const share = await db.sessionShare.findUnique({
+            where: { id: shareId, sessionId }
+        });
+
+        if (!share) {
+            return reply.code(404).send({ error: 'Share not found' });
+        }
+
         await db.sessionShare.delete({
             where: { id: shareId, sessionId }
+        });
+
+        // Emit real-time update to shared user
+        const updateSeq = await allocateUserSeq(share.sharedWithUserId);
+        const updatePayload = buildSessionShareRevokedUpdate(
+            share.id,
+            share.sessionId,
+            updateSeq,
+            randomKeyNaked(12)
+        );
+        eventRouter.emitUpdate({
+            userId: share.sharedWithUserId,
+            payload: updatePayload,
+            recipientFilter: { type: 'all-user-authenticated-connections' }
         });
 
         return reply.send({ success: true });
