@@ -686,6 +686,8 @@ export const es: TranslationStructure = {
         deleteSessionWarning: 'Esta acción no se puede deshacer. Todos los mensajes y datos asociados con esta sesión se eliminarán permanentemente.',
         failedToDeleteSession: 'Error al eliminar la sesión',
         sessionDeleted: 'Sesión eliminada exitosamente',
+        manageSharing: 'Gestionar acceso',
+        manageSharingSubtitle: 'Comparte esta sesión con amigos o crea un enlace público',
         renameSession: 'Renombrar Sesión',
         renameSessionSubtitle: 'Cambiar el nombre de visualización de esta sesión',
         renameSessionPlaceholder: 'Introduce el nombre de la sesión...',
@@ -1322,6 +1324,9 @@ export const es: TranslationStructure = {
         usageCount: 'Cantidad de usos',
         usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} usos`,
         usageCountUnlimited: ({ count }: { count: number }) => `${count} usos`,
+        directSharing: 'Compartir directo',
+        publicLinkActive: 'Enlace público activo',
+        createPublicLink: 'Crear enlace público',
     },
 
     usage: {

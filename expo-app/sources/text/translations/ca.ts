@@ -687,6 +687,8 @@ export const ca: TranslationStructure = {
         deleteSessionWarning: 'Aquesta acció no es pot desfer. Tots els missatges i dades associats amb aquesta sessió s\'eliminaran permanentment.',
         failedToDeleteSession: 'Error en eliminar la sessió',
         sessionDeleted: 'Sessió eliminada amb èxit',
+        manageSharing: 'Gestiona l\'accés',
+        manageSharingSubtitle: 'Comparteix aquesta sessió amb amics o crea un enllaç públic',
         renameSession: 'Canvia el nom de la sessió',
         renameSessionSubtitle: 'Canvia el nom de visualització d\'aquesta sessió',
         renameSessionPlaceholder: 'Introduïu el nom de la sessió...',
@@ -1322,6 +1324,9 @@ export const ca: TranslationStructure = {
         usageCount: 'Quantitat d\'usos',
         usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} usos`,
         usageCountUnlimited: ({ count }: { count: number }) => `${count} usos`,
+        directSharing: 'Compartició directa',
+        publicLinkActive: 'Enllaç públic actiu',
+        createPublicLink: 'Crear enllaç públic',
     },
 
     usage: {

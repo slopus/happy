@@ -689,6 +689,8 @@ export const zhHans: TranslationStructure = {
         deleteSessionWarning: '此操作无法撤销。与此会话相关的所有消息和数据将被永久删除。',
         failedToDeleteSession: '删除会话失败',
         sessionDeleted: '会话删除成功',
+        manageSharing: '管理共享',
+        manageSharingSubtitle: '与好友共享此会话或创建公开链接',
         renameSession: '重命名会话',
         renameSessionSubtitle: '更改此会话的显示名称',
         renameSessionPlaceholder: '输入会话名称...',
@@ -1324,6 +1326,9 @@ export const zhHans: TranslationStructure = {
         usageCount: '使用次数',
         usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} 次`,
         usageCountUnlimited: ({ count }: { count: number }) => `${count} 次`,
+        directSharing: '直接分享',
+        publicLinkActive: '公开链接已激活',
+        createPublicLink: '创建公开链接',
     },
 
     usage: {

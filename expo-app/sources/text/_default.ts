@@ -404,7 +404,9 @@ export const en = {
         deleteSessionWarning: 'This action cannot be undone. All messages and data associated with this session will be permanently deleted.',
         failedToDeleteSession: 'Failed to delete session',
         sessionDeleted: 'Session deleted successfully',
-        
+        manageSharing: 'Manage Sharing',
+        manageSharingSubtitle: 'Share this session with friends or create a public link',
+
     },
 
     components: {
@@ -901,6 +903,9 @@ export const en = {
         usageCount: 'Usage count',
         usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} uses`,
         usageCountUnlimited: ({ count }: { count: number }) => `${count} uses`,
+        directSharing: 'Direct Sharing',
+        publicLinkActive: 'Public link active',
+        createPublicLink: 'Create public link',
     },
 
     usage: {
