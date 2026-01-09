@@ -275,7 +275,7 @@ export async function getSharedSessionDetails(
 export async function createPublicShare(
     credentials: AuthCredentials,
     sessionId: string,
-    request: CreatePublicShareRequest
+    request: CreatePublicShareRequest & { token: string }
 ): Promise<PublicSessionShare> {
     return await backoff(async () => {
         const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/public-share`, {

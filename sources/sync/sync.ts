@@ -507,6 +507,7 @@ class Sync {
                     continue;
                 }
                 sessionKeys.set(session.id, decrypted);
+                this.sessionDataKeys.set(session.id, decrypted); // Store for later use
             } else {
                 sessionKeys.set(session.id, null);
             }
@@ -595,6 +596,7 @@ class Sync {
                     continue;
                 }
                 sessionKeys.set(share.session.id, decrypted);
+                this.sessionDataKeys.set(share.session.id, decrypted); // Store for later use
             }
         }
         await this.encryption.initializeSessions(sessionKeys);
@@ -658,14 +660,7 @@ class Sync {
     }
 
     public getSessionDataKey(sessionId: string): Uint8Array | null {
-        const sessionEncryption = this.encryption.getSessionEncryption(sessionId);
-        if (!sessionEncryption) {
-            return null;
-        }
-        // Access the private encryptor field through the public interface
-        // SessionEncryption has the data key through its encryptor
-        // For now, we'll need to expose this through the Encryption class
-        return null; // TODO: Expose session data key through Encryption API
+        return this.sessionDataKeys.get(sessionId) || null;
     }
 
     public getUserPublicKey(): Uint8Array {
