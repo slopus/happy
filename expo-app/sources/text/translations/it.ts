@@ -831,6 +831,10 @@ export const it: TranslationStructure = {
             giveConsent: 'Acconsento alla registrazione degli accessi',
             shareWithFriends: 'Condividi solo con amici',
             friendsOnly: 'Solo gli amici possono essere aggiunti',
+            noShares: 'Ancora nessuna condivisione',
+            viewOnlyDescription: 'Puo visualizzare messaggi e metadati',
+            canEditDescription: 'Puo inviare messaggi ma non gestire la condivisione',
+            canManageDescription: 'Accesso completo inclusa la gestione della condivisione',
         },
     },
 

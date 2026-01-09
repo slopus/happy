@@ -580,6 +580,10 @@ export const zhHans: TranslationStructure = {
             giveConsent: '我同意访问日志记录',
             shareWithFriends: '仅与好友分享',
             friendsOnly: '只能添加好友',
+            noShares: '暂无分享',
+            viewOnlyDescription: '可以查看消息和元数据',
+            canEditDescription: '可以发送消息，但不能管理分享',
+            canManageDescription: '包括分享管理在内的完全访问权限',
         },
     },
 

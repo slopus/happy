@@ -589,6 +589,10 @@ export const pl: TranslationStructure = {
             giveConsent: 'Wyrażam zgodę na logowanie dostępu',
             shareWithFriends: 'Udostępnij tylko znajomym',
             friendsOnly: 'Można dodać tylko znajomych',
+            noShares: 'Brak udostępnień',
+            viewOnlyDescription: 'Może przeglądać wiadomości i metadane',
+            canEditDescription: 'Może wysyłać wiadomości, ale nie zarządzać udostępnianiem',
+            canManageDescription: 'Pełny dostęp, w tym zarządzanie udostępnianiem',
         },
     },
 
