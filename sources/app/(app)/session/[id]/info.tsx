@@ -257,6 +257,12 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
                         />
                     )}
+                    <Item
+                        title={t('sessionInfo.manageSharing')}
+                        subtitle={t('sessionInfo.manageSharingSubtitle')}
+                        icon={<Ionicons name="share-outline" size={29} color="#007AFF" />}
+                        onPress={() => router.push(`/session/${session.id}/sharing`)}
+                    />
                     {sessionStatus.isConnected && (
                         <Item
                             title={t('sessionInfo.archiveSession')}
