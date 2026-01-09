@@ -1559,6 +1559,23 @@ export const it: TranslationStructure = {
 
     sessionSharing: {
         addShare: 'Aggiungi condivisione',
+        publicLink: 'Link pubblico',
+        publicLinkDescription: 'Crea un link pubblico che chiunque può utilizzare per accedere a questa sessione. Puoi impostare una data di scadenza e un limite di utilizzo.',
+        expiresIn: 'Scade tra',
+        days7: '7 giorni',
+        days30: '30 giorni',
+        never: 'Mai',
+        maxUses: 'Utilizzi massimi',
+        unlimited: 'Illimitato',
+        uses10: '10 utilizzi',
+        uses50: '50 utilizzi',
+        requireConsent: 'Richiedi consenso',
+        requireConsentDescription: 'Gli utenti devono accettare i termini prima di accedere',
+        linkToken: 'Token del link',
+        expiresOn: 'Scade il',
+        usageCount: 'Numero di utilizzi',
+        usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} utilizzi`,
+        usageCountUnlimited: ({ count }: { count: number }) => `${count} utilizzi`,
     },
 
     usage: {

@@ -1305,6 +1305,23 @@ export const ca: TranslationStructure = {
 
     sessionSharing: {
         addShare: 'Afegir compartició',
+        publicLink: 'Enllaç públic',
+        publicLinkDescription: 'Crea un enllaç públic que qualsevol pot utilitzar per accedir a aquesta sessió. Pots establir una data de caducitat i un límit d\'ús.',
+        expiresIn: 'Caduca en',
+        days7: '7 dies',
+        days30: '30 dies',
+        never: 'Mai',
+        maxUses: 'Usos màxims',
+        unlimited: 'Il·limitat',
+        uses10: '10 usos',
+        uses50: '50 usos',
+        requireConsent: 'Requerir consentiment',
+        requireConsentDescription: 'Els usuaris han d\'acceptar els termes abans d\'accedir',
+        linkToken: 'Token de l\'enllaç',
+        expiresOn: 'Caduca el',
+        usageCount: 'Quantitat d\'usos',
+        usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} usos`,
+        usageCountUnlimited: ({ count }: { count: number }) => `${count} usos`,
     },
 
     usage: {

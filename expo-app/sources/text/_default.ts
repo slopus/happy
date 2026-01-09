@@ -884,6 +884,23 @@ export const en = {
 
     sessionSharing: {
         addShare: 'Add Share',
+        publicLink: 'Public Link',
+        publicLinkDescription: 'Create a public link that anyone can use to access this session. You can set an expiration date and usage limit.',
+        expiresIn: 'Expires in',
+        days7: '7 days',
+        days30: '30 days',
+        never: 'Never',
+        maxUses: 'Maximum uses',
+        unlimited: 'Unlimited',
+        uses10: '10 uses',
+        uses50: '50 uses',
+        requireConsent: 'Require consent',
+        requireConsentDescription: 'Users must accept terms before accessing',
+        linkToken: 'Link token',
+        expiresOn: 'Expires on',
+        usageCount: 'Usage count',
+        usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} uses`,
+        usageCountUnlimited: ({ count }: { count: number }) => `${count} uses`,
     },
 
     usage: {
