@@ -627,16 +627,16 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 processUsageData(state, msg.usage, msg.createdAt);
             }
 
-            // Process text content only (tool calls handled in Phase 2)
+            // Process text and thinking content (tool calls handled in Phase 2)
             for (let c of msg.content) {
-                if (c.type === 'text') {
+                if (c.type === 'text' || c.type === 'thinking') {
                     let mid = allocateId();
                     state.messages.set(mid, {
                         id: mid,
                         realID: msg.id,
                         role: 'agent',
                         createdAt: msg.createdAt,
-                        text: c.text,
+                        text: c.type === 'text' ? c.text : c.thinking,
                         tool: null,
                         event: null,
                         meta: msg.meta,
@@ -860,14 +860,14 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         } else if (msg.role === 'agent') {
             // Process agent content in sidechain
             for (let c of msg.content) {
-                if (c.type === 'text') {
+                if (c.type === 'text' || c.type === 'thinking') {
                     let mid = allocateId();
                     let textMsg: ReducerMessage = {
                         id: mid,
                         realID: msg.id,
                         role: 'agent',
                         createdAt: msg.createdAt,
-                        text: c.text,
+                        text: c.type === 'text' ? c.text : c.thinking,
                         tool: null,
                         event: null,
                         meta: msg.meta,

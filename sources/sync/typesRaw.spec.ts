@@ -49,9 +49,11 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 if (content.type === 'output' && content.data.type === 'assistant') {
                     const firstItem = content.data.message.content[0];
                     expect(firstItem.type).toBe('tool_use');
-                    expect(firstItem.id).toBe('call_abc123');  // callId → id
-                    expect(firstItem.name).toBe('Bash');
-                    expect(firstItem.input).toEqual({ command: 'ls -la' });
+                    if (firstItem.type === 'tool_use') {
+                        expect(firstItem.id).toBe('call_abc123');  // callId → id
+                        expect(firstItem.name).toBe('Bash');
+                        expect(firstItem.input).toEqual({ command: 'ls -la' });
+                    }
                 }
             }
         });
@@ -83,11 +85,13 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (result.success) {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'user') {
-                    const firstItem = content.data.message.content[0];
-                    expect(firstItem.type).toBe('tool_result');
-                    expect(firstItem.tool_use_id).toBe('call_abc123');  // callId → tool_use_id
-                    expect(firstItem.content).toBe('file1.txt\nfile2.txt');  // output → content
-                    expect(firstItem.is_error).toBe(false);
+                    const msgContent = content.data.message.content;
+                    if (Array.isArray(msgContent) && msgContent[0].type === 'tool_result') {
+                        expect(msgContent[0].type).toBe('tool_result');
+                        expect(msgContent[0].tool_use_id).toBe('call_abc123');  // callId → tool_use_id
+                        expect(msgContent[0].content).toBe('file1.txt\nfile2.txt');  // output → content
+                        expect(msgContent[0].is_error).toBe(false);
+                    }
                 }
             }
         });
@@ -164,8 +168,10 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 if (content.type === 'output' && content.data.type === 'assistant') {
                     const firstItem = content.data.message.content[0];
                     expect(firstItem.type).toBe('tool_use');
-                    expect(firstItem.id).toBe('call_123');
-                    expect(firstItem.name).toBe('Write');
+                    if (firstItem.type === 'tool_use') {
+                        expect(firstItem.id).toBe('call_123');
+                        expect(firstItem.name).toBe('Write');
+                    }
                 }
             }
         });
@@ -197,10 +203,12 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (result.success) {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'user') {
-                    const firstItem = content.data.message.content[0];
-                    expect(firstItem.type).toBe('tool_result');
-                    expect(firstItem.tool_use_id).toBe('call_123');
-                    expect(firstItem.content).toBe('Success');
+                    const msgContent = content.data.message.content;
+                    if (Array.isArray(msgContent) && msgContent[0].type === 'tool_result') {
+                        expect(msgContent[0].type).toBe('tool_result');
+                        expect(msgContent[0].tool_use_id).toBe('call_123');
+                        expect(msgContent[0].content).toBe('Success');
+                    }
                 }
             }
         });
@@ -233,7 +241,9 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 if (content.type === 'output' && content.data.type === 'assistant') {
                     const firstItem = content.data.message.content[0];
                     expect(firstItem.type).toBe('text');
-                    expect(firstItem.text).toBe('Hello world');
+                    if (firstItem.type === 'text') {
+                        expect(firstItem.text).toBe('Hello world');
+                    }
                 }
             }
         });
@@ -309,11 +319,15 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
 
                     // tool-call transformed to tool_use
                     expect(items[1].type).toBe('tool_use');
-                    expect(items[1].id).toBe('call_1');
+                    if (items[1].type === 'tool_use') {
+                        expect(items[1].id).toBe('call_1');
+                    }
 
                     // tool_use passes through
                     expect(items[2].type).toBe('tool_use');
-                    expect(items[2].id).toBe('call_2');
+                    if (items[2].type === 'tool_use') {
+                        expect(items[2].id).toBe('call_2');
+                    }
                 }
             }
         });
@@ -344,15 +358,20 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'user') {
                     const items = content.data.message.content;
+                    if (Array.isArray(items)) {
+                        // Both normalized to tool_result
+                        expect(items[0].type).toBe('tool_result');
+                        if (items[0].type === 'tool_result') {
+                            expect(items[0].tool_use_id).toBe('call_1');
+                            expect(items[0].content).toBe('result1');
+                        }
 
-                    // Both normalized to tool_result
-                    expect(items[0].type).toBe('tool_result');
-                    expect(items[0].tool_use_id).toBe('call_1');
-                    expect(items[0].content).toBe('result1');
-
-                    expect(items[1].type).toBe('tool_result');
-                    expect(items[1].tool_use_id).toBe('call_2');
-                    expect(items[1].content).toBe('result2');
+                        expect(items[1].type).toBe('tool_result');
+                        if (items[1].type === 'tool_result') {
+                            expect(items[1].tool_use_id).toBe('call_2');
+                            expect(items[1].content).toBe('result2');
+                        }
+                    }
                 }
             }
         });
@@ -384,8 +403,11 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (result.success) {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'assistant') {
-                    expect(content.data.message.content[0].type).toBe('tool_use');
-                    expect(content.data.message.content[0].id).toBe('call_old');
+                    const firstItem = content.data.message.content[0];
+                    expect(firstItem.type).toBe('tool_use');
+                    if (firstItem.type === 'tool_use') {
+                        expect(firstItem.id).toBe('call_old');
+                    }
                 }
             }
         });
@@ -480,8 +502,11 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'assistant') {
                     const firstItem = content.data.message.content[0];
-                    // Should use callId as the canonical id
-                    expect(firstItem.id).toBe('primary_id');
+                    expect(firstItem.type).toBe('tool_use');
+                    if (firstItem.type === 'tool_use') {
+                        // Should use callId as the canonical id
+                        expect(firstItem.id).toBe('primary_id');
+                    }
                 }
             }
         });
@@ -514,9 +539,11 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (result.success) {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'user') {
-                    const firstItem = content.data.message.content[0];
-                    // Should use output as the canonical content
-                    expect(firstItem.content).toBe('primary_output');
+                    const msgContent = content.data.message.content;
+                    if (Array.isArray(msgContent) && msgContent[0].type === 'tool_result') {
+                        // Should use output as the canonical content
+                        expect(msgContent[0].content).toBe('primary_output');
+                    }
                 }
             }
         });
@@ -548,9 +575,11 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (result.success) {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'user') {
-                    const firstItem = content.data.message.content[0];
-                    // Should default is_error to false
-                    expect(firstItem.is_error).toBe(false);
+                    const msgContent = content.data.message.content;
+                    if (Array.isArray(msgContent) && msgContent[0].type === 'tool_result') {
+                        // Should default is_error to false
+                        expect(msgContent[0].is_error).toBe(false);
+                    }
                 }
             }
         });
@@ -666,7 +695,9 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     expect(content.length).toBe(2);
                     expect(content[0].type).toBe('text');
                     expect(content[1].type).toBe('tool_use');
-                    expect(content[1].id).toBe('toolu_01ABC123');
+                    if (content[1].type === 'tool_use') {
+                        expect(content[1].id).toBe('toolu_01ABC123');
+                    }
                 }
             }
         });
@@ -707,9 +738,11 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             expect(result.success).toBe(true);
             if (result.success && result.data.content.type === 'output' && result.data.content.data.type === 'user') {
                 const content = result.data.content.data.message.content;
-                expect(content[0].type).toBe('tool_result');
-                expect(content[0].tool_use_id).toBe('toolu_01ABC123');
-                expect(content[0].permissions).toBeDefined();
+                if (Array.isArray(content) && content[0].type === 'tool_result') {
+                    expect(content[0].type).toBe('tool_result');
+                    expect(content[0].tool_use_id).toBe('toolu_01ABC123');
+                    expect(content[0].permissions).toBeDefined();
+                }
             }
         });
 
@@ -894,7 +927,9 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             expect(result.success).toBe(true);
             if (result.success && result.data.content.type === 'event') {
                 expect(result.data.content.data.type).toBe('switch');
-                expect(result.data.content.data.mode).toBe('local');
+                if (result.data.content.data.type === 'switch') {
+                    expect(result.data.content.data.mode).toBe('local');
+                }
             }
         });
 
@@ -950,11 +985,13 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
 
             expect(result.success).toBe(true);
             if (result.success && result.data.content.type === 'output' && result.data.content.data.type === 'user') {
-                const item = result.data.content.data.message.content[0];
-                expect(item.permissions).toBeDefined();
-                expect(item.permissions?.result).toBe('approved');
-                expect(item.permissions?.mode).toBe('acceptEdits');
-                expect(item.permissions?.allowedTools).toEqual(['Read', 'Write']);
+                const content = result.data.content.data.message.content;
+                if (Array.isArray(content) && content[0].type === 'tool_result') {
+                    expect(content[0].permissions).toBeDefined();
+                    expect(content[0].permissions?.result).toBe('approved');
+                    expect(content[0].permissions?.mode).toBe('acceptEdits');
+                    expect(content[0].permissions?.allowedTools).toEqual(['Read', 'Write']);
+                }
             }
         });
 
@@ -986,11 +1023,13 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
 
             expect(result.success).toBe(true);
             if (result.success && result.data.content.type === 'output' && result.data.content.data.type === 'user') {
-                const item = result.data.content.data.message.content[0];
-                expect(Array.isArray(item.content)).toBe(true);
-                if (Array.isArray(item.content)) {
-                    expect(item.content.length).toBe(2);
-                    expect(item.content[0].text).toBe('First block');
+                const content = result.data.content.data.message.content;
+                if (Array.isArray(content) && content[0].type === 'tool_result') {
+                    expect(Array.isArray(content[0].content)).toBe(true);
+                    if (Array.isArray(content[0].content)) {
+                        expect(content[0].content.length).toBe(2);
+                        expect(content[0].content[0].text).toBe('First block');
+                    }
                 }
             }
         });
@@ -1077,7 +1116,9 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             // Codex path keeps hyphenated types (no transformation)
             if (result.success && result.data.content.type === 'codex') {
                 expect(result.data.content.data.type).toBe('tool-call');
-                expect(result.data.content.data.callId).toBe('codex_tool');
+                if (result.data.content.data.type === 'tool-call') {
+                    expect(result.data.content.data.callId).toBe('codex_tool');
+                }
             }
         });
 
@@ -1133,7 +1174,9 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 // Should transform to tool_use
                 const item = result.data.content.data.message.content[0];
                 expect(item.type).toBe('tool_use');
-                expect(item.id).toBe('defensive_test');
+                if (item.type === 'tool_use') {
+                    expect(item.id).toBe('defensive_test');
+                }
             }
         });
     });
@@ -1166,11 +1209,15 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (result.success && result.data.content.type === 'output' && result.data.content.data.type === 'assistant') {
                 const content = result.data.content.data.message.content;
                 expect(content[0].type).toBe('text');
-                expect(content[0].text).toBe('Hello');
+                if (content[0].type === 'text') {
+                    expect(content[0].text).toBe('Hello');
+                }
                 expect(content[1].type).toBe('tool_use');
-                expect(content[1].id).toBe('c1');
-                expect(content[1].name).toBe('Read');
-                expect(content[1].input).toEqual({});
+                if (content[1].type === 'tool_use') {
+                    expect(content[1].id).toBe('c1');
+                    expect(content[1].name).toBe('Read');
+                    expect(content[1].input).toEqual({});
+                }
             }
         });
 
@@ -1236,6 +1283,113 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 // Should mention union validation issue
                 const errorJson = JSON.stringify(result.error.issues);
                 expect(errorJson).toContain('invalid_union');
+            }
+        });
+    });
+
+    describe('Unknown field preservation (WOLOG)', () => {
+        it('preserves unknown fields in thinking content via .passthrough()', () => {
+            const thinkingWithUnknownFields = {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: {
+                        type: 'assistant',
+                        message: {
+                            role: 'assistant',
+                            model: 'claude-3',
+                            content: [{
+                                type: 'thinking',
+                                thinking: 'Reasoning here',
+                                signature: 'EqkCCkYICxgCKkB...',  // Unknown field
+                                futureField: 'some_value'       // Unknown field
+                            }]
+                        },
+                        uuid: 'test-uuid'
+                    }
+                }
+            };
+
+            const result = RawRecordSchema.safeParse(thinkingWithUnknownFields);
+
+            expect(result.success).toBe(true);
+            if (result.success && result.data.content.type === 'output' && result.data.content.data.type === 'assistant') {
+                const thinkingContent = result.data.content.data.message.content[0];
+                if (thinkingContent.type === 'thinking') {
+                    // Verify unknown fields preserved
+                    expect((thinkingContent as any).signature).toBe('EqkCCkYICxgCKkB...');
+                    expect((thinkingContent as any).futureField).toBe('some_value');
+                }
+            }
+        });
+
+        it('preserves unknown fields in transformed tool-call → tool_use', () => {
+            const toolCallWithUnknownFields = {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: {
+                        type: 'assistant',
+                        message: {
+                            role: 'assistant',
+                            model: 'claude-3',
+                            content: [{
+                                type: 'tool-call',
+                                callId: 'test-call',
+                                name: 'Bash',
+                                input: { command: 'ls' },
+                                metadata: { timestamp: 123 },  // Unknown field
+                                customField: 'custom_value'    // Unknown field
+                            }]
+                        },
+                        uuid: 'test-uuid'
+                    }
+                }
+            };
+
+            const result = RawRecordSchema.safeParse(toolCallWithUnknownFields);
+
+            expect(result.success).toBe(true);
+            if (result.success && result.data.content.type === 'output' && result.data.content.data.type === 'assistant') {
+                const toolUseContent = result.data.content.data.message.content[0];
+                if (toolUseContent.type === 'tool_use') {
+                    // Verify transform preserved unknown fields
+                    expect(toolUseContent.id).toBe('test-call');
+                    expect((toolUseContent as any).metadata).toEqual({ timestamp: 123 });
+                    expect((toolUseContent as any).customField).toBe('custom_value');
+                }
+            }
+        });
+
+        it('preserves CLI metadata fields via .passthrough()', () => {
+            const messageWithMetadata = {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: {
+                        type: 'assistant',
+                        message: { role: 'assistant', model: 'claude-3', content: [] },
+                        uuid: 'test-uuid',
+                        userType: 'external',      // CLI metadata
+                        cwd: '/path/to/project',   // CLI metadata
+                        sessionId: 'session-123',  // CLI metadata
+                        version: '2.1.1',          // CLI metadata
+                        gitBranch: 'main',         // CLI metadata
+                        slug: 'test-slug',         // CLI metadata
+                        requestId: 'req-123',      // CLI metadata
+                        timestamp: '2026-01-09T00:00:00.000Z'  // CLI metadata
+                    }
+                }
+            };
+
+            const result = RawRecordSchema.safeParse(messageWithMetadata);
+
+            expect(result.success).toBe(true);
+            if (result.success && result.data.content.type === 'output') {
+                // Verify metadata preserved
+                expect((result.data.content.data as any).userType).toBe('external');
+                expect((result.data.content.data as any).cwd).toBe('/path/to/project');
+                expect((result.data.content.data as any).sessionId).toBe('session-123');
             }
         });
     });

@@ -33,7 +33,7 @@ export type AgentEvent = z.infer<typeof agentEventSchema>;
 const rawTextContentSchema = z.object({
     type: z.literal('text'),
     text: z.string(),
-});
+}).passthrough();  // ROBUST: Accept unknown fields for future API compatibility
 export type RawTextContent = z.infer<typeof rawTextContentSchema>;
 
 const rawToolUseContentSchema = z.object({
@@ -41,7 +41,7 @@ const rawToolUseContentSchema = z.object({
     id: z.string(),
     name: z.string(),
     input: z.any(),
-});
+}).passthrough();  // ROBUST: Accept unknown fields preserved by transform
 export type RawToolUseContent = z.infer<typeof rawToolUseContentSchema>;
 
 const rawToolResultContentSchema = z.object({
@@ -56,7 +56,7 @@ const rawToolResultContentSchema = z.object({
         allowedTools: z.array(z.string()).optional(),
         decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).optional(),
     }).optional(),
-});
+}).passthrough();  // ROBUST: Accept unknown fields for future API compatibility
 export type RawToolResultContent = z.infer<typeof rawToolResultContentSchema>;
 
 /**
@@ -124,71 +124,48 @@ type RawAgentContentInput = z.infer<typeof rawAgentContentInputSchema>;
 
 /**
  * Type-safe transform: Hyphenated tool-call → Canonical tool_use
- * ROBUST: Preserves all unknown fields for future API compatibility
+ * ROBUST: Unknown fields preserved via object spread and .passthrough()
  */
-function normalizeToToolUse(input: RawHyphenatedToolCall): RawToolUseContent {
-    const normalized: RawToolUseContent = {
-        type: 'tool_use',
+function normalizeToToolUse(input: RawHyphenatedToolCall) {
+    // Spread preserves all fields from input (passthrough fields included)
+    return {
+        ...input,
+        type: 'tool_use' as const,
         id: input.callId,  // Codex uses callId, canonical uses id
-        name: input.name,
-        input: input.input,
     };
-
-    // PRESERVE unknown fields for future-proofing
-    // If CLI adds new fields in future, they won't be lost
-    const knownFields = new Set(['type', 'callId', 'id', 'name', 'input']);
-    Object.entries(input).forEach(([key, value]) => {
-        if (!knownFields.has(key)) {
-            (normalized as any)[key] = value;  // Type assertion only for unknown field preservation
-        }
-    });
-
-    return normalized;
 }
 
 /**
  * Type-safe transform: Hyphenated tool-call-result → Canonical tool_result
- * ROBUST: Preserves all unknown fields for future API compatibility
+ * ROBUST: Unknown fields preserved via object spread and .passthrough()
  */
-function normalizeToToolResult(input: RawHyphenatedToolResult): RawToolResultContent {
-    const normalized: RawToolResultContent = {
-        type: 'tool_result',
+function normalizeToToolResult(input: RawHyphenatedToolResult) {
+    // Spread preserves all fields from input (passthrough fields included)
+    return {
+        ...input,
+        type: 'tool_result' as const,
         tool_use_id: input.callId,  // Codex uses callId, canonical uses tool_use_id
         content: input.output ?? input.content ?? '',  // Codex uses output, canonical uses content
         is_error: input.is_error ?? false,
     };
-
-    // PRESERVE unknown fields
-    const knownFields = new Set(['type', 'callId', 'tool_use_id', 'output', 'content', 'is_error']);
-    Object.entries(input).forEach(([key, value]) => {
-        if (!knownFields.has(key)) {
-            (normalized as any)[key] = value;  // Type assertion only for unknown field preservation
-        }
-    });
-
-    return normalized;
 }
 
 /**
- * Schema that accepts both hyphenated and canonical formats,
- * transforms all to canonical format during validation.
+ * Schema that accepts both hyphenated and canonical formats.
+ * Normalization happens via .preprocess() at root level to avoid Zod v4 "unmergable intersection" issue.
+ * See: https://github.com/colinhacks/zod/discussions/2100
  *
- * Input: 'text' | 'tool_use' | 'tool_result' | 'thinking' | 'tool-call' | 'tool-call-result'
- * Output: 'text' | 'tool_use' | 'tool_result' | 'thinking' (always canonical)
+ * Accepts: 'text' | 'tool_use' | 'tool_result' | 'thinking' | 'tool-call' | 'tool-call-result'
+ * All types validated by their respective schemas with .passthrough() for unknown fields
  */
-const rawAgentContentSchema = rawAgentContentInputSchema.transform(
-    (input): RawTextContent | RawToolUseContent | RawToolResultContent | RawThinkingContent => {
-        // Transform hyphenated types to canonical
-        if (input.type === 'tool-call') {
-            return normalizeToToolUse(input);
-        }
-        if (input.type === 'tool-call-result') {
-            return normalizeToToolResult(input);
-        }
-        // Canonical types (text, tool_use, tool_result, thinking) pass through unchanged
-        return input;
-    }
-);
+const rawAgentContentSchema = z.union([
+    rawTextContentSchema,
+    rawToolUseContentSchema,
+    rawToolResultContentSchema,
+    rawThinkingContentSchema,
+    rawHyphenatedToolCallSchema,
+    rawHyphenatedToolResultSchema,
+]);
 export type RawAgentContent = z.infer<typeof rawAgentContentSchema>;
 
 const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
@@ -231,21 +208,60 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
     ])
 })]);
 
-const rawRecordSchema = z.discriminatedUnion('role', [
-    z.object({
-        role: z.literal('agent'),
-        content: rawAgentRecordSchema,
-        meta: MessageMetaSchema.optional()
-    }),
-    z.object({
-        role: z.literal('user'),
-        content: z.object({
-            type: z.literal('text'),
-            text: z.string()
+/**
+ * Preprocessor: Normalizes hyphenated content types to canonical before validation
+ * This avoids Zod v4's "unmergable intersection" issue with transforms inside complex schemas
+ * See: https://github.com/colinhacks/zod/discussions/2100
+ */
+function preprocessMessageContent(data: any): any {
+    if (!data || typeof data !== 'object') return data;
+
+    // Helper: normalize a single content item
+    const normalizeContent = (item: any): any => {
+        if (!item || typeof item !== 'object') return item;
+
+        if (item.type === 'tool-call') {
+            return normalizeToToolUse(item);
+        }
+        if (item.type === 'tool-call-result') {
+            return normalizeToToolResult(item);
+        }
+        return item;
+    };
+
+    // Normalize assistant message content
+    if (data.role === 'agent' && data.content?.type === 'output' && data.content?.data?.message?.content) {
+        if (Array.isArray(data.content.data.message.content)) {
+            data.content.data.message.content = data.content.data.message.content.map(normalizeContent);
+        }
+    }
+
+    // Normalize user message content
+    if (data.role === 'agent' && data.content?.type === 'output' && data.content?.data?.type === 'user' && Array.isArray(data.content.data.message?.content)) {
+        data.content.data.message.content = data.content.data.message.content.map(normalizeContent);
+    }
+
+    return data;
+}
+
+const rawRecordSchema = z.preprocess(
+    preprocessMessageContent,
+    z.discriminatedUnion('role', [
+        z.object({
+            role: z.literal('agent'),
+            content: rawAgentRecordSchema,
+            meta: MessageMetaSchema.optional()
         }),
-        meta: MessageMetaSchema.optional()
-    })
-]);
+        z.object({
+            role: z.literal('user'),
+            content: z.object({
+                type: z.literal('text'),
+                text: z.string()
+            }),
+            meta: MessageMetaSchema.optional()
+        })
+    ])
+);
 
 export type RawRecord = z.infer<typeof rawRecordSchema>;
 
