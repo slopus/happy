@@ -907,6 +907,23 @@ export const pl: TranslationStructure = {
 
     sessionSharing: {
         addShare: 'Dodaj udostępnienie',
+        publicLink: 'Link publiczny',
+        publicLinkDescription: 'Utwórz publiczny link, za pomocą którego każdy może uzyskać dostęp do tej sesji. Możesz ustawić datę wygaśnięcia i limit użyć.',
+        expiresIn: 'Wygasa za',
+        days7: '7 dni',
+        days30: '30 dni',
+        never: 'Nigdy',
+        maxUses: 'Maksymalna liczba użyć',
+        unlimited: 'Bez limitu',
+        uses10: '10 użyć',
+        uses50: '50 użyć',
+        requireConsent: 'Wymagaj zgody',
+        requireConsentDescription: 'Użytkownicy muszą zaakceptować warunki przed uzyskaniem dostępu',
+        linkToken: 'Token linku',
+        expiresOn: 'Wygasa',
+        usageCount: 'Liczba użyć',
+        usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} użyć`,
+        usageCountUnlimited: ({ count }: { count: number }) => `${count} użyć`,
     },
 
     usage: {

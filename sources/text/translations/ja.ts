@@ -879,6 +879,23 @@ export const ja: TranslationStructure = {
 
     sessionSharing: {
         addShare: '共有を追加',
+        publicLink: '公開リンク',
+        publicLinkDescription: 'このセッションにアクセスできる公開リンクを作成します。有効期限と使用回数の制限を設定できます。',
+        expiresIn: '有効期限',
+        days7: '7日間',
+        days30: '30日間',
+        never: '無期限',
+        maxUses: '最大使用回数',
+        unlimited: '無制限',
+        uses10: '10回',
+        uses50: '50回',
+        requireConsent: '同意を要求',
+        requireConsentDescription: 'アクセス前にユーザーは利用規約に同意する必要があります',
+        linkToken: 'リンクトークン',
+        expiresOn: '有効期限',
+        usageCount: '使用回数',
+        usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} 回`,
+        usageCountUnlimited: ({ count }: { count: number }) => `${count} 回`,
     },
 
     usage: {

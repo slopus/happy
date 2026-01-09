@@ -885,6 +885,23 @@ export const zhHans: TranslationStructure = {
 
     sessionSharing: {
         addShare: '添加分享',
+        publicLink: '公开链接',
+        publicLinkDescription: '创建一个公开链接，任何人都可以用它来访问此会话。您可以设置过期日期和使用次数限制。',
+        expiresIn: '过期时间',
+        days7: '7 天',
+        days30: '30 天',
+        never: '永不过期',
+        maxUses: '最大使用次数',
+        unlimited: '不限',
+        uses10: '10 次',
+        uses50: '50 次',
+        requireConsent: '需要同意',
+        requireConsentDescription: '用户必须在访问前接受条款',
+        linkToken: '链接令牌',
+        expiresOn: '过期日期',
+        usageCount: '使用次数',
+        usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} 次`,
+        usageCountUnlimited: ({ count }: { count: number }) => `${count} 次`,
     },
 
     usage: {

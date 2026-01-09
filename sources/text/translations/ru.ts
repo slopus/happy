@@ -906,6 +906,23 @@ export const ru: TranslationStructure = {
 
     sessionSharing: {
         addShare: 'Добавить доступ',
+        publicLink: 'Публичная ссылка',
+        publicLinkDescription: 'Создайте публичную ссылку, по которой любой сможет получить доступ к этой сессии. Вы можете установить срок действия и лимит использования.',
+        expiresIn: 'Истекает через',
+        days7: '7 дней',
+        days30: '30 дней',
+        never: 'Никогда',
+        maxUses: 'Максимум использований',
+        unlimited: 'Без ограничений',
+        uses10: '10 использований',
+        uses50: '50 использований',
+        requireConsent: 'Требовать согласие',
+        requireConsentDescription: 'Пользователи должны принять условия перед доступом',
+        linkToken: 'Токен ссылки',
+        expiresOn: 'Истекает',
+        usageCount: 'Количество использований',
+        usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} использований`,
+        usageCountUnlimited: ({ count }: { count: number }) => `${count} использований`,
     },
 
     usage: {
