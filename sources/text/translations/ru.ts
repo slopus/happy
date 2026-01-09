@@ -928,6 +928,8 @@ export const ru: TranslationStructure = {
         directSharing: 'Прямой доступ',
         publicLinkActive: 'Публичная ссылка активна',
         createPublicLink: 'Создать публичную ссылку',
+        viewOnlyMode: 'Режим просмотра',
+        noEditPermission: 'У вас нет прав на редактирование этой сессии',
     },
 
     usage: {

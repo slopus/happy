@@ -929,6 +929,8 @@ export const pl: TranslationStructure = {
         directSharing: 'Bezpośrednie udostępnianie',
         publicLinkActive: 'Link publiczny aktywny',
         createPublicLink: 'Utwórz link publiczny',
+        viewOnlyMode: 'Tryb tylko do odczytu',
+        noEditPermission: 'Nie masz uprawnień do edycji tej sesji',
     },
 
     usage: {

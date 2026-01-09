@@ -907,6 +907,8 @@ export const zhHans: TranslationStructure = {
         directSharing: '直接分享',
         publicLinkActive: '公开链接已激活',
         createPublicLink: '创建公开链接',
+        viewOnlyMode: '仅查看模式',
+        noEditPermission: '您没有编辑此会话的权限',
     },
 
     usage: {

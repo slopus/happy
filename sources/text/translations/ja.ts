@@ -901,6 +901,8 @@ export const ja: TranslationStructure = {
         directSharing: '直接共有',
         publicLinkActive: '公開リンク有効',
         createPublicLink: '公開リンクを作成',
+        viewOnlyMode: '閲覧専用モード',
+        noEditPermission: 'このセッションを編集する権限がありません',
     },
 
     usage: {
