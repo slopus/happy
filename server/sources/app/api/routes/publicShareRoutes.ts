@@ -31,6 +31,7 @@ export function publicShareRoutes(app: Fastify) {
                 sessionId: z.string()
             }),
             body: z.object({
+                token: z.string(), // client-generated token
                 encryptedDataKey: z.string(), // base64 encoded
                 expiresAt: z.number().optional(), // timestamp
                 maxUses: z.number().int().positive().optional(),
@@ -40,7 +41,7 @@ export function publicShareRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
-        const { encryptedDataKey, expiresAt, maxUses, isConsentRequired } = request.body;
+        const { token, encryptedDataKey, expiresAt, maxUses, isConsentRequired } = request.body;
 
         // Only owner can create public shares
         if (!await isSessionOwner(userId, sessionId)) {
@@ -56,7 +57,7 @@ export function publicShareRoutes(app: Fastify) {
         const isUpdate = !!existing;
 
         if (existing) {
-            // Update existing share
+            // Update existing share (keep the same token, update encryption and settings)
             publicShare = await db.publicSessionShare.update({
                 where: { sessionId },
                 data: {
@@ -67,8 +68,7 @@ export function publicShareRoutes(app: Fastify) {
                 }
             });
         } else {
-            // Create new share with random token
-            const token = randomKeyNaked();
+            // Create new share with client-provided token
             publicShare = await db.publicSessionShare.create({
                 data: {
                     sessionId,
