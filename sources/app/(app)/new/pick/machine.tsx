@@ -47,7 +47,7 @@ export default function MachinePickerScreen() {
 
         // Navigation params approach from main for backward compatibility
         const state = navigation.getState();
-        const previousRoute = state.routes[state.index - 1];
+        const previousRoute = state?.routes?.[state.index - 1];
         if (previousRoute) {
             navigation.dispatch({
                 ...CommonActions.setParams({ machineId }),
