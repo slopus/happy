@@ -385,6 +385,13 @@ export interface SpawnSessionOptions {
     machineId?: string;
     directory: string;
     sessionId?: string;
+    /**
+     * Resume an existing agent session by id.
+     * For upstream usage this is intended for Claude (`--resume <sessionId>`).
+     * If resume is requested for an unsupported agent, the daemon will return an error
+     * rather than silently spawning a fresh session.
+     */
+    resume?: string;
     approvedNewDirectoryCreation?: boolean;
     agent?: 'claude' | 'codex' | 'gemini';
     token?: string;

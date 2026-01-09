@@ -102,7 +102,7 @@ export class ApiMachineClient {
     }: MachineRpcHandlers) {
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId, terminal } = params || {};
+            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId, terminal, resume } = params || {};
             const envKeys = environmentVariables && typeof environmentVariables === 'object'
                 ? Object.keys(environmentVariables as Record<string, unknown>)
                 : [];
@@ -120,13 +120,14 @@ export class ApiMachineClient {
                 environmentVariableCount: envKeys.length,
                 environmentVariableKeySample: envKeySample,
                 environmentVariableKeysTruncated: envKeys.length > maxEnvKeysToLog,
+                hasResume: typeof resume === 'string' && resume.trim().length > 0,
             });
 
             if (!directory) {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId, terminal });
+            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId, terminal, resume });
 
             switch (result.type) {
                 case 'success':

@@ -16,6 +16,7 @@ import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { buildHappyCliSubprocessInvocation, spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings } from '@/persistence';
+import { supportsVendorResume } from '@/utils/agentCapabilities';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
@@ -362,26 +363,34 @@ export async function startDaemon(): Promise<void> {
       });
     };
 
-    // Spawn a new session (sessionId reserved for future --resume functionality)
-	    const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
-      // Do NOT log raw options: it may include secrets (token / env vars).
-      const envKeys = options.environmentVariables && typeof options.environmentVariables === 'object'
-        ? Object.keys(options.environmentVariables as Record<string, unknown>)
-        : [];
-      logger.debugLargeJson('[DAEMON RUN] Spawning session', {
-        directory: options.directory,
-        sessionId: options.sessionId,
-        machineId: options.machineId,
-        approvedNewDirectoryCreation: options.approvedNewDirectoryCreation,
-        agent: options.agent,
-        profileId: options.profileId,
-        hasToken: !!options.token,
-        environmentVariableCount: envKeys.length,
-        environmentVariableKeys: envKeys,
-      });
+	    // Spawn a new session (sessionId reserved for future Happy session resume; vendor resume uses options.resume).
+		    const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
+	      // Do NOT log raw options: it may include secrets (token / env vars).
+	      const envKeys = options.environmentVariables && typeof options.environmentVariables === 'object'
+	        ? Object.keys(options.environmentVariables as Record<string, unknown>)
+	        : [];
+	      logger.debugLargeJson('[DAEMON RUN] Spawning session', {
+	        directory: options.directory,
+	        sessionId: options.sessionId,
+	        machineId: options.machineId,
+	        approvedNewDirectoryCreation: options.approvedNewDirectoryCreation,
+	        agent: options.agent,
+	        profileId: options.profileId,
+	        hasToken: !!options.token,
+	        hasResume: typeof options.resume === 'string' && options.resume.trim().length > 0,
+	        environmentVariableCount: envKeys.length,
+	        environmentVariableKeys: envKeys,
+	      });
 
-      const { directory, sessionId, machineId, approvedNewDirectoryCreation = true } = options;
-      let directoryCreated = false;
+	      const { directory, sessionId, machineId, approvedNewDirectoryCreation = true, resume } = options;
+	      const normalizedResume = typeof resume === 'string' ? resume.trim() : '';
+	      if (normalizedResume && !supportsVendorResume(options.agent)) {
+	        return {
+	          type: 'error',
+	          errorMessage: `Resume is not supported for agent '${options.agent ?? 'claude'}'. (Upstream supports Claude vendor resume only.)`,
+	        };
+	      }
+	      let directoryCreated = false;
 
       let codexHomeDirCleanup: (() => void) | null = null;
       let codexHomeDirCleanupArmed = false;
@@ -592,7 +601,10 @@ export async function startDaemon(): Promise<void> {
 	            directory,
 	            extraEnv: extraEnvForChild,
 	            tmuxCommandEnv,
-	            extraArgs: terminalRuntimeArgs,
+	            extraArgs: [
+	              ...terminalRuntimeArgs,
+	              ...(normalizedResume ? ['--resume', normalizedResume] : []),
+	            ],
 	          });
 	          const tmux = new TmuxUtilities(resolvedTmuxSessionName, tmuxCommandEnv);
 
@@ -698,25 +710,29 @@ export async function startDaemon(): Promise<void> {
                 errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
               };
           }
-          const args = [
-            agentCommand,
-            '--happy-starting-mode', 'remote',
-            '--started-by', 'daemon'
-          ];
+	          const args = [
+	            agentCommand,
+	            '--happy-starting-mode', 'remote',
+	            '--started-by', 'daemon'
+	          ];
 
-          if (tmuxRequested) {
-            const reason = tmuxFallbackReason ?? 'tmux was not used';
-            args.push(
-              '--happy-terminal-mode',
-              'plain',
+	          if (tmuxRequested) {
+	            const reason = tmuxFallbackReason ?? 'tmux was not used';
+	            args.push(
+	              '--happy-terminal-mode',
+	              'plain',
               '--happy-terminal-requested',
               'tmux',
               '--happy-terminal-fallback-reason',
-              reason,
-            );
-          }
+	              reason,
+	            );
+	          }
 
-          // Note: sessionId is not currently used to resume sessions; each spawn creates a new session.
+	          if (normalizedResume) {
+	            args.push('--resume', normalizedResume);
+	          }
+
+	          // NOTE: sessionId is reserved for future Happy session resume; we currently ignore it.
 	          const happyProcess = spawnHappyCLI(args, {
 	            cwd: directory,
 	            detached: true,  // Sessions stay alive when daemon stops
@@ -727,9 +743,9 @@ export async function startDaemon(): Promise<void> {
 	            }
 	          });
 
-          // Log output for debugging
-          if (process.env.DEBUG) {
-            happyProcess.stdout?.on('data', (data) => {
+	          // Log output for debugging
+	          if (process.env.DEBUG) {
+	            happyProcess.stdout?.on('data', (data) => {
               logger.debug(`[DAEMON RUN] Child stdout: ${data.toString()}`);
             });
             happyProcess.stderr?.on('data', (data) => {
