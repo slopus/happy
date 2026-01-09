@@ -633,6 +633,8 @@ class Sync {
                 createdAt: session.createdAt,
                 updatedAt: session.updatedAt,
                 owner: share.sharedBy.id, // Mark the actual owner
+                ownerProfile: share.sharedBy, // Include owner profile information
+                accessLevel: share.accessLevel, // Add access level
                 lastMessage: null
             };
             decryptedSessions.push(processedSession);

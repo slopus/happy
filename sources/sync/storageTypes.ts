@@ -82,6 +82,16 @@ export interface Session {
         contextSize: number;
         timestamp: number;
     } | null;
+    // Sharing-related fields
+    owner?: string; // User ID of the session owner (for shared sessions)
+    ownerProfile?: {
+        id: string;
+        username: string;
+        firstName: string | null;
+        lastName: string | null;
+        avatar: string | null;
+    }; // Owner profile information (for shared sessions)
+    accessLevel?: 'view' | 'edit' | 'admin'; // Access level for shared sessions
 }
 
 export interface DecryptedMessage {
