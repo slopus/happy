@@ -217,21 +217,14 @@ export interface PublicShareBlockedUser {
  *
  * @remarks
  * Used when sharing a session with a specific user. The user must be a friend
- * of the session owner. The `encryptedDataKey` is the session's data encryption
- * key encrypted with the recipient's public key.
+ * of the session owner. The server will handle encryption of the data key with
+ * the recipient's public key.
  */
 export interface CreateSessionShareRequest {
     /** ID of the user to share with */
     userId: string;
     /** Access level to grant */
     accessLevel: ShareAccessLevel;
-    /**
-     * Session data encryption key, encrypted with recipient's public key
-     *
-     * @remarks
-     * Base64 encoded. This allows the recipient to decrypt the session data.
-     */
-    encryptedDataKey: string;
 }
 
 /** Response containing a single session share */
