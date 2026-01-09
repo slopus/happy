@@ -404,7 +404,9 @@ export const pt: TranslationStructure = {
         deleteSessionWarning: 'Esta ação não pode ser desfeita. Todas as mensagens e dados associados a esta sessão serão excluídos permanentemente.',
         failedToDeleteSession: 'Falha ao excluir sessão',
         sessionDeleted: 'Sessão excluída com sucesso',
-        
+        manageSharing: 'Gerenciar compartilhamento',
+        manageSharingSubtitle: 'Compartilhe esta sessão com amigos ou crie um link público',
+
     },
 
     components: {
@@ -900,6 +902,9 @@ export const pt: TranslationStructure = {
         usageCount: 'Quantidade de usos',
         usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} usos`,
         usageCountUnlimited: ({ count }: { count: number }) => `${count} usos`,
+        directSharing: 'Compartilhamento direto',
+        publicLinkActive: 'Link público ativo',
+        createPublicLink: 'Criar link público',
     },
 
     usage: {

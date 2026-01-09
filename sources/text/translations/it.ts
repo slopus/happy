@@ -401,7 +401,9 @@ export const it: TranslationStructure = {
         deleteSessionWarning: 'Questa azione non può essere annullata. Tutti i messaggi e i dati associati a questa sessione verranno eliminati definitivamente.',
         failedToDeleteSession: 'Impossibile eliminare la sessione',
         sessionDeleted: 'Sessione eliminata con successo',
-        
+        manageSharing: 'Gestisci condivisione',
+        manageSharingSubtitle: 'Condividi questa sessione con amici o crea un link pubblico',
+
     },
 
     components: {
@@ -893,6 +895,9 @@ export const it: TranslationStructure = {
         usageCount: 'Numero di utilizzi',
         usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} utilizzi`,
         usageCountUnlimited: ({ count }: { count: number }) => `${count} utilizzi`,
+        directSharing: 'Condivisione diretta',
+        publicLinkActive: 'Link pubblico attivo',
+        createPublicLink: 'Crea link pubblico',
     },
 
     usage: {

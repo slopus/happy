@@ -404,6 +404,8 @@ export const ja: TranslationStructure = {
         deleteSessionWarning: 'この操作は取り消せません。このセッションに関連するすべてのメッセージとデータが完全に削除されます。',
         failedToDeleteSession: 'セッションの削除に失敗しました',
         sessionDeleted: 'セッションが正常に削除されました',
+        manageSharing: '共有を管理',
+        manageSharingSubtitle: '友達とセッションを共有するか、公開リンクを作成',
 
     },
 
@@ -896,6 +898,9 @@ export const ja: TranslationStructure = {
         usageCount: '使用回数',
         usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} 回`,
         usageCountUnlimited: ({ count }: { count: number }) => `${count} 回`,
+        directSharing: '直接共有',
+        publicLinkActive: '公開リンク有効',
+        createPublicLink: '公開リンクを作成',
     },
 
     usage: {

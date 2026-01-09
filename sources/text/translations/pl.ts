@@ -415,6 +415,8 @@ export const pl: TranslationStructure = {
         deleteSessionWarning: 'Ta operacja jest nieodwracalna. Wszystkie wiadomości i dane powiązane z tą sesją zostaną trwale usunięte.',
         failedToDeleteSession: 'Nie udało się usunąć sesji',
         sessionDeleted: 'Sesja została pomyślnie usunięta',
+        manageSharing: 'Zarządzanie udostępnianiem',
+        manageSharingSubtitle: 'Udostępnij tę sesję znajomym lub utwórz publiczny link',
     },
 
     components: {
@@ -924,6 +926,9 @@ export const pl: TranslationStructure = {
         usageCount: 'Liczba użyć',
         usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} użyć`,
         usageCountUnlimited: ({ count }: { count: number }) => `${count} użyć`,
+        directSharing: 'Bezpośrednie udostępnianie',
+        publicLinkActive: 'Link publiczny aktywny',
+        createPublicLink: 'Utwórz link publiczny',
     },
 
     usage: {

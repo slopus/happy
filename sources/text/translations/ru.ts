@@ -350,6 +350,8 @@ export const ru: TranslationStructure = {
         deleteSessionWarning: 'Это действие нельзя отменить. Все сообщения и данные, связанные с этой сессией, будут удалены навсегда.',
         failedToDeleteSession: 'Не удалось удалить сессию',
         sessionDeleted: 'Сессия успешно удалена',
+        manageSharing: 'Управление доступом',
+        manageSharingSubtitle: 'Поделиться сессией с друзьями или создать публичную ссылку',
     },
 
     components: {
@@ -923,6 +925,9 @@ export const ru: TranslationStructure = {
         usageCount: 'Количество использований',
         usageCountWithMax: ({ count, max }: { count: number; max: number }) => `${count} / ${max} использований`,
         usageCountUnlimited: ({ count }: { count: number }) => `${count} использований`,
+        directSharing: 'Прямой доступ',
+        publicLinkActive: 'Публичная ссылка активна',
+        createPublicLink: 'Создать публичную ссылку',
     },
 
     usage: {
