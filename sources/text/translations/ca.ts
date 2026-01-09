@@ -325,6 +325,10 @@ export const ca: TranslationStructure = {
             giveConsent: 'Dono el meu consentiment per al registre d\'accés',
             shareWithFriends: 'Compartir només amb amics',
             friendsOnly: 'Només es poden afegir amics',
+            noShares: 'Encara no hi ha comparticions',
+            viewOnlyDescription: 'Pot veure missatges i metadades',
+            canEditDescription: 'Pot enviar missatges però no gestionar la compartició',
+            canManageDescription: 'Accés complet incloent la gestió de compartició',
         },
     },
 

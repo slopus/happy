@@ -325,6 +325,10 @@ export const en = {
             giveConsent: 'I consent to access logging',
             shareWithFriends: 'Share with friends only',
             friendsOnly: 'Only friends can be added',
+            noShares: 'No shares yet',
+            viewOnlyDescription: 'Can view messages and metadata',
+            canEditDescription: 'Can send messages but cannot manage sharing',
+            canManageDescription: 'Full access including sharing management',
         },
     },
 

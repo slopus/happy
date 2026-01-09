@@ -325,6 +325,10 @@ export const ja: TranslationStructure = {
             giveConsent: 'アクセスログの記録に同意します',
             shareWithFriends: '友達のみと共有',
             friendsOnly: '友達のみ追加可能',
+            noShares: 'まだ共有されていません',
+            viewOnlyDescription: 'メッセージとメタデータを閲覧可能',
+            canEditDescription: 'メッセージ送信可能、共有管理は不可',
+            canManageDescription: '共有管理を含む全てのアクセス権限',
         },
     },
 

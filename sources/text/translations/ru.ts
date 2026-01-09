@@ -417,6 +417,10 @@ export const ru: TranslationStructure = {
             giveConsent: 'Я согласен на логирование доступа',
             shareWithFriends: 'Поделиться только с друзьями',
             friendsOnly: 'Можно добавить только друзей',
+            noShares: 'Пока нет общего доступа',
+            viewOnlyDescription: 'Может просматривать сообщения и метаданные',
+            canEditDescription: 'Может отправлять сообщения, но не управлять доступом',
+            canManageDescription: 'Полный доступ, включая управление общим доступом',
         },
     },
 
