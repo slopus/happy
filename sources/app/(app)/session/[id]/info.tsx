@@ -66,9 +66,12 @@ function SessionInfoContent({ session }: { session: Session }) {
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
-    
+
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
+
+    // Check if user has admin access for sharing management
+    const canManageSharing = !session.accessLevel || session.accessLevel === 'admin';
 
     const handleCopySessionId = useCallback(async () => {
         if (!session) return;
@@ -257,12 +260,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
                         />
                     )}
-                    <Item
-                        title={t('sessionInfo.manageSharing')}
-                        subtitle={t('sessionInfo.manageSharingSubtitle')}
-                        icon={<Ionicons name="share-outline" size={29} color="#007AFF" />}
-                        onPress={() => router.push(`/session/${session.id}/sharing`)}
-                    />
+                    {canManageSharing && (
+                        <Item
+                            title={t('sessionInfo.manageSharing')}
+                            subtitle={t('sessionInfo.manageSharingSubtitle')}
+                            icon={<Ionicons name="share-outline" size={29} color="#007AFF" />}
+                            onPress={() => router.push(`/session/${session.id}/sharing`)}
+                        />
+                    )}
                     {sessionStatus.isConnected && (
                         <Item
                             title={t('sessionInfo.archiveSession')}
