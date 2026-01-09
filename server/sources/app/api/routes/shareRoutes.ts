@@ -8,6 +8,7 @@ import { PROFILE_SELECT } from "@/app/share/types";
 import { eventRouter, buildSessionSharedUpdate, buildSessionShareUpdatedUpdate, buildSessionShareRevokedUpdate } from "@/app/events/eventRouter";
 import { allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
+import { encryptDataKeyForRecipient } from "@/app/share/encryptDataKey";
 
 /**
  * Session sharing API routes
@@ -71,14 +72,13 @@ export function shareRoutes(app: Fastify) {
             }),
             body: z.object({
                 userId: z.string(),
-                accessLevel: z.enum(['view', 'edit', 'admin']),
-                encryptedDataKey: z.string() // base64 encoded
+                accessLevel: z.enum(['view', 'edit', 'admin'])
             })
         }
     }, async (request, reply) => {
         const ownerId = request.userId;
         const { sessionId } = request.params;
-        const { userId, accessLevel, encryptedDataKey } = request.body;
+        const { userId, accessLevel } = request.body;
 
         // Only owner or admin can create shares
         if (!await canManageSharing(ownerId, sessionId)) {
@@ -90,9 +90,10 @@ export function shareRoutes(app: Fastify) {
             return reply.code(400).send({ error: 'Cannot share with yourself' });
         }
 
-        // Verify target user exists
+        // Verify target user exists and get their public key
         const targetUser = await db.account.findUnique({
-            where: { id: userId }
+            where: { id: userId },
+            select: { id: true, publicKey: true }
         });
 
         if (!targetUser) {
@@ -103,6 +104,27 @@ export function shareRoutes(app: Fastify) {
         if (!await areFriends(ownerId, userId)) {
             return reply.code(403).send({ error: 'Can only share with friends' });
         }
+
+        // Get session data encryption key
+        const session = await db.session.findUnique({
+            where: { id: sessionId },
+            select: { dataEncryptionKey: true }
+        });
+
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        if (!session.dataEncryptionKey) {
+            return reply.code(400).send({ error: 'Session has no encryption key' });
+        }
+
+        // Encrypt session data key with recipient's public key
+        const recipientPublicKey = Buffer.from(targetUser.publicKey, 'base64');
+        const encryptedDataKey = encryptDataKeyForRecipient(
+            session.dataEncryptionKey,
+            recipientPublicKey
+        );
 
         // Create or update share
         const share = await db.sessionShare.upsert({
@@ -117,11 +139,11 @@ export function shareRoutes(app: Fastify) {
                 sharedByUserId: ownerId,
                 sharedWithUserId: userId,
                 accessLevel: accessLevel as ShareAccessLevel,
-                encryptedDataKey: new Uint8Array(Buffer.from(encryptedDataKey, 'base64'))
+                encryptedDataKey
             },
             update: {
                 accessLevel: accessLevel as ShareAccessLevel,
-                encryptedDataKey: new Uint8Array(Buffer.from(encryptedDataKey, 'base64'))
+                encryptedDataKey
             },
             include: {
                 sharedWithUser: {
