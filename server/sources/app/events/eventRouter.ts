@@ -152,6 +152,50 @@ export type UpdateEvent = {
         value: string | null; // null indicates deletion
         version: number; // -1 for deleted keys
     }>;
+} | {
+    type: 'session-shared';
+    sessionId: string;
+    shareId: string;
+    sharedBy: {
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+        username: string | null;
+        avatar: any | null;
+    };
+    accessLevel: 'view' | 'edit' | 'admin';
+    encryptedDataKey: string;
+    createdAt: number;
+} | {
+    type: 'session-share-updated';
+    sessionId: string;
+    shareId: string;
+    accessLevel: 'view' | 'edit' | 'admin';
+    updatedAt: number;
+} | {
+    type: 'session-share-revoked';
+    sessionId: string;
+    shareId: string;
+} | {
+    type: 'public-share-created';
+    sessionId: string;
+    publicShareId: string;
+    token: string;
+    expiresAt: number | null;
+    maxUses: number | null;
+    isConsentRequired: boolean;
+    createdAt: number;
+} | {
+    type: 'public-share-updated';
+    sessionId: string;
+    publicShareId: string;
+    expiresAt: number | null;
+    maxUses: number | null;
+    isConsentRequired: boolean;
+    updatedAt: number;
+} | {
+    type: 'public-share-deleted';
+    sessionId: string;
 };
 
 // === EPHEMERAL EVENT TYPES (Transient) ===
@@ -627,6 +671,142 @@ export function buildKVBatchUpdateUpdate(
         body: {
             t: 'kv-batch-update',
             changes
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildSessionSharedUpdate(share: {
+    id: string;
+    sessionId: string;
+    sharedByUser: {
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+        username: string | null;
+        avatar: any | null;
+    };
+    accessLevel: 'view' | 'edit' | 'admin';
+    encryptedDataKey: Uint8Array;
+    createdAt: Date;
+}, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'session-shared',
+            sessionId: share.sessionId,
+            shareId: share.id,
+            sharedBy: share.sharedByUser,
+            accessLevel: share.accessLevel,
+            encryptedDataKey: Buffer.from(share.encryptedDataKey).toString('base64'),
+            createdAt: share.createdAt.getTime()
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildSessionShareUpdatedUpdate(
+    shareId: string,
+    sessionId: string,
+    accessLevel: 'view' | 'edit' | 'admin',
+    updatedAt: Date,
+    updateSeq: number,
+    updateId: string
+): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'session-share-updated',
+            sessionId,
+            shareId,
+            accessLevel,
+            updatedAt: updatedAt.getTime()
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildSessionShareRevokedUpdate(
+    shareId: string,
+    sessionId: string,
+    updateSeq: number,
+    updateId: string
+): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'session-share-revoked',
+            sessionId,
+            shareId
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildPublicShareCreatedUpdate(publicShare: {
+    id: string;
+    sessionId: string;
+    token: string;
+    expiresAt: Date | null;
+    maxUses: number | null;
+    isConsentRequired: boolean;
+    createdAt: Date;
+}, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'public-share-created',
+            sessionId: publicShare.sessionId,
+            publicShareId: publicShare.id,
+            token: publicShare.token,
+            expiresAt: publicShare.expiresAt?.getTime() ?? null,
+            maxUses: publicShare.maxUses,
+            isConsentRequired: publicShare.isConsentRequired,
+            createdAt: publicShare.createdAt.getTime()
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildPublicShareUpdatedUpdate(publicShare: {
+    id: string;
+    sessionId: string;
+    expiresAt: Date | null;
+    maxUses: number | null;
+    isConsentRequired: boolean;
+    updatedAt: Date;
+}, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'public-share-updated',
+            sessionId: publicShare.sessionId,
+            publicShareId: publicShare.id,
+            expiresAt: publicShare.expiresAt?.getTime() ?? null,
+            maxUses: publicShare.maxUses,
+            isConsentRequired: publicShare.isConsentRequired,
+            updatedAt: publicShare.updatedAt.getTime()
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildPublicShareDeletedUpdate(
+    sessionId: string,
+    updateSeq: number,
+    updateId: string
+): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'public-share-deleted',
+            sessionId
         },
         createdAt: Date.now()
     };
