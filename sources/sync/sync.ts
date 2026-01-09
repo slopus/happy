@@ -554,6 +554,25 @@ class Sync {
         return this.credentials;
     }
 
+    public getUserID(): string {
+        return this.serverID;
+    }
+
+    public getSessionDataKey(sessionId: string): Uint8Array | null {
+        const sessionEncryption = this.encryption.getSessionEncryption(sessionId);
+        if (!sessionEncryption) {
+            return null;
+        }
+        // Access the private encryptor field through the public interface
+        // SessionEncryption has the data key through its encryptor
+        // For now, we'll need to expose this through the Encryption class
+        return null; // TODO: Expose session data key through Encryption API
+    }
+
+    public getUserPublicKey(): Uint8Array {
+        return this.encryption.contentDataKey;
+    }
+
     // Artifact methods
     public fetchArtifactsList = async (): Promise<void> => {
         log.log('📦 fetchArtifactsList: Starting artifact sync');
