@@ -57,6 +57,9 @@ export const pt: TranslationStructure = {
         fileViewer: 'Visualizador de arquivos',
         loading: 'Carregando...',
         retry: 'Tentar novamente',
+        share: 'Compartilhar',
+        sharing: 'Compartilhando',
+        sharedSessions: 'Sessões compartilhadas',
     },
 
     profile: {
@@ -246,6 +249,12 @@ export const pt: TranslationStructure = {
         failedToRemoveFriend: 'Falha ao remover amigo',
         searchFailed: 'A busca falhou. Por favor, tente novamente.',
         failedToSendRequest: 'Falha ao enviar solicitação de amizade',
+        cannotShareWithSelf: 'Não é possível compartilhar consigo mesmo',
+        canOnlyShareWithFriends: 'Só é possível compartilhar com amigos',
+        shareNotFound: 'Compartilhamento não encontrado',
+        publicShareNotFound: 'Link público não encontrado ou expirado',
+        consentRequired: 'Consentimento necessário para acesso',
+        maxUsesReached: 'Máximo de usos atingido',
     },
 
     newSession: {
@@ -292,6 +301,31 @@ export const pt: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Digite uma mensagem ...',
+        sharing: {
+            title: 'Compartilhamento de sessão',
+            shareWith: 'Compartilhar com...',
+            sharedWith: 'Compartilhado com',
+            shareSession: 'Compartilhar sessão',
+            stopSharing: 'Parar de compartilhar',
+            accessLevel: 'Nível de acesso',
+            publicLink: 'Link público',
+            createPublicLink: 'Criar link público',
+            deletePublicLink: 'Excluir link público',
+            copyLink: 'Copiar link',
+            linkCopied: 'Link copiado!',
+            viewOnly: 'Somente visualização',
+            canEdit: 'Pode editar',
+            canManage: 'Pode gerenciar',
+            sharedBy: ({ name }: { name: string }) => `Compartilhado por ${name}`,
+            expiresAt: ({ date }: { date: string }) => `Expira em: ${date}`,
+            maxUses: ({ count, used }: { count: number; used: number }) => `${used} / ${count} usos`,
+            unlimited: 'Ilimitado',
+            requireConsent: 'Exigir consentimento para registro de acesso',
+            consentRequired: 'Este link requer seu consentimento para registrar informações de acesso (endereço IP e user agent)',
+            giveConsent: 'Eu consinto com o registro de acesso',
+            shareWithFriends: 'Compartilhar apenas com amigos',
+            friendsOnly: 'Apenas amigos podem ser adicionados',
+        },
     },
 
     commandPalette: {

@@ -68,6 +68,9 @@ export const ru: TranslationStructure = {
         fileViewer: 'Просмотр файла',
         loading: 'Загрузка...',
         retry: 'Повторить',
+        share: 'Поделиться',
+        sharing: 'Общий доступ',
+        sharedSessions: 'Общие сессии',
     },
 
     connect: {
@@ -229,6 +232,12 @@ export const ru: TranslationStructure = {
         failedToRemoveFriend: 'Не удалось удалить друга',
         searchFailed: 'Поиск не удался. Пожалуйста, попробуйте снова.',
         failedToSendRequest: 'Не удалось отправить запрос в друзья',
+        cannotShareWithSelf: 'Нельзя поделиться с самим собой',
+        canOnlyShareWithFriends: 'Можно делиться только с друзьями',
+        shareNotFound: 'Общий доступ не найден',
+        publicShareNotFound: 'Публичная ссылка не найдена или истекла',
+        consentRequired: 'Требуется согласие для доступа',
+        maxUsesReached: 'Достигнут лимит использований',
     },
 
     newSession: {
@@ -384,6 +393,31 @@ export const ru: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Введите сообщение...',
+        sharing: {
+            title: 'Общий доступ к сессии',
+            shareWith: 'Поделиться с...',
+            sharedWith: 'Доступ предоставлен',
+            shareSession: 'Поделиться сессией',
+            stopSharing: 'Прекратить доступ',
+            accessLevel: 'Уровень доступа',
+            publicLink: 'Публичная ссылка',
+            createPublicLink: 'Создать публичную ссылку',
+            deletePublicLink: 'Удалить публичную ссылку',
+            copyLink: 'Скопировать ссылку',
+            linkCopied: 'Ссылка скопирована!',
+            viewOnly: 'Только просмотр',
+            canEdit: 'Редактирование',
+            canManage: 'Управление',
+            sharedBy: ({ name }: { name: string }) => `Поделился ${name}`,
+            expiresAt: ({ date }: { date: string }) => `Истекает: ${date}`,
+            maxUses: ({ count, used }: { count: number; used: number }) => `${used} / ${count} использований`,
+            unlimited: 'Без ограничений',
+            requireConsent: 'Требовать согласие на логирование доступа',
+            consentRequired: 'Эта ссылка требует вашего согласия на запись информации о доступе (IP-адрес и user agent)',
+            giveConsent: 'Я согласен на логирование доступа',
+            shareWithFriends: 'Поделиться только с друзьями',
+            friendsOnly: 'Можно добавить только друзей',
+        },
     },
 
     commandPalette: {

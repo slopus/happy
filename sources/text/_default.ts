@@ -57,6 +57,9 @@ export const en = {
         fileViewer: 'File Viewer',
         loading: 'Loading...',
         retry: 'Retry',
+        share: 'Share',
+        sharing: 'Sharing',
+        sharedSessions: 'Shared Sessions',
     },
 
     profile: {
@@ -246,6 +249,12 @@ export const en = {
         failedToRemoveFriend: 'Failed to remove friend',
         searchFailed: 'Search failed. Please try again.',
         failedToSendRequest: 'Failed to send friend request',
+        cannotShareWithSelf: 'Cannot share with yourself',
+        canOnlyShareWithFriends: 'Can only share with friends',
+        shareNotFound: 'Share not found',
+        publicShareNotFound: 'Public share not found or expired',
+        consentRequired: 'Consent required for access',
+        maxUsesReached: 'Maximum uses reached',
     },
 
     newSession: {
@@ -292,6 +301,31 @@ export const en = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
+        sharing: {
+            title: 'Session Sharing',
+            shareWith: 'Share with...',
+            sharedWith: 'Shared with',
+            shareSession: 'Share Session',
+            stopSharing: 'Stop Sharing',
+            accessLevel: 'Access Level',
+            publicLink: 'Public Link',
+            createPublicLink: 'Create Public Link',
+            deletePublicLink: 'Delete Public Link',
+            copyLink: 'Copy Link',
+            linkCopied: 'Link copied!',
+            viewOnly: 'View Only',
+            canEdit: 'Can Edit',
+            canManage: 'Can Manage',
+            sharedBy: ({ name }: { name: string }) => `Shared by ${name}`,
+            expiresAt: ({ date }: { date: string }) => `Expires: ${date}`,
+            maxUses: ({ count, used }: { count: number; used: number }) => `${used} / ${count} uses`,
+            unlimited: 'Unlimited',
+            requireConsent: 'Require consent for access logging',
+            consentRequired: 'This link requires your consent to log access information (IP address and user agent)',
+            giveConsent: 'I consent to access logging',
+            shareWithFriends: 'Share with friends only',
+            friendsOnly: 'Only friends can be added',
+        },
     },
 
     commandPalette: {

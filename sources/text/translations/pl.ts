@@ -68,6 +68,9 @@ export const pl: TranslationStructure = {
         fileViewer: 'Przeglądarka plików',
         loading: 'Ładowanie...',
         retry: 'Ponów',
+        share: 'Udostępnij',
+        sharing: 'Udostępnianie',
+        sharedSessions: 'Udostępnione sesje',
     },
 
     profile: {
@@ -257,6 +260,12 @@ export const pl: TranslationStructure = {
         failedToRemoveFriend: 'Nie udało się usunąć przyjaciela',
         searchFailed: 'Wyszukiwanie nie powiodło się. Spróbuj ponownie.',
         failedToSendRequest: 'Nie udało się wysłać zaproszenia do znajomych',
+        cannotShareWithSelf: 'Nie możesz udostępnić sobie',
+        canOnlyShareWithFriends: 'Można udostępniać tylko znajomym',
+        shareNotFound: 'Udostępnienie nie zostało znalezione',
+        publicShareNotFound: 'Publiczne udostępnienie nie zostało znalezione lub wygasło',
+        consentRequired: 'Wymagana zgoda na dostęp',
+        maxUsesReached: 'Osiągnięto maksymalną liczbę użyć',
     },
 
     newSession: {
@@ -303,6 +312,31 @@ export const pl: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Wpisz wiadomość...',
+        sharing: {
+            title: 'Udostępnianie sesji',
+            shareWith: 'Udostępnij...',
+            sharedWith: 'Udostępniono',
+            shareSession: 'Udostępnij sesję',
+            stopSharing: 'Zatrzymaj udostępnianie',
+            accessLevel: 'Poziom dostępu',
+            publicLink: 'Link publiczny',
+            createPublicLink: 'Utwórz link publiczny',
+            deletePublicLink: 'Usuń link publiczny',
+            copyLink: 'Kopiuj link',
+            linkCopied: 'Link skopiowany!',
+            viewOnly: 'Tylko podgląd',
+            canEdit: 'Może edytować',
+            canManage: 'Może zarządzać',
+            sharedBy: ({ name }: { name: string }) => `Udostępnione przez ${name}`,
+            expiresAt: ({ date }: { date: string }) => `Wygasa: ${date}`,
+            maxUses: ({ count, used }: { count: number; used: number }) => `${used} / ${count} użyć`,
+            unlimited: 'Bez limitu',
+            requireConsent: 'Wymagaj zgody na logowanie dostępu',
+            consentRequired: 'Ten link wymaga Twojej zgody na rejestrowanie informacji o dostępie (adres IP i user agent)',
+            giveConsent: 'Wyrażam zgodę na logowanie dostępu',
+            shareWithFriends: 'Udostępnij tylko znajomym',
+            friendsOnly: 'Można dodać tylko znajomych',
+        },
     },
 
     commandPalette: {

@@ -60,6 +60,9 @@ export const ja: TranslationStructure = {
         fileViewer: 'ファイルビューアー',
         loading: '読み込み中...',
         retry: '再試行',
+        share: '共有',
+        sharing: '共有中',
+        sharedSessions: '共有セッション',
     },
 
     profile: {
@@ -246,6 +249,12 @@ export const ja: TranslationStructure = {
         failedToRemoveFriend: '友達の削除に失敗しました',
         searchFailed: '検索に失敗しました。再試行してください。',
         failedToSendRequest: '友達リクエストの送信に失敗しました',
+        cannotShareWithSelf: '自分自身とは共有できません',
+        canOnlyShareWithFriends: '友達とのみ共有できます',
+        shareNotFound: '共有が見つかりません',
+        publicShareNotFound: '公開共有が見つからないか期限切れです',
+        consentRequired: 'アクセスには同意が必要です',
+        maxUsesReached: '最大使用回数に達しました',
     },
 
     newSession: {
@@ -292,6 +301,31 @@ export const ja: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'メッセージを入力...',
+        sharing: {
+            title: 'セッション共有',
+            shareWith: '共有先...',
+            sharedWith: '共有中',
+            shareSession: 'セッションを共有',
+            stopSharing: '共有を停止',
+            accessLevel: 'アクセスレベル',
+            publicLink: '公開リンク',
+            createPublicLink: '公開リンクを作成',
+            deletePublicLink: '公開リンクを削除',
+            copyLink: 'リンクをコピー',
+            linkCopied: 'リンクをコピーしました！',
+            viewOnly: '閲覧のみ',
+            canEdit: '編集可能',
+            canManage: '管理可能',
+            sharedBy: ({ name }: { name: string }) => `${name}さんが共有`,
+            expiresAt: ({ date }: { date: string }) => `有効期限: ${date}`,
+            maxUses: ({ count, used }: { count: number; used: number }) => `${used} / ${count} 回使用`,
+            unlimited: '無制限',
+            requireConsent: 'アクセスログの記録に同意を求める',
+            consentRequired: 'このリンクはアクセス情報（IPアドレスとユーザーエージェント）のログ記録への同意が必要です',
+            giveConsent: 'アクセスログの記録に同意します',
+            shareWithFriends: '友達のみと共有',
+            friendsOnly: '友達のみ追加可能',
+        },
     },
 
     commandPalette: {

@@ -59,6 +59,9 @@ export const zhHans: TranslationStructure = {
         fileViewer: '文件查看器',
         loading: '加载中...',
         retry: '重试',
+        share: '分享',
+        sharing: '分享中',
+        sharedSessions: '共享会话',
     },
 
     profile: {
@@ -248,6 +251,12 @@ export const zhHans: TranslationStructure = {
         failedToRemoveFriend: '删除好友失败',
         searchFailed: '搜索失败。请重试。',
         failedToSendRequest: '发送好友请求失败',
+        cannotShareWithSelf: '不能与自己分享',
+        canOnlyShareWithFriends: '只能与好友分享',
+        shareNotFound: '未找到分享',
+        publicShareNotFound: '公开分享未找到或已过期',
+        consentRequired: '需要同意才能访问',
+        maxUsesReached: '已达到最大使用次数',
     },
 
     newSession: {
@@ -294,6 +303,31 @@ export const zhHans: TranslationStructure = {
 
     session: {
         inputPlaceholder: '输入消息...',
+        sharing: {
+            title: '会话共享',
+            shareWith: '分享给...',
+            sharedWith: '已分享给',
+            shareSession: '分享会话',
+            stopSharing: '停止分享',
+            accessLevel: '访问级别',
+            publicLink: '公开链接',
+            createPublicLink: '创建公开链接',
+            deletePublicLink: '删除公开链接',
+            copyLink: '复制链接',
+            linkCopied: '链接已复制！',
+            viewOnly: '仅查看',
+            canEdit: '可编辑',
+            canManage: '可管理',
+            sharedBy: ({ name }: { name: string }) => `由 ${name} 分享`,
+            expiresAt: ({ date }: { date: string }) => `过期时间：${date}`,
+            maxUses: ({ count, used }: { count: number; used: number }) => `${used} / ${count} 次使用`,
+            unlimited: '无限制',
+            requireConsent: '需要同意访问日志记录',
+            consentRequired: '此链接需要您同意记录访问信息（IP 地址和用户代理）',
+            giveConsent: '我同意访问日志记录',
+            shareWithFriends: '仅与好友分享',
+            friendsOnly: '只能添加好友',
+        },
     },
 
     commandPalette: {
