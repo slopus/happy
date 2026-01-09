@@ -66,7 +66,7 @@ export async function getSessionShares(
  *
  * @param credentials - User authentication credentials
  * @param sessionId - ID of the session to share
- * @param request - Share creation request containing userId, accessLevel, and encryptedDataKey
+ * @param request - Share creation request containing userId and accessLevel
  * @returns The created or updated share
  * @throws {SessionSharingError} If sharing fails (not friends, forbidden, etc.)
  * @throws {Error} For other API errors
@@ -74,10 +74,10 @@ export async function getSessionShares(
  * @remarks
  * Only the session owner or users with admin access can create shares.
  * The target user must be a friend of the owner. If a share already exists
- * for the user, it will be updated with the new access level and encrypted key.
+ * for the user, it will be updated with the new access level.
  *
- * The `encryptedDataKey` should be the session's data encryption key encrypted
- * with the recipient's public key, allowing them to decrypt the session data.
+ * The server will automatically encrypt the session's data encryption key with
+ * the recipient's public key, allowing them to decrypt the session data.
  */
 export async function createSessionShare(
     credentials: AuthCredentials,
