@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { normalizeRawMessage } from './typesRaw';
 
 /**
  * WOLOG Content Normalization Tests
@@ -1390,6 +1391,101 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 expect((result.data.content.data as any).userType).toBe('external');
                 expect((result.data.content.data as any).cwd).toBe('/path/to/project');
                 expect((result.data.content.data as any).sessionId).toBe('session-123');
+            }
+        });
+
+        it('END-TO-END: preserves unknown fields through normalizeRawMessage()', () => {
+            const messageWithUnknownFields = {
+                role: 'agent' as const,
+                content: {
+                    type: 'output' as const,
+                    data: {
+                        type: 'assistant' as const,
+                        message: {
+                            role: 'assistant' as const,
+                            model: 'claude-3',
+                            content: [
+                                {
+                                    type: 'thinking' as const,
+                                    thinking: 'Extended thinking reasoning',
+                                    signature: 'EqkCCkYICxgCKkB...',  // Unknown field from Claude API
+                                    customField: 'test_value'          // Unknown field
+                                },
+                                {
+                                    type: 'text' as const,
+                                    text: 'Final response',
+                                    metadata: { timestamp: 123 }       // Unknown field
+                                }
+                            ]
+                        },
+                        uuid: 'wolog-e2e-test',
+                        userType: 'external'  // CLI metadata (unknown to schema definition)
+                    }
+                }
+            };
+
+            const normalized = normalizeRawMessage('msg-1', null, Date.now(), messageWithUnknownFields);
+
+            expect(normalized).toBeTruthy();
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content.length).toBe(2);
+
+                // Verify thinking content preserved unknown fields
+                const thinkingItem = normalized.content[0];
+                expect(thinkingItem.type).toBe('thinking');
+                if (thinkingItem.type === 'thinking') {
+                    expect(thinkingItem.thinking).toBe('Extended thinking reasoning');
+                    expect((thinkingItem as any).signature).toBe('EqkCCkYICxgCKkB...');
+                    expect((thinkingItem as any).customField).toBe('test_value');
+                }
+
+                // Verify text content preserved unknown fields
+                const textItem = normalized.content[1];
+                expect(textItem.type).toBe('text');
+                if (textItem.type === 'text') {
+                    expect(textItem.text).toBe('Final response');
+                    expect((textItem as any).metadata).toEqual({ timestamp: 123 });
+                }
+            }
+        });
+
+        it('END-TO-END: preserves unknown fields in transformed tool-call through normalizeRawMessage()', () => {
+            const messageWithHyphenatedUnknownFields = {
+                role: 'agent' as const,
+                content: {
+                    type: 'output' as const,
+                    data: {
+                        type: 'assistant' as const,
+                        message: {
+                            role: 'assistant' as const,
+                            model: 'claude-3',
+                            content: [{
+                                type: 'tool-call' as const,
+                                callId: 'e2e-test-call',
+                                name: 'Bash',
+                                input: { command: 'ls' },
+                                executionMetadata: { server: 'remote' },  // Unknown field
+                                timestamp: 1234567890                      // Unknown field
+                            }]
+                        },
+                        uuid: 'wolog-transform-e2e'
+                    }
+                }
+            };
+
+            const normalized = normalizeRawMessage('msg-2', null, Date.now(), messageWithHyphenatedUnknownFields);
+
+            expect(normalized).toBeTruthy();
+            if (normalized && normalized.role === 'agent') {
+                const toolCallItem = normalized.content[0];
+                expect(toolCallItem.type).toBe('tool-call');
+                if (toolCallItem.type === 'tool-call') {
+                    expect(toolCallItem.id).toBe('e2e-test-call');
+                    expect(toolCallItem.name).toBe('Bash');
+                    // Verify unknown fields preserved through transformation
+                    expect((toolCallItem as any).executionMetadata).toEqual({ server: 'remote' });
+                    expect((toolCallItem as any).timestamp).toBe(1234567890);
+                }
             }
         });
     });

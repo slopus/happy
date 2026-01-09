@@ -379,22 +379,29 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 let content: NormalizedAgentContent[] = [];
                 for (let c of raw.content.data.message.content) {
                     if (c.type === 'text') {
-                        content.push({ type: 'text', text: c.text, uuid: raw.content.data.uuid, parentUUID: raw.content.data.parentUuid ?? null });
+                        content.push({
+                            ...c,  // WOLOG: Preserve all fields including unknown ones
+                            uuid: raw.content.data.uuid,
+                            parentUUID: raw.content.data.parentUuid ?? null
+                        } as NormalizedAgentContent);
                     } else if (c.type === 'thinking') {
-                        content.push({ type: 'thinking', thinking: c.thinking, uuid: raw.content.data.uuid, parentUUID: raw.content.data.parentUuid ?? null });
+                        content.push({
+                            ...c,  // WOLOG: Preserve all fields including unknown ones (signature, etc.)
+                            uuid: raw.content.data.uuid,
+                            parentUUID: raw.content.data.parentUuid ?? null
+                        } as NormalizedAgentContent);
                     } else if (c.type === 'tool_use') {
                         let description: string | null = null;
                         if (typeof c.input === 'object' && c.input !== null && 'description' in c.input && typeof c.input.description === 'string') {
                             description = c.input.description;
                         }
                         content.push({
+                            ...c,  // WOLOG: Preserve all fields including unknown ones
                             type: 'tool-call',
-                            id: c.id,
-                            name: c.name,
-                            input: c.input,
-                            description, uuid: raw.content.data.uuid,
+                            description,
+                            uuid: raw.content.data.uuid,
                             parentUUID: raw.content.data.parentUuid ?? null
-                        });
+                        } as NormalizedAgentContent);
                     }
                 }
                 return {
@@ -457,8 +464,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     for (let c of raw.content.data.message.content) {
                         if (c.type === 'tool_result') {
                             content.push({
+                                ...c,  // WOLOG: Preserve all fields including unknown ones
                                 type: 'tool-result',
-                                tool_use_id: c.tool_use_id,
                                 content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content[0].text),
                                 is_error: c.is_error || false,
                                 uuid: raw.content.data.uuid,
@@ -470,7 +477,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                                     allowedTools: c.permissions.allowedTools,
                                     decision: c.permissions.decision
                                 } : undefined
-                            });
+                            } as NormalizedAgentContent);
                         }
                     }
                 }
