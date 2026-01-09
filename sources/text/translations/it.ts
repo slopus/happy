@@ -870,6 +870,12 @@ export const it: TranslationStructure = {
         cancelRequestConfirm: ({ name }: { name: string }) => `Annullare la tua richiesta di amicizia a ${name}?`,
         denyRequest: 'Rifiuta richiesta',
         nowFriendsWith: ({ name }: { name: string }) => `Ora sei amico di ${name}`,
+        searchFriends: 'Cerca amici',
+        noFriendsFound: 'Nessun amico trovato',
+    },
+
+    sessionSharing: {
+        addShare: 'Aggiungi condivisione',
     },
 
     usage: {

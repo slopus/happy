@@ -878,6 +878,12 @@ export const en = {
         cancelRequestConfirm: ({ name }: { name: string }) => `Cancel your friendship request to ${name}?`,
         denyRequest: 'Deny friendship',
         nowFriendsWith: ({ name }: { name: string }) => `You are now friends with ${name}`,
+        searchFriends: 'Search friends',
+        noFriendsFound: 'No friends found',
+    },
+
+    sessionSharing: {
+        addShare: 'Add Share',
     },
 
     usage: {

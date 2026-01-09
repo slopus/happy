@@ -879,6 +879,12 @@ export const zhHans: TranslationStructure = {
         cancelRequestConfirm: ({ name }: { name: string }) => `取消发送给 ${name} 的好友请求？`,
         denyRequest: '拒绝请求',
         nowFriendsWith: ({ name }: { name: string }) => `您现在与 ${name} 是好友了`,
+        searchFriends: '搜索好友',
+        noFriendsFound: '未找到好友',
+    },
+
+    sessionSharing: {
+        addShare: '添加分享',
     },
 
     usage: {

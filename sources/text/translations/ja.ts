@@ -873,6 +873,12 @@ export const ja: TranslationStructure = {
         cancelRequestConfirm: ({ name }: { name: string }) => `${name}さんへの友達リクエストをキャンセルしますか？`,
         denyRequest: '友達リクエストを拒否',
         nowFriendsWith: ({ name }: { name: string }) => `${name}さんと友達になりました`,
+        searchFriends: '友達を検索',
+        noFriendsFound: '友達が見つかりません',
+    },
+
+    sessionSharing: {
+        addShare: '共有を追加',
     },
 
     usage: {

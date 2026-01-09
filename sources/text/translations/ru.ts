@@ -900,6 +900,12 @@ export const ru: TranslationStructure = {
         cancelRequestConfirm: ({ name }: { name: string }) => `Отменить ваш запрос в друзья к ${name}?`,
         denyRequest: 'Отклонить запрос',
         nowFriendsWith: ({ name }: { name: string }) => `Теперь вы друзья с ${name}`,
+        searchFriends: 'Поиск друзей',
+        noFriendsFound: 'Друзья не найдены',
+    },
+
+    sessionSharing: {
+        addShare: 'Добавить доступ',
     },
 
     usage: {
