@@ -1352,6 +1352,13 @@ export const ru: TranslationStructure = {
         createPublicLink: 'Создать публичную ссылку',
         viewOnlyMode: 'Режим просмотра',
         noEditPermission: 'У вас нет прав на редактирование этой сессии',
+        shareNotFound: 'Доступ не найден',
+        shareExpired: 'Срок действия ссылки истёк',
+        failedToDecrypt: 'Не удалось расшифровать данные сессии',
+        consentRequired: 'Требуется согласие',
+        sharedBy: 'Поделился',
+        consentDescription: 'Владелец сессии требует вашего согласия перед просмотром',
+        acceptAndView: 'Принять и просмотреть сессию',
     },
 
     usage: {

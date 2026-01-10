@@ -1577,6 +1577,13 @@ export const ja: TranslationStructure = {
         createPublicLink: '公開リンクを作成',
         viewOnlyMode: '閲覧専用モード',
         noEditPermission: 'このセッションを編集する権限がありません',
+        shareNotFound: '共有が見つかりません',
+        shareExpired: 'この共有リンクは有効期限が切れています',
+        failedToDecrypt: 'セッションデータの復号に失敗しました',
+        consentRequired: '同意が必要です',
+        sharedBy: '共有者',
+        consentDescription: 'セッションの所有者は閲覧前に同意を求めています',
+        acceptAndView: '同意してセッションを表示',
     },
 
     usage: {

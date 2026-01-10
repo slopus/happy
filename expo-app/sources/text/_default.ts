@@ -908,6 +908,13 @@ export const en = {
         createPublicLink: 'Create public link',
         viewOnlyMode: 'View-only mode',
         noEditPermission: 'You don\'t have permission to edit this session',
+        shareNotFound: 'Share not found',
+        shareExpired: 'This share link has expired',
+        failedToDecrypt: 'Failed to decrypt session data',
+        consentRequired: 'Consent Required',
+        sharedBy: 'Shared by',
+        consentDescription: 'This session owner requires your consent before viewing',
+        acceptAndView: 'Accept and View Session',
     },
 
     usage: {
