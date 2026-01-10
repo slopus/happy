@@ -5,8 +5,8 @@ import QRCode from 'qrcode';
 import { Image } from 'expo-image';
 import { PublicSessionShare } from '@/sync/sharingTypes';
 import { Item } from '@/components/Item';
+import { ItemGroup } from '@/components/ItemGroup';
 import { t } from '@/text';
-import { CustomModal } from '@/components/CustomModal';
 import { getServerUrl } from '@/sync/serverConfig';
 
 /**
@@ -83,40 +83,8 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
     };
 
     return (
-        <CustomModal
-            visible={true}
-            onClose={onCancel}
-            title={t('sessionSharing.publicLink')}
-            buttons={
-                isCreating
-                    ? [
-                          {
-                              title: t('common.cancel'),
-                              style: 'cancel',
-                              onPress: onCancel,
-                          },
-                          {
-                              title: t('common.create'),
-                              style: 'default',
-                              onPress: handleCreate,
-                          },
-                      ]
-                    : [
-                          {
-                              title: t('common.close'),
-                              style: 'cancel',
-                              onPress: onCancel,
-                          },
-                          {
-                              title: t('common.delete'),
-                              style: 'destructive',
-                              onPress: onDelete,
-                          },
-                      ]
-            }
-        >
-            <ScrollView style={styles.container}>
-                {isCreating ? (
+        <View style={styles.container}>
+            {isCreating ? (
                     // Create new public share form
                     <View style={styles.createForm}>
                         <Text style={styles.description}>
@@ -268,8 +236,7 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                         </View>
                     </View>
                 ) : null}
-            </ScrollView>
-        </CustomModal>
+        </View>
     );
 });
 
