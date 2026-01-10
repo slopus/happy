@@ -5,7 +5,7 @@ import QRCode from 'qrcode';
 import { Image } from 'expo-image';
 import { PublicSessionShare } from '@/sync/sharingTypes';
 import { Item } from '@/components/Item';
-import { ItemGroup } from '@/components/ItemGroup';
+import { ItemList } from '@/components/ItemList';
 import { t } from '@/text';
 import { getServerUrl } from '@/sync/serverConfig';
 
@@ -58,7 +58,7 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
         const url = `${serverUrl}/share/${publicShare.token}`;
 
         QRCode.toDataURL(url, {
-            width: 300,
+            width: 250,
             margin: 2,
             color: {
                 dark: '#000000',
@@ -75,7 +75,6 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
             maxUses,
             isConsentRequired,
         });
-        setIsCreating(false);
     };
 
     const formatDate = (timestamp: number) => {
@@ -84,16 +83,24 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
 
     return (
         <View style={styles.container}>
-            {isCreating ? (
-                    // Create new public share form
-                    <View style={styles.createForm}>
+            <View style={styles.header}>
+                <Text style={styles.title}>{t('session.sharing.publicLink')}</Text>
+                <Item
+                    title={t('common.cancel')}
+                    onPress={onCancel}
+                />
+            </View>
+
+            <ScrollView style={styles.content}>
+                {isCreating ? (
+                    <ItemList>
                         <Text style={styles.description}>
                             {t('session.sharing.publicLinkDescription')}
                         </Text>
 
                         {/* Expiration */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>
+                        <View style={styles.optionGroup}>
+                            <Text style={styles.groupTitle}>
                                 {t('session.sharing.expiresIn')}
                             </Text>
                             <Item
@@ -138,9 +145,9 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                         </View>
 
                         {/* Max uses */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>
-                                {t('session.sharing.maxUses')}
+                        <View style={styles.optionGroup}>
+                            <Text style={styles.groupTitle}>
+                                {t('session.sharing.maxUsesLabel')}
                             </Text>
                             <Item
                                 title={t('session.sharing.unlimited')}
@@ -183,8 +190,8 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                             />
                         </View>
 
-                        {/* Consent required */}
-                        <View style={styles.section}>
+                        {/* Consent */}
+                        <View style={styles.optionGroup}>
                             <Item
                                 title={t('session.sharing.requireConsent')}
                                 subtitle={t('session.sharing.requireConsentDescription')}
@@ -196,84 +203,121 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                                 }
                             />
                         </View>
-                    </View>
+
+                        {/* Create button */}
+                        <View style={styles.buttonContainer}>
+                            <Item
+                                title={t('session.sharing.createPublicLink')}
+                                onPress={handleCreate}
+                            />
+                        </View>
+                    </ItemList>
                 ) : publicShare ? (
-                    // Display existing public share
-                    <View style={styles.existingShare}>
+                    <ItemList>
                         {/* QR Code */}
                         {qrDataUrl && (
                             <View style={styles.qrContainer}>
                                 <Image
                                     source={{ uri: qrDataUrl }}
-                                    style={{ width: 300, height: 300 }}
+                                    style={{ width: 250, height: 250 }}
                                     contentFit="contain"
                                 />
                             </View>
                         )}
 
-                        {/* Link info */}
-                        <View style={styles.infoSection}>
+                        {/* Info */}
+                        <Item
+                            title={t('session.sharing.linkToken')}
+                            subtitle={publicShare.token}
+                            subtitleLines={1}
+                        />
+                        {publicShare.expiresAt && (
                             <Item
-                                title={t('session.sharing.linkToken')}
-                                subtitle={publicShare.token}
-                                subtitleLines={1}
+                                title={t('session.sharing.expiresOn')}
+                                subtitle={formatDate(publicShare.expiresAt)}
                             />
-                            {publicShare.expiresAt && (
-                                <Item
-                                    title={t('session.sharing.expiresOn')}
-                                    subtitle={formatDate(publicShare.expiresAt)}
-                                />
-                            )}
+                        )}
+                        <Item
+                            title={t('session.sharing.usageCount')}
+                            subtitle={
+                                publicShare.maxUses
+                                    ? t('session.sharing.usageCountWithMax', {
+                                          used: publicShare.useCount,
+                                          max: publicShare.maxUses,
+                                      })
+                                    : t('session.sharing.usageCountUnlimited', {
+                                          used: publicShare.useCount,
+                                      })
+                            }
+                        />
+                        <Item
+                            title={t('session.sharing.requireConsent')}
+                            subtitle={
+                                publicShare.isConsentRequired
+                                    ? t('common.yes')
+                                    : t('common.no')
+                            }
+                        />
+
+                        {/* Delete button */}
+                        <View style={styles.buttonContainer}>
                             <Item
-                                title={t('session.sharing.usageCount')}
-                                subtitle={
-                                    publicShare.maxUses
-                                        ? t('session.sharing.usageCountWithMax', {
-                                              used: publicShare.useCount,
-                                              max: publicShare.maxUses,
-                                          })
-                                        : t('session.sharing.usageCountUnlimited', {
-                                              used: publicShare.useCount,
-                                          })
-                                }
-                            />
-                            <Item
-                                title={t('session.sharing.requireConsent')}
-                                subtitle={
-                                    publicShare.isConsentRequired
-                                        ? t('common.yes')
-                                        : t('common.no')
-                                }
+                                title={t('session.sharing.deletePublicLink')}
+                                onPress={onDelete}
+                                destructive
                             />
                         </View>
-                    </View>
+                    </ItemList>
                 ) : null}
+            </ScrollView>
         </View>
     );
 });
 
 const styles = StyleSheet.create((theme) => ({
     container: {
-        minHeight: 400,
-        maxHeight: 600,
+        width: 600,
+        maxWidth: '90%',
+        maxHeight: '80%',
+        backgroundColor: theme.colors.surface,
+        borderRadius: 12,
+        overflow: 'hidden',
     },
-    createForm: {
-        padding: 16,
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
+    },
+    title: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: theme.colors.text,
+    },
+    content: {
+        flex: 1,
     },
     description: {
         fontSize: 14,
         color: theme.colors.textSecondary,
-        marginBottom: 24,
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: 8,
         lineHeight: 20,
     },
-    section: {
-        marginBottom: 24,
+    optionGroup: {
+        marginTop: 16,
     },
-    sectionTitle: {
-        fontSize: 16,
+    groupTitle: {
+        fontSize: 14,
         fontWeight: '600',
-        color: theme.colors.text,
-        marginBottom: 12,
+        color: theme.colors.textSecondary,
+        paddingHorizontal: 16,
+        paddingBottom: 8,
+        textTransform: 'uppercase',
     },
     radioSelected: {
         width: 20,
@@ -299,19 +343,13 @@ const styles = StyleSheet.create((theme) => ({
         borderWidth: 2,
         borderColor: theme.colors.radio.inactive,
     },
-    existingShare: {
-        padding: 16,
-    },
     qrContainer: {
         alignItems: 'center',
-        marginBottom: 24,
-        padding: 16,
-        backgroundColor: theme.colors.surfaceHigh,
-        borderRadius: 12,
+        padding: 24,
+        backgroundColor: theme.colors.surface,
     },
-    infoSection: {
-        borderTopWidth: 1,
-        borderTopColor: theme.colors.divider,
-        paddingTop: 16,
+    buttonContainer: {
+        marginTop: 24,
+        marginBottom: 16,
     },
 }));
