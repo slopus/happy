@@ -285,7 +285,8 @@ export function publicShareRoutes(app: Fastify) {
                 return {
                     error: 'Consent required',
                     requiresConsent: true,
-                    publicShareId: publicShare.id
+                    publicShareId: publicShare.id,
+                    sessionId: publicShare.sessionId
                 };
             }
 
@@ -307,9 +308,21 @@ export function publicShareRoutes(app: Fastify) {
         // Handle errors from transaction
         if ('error' in result) {
             if (result.requiresConsent) {
+                // Get owner info even when consent is required
+                const session = await db.session.findUnique({
+                    where: { id: result.sessionId },
+                    select: {
+                        owner: {
+                            select: PROFILE_SELECT
+                        }
+                    }
+                });
+
                 return reply.code(403).send({
                     error: result.error,
-                    requiresConsent: true
+                    requiresConsent: true,
+                    sessionId: result.sessionId,
+                    owner: session?.owner || null
                 });
             }
             return reply.code(404).send({ error: result.error });
@@ -320,7 +333,7 @@ export function publicShareRoutes(app: Fastify) {
         const userAgent = result.isConsentRequired ? getUserAgent(request.headers) : undefined;
         await logPublicShareAccess(result.publicShareId, userId, ipAddress, userAgent);
 
-        // Get session info
+        // Get session info with owner profile
         const session = await db.session.findUnique({
             where: { id: result.sessionId },
             select: {
@@ -333,7 +346,10 @@ export function publicShareRoutes(app: Fastify) {
                 agentState: true,
                 agentStateVersion: true,
                 active: true,
-                lastActiveAt: true
+                lastActiveAt: true,
+                owner: {
+                    select: PROFILE_SELECT
+                }
             }
         });
 
@@ -354,8 +370,10 @@ export function publicShareRoutes(app: Fastify) {
                 agentState: session.agentState,
                 agentStateVersion: session.agentStateVersion
             },
+            owner: session.owner,
             accessLevel: 'view',
-            encryptedDataKey: Buffer.from(result.encryptedDataKey).toString('base64')
+            encryptedDataKey: Buffer.from(result.encryptedDataKey).toString('base64'),
+            isConsentRequired: result.isConsentRequired
         });
     });
 
