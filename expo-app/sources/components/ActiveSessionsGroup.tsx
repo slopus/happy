@@ -365,7 +365,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     // Check if this is a shared session
     const isSharedSession = !!session.owner;
     const ownerName = session.ownerProfile
-        ? (session.ownerProfile.firstName || session.ownerProfile.username)
+        ? (session.ownerProfile.username || session.ownerProfile.firstName)
         : null;
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
