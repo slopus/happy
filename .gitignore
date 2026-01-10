@@ -44,4 +44,7 @@ yarn-error.*
 
 CLAUDE.local.md
 
+# IDE
+.idea
+
 .dev/worktree/*
