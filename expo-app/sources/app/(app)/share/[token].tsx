@@ -6,7 +6,6 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
-import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { decryptDataKeyFromPublicShare } from '@/sync/publicShareEncryption';
 import { Ionicons } from '@expo/vector-icons';
