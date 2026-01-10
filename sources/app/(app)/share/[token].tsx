@@ -157,7 +157,6 @@ export default function PublicShareAccessScreen() {
                     <ItemGroup title={t('session.sharing.consentRequired')}>
                         <Item
                             title={t('session.sharing.sharedBy', { name: shareInfo.ownerName })}
-                            subtitle={shareInfo.ownerUsername}
                             icon={<Ionicons name="person-outline" size={29} color="#007AFF" />}
                             showChevron={false}
                         />
