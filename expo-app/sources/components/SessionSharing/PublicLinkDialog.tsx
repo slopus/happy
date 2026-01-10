@@ -6,6 +6,7 @@ import { Image } from 'expo-image';
 import { PublicSessionShare } from '@/sync/sharingTypes';
 import { Item } from '@/components/Item';
 import { ItemList } from '@/components/ItemList';
+import { RoundButton } from '@/components/RoundButton';
 import { t } from '@/text';
 import { getServerUrl } from '@/sync/serverConfig';
 
@@ -206,9 +207,11 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
 
                         {/* Create button */}
                         <View style={styles.buttonContainer}>
-                            <Item
+                            <RoundButton
                                 title={t('session.sharing.createPublicLink')}
                                 onPress={handleCreate}
+                                size="large"
+                                style={{ width: '100%', maxWidth: 400 }}
                             />
                         </View>
                     </ItemList>
@@ -351,5 +354,7 @@ const styles = StyleSheet.create((theme) => ({
     buttonContainer: {
         marginTop: 24,
         marginBottom: 16,
+        paddingHorizontal: 16,
+        alignItems: 'center',
     },
 }));
