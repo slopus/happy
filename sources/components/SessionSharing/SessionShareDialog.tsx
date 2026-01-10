@@ -74,7 +74,6 @@ export const SessionShareDialog = memo(function SessionShareDialog({
                 <Item
                     title={t('common.close')}
                     onPress={onClose}
-                    hideIcon
                 />
             </View>
 
@@ -152,9 +151,9 @@ const ShareItem = memo(function ShareItem({
     onRemove
 }: ShareItemProps) {
     const accessLevelLabel = getAccessLevelLabel(share.accessLevel);
-    const userName = [share.sharedWithUser.firstName, share.sharedWithUser.lastName]
+    const userName = share.sharedWithUser.username || [share.sharedWithUser.firstName, share.sharedWithUser.lastName]
         .filter(Boolean)
-        .join(' ') || share.sharedWithUser.username;
+        .join(' ');
 
     return (
         <View>
@@ -163,14 +162,13 @@ const ShareItem = memo(function ShareItem({
                 subtitle={accessLevelLabel}
                 icon={
                     <Avatar
-                        userId={share.sharedWithUser.id}
-                        name={userName}
-                        avatar={share.sharedWithUser.avatar}
+                        id={share.sharedWithUser.id}
+                        imageUrl={share.sharedWithUser.avatar}
                         size={32}
                     />
                 }
                 onPress={canManage ? onPress : undefined}
-                chevron={canManage}
+                showChevron={canManage}
             />
 
             {/* Access level options (shown when selected) */}
@@ -224,7 +222,7 @@ const styles = StyleSheet.create((theme) => ({
         width: 600,
         maxWidth: '90%',
         maxHeight: '80%',
-        backgroundColor: theme.colors.background,
+        backgroundColor: theme.colors.surface,
         borderRadius: 12,
         overflow: 'hidden',
     },
@@ -232,41 +230,41 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: theme.margins.md,
-        paddingVertical: theme.margins.sm,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
         borderBottomWidth: 1,
-        borderBottomColor: theme.colors.separator,
+        borderBottomColor: theme.colors.divider,
     },
     title: {
         fontSize: 18,
         fontWeight: '600',
-        color: theme.colors.typography,
+        color: theme.colors.text,
     },
     content: {
         flex: 1,
     },
     section: {
-        marginTop: theme.margins.md,
+        marginTop: 16,
     },
     sectionTitle: {
         fontSize: 14,
         fontWeight: '600',
-        color: theme.colors.secondaryTypography,
-        paddingHorizontal: theme.margins.md,
-        paddingVertical: theme.margins.sm,
+        color: theme.colors.textSecondary,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
         textTransform: 'uppercase',
     },
     options: {
-        paddingLeft: theme.margins.lg,
-        backgroundColor: theme.colors.secondaryBackground,
+        paddingLeft: 24,
+        backgroundColor: theme.colors.surfaceHigh,
     },
     emptyState: {
-        padding: theme.margins.lg,
+        padding: 32,
         alignItems: 'center',
     },
     emptyText: {
         fontSize: 16,
-        color: theme.colors.secondaryTypography,
+        color: theme.colors.textSecondary,
         textAlign: 'center',
     },
 }));

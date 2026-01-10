@@ -88,42 +88,48 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                     // Create new public share form
                     <View style={styles.createForm}>
                         <Text style={styles.description}>
-                            {t('sessionSharing.publicLinkDescription')}
+                            {t('session.sharing.publicLinkDescription')}
                         </Text>
 
                         {/* Expiration */}
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>
-                                {t('sessionSharing.expiresIn')}
+                                {t('session.sharing.expiresIn')}
                             </Text>
                             <Item
-                                title={t('sessionSharing.days7')}
+                                title={t('session.sharing.days7')}
                                 onPress={() => setExpiresInDays(7)}
                                 rightElement={
                                     expiresInDays === 7 ? (
-                                        <View style={styles.radioSelected} />
+                                        <View style={styles.radioSelected}>
+                                            <View style={styles.radioDot} />
+                                        </View>
                                     ) : (
                                         <View style={styles.radioUnselected} />
                                     )
                                 }
                             />
                             <Item
-                                title={t('sessionSharing.days30')}
+                                title={t('session.sharing.days30')}
                                 onPress={() => setExpiresInDays(30)}
                                 rightElement={
                                     expiresInDays === 30 ? (
-                                        <View style={styles.radioSelected} />
+                                        <View style={styles.radioSelected}>
+                                            <View style={styles.radioDot} />
+                                        </View>
                                     ) : (
                                         <View style={styles.radioUnselected} />
                                     )
                                 }
                             />
                             <Item
-                                title={t('sessionSharing.never')}
+                                title={t('session.sharing.never')}
                                 onPress={() => setExpiresInDays(undefined)}
                                 rightElement={
                                     expiresInDays === undefined ? (
-                                        <View style={styles.radioSelected} />
+                                        <View style={styles.radioSelected}>
+                                            <View style={styles.radioDot} />
+                                        </View>
                                     ) : (
                                         <View style={styles.radioUnselected} />
                                     )
@@ -134,36 +140,42 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                         {/* Max uses */}
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>
-                                {t('sessionSharing.maxUses')}
+                                {t('session.sharing.maxUses')}
                             </Text>
                             <Item
-                                title={t('sessionSharing.unlimited')}
+                                title={t('session.sharing.unlimited')}
                                 onPress={() => setMaxUses(undefined)}
                                 rightElement={
                                     maxUses === undefined ? (
-                                        <View style={styles.radioSelected} />
+                                        <View style={styles.radioSelected}>
+                                            <View style={styles.radioDot} />
+                                        </View>
                                     ) : (
                                         <View style={styles.radioUnselected} />
                                     )
                                 }
                             />
                             <Item
-                                title={t('sessionSharing.uses10')}
+                                title={t('session.sharing.uses10')}
                                 onPress={() => setMaxUses(10)}
                                 rightElement={
                                     maxUses === 10 ? (
-                                        <View style={styles.radioSelected} />
+                                        <View style={styles.radioSelected}>
+                                            <View style={styles.radioDot} />
+                                        </View>
                                     ) : (
                                         <View style={styles.radioUnselected} />
                                     )
                                 }
                             />
                             <Item
-                                title={t('sessionSharing.uses50')}
+                                title={t('session.sharing.uses50')}
                                 onPress={() => setMaxUses(50)}
                                 rightElement={
                                     maxUses === 50 ? (
-                                        <View style={styles.radioSelected} />
+                                        <View style={styles.radioSelected}>
+                                            <View style={styles.radioDot} />
+                                        </View>
                                     ) : (
                                         <View style={styles.radioUnselected} />
                                     )
@@ -174,8 +186,8 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                         {/* Consent required */}
                         <View style={styles.section}>
                             <Item
-                                title={t('sessionSharing.requireConsent')}
-                                subtitle={t('sessionSharing.requireConsentDescription')}
+                                title={t('session.sharing.requireConsent')}
+                                subtitle={t('session.sharing.requireConsentDescription')}
                                 rightElement={
                                     <Switch
                                         value={isConsentRequired}
@@ -202,31 +214,31 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                         {/* Link info */}
                         <View style={styles.infoSection}>
                             <Item
-                                title={t('sessionSharing.linkToken')}
+                                title={t('session.sharing.linkToken')}
                                 subtitle={publicShare.token}
                                 subtitleLines={1}
                             />
                             {publicShare.expiresAt && (
                                 <Item
-                                    title={t('sessionSharing.expiresOn')}
+                                    title={t('session.sharing.expiresOn')}
                                     subtitle={formatDate(publicShare.expiresAt)}
                                 />
                             )}
                             <Item
-                                title={t('sessionSharing.usageCount')}
+                                title={t('session.sharing.usageCount')}
                                 subtitle={
                                     publicShare.maxUses
-                                        ? t('sessionSharing.usageCountWithMax', {
+                                        ? t('session.sharing.usageCountWithMax', {
                                               count: publicShare.useCount,
                                               max: publicShare.maxUses,
                                           })
-                                        : t('sessionSharing.usageCountUnlimited', {
+                                        : t('session.sharing.usageCountUnlimited', {
                                               count: publicShare.useCount,
                                           })
                                 }
                             />
                             <Item
-                                title={t('sessionSharing.requireConsent')}
+                                title={t('session.sharing.requireConsent')}
                                 subtitle={
                                     publicShare.isConsentRequired
                                         ? t('common.yes')
@@ -260,16 +272,24 @@ const styles = StyleSheet.create((theme) => ({
     sectionTitle: {
         fontSize: 16,
         fontWeight: '600',
-        color: theme.colors.typography,
+        color: theme.colors.text,
         marginBottom: 12,
     },
     radioSelected: {
         width: 20,
         height: 20,
         borderRadius: 10,
-        backgroundColor: theme.colors.primary,
+        backgroundColor: 'transparent',
         borderWidth: 2,
-        borderColor: theme.colors.primary,
+        borderColor: theme.colors.radio.active,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    radioDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: theme.colors.radio.dot,
     },
     radioUnselected: {
         width: 20,
@@ -277,7 +297,7 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 10,
         backgroundColor: 'transparent',
         borderWidth: 2,
-        borderColor: theme.colors.textSecondary,
+        borderColor: theme.colors.radio.inactive,
     },
     existingShare: {
         padding: 16,
@@ -286,12 +306,12 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         marginBottom: 24,
         padding: 16,
-        backgroundColor: theme.colors.background,
+        backgroundColor: theme.colors.surfaceHigh,
         borderRadius: 12,
     },
     infoSection: {
         borderTopWidth: 1,
-        borderTopColor: theme.colors.border,
+        borderTopColor: theme.colors.divider,
         paddingTop: 16,
     },
 }));
