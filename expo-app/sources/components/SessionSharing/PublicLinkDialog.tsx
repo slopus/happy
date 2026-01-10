@@ -229,11 +229,11 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                                 subtitle={
                                     publicShare.maxUses
                                         ? t('session.sharing.usageCountWithMax', {
-                                              count: publicShare.useCount,
+                                              used: publicShare.useCount,
                                               max: publicShare.maxUses,
                                           })
                                         : t('session.sharing.usageCountUnlimited', {
-                                              count: publicShare.useCount,
+                                              used: publicShare.useCount,
                                           })
                                 }
                             />

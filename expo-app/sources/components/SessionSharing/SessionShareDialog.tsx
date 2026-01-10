@@ -72,7 +72,7 @@ export const SessionShareDialog = memo(function SessionShareDialog({
             <View style={styles.header}>
                 <Text style={styles.title}>{t('session.sharing.title')}</Text>
                 <Item
-                    title={t('common.close')}
+                    title={t('common.cancel')}
                     onPress={onClose}
                 />
             </View>
