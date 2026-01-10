@@ -229,6 +229,7 @@ export const en = {
         userNotFound: 'User not found',
         sessionDeleted: 'Session has been deleted',
         sessionDeletedDescription: 'This session has been permanently removed',
+        invalidShareLink: 'Invalid or expired share link',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
@@ -329,6 +330,25 @@ export const en = {
             viewOnlyDescription: 'Can view messages and metadata',
             canEditDescription: 'Can send messages but cannot manage sharing',
             canManageDescription: 'Full access including sharing management',
+            shareNotFound: 'Share link not found or has been revoked',
+            shareExpired: 'This share link has expired',
+            failedToDecrypt: 'Failed to decrypt share information',
+            consentDescription: 'By accepting, you consent to logging of your access information',
+            acceptAndView: 'Accept and View',
+            days7: '7 days',
+            days30: '30 days',
+            never: 'Never expires',
+            uses10: '10 uses',
+            uses50: '50 uses',
+            maxUsesLabel: 'Maximum uses',
+            publicLinkDescription: 'Create a shareable link that anyone can use to access this session',
+            expiresIn: 'Link expires in',
+            requireConsentDescription: 'Users must consent before accessing',
+            linkToken: 'Link Token',
+            expiresOn: 'Expires on',
+            usageCount: 'Usage',
+            usageCountWithMax: ({ used, max }: { used: number; max: number }) => `${used} / ${max} uses`,
+            usageCountUnlimited: ({ used }: { used: number }) => `${used} uses`,
         },
     },
 
