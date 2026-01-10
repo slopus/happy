@@ -600,6 +600,7 @@ export const it: TranslationStructure = {
         publicShareNotFound: 'Link pubblico non trovato o scaduto',
         consentRequired: 'Consenso richiesto per l\'accesso',
         maxUsesReached: 'Numero massimo di utilizzi raggiunto',
+        invalidShareLink: 'Link di condivisione non valido o scaduto',
         missingPermissionId: 'Manca l\'ID del permesso',
         codexResumeNotInstalledTitle: 'Codex resume non è installato su questa macchina',
         codexResumeNotInstalledMessage:

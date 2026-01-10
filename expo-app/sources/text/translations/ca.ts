@@ -346,6 +346,7 @@ export const ca: TranslationStructure = {
         publicShareNotFound: 'Enllaç públic no trobat o expirat',
         consentRequired: 'Es requereix consentiment per a l\'accés',
         maxUsesReached: 'S\'ha assolit el màxim d\'usos',
+        invalidShareLink: 'Enllaç de compartició no vàlid o caducat',
             missingPermissionId: 'Falta l’identificador de permís',
             codexResumeNotInstalledTitle: 'Codex resume no està instal·lat en aquesta màquina',
             codexResumeNotInstalledMessage:

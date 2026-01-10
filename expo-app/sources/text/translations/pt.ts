@@ -346,6 +346,7 @@ export const pt: TranslationStructure = {
         publicShareNotFound: 'Link público não encontrado ou expirado',
         consentRequired: 'Consentimento necessário para acesso',
         maxUsesReached: 'Máximo de usos atingido',
+        invalidShareLink: 'Link de compartilhamento inválido ou expirado',
             missingPermissionId: 'Falta o id de permissão',
             codexResumeNotInstalledTitle: 'O Codex resume não está instalado nesta máquina',
             codexResumeNotInstalledMessage:

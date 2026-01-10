@@ -328,6 +328,7 @@ export const ru: TranslationStructure = {
         publicShareNotFound: 'Публичная ссылка не найдена или истекла',
         consentRequired: 'Требуется согласие для доступа',
         maxUsesReached: 'Достигнут лимит использований',
+        invalidShareLink: 'Недействительная или просроченная ссылка для обмена',
             missingPermissionId: 'Отсутствует идентификатор запроса разрешения',
             codexResumeNotInstalledTitle: 'Codex resume не установлен на этой машине',
             codexResumeNotInstalledMessage:

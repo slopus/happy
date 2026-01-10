@@ -593,6 +593,7 @@ export const ja: TranslationStructure = {
         publicShareNotFound: '公開共有が見つからないか期限切れです',
         consentRequired: 'アクセスには同意が必要です',
         maxUsesReached: '最大使用回数に達しました',
+        invalidShareLink: '無効または期限切れの共有リンク',
             missingPermissionId: '権限リクエストIDがありません',
             codexResumeNotInstalledTitle: 'このマシンには Codex resume がインストールされていません',
             codexResumeNotInstalledMessage:

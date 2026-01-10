@@ -348,6 +348,7 @@ export const zhHans: TranslationStructure = {
         publicShareNotFound: '公开分享未找到或已过期',
         consentRequired: '需要同意才能访问',
         maxUsesReached: '已达到最大使用次数',
+        invalidShareLink: '无效或已过期的共享链接',
             missingPermissionId: '缺少权限请求 ID',
             codexResumeNotInstalledTitle: '此机器未安装 Codex resume',
             codexResumeNotInstalledMessage:
