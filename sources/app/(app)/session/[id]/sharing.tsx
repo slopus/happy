@@ -63,7 +63,7 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
 
             // Load friends list
             const friendsData = await getFriendsList(credentials);
-            setFriends(friendsData.friends);
+            setFriends(friendsData);
         } catch (error) {
             console.error('Failed to load sharing data:', error);
         }
@@ -196,15 +196,15 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
                         shares.map(share => (
                             <Item
                                 key={share.id}
-                                title={share.sharedWithUser.name || share.sharedWithUser.username}
-                                subtitle={`@${share.sharedWithUser.username} • ${t(`sessionSharing.${share.accessLevel === 'view' ? 'viewOnly' : share.accessLevel === 'edit' ? 'canEdit' : 'canManage'}`)}`}
+                                title={share.sharedWithUser.username || [share.sharedWithUser.firstName, share.sharedWithUser.lastName].filter(Boolean).join(' ')}
+                                subtitle={`@${share.sharedWithUser.username} • ${t(`session.sharing.${share.accessLevel === 'view' ? 'viewOnly' : share.accessLevel === 'edit' ? 'canEdit' : 'canManage'}`)}`}
                                 icon={<Ionicons name="person-outline" size={29} color="#007AFF" />}
                                 onPress={() => setShowShareDialog(true)}
                             />
                         ))
                     ) : (
                         <Item
-                            title={t('sessionSharing.noShares')}
+                            title={t('session.sharing.noShares')}
                             icon={<Ionicons name="people-outline" size={29} color="#8E8E93" />}
                             showChevron={false}
                         />
@@ -266,7 +266,6 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
                     friends={friends}
                     excludedUserIds={excludedUserIds}
                     onSelect={handleAddShare}
-                    onCancel={() => setShowFriendSelector(false)}
                 />
             )}
 

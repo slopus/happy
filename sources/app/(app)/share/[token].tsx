@@ -60,7 +60,7 @@ export default function PublicShareAccessScreen() {
 
             if (!response.ok) {
                 if (response.status === 404) {
-                    setError(t('sessionSharing.shareNotFound'));
+                    setError(t('session.sharing.shareNotFound'));
                     setLoading(false);
                     return;
                 } else if (response.status === 403) {
@@ -76,7 +76,7 @@ export default function PublicShareAccessScreen() {
                         setLoading(false);
                         return;
                     }
-                    setError(t('sessionSharing.shareExpired'));
+                    setError(t('session.sharing.shareExpired'));
                     setLoading(false);
                     return;
                 } else {
@@ -95,7 +95,7 @@ export default function PublicShareAccessScreen() {
             );
 
             if (!decryptedKey) {
-                setError(t('sessionSharing.failedToDecrypt'));
+                setError(t('session.sharing.failedToDecrypt'));
                 setLoading(false);
                 return;
             }
@@ -127,8 +127,8 @@ export default function PublicShareAccessScreen() {
 
     if (loading) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
-                <ActivityIndicator size="large" color={theme.colors.primary} />
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.groupped.background }}>
+                <ActivityIndicator size="large" color={theme.colors.textLink} />
                 <Text style={{ color: theme.colors.textSecondary, marginTop: 16, fontSize: 15 }}>
                     {t('common.loading')}
                 </Text>
@@ -138,8 +138,8 @@ export default function PublicShareAccessScreen() {
 
     if (error) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background, paddingHorizontal: 32 }}>
-                <Ionicons name="alert-circle-outline" size={64} color={theme.colors.error} />
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.groupped.background, paddingHorizontal: 32 }}>
+                <Ionicons name="alert-circle-outline" size={64} color={theme.colors.textDestructive} />
                 <Text style={{ color: theme.colors.text, fontSize: 20, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>
                     {t('common.error')}
                 </Text>
@@ -152,23 +152,23 @@ export default function PublicShareAccessScreen() {
 
     if (shareInfo && shareInfo.requiresConsent) {
         return (
-            <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+            <View style={{ flex: 1, backgroundColor: theme.colors.groupped.background }}>
                 <ItemList>
-                    <ItemGroup title={t('sessionSharing.consentRequired')}>
+                    <ItemGroup title={t('session.sharing.consentRequired')}>
                         <Item
-                            title={t('sessionSharing.sharedBy')}
-                            subtitle={shareInfo.ownerName}
+                            title={t('session.sharing.sharedBy', { name: shareInfo.ownerName })}
+                            subtitle={shareInfo.ownerUsername}
                             icon={<Ionicons name="person-outline" size={29} color="#007AFF" />}
                             showChevron={false}
                         />
                         <Item
-                            title={t('sessionSharing.consentDescription')}
+                            title={t('session.sharing.consentDescription')}
                             showChevron={false}
                         />
                     </ItemGroup>
                     <ItemGroup>
                         <Item
-                            title={t('sessionSharing.acceptAndView')}
+                            title={t('session.sharing.acceptAndView')}
                             icon={<Ionicons name="checkmark-circle-outline" size={29} color="#34C759" />}
                             onPress={handleAcceptConsent}
                         />
