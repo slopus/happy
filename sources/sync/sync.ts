@@ -673,10 +673,6 @@ class Sync {
         return this.encryption.contentDataKey;
     }
 
-    public getServerUrl(): string {
-        return getServerUrl();
-    }
-
     // Artifact methods
     public fetchArtifactsList = async (): Promise<void> => {
         log.log('📦 fetchArtifactsList: Starting artifact sync');

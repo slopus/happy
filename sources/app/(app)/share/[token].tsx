@@ -10,6 +10,7 @@ import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { decryptDataKeyFromPublicShare } from '@/sync/publicShareEncryption';
 import { Ionicons } from '@expo/vector-icons';
+import { getServerUrl } from "@/sync/serverConfig";
 
 /**
  * Public share access screen
@@ -45,7 +46,7 @@ export default function PublicShareAccessScreen() {
             setError(null);
 
             const credentials = sync.getCredentials();
-            const serverUrl = sync.getServerUrl();
+            const serverUrl = getServerUrl();
 
             // Build URL with consent parameter if user has accepted
             const url = withConsent
