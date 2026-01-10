@@ -255,6 +255,7 @@ export const es: TranslationStructure = {
         publicShareNotFound: 'Enlace público no encontrado o expirado',
         consentRequired: 'Se requiere consentimiento para acceder',
         maxUsesReached: 'Se alcanzó el máximo de usos',
+        invalidShareLink: 'Enlace de compartir inválido o expirado',
     },
 
     newSession: {

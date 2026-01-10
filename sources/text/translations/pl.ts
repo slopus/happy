@@ -266,6 +266,7 @@ export const pl: TranslationStructure = {
         publicShareNotFound: 'Publiczne udostępnienie nie zostało znalezione lub wygasło',
         consentRequired: 'Wymagana zgoda na dostęp',
         maxUsesReached: 'Osiągnięto maksymalną liczbę użyć',
+        invalidShareLink: 'Nieprawidłowy lub wygasły link do udostępnienia',
     },
 
     newSession: {

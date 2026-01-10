@@ -252,6 +252,7 @@ export const it: TranslationStructure = {
         publicShareNotFound: 'Link pubblico non trovato o scaduto',
         consentRequired: 'Consenso richiesto per l\'accesso',
         maxUsesReached: 'Numero massimo di utilizzi raggiunto',
+        invalidShareLink: 'Link di condivisione non valido o scaduto',
     },
 
     newSession: {
