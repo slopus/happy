@@ -665,8 +665,16 @@ class Sync {
         return this.sessionDataKeys.get(sessionId) || null;
     }
 
+    public storePublicShareKey(sessionId: string, dataKey: Uint8Array): void {
+        this.sessionDataKeys.set(sessionId, dataKey);
+    }
+
     public getUserPublicKey(): Uint8Array {
         return this.encryption.contentDataKey;
+    }
+
+    public getServerUrl(): string {
+        return getServerUrl();
     }
 
     // Artifact methods
