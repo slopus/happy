@@ -909,6 +909,13 @@ export const zhHans: TranslationStructure = {
         createPublicLink: '创建公开链接',
         viewOnlyMode: '仅查看模式',
         noEditPermission: '您没有编辑此会话的权限',
+        shareNotFound: '未找到分享',
+        shareExpired: '此分享链接已过期',
+        failedToDecrypt: '解密会话数据失败',
+        consentRequired: '需要同意',
+        sharedBy: '分享者',
+        consentDescription: '会话所有者要求您在查看前同意',
+        acceptAndView: '同意并查看会话',
     },
 
     usage: {

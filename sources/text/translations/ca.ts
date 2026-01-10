@@ -907,6 +907,13 @@ export const ca: TranslationStructure = {
         createPublicLink: 'Crear enllaç públic',
         viewOnlyMode: 'Mode de només lectura',
         noEditPermission: 'No tens permís per editar aquesta sessió',
+        shareNotFound: 'Compartició no trobada',
+        shareExpired: 'Aquest enllaç de compartició ha expirat',
+        failedToDecrypt: 'No s\'han pogut desxifrar les dades de la sessió',
+        consentRequired: 'Es requereix consentiment',
+        sharedBy: 'Compartit per',
+        consentDescription: 'El propietari de la sessió requereix el teu consentiment abans de visualitzar',
+        acceptAndView: 'Acceptar i veure la sessió',
     },
 
     usage: {

@@ -908,6 +908,13 @@ export const es: TranslationStructure = {
         createPublicLink: 'Crear enlace público',
         viewOnlyMode: 'Modo de solo lectura',
         noEditPermission: 'No tienes permiso para editar esta sesión',
+        shareNotFound: 'Compartido no encontrado',
+        shareExpired: 'Este enlace de compartir ha expirado',
+        failedToDecrypt: 'Error al descifrar los datos de la sesión',
+        consentRequired: 'Consentimiento requerido',
+        sharedBy: 'Compartido por',
+        consentDescription: 'El propietario de la sesión requiere tu consentimiento antes de ver',
+        acceptAndView: 'Aceptar y ver sesión',
     },
 
     usage: {

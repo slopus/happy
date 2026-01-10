@@ -931,6 +931,13 @@ export const pl: TranslationStructure = {
         createPublicLink: 'Utwórz link publiczny',
         viewOnlyMode: 'Tryb tylko do odczytu',
         noEditPermission: 'Nie masz uprawnień do edycji tej sesji',
+        shareNotFound: 'Udostępnienie nie zostało znalezione',
+        shareExpired: 'Ten link udostępniania wygasł',
+        failedToDecrypt: 'Nie udało się odszyfrować danych sesji',
+        consentRequired: 'Wymagana zgoda',
+        sharedBy: 'Udostępnione przez',
+        consentDescription: 'Właściciel sesji wymaga Twojej zgody przed przeglądaniem',
+        acceptAndView: 'Zaakceptuj i wyświetl sesję',
     },
 
     usage: {
