@@ -113,39 +113,45 @@ export const FriendSelector = memo(function FriendSelector({
             {selectedFriend && (
                 <View style={styles.accessLevelSection}>
                     <Text style={styles.sectionTitle}>
-                        {t('sessionSharing.accessLevel')}
+                        {t('session.sharing.accessLevel')}
                     </Text>
                     <Item
-                        title={t('sessionSharing.viewOnly')}
-                        subtitle={t('sessionSharing.viewOnlyDescription')}
+                        title={t('session.sharing.viewOnly')}
+                        subtitle={t('session.sharing.viewOnlyDescription')}
                         onPress={() => setSelectedAccessLevel('view')}
                         rightElement={
                             selectedAccessLevel === 'view' ? (
-                                <View style={styles.radioSelected} />
+                                <View style={styles.radioSelected}>
+                                    <View style={styles.radioDot} />
+                                </View>
                             ) : (
                                 <View style={styles.radioUnselected} />
                             )
                         }
                     />
                     <Item
-                        title={t('sessionSharing.canEdit')}
-                        subtitle={t('sessionSharing.canEditDescription')}
+                        title={t('session.sharing.canEdit')}
+                        subtitle={t('session.sharing.canEditDescription')}
                         onPress={() => setSelectedAccessLevel('edit')}
                         rightElement={
                             selectedAccessLevel === 'edit' ? (
-                                <View style={styles.radioSelected} />
+                                <View style={styles.radioSelected}>
+                                    <View style={styles.radioDot} />
+                                </View>
                             ) : (
                                 <View style={styles.radioUnselected} />
                             )
                         }
                     />
                     <Item
-                        title={t('sessionSharing.canManage')}
-                        subtitle={t('sessionSharing.canManageDescription')}
+                        title={t('session.sharing.canManage')}
+                        subtitle={t('session.sharing.canManageDescription')}
                         onPress={() => setSelectedAccessLevel('admin')}
                         rightElement={
                             selectedAccessLevel === 'admin' ? (
-                                <View style={styles.radioSelected} />
+                                <View style={styles.radioSelected}>
+                                    <View style={styles.radioDot} />
+                                </View>
                             ) : (
                                 <View style={styles.radioUnselected} />
                             )
@@ -165,11 +171,11 @@ const styles = StyleSheet.create((theme) => ({
     searchInput: {
         height: 40,
         borderRadius: 8,
-        backgroundColor: theme.colors.backgroundSecondary,
+        backgroundColor: theme.colors.surfaceHigh,
         paddingHorizontal: 12,
         marginBottom: 16,
         fontSize: 16,
-        color: theme.colors.typography,
+        color: theme.colors.text,
     },
     friendList: {
         marginBottom: 16,
@@ -183,7 +189,7 @@ const styles = StyleSheet.create((theme) => ({
         top: 0,
         bottom: 0,
         width: 4,
-        backgroundColor: theme.colors.primary,
+        backgroundColor: theme.colors.textLink,
     },
     emptyState: {
         padding: 32,
@@ -208,15 +214,23 @@ const styles = StyleSheet.create((theme) => ({
         width: 20,
         height: 20,
         borderRadius: 10,
-        backgroundColor: theme.colors.primary,
+        backgroundColor: 'transparent',
         borderWidth: 2,
-        borderColor: theme.colors.primary,
+        borderColor: theme.colors.radio.active,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    radioDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: theme.colors.radio.dot,
     },
     radioUnselected: {
         width: 20,
         height: 20,
         borderRadius: 10,
         borderWidth: 2,
-        borderColor: theme.colors.textSecondary,
+        borderColor: theme.colors.radio.inactive,
     },
 }));
