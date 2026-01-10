@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useState } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
+import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemList } from '@/components/ItemList';
 import { t } from '@/text';
@@ -83,7 +84,7 @@ export const SessionShareDialog = memo(function SessionShareDialog({
                     {canManage && (
                         <Item
                             title={t('session.sharing.shareWith')}
-                            icon="person-add"
+                            icon={<Ionicons name="person-add-outline" size={29} color="#007AFF" />}
                             onPress={onAddShare}
                         />
                     )}
@@ -92,7 +93,7 @@ export const SessionShareDialog = memo(function SessionShareDialog({
                     {canManage && (
                         <Item
                             title={t('session.sharing.publicLink')}
-                            icon="link"
+                            icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
                             onPress={onManagePublicLink}
                         />
                     )}
