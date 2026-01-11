@@ -917,6 +917,13 @@ export const ja: TranslationStructure = {
             submit: '回答を送信',
             multipleQuestions: ({ count }: { count: number }) => `${count}件の質問`,
         },
+        exitPlanMode: {
+            approve: 'Approve Plan',
+            reject: 'Reject',
+            responded: 'Response sent',
+            approvalMessage: 'I approve this plan. Please proceed with the implementation.',
+            rejectionMessage: 'I do not approve this plan. Please revise it or ask me what changes I would like.',
+        },
         multiEdit: {
             editNumber: ({ index, total }: { index: number; total: number }) => `編集 ${index}/${total}`,
             replaceAll: 'すべて置換',

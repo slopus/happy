@@ -734,7 +734,14 @@ export const ru: TranslationStructure = {
         askUserQuestion: {
             submit: 'Отправить ответ',
             multipleQuestions: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'вопрос', few: 'вопроса', many: 'вопросов' })}`,
-        }
+        },
+        exitPlanMode: {
+            approve: 'Approve Plan',
+            reject: 'Reject',
+            responded: 'Response sent',
+            approvalMessage: 'I approve this plan. Please proceed with the implementation.',
+            rejectionMessage: 'I do not approve this plan. Please revise it or ask me what changes I would like.',
+        },
     },
 
     files: {

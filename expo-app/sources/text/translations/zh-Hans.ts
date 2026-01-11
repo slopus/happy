@@ -726,7 +726,14 @@ export const zhHans: TranslationStructure = {
         askUserQuestion: {
             submit: '提交答案',
             multipleQuestions: ({ count }: { count: number }) => `${count} 个问题`,
-        }
+        },
+        exitPlanMode: {
+            approve: 'Approve Plan',
+            reject: 'Reject',
+            responded: 'Response sent',
+            approvalMessage: 'I approve this plan. Please proceed with the implementation.',
+            rejectionMessage: 'I do not approve this plan. Please revise it or ask me what changes I would like.',
+        },
     },
 
     files: {

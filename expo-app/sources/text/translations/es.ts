@@ -724,7 +724,14 @@ export const es: TranslationStructure = {
         askUserQuestion: {
             submit: 'Enviar respuesta',
             multipleQuestions: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'pregunta', plural: 'preguntas' })}`,
-        }
+        },
+        exitPlanMode: {
+            approve: 'Approve Plan',
+            reject: 'Reject',
+            responded: 'Response sent',
+            approvalMessage: 'I approve this plan. Please proceed with the implementation.',
+            rejectionMessage: 'I do not approve this plan. Please revise it or ask me what changes I would like.',
+        },
     },
 
     files: {
