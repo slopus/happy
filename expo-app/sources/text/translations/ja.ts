@@ -736,6 +736,7 @@ export const ja: TranslationStructure = {
         lastUpdated: '最終更新',
         sequence: 'シーケンス',
         quickActions: 'クイックアクション',
+        copyResumeCommand: '再開コマンドをコピー',
         viewMachine: 'マシンを表示',
         viewMachineSubtitle: 'マシンの詳細とセッションを表示',
         killSessionSubtitle: 'セッションを即座に終了',

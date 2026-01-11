@@ -511,6 +511,7 @@ export const en = {
         lastUpdated: 'Last Updated',
         sequence: 'Sequence',
         quickActions: 'Quick Actions',
+        copyResumeCommand: 'Copy resume command',
         viewMachine: 'View Machine',
         viewMachineSubtitle: 'View machine details and sessions',
         killSessionSubtitle: 'Immediately terminate the session',

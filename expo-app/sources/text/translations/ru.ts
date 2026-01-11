@@ -455,6 +455,7 @@ export const ru: TranslationStructure = {
         lastUpdated: 'Последнее обновление',
         sequence: 'Последовательность',
         quickActions: 'Быстрые действия',
+        copyResumeCommand: 'Скопировать команду возобновления',
         viewMachine: 'Посмотреть машину',
         viewMachineSubtitle: 'Посмотреть детали машины и сессии',
         killSessionSubtitle: 'Немедленно завершить сессию',

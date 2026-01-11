@@ -509,6 +509,7 @@ export const pl: TranslationStructure = {
         lastUpdated: 'Ostatnia aktualizacja',
         sequence: 'Sekwencja',
         quickActions: 'Szybkie akcje',
+        copyResumeCommand: 'Kopiuj komendę wznowienia',
         viewMachine: 'Zobacz maszynę',
         viewMachineSubtitle: 'Zobacz szczegóły maszyny i sesje',
         killSessionSubtitle: 'Natychmiastowo zakończ sesję',

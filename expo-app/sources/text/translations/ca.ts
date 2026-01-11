@@ -498,6 +498,7 @@ export const ca: TranslationStructure = {
         lastUpdated: 'Última actualització',
         sequence: 'Seqüència',
         quickActions: 'Accions ràpides',
+        copyResumeCommand: 'Copia l’ordre de reprendre',
         viewMachine: 'Veure la màquina',
         viewMachineSubtitle: 'Veure detalls de la màquina i sessions',
         killSessionSubtitle: 'Finalitzar immediatament la sessió',

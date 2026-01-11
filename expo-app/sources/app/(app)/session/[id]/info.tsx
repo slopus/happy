@@ -201,15 +201,19 @@ function SessionInfoContent({ session }: { session: Session }) {
         return new Date(timestamp).toLocaleString();
     }, []);
 
-    const handleCopyUpdateCommand = useCallback(async () => {
-        const updateCommand = 'npm install -g happy-coder@latest';
+    const handleCopyCommand = useCallback(async (command: string) => {
         try {
-            await Clipboard.setStringAsync(updateCommand);
-            Modal.alert(t('common.success'), updateCommand);
+            await Clipboard.setStringAsync(command);
+            Modal.alert(t('common.success'), command);
         } catch (error) {
             Modal.alert(t('common.error'), t('common.error'));
         }
     }, []);
+
+    const handleCopyUpdateCommand = useCallback(async () => {
+        const updateCommand = 'npm install -g happy-coder@latest';
+        await handleCopyCommand(updateCommand);
+    }, [handleCopyCommand]);
 
     return (
         <>
@@ -278,17 +282,32 @@ function SessionInfoContent({ session }: { session: Session }) {
                             }}
                         />
                     )}
-	                    <Item
-	                        title={t('sessionInfo.connectionStatus')}
-	                        detail={sessionStatus.isConnected ? t('status.online') : t('status.offline')}
-	                        icon={<Ionicons name="pulse-outline" size={29} color={sessionStatus.isConnected ? "#34C759" : "#8E8E93"} />}
-	                        showChevron={false}
-	                    />
-	                    <Item
-	                        title={t('sessionInfo.created')}
-	                        subtitle={formatDate(session.createdAt)}
-	                        icon={<Ionicons name="calendar-outline" size={29} color="#007AFF" />}
-	                        showChevron={false}
+                    {session.metadata?.codexSessionId && (
+                        <Item
+                            title={t('sessionInfo.codexSessionId')}
+                            subtitle={`${session.metadata.codexSessionId.substring(0, 8)}...${session.metadata.codexSessionId.substring(session.metadata.codexSessionId.length - 8)}`}
+                            icon={<Ionicons name="sparkles-outline" size={29} color="#007AFF" />}
+                            onPress={async () => {
+                                try {
+                                    await Clipboard.setStringAsync(session.metadata!.codexSessionId!);
+                                    Modal.alert(t('common.success'), t('sessionInfo.codexSessionIdCopied'));
+                                } catch (error) {
+                                    Modal.alert(t('common.error'), t('sessionInfo.failedToCopyCodexSessionId'));
+                                }
+                            }}
+                        />
+                    )}
+                    <Item
+                        title={t('sessionInfo.connectionStatus')}
+                        detail={sessionStatus.isConnected ? t('status.online') : t('status.offline')}
+                        icon={<Ionicons name="pulse-outline" size={29} color={sessionStatus.isConnected ? "#34C759" : "#8E8E93"} />}
+                        showChevron={false}
+                    />
+                    <Item
+                        title={t('sessionInfo.created')}
+                        subtitle={formatDate(session.createdAt)}
+                        icon={<Ionicons name="calendar-outline" size={29} color="#007AFF" />}
+                        showChevron={false}
                     />
                     <Item
                         title={t('sessionInfo.lastUpdated')}
@@ -312,22 +331,13 @@ function SessionInfoContent({ session }: { session: Session }) {
                         icon={<Ionicons name="pencil-outline" size={29} color="#007AFF" />}
                         onPress={handleRenameSession}
                     />
-                    {session.metadata?.claudeSessionId && (
+                    {!session.active && (session.metadata?.claudeSessionId || session.metadata?.codexSessionId) && (
                         <Item
-                            title={t('sessionInfo.copyClaudeResumeCommand')}
-                            subtitle={`happy --resume ${session.metadata.claudeSessionId}`}
+                            title={t('sessionInfo.copyResumeCommand')}
+                            subtitle={`happy resume ${session.id}`}
                             icon={<Ionicons name="terminal-outline" size={29} color="#9C27B0" />}
                             showChevron={false}
-                            onPress={() => handleCopyResumeCommand(`happy --resume ${session.metadata!.claudeSessionId!}`)}
-                        />
-                    )}
-                    {session.metadata?.codexSessionId && (
-                        <Item
-                            title={t('sessionInfo.copyCodexResumeCommand')}
-                            subtitle={`happy codex --resume ${session.metadata.codexSessionId}`}
-                            icon={<Ionicons name="terminal-outline" size={29} color="#007AFF" />}
-                            showChevron={false}
-                            onPress={() => handleCopyResumeCommand(`happy codex --resume ${session.metadata!.codexSessionId!}`)}
+                            onPress={() => handleCopyCommand(`happy resume ${session.id}`)}
                         />
                     )}
                     {session.metadata?.machineId && (

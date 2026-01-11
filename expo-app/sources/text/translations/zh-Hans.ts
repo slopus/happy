@@ -500,6 +500,7 @@ export const zhHans: TranslationStructure = {
         lastUpdated: '最后更新',
         sequence: '序列',
         quickActions: '快速操作',
+        copyResumeCommand: '复制恢复命令',
         viewMachine: '查看设备',
         viewMachineSubtitle: '查看设备详情和会话',
         killSessionSubtitle: '立即终止会话',

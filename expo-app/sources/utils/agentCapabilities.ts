@@ -10,7 +10,10 @@ export type AgentType = 'claude' | 'codex' | 'gemini';
 /**
  * Agents that support vendor resume IDs (e.g. Claude Code session ID) for resume-from-UI.
  */
-export const RESUMABLE_AGENTS: AgentType[] = ['claude'];
+export const RESUMABLE_AGENTS: AgentType[] = [
+    'claude',
+    'codex', // Fork: Codex resume enabled (requires custom Codex build with MCP resume)
+];
 
 export function canAgentResume(agent: string | null | undefined): boolean {
     if (typeof agent !== 'string') return false;
