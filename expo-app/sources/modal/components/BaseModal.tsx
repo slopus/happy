@@ -9,6 +9,13 @@ import {
     Platform
 } from 'react-native';
 
+// On web, stop events from propagating to expo-router's modal overlay
+// which intercepts clicks when it applies pointer-events: none to body
+const stopPropagation = (e: { stopPropagation: () => void }) => e.stopPropagation();
+const webEventHandlers = Platform.OS === 'web'
+    ? { onClick: stopPropagation, onPointerDown: stopPropagation, onTouchStart: stopPropagation }
+    : {};
+
 interface BaseModalProps {
     visible: boolean;
     onClose?: () => void;
@@ -57,9 +64,10 @@ export function BaseModal({
             animationType={animationType}
             onRequestClose={onClose}
         >
-            <KeyboardAvoidingView 
+            <KeyboardAvoidingView
                 style={styles.container}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                {...webEventHandlers}
             >
                 <TouchableWithoutFeedback onPress={handleBackdropPress}>
                     <Animated.View 
@@ -100,7 +108,9 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         justifyContent: 'center',
-        alignItems: 'center'
+        alignItems: 'center',
+        // On web, ensure modal can receive pointer events when body has pointer-events: none
+        ...Platform.select({ web: { pointerEvents: 'auto' as const } })
     },
     backdrop: {
         ...StyleSheet.absoluteFillObject,
