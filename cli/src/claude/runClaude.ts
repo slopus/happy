@@ -25,6 +25,9 @@ import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
 import { Session } from './session';
 
+/** JavaScript runtime to use for spawning Claude Code */
+export type JsRuntime = 'node' | 'bun'
+
 export interface StartOptions {
     model?: string
     permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
@@ -33,6 +36,8 @@ export interface StartOptions {
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
     startedBy?: 'daemon' | 'terminal'
+    /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
+    jsRuntime?: JsRuntime
 }
 
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
@@ -405,7 +410,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         session,
         claudeEnvVars: options.claudeEnvVars,
         claudeArgs: options.claudeArgs,
-        hookSettingsPath
+        hookSettingsPath,
+        jsRuntime: options.jsRuntime
     });
 
     // Send session death message
