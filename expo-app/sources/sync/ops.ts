@@ -160,6 +160,67 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
 }
 
 /**
+ * Result type for resume session operation.
+ */
+export type ResumeSessionResult =
+    | { type: 'success' }
+    | { type: 'error'; errorMessage: string };
+
+/**
+ * Options for resuming an inactive session.
+ */
+export interface ResumeSessionOptions {
+    /** The Happy session ID to resume */
+    sessionId: string;
+    /** The machine ID where the session was running */
+    machineId: string;
+    /** The directory where the session was running */
+    directory: string;
+    /** The agent type (claude, codex, gemini) */
+    agent: 'codex' | 'claude' | 'gemini';
+    /** The agent's session ID for resume (claudeSessionId or codexSessionId) */
+    agentSessionId: string;
+    /** The initial message to send after resuming */
+    message: string;
+}
+
+/**
+ * Resume an inactive session by spawning a new CLI process that reconnects
+ * to the existing Happy session and resumes the agent.
+ */
+export async function resumeSession(options: ResumeSessionOptions): Promise<ResumeSessionResult> {
+    const { sessionId, machineId, directory, agent, agentSessionId, message } = options;
+
+    try {
+        const result = await apiSocket.machineRPC<ResumeSessionResult, {
+            type: 'resume-session';
+            sessionId: string;
+            directory: string;
+            agent: 'codex' | 'claude' | 'gemini';
+            agentSessionId: string;
+            message: string;
+        }>(
+            machineId,
+            'spawn-happy-session',
+            {
+                type: 'resume-session',
+                sessionId,
+                directory,
+                agent,
+                agentSessionId,
+                message
+            }
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to resume session'
+        };
+    }
+}
+
+/**
  * Stop the daemon on a specific machine
  */
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {

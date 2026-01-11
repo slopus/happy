@@ -12,8 +12,9 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort } from '@/sync/ops';
+import { sessionAbort, resumeSession } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionPendingMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { canResumeSession, getAgentSessionId } from '@/utils/agentCapabilities';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -192,6 +193,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const experiments = useSetting('experiments');
     const expFileViewer = useSetting('expFileViewer');
 
+    // Inactive session resume state
+    const isSessionActive = session.presence === 'online';
+    const isResumable = canResumeSession(session.metadata);
+    const [isResuming, setIsResuming] = React.useState(false);
+
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
 
@@ -229,6 +235,41 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             storage.getState().updateSessionModelMode(sessionId, mode);
         }
     }, [sessionId]);
+
+    // Handle resuming an inactive session
+    const handleResumeSession = React.useCallback(async (messageToSend: string) => {
+        if (!session.metadata?.machineId || !session.metadata?.path || !session.metadata?.flavor) {
+            Modal.alert(t('common.error'), t('session.resumeFailed'));
+            return;
+        }
+
+        const agentSessionId = getAgentSessionId(session.metadata);
+        if (!agentSessionId) {
+            Modal.alert(t('common.error'), t('session.resumeFailed'));
+            return;
+        }
+
+        setIsResuming(true);
+        try {
+            const result = await resumeSession({
+                sessionId,
+                machineId: session.metadata.machineId,
+                directory: session.metadata.path,
+                agent: session.metadata.flavor,
+                agentSessionId,
+                message: messageToSend
+            });
+
+            if (result.type === 'error') {
+                Modal.alert(t('common.error'), result.errorMessage);
+            }
+            // On success, the session will become active and UI will update automatically
+        } catch (error) {
+            Modal.alert(t('common.error'), t('session.resumeFailed'));
+        } finally {
+            setIsResuming(false);
+        }
+    }, [sessionId, session.metadata]);
 
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
@@ -301,6 +342,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </>
     ) : null;
 
+    // Determine the status text to show for inactive sessions
+    const inactiveStatusText = !isSessionActive
+        ? (isResumable ? t('session.inactiveResumable') : t('session.inactiveNotResumable'))
+        : null;
+
     const input = (
         <View>
             <PendingQueueIndicator
@@ -317,11 +363,22 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 modelMode={modelMode}
                 onModelModeChange={updateModelMode}
                 metadata={session.metadata}
+                profileId={session.metadata?.profileId ?? undefined}
+                onProfileClick={session.metadata?.profileId !== undefined ? () => {
+                    const profileId = session.metadata?.profileId;
+                    const profileInfo = (profileId === null || (typeof profileId === 'string' && profileId.trim() === ''))
+                        ? t('profiles.noProfile')
+                        : (typeof profileId === 'string' ? profileId : t('status.unknown'));
+                    Modal.alert(
+                        t('profiles.title'),
+                        `This session uses: ${profileInfo}\n\nProfiles are fixed per session. To use a different profile, start a new session.`,
+                    );
+                } : undefined}
                 connectionStatus={{
-                    text: sessionStatus.statusText,
+                    text: isResuming ? t('session.resuming') : (inactiveStatusText || sessionStatus.statusText),
                     color: sessionStatus.statusColor,
                     dotColor: sessionStatus.statusDotColor,
-                    isPulsing: sessionStatus.isPulsing
+                    isPulsing: isResuming || sessionStatus.isPulsing
                 }}
                 onSend={() => {
                     const text = message.trim();
@@ -329,6 +386,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     setMessage('');
                     clearDraft();
                     trackMessageSent();
+
+                    // If session is inactive but resumable, resume it and send the message through the agent.
+                    if (!isSessionActive && isResumable) {
+                        void handleResumeSession(text);
+                        return;
+                    }
 
                     void (async () => {
                         try {
@@ -339,6 +402,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                         }
                     })();
                 }}
+                isSendDisabled={(!isSessionActive && !isResumable) || isResuming}
                 onMicPress={micButtonState.onMicPress}
                 isMicActive={micButtonState.isMicActive}
                 onAbort={() => sessionAbort(sessionId)}
