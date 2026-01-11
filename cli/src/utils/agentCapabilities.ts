@@ -15,4 +15,3 @@ export function supportsVendorResume(agent: AgentType | undefined): boolean {
   if (!agent) return VENDOR_RESUME_SUPPORTED_AGENTS.includes('claude');
   return VENDOR_RESUME_SUPPORTED_AGENTS.includes(agent);
 }
-

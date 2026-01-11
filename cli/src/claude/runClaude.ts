@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
-import { AgentState, Metadata } from '@/api/types';
+import { AgentState, Metadata, Session as ApiSession } from '@/api/types';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
@@ -31,6 +31,7 @@ import type { TerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
 import { writeTerminalAttachmentInfo } from '@/terminal/terminalAttachmentInfo';
 import { buildTerminalFallbackMessage } from '@/terminal/terminalFallbackMessage';
+import { readPersistedHappySession, writePersistedHappySession } from '@/daemon/persistedHappySession';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -47,6 +48,12 @@ export interface StartOptions {
     jsRuntime?: JsRuntime
     /** Internal terminal runtime flags passed by the spawner (daemon/tmux wrapper). */
     terminalRuntime?: TerminalRuntimeFlags | null
+    /**
+     * Existing Happy session ID to reconnect to.
+     * When set, the CLI will connect to this session instead of creating a new one.
+     * Used for resuming inactive sessions.
+     */
+    existingSessionId?: string
 }
 
 function inferPermissionModeFromClaudeArgs(args?: string[]): PermissionMode | undefined {
@@ -146,70 +153,94 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         permissionMode: initialPermissionMode,
         permissionModeUpdatedAt: Date.now(),
     };
-    const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 
-    // Handle server unreachable case - run Claude locally with hot reconnection
-    // Note: connectionState.notifyOffline() was already called by api.ts with error details
-    if (!response) {
-        let offlineSessionId: string | null = null;
-
-        const reconnection = startOfflineReconnection({
-            serverUrl: configuration.serverUrl,
-            onReconnected: async () => {
-                const resp = await api.getOrCreateSession({ tag: randomUUID(), metadata, state });
-                if (!resp) throw new Error('Server unavailable');
-                const session = api.sessionSyncClient(resp);
-                const scanner = await createSessionScanner({
-                    sessionId: null,
-                    workingDirectory,
-                    onMessage: (msg) => session.sendClaudeSessionMessage(msg)
-                });
-                if (offlineSessionId) scanner.onNewSession(offlineSessionId);
-                return { session, scanner };
-            },
-            onNotify: console.log,
-            onCleanup: () => {
-                // Scanner cleanup handled automatically when process exits
-            }
-        });
-
-        const abortController = new AbortController();
-        const abortOnSignal = () => abortController.abort();
-        process.once('SIGINT', abortOnSignal);
-        process.once('SIGTERM', abortOnSignal);
-
-        try {
-            await claudeLocal({
-                path: workingDirectory,
-                sessionId: null,
-                onSessionFound: (id) => { offlineSessionId = id; },
-                onThinkingChange: () => {},
-                abort: abortController.signal,
-                claudeEnvVars: options.claudeEnvVars,
-                claudeArgs: options.claudeArgs,
-                mcpServers: {},
-                allowedTools: []
-            });
-        } finally {
-            process.removeListener('SIGINT', abortOnSignal);
-            process.removeListener('SIGTERM', abortOnSignal);
-            reconnection.cancel();
-            stopCaffeinate();
+    // Handle existing session (for inactive session resume) vs new session.
+    let baseSession: ApiSession;
+    if (options.existingSessionId) {
+        logger.debug(`[START] Resuming existing session: ${options.existingSessionId}`);
+        const attached = await readPersistedHappySession(options.existingSessionId);
+        if (!attached) {
+            throw new Error(`Cannot resume session ${options.existingSessionId}: no local persisted session state found`);
         }
-        process.exit(0);
+        baseSession = attached;
+    } else {
+        const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+
+        // Handle server unreachable case - run Claude locally with hot reconnection
+        // Note: connectionState.notifyOffline() was already called by api.ts with error details
+        if (!response) {
+            let offlineSessionId: string | null = null;
+
+            const reconnection = startOfflineReconnection({
+                serverUrl: configuration.serverUrl,
+                onReconnected: async () => {
+                    const resp = await api.getOrCreateSession({ tag: randomUUID(), metadata, state });
+                    if (!resp) throw new Error('Server unavailable');
+                    const session = api.sessionSyncClient(resp);
+                    const scanner = await createSessionScanner({
+                        sessionId: null,
+                        workingDirectory,
+                        onMessage: (msg) => session.sendClaudeSessionMessage(msg)
+                    });
+                    if (offlineSessionId) scanner.onNewSession(offlineSessionId);
+                    return { session, scanner };
+                },
+                onNotify: console.log,
+                onCleanup: () => {
+                    // Scanner cleanup handled automatically when process exits
+                }
+            });
+
+            const abortController = new AbortController();
+            const abortOnSignal = () => abortController.abort();
+            process.once('SIGINT', abortOnSignal);
+            process.once('SIGTERM', abortOnSignal);
+
+            try {
+                await claudeLocal({
+                    path: workingDirectory,
+                    sessionId: null,
+                    onSessionFound: (id) => { offlineSessionId = id; },
+                    onThinkingChange: () => {},
+                    abort: abortController.signal,
+                    claudeEnvVars: options.claudeEnvVars,
+                    claudeArgs: options.claudeArgs,
+                    mcpServers: {},
+                    allowedTools: []
+                });
+            } finally {
+                process.removeListener('SIGINT', abortOnSignal);
+                process.removeListener('SIGTERM', abortOnSignal);
+                reconnection.cancel();
+                stopCaffeinate();
+            }
+            process.exit(0);
+        }
+
+        baseSession = response;
+        logger.debug(`Session created: ${baseSession.id}`);
     }
 
-    logger.debug(`Session created: ${response.id}`);
+    // Persist session state locally so we can attach later (inactive session resume).
+    await writePersistedHappySession(baseSession);
+
+    // Mark the session as active and refresh metadata on startup.
+    api.sessionSyncClient(baseSession).updateMetadata((currentMetadata) => ({
+        ...currentMetadata,
+        ...metadata,
+        lifecycleState: 'running',
+        lifecycleStateSince: Date.now(),
+    }));
 
     // Create realtime session
-    const session = api.sessionSyncClient(response);
+    const session = api.sessionSyncClient(baseSession);
 
     // Persist terminal attachment info locally (best-effort).
     if (terminal) {
         try {
             await writeTerminalAttachmentInfo({
                 happyHomeDir: configuration.happyHomeDir,
-                sessionId: response.id,
+                sessionId: baseSession.id,
                 terminal,
             });
         } catch (error) {
@@ -227,12 +258,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Always report to daemon if it exists
     try {
-        logger.debug(`[START] Reporting session ${response.id} to daemon`);
-        const result = await notifyDaemonSessionStarted(response.id, metadata);
+        logger.debug(`[START] Reporting session ${baseSession.id} to daemon`);
+        const result = await notifyDaemonSessionStarted(baseSession.id, metadata);
         if (result.error) {
             logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
         } else {
-            logger.debug(`[START] Reported session ${response.id} to daemon`);
+            logger.debug(`[START] Reported session ${baseSession.id} to daemon`);
         }
     } catch (error) {
         logger.debug('[START] Failed to report to daemon (may not be running):', error);
@@ -285,7 +316,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Print log file path
     const logPath = logger.logFilePath;
-    logger.infoDeveloper(`Session: ${response.id}`);
+    logger.infoDeveloper(`Session: ${baseSession.id}`);
     logger.infoDeveloper(`Logs: ${logPath}`);
 
     // Set initial agent state
@@ -313,7 +344,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Forward messages to the queue
     // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
-    let currentPermissionMode: PermissionMode | undefined = options.permissionMode;
+    let currentPermissionMode: PermissionMode = options.permissionMode ?? 'default';
     let currentModel = options.model; // Track current model state
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
@@ -499,6 +530,22 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     });
 
     registerKillSessionHandler(session.rpcHandlerManager, cleanup);
+
+    // Queue initial message if provided (for inactive session resume)
+    const initialMessage = process.env.HAPPY_INITIAL_MESSAGE;
+    if (initialMessage) {
+        logger.debug(`[START] Queuing initial message for resumed session: ${initialMessage.substring(0, 50)}...`);
+        const initialEnhancedMode: EnhancedMode = {
+            permissionMode: currentPermissionMode,
+            model: currentModel,
+            fallbackModel: currentFallbackModel,
+            customSystemPrompt: currentCustomSystemPrompt,
+            appendSystemPrompt: currentAppendSystemPrompt,
+            allowedTools: currentAllowedTools,
+            disallowedTools: currentDisallowedTools
+        };
+        messageQueue.push(initialMessage, initialEnhancedMode);
+    }
 
     // Create claude loop
     await loop({

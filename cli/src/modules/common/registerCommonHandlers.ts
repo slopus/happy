@@ -386,12 +386,22 @@ export interface SpawnSessionOptions {
     directory: string;
     sessionId?: string;
     /**
-     * Resume an existing agent session by id.
-     * For upstream usage this is intended for Claude (`--resume <sessionId>`).
-     * If resume is requested for an unsupported agent, the daemon will return an error
+     * Resume an existing agent session by id (vendor resume).
+     *
+     * Upstream intent: Claude (`--resume <sessionId>`).
+     * If resume is requested for an unsupported agent, the daemon should return an error
      * rather than silently spawning a fresh session.
      */
     resume?: string;
+    /**
+     * Existing Happy session ID to reconnect to (for inactive session resume).
+     * When set, the CLI will connect to this session instead of creating a new one.
+     */
+    existingSessionId?: string;
+    /**
+     * Initial message to send after resuming an inactive session.
+     */
+    initialMessage?: string;
     approvedNewDirectoryCreation?: boolean;
     agent?: 'claude' | 'codex' | 'gemini';
     token?: string;
@@ -422,7 +432,7 @@ export interface SpawnSessionOptions {
 }
 
 export type SpawnSessionResult =
-    | { type: 'success'; sessionId: string }
+    | { type: 'success'; sessionId?: string }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
     | { type: 'error'; errorMessage: string };
 

@@ -382,9 +382,10 @@ export async function startDaemon(): Promise<void> {
 	        environmentVariableKeys: envKeys,
 	      });
 
-	      const { directory, sessionId, machineId, approvedNewDirectoryCreation = true, resume } = options;
+	      const { directory, sessionId, machineId, approvedNewDirectoryCreation = true, resume, existingSessionId, initialMessage } = options;
 	      const normalizedResume = typeof resume === 'string' ? resume.trim() : '';
-	      if (normalizedResume && !supportsVendorResume(options.agent)) {
+	      const normalizedExistingSessionId = typeof existingSessionId === 'string' ? existingSessionId.trim() : '';
+	      if ((normalizedResume || normalizedExistingSessionId) && !supportsVendorResume(options.agent)) {
 	        return {
 	          type: 'error',
 	          errorMessage: `Resume is not supported for agent '${options.agent ?? 'claude'}'. (Upstream supports Claude vendor resume only.)`,
@@ -392,8 +393,8 @@ export async function startDaemon(): Promise<void> {
 	      }
 	      let directoryCreated = false;
 
-      let codexHomeDirCleanup: (() => void) | null = null;
-      let codexHomeDirCleanupArmed = false;
+	      let codexHomeDirCleanup: (() => void) | null = null;
+	      let codexHomeDirCleanupArmed = false;
 
       try {
         await fs.access(directory);
@@ -538,6 +539,9 @@ export async function startDaemon(): Promise<void> {
 	        const extraEnvForChild = { ...extraEnv };
 	        delete extraEnvForChild.TMUX_SESSION_NAME;
 	        delete extraEnvForChild.TMUX_TMPDIR;
+	        const extraEnvForChildWithMessage = typeof initialMessage === 'string' && initialMessage.trim().length > 0
+	          ? { ...extraEnvForChild, HAPPY_INITIAL_MESSAGE: initialMessage }
+	          : extraEnvForChild;
 
 	        // Check if tmux is available and should be used
 	        const tmuxAvailable = await isTmuxAvailable();
@@ -578,8 +582,8 @@ export async function startDaemon(): Promise<void> {
 	          }
 
 	          // Try to spawn in tmux session
-	          const sessionDesc = resolvedTmuxSessionName || 'current/most recent session';
-	          logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
+          const sessionDesc = resolvedTmuxSessionName || 'current/most recent session';
+          logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
 
           // Determine agent command - support claude, codex, and gemini
 	          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
@@ -599,11 +603,12 @@ export async function startDaemon(): Promise<void> {
 	          const { commandTokens, tmuxEnv } = buildTmuxSpawnConfig({
 	            agent,
 	            directory,
-	            extraEnv: extraEnvForChild,
+	            extraEnv: extraEnvForChildWithMessage,
 	            tmuxCommandEnv,
 	            extraArgs: [
 	              ...terminalRuntimeArgs,
 	              ...(normalizedResume ? ['--resume', normalizedResume] : []),
+	              ...(normalizedExistingSessionId ? ['--existing-session', normalizedExistingSessionId] : []),
 	            ],
 	          });
 	          const tmux = new TmuxUtilities(resolvedTmuxSessionName, tmuxCommandEnv);
@@ -731,6 +736,9 @@ export async function startDaemon(): Promise<void> {
 	          if (normalizedResume) {
 	            args.push('--resume', normalizedResume);
 	          }
+	          if (normalizedExistingSessionId) {
+	            args.push('--existing-session', normalizedExistingSessionId);
+	          }
 
 	          // NOTE: sessionId is reserved for future Happy session resume; we currently ignore it.
 	          const happyProcess = spawnHappyCLI(args, {
@@ -739,7 +747,7 @@ export async function startDaemon(): Promise<void> {
 	            stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
 	            env: {
 	              ...process.env,
-	              ...extraEnvForChild
+	              ...extraEnvForChildWithMessage
 	            }
 	          });
 
