@@ -562,7 +562,7 @@ describe('settings', () => {
                         name: 'Server Profile',
                         anthropicConfig: {},
                         environmentVariables: [],
-                        compatibility: { claude: true, codex: true },
+                        compatibility: { claude: true, codex: true, gemini: true },
                         isBuiltIn: false,
                         createdAt: Date.now(),
                         updatedAt: Date.now(),
@@ -580,7 +580,7 @@ describe('settings', () => {
                         name: 'Local Profile',
                         anthropicConfig: {},
                         environmentVariables: [],
-                        compatibility: { claude: true, codex: true },
+                        compatibility: { claude: true, codex: true, gemini: true },
                         isBuiltIn: false,
                         createdAt: Date.now(),
                         updatedAt: Date.now(),
@@ -682,7 +682,7 @@ describe('settings', () => {
                     name: 'Test',
                     anthropicConfig: {},
                     environmentVariables: [],
-                    compatibility: { claude: true, codex: true },
+                    compatibility: { claude: true, codex: true, gemini: true },
                     isBuiltIn: false,
                     createdAt: Date.now(),
                     updatedAt: Date.now(),
@@ -846,15 +846,15 @@ describe('settings', () => {
                     name: 'Local Profile',
                     anthropicConfig: {},
                     environmentVariables: [],
-                    compatibility: { claude: true, codex: true },
+                    compatibility: { claude: true, codex: true, gemini: true },
                     isBuiltIn: false,
                     createdAt: 2000,
                     updatedAt: 2000,
                     version: '1.0.0',
                 }],
                 dismissedCLIWarnings: {
-                    perMachine: { 'machine-2': ['warning-2'] },
-                    global: []
+                    perMachine: { 'machine-2': { claude: true } },
+                    global: {}
                 }
             };
 

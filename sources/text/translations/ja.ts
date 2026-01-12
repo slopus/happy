@@ -541,10 +541,6 @@ export const ja: TranslationStructure = {
             viewDiff: '現在のファイル変更',
             question: '質問',
         },
-        askUserQuestion: {
-            submit: '回答を送信',
-            multipleQuestions: ({ count }: { count: number }) => `${count}件の質問`,
-        },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `ターミナル(cmd: ${cmd})`,
             searchPattern: ({ pattern }: { pattern: string }) => `検索(pattern: ${pattern})`,

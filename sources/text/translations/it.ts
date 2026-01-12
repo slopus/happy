@@ -538,10 +538,6 @@ export const it: TranslationStructure = {
             viewDiff: 'Modifiche file attuali',
             question: 'Domanda',
         },
-        askUserQuestion: {
-            submit: 'Invia risposta',
-            multipleQuestions: ({ count }: { count: number }) => `${count} domande`,
-        },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminale(cmd: ${cmd})`,
             searchPattern: ({ pattern }: { pattern: string }) => `Cerca(pattern: ${pattern})`,
