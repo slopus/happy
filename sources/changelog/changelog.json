@@ -5,12 +5,12 @@
       "date": "2025-12-22",
       "summary": "This release expands AI agent support and refines the voice experience, while improving markdown rendering for a better chat experience.",
       "changes": [
-        "Added experimental Gemini agent support - still early and rough around the edges, but functional for those who want to try it",
-        "Voice conversations now require a subscription after 3 free trials - we'll soon allow connecting your own ElevenLabs agent for unlimited usage",
-        "Improved markdown table rendering in chat - no more ASCII pipes `|--|`, actual formatted tables (layout still needs work, but much better!)",
-        "CLI is being actively developed to support more agents: Gemini first, then Codex stability improvements, with OpenCode support to follow"
+        "We are working on adding Gemini support using ACP and hopefully fixing codex stability issues using the same approach soon! Stay tuned.",
+        "Removed model configurations from agents. We were not able to keep up with the models so for now we are removing the configuration from the mobile app. You can still configure it through your CLIs, happy will simply use defaults.",
+        "Elevenlabs ... is epxensive. Voice conversations will soon require a subscription after 3 free trials - we'll soon allow connecting your own ElevenLabs agent if you want to manage your own spendings.",
+        "Improved markdown table rendering in chat - no more ASCII pipes `|--|`, actual formatted tables (layout still needs work, but much better!)"
       ],
-      "rawMarkdown": "## Version 5 - 2025-12-22\n\n\nThis release expands AI agent support and refines the voice experience, while improving markdown rendering for a better chat experience.\n\n- Added experimental Gemini agent support - still early and rough around the edges, but functional for those who want to try it\n- Voice conversations now require a subscription after 3 free trials - we'll soon allow connecting your own ElevenLabs agent for unlimited usage\n- Improved markdown table rendering in chat - no more ASCII pipes `|--|`, actual formatted tables (layout still needs work, but much better!)\n- CLI is being actively developed to support more agents: Gemini first, then Codex stability improvements, with OpenCode support to follow"
+      "rawMarkdown": "## Version 5 - 2025-12-22\n\n\nThis release expands AI agent support and refines the voice experience, while improving markdown rendering for a better chat experience.\n\n- We are working on adding Gemini support using ACP and hopefully fixing codex stability issues using the same approach soon! Stay tuned.\n- Removed model configurations from agents. We were not able to keep up with the models so for now we are removing the configuration from the mobile app. You can still configure it through your CLIs, happy will simply use defaults.\n- Elevenlabs ... is epxensive. Voice conversations will soon require a subscription after 3 free trials - we'll soon allow connecting your own ElevenLabs agent if you want to manage your own spendings.\n- Improved markdown table rendering in chat - no more ASCII pipes `|--|`, actual formatted tables (layout still needs work, but much better!)"
     },
     {
       "version": 4,

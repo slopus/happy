@@ -126,7 +126,7 @@ export default function PathPickerScreen() {
         // Pass path back via navigation params (main's pattern, received by new/index.tsx)
         const state = navigation.getState();
         const previousRoute = state?.routes?.[state.index - 1];
-        if (previousRoute) {
+        if (state && state.index > 0 && previousRoute) {
             navigation.dispatch({
                 ...CommonActions.setParams({ path: pathToUse }),
                 source: previousRoute.key,

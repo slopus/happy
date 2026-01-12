@@ -229,7 +229,7 @@ export const ja: TranslationStructure = {
         webFeaturesDescription: 'Webバージョンでのみ利用可能な機能。',
         enterToSend: 'Enterで送信',
         enterToSendEnabled: 'Enterで送信（Shift+Enterで改行）',
-        enterToSendDisabled: 'Enterで改行を挿入',
+        enterToSendDisabled: 'Enterで改行',
         commandPalette: 'コマンドパレット',
         commandPaletteEnabled: '⌘Kで開く',
         commandPaletteDisabled: 'クイックコマンドアクセスは無効',
@@ -511,6 +511,10 @@ export const ja: TranslationStructure = {
         taskView: {
             initializing: 'エージェントを初期化中...',
             moreTools: ({ count }: { count: number }) => `+${count} 個のツール`,
+        },
+        askUserQuestion: {
+            submit: '回答を送信',
+            multipleQuestions: ({ count }: { count: number }) => `${count}件の質問`,
         },
         multiEdit: {
             editNumber: ({ index, total }: { index: number; total: number }) => `編集 ${index}/${total}`,

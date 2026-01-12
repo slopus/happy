@@ -224,8 +224,8 @@ export const it: TranslationStructure = {
         experimentalFeaturesDisabled: 'Usando solo funzionalità stabili',
         webFeatures: 'Funzionalità web',
         webFeaturesDescription: 'Funzionalità disponibili solo nella versione web dell\'app.',
-        enterToSend: 'Invio per inviare',
-        enterToSendEnabled: 'Premi Invio per inviare (Maiusc+Invio per nuova riga)',
+        enterToSend: 'Invio con Enter',
+        enterToSendEnabled: 'Premi Invio per inviare (Maiusc+Invio per una nuova riga)',
         enterToSendDisabled: 'Invio inserisce una nuova riga',
         commandPalette: 'Palette comandi',
         commandPaletteEnabled: 'Premi ⌘K per aprire',
@@ -508,6 +508,10 @@ export const it: TranslationStructure = {
         taskView: {
             initializing: 'Inizializzazione agente...',
             moreTools: ({ count }: { count: number }) => `+${count} altri ${plural({ count, singular: 'strumento', plural: 'strumenti' })}`,
+        },
+        askUserQuestion: {
+            submit: 'Invia risposta',
+            multipleQuestions: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'domanda', plural: 'domande' })}`,
         },
         multiEdit: {
             editNumber: ({ index, total }: { index: number; total: number }) => `Modifica ${index} di ${total}`,
