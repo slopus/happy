@@ -8,6 +8,22 @@ import { t } from '@/text';
 import { config } from '@/config';
 import { requestMicrophonePermission, showMicrophonePermissionDeniedAlert } from '@/utils/microphonePermissions';
 
+// Timeout for session operations to prevent hanging on poor networks
+const SESSION_START_TIMEOUT_MS = 15000;
+
+/**
+ * Wraps a promise with a timeout to prevent hanging on poor network conditions.
+ * This is critical for mobile users on cellular networks.
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
+    return Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+            setTimeout(() => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)), timeoutMs)
+        )
+    ]);
+}
+
 let voiceSession: VoiceSession | null = null;
 let voiceSessionStarted: boolean = false;
 let currentSessionId: string | null = null;
@@ -28,33 +44,41 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
 
     const experimentsEnabled = storage.getState().settings.experiments;
     const agentId = __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;
-    
+
     if (!agentId) {
         console.error('Agent ID not configured');
         return;
     }
-    
+
     try {
         // Simple path: No experiments = no auth needed
         if (!experimentsEnabled) {
             currentSessionId = sessionId;
             voiceSessionStarted = true;
-            await voiceSession.startSession({
-                sessionId,
-                initialContext,
-                agentId  // Use agentId directly, no token
-            });
+            await withTimeout(
+                voiceSession.startSession({
+                    sessionId,
+                    initialContext,
+                    agentId  // Use agentId directly, no token
+                }),
+                SESSION_START_TIMEOUT_MS,
+                'Voice session start'
+            );
             return;
         }
-        
+
         // Experiments enabled = full auth flow
         const credentials = await TokenStorage.getCredentials();
         if (!credentials) {
             Modal.alert(t('common.error'), t('errors.authenticationFailed'));
             return;
         }
-        
-        const response = await fetchVoiceToken(credentials, sessionId);
+
+        const response = await withTimeout(
+            fetchVoiceToken(credentials, sessionId),
+            SESSION_START_TIMEOUT_MS,
+            'Voice token fetch'
+        );
         console.log('[Voice] fetchVoiceToken response:', response);
 
         if (!response.allowed) {
@@ -72,19 +96,27 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
 
         if (response.token) {
             // Use token from backend
-            await voiceSession.startSession({
-                sessionId,
-                initialContext,
-                token: response.token,
-                agentId: response.agentId
-            });
+            await withTimeout(
+                voiceSession.startSession({
+                    sessionId,
+                    initialContext,
+                    token: response.token,
+                    agentId: response.agentId
+                }),
+                SESSION_START_TIMEOUT_MS,
+                'Voice session start'
+            );
         } else {
             // No token (e.g. server not deployed yet) - use agentId directly
-            await voiceSession.startSession({
-                sessionId,
-                initialContext,
-                agentId
-            });
+            await withTimeout(
+                voiceSession.startSession({
+                    sessionId,
+                    initialContext,
+                    agentId
+                }),
+                SESSION_START_TIMEOUT_MS,
+                'Voice session start'
+            );
         }
     } catch (error) {
         console.error('Failed to start realtime session:', error);
@@ -98,7 +130,7 @@ export async function stopRealtimeSession() {
     if (!voiceSession) {
         return;
     }
-    
+
     try {
         await voiceSession.endSession();
         currentSessionId = null;
