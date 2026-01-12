@@ -19,4 +19,9 @@ export interface TrackedSession {
   message?: string;
   /** tmux session identifier (format: session:window) */
   tmuxSessionId?: string;
+  /**
+   * Sessions reattached from disk markers after daemon restart are potentially unsafe to kill by PID
+   * (avoids PID reuse killing unrelated processes). We keep them kill-protected.
+   */
+  reattachedFromDiskMarker?: boolean;
 }

@@ -19,6 +19,8 @@ import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquire
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
+import { findAllHappyProcesses, findHappyProcessByPid } from './doctor';
+import { listSessionMarkers, removeSessionMarker, writeSessionMarker } from './sessionRegistry';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
@@ -51,6 +53,8 @@ async function getPreferredHostName(): Promise<string> {
     ?? (await tryScutil('ComputerName'))
     ?? fallback;
 }
+
+const ALLOWED_HAPPY_SESSION_PROCESS_TYPES = new Set(['daemon-spawned-session', 'user-session', 'dev-daemon-spawned', 'dev-session', 'dev-related']);
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -223,9 +227,54 @@ export async function startDaemon(): Promise<void> {
     // Helper functions
     const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
 
+    // On daemon restart, reattach to still-running sessions via disk markers (stack-scoped by HAPPY_HOME_DIR).
+    try {
+      const markers = await listSessionMarkers();
+      const happyProcesses = await findAllHappyProcesses();
+      const happyPidToType = new Map(happyProcesses.map((p) => [p.pid, p.type] as const));
+      let adopted = 0;
+      for (const marker of markers) {
+        try {
+          process.kill(marker.pid, 0);
+        } catch {
+          await removeSessionMarker(marker.pid);
+          continue;
+        }
+        // Safety: avoid PID reuse attaching us to an unrelated process. Only adopt if PID currently looks
+        // like a Happy session process (best-effort cross-platform via ps-list).
+        const procType = happyPidToType.get(marker.pid);
+        if (!procType || !ALLOWED_HAPPY_SESSION_PROCESS_TYPES.has(procType)) {
+          logger.debug(
+            `[DAEMON RUN] Skipping marker PID ${marker.pid} during reattach: PID does not look like a Happy session process (type: ${procType ?? 'unknown'})`
+          );
+          continue;
+        }
+        if (pidToTrackedSession.has(marker.pid)) continue;
+        pidToTrackedSession.set(marker.pid, {
+          startedBy: marker.startedBy ?? 'reattached',
+          happySessionId: marker.happySessionId,
+          happySessionMetadataFromLocalWebhook: marker.metadata,
+          pid: marker.pid,
+          reattachedFromDiskMarker: true,
+        });
+        adopted++;
+      }
+      if (adopted > 0) {
+        logger.debug(`[DAEMON RUN] Reattached ${adopted} sessions from disk markers`);
+      }
+    } catch (e) {
+      logger.debug('[DAEMON RUN] Failed to reattach sessions from disk markers', e);
+    }
+
     // Handle webhook from happy session reporting itself
     const onHappySessionWebhook = (sessionId: string, sessionMetadata: Metadata) => {
       logger.debugLargeJson(`[DAEMON RUN] Session reported`, sessionMetadata);
+
+      // Safety: ignore cross-daemon/cross-stack reports.
+      if (sessionMetadata?.happyHomeDir && sessionMetadata.happyHomeDir !== configuration.happyHomeDir) {
+        logger.debug(`[DAEMON RUN] Ignoring session report for different happyHomeDir: ${sessionMetadata.happyHomeDir}`);
+        return;
+      }
 
       const pid = sessionMetadata.hostPid;
       if (!pid) {
@@ -262,7 +311,23 @@ export async function startDaemon(): Promise<void> {
         };
         pidToTrackedSession.set(pid, trackedSession);
         logger.debug(`[DAEMON RUN] Registered externally-started session ${sessionId}`);
+      } else if (existingSession?.reattachedFromDiskMarker) {
+        // Reattached sessions remain kill-protected (PID reuse safety), but we still keep metadata up to date.
+        existingSession.startedBy = sessionMetadata.startedBy ?? existingSession.startedBy;
+        existingSession.happySessionId = sessionId;
+        existingSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
       }
+
+      // Best-effort: write/update marker so future daemon restarts can reattach.
+      void writeSessionMarker({
+        pid,
+        happySessionId: sessionId,
+        startedBy: sessionMetadata.startedBy ?? 'terminal',
+        cwd: sessionMetadata.path,
+        metadata: sessionMetadata,
+      }).catch((e) => {
+        logger.debug('[DAEMON RUN] Failed to write session marker', e);
+      });
     };
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
@@ -730,7 +795,7 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Stop a session by sessionId or PID fallback
-    const stopSession = (sessionId: string): boolean => {
+    const stopSession = async (sessionId: string): Promise<boolean> => {
       logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
 
       // Try to find by sessionId first
@@ -746,6 +811,18 @@ export async function startDaemon(): Promise<void> {
               logger.debug(`[DAEMON RUN] Failed to kill session ${sessionId}:`, error);
             }
           } else {
+            // Safety for reattached sessions: verify PID still looks like a Happy session process before SIGTERM.
+            // This mitigates PID reuse killing unrelated processes while still allowing UI/archive to stop sessions.
+            if (session.reattachedFromDiskMarker) {
+              const proc = await findHappyProcessByPid(pid);
+              if (!proc || !ALLOWED_HAPPY_SESSION_PROCESS_TYPES.has(proc.type)) {
+                logger.warn(
+                  `[DAEMON RUN] Refusing to SIGTERM PID ${pid} for reattached session ${sessionId} (PID reuse safety). ` +
+                    `Observed process type: ${proc?.type ?? 'unknown'}`
+                );
+                return false;
+              }
+            }
             // For externally started sessions, try to kill by PID
             try {
               process.kill(pid, 'SIGTERM');
@@ -778,6 +855,7 @@ export async function startDaemon(): Promise<void> {
         }
       }
       pidToTrackedSession.delete(pid);
+      void removeSessionMarker(pid);
     };
 
     // Start control server
@@ -907,6 +985,7 @@ export async function startDaemon(): Promise<void> {
             }
           }
           pidToTrackedSession.delete(pid);
+          void removeSessionMarker(pid);
         }
       }
 

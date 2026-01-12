@@ -71,7 +71,7 @@ interface DaemonToServerEvents {
 
 type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
-    stopSession: (sessionId: string) => boolean;
+    stopSession: (sessionId: string) => Promise<boolean>;
     requestShutdown: () => void;
 }
 
@@ -143,14 +143,14 @@ export class ApiMachineClient {
         });
 
         // Register stop session handler  
-        this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
+        this.rpcHandlerManager.registerHandler('stop-session', async (params: any) => {
             const { sessionId } = params || {};
 
             if (!sessionId) {
                 throw new Error('Session ID is required');
             }
 
-            const success = stopSession(sessionId);
+            const success = await stopSession(sessionId);
             if (!success) {
                 throw new Error('Session not found or failed to stop');
             }
