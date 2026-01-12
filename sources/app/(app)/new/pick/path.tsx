@@ -1,32 +1,19 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { CommonActions, useNavigation } from '@react-navigation/native';
-import { ItemGroup } from '@/components/ItemGroup';
-import { Item } from '@/components/Item';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { layout } from '@/components/layout';
 import { t } from '@/text';
+import { ItemList } from '@/components/ItemList';
+import { ItemGroup } from '@/components/ItemGroup';
+import { Item } from '@/components/Item';
+import { layout } from '@/components/layout';
 import { MultiTextInput, MultiTextInputHandle } from '@/components/MultiTextInput';
 
 const stylesheet = StyleSheet.create((theme) => ({
-    container: {
-        flex: 1,
-        backgroundColor: theme.colors.groupped.background,
-    },
-    scrollContainer: {
-        flex: 1,
-    },
-    scrollContent: {
-        alignItems: 'center',
-    },
-    contentWrapper: {
-        width: '100%',
-        maxWidth: layout.maxWidth,
-    },
     emptyContainer: {
         flex: 1,
         justifyContent: 'center',
@@ -38,6 +25,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         textAlign: 'center',
         ...Typography.default(),
+    },
+    contentWrapper: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
     },
     pathInputContainer: {
         flexDirection: 'row',
@@ -66,8 +58,8 @@ export default function PathPickerScreen() {
     const params = useLocalSearchParams<{ machineId?: string; selectedPath?: string }>();
     const machines = useAllMachines();
     const sessions = useSessions();
-    const inputRef = useRef<MultiTextInputHandle>(null);
     const recentMachinePaths = useSetting('recentMachinePaths');
+    const inputRef = useRef<MultiTextInputHandle>(null);
 
     const [customPath, setCustomPath] = useState(params.selectedPath || '');
 
@@ -135,6 +127,17 @@ export default function PathPickerScreen() {
         router.back();
     }, [customPath, router, machine, navigation]);
 
+    const suggestedPaths = useMemo(() => {
+        if (!machine) return [];
+        const homeDir = machine.metadata?.homeDir || '/home';
+        return [
+            homeDir,
+            `${homeDir}/projects`,
+            `${homeDir}/Documents`,
+            `${homeDir}/Desktop`,
+        ];
+    }, [machine]);
+
     if (!machine) {
         return (
             <>
@@ -162,13 +165,11 @@ export default function PathPickerScreen() {
                         )
                     }}
                 />
-                <View style={styles.container}>
+                <ItemList>
                     <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>
-                            No machine selected
-                        </Text>
+                        <Text style={styles.emptyText}>No machine selected</Text>
                     </View>
-                </View>
+                </ItemList>
             </>
         );
     }
@@ -198,104 +199,73 @@ export default function PathPickerScreen() {
                     )
                 }}
             />
-            <View style={styles.container}>
-                <ScrollView
-                    style={styles.scrollContainer}
-                    contentContainerStyle={styles.scrollContent}
-                    keyboardShouldPersistTaps="handled"
-                >
-                    <View style={styles.contentWrapper}>
-                        <ItemGroup title="Enter Path">
-                            <View style={styles.pathInputContainer}>
-                                <View style={[styles.pathInput, { paddingVertical: 8 }]}>
-                                    <MultiTextInput
-                                        ref={inputRef}
-                                        value={customPath}
-                                        onChangeText={setCustomPath}
-                                        placeholder="Enter path (e.g. /home/user/projects)"
-                                        maxHeight={76}
-                                        paddingTop={8}
-                                        paddingBottom={8}
-                                        // onSubmitEditing={handleSelectPath}
-                                        // blurOnSubmit={true}
-                                        // returnKeyType="done"
-                                    />
-                                </View>
+            <ItemList keyboardShouldPersistTaps="handled">
+                <View style={styles.contentWrapper}>
+                    <ItemGroup title="Enter Path">
+                        <View style={styles.pathInputContainer}>
+                            <View style={[styles.pathInput, { paddingVertical: 8 }]}>
+                                <MultiTextInput
+                                    ref={inputRef}
+                                    value={customPath}
+                                    onChangeText={setCustomPath}
+                                    placeholder="Enter path (e.g. /home/user/projects)"
+                                    maxHeight={76}
+                                    paddingTop={8}
+                                    paddingBottom={8}
+                                />
                             </View>
+                        </View>
+                    </ItemGroup>
+
+                    {recentPaths.length > 0 && (
+                        <ItemGroup title="Recent Paths">
+                            {recentPaths.map((path, index) => {
+                                const isSelected = customPath.trim() === path;
+                                const isLast = index === recentPaths.length - 1;
+                                return (
+                                    <Item
+                                        key={path}
+                                        title={path}
+                                        leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
+                                        onPress={() => {
+                                            setCustomPath(path);
+                                            setTimeout(() => inputRef.current?.focus(), 50);
+                                        }}
+                                        selected={isSelected}
+                                        showChevron={false}
+                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                        showDivider={!isLast}
+                                    />
+                                );
+                            })}
                         </ItemGroup>
+                    )}
 
-                        {recentPaths.length > 0 && (
-                            <ItemGroup title="Recent Paths">
-                                {recentPaths.map((path, index) => {
-                                    const isSelected = customPath.trim() === path;
-                                    const isLast = index === recentPaths.length - 1;
-
-                                    return (
-                                        <Item
-                                            key={path}
-                                            title={path}
-                                            leftElement={
-                                                <Ionicons
-                                                    name="folder-outline"
-                                                    size={18}
-                                                    color={theme.colors.textSecondary}
-                                                />
-                                            }
-                                            onPress={() => {
-                                                setCustomPath(path);
-                                                setTimeout(() => inputRef.current?.focus(), 50);
-                                            }}
-                                            selected={isSelected}
-                                            showChevron={false}
-                                            pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                            showDivider={!isLast}
-                                        />
-                                    );
-                                })}
-                            </ItemGroup>
-                        )}
-
-                        {recentPaths.length === 0 && (
-                            <ItemGroup title="Suggested Paths">
-                                {(() => {
-                                    const homeDir = machine.metadata?.homeDir || '/home';
-                                    const suggestedPaths = [
-                                        homeDir,
-                                        `${homeDir}/projects`,
-                                        `${homeDir}/Documents`,
-                                        `${homeDir}/Desktop`
-                                    ];
-                                    return suggestedPaths.map((path, index) => {
-                                        const isSelected = customPath.trim() === path;
-
-                                        return (
-                                            <Item
-                                                key={path}
-                                                title={path}
-                                                leftElement={
-                                                    <Ionicons
-                                                        name="folder-outline"
-                                                        size={18}
-                                                        color={theme.colors.textSecondary}
-                                                    />
-                                                }
-                                                onPress={() => {
-                                                    setCustomPath(path);
-                                                    setTimeout(() => inputRef.current?.focus(), 50);
-                                                }}
-                                                selected={isSelected}
-                                                showChevron={false}
-                                                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                                showDivider={index < 3}
-                                            />
-                                        );
-                                    });
-                                })()}
-                            </ItemGroup>
-                        )}
-                    </View>
-                </ScrollView>
-            </View>
+                    {recentPaths.length === 0 && suggestedPaths.length > 0 && (
+                        <ItemGroup title="Suggested Paths">
+                            {suggestedPaths.map((path, index) => {
+                                const isSelected = customPath.trim() === path;
+                                const isLast = index === suggestedPaths.length - 1;
+                                return (
+                                    <Item
+                                        key={path}
+                                        title={path}
+                                        leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
+                                        onPress={() => {
+                                            setCustomPath(path);
+                                            setTimeout(() => inputRef.current?.focus(), 50);
+                                        }}
+                                        selected={isSelected}
+                                        showChevron={false}
+                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                        showDivider={!isLast}
+                                    />
+                                );
+                            })}
+                        </ItemGroup>
+                    )}
+                </View>
+            </ItemList>
         </>
     );
 }

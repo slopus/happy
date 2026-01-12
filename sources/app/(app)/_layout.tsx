@@ -312,6 +312,13 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="new/pick/profile"
+                options={{
+                    headerTitle: '',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="new/pick/profile-edit"
                 options={{
                     headerTitle: '',
@@ -323,6 +330,7 @@ export default function RootLayout() {
                 options={{
                     headerTitle: t('newSession.title'),
                     headerBackTitle: t('common.back'),
+                    presentation: 'modal',
                 }}
             />
             <Stack.Screen

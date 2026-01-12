@@ -97,7 +97,7 @@ const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ 
 const RECENT_PATHS_DEFAULT_VISIBLE = 5;
 const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 character spaces at 11px font
 
-const styles = StyleSheet.create((theme, rt) => ({
+	const styles = StyleSheet.create((theme, rt) => ({
     container: {
         flex: 1,
         justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
@@ -112,28 +112,33 @@ const styles = StyleSheet.create((theme, rt) => ({
         paddingTop: rt.insets.top,
         paddingBottom: 16,
     },
-    wizardContainer: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: 16,
-        marginHorizontal: 16,
-        padding: 16,
-        marginBottom: 16,
-    },
-    sectionHeader: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: theme.colors.text,
-        marginBottom: 8,
-        marginTop: 12,
-        ...Typography.default('semiBold')
-    },
-    sectionDescription: {
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        marginBottom: 12,
-        lineHeight: 18,
-        ...Typography.default()
-    },
+	    wizardContainer: {
+	        marginBottom: 16,
+	    },
+	    wizardSectionHeaderRow: {
+	        flexDirection: 'row',
+	        alignItems: 'center',
+	        gap: 8,
+	        marginBottom: 8,
+	        marginTop: 12,
+	        paddingHorizontal: Platform.select({ ios: 32, default: 28 }),
+	    },
+	    sectionHeader: {
+	        fontSize: 14,
+	        fontWeight: '600',
+	        color: theme.colors.text,
+	        marginBottom: 8,
+	        marginTop: 12,
+	        ...Typography.default('semiBold')
+	    },
+	    sectionDescription: {
+	        fontSize: 12,
+	        color: theme.colors.textSecondary,
+	        marginBottom: 12,
+	        lineHeight: 18,
+	        paddingHorizontal: Platform.select({ ios: 32, default: 28 }),
+	        ...Typography.default()
+	    },
     profileListItem: {
         backgroundColor: theme.colors.input.background,
         borderRadius: 12,
@@ -290,6 +295,10 @@ function NewSessionWizard() {
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
     const experimentsEnabled = useSetting('experiments');
+    const useMachinePickerSearch = useSetting('useMachinePickerSearch');
+    const useMachinePickerFavorites = useSetting('useMachinePickerFavorites');
+    const useDirectoryPickerSearch = useSetting('useDirectoryPickerSearch');
+    const useDirectoryPickerFavorites = useSetting('useDirectoryPickerFavorites');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
     const [favoriteDirectories, setFavoriteDirectories] = useSettingMutable('favoriteDirectories');
@@ -323,20 +332,20 @@ function NewSessionWizard() {
             setSelectedProfileId(null);
         }
     }, [useProfiles, selectedProfileId]);
+    const allowGemini = experimentsEnabled;
+
     const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
         // Check if agent type was provided in temp data
         if (tempSessionData?.agentType) {
-            // Only allow gemini if experiments are enabled
-            if (tempSessionData.agentType === 'gemini' && !experimentsEnabled) {
+            if (tempSessionData.agentType === 'gemini' && !allowGemini) {
                 return 'claude';
             }
             return tempSessionData.agentType;
         }
-        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
-            return lastUsedAgent;
-        }
-        // Only allow gemini if experiments are enabled
-        if (lastUsedAgent === 'gemini' && experimentsEnabled) {
+        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex' || lastUsedAgent === 'gemini') {
+            if (lastUsedAgent === 'gemini' && !allowGemini) {
+                return 'claude';
+            }
             return lastUsedAgent;
         }
         return 'claude';
@@ -346,12 +355,12 @@ function NewSessionWizard() {
     // Note: Does NOT persist immediately - persistence is handled by useEffect below
     const handleAgentClick = React.useCallback(() => {
         setAgentType(prev => {
-            // Cycle: claude -> codex -> gemini (if experiments) -> claude
+            // Cycle: claude -> codex -> (gemini?) -> claude
             if (prev === 'claude') return 'codex';
-            if (prev === 'codex') return experimentsEnabled ? 'gemini' : 'claude';
+            if (prev === 'codex') return allowGemini ? 'gemini' : 'claude';
             return 'claude';
         });
-    }, [experimentsEnabled]);
+    }, [allowGemini]);
 
     // Persist agent selection changes (separate from setState to avoid race condition)
     // This runs after agentType state is updated, ensuring the value is stable
@@ -1010,7 +1019,7 @@ function NewSessionWizard() {
             // Get environment variables from selected profile
             let environmentVariables = undefined;
             if (profilesActive && selectedProfileId) {
-                const selectedProfile = profileMap.get(selectedProfileId);
+                const selectedProfile = profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId);
                 if (selectedProfile) {
                     environmentVariables = transformProfileToEnvironmentVars(selectedProfile, agentType);
                 }
@@ -1063,6 +1072,11 @@ function NewSessionWizard() {
     }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router, useEnhancedSessionWizard]);
 
     const screenWidth = useWindowDimensions().width;
+    const showInlineClose = screenWidth < 520;
+
+    const handleCloseModal = React.useCallback(() => {
+        router.back();
+    }, [router]);
 
     // Machine online status for AgentInput (DRY - reused in info box too)
     const connectionStatus = React.useMemo(() => {
@@ -1121,6 +1135,23 @@ function NewSessionWizard() {
                 keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + safeArea.bottom + 16 : 0}
                 style={styles.container}
             >
+                {showInlineClose && (
+                    <Pressable
+                        onPress={handleCloseModal}
+                        hitSlop={12}
+                        style={{
+                            position: 'absolute',
+                            top: safeArea.top + 8,
+                            left: 8,
+                            zIndex: 1000,
+                            padding: 8,
+                            borderRadius: 16,
+                            backgroundColor: theme.colors.surface,
+                        }}
+                    >
+                        <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
+                    </Pressable>
+                )}
                 <View style={{ flex: 1, justifyContent: 'flex-end' }}>
                     {/* Session type selector only if experiments enabled */}
                     {experimentsEnabled && (
@@ -1174,6 +1205,23 @@ function NewSessionWizard() {
             keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + safeArea.bottom + 16 : 0}
             style={styles.container}
         >
+            {showInlineClose && (
+                <Pressable
+                    onPress={handleCloseModal}
+                    hitSlop={12}
+                    style={{
+                        position: 'absolute',
+                        top: safeArea.top + 8,
+                        left: 8,
+                        zIndex: 1000,
+                        padding: 8,
+                        borderRadius: 16,
+                        backgroundColor: theme.colors.surface,
+                    }}
+                >
+                    <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
+                </Pressable>
+            )}
             <View style={{ flex: 1 }}>
                 <ScrollView
                     ref={scrollViewRef}
@@ -1181,9 +1229,7 @@ function NewSessionWizard() {
                     contentContainerStyle={styles.contentContainer}
                     keyboardShouldPersistTaps="handled"
                 >
-                <View style={[
-                    { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
-                ]}>
+	                <View style={{ paddingHorizontal: 0 }}>
                     <View style={[
                         { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
                     ]}>
@@ -1246,7 +1292,7 @@ function NewSessionWizard() {
                             )}
 
                             {/* Section 1: Profile Management */}
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
+	                            <View style={styles.wizardSectionHeaderRow}>
                                 <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>1.</Text>
                                 <Ionicons name={useProfiles ? "person-outline" : "hardware-chip-outline"} size={18} color={theme.colors.text} />
                                 <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
@@ -1483,8 +1529,8 @@ function NewSessionWizard() {
                                         subtitle={selectedProfile ? getProfileSubtitle(selectedProfile) : t('profiles.noProfileDescription')}
                                         leftElement={
                                             <Ionicons
-                                                name="person-outline"
-                                                size={24}
+                                                name={selectedProfile ? "person-outline" : "radio-button-off-outline"}
+                                                size={29}
                                                 color={theme.colors.textSecondary}
                                             />
                                         }
@@ -1502,14 +1548,14 @@ function NewSessionWizard() {
                                         showChevron={false}
                                     />
                                     <Item
-                                        title="Codex"
-                                        subtitle="Codex CLI"
-                                        leftElement={<Ionicons name="terminal-outline" size={24} color={theme.colors.textSecondary} />}
-                                        selected={agentType === 'codex'}
-                                        onPress={() => setAgentType('codex')}
-                                        showChevron={false}
-                                    />
-                                    {experimentsEnabled && (
+                                            title="Codex"
+                                            subtitle="Codex CLI"
+                                            leftElement={<Ionicons name="terminal-outline" size={24} color={theme.colors.textSecondary} />}
+                                            selected={agentType === 'codex'}
+                                            onPress={() => setAgentType('codex')}
+                                            showChevron={false}
+                                        />
+                                    {allowGemini && (
                                         <Item
                                             title="Gemini"
                                             subtitle="Gemini CLI"
@@ -1525,7 +1571,7 @@ function NewSessionWizard() {
 
                             {/* Section 2: Machine Selection */}
                             <View ref={machineSectionRef}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
+	                                <View style={styles.wizardSectionHeaderRow}>
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>2.</Text>
                                     <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Machine</Text>
@@ -1537,27 +1583,28 @@ function NewSessionWizard() {
                                     machines={machines}
                                     selectedMachine={selectedMachine || null}
                                     recentMachines={recentMachines}
-                                    favoriteMachines={machines.filter(m => favoriteMachines.includes(m.id))}
-                                    showFavorites={true}
+                                    favoriteMachines={useMachinePickerFavorites ? machines.filter(m => favoriteMachines.includes(m.id)) : []}
+                                    showFavorites={useMachinePickerFavorites}
+                                    showSearch={useMachinePickerSearch}
                                     onSelect={(machine) => {
                                     setSelectedMachineId(machine.id);
                                     const bestPath = getRecentPathForMachine(machine.id, recentMachinePaths);
                                     setSelectedPath(bestPath);
                                 }}
-                                onToggleFavorite={(machine) => {
+                                onToggleFavorite={useMachinePickerFavorites ? ((machine) => {
                                     const isInFavorites = favoriteMachines.includes(machine.id);
                                     if (isInFavorites) {
                                         setFavoriteMachines(favoriteMachines.filter(id => id !== machine.id));
                                     } else {
                                         setFavoriteMachines([...favoriteMachines, machine.id]);
                                     }
-                                }}
+                                }) : undefined}
                                 />
                             </View>
 
                             {/* Section 3: Working Directory */}
                             <View ref={pathSectionRef}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
+	                                <View style={styles.wizardSectionHeaderRow}>
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>3.</Text>
                                     <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Working Directory</Text>
@@ -1569,13 +1616,15 @@ function NewSessionWizard() {
                                     machineHomeDir={selectedMachine?.metadata?.homeDir}
                                     selectedPath={selectedPath}
                                     recentPaths={recentPaths}
-                                    favoritePaths={(() => {
+                                    favoritePaths={useDirectoryPickerFavorites ? (() => {
                                         if (!selectedMachine?.metadata?.homeDir) return [];
                                         const homeDir = selectedMachine.metadata.homeDir;
                                         return [homeDir, ...favoriteDirectories.map(fav => resolveAbsolutePath(fav, homeDir))];
-                                    })()}
+                                    })() : []}
+                                    showFavorites={useDirectoryPickerFavorites}
+                                    showSearch={useDirectoryPickerSearch}
                                     onSelect={(path) => setSelectedPath(path)}
-                                    onToggleFavorite={(path) => {
+                                    onToggleFavorite={useDirectoryPickerFavorites ? ((path) => {
                                         const homeDir = selectedMachine?.metadata?.homeDir;
                                         if (!homeDir) return;
                                         if (path === homeDir) return;
@@ -1591,21 +1640,25 @@ function NewSessionWizard() {
                                         } else {
                                             setFavoriteDirectories([...favoriteDirectories, relativePath]);
                                         }
-                                    }}
+                                    }) : undefined}
                                 />
                             </View>
 
                             {/* Section 4: Permission Mode */}
                             <View ref={permissionSectionRef}>
-                                <Text style={styles.sectionHeader}>4. Permission Mode</Text>
+	                                <View style={styles.wizardSectionHeaderRow}>
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>4.</Text>
+                                    <Ionicons name="shield-outline" size={18} color={theme.colors.text} />
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Permission Mode</Text>
+                                </View>
                             </View>
                             <ItemGroup title="">
                                 {(agentType === 'codex'
                                     ? [
-                                        { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                                        { value: 'read-only' as PermissionMode, label: 'Read Only', description: 'Read-only mode', icon: 'eye-outline' },
-                                        { value: 'safe-yolo' as PermissionMode, label: 'Safe YOLO', description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
-                                        { value: 'yolo' as PermissionMode, label: 'YOLO', description: 'Full access, skip permissions', icon: 'flash-outline' },
+                                        { value: 'default' as PermissionMode, label: t('agentInput.codexPermissionMode.default'), description: 'Use CLI permission settings', icon: 'shield-outline' },
+                                        { value: 'read-only' as PermissionMode, label: t('agentInput.codexPermissionMode.readOnly'), description: 'Read-only mode', icon: 'eye-outline' },
+                                        { value: 'safe-yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.safeYolo'), description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
+                                        { value: 'yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.yolo'), description: 'Full access, skip permissions', icon: 'flash-outline' },
                                     ]
                                     : [
                                         { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
@@ -1622,25 +1675,21 @@ function NewSessionWizard() {
                                             <Ionicons
                                                 name={option.icon as any}
                                                 size={24}
-                                                color={permissionMode === option.value ? theme.colors.button.primary.background : theme.colors.textSecondary}
+                                                color={theme.colors.textSecondary}
                                             />
                                         }
                                         rightElement={permissionMode === option.value ? (
                                             <Ionicons
                                                 name="checkmark-circle"
-                                                size={20}
+                                                size={24}
                                                 color={theme.colors.button.primary.background}
                                             />
                                         ) : null}
                                         onPress={() => setPermissionMode(option.value)}
                                         showChevron={false}
                                         selected={permissionMode === option.value}
+                                        pressableStyle={permissionMode === option.value ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                         showDivider={index < array.length - 1}
-                                        style={permissionMode === option.value ? {
-                                            borderWidth: 2,
-                                            borderColor: theme.colors.button.primary.background,
-                                            borderRadius: Platform.select({ ios: 10, default: 16 }),
-                                        } : undefined}
                                     />
                                 ))}
                             </ItemGroup>

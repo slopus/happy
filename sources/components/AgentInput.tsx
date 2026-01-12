@@ -1,6 +1,6 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable } from 'react-native';
+import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, Image as RNImage, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
@@ -223,7 +223,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     // Button styles
     actionButtonsContainer: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-end',
         justifyContent: 'space-between',
         paddingHorizontal: 0,
     },
@@ -231,7 +231,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'row',
         gap: 8,
         flex: 1,
-        overflow: 'hidden',
+        flexWrap: 'wrap',
+        overflow: 'visible',
     },
     actionButton: {
         flexDirection: 'row',
@@ -300,8 +301,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const hasText = props.value.trim().length > 0;
 
     // Check if this is a Codex or Gemini session
-    const isCodex = props.metadata?.flavor === 'codex';
-    const isGemini = props.metadata?.flavor === 'gemini';
+    const effectiveFlavor = props.metadata?.flavor ?? props.agentType;
+    const isCodex = effectiveFlavor === 'codex';
+    const isGemini = effectiveFlavor === 'gemini';
 
     // Profile data
     const profiles = useSetting('profiles');
@@ -316,19 +318,25 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         return getBuiltInProfile(props.profileId);
     }, [profiles, props.profileId]);
 
-    const profileLabel = React.useMemo(() => {
-        if (props.profileId === undefined) {
-            return null;
-        }
-        if (props.profileId === null || props.profileId.trim() === '') {
-            return t('profiles.noProfile');
-        }
+	    const profileLabel = React.useMemo(() => {
+	        if (props.profileId === undefined) {
+	            return null;
+	        }
+	        if (props.profileId === null || props.profileId.trim() === '') {
+	            return t('profiles.noProfile');
+	        }
         if (currentProfile) {
             return currentProfile.name;
         }
         const shortId = props.profileId.length > 8 ? `${props.profileId.slice(0, 8)}…` : props.profileId;
         return `${t('status.unknown')} (${shortId})`;
-    }, [props.profileId, currentProfile]);
+	    }, [props.profileId, currentProfile]);
+
+	    const profileIcon = React.useMemo(() => {
+	        if (props.profileId === null) return 'radio-button-off-outline';
+	        if (typeof props.profileId === 'string' && props.profileId.trim() === '') return 'radio-button-off-outline';
+	        return 'person-outline';
+	    }, [props.profileId]);
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
@@ -536,9 +544,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 {/* Settings overlay */}
                 {showSettings && (
                     <>
-                        <TouchableWithoutFeedback onPress={() => setShowSettings(false)}>
-                            <View style={styles.overlayBackdrop} />
-                        </TouchableWithoutFeedback>
+                        <Pressable onPress={() => setShowSettings(false)} style={styles.overlayBackdrop} />
                         <View style={[
                             styles.settingsOverlay,
                             { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
@@ -796,11 +802,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     gap: 6,
                                 })}
                             >
-                                <Ionicons
-                                            name="person-outline"
-                                    size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                />
+	                                <Ionicons
+	                                            name={profileIcon as any}
+	                                    size={14}
+	                                            color={theme.colors.button.secondary.tint}
+	                                />
                                 <Text style={{
                                     fontSize: 13,
                                             color: theme.colors.button.secondary.tint,

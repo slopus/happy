@@ -4,12 +4,10 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, useSessions } from '@/sync/storage';
-import { Ionicons } from '@expo/vector-icons';
-import { isMachineOnline } from '@/utils/machineUtils';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { ItemList } from '@/components/ItemList';
-import { SearchableListSelector } from '@/components/SearchableListSelector';
+import { MachineSelector } from '@/components/newSession/MachineSelector';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -115,61 +113,13 @@ export default function MachinePickerScreen() {
                 }}
             />
             <ItemList>
-                <SearchableListSelector<typeof machines[0]>
-                    config={{
-                        getItemId: (machine) => machine.id,
-                        getItemTitle: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,
-                        getItemSubtitle: undefined,
-                        getItemIcon: (machine) => (
-                            <Ionicons
-                                name="desktop-outline"
-                                size={24}
-                                color={theme.colors.textSecondary}
-                            />
-                        ),
-                        getRecentItemIcon: (machine) => (
-                            <Ionicons
-                                name="time-outline"
-                                size={24}
-                                color={theme.colors.textSecondary}
-                            />
-                        ),
-                        getItemStatus: (machine) => {
-                            const offline = !isMachineOnline(machine);
-                            return {
-                                text: offline ? 'offline' : 'online',
-                                color: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
-                                dotColor: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
-                                isPulsing: !offline,
-                            };
-                        },
-                        formatForDisplay: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,
-                        parseFromDisplay: (text) => {
-                            return machines.find(m =>
-                                m.metadata?.displayName === text || m.metadata?.host === text || m.id === text
-                            ) || null;
-                        },
-                        filterItem: (machine, searchText) => {
-                            const displayName = (machine.metadata?.displayName || '').toLowerCase();
-                            const host = (machine.metadata?.host || '').toLowerCase();
-                            const search = searchText.toLowerCase();
-                            return displayName.includes(search) || host.includes(search);
-                        },
-                        searchPlaceholder: "Type to filter machines...",
-                        recentSectionTitle: "Recent Machines",
-                        favoritesSectionTitle: "Favorite Machines",
-                        noItemsMessage: "No machines available",
-                        showFavorites: false,  // Simpler modal experience - no favorites in modal
-                        showRecent: true,
-                        showSearch: true,
-                        allowCustomInput: false,
-                        compactItems: true,
-                    }}
-                    items={machines}
-                    recentItems={recentMachines}
-                    favoriteItems={[]}
-                    selectedItem={selectedMachine}
+                <MachineSelector
+                    machines={machines}
+                    selectedMachine={selectedMachine}
+                    recentMachines={recentMachines}
+                    favoriteMachines={[]}
                     onSelect={handleSelectMachine}
+                    showFavorites={false}
                 />
             </ItemList>
         </>

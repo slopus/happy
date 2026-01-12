@@ -1,6 +1,7 @@
 import React from 'react';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { CommonActions, useNavigation } from '@react-navigation/native';
+import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -35,18 +36,6 @@ export default function ProfilePickerScreen() {
         }
         router.back();
     }, [navigation, router]);
-
-    const allProfiles = React.useMemo(() => {
-        const builtIns = DEFAULT_PROFILES
-            .map(bp => getBuiltInProfile(bp.id))
-            .filter(Boolean) as AIBackendProfile[];
-        return [...builtIns, ...profiles];
-    }, [profiles]);
-
-    const selectedProfile = React.useMemo(() => {
-        if (!selectedId) return null;
-        return allProfiles.find(p => p.id === selectedId) || null;
-    }, [allProfiles, selectedId]);
 
     const openProfileEdit = React.useCallback((profile: AIBackendProfile) => {
         const profileData = JSON.stringify(profile);
@@ -136,28 +125,7 @@ export default function ProfilePickerScreen() {
                                 title={t('profiles.addProfile')}
                                 icon={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}
                                 onPress={handleAddProfile}
-                            />
-                            <Item
-                                title={t('profiles.editProfile')}
-                                subtitle={selectedProfile ? selectedProfile.name : t('profiles.noProfile')}
-                                icon={<Ionicons name="create-outline" size={29} color={theme.colors.textSecondary} />}
-                                onPress={() => selectedProfile && openProfileEdit(selectedProfile)}
-                                disabled={!selectedProfile}
-                            />
-                            <Item
-                                title={t('common.copy')}
-                                subtitle={selectedProfile ? selectedProfile.name : t('profiles.noProfile')}
-                                icon={<Ionicons name="copy-outline" size={29} color={theme.colors.textSecondary} />}
-                                onPress={() => selectedProfile && handleDuplicateProfile(selectedProfile)}
-                                disabled={!selectedProfile}
-                            />
-                            <Item
-                                title={t('common.delete')}
-                                subtitle={selectedProfile ? selectedProfile.name : t('profiles.noProfile')}
-                                icon={<Ionicons name="trash-outline" size={29} color={theme.colors.deleteAction} />}
-                                onPress={() => selectedProfile && handleDeleteProfile(selectedProfile)}
-                                destructive={true}
-                                disabled={!selectedProfile || selectedProfile.isBuiltIn}
+                                showChevron={false}
                             />
                         </ItemGroup>
 
@@ -165,12 +133,12 @@ export default function ProfilePickerScreen() {
                             <Item
                                 title={t('profiles.noProfile')}
                                 subtitle={t('profiles.noProfileDescription')}
-                                icon={<Ionicons name="remove-circle-outline" size={29} color={theme.colors.textSecondary} />}
+                                icon={<Ionicons name="radio-button-off-outline" size={29} color={theme.colors.textSecondary} />}
                                 onPress={() => setProfileParamAndClose('')}
                                 showChevron={false}
                                 selected={selectedId === ''}
                                 rightElement={selectedId === ''
-                                    ? <Ionicons name="checkmark-circle" size={20} color={theme.colors.textSecondary} />
+                                    ? <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
                                     : null}
                             />
                         </ItemGroup>
@@ -190,9 +158,37 @@ export default function ProfilePickerScreen() {
                                         onPress={() => setProfileParamAndClose(profile.id)}
                                         showChevron={false}
                                         selected={isSelected}
-                                        rightElement={isSelected
-                                            ? <Ionicons name="checkmark-circle" size={20} color={theme.colors.textSecondary} />
-                                            : null}
+                                        rightElement={
+                                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                {isSelected && (
+                                                    <Ionicons
+                                                        name="checkmark-circle"
+                                                        size={24}
+                                                        color={theme.colors.button.primary.background}
+                                                        style={{ marginRight: 12 }}
+                                                    />
+                                                )}
+                                                <Pressable
+                                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                    onPress={(e) => {
+                                                        e.stopPropagation();
+                                                        openProfileEdit(profile);
+                                                    }}
+                                                >
+                                                    <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                                </Pressable>
+                                                <Pressable
+                                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                    onPress={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDuplicateProfile(profile);
+                                                    }}
+                                                    style={{ marginLeft: 16 }}
+                                                >
+                                                    <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                                </Pressable>
+                                            </View>
+                                        }
                                     />
                                 );
                             })}
@@ -208,9 +204,47 @@ export default function ProfilePickerScreen() {
                                         onPress={() => setProfileParamAndClose(profile.id)}
                                         showChevron={false}
                                         selected={isSelected}
-                                        rightElement={isSelected
-                                            ? <Ionicons name="checkmark-circle" size={20} color={theme.colors.textSecondary} />
-                                            : null}
+                                        rightElement={
+                                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                {isSelected && (
+                                                    <Ionicons
+                                                        name="checkmark-circle"
+                                                        size={24}
+                                                        color={theme.colors.button.primary.background}
+                                                        style={{ marginRight: 12 }}
+                                                    />
+                                                )}
+                                                <Pressable
+                                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                    onPress={(e) => {
+                                                        e.stopPropagation();
+                                                        openProfileEdit(profile);
+                                                    }}
+                                                >
+                                                    <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                                </Pressable>
+                                                <Pressable
+                                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                    onPress={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDuplicateProfile(profile);
+                                                    }}
+                                                    style={{ marginLeft: 16 }}
+                                                >
+                                                    <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                                </Pressable>
+                                                <Pressable
+                                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                    onPress={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteProfile(profile);
+                                                    }}
+                                                    style={{ marginLeft: 16 }}
+                                                >
+                                                    <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
+                                                </Pressable>
+                                            </View>
+                                        }
                                     />
                                 );
                             })}
@@ -221,4 +255,3 @@ export default function ProfilePickerScreen() {
         </>
     );
 }
-
