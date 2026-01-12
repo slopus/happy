@@ -8,7 +8,10 @@ export type AgentType = 'claude' | 'codex' | 'gemini';
  * Upstream policy (slopus): Claude only.
  * Forks can extend this list (e.g. Codex if/when a custom build supports it).
  */
-export const VENDOR_RESUME_SUPPORTED_AGENTS: AgentType[] = ['claude'];
+export const VENDOR_RESUME_SUPPORTED_AGENTS: AgentType[] = [
+  'claude',
+  'codex', // Fork: Codex resume enabled (requires custom Codex build / MCP resume support)
+];
 
 export function supportsVendorResume(agent: AgentType | undefined): boolean {
   // Undefined agent means "default agent" which is Claude in this CLI.

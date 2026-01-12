@@ -316,6 +316,17 @@ export class CodexMcpClient {
         return this.sessionId;
     }
 
+    /**
+     * Fork-only: seed the MCP client with an existing Codex session id so we can resume
+     * with `codex-reply` without relying on transcript files.
+     */
+    setSessionIdForResume(sessionId: string): void {
+        this.sessionId = sessionId;
+        // conversationId will be defaulted to sessionId on first reply if missing.
+        this.conversationId = null;
+        logger.debug('[CodexMCP] Session seeded for resume:', this.sessionId);
+    }
+
     hasActiveSession(): boolean {
         return this.sessionId !== null;
     }

@@ -189,9 +189,12 @@ import { supportsVendorResume, type AgentType } from './utils/agentCapabilities'
           continue
         }
 
-        const vendorResumeId = persisted.vendorResumeId ?? (persisted.metadata as any)?.claudeSessionId
+        const vendorResumeId =
+          persisted.vendorResumeId
+          ?? (persisted.metadata as any)?.claudeSessionId
+          ?? (persisted.metadata as any)?.codexSessionId
         if (!vendorResumeId || typeof vendorResumeId !== 'string') {
-          console.error(chalk.red('Error:'), `Missing vendor resume id for ${happySessionId} (Claude session id)`)
+          console.error(chalk.red('Error:'), `Missing vendor resume id for ${happySessionId}`)
           continue
         }
 
@@ -228,11 +231,22 @@ import { supportsVendorResume, type AgentType } from './utils/agentCapabilities'
         console.error(chalk.gray('Tip: use --yolo for full bypass-like behavior.'))
         process.exit(1)
       }
+
+      const readFlagValue = (flag: string): string | undefined => {
+        const idx = args.indexOf(flag)
+        if (idx === -1) return undefined
+        const value = args[idx + 1]
+        if (!value || value.startsWith('-')) return undefined
+        return value
+      }
+
+      const existingSessionId = readFlagValue('--existing-session')
+      const resume = readFlagValue('--resume')
       
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
-      await runCodex({credentials, startedBy, terminalRuntime, permissionMode});
+      await runCodex({ credentials, startedBy, terminalRuntime, permissionMode, existingSessionId, resume });
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')

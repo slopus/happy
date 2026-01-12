@@ -18,7 +18,6 @@ import { buildHappyCliSubprocessInvocation, spawnHappyCLI } from '@/utils/spawnH
 import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings } from '@/persistence';
 import { supportsVendorResume } from '@/utils/agentCapabilities';
 import { readPersistedHappySessionFile } from './persistedHappySession';
-import { readPersistedHappySessionFile } from '@/daemon/persistedHappySession';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
@@ -393,7 +392,8 @@ export async function startDaemon(): Promise<void> {
 	        const persisted = await readPersistedHappySessionFile(normalizedExistingSessionId);
 	        const next =
 	          (persisted?.vendorResumeId && typeof persisted.vendorResumeId === 'string' ? persisted.vendorResumeId : undefined)
-	          ?? (typeof (persisted?.metadata as any)?.claudeSessionId === 'string' ? (persisted?.metadata as any).claudeSessionId : undefined);
+	          ?? (typeof (persisted?.metadata as any)?.claudeSessionId === 'string' ? (persisted?.metadata as any).claudeSessionId : undefined)
+	          ?? (typeof (persisted?.metadata as any)?.codexSessionId === 'string' ? (persisted?.metadata as any).codexSessionId : undefined);
 	        if (typeof next === 'string' && next.trim().length > 0) {
 	          effectiveResume = next.trim();
 	        }

@@ -18,7 +18,6 @@ import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { resolve, join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
-import fs from 'node:fs';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
@@ -36,6 +35,7 @@ import type { ApiSessionClient } from '@/api/apiSession';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
 import { writeTerminalAttachmentInfo } from '@/terminal/terminalAttachmentInfo';
 import { buildTerminalFallbackMessage } from '@/terminal/terminalFallbackMessage';
+import { readPersistedHappySession, writePersistedHappySession, updatePersistedHappySessionVendorResumeId } from "@/daemon/persistedHappySession";
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -85,6 +85,8 @@ export async function runCodex(opts: {
     startedBy?: 'daemon' | 'terminal';
     terminalRuntime?: import('@/terminal/terminalRuntimeFlags').TerminalRuntimeFlags | null;
     permissionMode?: import('@/api/types').PermissionMode;
+    existingSessionId?: string;
+    resume?: string;
 }): Promise<void> {
     // Use shared PermissionMode type for cross-agent compatibility
     type PermissionMode = import('@/api/types').PermissionMode;
@@ -124,7 +126,7 @@ export async function runCodex(opts: {
     });
 
     //
-    // Create session
+    // Attach to existing Happy session (inactive-session-resume) OR create a new one.
     //
 
     const initialPermissionMode = opts.permissionMode ?? 'default';
@@ -136,70 +138,134 @@ export async function runCodex(opts: {
         permissionMode: initialPermissionMode,
         permissionModeUpdatedAt: Date.now(),
     });
-    const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     const terminal = buildTerminalMetadataFromRuntimeFlags(opts.terminalRuntime ?? null);
-
-    // Handle server unreachable case - create offline stub with hot reconnection
     let session: ApiSessionClient;
     // Permission handler declared here so it can be updated in onSessionSwap callback
-    // (assigned later at line ~385 after client setup)
+    // (assigned later after client setup)
     let permissionHandler: CodexPermissionHandler;
-    const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
-        api,
-        sessionTag,
-        metadata,
-        state,
-        response,
-        onSessionSwap: (newSession) => {
-            session = newSession;
-            // Update permission handler with new session to avoid stale reference
-            if (permissionHandler) {
-                permissionHandler.updateSession(newSession);
+    // Offline reconnection handle (only relevant when creating a new session and server is unreachable)
+    let reconnectionHandle: { cancel: () => void } | null = null;
+
+    if (typeof opts.existingSessionId === 'string' && opts.existingSessionId.trim()) {
+        const existingId = opts.existingSessionId.trim();
+        logger.debug(`[codex] Attaching to existing Happy session: ${existingId}`);
+        const attached = await readPersistedHappySession(existingId);
+        if (!attached) {
+            throw new Error(`Cannot resume session ${existingId}: no local persisted session state found`);
+        }
+        // Ensure we have a local persisted session file for future resume.
+        await writePersistedHappySession(attached);
+
+        session = api.sessionSyncClient(attached);
+        // Refresh metadata on startup (mark session active and update runtime fields).
+        session.updateMetadata((currentMetadata: any) => ({
+            ...currentMetadata,
+            ...metadata,
+            lifecycleState: 'running',
+            lifecycleStateSince: Date.now(),
+        }));
+
+        // Bump agentStateVersion early so the UI can reliably treat the agent as "ready" to receive messages.
+        try {
+            session.updateAgentState((currentState) => ({ ...currentState }));
+        } catch (e) {
+            logger.debug('[codex] Failed to prime agent state (non-fatal)', e);
+        }
+
+        // Persist terminal attachment info locally (best-effort).
+        if (terminal) {
+            try {
+                await writeTerminalAttachmentInfo({
+                    happyHomeDir: configuration.happyHomeDir,
+                    sessionId: existingId,
+                    terminal,
+                });
+            } catch (error) {
+                logger.debug('[START] Failed to persist terminal attachment info', error);
+            }
+
+            const fallbackMessage = buildTerminalFallbackMessage(terminal);
+            if (fallbackMessage) {
+                session.sendSessionEvent({ type: 'message', message: fallbackMessage });
             }
         }
-    });
-    session = initialSession;
 
-    // Bump agentStateVersion early so the UI can reliably treat the agent as "ready" to receive messages.
-    // The server does not currently persist agentState during initial session creation; it starts at version 0
-    // and only changes via 'update-state'. The HAPI UI uses agentStateVersion > 0 as its readiness signal.
-    // (This matches what the Claude runner already does.)
-    try {
-        session.updateAgentState((currentState) => ({ ...currentState }));
-    } catch (e) {
-        logger.debug('[codex] Failed to prime agent state (non-fatal)', e);
-    }
-
-    // Persist terminal attachment info locally (best-effort) once we have a real session ID.
-    if (response && terminal) {
+        // Always report to daemon if it exists
         try {
-            await writeTerminalAttachmentInfo({
-                happyHomeDir: configuration.happyHomeDir,
-                sessionId: response.id,
-                terminal,
-            });
-        } catch (error) {
-            logger.debug('[START] Failed to persist terminal attachment info', error);
-        }
-
-        const fallbackMessage = buildTerminalFallbackMessage(terminal);
-        if (fallbackMessage) {
-            session.sendSessionEvent({ type: 'message', message: fallbackMessage });
-        }
-    }
-
-    // Always report to daemon if it exists (skip if offline)
-    if (response) {
-        try {
-            logger.debug(`[START] Reporting session ${response.id} to daemon`);
-            const result = await notifyDaemonSessionStarted(response.id, metadata);
+            logger.debug(`[START] Reporting session ${existingId} to daemon`);
+            const result = await notifyDaemonSessionStarted(existingId, metadata);
             if (result.error) {
                 logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
             } else {
-                logger.debug(`[START] Reported session ${response.id} to daemon`);
+                logger.debug(`[START] Reported session ${existingId} to daemon`);
             }
         } catch (error) {
             logger.debug('[START] Failed to report to daemon (may not be running):', error);
+        }
+    } else {
+        const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+
+        // Persist session for later resume (only if server responded).
+        if (response) {
+            await writePersistedHappySession(response);
+        }
+
+        // Handle server unreachable case - create offline stub with hot reconnection
+        const offline = setupOfflineReconnection({
+            api,
+            sessionTag,
+            metadata,
+            state,
+            response,
+            onSessionSwap: (newSession) => {
+                session = newSession;
+                // Update permission handler with new session to avoid stale reference
+                if (permissionHandler) {
+                    permissionHandler.updateSession(newSession);
+                }
+            }
+        });
+        session = offline.session;
+        reconnectionHandle = offline.reconnectionHandle;
+
+        // Bump agentStateVersion early so the UI can reliably treat the agent as "ready" to receive messages.
+        try {
+            session.updateAgentState((currentState) => ({ ...currentState }));
+        } catch (e) {
+            logger.debug('[codex] Failed to prime agent state (non-fatal)', e);
+        }
+
+        // Persist terminal attachment info locally (best-effort) once we have a real session ID.
+        if (response && terminal) {
+            try {
+                await writeTerminalAttachmentInfo({
+                    happyHomeDir: configuration.happyHomeDir,
+                    sessionId: response.id,
+                    terminal,
+                });
+            } catch (error) {
+                logger.debug('[START] Failed to persist terminal attachment info', error);
+            }
+
+            const fallbackMessage = buildTerminalFallbackMessage(terminal);
+            if (fallbackMessage) {
+                session.sendSessionEvent({ type: 'message', message: fallbackMessage });
+            }
+        }
+
+        // Always report to daemon if it exists (skip if offline)
+        if (response) {
+            try {
+                logger.debug(`[START] Reporting session ${response.id} to daemon`);
+                const result = await notifyDaemonSessionStarted(response.id, metadata);
+                if (result.error) {
+                    logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
+                } else {
+                    logger.debug(`[START] Reported session ${response.id} to daemon`);
+                }
+            } catch (error) {
+                logger.debug('[START] Failed to report to daemon (may not be running):', error);
+            }
         }
     }
 
@@ -239,6 +305,17 @@ export async function runCodex(opts: {
         };
         messageQueue.push(message.content.text, enhancedMode);
     });
+
+    // Queue initial message if provided (for inactive session resume)
+    const initialMessage = process.env.HAPPY_INITIAL_MESSAGE;
+    if (initialMessage) {
+        logger.debug(`[codex] Queuing initial message for resumed session: ${initialMessage.substring(0, 50)}...`);
+        const initialEnhancedMode: EnhancedMode = {
+            permissionMode: currentPermissionMode || 'default',
+        };
+        messageQueue.push(initialMessage, initialEnhancedMode);
+    }
+
     let thinking = false;
     session.keepAlive(thinking, 'remote');
     // Periodic keep-alive; store handle so we can clear on exit
@@ -287,6 +364,10 @@ export async function runCodex(opts: {
     let abortController = new AbortController();
     let shouldExit = false;
     let storedSessionIdForResume: string | null = null;
+    if (typeof opts.resume === 'string' && opts.resume.trim()) {
+        storedSessionIdForResume = opts.resume.trim();
+        logger.debug('[Codex] Resume requested via --resume:', storedSessionIdForResume);
+    }
 
     /**
      * Handles aborting the current task/inference without exiting the process.
@@ -405,9 +486,7 @@ export async function runCodex(opts: {
 
     const client = new CodexMcpClient();
 
-    // NOTE: We intentionally do not attempt any "experimental resume" mechanism here.
-    // Codex conversation persistence/resume support varies by Codex build and transport.
-    // This runner relies on in-memory MCP session state for continuations.
+    // NOTE: Codex resume support varies by build; forks may seed `codex-reply` with a stored session id.
     permissionHandler = new CodexPermissionHandler(session);
     const reasoningProcessor = new ReasoningProcessor((message) => {
         // Callback to send messages directly from the processor
@@ -433,12 +512,32 @@ export async function runCodex(opts: {
         forwardCodexStatusToUi(`Codex error: ${text}`);
     }
 
+    let lastCodexSessionIdPersisted: string | null = null;
+
     client.setHandler((msg) => {
         logger.debug(`[Codex] MCP message: ${JSON.stringify(msg)}`);
 
         const uiText = formatCodexEventForUi(msg);
         if (uiText) {
             forwardCodexStatusToUi(uiText);
+        }
+
+        // Persist Codex session id for later resume (fork-only).
+        const nextId = client.getSessionId();
+        if (typeof nextId === 'string' && nextId && nextId !== lastCodexSessionIdPersisted) {
+            lastCodexSessionIdPersisted = nextId;
+            session.updateMetadata((currentMetadata: any) => {
+                if (currentMetadata.codexSessionId === nextId) {
+                    return currentMetadata;
+                }
+                return {
+                    ...currentMetadata,
+                    codexSessionId: nextId,
+                };
+            });
+            void updatePersistedHappySessionVendorResumeId(session.sessionId, nextId).catch((e) => {
+                logger.debug('[Codex] Failed to persist vendor resume id', e);
+            });
         }
 
         // Add messages to the ink UI buffer based on message type
@@ -600,7 +699,6 @@ export async function runCodex(opts: {
 
         let currentModeHash: string | null = null;
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
-        // NOTE: We intentionally do not attempt any "experimental resume" mechanism here.
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
@@ -692,21 +790,39 @@ export async function runCodex(opts: {
                         'approval-policy': approvalPolicy,
                         config: { mcp_servers: mcpServers }
                     };
-                    // NOTE: Model overrides and experimental resume are intentionally not supported for Codex.
+                    // NOTE: Model overrides are intentionally not supported for Codex.
                     // Codex's model selection is controlled by Codex itself (local config / default).
-                    
-                    const startResponse = await client.startSession(
-                        startConfig,
-                        { signal: abortController.signal }
-                    );
-                    const startError = extractCodexToolErrorText(startResponse);
-                    if (startError) {
-                        forwardCodexErrorToUi(startError);
-                        client.clearSession();
-                        wasCreated = false;
-                        currentModeHash = null;
-                        continue;
+
+                    // Resume-by-session-id path (fork): seed codex-reply with the previous session id.
+                    if (storedSessionIdForResume) {
+                        const resumeId = storedSessionIdForResume;
+                        storedSessionIdForResume = null; // consume once
+                        messageBuffer.addMessage('Resuming previous context…', 'status');
+                        client.setSessionIdForResume(resumeId);
+                        const resumeResponse = await client.continueSession(message.message, { signal: abortController.signal });
+                        const resumeError = extractCodexToolErrorText(resumeResponse);
+                        if (resumeError) {
+                            forwardCodexErrorToUi(resumeError);
+                            client.clearSession();
+                            wasCreated = false;
+                            currentModeHash = null;
+                            continue;
+                        }
+                    } else {
+                        const startResponse = await client.startSession(
+                            startConfig,
+                            { signal: abortController.signal }
+                        );
+                        const startError = extractCodexToolErrorText(startResponse);
+                        if (startError) {
+                            forwardCodexErrorToUi(startError);
+                            client.clearSession();
+                            wasCreated = false;
+                            currentModeHash = null;
+                            continue;
+                        }
                     }
+
                     wasCreated = true;
                     first = false;
                 } else {

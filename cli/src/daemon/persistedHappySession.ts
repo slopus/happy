@@ -41,9 +41,16 @@ export async function writePersistedHappySession(session: Session): Promise<void
   await ensureDir(sessionsDir());
   const now = Date.now();
 
+  const metadata: any = session.metadata as any;
+  const flavor = typeof metadata?.flavor === 'string' ? metadata.flavor : undefined;
+  const vendorResumeId =
+    flavor === 'codex'
+      ? (typeof metadata?.codexSessionId === 'string' ? metadata.codexSessionId : undefined)
+      : (typeof metadata?.claudeSessionId === 'string' ? metadata.claudeSessionId : undefined);
+
   const persisted: PersistedHappySession = PersistedHappySessionSchema.parse({
     sessionId: session.id,
-    vendorResumeId: typeof (session.metadata as any)?.claudeSessionId === 'string' ? (session.metadata as any).claudeSessionId : undefined,
+    vendorResumeId,
     encryptionKeyBase64: Buffer.from(session.encryptionKey).toString('base64'),
     encryptionVariant: session.encryptionVariant,
     metadata: session.metadata,
