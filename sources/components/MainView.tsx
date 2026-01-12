@@ -8,7 +8,8 @@ import { useRouter } from 'expo-router';
 import { EmptySessionsTablet } from './EmptySessionsTablet';
 import { SessionsList } from './SessionsList';
 import { FABWide } from './FABWide';
-import { TabBar, TabType } from './TabBar';
+import { TabBar } from './TabBar';
+import { useTabState, TabType } from '@/hooks/useTabState';
 import { InboxView } from './InboxView';
 import { SettingsViewWrapper } from './SettingsViewWrapper';
 import { SessionsListWrapper } from './SessionsListWrapper';
@@ -231,9 +232,9 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const friendRequests = useFriendRequests();
     const realtimeStatus = useRealtimeStatus();
 
-    // Tab state management
+    // Tab state management - persisted to server via KV API
     // NOTE: Zen tab removed - the feature never got to a useful state
-    const [activeTab, setActiveTab] = React.useState<TabType>('sessions');
+    const { activeTab, setActiveTab, isLoading: isTabLoading } = useTabState();
 
     const handleNewSession = React.useCallback(() => {
         router.push('/new');
@@ -241,7 +242,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
 
     const handleTabPress = React.useCallback((tab: TabType) => {
         setActiveTab(tab);
-    }, []);
+    }, [setActiveTab]);
 
     // Regular phone mode with tabs - define this before any conditional returns
     const renderTabContent = React.useCallback(() => {
