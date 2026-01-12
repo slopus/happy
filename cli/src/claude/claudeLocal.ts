@@ -2,8 +2,10 @@ import { spawn } from "node:child_process";
 import { resolve, join } from "node:path";
 import { createInterface } from "node:readline";
 import { mkdirSync, existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { logger } from "@/ui/logger";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
+import { claudeFindLastSession } from "./utils/claudeFindLastSession";
 import { getProjectPath } from "./utils/path";
 import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
@@ -22,8 +24,8 @@ export async function claudeLocal(opts: {
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
     allowedTools?: string[],
-    /** Path to temporary settings file with SessionStart hook (required for session tracking) */
-    hookSettingsPath: string
+    /** Path to temporary settings file with SessionStart hook (optional - for session tracking) */
+    hookSettingsPath?: string
 }) {
 
     // Ensure project directory exists
@@ -38,17 +40,113 @@ export async function claudeLocal(opts: {
     // Determine if we have an existing session to resume
     // Session ID will always be provided by hook (SessionStart) when Claude starts
     let startFrom = opts.sessionId;
-    if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path)) {
-        startFrom = null;
+
+    // Handle session-related flags from claudeArgs to ensure transparent behavior
+    // We intercept these flags to use happy-cli's session storage rather than Claude's default
+    //
+    // Supported patterns:
+    // --continue / -c           : Resume last session in current directory
+    // --resume / -r             : Resume last session (picker in Claude, but we handle)
+    // --resume <id> / -r <id>   : Resume specific session by ID
+    // --session-id <uuid>       : Use specific UUID for new session
+
+    // Helper to find and extract flag with optional value
+    const extractFlag = (flags: string[], withValue: boolean = false): { found: boolean; value?: string } => {
+        if (!opts.claudeArgs) return { found: false };
+
+        for (const flag of flags) {
+            const index = opts.claudeArgs.indexOf(flag);
+            if (index !== -1) {
+                if (withValue && index + 1 < opts.claudeArgs.length) {
+                    const nextArg = opts.claudeArgs[index + 1];
+                    // Check if next arg looks like a value (doesn't start with -)
+                    if (!nextArg.startsWith('-')) {
+                        const value = nextArg;
+                        // Remove both flag and value
+                        opts.claudeArgs = opts.claudeArgs.filter((_, i) => i !== index && i !== index + 1);
+                        return { found: true, value };
+                    }
+                }
+                // Don't extract if value was required but not found
+                if (!withValue) {
+                    opts.claudeArgs = opts.claudeArgs.filter((_, i) => i !== index);
+                    return { found: true };
+                }
+                return { found: false };
+            }
+        }
+        return { found: false };
+    };
+
+    // 1. Check for --session-id <uuid> (explicit new session with specific ID)
+    const sessionIdFlag = extractFlag(['--session-id'], true);
+    if (sessionIdFlag.found && sessionIdFlag.value) {
+        startFrom = null; // Force new session mode, will use this ID below
+        logger.debug(`[ClaudeLocal] Using explicit --session-id: ${sessionIdFlag.value}`);
     }
-    
-    // Log session strategy
-    if (startFrom) {
-        logger.debug(`[ClaudeLocal] Will resume existing session: ${startFrom}`);
-    } else if (hasUserSessionControl) {
-        logger.debug(`[ClaudeLocal] User passed ${hasContinueFlag ? '--continue' : '--resume'} flag, session ID will be determined by hook`);
+
+    // 2. Check for --resume <id> / -r <id> (resume specific session)
+    if (!startFrom && !sessionIdFlag.value) {
+        const resumeFlag = extractFlag(['--resume', '-r'], true);
+        if (resumeFlag.found) {
+            if (resumeFlag.value) {
+                startFrom = resumeFlag.value;
+                logger.debug(`[ClaudeLocal] Using provided session ID from --resume: ${startFrom}`);
+            } else {
+                // --resume without value: find last session
+                const lastSession = claudeFindLastSession(opts.path);
+                if (lastSession) {
+                    startFrom = lastSession;
+                    logger.debug(`[ClaudeLocal] --resume: Found last session: ${lastSession}`);
+                }
+            }
+        }
+    }
+
+    // 3. Check for --continue / -c (resume last session)
+    if (!startFrom && !sessionIdFlag.value) {
+        const continueFlag = extractFlag(['--continue', '-c'], false);
+        if (continueFlag.found) {
+            const lastSession = claudeFindLastSession(opts.path);
+            if (lastSession) {
+                startFrom = lastSession;
+                logger.debug(`[ClaudeLocal] --continue: Found last session: ${lastSession}`);
+            }
+        }
+    }
+    // Session ID handling depends on whether we have a hook server
+    // - With hookSettingsPath: Session ID comes from Claude via hook (normal mode)
+    // - Without hookSettingsPath: We generate session ID ourselves (offline mode)
+    const explicitSessionId = sessionIdFlag.value || null;
+    let newSessionId: string | null = null;
+    let effectiveSessionId: string | null = startFrom;
+
+    if (!opts.hookSettingsPath) {
+        // Offline mode: Generate session ID if not resuming
+        // Priority: 1. startFrom (resuming), 2. explicit --session-id, 3. generate new UUID
+        newSessionId = startFrom ? null : (explicitSessionId || randomUUID());
+        effectiveSessionId = startFrom || newSessionId!;
+
+        // Notify about session ID immediately (we know it upfront in offline mode)
+        if (startFrom) {
+            logger.debug(`[ClaudeLocal] Resuming session: ${startFrom}`);
+            opts.onSessionFound(startFrom);
+        } else if (explicitSessionId) {
+            logger.debug(`[ClaudeLocal] Using explicit session ID: ${explicitSessionId}`);
+            opts.onSessionFound(explicitSessionId);
+        } else {
+            logger.debug(`[ClaudeLocal] Generated new session ID: ${newSessionId}`);
+            opts.onSessionFound(newSessionId!);
+        }
     } else {
-        logger.debug(`[ClaudeLocal] Fresh start, session ID will be provided by hook`);
+        // Normal mode with hook server: Session ID comes from Claude via hook
+        if (startFrom) {
+            logger.debug(`[ClaudeLocal] Will resume existing session: ${startFrom}`);
+        } else if (hasUserSessionControl) {
+            logger.debug(`[ClaudeLocal] User passed ${hasContinueFlag ? '--continue' : '--resume'} flag, session ID will be determined by hook`);
+        } else {
+            logger.debug(`[ClaudeLocal] Fresh start, session ID will be provided by hook`);
+        }
     }
 
     // Thinking state
@@ -70,13 +168,27 @@ export async function claudeLocal(opts: {
         process.stdin.pause();
         await new Promise<void>((r, reject) => {
             const args: string[] = []
-            
-            // Only add --resume if we have an existing session and user didn't pass their own flags
-            // For fresh starts, let Claude create its own session ID (reported via hook)
-            if (!hasUserSessionControl && startFrom) {
-                args.push('--resume', startFrom)
+
+            // Session/resume args depend on whether we're in offline mode or hook mode
+            if (!opts.hookSettingsPath) {
+                // Offline mode: We control session ID
+                const hasResumeFlag = opts.claudeArgs?.includes('--resume') || opts.claudeArgs?.includes('-r');
+                if (startFrom) {
+                    // Resume existing session (Claude preserves the session ID)
+                    args.push('--resume', startFrom)
+                } else if (!hasResumeFlag && newSessionId) {
+                    // New session with our generated UUID
+                    args.push('--session-id', newSessionId)
+                }
+            } else {
+                // Normal mode with hook: Add --resume if we found a session to resume
+                // (Flags have been extracted, so we re-add --resume with the session ID we found)
+                if (startFrom) {
+                    args.push('--resume', startFrom);
+                }
             }
-            
+            // If hasResumeFlag && !startFrom: --resume is in claudeArgs, let Claude handle it
+
             args.push('--append-system-prompt', systemPrompt);
 
             if (opts.mcpServers && Object.keys(opts.mcpServers).length > 0) {
@@ -92,9 +204,11 @@ export async function claudeLocal(opts: {
                 args.push(...opts.claudeArgs)
             }
 
-            // Add hook settings for session tracking (always passed)
-            args.push('--settings', opts.hookSettingsPath);
-            logger.debug(`[ClaudeLocal] Using hook settings: ${opts.hookSettingsPath}`);
+            // Add hook settings for session tracking (when available)
+            if (opts.hookSettingsPath) {
+                args.push('--settings', opts.hookSettingsPath);
+                logger.debug(`[ClaudeLocal] Using hook settings: ${opts.hookSettingsPath}`);
+            }
 
             if (!claudeCliPath || !existsSync(claudeCliPath)) {
                 throw new Error('Claude local launcher not found. Please ensure HAPPY_PROJECT_ROOT is set correctly for development.');
@@ -208,5 +322,8 @@ export async function claudeLocal(opts: {
         updateThinking(false);
     }
 
-    return startFrom;
+    // Return the effective session ID (what was actually used)
+    // - In offline mode: Our generated or resumed session ID
+    // - In hook mode: The session ID from startFrom (if resuming) or null (new session - hook will report ID)
+    return effectiveSessionId;
 }

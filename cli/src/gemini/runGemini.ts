@@ -15,7 +15,7 @@ import { join, resolve } from 'node:path';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
-import { AgentState, Metadata } from '@/api/types';
+import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
@@ -27,6 +27,9 @@ import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { stopCaffeinate } from '@/utils/caffeinate';
+import { connectionState } from '@/utils/serverConnectionErrors';
+import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
+import type { ApiSessionClient } from '@/api/apiSession';
 
 import { createGeminiBackend } from '@/agent/acp/gemini';
 import type { AgentBackend, AgentMessage } from '@/agent/AgentBackend';
@@ -34,7 +37,8 @@ import { GeminiDisplay } from '@/ui/ink/GeminiDisplay';
 import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
 import { GeminiReasoningProcessor } from '@/gemini/utils/reasoningProcessor';
 import { GeminiDiffProcessor } from '@/gemini/utils/diffProcessor';
-import type { PermissionMode, GeminiMode, CodexMessagePayload } from '@/gemini/types';
+import type { GeminiMode, CodexMessagePayload } from '@/gemini/types';
+import type { PermissionMode } from '@/api/types';
 import { GEMINI_MODEL_ENV, DEFAULT_GEMINI_MODEL, CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { 
   readGeminiLocalConfig, 
@@ -62,6 +66,10 @@ export async function runGemini(opts: {
 
   
   const sessionTag = randomUUID();
+
+  // Set backend for offline warnings (before any API calls)
+  connectionState.setBackend('Gemini');
+
   const api = await ApiClient.create(opts.credentials);
 
 
@@ -99,40 +107,47 @@ export async function runGemini(opts: {
   // Create session
   //
 
-  const state: AgentState = {
-    controlledByUser: false,
-  };
-  const metadata: Metadata = {
-    path: process.cwd(),
-    host: os.hostname(),
-    version: packageJson.version,
-    os: os.platform(),
-    machineId: machineId,
-    homeDir: os.homedir(),
-    happyHomeDir: configuration.happyHomeDir,
-    happyLibDir: projectPath(),
-    happyToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
-    startedFromDaemon: opts.startedBy === 'daemon',
-    hostPid: process.pid,
-    startedBy: opts.startedBy || 'terminal',
-    lifecycleState: 'running',
-    lifecycleStateSince: Date.now(),
-    flavor: 'gemini'
-  };
+  const { state, metadata } = createSessionMetadata({
+    flavor: 'gemini',
+    machineId,
+    startedBy: opts.startedBy
+  });
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
-  const session = api.sessionSyncClient(response);
 
-  // Report to daemon
-  try {
-    logger.debug(`[START] Reporting session ${response.id} to daemon`);
-    const result = await notifyDaemonSessionStarted(response.id, metadata);
-    if (result.error) {
-      logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
-    } else {
-      logger.debug(`[START] Reported session ${response.id} to daemon`);
+  // Handle server unreachable case - create offline stub with hot reconnection
+  let session: ApiSessionClient;
+  // Permission handler declared here so it can be updated in onSessionSwap callback
+  // (assigned later after Happy server setup)
+  let permissionHandler: GeminiPermissionHandler;
+  const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
+    api,
+    sessionTag,
+    metadata,
+    state,
+    response,
+    onSessionSwap: (newSession) => {
+      session = newSession;
+      // Update permission handler with new session to avoid stale reference
+      if (permissionHandler) {
+        permissionHandler.updateSession(newSession);
+      }
     }
-  } catch (error) {
-    logger.debug('[START] Failed to report to daemon (may not be running):', error);
+  });
+  session = initialSession;
+
+  // Report to daemon (only if we have a real session)
+  if (response) {
+    try {
+      logger.debug(`[START] Reporting session ${response.id} to daemon`);
+      const result = await notifyDaemonSessionStarted(response.id, metadata);
+      if (result.error) {
+        logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
+      } else {
+        logger.debug(`[START] Reported session ${response.id} to daemon`);
+      }
+    } catch (error) {
+      logger.debug('[START] Failed to report to daemon (may not be running):', error);
+    }
   }
 
   const messageQueue = new MessageQueue2<GeminiMode>((mode) => hashObject({
@@ -429,8 +444,8 @@ export async function runGemini(opts: {
     }
   };
 
-  // Create permission handler for tool approval
-  const permissionHandler = new GeminiPermissionHandler(session);
+  // Create permission handler for tool approval (variable declared earlier for onSessionSwap)
+  permissionHandler = new GeminiPermissionHandler(session);
   
   // Create reasoning processor for handling thinking/reasoning chunks
   const reasoningProcessor = new GeminiReasoningProcessor((message) => {
@@ -1069,6 +1084,13 @@ export async function runGemini(opts: {
   } finally {
     // Clean up resources
     logger.debug('[gemini]: Final cleanup start');
+
+    // Cancel offline reconnection if still running
+    if (reconnectionHandle) {
+      logger.debug('[gemini]: Cancelling offline reconnection');
+      reconnectionHandle.cancel();
+    }
+
     try {
       session.sendSessionDeath();
       await session.flush();

@@ -16,12 +16,16 @@ const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days, which is the half 
 /**
  * Get the correct MCP subcommand based on installed codex version
  * Versions >= 0.43.0-alpha.5 use 'mcp-server', older versions use 'mcp'
+ * Returns null if codex is not installed or version cannot be determined
  */
-function getCodexMcpCommand(): string {
+function getCodexMcpCommand(): string | null {
     try {
         const version = execSync('codex --version', { encoding: 'utf8' }).trim();
         const match = version.match(/codex-cli\s+(\d+\.\d+\.\d+(?:-alpha\.\d+)?)/);
-        if (!match) return 'mcp-server'; // Default to newer command if we can't parse
+        if (!match) {
+            logger.debug('[CodexMCP] Could not parse codex version:', version);
+            return null;
+        }
 
         const versionStr = match[1];
         const [major, minor, patch] = versionStr.split(/[-.]/).map(Number);
@@ -38,8 +42,8 @@ function getCodexMcpCommand(): string {
         }
         return 'mcp'; // Older versions use mcp
     } catch (error) {
-        logger.debug('[CodexMCP] Error detecting codex version, defaulting to mcp-server:', error);
-        return 'mcp-server'; // Default to newer command
+        logger.debug('[CodexMCP] Codex CLI not found or not executable:', error);
+        return null;
     }
 }
 
@@ -85,6 +89,19 @@ export class CodexMcpClient {
         if (this.connected) return;
 
         const mcpCommand = getCodexMcpCommand();
+
+        if (mcpCommand === null) {
+            throw new Error(
+                'Codex CLI not found or not executable.\n' +
+                '\n' +
+                'To install codex:\n' +
+                '  npm install -g @openai/codex\n' +
+                '\n' +
+                'Alternatively, use Claude:\n' +
+                '  happy claude'
+            );
+        }
+
         logger.debug(`[CodexMCP] Connecting to Codex MCP server using command: codex ${mcpCommand}`);
 
         this.transport = new StdioClientTransport({

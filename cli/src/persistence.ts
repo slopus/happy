@@ -11,18 +11,237 @@ import { constants } from 'node:fs'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64 } from '@/api/encryption';
+import { logger } from '@/ui/logger';
+
+// AI backend profile schema - MUST match happy app exactly
+// Using same Zod schema as GUI for runtime validation consistency
+
+// Environment variable schemas for different AI providers (matching GUI exactly)
+const AnthropicConfigSchema = z.object({
+    baseUrl: z.string().url().optional(),
+    authToken: z.string().optional(),
+    model: z.string().optional(),
+});
+
+const OpenAIConfigSchema = z.object({
+    apiKey: z.string().optional(),
+    baseUrl: z.string().url().optional(),
+    model: z.string().optional(),
+});
+
+const AzureOpenAIConfigSchema = z.object({
+    apiKey: z.string().optional(),
+    endpoint: z.string().url().optional(),
+    apiVersion: z.string().optional(),
+    deploymentName: z.string().optional(),
+});
+
+const TogetherAIConfigSchema = z.object({
+    apiKey: z.string().optional(),
+    model: z.string().optional(),
+});
+
+// Tmux configuration schema (matching GUI exactly)
+const TmuxConfigSchema = z.object({
+    sessionName: z.string().optional(),
+    tmpDir: z.string().optional(),
+    updateEnvironment: z.boolean().optional(),
+});
+
+// Environment variables schema with validation (matching GUI exactly)
+const EnvironmentVariableSchema = z.object({
+    name: z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'Invalid environment variable name'),
+    value: z.string(),
+});
+
+// Profile compatibility schema (matching GUI exactly)
+const ProfileCompatibilitySchema = z.object({
+    claude: z.boolean().default(true),
+    codex: z.boolean().default(true),
+    gemini: z.boolean().default(true),
+});
+
+// AIBackendProfile schema - EXACT MATCH with GUI schema
+export const AIBackendProfileSchema = z.object({
+    id: z.string().uuid(),
+    name: z.string().min(1).max(100),
+    description: z.string().max(500).optional(),
+
+    // Agent-specific configurations
+    anthropicConfig: AnthropicConfigSchema.optional(),
+    openaiConfig: OpenAIConfigSchema.optional(),
+    azureOpenAIConfig: AzureOpenAIConfigSchema.optional(),
+    togetherAIConfig: TogetherAIConfigSchema.optional(),
+
+    // Tmux configuration
+    tmuxConfig: TmuxConfigSchema.optional(),
+
+    // Environment variables (validated)
+    environmentVariables: z.array(EnvironmentVariableSchema).default([]),
+
+    // Default session type for this profile
+    defaultSessionType: z.enum(['simple', 'worktree']).optional(),
+
+    // Default permission mode for this profile (supports both Claude and Codex modes)
+    defaultPermissionMode: z.enum([
+        'default', 'acceptEdits', 'bypassPermissions', 'plan',  // Claude modes
+        'read-only', 'safe-yolo', 'yolo'  // Codex modes
+    ]).optional(),
+
+    // Default model mode for this profile
+    defaultModelMode: z.string().optional(),
+
+    // Compatibility metadata
+    compatibility: ProfileCompatibilitySchema.default({ claude: true, codex: true, gemini: true }),
+
+    // Built-in profile indicator
+    isBuiltIn: z.boolean().default(false),
+
+    // Metadata
+    createdAt: z.number().default(() => Date.now()),
+    updatedAt: z.number().default(() => Date.now()),
+    version: z.string().default('1.0.0'),
+});
+
+export type AIBackendProfile = z.infer<typeof AIBackendProfileSchema>;
+
+// Helper functions matching the happy app exactly
+export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex' | 'gemini'): boolean {
+  return profile.compatibility[agent];
+}
+
+export function getProfileEnvironmentVariables(profile: AIBackendProfile): Record<string, string> {
+  const envVars: Record<string, string> = {};
+
+  // Add validated environment variables
+  profile.environmentVariables.forEach(envVar => {
+    envVars[envVar.name] = envVar.value;
+  });
+
+  // Add Anthropic config
+  if (profile.anthropicConfig) {
+    if (profile.anthropicConfig.baseUrl) envVars.ANTHROPIC_BASE_URL = profile.anthropicConfig.baseUrl;
+    if (profile.anthropicConfig.authToken) envVars.ANTHROPIC_AUTH_TOKEN = profile.anthropicConfig.authToken;
+    if (profile.anthropicConfig.model) envVars.ANTHROPIC_MODEL = profile.anthropicConfig.model;
+  }
+
+  // Add OpenAI config
+  if (profile.openaiConfig) {
+    if (profile.openaiConfig.apiKey) envVars.OPENAI_API_KEY = profile.openaiConfig.apiKey;
+    if (profile.openaiConfig.baseUrl) envVars.OPENAI_BASE_URL = profile.openaiConfig.baseUrl;
+    if (profile.openaiConfig.model) envVars.OPENAI_MODEL = profile.openaiConfig.model;
+  }
+
+  // Add Azure OpenAI config
+  if (profile.azureOpenAIConfig) {
+    if (profile.azureOpenAIConfig.apiKey) envVars.AZURE_OPENAI_API_KEY = profile.azureOpenAIConfig.apiKey;
+    if (profile.azureOpenAIConfig.endpoint) envVars.AZURE_OPENAI_ENDPOINT = profile.azureOpenAIConfig.endpoint;
+    if (profile.azureOpenAIConfig.apiVersion) envVars.AZURE_OPENAI_API_VERSION = profile.azureOpenAIConfig.apiVersion;
+    if (profile.azureOpenAIConfig.deploymentName) envVars.AZURE_OPENAI_DEPLOYMENT_NAME = profile.azureOpenAIConfig.deploymentName;
+  }
+
+  // Add Together AI config
+  if (profile.togetherAIConfig) {
+    if (profile.togetherAIConfig.apiKey) envVars.TOGETHER_API_KEY = profile.togetherAIConfig.apiKey;
+    if (profile.togetherAIConfig.model) envVars.TOGETHER_MODEL = profile.togetherAIConfig.model;
+  }
+
+  // Add Tmux config
+  if (profile.tmuxConfig) {
+    // Empty string means "use current/most recent session", so include it
+    if (profile.tmuxConfig.sessionName !== undefined) envVars.TMUX_SESSION_NAME = profile.tmuxConfig.sessionName;
+    if (profile.tmuxConfig.tmpDir) envVars.TMUX_TMPDIR = profile.tmuxConfig.tmpDir;
+    if (profile.tmuxConfig.updateEnvironment !== undefined) {
+      envVars.TMUX_UPDATE_ENVIRONMENT = profile.tmuxConfig.updateEnvironment.toString();
+    }
+  }
+
+  return envVars;
+}
+
+// Profile validation function using Zod schema
+export function validateProfile(profile: unknown): AIBackendProfile {
+  const result = AIBackendProfileSchema.safeParse(profile);
+  if (!result.success) {
+    throw new Error(`Invalid profile data: ${result.error.message}`);
+  }
+  return result.data;
+}
+
+
+// Profile versioning system
+// Profile version: Semver string for individual profile data compatibility (e.g., "1.0.0")
+// Used to version the AIBackendProfile schema itself (anthropicConfig, tmuxConfig, etc.)
+export const CURRENT_PROFILE_VERSION = '1.0.0';
+
+// Settings schema version: Integer for overall Settings structure compatibility
+// Incremented when Settings structure changes (e.g., adding profiles array was v1→v2)
+// Used for migration logic in readSettings()
+export const SUPPORTED_SCHEMA_VERSION = 2;
+
+// Profile version validation
+export function validateProfileVersion(profile: AIBackendProfile): boolean {
+  // Simple semver validation for now
+  const semverRegex = /^\d+\.\d+\.\d+$/;
+  return semverRegex.test(profile.version || '');
+}
+
+// Profile compatibility check for version upgrades
+export function isProfileVersionCompatible(profileVersion: string, requiredVersion: string = CURRENT_PROFILE_VERSION): boolean {
+  // For now, all 1.x.x versions are compatible
+  const [major] = profileVersion.split('.');
+  const [requiredMajor] = requiredVersion.split('.');
+  return major === requiredMajor;
+}
 
 interface Settings {
+  // Schema version for backwards compatibility
+  schemaVersion: number
   onboardingCompleted: boolean
   // This ID is used as the actual database ID on the server
   // All machine operations use this ID
   machineId?: string
   machineIdConfirmedByServer?: boolean
   daemonAutoStartWhenRunningHappy?: boolean
+  // Profile management settings (synced with happy app)
+  activeProfileId?: string
+  profiles: AIBackendProfile[]
+  // CLI-local environment variable cache (not synced)
+  localEnvironmentVariables: Record<string, Record<string, string>> // profileId -> env vars
 }
 
 const defaultSettings: Settings = {
-  onboardingCompleted: false
+  schemaVersion: SUPPORTED_SCHEMA_VERSION,
+  onboardingCompleted: false,
+  profiles: [],
+  localEnvironmentVariables: {}
+}
+
+/**
+ * Migrate settings from old schema versions to current
+ * Always backwards compatible - preserves all data
+ */
+function migrateSettings(raw: any, fromVersion: number): any {
+  let migrated = { ...raw };
+
+  // Migration from v1 to v2 (added profile support)
+  if (fromVersion < 2) {
+    // Ensure profiles array exists
+    if (!migrated.profiles) {
+      migrated.profiles = [];
+    }
+    // Ensure localEnvironmentVariables exists
+    if (!migrated.localEnvironmentVariables) {
+      migrated.localEnvironmentVariables = {};
+    }
+    // Update schema version
+    migrated.schemaVersion = 2;
+  }
+
+  // Future migrations go here:
+  // if (fromVersion < 3) { ... }
+
+  return migrated;
 }
 
 /**
@@ -44,9 +263,47 @@ export async function readSettings(): Promise<Settings> {
   }
 
   try {
+    // Read raw settings
     const content = await readFile(configuration.settingsFile, 'utf8')
-    return JSON.parse(content)
-  } catch {
+    const raw = JSON.parse(content)
+
+    // Check schema version (default to 1 if missing)
+    const schemaVersion = raw.schemaVersion ?? 1;
+
+    // Warn if schema version is newer than supported
+    if (schemaVersion > SUPPORTED_SCHEMA_VERSION) {
+      logger.warn(
+        `⚠️ Settings schema v${schemaVersion} > supported v${SUPPORTED_SCHEMA_VERSION}. ` +
+        'Update happy-cli for full functionality.'
+      );
+    }
+
+    // Migrate if needed
+    const migrated = migrateSettings(raw, schemaVersion);
+
+    // Validate and clean profiles gracefully (don't crash on invalid profiles)
+    if (migrated.profiles && Array.isArray(migrated.profiles)) {
+      const validProfiles: AIBackendProfile[] = [];
+      for (const profile of migrated.profiles) {
+        try {
+          const validated = AIBackendProfileSchema.parse(profile);
+          validProfiles.push(validated);
+        } catch (error: any) {
+          logger.warn(
+            `⚠️ Invalid profile "${profile?.name || profile?.id || 'unknown'}" - skipping. ` +
+            `Error: ${error.message}`
+          );
+          // Continue processing other profiles
+        }
+      }
+      migrated.profiles = validProfiles;
+    }
+
+    // Merge with defaults to ensure all required fields exist
+    return { ...defaultSettings, ...migrated };
+  } catch (error: any) {
+    logger.warn(`Failed to read settings: ${error.message}`);
+    // Return defaults on any error
     return { ...defaultSettings }
   }
 }
@@ -56,7 +313,13 @@ export async function writeSettings(settings: Settings): Promise<void> {
     await mkdir(configuration.happyHomeDir, { recursive: true })
   }
 
-  await writeFile(configuration.settingsFile, JSON.stringify(settings, null, 2))
+  // Ensure schema version is set before writing
+  const settingsWithVersion = {
+    ...settings,
+    schemaVersion: settings.schemaVersion ?? SUPPORTED_SCHEMA_VERSION
+  };
+
+  await writeFile(configuration.settingsFile, JSON.stringify(settingsWithVersion, null, 2))
 }
 
 /**
@@ -318,5 +581,126 @@ export async function releaseDaemonLock(lockHandle: FileHandle): Promise<void> {
       unlinkSync(configuration.daemonLockFile);
     }
   } catch { }
+}
+
+//
+// Profile Management
+//
+
+/**
+ * Get all profiles from settings
+ */
+export async function getProfiles(): Promise<AIBackendProfile[]> {
+  const settings = await readSettings();
+  return settings.profiles || [];
+}
+
+/**
+ * Get a specific profile by ID
+ */
+export async function getProfile(profileId: string): Promise<AIBackendProfile | null> {
+  const settings = await readSettings();
+  return settings.profiles.find(p => p.id === profileId) || null;
+}
+
+/**
+ * Get the active profile
+ */
+export async function getActiveProfile(): Promise<AIBackendProfile | null> {
+  const settings = await readSettings();
+  if (!settings.activeProfileId) return null;
+  return settings.profiles.find(p => p.id === settings.activeProfileId) || null;
+}
+
+/**
+ * Set the active profile by ID
+ */
+export async function setActiveProfile(profileId: string): Promise<void> {
+  await updateSettings(settings => ({
+    ...settings,
+    activeProfileId: profileId
+  }));
+}
+
+/**
+ * Update profiles (synced from happy app) with validation
+ */
+export async function updateProfiles(profiles: unknown[]): Promise<void> {
+  // Validate all profiles using Zod schema
+  const validatedProfiles = profiles.map(profile => validateProfile(profile));
+
+  await updateSettings(settings => {
+    // Preserve active profile ID if it still exists
+    const activeProfileId = settings.activeProfileId;
+    const activeProfileStillExists = activeProfileId && validatedProfiles.some(p => p.id === activeProfileId);
+
+    return {
+      ...settings,
+      profiles: validatedProfiles,
+      activeProfileId: activeProfileStillExists ? activeProfileId : undefined
+    };
+  });
+}
+
+/**
+ * Get environment variables for a profile
+ * Combines profile custom env vars with CLI-local cached env vars
+ */
+export async function getEnvironmentVariables(profileId: string): Promise<Record<string, string>> {
+  const settings = await readSettings();
+  const profile = settings.profiles.find(p => p.id === profileId);
+  if (!profile) return {};
+
+  // Start with profile's environment variables (new schema)
+  const envVars: Record<string, string> = {};
+  if (profile.environmentVariables) {
+    profile.environmentVariables.forEach(envVar => {
+      envVars[envVar.name] = envVar.value;
+    });
+  }
+
+  // Override with CLI-local cached environment variables
+  const localEnvVars = settings.localEnvironmentVariables[profileId] || {};
+  Object.assign(envVars, localEnvVars);
+
+  return envVars;
+}
+
+/**
+ * Set environment variables for a profile in CLI-local cache
+ */
+export async function setEnvironmentVariables(profileId: string, envVars: Record<string, string>): Promise<void> {
+  await updateSettings(settings => ({
+    ...settings,
+    localEnvironmentVariables: {
+      ...settings.localEnvironmentVariables,
+      [profileId]: envVars
+    }
+  }));
+}
+
+/**
+ * Get a specific environment variable for a profile
+ * Checks CLI-local cache first, then profile environment variables
+ */
+export async function getEnvironmentVariable(profileId: string, key: string): Promise<string | undefined> {
+  const settings = await readSettings();
+
+  // Check CLI-local cache first
+  const localEnvVars = settings.localEnvironmentVariables[profileId] || {};
+  if (localEnvVars[key] !== undefined) {
+    return localEnvVars[key];
+  }
+
+  // Fall back to profile environment variables (new schema)
+  const profile = settings.profiles.find(p => p.id === profileId);
+  if (profile?.environmentVariables) {
+    const envVar = profile.environmentVariables.find(env => env.name === key);
+    if (envVar) {
+      return envVar.value;
+    }
+  }
+
+  return undefined;
 }
 

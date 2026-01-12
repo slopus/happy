@@ -1,5 +1,6 @@
-import { EnhancedMode, PermissionMode } from "./loop";
-import { query, type QueryOptions as Options, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
+import { EnhancedMode } from "./loop";
+import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
+import { mapToClaudeMode } from "./utils/permissionMode";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join, resolve } from 'node:path';
 import { projectPath } from "@/projectPath";
@@ -112,11 +113,11 @@ export async function claudeRemote(opts: {
 
     // Prepare SDK options
     let mode = initial.mode;
-    const sdkOptions: Options = {
+    const sdkOptions: QueryOptions = {
         cwd: opts.path,
         resume: startFrom ?? undefined,
         mcpServers: opts.mcpServers,
-        permissionMode: initial.mode.permissionMode === 'plan' ? 'plan' : 'default',
+        permissionMode: mapToClaudeMode(initial.mode.permissionMode),
         model: initial.mode.model,
         fallbackModel: initial.mode.fallbackModel,
         customSystemPrompt: initial.mode.customSystemPrompt ? initial.mode.customSystemPrompt + '\n\n' + systemPrompt : undefined,

@@ -8,7 +8,6 @@ import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
-import { AgentState, Metadata } from '@/api/types';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
@@ -17,6 +16,7 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { resolve, join } from 'node:path';
+import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import fs from 'node:fs';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
@@ -28,6 +28,9 @@ import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { delay } from "@/utils/time";
 import { stopCaffeinate } from "@/utils/caffeinate";
+import { connectionState } from '@/utils/serverConnectionErrors';
+import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
+import type { ApiSessionClient } from '@/api/apiSession';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -64,7 +67,8 @@ export async function runCodex(opts: {
     credentials: Credentials;
     startedBy?: 'daemon' | 'terminal';
 }): Promise<void> {
-    type PermissionMode = 'default' | 'read-only' | 'safe-yolo' | 'yolo';
+    // Use shared PermissionMode type for cross-agent compatibility
+    type PermissionMode = import('@/api/types').PermissionMode;
     interface EnhancedMode {
         permissionMode: PermissionMode;
         model?: string;
@@ -75,6 +79,10 @@ export async function runCodex(opts: {
     //
 
     const sessionTag = randomUUID();
+
+    // Set backend for offline warnings (before any API calls)
+    connectionState.setBackend('Codex');
+
     const api = await ApiClient.create(opts.credentials);
 
     // Log startup options
@@ -100,41 +108,47 @@ export async function runCodex(opts: {
     // Create session
     //
 
-    let state: AgentState = {
-        controlledByUser: false,
-    }
-    let metadata: Metadata = {
-        path: process.cwd(),
-        host: os.hostname(),
-        version: packageJson.version,
-        os: os.platform(),
-        machineId: machineId,
-        homeDir: os.homedir(),
-        happyHomeDir: configuration.happyHomeDir,
-        happyLibDir: projectPath(),
-        happyToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
-        startedFromDaemon: opts.startedBy === 'daemon',
-        hostPid: process.pid,
-        startedBy: opts.startedBy || 'terminal',
-        // Initialize lifecycle state
-        lifecycleState: 'running',
-        lifecycleStateSince: Date.now(),
-        flavor: 'codex'
-    };
+    const { state, metadata } = createSessionMetadata({
+        flavor: 'codex',
+        machineId,
+        startedBy: opts.startedBy
+    });
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
-    const session = api.sessionSyncClient(response);
 
-    // Always report to daemon if it exists
-    try {
-        logger.debug(`[START] Reporting session ${response.id} to daemon`);
-        const result = await notifyDaemonSessionStarted(response.id, metadata);
-        if (result.error) {
-            logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
-        } else {
-            logger.debug(`[START] Reported session ${response.id} to daemon`);
+    // Handle server unreachable case - create offline stub with hot reconnection
+    let session: ApiSessionClient;
+    // Permission handler declared here so it can be updated in onSessionSwap callback
+    // (assigned later at line ~385 after client setup)
+    let permissionHandler: CodexPermissionHandler;
+    const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
+        api,
+        sessionTag,
+        metadata,
+        state,
+        response,
+        onSessionSwap: (newSession) => {
+            session = newSession;
+            // Update permission handler with new session to avoid stale reference
+            if (permissionHandler) {
+                permissionHandler.updateSession(newSession);
+            }
         }
-    } catch (error) {
-        logger.debug('[START] Failed to report to daemon (may not be running):', error);
+    });
+    session = initialSession;
+
+    // Always report to daemon if it exists (skip if offline)
+    if (response) {
+        try {
+            logger.debug(`[START] Reporting session ${response.id} to daemon`);
+            const result = await notifyDaemonSessionStarted(response.id, metadata);
+            if (result.error) {
+                logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
+            } else {
+                logger.debug(`[START] Reported session ${response.id} to daemon`);
+            }
+        } catch (error) {
+            logger.debug('[START] Failed to report to daemon (may not be running):', error);
+        }
     }
 
     const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
@@ -143,21 +157,17 @@ export async function runCodex(opts: {
     }));
 
     // Track current overrides to apply per message
-    let currentPermissionMode: PermissionMode | undefined = undefined;
+    // Use shared PermissionMode type from api/types for cross-agent compatibility
+    let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
 
     session.onUserMessage((message) => {
-        // Resolve permission mode (validate)
+        // Resolve permission mode (accept all modes, will be mapped in switch statement)
         let messagePermissionMode = currentPermissionMode;
         if (message.meta?.permissionMode) {
-            const validModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
-            if (validModes.includes(message.meta.permissionMode as PermissionMode)) {
-                messagePermissionMode = message.meta.permissionMode as PermissionMode;
-                currentPermissionMode = messagePermissionMode;
-                logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
-            } else {
-                logger.debug(`[Codex] Invalid permission mode received: ${message.meta.permissionMode}`);
-            }
+            messagePermissionMode = message.meta.permissionMode as import('@/api/types').PermissionMode;
+            currentPermissionMode = messagePermissionMode;
+            logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
         } else {
             logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
         }
@@ -381,7 +391,7 @@ export async function runCodex(opts: {
             return null;
         }
     }
-    const permissionHandler = new CodexPermissionHandler(session);
+    permissionHandler = new CodexPermissionHandler(session);
     const reasoningProcessor = new ReasoningProcessor((message) => {
         // Callback to send messages directly from the processor
         session.sendCodexMessage(message);
@@ -620,18 +630,30 @@ export async function runCodex(opts: {
                 // Map permission mode to approval policy and sandbox for startSession
                 const approvalPolicy = (() => {
                     switch (message.mode.permissionMode) {
-                        case 'default': return 'untrusted' as const;
-                        case 'read-only': return 'never' as const;
-                        case 'safe-yolo': return 'on-failure' as const;
-                        case 'yolo': return 'on-failure' as const;
+                        // Codex native modes
+                        case 'default': return 'untrusted' as const;                    // Ask for non-trusted commands
+                        case 'read-only': return 'never' as const;                      // Never ask, read-only enforced by sandbox
+                        case 'safe-yolo': return 'on-failure' as const;                 // Auto-run, ask only on failure
+                        case 'yolo': return 'on-failure' as const;                      // Auto-run, ask only on failure
+                        // Defensive fallback for Claude-specific modes (backward compatibility)
+                        case 'bypassPermissions': return 'on-failure' as const;         // Full access: map to yolo behavior
+                        case 'acceptEdits': return 'on-request' as const;               // Let model decide (closest to auto-approve edits)
+                        case 'plan': return 'untrusted' as const;                       // Conservative: ask for non-trusted
+                        default: return 'untrusted' as const;                           // Safe fallback
                     }
                 })();
                 const sandbox = (() => {
                     switch (message.mode.permissionMode) {
-                        case 'default': return 'workspace-write' as const;
-                        case 'read-only': return 'read-only' as const;
-                        case 'safe-yolo': return 'workspace-write' as const;
-                        case 'yolo': return 'danger-full-access' as const;
+                        // Codex native modes
+                        case 'default': return 'workspace-write' as const;              // Can write in workspace
+                        case 'read-only': return 'read-only' as const;                  // Read-only filesystem
+                        case 'safe-yolo': return 'workspace-write' as const;            // Can write in workspace
+                        case 'yolo': return 'danger-full-access' as const;              // Full system access
+                        // Defensive fallback for Claude-specific modes
+                        case 'bypassPermissions': return 'danger-full-access' as const; // Full access: map to yolo
+                        case 'acceptEdits': return 'workspace-write' as const;          // Can edit files in workspace
+                        case 'plan': return 'workspace-write' as const;                 // Can write for planning
+                        default: return 'workspace-write' as const;                     // Safe default
                     }
                 })();
 
@@ -726,6 +748,13 @@ export async function runCodex(opts: {
         // Clean up resources when main loop exits
         logger.debug('[codex]: Final cleanup start');
         logActiveHandles('cleanup-start');
+
+        // Cancel offline reconnection if still running
+        if (reconnectionHandle) {
+            logger.debug('[codex]: Cancelling offline reconnection');
+            reconnectionHandle.cancel();
+        }
+
         try {
             logger.debug('[codex]: sendSessionDeath');
             session.sendSessionDeath();

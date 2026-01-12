@@ -9,6 +9,7 @@
  *    - macOS/Linux: curl -fsSL https://claude.ai/install.sh | bash
  *    - PowerShell:  irm https://claude.ai/install.ps1 | iex
  *    - Windows CMD: curl -fsSL https://claude.ai/install.cmd | cmd
+ * 4. PATH fallback: bun, pnpm, or any other package manager
  */
 
 const { execSync } = require('child_process');
@@ -49,72 +50,200 @@ function findNpmGlobalCliPath() {
 }
 
 /**
+ * Find Claude CLI using system PATH (which/where command)
+ * Respects user's configuration and works across all platforms
+ * @returns {{path: string, source: string}|null} Path and source, or null if not found
+ */
+function findClaudeInPath() {
+    try {
+        // Cross-platform: 'where' on Windows, 'which' on Unix
+        const command = process.platform === 'win32' ? 'where claude' : 'which claude';
+        // stdio suppression for cleaner execution (from tiann/PR#83)
+        const result = execSync(command, {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+        }).trim();
+
+        const claudePath = result.split('\n')[0].trim(); // Take first match
+        if (!claudePath) return null;
+
+        // Check existence BEFORE resolving (from tiann/PR#83)
+        if (!fs.existsSync(claudePath)) return null;
+
+        // Resolve with fallback to original path (from tiann/PR#83)
+        const resolvedPath = resolvePathSafe(claudePath) || claudePath;
+
+        if (resolvedPath) {
+            // Detect source from BOTH original PATH entry and resolved path
+            // Original path tells us HOW user accessed it (context)
+            // Resolved path tells us WHERE it actually lives (content)
+            const originalSource = detectSourceFromPath(claudePath);
+            const resolvedSource = detectSourceFromPath(resolvedPath);
+
+            // Prioritize original PATH entry for context (e.g., bun vs npm access)
+            // Fall back to resolved path for accurate location detection
+            const source = originalSource !== 'PATH' ? originalSource : resolvedSource;
+
+            return {
+                path: resolvedPath,
+                source: source
+            };
+        }
+    } catch (e) {
+        // Command failed (claude not in PATH)
+    }
+    return null;
+}
+
+/**
+ * Detect installation source from resolved path
+ * Uses concrete path patterns, no assumptions
+ * @param {string} resolvedPath - The resolved path to cli.js
+ * @returns {string} Installation method/source
+ */
+function detectSourceFromPath(resolvedPath) {
+    const normalized = resolvedPath.toLowerCase();
+    const path = require('path');
+
+    // Use path.normalize() for proper cross-platform path handling
+    const normalizedPath = path.normalize(resolvedPath).toLowerCase();
+
+    // Bun: ~/.bun/bin/claude -> ../node_modules/@anthropic-ai/claude-code/cli.js
+    // Works on Windows too: C:\Users\[user]\.bun\bin\claude
+    if (normalizedPath.includes('.bun') && normalizedPath.includes('bin') ||
+        (normalizedPath.includes('node_modules') && normalizedPath.includes('.bun'))) {
+        return 'Bun';
+    }
+
+    // Homebrew cask: hashed directories like .claude-code-2DTsDk1V (NOT npm installations)
+    // Must check before general Homebrew paths to distinguish from npm-through-Homebrew
+    if (normalizedPath.includes('@anthropic-ai') && normalizedPath.includes('.claude-code-')) {
+        return 'Homebrew';
+    }
+
+    // npm: clean claude-code directory (even through Homebrew's npm)
+    // Windows: %APPDATA%\npm\node_modules\@anthropic-ai\claude-code
+    if (normalizedPath.includes('node_modules') && normalizedPath.includes('@anthropic-ai') && normalizedPath.includes('claude-code') &&
+        !normalizedPath.includes('.claude-code-')) {
+        return 'npm';
+    }
+
+    // Windows-specific detection (detect by path patterns, not current platform)
+    if (normalizedPath.includes('appdata') || normalizedPath.includes('program files') || normalizedPath.endsWith('.exe')) {
+        // Windows npm
+        if (normalizedPath.includes('appdata') && normalizedPath.includes('npm') && normalizedPath.includes('node_modules')) {
+            return 'npm';
+        }
+
+        // Windows native installer (any location ending with claude.exe)
+        if (normalizedPath.endsWith('claude.exe')) {
+            return 'native installer';
+        }
+
+        // Windows native installer in AppData
+        if (normalizedPath.includes('appdata') && normalizedPath.includes('claude')) {
+            return 'native installer';
+        }
+
+        // Windows native installer in Program Files
+        if (normalizedPath.includes('program files') && normalizedPath.includes('claude')) {
+            return 'native installer';
+        }
+    }
+
+    // Homebrew general paths (for non-npm installations like Cellar binaries)
+    // Apple Silicon: /opt/homebrew/bin/claude
+    // Intel Mac: /usr/local/bin/claude (ONLY on macOS, not Linux)
+    // Linux Homebrew: /home/linuxbrew/.linuxbrew/bin/claude or ~/.linuxbrew/bin/claude
+    if (normalizedPath.includes('opt/homebrew') ||
+        normalizedPath.includes('usr/local/homebrew') ||
+        normalizedPath.includes('home/linuxbrew') ||
+        normalizedPath.includes('.linuxbrew') ||
+        normalizedPath.includes('.homebrew') ||
+        normalizedPath.includes('cellar') ||
+        normalizedPath.includes('caskroom') ||
+        (normalizedPath.includes('usr/local/bin/claude') && process.platform === 'darwin')) { // Intel Mac Homebrew default only on macOS
+        return 'Homebrew';
+    }
+
+    // Native installer: standard Unix locations and ~/.local/bin
+    // /usr/local/bin/claude on Linux should be native installer
+    if (normalizedPath.includes('.local') && normalizedPath.includes('bin') ||
+        normalizedPath.includes('.local') && normalizedPath.includes('share') && normalizedPath.includes('claude') ||
+        (normalizedPath.includes('usr/local/bin/claude') && process.platform === 'linux')) { // Linux native installer
+        return 'native installer';
+    }
+
+    // Default: we found it in PATH but can't determine source
+    return 'PATH';
+}
+
+/**
+ * Find path to Bun globally installed Claude Code CLI
+ * FIX: Check bun's bin directory, not non-existent modules directory
+ * @returns {string|null} Path to cli.js or null if not found
+ */
+function findBunGlobalCliPath() {
+    // First check if bun command exists (cross-platform)
+    try {
+        const bunCheckCommand = process.platform === 'win32' ? 'where bun' : 'which bun';
+        execSync(bunCheckCommand, { encoding: 'utf8' });
+    } catch (e) {
+        return null; // bun not installed
+    }
+
+    // Check bun's binary directory (works on both Unix and Windows)
+    const bunBin = path.join(os.homedir(), '.bun', 'bin', 'claude');
+    const resolved = resolvePathSafe(bunBin);
+
+    if (resolved && resolved.endsWith('cli.js') && fs.existsSync(resolved)) {
+        return resolved;
+    }
+
+    return null;
+}
+
+/**
  * Find path to Homebrew installed Claude Code CLI
+ * FIX: Handle hashed directory names like .claude-code-[hash]
  * @returns {string|null} Path to cli.js or binary, or null if not found
  */
 function findHomebrewCliPath() {
     if (process.platform !== 'darwin' && process.platform !== 'linux') {
         return null;
     }
-    
-    // Try to get Homebrew prefix via command first
-    let brewPrefix = null;
-    try {
-        brewPrefix = execSync('brew --prefix 2>/dev/null', { encoding: 'utf8' }).trim();
-    } catch (e) {
-        // brew command not in PATH, try standard locations
-    }
-    
-    // Standard Homebrew locations to check
-    const possiblePrefixes = [];
-    if (brewPrefix) {
-        possiblePrefixes.push(brewPrefix);
-    }
-    
-    // Add standard locations based on platform
-    if (process.platform === 'darwin') {
-        // macOS: Intel (/usr/local) or Apple Silicon (/opt/homebrew)
-        possiblePrefixes.push('/opt/homebrew', '/usr/local');
-    } else if (process.platform === 'linux') {
-        // Linux: system-wide or user installation
-        const homeDir = os.homedir();
-        possiblePrefixes.push('/home/linuxbrew/.linuxbrew', path.join(homeDir, '.linuxbrew'));
-    }
-    
-    // Check each possible prefix
+
+    const possiblePrefixes = [
+        '/opt/homebrew',
+        '/usr/local',
+        path.join(os.homedir(), '.linuxbrew'),
+        path.join(os.homedir(), '.homebrew')
+    ].filter(fs.existsSync);
+
     for (const prefix of possiblePrefixes) {
-        if (!fs.existsSync(prefix)) {
-            continue;
+        // Check for binary symlink first (most reliable)
+        const binPath = path.join(prefix, 'bin', 'claude');
+        const resolved = resolvePathSafe(binPath);
+        if (resolved && fs.existsSync(resolved)) {
+            return resolved;
         }
-        
-        // Homebrew installs claude-code as a Cask (binary) in Caskroom
-        const caskroomPath = path.join(prefix, 'Caskroom', 'claude-code');
-        if (fs.existsSync(caskroomPath)) {
-            const found = findLatestVersionBinary(caskroomPath, 'claude');
-            if (found) return found;
-        }
-        
-        // Also check Cellar (for formula installations, though claude-code is usually a Cask)
-        const cellarPath = path.join(prefix, 'Cellar', 'claude-code');
-        if (fs.existsSync(cellarPath)) {
-            // Cellar has different structure - check for cli.js in libexec
-            const entries = fs.readdirSync(cellarPath);
-            if (entries.length > 0) {
-                const sorted = entries.sort((a, b) => compareVersions(b, a));
-                const latestVersion = sorted[0];
-                const cliPath = path.join(cellarPath, latestVersion, 'libexec', 'lib', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
-                if (fs.existsSync(cliPath)) {
-                    return cliPath;
+
+        // Fallback: check for hashed directories in node_modules
+        const nodeModulesPath = path.join(prefix, 'lib', 'node_modules', '@anthropic-ai');
+        if (fs.existsSync(nodeModulesPath)) {
+            // Look for both claude-code and .claude-code-[hash]
+            const entries = fs.readdirSync(nodeModulesPath);
+            for (const entry of entries) {
+                if (entry === 'claude-code' || entry.startsWith('.claude-code-')) {
+                    const cliPath = path.join(nodeModulesPath, entry, 'cli.js');
+                    if (fs.existsSync(cliPath)) {
+                        return cliPath;
+                    }
                 }
             }
         }
-        
-        // Check bin directory for symlink (most reliable)
-        const binPath = path.join(prefix, 'bin', 'claude');
-        const resolvedBinPath = resolvePathSafe(binPath);
-        if (resolvedBinPath) return resolvedBinPath;
     }
-    
+
     return null;
 }
 
@@ -251,22 +380,31 @@ function findLatestVersionBinary(versionsDir, binaryName = null) {
 
 /**
  * Find path to globally installed Claude Code CLI
- * Checks multiple installation methods in order of preference:
- * 1. npm global (highest priority)
- * 2. Homebrew
- * 3. Native installer
+ * Priority: HAPPY_CLAUDE_PATH env var > PATH > npm > Bun > Homebrew > Native
  * @returns {{path: string, source: string}|null} Path and source, or null if not found
  */
 function findGlobalClaudeCliPath() {
-    // Check npm global first (highest priority)
+    // 1. Environment variable (explicit override)
+    const envPath = process.env.HAPPY_CLAUDE_PATH;
+    if (envPath && fs.existsSync(envPath)) {
+        const resolved = resolvePathSafe(envPath) || envPath;
+        return { path: resolved, source: 'HAPPY_CLAUDE_PATH' };
+    }
+
+    // 2. Check PATH (respects user's shell config)
+    const pathResult = findClaudeInPath();
+    if (pathResult) return pathResult;
+
+    // 3. Fall back to package manager detection
     const npmPath = findNpmGlobalCliPath();
     if (npmPath) return { path: npmPath, source: 'npm' };
 
-    // Check Homebrew installation
+    const bunPath = findBunGlobalCliPath();
+    if (bunPath) return { path: bunPath, source: 'Bun' };
+
     const homebrewPath = findHomebrewCliPath();
     if (homebrewPath) return { path: homebrewPath, source: 'Homebrew' };
 
-    // Check native installer
     const nativePath = findNativeInstallerCliPath();
     if (nativePath) return { path: nativePath, source: 'native installer' };
 
@@ -367,7 +505,10 @@ function runClaudeCli(cliPath) {
 
 module.exports = {
     findGlobalClaudeCliPath,
+    findClaudeInPath,
+    detectSourceFromPath,
     findNpmGlobalCliPath,
+    findBunGlobalCliPath,
     findHomebrewCliPath,
     findNativeInstallerCliPath,
     getVersion,

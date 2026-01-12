@@ -69,10 +69,13 @@ export class RpcHandlerManager {
             const decryptedParams = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(request.params));
 
             // Call the handler
+            this.logger('[RPC] Calling handler', { method: request.method });
             const result = await handler(decryptedParams);
+            this.logger('[RPC] Handler returned', { method: request.method, hasResult: result !== undefined });
 
             // Encrypt and return the response
             const encryptedResponse = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, result));
+            this.logger('[RPC] Sending encrypted response', { method: request.method, responseLength: encryptedResponse.length });
             return encryptedResponse;
         } catch (error) {
             this.logger('[RPC] [ERROR] Error handling request', { error });

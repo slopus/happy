@@ -477,9 +477,9 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 `)
       
       // Run claude --help and display its output
-      // Use execFileSync with the current Node executable for cross-platform compatibility
+      // Use execFileSync directly with claude CLI for runtime-agnostic compatibility
       try {
-        const claudeHelp = execFileSync(process.execPath, [claudeCliPath, '--help'], { encoding: 'utf8' })
+        const claudeHelp = execFileSync(claudeCliPath, ['--help'], { encoding: 'utf8' })
         console.log(claudeHelp)
       } catch (e) {
         console.log(chalk.yellow('Could not retrieve claude help. Make sure claude is installed.'))

@@ -17,15 +17,24 @@ pnpm-lock.yaml
 # Environment variables
 .env
 .env*.local
+.envrc
 
 # Claude code session level settings
 .claude/settings.local.json
 
-# Local installation
+# Local installation and data directories
 .happy/
+.happy-dev/
 
 **/*.log
 .release-notes-temp.md
+
+# Git worktrees for isolated branch work
+.worktrees/
+bun.lock
+claude-docs/
+note/
+happy-coder-*.tgz
 
 # npm auth token (never commit)
 .npmrc

@@ -8,6 +8,7 @@ import { PushNotificationClient } from './pushNotifications';
 import { configuration } from '@/configuration';
 import chalk from 'chalk';
 import { Credentials } from '@/persistence';
+import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
 
 export class ApiClient {
 
@@ -30,7 +31,7 @@ export class ApiClient {
     tag: string,
     metadata: Metadata,
     state: AgentState | null
-  }): Promise<Session> {
+  }): Promise<Session | null> {
 
     // Resolve encryption key
     let dataEncryptionKey: Uint8Array | null = null;
@@ -88,6 +89,49 @@ export class ApiClient {
       return session;
     } catch (error) {
       logger.debug('[API] [ERROR] Failed to get or create session:', error);
+
+      // Check if it's a connection error
+      if (error && typeof error === 'object' && 'code' in error) {
+        const errorCode = (error as any).code;
+        if (isNetworkError(errorCode)) {
+          connectionState.fail({
+            operation: 'Session creation',
+            caller: 'api.getOrCreateSession',
+            errorCode,
+            url: `${configuration.serverUrl}/v1/sessions`
+          });
+          return null;
+        }
+      }
+
+      // Handle 404 gracefully - server endpoint may not be available yet
+      const is404Error = (
+        (axios.isAxiosError(error) && error.response?.status === 404) ||
+        (error && typeof error === 'object' && 'response' in error && (error as any).response?.status === 404)
+      );
+      if (is404Error) {
+        connectionState.fail({
+          operation: 'Session creation',
+          errorCode: '404',
+          url: `${configuration.serverUrl}/v1/sessions`
+        });
+        return null;
+      }
+
+      // Handle 5xx server errors - use offline mode with auto-reconnect
+      if (axios.isAxiosError(error) && error.response?.status) {
+        const status = error.response.status;
+        if (status >= 500) {
+          connectionState.fail({
+            operation: 'Session creation',
+            errorCode: String(status),
+            url: `${configuration.serverUrl}/v1/sessions`,
+            details: ['Server encountered an error, will retry automatically']
+          });
+          return null;
+        }
+      }
+
       throw new Error(`Failed to get or create session: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -120,44 +164,113 @@ export class ApiClient {
       encryptionVariant = 'legacy';
     }
 
-    // Create machine
-    const response = await axios.post(
-      `${configuration.serverUrl}/v1/machines`,
-      {
-        id: opts.machineId,
-        metadata: encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.metadata)),
-        daemonState: opts.daemonState ? encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.daemonState)) : undefined,
-        dataEncryptionKey: dataEncryptionKey ? encodeBase64(dataEncryptionKey) : undefined
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${this.credential.token}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 60000 // 1 minute timeout for very bad network connections
-      }
-    );
-
-    if (response.status !== 200) {
-      console.error(chalk.red(`[API] Failed to create machine: ${response.statusText}`));
-      console.log(chalk.yellow(`[API] Failed to create machine: ${response.statusText}, most likely you have re-authenticated, but you still have a machine associated with the old account. Now we are trying to re-associate the machine with the new account. That is not allowed. Please run 'happy doctor clean' to clean up your happy state, and try your original command again. Please create an issue on github if this is causing you problems. We apologize for the inconvenience.`));
-      process.exit(1);
-    }
-
-    const raw = response.data.machine;
-    logger.debug(`[API] Machine ${opts.machineId} registered/updated with server`);
-
-    // Return decrypted machine like we do for sessions
-    const machine: Machine = {
-      id: raw.id,
+    // Helper to create minimal machine object for offline mode (DRY)
+    const createMinimalMachine = (): Machine => ({
+      id: opts.machineId,
       encryptionKey: encryptionKey,
       encryptionVariant: encryptionVariant,
-      metadata: raw.metadata ? decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.metadata)) : null,
-      metadataVersion: raw.metadataVersion || 0,
-      daemonState: raw.daemonState ? decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.daemonState)) : null,
-      daemonStateVersion: raw.daemonStateVersion || 0,
-    };
-    return machine;
+      metadata: opts.metadata,
+      metadataVersion: 0,
+      daemonState: opts.daemonState || null,
+      daemonStateVersion: 0,
+    });
+
+    // Create machine
+    try {
+      const response = await axios.post(
+        `${configuration.serverUrl}/v1/machines`,
+        {
+          id: opts.machineId,
+          metadata: encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.metadata)),
+          daemonState: opts.daemonState ? encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.daemonState)) : undefined,
+          dataEncryptionKey: dataEncryptionKey ? encodeBase64(dataEncryptionKey) : undefined
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${this.credential.token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 60000 // 1 minute timeout for very bad network connections
+        }
+      );
+
+
+      const raw = response.data.machine;
+      logger.debug(`[API] Machine ${opts.machineId} registered/updated with server`);
+
+      // Return decrypted machine like we do for sessions
+      const machine: Machine = {
+        id: raw.id,
+        encryptionKey: encryptionKey,
+        encryptionVariant: encryptionVariant,
+        metadata: raw.metadata ? decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.metadata)) : null,
+        metadataVersion: raw.metadataVersion || 0,
+        daemonState: raw.daemonState ? decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.daemonState)) : null,
+        daemonStateVersion: raw.daemonStateVersion || 0,
+      };
+      return machine;
+    } catch (error) {
+      // Handle connection errors gracefully
+      if (axios.isAxiosError(error) && error.code && isNetworkError(error.code)) {
+        connectionState.fail({
+          operation: 'Machine registration',
+          caller: 'api.getOrCreateMachine',
+          errorCode: error.code,
+          url: `${configuration.serverUrl}/v1/machines`
+        });
+        return createMinimalMachine();
+      }
+
+      // Handle 403/409 - server rejected request due to authorization conflict
+      // This is NOT "server unreachable" - server responded, so don't use connectionState
+      if (axios.isAxiosError(error) && error.response?.status) {
+        const status = error.response.status;
+
+        if (status === 403 || status === 409) {
+          // Re-auth conflict: machine registered to old account, re-association not allowed
+          console.log(chalk.yellow(
+            `⚠️  Machine registration rejected by the server with status ${status}`
+          ));
+          console.log(chalk.yellow(
+            `   → This machine ID is already registered to another account on the server`
+          ));
+          console.log(chalk.yellow(
+            `   → This usually happens after re-authenticating with a different account`
+          ));
+          console.log(chalk.yellow(
+            `   → Run 'happy doctor clean' to reset local state and generate a new machine ID`
+          ));
+          console.log(chalk.yellow(
+            `   → Open a GitHub issue if this problem persists`
+          ));
+          return createMinimalMachine();
+        }
+
+        // Handle 5xx - server error, use offline mode with auto-reconnect
+        if (status >= 500) {
+          connectionState.fail({
+            operation: 'Machine registration',
+            errorCode: String(status),
+            url: `${configuration.serverUrl}/v1/machines`,
+            details: ['Server encountered an error, will retry automatically']
+          });
+          return createMinimalMachine();
+        }
+
+        // Handle 404 - endpoint may not be available yet
+        if (status === 404) {
+          connectionState.fail({
+            operation: 'Machine registration',
+            errorCode: '404',
+            url: `${configuration.serverUrl}/v1/machines`
+          });
+          return createMinimalMachine();
+        }
+      }
+
+      // For other errors, rethrow
+      throw error;
+    }
   }
 
   sessionSyncClient(session: Session): ApiSessionClient {

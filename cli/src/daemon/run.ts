@@ -13,13 +13,15 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings, getActiveProfile, getEnvironmentVariables, validateProfileForAgent, getProfileEnvironmentVariables } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
+import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
+import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -30,6 +32,37 @@ export const initialMachineMetadata: MachineMetadata = {
   happyHomeDir: configuration.happyHomeDir,
   happyLibDir: projectPath()
 };
+
+// Get environment variables for a profile, filtered for agent compatibility
+async function getProfileEnvironmentVariablesForAgent(
+  profileId: string,
+  agentType: 'claude' | 'codex' | 'gemini'
+): Promise<Record<string, string>> {
+  try {
+    const settings = await readSettings();
+    const profile = settings.profiles.find(p => p.id === profileId);
+
+    if (!profile) {
+      logger.debug(`[DAEMON RUN] Profile ${profileId} not found`);
+      return {};
+    }
+
+    // Check if profile is compatible with the agent
+    if (!validateProfileForAgent(profile, agentType)) {
+      logger.debug(`[DAEMON RUN] Profile ${profileId} not compatible with agent ${agentType}`);
+      return {};
+    }
+
+    // Get environment variables from profile (new schema)
+    const envVars = getProfileEnvironmentVariables(profile);
+
+    logger.debug(`[DAEMON RUN] Loaded ${Object.keys(envVars).length} environment variables from profile ${profileId} for agent ${agentType}`);
+    return envVars;
+  } catch (error) {
+    logger.debug('[DAEMON RUN] Failed to get profile environment variables:', error);
+    return {};
+  }
+}
 
 export async function startDaemon(): Promise<void> {
   // We don't have cleanup function at the time of server construction
@@ -234,8 +267,13 @@ export async function startDaemon(): Promise<void> {
 
       try {
 
-        // Resolve authentication token if provided
-        let extraEnv: Record<string, string> = {};
+        // Build environment variables with explicit precedence layers:
+        // Layer 1 (base): Authentication tokens - protected, cannot be overridden
+        // Layer 2 (middle): Profile environment variables - GUI profile OR CLI local profile
+        // Layer 3 (top): Auth tokens again to ensure they're never overridden
+
+        // Layer 1: Resolve authentication token if provided
+        const authEnv: Record<string, string> = {};
         if (options.token) {
           if (options.agent === 'codex') {
 
@@ -246,123 +284,306 @@ export async function startDaemon(): Promise<void> {
             fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
 
             // Set the environment variable for Codex
-            extraEnv = {
-              CODEX_HOME: codexHomeDir.name
-            };
+            authEnv.CODEX_HOME = codexHomeDir.name;
           } else { // Assuming claude
-            extraEnv = {
-              CLAUDE_CODE_OAUTH_TOKEN: options.token
-            };
+            authEnv.CLAUDE_CODE_OAUTH_TOKEN = options.token;
           }
         }
 
-        // Construct arguments for the CLI
-        let agentCommand: string;
-        switch (options.agent) {
-          case 'claude':
-          case undefined:
-            agentCommand = 'claude';
-            break;
-          case 'codex':
-            agentCommand = 'codex';
-            break;
-          case 'gemini':
-            agentCommand = 'gemini';
-            break;
-          default:
-            return {
-              type: 'error',
-              errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
-            };
-        }
-        const args = [
-          agentCommand,
-          '--happy-starting-mode', 'remote',
-          '--started-by', 'daemon'
-        ];
+        // Layer 2: Profile environment variables
+        // Priority: GUI-provided profile > CLI local active profile > none
+        let profileEnv: Record<string, string> = {};
 
-        // TODO: In future, sessionId could be used with --resume to continue existing sessions
-        // For now, we ignore it - each spawn creates a new session
-        const happyProcess = spawnHappyCLI(args, {
-          cwd: directory,
-          detached: true,  // Sessions stay alive when daemon stops
-          stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
-          env: {
-            ...process.env,
-            ...extraEnv
+        if (options.environmentVariables && Object.keys(options.environmentVariables).length > 0) {
+          // GUI provided profile environment variables - highest priority for profile settings
+          profileEnv = options.environmentVariables;
+          logger.info(`[DAEMON RUN] Using GUI-provided profile environment variables (${Object.keys(profileEnv).length} vars)`);
+          logger.debug(`[DAEMON RUN] GUI profile env var keys: ${Object.keys(profileEnv).join(', ')}`);
+        } else {
+          // Fallback to CLI local active profile
+          try {
+            const settings = await readSettings();
+            if (settings.activeProfileId) {
+              logger.debug(`[DAEMON RUN] No GUI profile provided, loading CLI local active profile: ${settings.activeProfileId}`);
+
+              // Get profile environment variables filtered for agent compatibility
+              profileEnv = await getProfileEnvironmentVariablesForAgent(
+                settings.activeProfileId,
+                options.agent || 'claude'
+              );
+
+              logger.debug(`[DAEMON RUN] Loaded ${Object.keys(profileEnv).length} environment variables from CLI local profile for agent ${options.agent || 'claude'}`);
+              logger.debug(`[DAEMON RUN] CLI profile env var keys: ${Object.keys(profileEnv).join(', ')}`);
+            } else {
+              logger.debug('[DAEMON RUN] No CLI local active profile set');
+            }
+          } catch (error) {
+            logger.debug('[DAEMON RUN] Failed to load CLI local profile environment variables:', error);
+            // Continue without profile env vars - this is not a fatal error
           }
+        }
+
+        // Final merge: Profile vars first, then auth (auth takes precedence to protect authentication)
+        let extraEnv = { ...profileEnv, ...authEnv };
+        logger.debug(`[DAEMON RUN] Final environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
+
+        // Expand ${VAR} references from daemon's process.env
+        // This ensures variable substitution works in both tmux and non-tmux modes
+        // Example: ANTHROPIC_AUTH_TOKEN="${Z_AI_AUTH_TOKEN}" → ANTHROPIC_AUTH_TOKEN="sk-real-key"
+        extraEnv = expandEnvironmentVariables(extraEnv, process.env);
+        logger.debug(`[DAEMON RUN] After variable expansion: ${Object.keys(extraEnv).join(', ')}`);
+
+        // Fail-fast validation: Check that any auth variables present are fully expanded
+        // Only validate variables that are actually set (different agents need different auth)
+        const potentialAuthVars = ['ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'OPENAI_API_KEY', 'CODEX_HOME', 'AZURE_OPENAI_API_KEY', 'TOGETHER_API_KEY'];
+        const unexpandedAuthVars = potentialAuthVars.filter(varName => {
+          const value = extraEnv[varName];
+          // Only fail if variable IS SET and contains unexpanded ${VAR} references
+          return value && typeof value === 'string' && value.includes('${');
         });
 
-        // Log output for debugging
-        if (process.env.DEBUG) {
-          happyProcess.stdout?.on('data', (data) => {
-            logger.debug(`[DAEMON RUN] Child stdout: ${data.toString()}`);
+        if (unexpandedAuthVars.length > 0) {
+          // Extract the specific missing variable names from unexpanded references
+          const missingVarDetails = unexpandedAuthVars.map(authVar => {
+            const value = extraEnv[authVar];
+            const unresolvedMatch = value?.match(/\$\{([A-Z_][A-Z0-9_]*)(:-[^}]*)?\}/);
+            const missingVar = unresolvedMatch ? unresolvedMatch[1] : 'unknown';
+            return `${authVar} references \${${missingVar}} which is not defined`;
           });
-          happyProcess.stderr?.on('data', (data) => {
-            logger.debug(`[DAEMON RUN] Child stderr: ${data.toString()}`);
-          });
-        }
 
-        if (!happyProcess.pid) {
-          logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
+          const errorMessage = `Authentication will fail - environment variables not found in daemon: ${missingVarDetails.join('; ')}. ` +
+            `Ensure these variables are set in the daemon's environment (not just your shell) before starting sessions.`;
+          logger.warn(`[DAEMON RUN] ${errorMessage}`);
           return {
             type: 'error',
-            errorMessage: 'Failed to spawn Happy process - no PID returned'
+            errorMessage
           };
         }
 
-        logger.debug(`[DAEMON RUN] Spawned process with PID ${happyProcess.pid}`);
+        // Check if tmux is available and should be used
+        const tmuxAvailable = await isTmuxAvailable();
+        let useTmux = tmuxAvailable;
 
-        const trackedSession: TrackedSession = {
-          startedBy: 'daemon',
-          pid: happyProcess.pid,
-          childProcess: happyProcess,
-          directoryCreated,
-          message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined
-        };
+        // Get tmux session name from environment variables (now set by profile system)
+        // Empty string means "use current/most recent session" (tmux default behavior)
+        let tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME;
 
-        pidToTrackedSession.set(happyProcess.pid, trackedSession);
-
-        happyProcess.on('exit', (code, signal) => {
-          logger.debug(`[DAEMON RUN] Child PID ${happyProcess.pid} exited with code ${code}, signal ${signal}`);
-          if (happyProcess.pid) {
-            onChildExited(happyProcess.pid);
+        // If tmux is not available or session name is explicitly undefined, fall back to regular spawning
+        // Note: Empty string is valid (means use current/most recent tmux session)
+        if (!tmuxAvailable || tmuxSessionName === undefined) {
+          useTmux = false;
+          if (tmuxSessionName !== undefined) {
+            logger.debug(`[DAEMON RUN] tmux session name specified but tmux not available, falling back to regular spawning`);
           }
-        });
+        }
 
-        happyProcess.on('error', (error) => {
-          logger.debug(`[DAEMON RUN] Child process error:`, error);
-          if (happyProcess.pid) {
-            onChildExited(happyProcess.pid);
+        if (useTmux && tmuxSessionName !== undefined) {
+          // Try to spawn in tmux session
+          const sessionDesc = tmuxSessionName || 'current/most recent session';
+          logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
+
+          const tmux = getTmuxUtilities(tmuxSessionName);
+
+          // Construct command for the CLI
+          const cliPath = join(projectPath(), 'dist', 'index.mjs');
+          // Determine agent command - support claude, codex, and gemini
+          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+
+          // Spawn in tmux with environment variables
+          // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
+          // 1. tmux sessions need daemon's expanded auth variables (e.g., ANTHROPIC_AUTH_TOKEN)
+          // 2. Regular spawn uses env: { ...process.env, ...extraEnv }
+          // 3. tmux needs explicit environment via -e flags to ensure all variables are available
+          const windowName = `happy-${Date.now()}-${agent}`;
+          const tmuxEnv: Record<string, string> = {};
+
+          // Add all daemon environment variables (filtering out undefined)
+          for (const [key, value] of Object.entries(process.env)) {
+            if (value !== undefined) {
+              tmuxEnv[key] = value;
+            }
           }
-        });
 
-        // Wait for webhook to populate session with happySessionId
-        logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${happyProcess.pid}`);
+          // Add extra environment variables (these should already be filtered)
+          Object.assign(tmuxEnv, extraEnv);
 
-        return new Promise((resolve) => {
-          // Set timeout for webhook
-          const timeout = setTimeout(() => {
-            pidToAwaiter.delete(happyProcess.pid!);
-            logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
-            resolve({
-              type: 'error',
-              errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`
+          const tmuxResult = await tmux.spawnInTmux([fullCommand], {
+            sessionName: tmuxSessionName,
+            windowName: windowName,
+            cwd: directory
+          }, tmuxEnv);  // Pass complete environment for tmux session
+
+          if (tmuxResult.success) {
+            logger.debug(`[DAEMON RUN] Successfully spawned in tmux session: ${tmuxResult.sessionId}, PID: ${tmuxResult.pid}`);
+
+            // Validate we got a PID from tmux
+            if (!tmuxResult.pid) {
+              throw new Error('Tmux window created but no PID returned');
+            }
+
+            // Create a tracked session for tmux windows - now we have the real PID!
+            const trackedSession: TrackedSession = {
+              startedBy: 'daemon',
+              pid: tmuxResult.pid, // Real PID from tmux -P flag
+              tmuxSessionId: tmuxResult.sessionId,
+              directoryCreated,
+              message: directoryCreated
+                ? `The path '${directory}' did not exist. We created a new folder and spawned a new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
+                : `Spawned new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
+            };
+
+            // Add to tracking map so webhook can find it later
+            pidToTrackedSession.set(tmuxResult.pid, trackedSession);
+
+            // Wait for webhook to populate session with happySessionId (exact same as regular flow)
+            logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${tmuxResult.pid} (tmux)`);
+
+            return new Promise((resolve) => {
+              // Set timeout for webhook (same as regular flow)
+              const timeout = setTimeout(() => {
+                pidToAwaiter.delete(tmuxResult.pid!);
+                logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${tmuxResult.pid} (tmux)`);
+                resolve({
+                  type: 'error',
+                  errorMessage: `Session webhook timeout for PID ${tmuxResult.pid} (tmux)`
+                });
+              }, 15_000); // Same timeout as regular sessions
+
+              // Register awaiter for tmux session (exact same as regular flow)
+              pidToAwaiter.set(tmuxResult.pid!, (completedSession) => {
+                clearTimeout(timeout);
+                logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook (tmux)`);
+                resolve({
+                  type: 'success',
+                  sessionId: completedSession.happySessionId!
+                });
+              });
             });
-            // 15 second timeout - I have seen timeouts on 10 seconds
-            // even though session was still created successfully in ~2 more seconds
-          }, 15_000);
+          } else {
+            logger.debug(`[DAEMON RUN] Failed to spawn in tmux: ${tmuxResult.error}, falling back to regular spawning`);
+            useTmux = false;
+          }
+        }
 
-          // Register awaiter
-          pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
-            clearTimeout(timeout);
-            logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook`);
-            resolve({
-              type: 'success',
-              sessionId: completedSession.happySessionId!
+        // Regular process spawning (fallback or if tmux not available)
+        if (!useTmux) {
+          logger.debug(`[DAEMON RUN] Using regular process spawning`);
+
+          // Construct arguments for the CLI - support claude, codex, and gemini
+          let agentCommand: string;
+          switch (options.agent) {
+            case 'claude':
+            case undefined:
+              agentCommand = 'claude';
+              break;
+            case 'codex':
+              agentCommand = 'codex';
+              break;
+            case 'gemini':
+              agentCommand = 'gemini';
+              break;
+            default:
+              return {
+                type: 'error',
+                errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
+              };
+          }
+          const args = [
+            agentCommand,
+            '--happy-starting-mode', 'remote',
+            '--started-by', 'daemon'
+          ];
+
+          // TODO: In future, sessionId could be used with --resume to continue existing sessions
+          // For now, we ignore it - each spawn creates a new session
+          const happyProcess = spawnHappyCLI(args, {
+            cwd: directory,
+            detached: true,  // Sessions stay alive when daemon stops
+            stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
+            env: {
+              ...process.env,
+              ...extraEnv
+            }
+          });
+
+          // Log output for debugging
+          if (process.env.DEBUG) {
+            happyProcess.stdout?.on('data', (data) => {
+              logger.debug(`[DAEMON RUN] Child stdout: ${data.toString()}`);
+            });
+            happyProcess.stderr?.on('data', (data) => {
+              logger.debug(`[DAEMON RUN] Child stderr: ${data.toString()}`);
+            });
+          }
+
+          if (!happyProcess.pid) {
+            logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
+            return {
+              type: 'error',
+              errorMessage: 'Failed to spawn Happy process - no PID returned'
+            };
+          }
+
+          logger.debug(`[DAEMON RUN] Spawned process with PID ${happyProcess.pid}`);
+
+          const trackedSession: TrackedSession = {
+            startedBy: 'daemon',
+            pid: happyProcess.pid,
+            childProcess: happyProcess,
+            directoryCreated,
+            message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined
+          };
+
+          pidToTrackedSession.set(happyProcess.pid, trackedSession);
+
+          happyProcess.on('exit', (code, signal) => {
+            logger.debug(`[DAEMON RUN] Child PID ${happyProcess.pid} exited with code ${code}, signal ${signal}`);
+            if (happyProcess.pid) {
+              onChildExited(happyProcess.pid);
+            }
+          });
+
+          happyProcess.on('error', (error) => {
+            logger.debug(`[DAEMON RUN] Child process error:`, error);
+            if (happyProcess.pid) {
+              onChildExited(happyProcess.pid);
+            }
+          });
+
+          // Wait for webhook to populate session with happySessionId
+          logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${happyProcess.pid}`);
+
+          return new Promise((resolve) => {
+            // Set timeout for webhook
+            const timeout = setTimeout(() => {
+              pidToAwaiter.delete(happyProcess.pid!);
+              logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
+              resolve({
+                type: 'error',
+                errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`
+              });
+              // 15 second timeout - I have seen timeouts on 10 seconds
+              // even though session was still created successfully in ~2 more seconds
+            }, 15_000);
+
+            // Register awaiter
+            pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
+              clearTimeout(timeout);
+              logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook`);
+              resolve({
+                type: 'success',
+                sessionId: completedSession.happySessionId!
+              });
             });
           });
-        });
+        }
+
+        // This should never be reached, but TypeScript requires a return statement
+        return {
+          type: 'error',
+          errorMessage: 'Unexpected error in session spawning'
+        };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.debug('[DAEMON RUN] Failed to spawn session:', error);

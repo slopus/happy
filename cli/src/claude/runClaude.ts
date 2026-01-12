@@ -23,6 +23,9 @@ import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/util
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
+import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
+import { claudeLocal } from '@/claude/claudeLocal';
+import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 
 /** JavaScript runtime to use for spawning Claude Code */
@@ -30,7 +33,7 @@ export type JsRuntime = 'node' | 'bun'
 
 export interface StartOptions {
     model?: string
-    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
+    permissionMode?: PermissionMode
     startingMode?: 'local' | 'remote'
     shouldStartDaemon?: boolean
     claudeEnvVars?: Record<string, string>
@@ -51,13 +54,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());
     logger.debug(`[START] Options: startedBy=${options.startedBy}, startingMode=${options.startingMode}`);
 
-    // Validate daemon spawn requirements
+    // Validate daemon spawn requirements - fail fast on invalid config
     if (options.startedBy === 'daemon' && options.startingMode === 'local') {
-        logger.debug('Daemon spawn requested with local mode - forcing remote mode');
-        options.startingMode = 'remote';
-        // TODO: Eventually we should error here instead of silently switching
-        // throw new Error('Daemon-spawned sessions cannot use local/interactive mode');
+        throw new Error('Daemon-spawned sessions cannot use local/interactive mode. Use --happy-starting-mode remote or spawn sessions directly from terminal.');
     }
+
+    // Set backend for offline warnings (before any API calls)
+    connectionState.setBackend('Claude');
 
     // Create session service
     const api = await ApiClient.create(credentials);
@@ -99,6 +102,51 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         flavor: 'claude'
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+
+    // Handle server unreachable case - run Claude locally with hot reconnection
+    // Note: connectionState.notifyOffline() was already called by api.ts with error details
+    if (!response) {
+        let offlineSessionId: string | null = null;
+
+        const reconnection = startOfflineReconnection({
+            serverUrl: configuration.serverUrl,
+            onReconnected: async () => {
+                const resp = await api.getOrCreateSession({ tag: randomUUID(), metadata, state });
+                if (!resp) throw new Error('Server unavailable');
+                const session = api.sessionSyncClient(resp);
+                const scanner = await createSessionScanner({
+                    sessionId: null,
+                    workingDirectory,
+                    onMessage: (msg) => session.sendClaudeSessionMessage(msg)
+                });
+                if (offlineSessionId) scanner.onNewSession(offlineSessionId);
+                return { session, scanner };
+            },
+            onNotify: console.log,
+            onCleanup: () => {
+                // Scanner cleanup handled automatically when process exits
+            }
+        });
+
+        try {
+            await claudeLocal({
+                path: workingDirectory,
+                sessionId: null,
+                onSessionFound: (id) => { offlineSessionId = id; },
+                onThinkingChange: () => {},
+                abort: new AbortController().signal,
+                claudeEnvVars: options.claudeEnvVars,
+                claudeArgs: options.claudeArgs,
+                mcpServers: {},
+                allowedTools: []
+            });
+        } finally {
+            reconnection.cancel();
+            stopCaffeinate();
+        }
+        process.exit(0);
+    }
+
     logger.debug(`Session created: ${response.id}`);
 
     // Always report to daemon if it exists
@@ -191,7 +239,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     }));
 
     // Forward messages to the queue
-    let currentPermissionMode = options.permissionMode;
+    // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
+    let currentPermissionMode: PermissionMode | undefined = options.permissionMode;
     let currentModel = options.model; // Track current model state
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
@@ -200,18 +249,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
     session.onUserMessage((message) => {
 
-        // Resolve permission mode from meta
-        let messagePermissionMode = currentPermissionMode;
+        // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
+        let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
         if (message.meta?.permissionMode) {
-            const validModes: PermissionMode[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
-            if (validModes.includes(message.meta.permissionMode as PermissionMode)) {
-                messagePermissionMode = message.meta.permissionMode as PermissionMode;
-                currentPermissionMode = messagePermissionMode;
-                logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
-
-            } else {
-                logger.debug(`[loop] Invalid permission mode received: ${message.meta.permissionMode}`);
-            }
+            messagePermissionMode = message.meta.permissionMode;
+            currentPermissionMode = messagePermissionMode;
+            logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
         } else {
             logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);
         }
@@ -340,6 +383,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                     archiveReason: 'User terminated'
                 }));
                 
+                // Cleanup session resources (intervals, callbacks)
+                currentSession?.cleanup();
+
                 // Send session death message
                 session.sendSessionDeath();
                 await session.flush();
@@ -413,6 +459,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         hookSettingsPath,
         jsRuntime: options.jsRuntime
     });
+
+    // Cleanup session resources (intervals, callbacks) - prevents memory leak
+    // Note: currentSession is set by onSessionReady callback during loop()
+    (currentSession as Session | null)?.cleanup();
 
     // Send session death message
     session.sendSessionDeath();
