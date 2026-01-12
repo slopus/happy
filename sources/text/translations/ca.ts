@@ -894,7 +894,7 @@ export const ca: TranslationStructure = {
         tmuxTempDir: 'Directori temporal tmux',
         enterTmuxTempDir: 'Introdueix el directori temporal tmux',
         tmuxUpdateEnvironment: 'Actualitza l\'entorn tmux',
-        deleteConfirm: 'Segur que vols eliminar aquest perfil?',
+        deleteConfirm: ({ name }: { name: string }) => `Segur que vols eliminar el perfil "${name}"?`,
         nameRequired: 'El nom del perfil és obligatori',
         delete: {
             title: 'Eliminar Perfil',

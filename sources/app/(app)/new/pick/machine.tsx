@@ -65,14 +65,15 @@ export default function MachinePickerScreen() {
 
         sessions?.forEach(item => {
             if (typeof item === 'string') return; // Skip section headers
-            const session = item as any;
-            if (session.metadata?.machineId && !machineIds.has(session.metadata.machineId)) {
-                const machine = machines.find(m => m.id === session.metadata.machineId);
+            const session = item;
+            const machineId = session.metadata?.machineId;
+            if (machineId && !machineIds.has(machineId)) {
+                const machine = machines.find(m => m.id === machineId);
                 if (machine) {
                     machineIds.add(machine.id);
                     machinesWithTimestamp.push({
                         machine,
-                        timestamp: session.updatedAt || session.createdAt
+                        timestamp: session.updatedAt || session.createdAt,
                     });
                 }
             }

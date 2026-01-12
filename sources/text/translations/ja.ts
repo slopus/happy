@@ -93,7 +93,7 @@ export const ja: TranslationStructure = {
         enterTmuxTempDir: '一時ディレクトリのパスを入力',
         tmuxUpdateEnvironment: '環境を自動更新',
         nameRequired: 'プロファイル名は必須です',
-        deleteConfirm: 'プロファイル「{name}」を削除してもよろしいですか？',
+        deleteConfirm: ({ name }: { name: string }) => `プロファイル「${name}」を削除してもよろしいですか？`,
         editProfile: 'プロファイルを編集',
         addProfileTitle: '新しいプロファイルを追加',
         delete: {

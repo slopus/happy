@@ -90,7 +90,7 @@ export const it: TranslationStructure = {
         enterTmuxTempDir: 'Inserisci percorso directory temporanea',
         tmuxUpdateEnvironment: 'Aggiorna ambiente automaticamente',
         nameRequired: 'Il nome del profilo è obbligatorio',
-        deleteConfirm: 'Sei sicuro di voler eliminare il profilo "{name}"?',
+        deleteConfirm: ({ name }: { name: string }) => `Sei sicuro di voler eliminare il profilo "${name}"?`,
         editProfile: 'Modifica profilo',
         addProfileTitle: 'Aggiungi nuovo profilo',
         delete: {

@@ -902,7 +902,7 @@ export const en = {
         enterTmuxTempDir: 'Enter temp directory path',
         tmuxUpdateEnvironment: 'Update environment automatically',
         nameRequired: 'Profile name is required',
-        deleteConfirm: 'Are you sure you want to delete the profile "{name}"?',
+        deleteConfirm: ({ name }: { name: string }) => `Are you sure you want to delete the profile "${name}"?`,
         editProfile: 'Edit Profile',
         addProfileTitle: 'Add New Profile',
         delete: {

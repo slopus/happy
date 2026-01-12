@@ -6,61 +6,39 @@ import * as z from 'zod';
 
 // Environment variable schemas for different AI providers
 // Note: baseUrl fields accept either valid URLs or ${VAR} or ${VAR:-default} template strings
+const URL_OR_TEMPLATE_REGEX = /^\$\{[A-Z_][A-Z0-9_]*(:-[^}]*)?\}$/;
+const URL_OR_TEMPLATE_ERROR = 'Must be a valid URL or ${VAR} or ${VAR:-default} template string';
+
+function isUrlOrTemplateString(val: string): boolean {
+    if (!val) return true; // Optional or empty string
+    if (URL_OR_TEMPLATE_REGEX.test(val)) return true;
+    try {
+        new URL(val);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function urlOrTemplateStringOptional() {
+    return z.string().refine(isUrlOrTemplateString, { message: URL_OR_TEMPLATE_ERROR }).optional();
+}
+
 const AnthropicConfigSchema = z.object({
-    baseUrl: z.string().refine(
-        (val) => {
-            if (!val) return true; // Optional
-            // Allow ${VAR} and ${VAR:-default} template strings
-            if (/^\$\{[A-Z_][A-Z0-9_]*(:-[^}]*)?\}$/.test(val)) return true;
-            // Otherwise validate as URL
-            try {
-                new URL(val);
-                return true;
-            } catch {
-                return false;
-            }
-        },
-        { message: 'Must be a valid URL or ${VAR} or ${VAR:-default} template string' }
-    ).optional(),
+    baseUrl: urlOrTemplateStringOptional(),
     authToken: z.string().optional(),
     model: z.string().optional(),
 });
 
 const OpenAIConfigSchema = z.object({
     apiKey: z.string().optional(),
-    baseUrl: z.string().refine(
-        (val) => {
-            if (!val) return true;
-            // Allow ${VAR} and ${VAR:-default} template strings
-            if (/^\$\{[A-Z_][A-Z0-9_]*(:-[^}]*)?\}$/.test(val)) return true;
-            try {
-                new URL(val);
-                return true;
-            } catch {
-                return false;
-            }
-        },
-        { message: 'Must be a valid URL or ${VAR} or ${VAR:-default} template string' }
-    ).optional(),
+    baseUrl: urlOrTemplateStringOptional(),
     model: z.string().optional(),
 });
 
 const AzureOpenAIConfigSchema = z.object({
     apiKey: z.string().optional(),
-    endpoint: z.string().refine(
-        (val) => {
-            if (!val) return true;
-            // Allow ${VAR} and ${VAR:-default} template strings
-            if (/^\$\{[A-Z_][A-Z0-9_]*(:-[^}]*)?\}$/.test(val)) return true;
-            try {
-                new URL(val);
-                return true;
-            } catch {
-                return false;
-            }
-        },
-        { message: 'Must be a valid URL or ${VAR} or ${VAR:-default} template string' }
-    ).optional(),
+    endpoint: urlOrTemplateStringOptional(),
     apiVersion: z.string().optional(),
     deploymentName: z.string().optional(),
 });
@@ -158,7 +136,7 @@ export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claud
  *
  * 4. DAEMON EXPANDS ${VAR} from its process.env when spawning session:
  *    - Tmux mode: Shell expands via `export ANTHROPIC_AUTH_TOKEN="${Z_AI_AUTH_TOKEN}";` before launching
- *    - Non-tmux mode: Node.js spawn with env: { ...process.env, ...profileEnvVars } (shell expansion in child)
+ *    - Non-tmux mode: daemon must interpolate ${VAR} / ${VAR:-default} in env values before calling spawn() (Node does not expand placeholders)
  *
  * 5. SESSION RECEIVES actual expanded values:
  *    ANTHROPIC_AUTH_TOKEN=sk-real-key (expanded from daemon's Z_AI_AUTH_TOKEN, not literal ${Z_AI_AUTH_TOKEN})
@@ -172,7 +150,7 @@ export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claud
  * - Each session uses its selected backend for its entire lifetime (no mid-session switching)
  * - Keep secrets in shell environment, not in GUI/profile storage
  *
- * PRIORITY ORDER when spawning (daemon/run.ts):
+ * PRIORITY ORDER when spawning:
  * Final env = { ...daemon.process.env, ...expandedProfileVars, ...authVars }
  * authVars override profile, profile overrides daemon.process.env
  */

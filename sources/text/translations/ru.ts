@@ -925,7 +925,7 @@ export const ru: TranslationStructure = {
         enterTmuxTempDir: 'Введите путь к временному каталогу',
         tmuxUpdateEnvironment: 'Обновлять окружение автоматически',
         nameRequired: 'Имя профиля обязательно',
-        deleteConfirm: 'Вы уверены, что хотите удалить профиль "{name}"?',
+        deleteConfirm: ({ name }: { name: string }) => `Вы уверены, что хотите удалить профиль "${name}"?`,
         editProfile: 'Редактировать Профиль',
         addProfileTitle: 'Добавить Новый Профиль',
         delete: {

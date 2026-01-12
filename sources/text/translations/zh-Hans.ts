@@ -896,7 +896,7 @@ export const zhHans: TranslationStructure = {
         tmuxTempDir: 'tmux 临时目录',
         enterTmuxTempDir: '输入 tmux 临时目录',
         tmuxUpdateEnvironment: '更新 tmux 环境',
-        deleteConfirm: '确定要删除此配置文件吗？',
+        deleteConfirm: ({ name }: { name: string }) => `确定要删除配置文件“${name}”吗？`,
         nameRequired: '配置文件名称为必填项',
         delete: {
             title: '删除配置',

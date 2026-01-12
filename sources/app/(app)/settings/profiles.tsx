@@ -1,12 +1,12 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettingMutable } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { Modal as HappyModal } from '@/modal/ModalManager';
+import { Modal } from '@/modal';
 import { layout } from '@/components/layout';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWindowDimensions } from 'react-native';
@@ -27,8 +27,7 @@ interface ProfileManagerProps {
 }
 
 // Profile utilities now imported from @/sync/profileUtils
-
-function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerProps) {
+const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerProps) {
     const { theme } = useUnistyles();
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const [lastUsedProfile, setLastUsedProfile] = useSettingMutable('lastUsedProfile');
@@ -57,37 +56,26 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
         setShowAddForm(true);
     };
 
-    const handleDeleteProfile = (profile: AIBackendProfile) => {
-        // Show confirmation dialog before deleting
-        Alert.alert(
+    const handleDeleteProfile = async (profile: AIBackendProfile) => {
+        const confirmed = await Modal.confirm(
             t('profiles.delete.title'),
             t('profiles.delete.message', { name: profile.name }),
-            [
-                {
-                    text: t('profiles.delete.cancel'),
-                    style: 'cancel',
-                },
-                {
-                    text: t('profiles.delete.confirm'),
-                    style: 'destructive',
-                    onPress: () => {
-                        const updatedProfiles = profiles.filter(p => p.id !== profile.id);
-                        setProfiles(updatedProfiles);
-
-                        // Clear last used profile if it was deleted
-                        if (lastUsedProfile === profile.id) {
-                            setLastUsedProfile(null);
-                        }
-
-                        // Notify parent if this was the selected profile
-                        if (selectedProfileId === profile.id && onProfileSelect) {
-                            onProfileSelect(null);
-                        }
-                    },
-                },
-            ],
-            { cancelable: true }
+            { cancelText: t('profiles.delete.cancel'), confirmText: t('profiles.delete.confirm'), destructive: true }
         );
+        if (!confirmed) return;
+
+        const updatedProfiles = profiles.filter(p => p.id !== profile.id);
+        setProfiles(updatedProfiles);
+
+        // Clear last used profile if it was deleted
+        if (lastUsedProfile === profile.id) {
+            setLastUsedProfile(null);
+        }
+
+        // Notify parent if this was the selected profile
+        if (selectedProfileId === profile.id && onProfileSelect) {
+            onProfileSelect(null);
+        }
     };
 
     const handleSelectProfile = (profileId: string | null) => {
@@ -124,6 +112,9 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
             const newProfile: AIBackendProfile = {
                 ...profile,
                 id: randomUUID(), // Generate new UUID for custom profile
+                isBuiltIn: false,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
             };
 
             // Check for duplicate names (excluding the new profile)
@@ -151,7 +142,10 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
             if (existingIndex >= 0) {
                 // Update existing profile
                 updatedProfiles = [...profiles];
-                updatedProfiles[existingIndex] = profile;
+                updatedProfiles[existingIndex] = {
+                    ...profile,
+                    updatedAt: Date.now(),
+                };
             } else {
                 // Add new profile
                 updatedProfiles = [...profiles, profile];
@@ -356,7 +350,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
                                 </Pressable>
                                 <Pressable
                                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                    onPress={() => handleDeleteProfile(profile)}
+                                    onPress={() => void handleDeleteProfile(profile)}
                                     style={{ marginLeft: 16 }}
                                 >
                                     <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
@@ -410,7 +404,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
             )}
         </View>
     );
-}
+});
 
 // ProfileEditForm now imported from @/components/ProfileEditForm
 
