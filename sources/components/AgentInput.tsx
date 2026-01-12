@@ -21,6 +21,7 @@ import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
+import { useUserMessageHistory } from '@/hooks/useUserMessageHistory';
 
 interface AgentInputProps {
     value: string;
@@ -328,6 +329,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // To customize: useActiveSuggestions(activeWord, props.autocompleteSuggestions, { clampSelection: false, wrapAround: false })
     const [suggestions, selected, moveUp, moveDown] = useActiveSuggestions(activeWord, props.autocompleteSuggestions, { clampSelection: true, wrapAround: true });
 
+    // User message history navigation
+    const messageHistory = useUserMessageHistory();
+
     // Debug logging
     // React.useEffect(() => {
     //     console.log('🔍 Autocomplete Debug:', JSON.stringify({
@@ -431,6 +435,35 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             }
         }
 
+        // Handle history navigation when no autocomplete suggestions
+        if (suggestions.length === 0) {
+            if (event.key === 'ArrowUp') {
+                const historyText = messageHistory.navigateUp(props.value);
+                if (historyText !== null) {
+                    props.onChangeText(historyText);
+                    // Move cursor to end
+                    inputRef.current?.setTextAndSelection(historyText, {
+                        start: historyText.length,
+                        end: historyText.length
+                    });
+                    return true;
+                }
+            } else if (event.key === 'ArrowDown') {
+                const historyText = messageHistory.navigateDown();
+                if (historyText !== null) {
+                    props.onChangeText(historyText);
+                    // Move cursor to end if there's text, otherwise select all (empty string)
+                    if (historyText.length > 0) {
+                        inputRef.current?.setTextAndSelection(historyText, {
+                            start: historyText.length,
+                            end: historyText.length
+                        });
+                    }
+                    return true;
+                }
+            }
+        }
+
         // Handle Escape for abort when no suggestions are visible
         if (event.key === 'Escape' && props.showAbortButton && props.onAbort && !isAborting) {
             handleAbortPress();
@@ -441,6 +474,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         if (Platform.OS === 'web') {
             if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey) {
                 if (props.value.trim()) {
+                    messageHistory.reset();
                     props.onSend();
                     return true; // Key was handled
                 }
@@ -459,7 +493,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, messageHistory, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange, props.onChangeText, isCodex]);
 
 
 
@@ -897,6 +931,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 onPress={() => {
                                     hapticsLight();
                                     if (hasText) {
+                                        messageHistory.reset();
                                         props.onSend();
                                     } else {
                                         props.onMicPress?.();
