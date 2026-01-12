@@ -192,6 +192,9 @@ export const ja: TranslationStructure = {
         experimentalFeaturesDisabled: '安定版機能のみを使用',
         webFeatures: 'Web機能',
         webFeaturesDescription: 'Webバージョンでのみ利用可能な機能。',
+        enterToSend: 'Enterで送信',
+        enterToSendEnabled: 'Enterで送信（Shift+Enterで改行）',
+        enterToSendDisabled: 'Enterで改行',
         commandPalette: 'コマンドパレット',
         commandPaletteEnabled: '⌘Kで開く',
         commandPaletteDisabled: 'クイックコマンドアクセスは無効',
@@ -461,6 +464,10 @@ export const ja: TranslationStructure = {
             initializing: 'エージェントを初期化中...',
             moreTools: ({ count }: { count: number }) => `+${count} 個のツール`,
         },
+        askUserQuestion: {
+            submit: '回答を送信',
+            multipleQuestions: ({ count }: { count: number }) => `${count}件の質問`,
+        },
         multiEdit: {
             editNumber: ({ index, total }: { index: number; total: number }) => `編集 ${index}/${total}`,
             replaceAll: 'すべて置換',
@@ -484,6 +491,7 @@ export const ja: TranslationStructure = {
             reasoning: '推論',
             applyChanges: 'ファイルを更新',
             viewDiff: '現在のファイル変更',
+            question: '質問',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `ターミナル(cmd: ${cmd})`,

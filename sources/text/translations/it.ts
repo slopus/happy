@@ -189,6 +189,9 @@ export const it: TranslationStructure = {
         experimentalFeaturesDisabled: 'Usando solo funzionalità stabili',
         webFeatures: 'Funzionalità web',
         webFeaturesDescription: 'Funzionalità disponibili solo nella versione web dell\'app.',
+        enterToSend: 'Invio con Enter',
+        enterToSendEnabled: 'Premi Invio per inviare (Maiusc+Invio per una nuova riga)',
+        enterToSendDisabled: 'Invio inserisce una nuova riga',
         commandPalette: 'Palette comandi',
         commandPaletteEnabled: 'Premi ⌘K per aprire',
         commandPaletteDisabled: 'Accesso rapido ai comandi disabilitato',
@@ -458,6 +461,10 @@ export const it: TranslationStructure = {
             initializing: 'Inizializzazione agente...',
             moreTools: ({ count }: { count: number }) => `+${count} altri ${plural({ count, singular: 'strumento', plural: 'strumenti' })}`,
         },
+        askUserQuestion: {
+            submit: 'Invia risposta',
+            multipleQuestions: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'domanda', plural: 'domande' })}`,
+        },
         multiEdit: {
             editNumber: ({ index, total }: { index: number; total: number }) => `Modifica ${index} di ${total}`,
             replaceAll: 'Sostituisci tutto',
@@ -481,6 +488,7 @@ export const it: TranslationStructure = {
             reasoning: 'Ragionamento',
             applyChanges: 'Aggiorna file',
             viewDiff: 'Modifiche file attuali',
+            question: 'Domanda',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminale(cmd: ${cmd})`,

@@ -124,8 +124,8 @@ export default function PathPickerScreen() {
     const handleSelectPath = React.useCallback(() => {
         const pathToUse = customPath.trim() || machine?.metadata?.homeDir || '/home';
         const state = navigation.getState();
-        const previousRoute = state.routes[state.index - 1];
-        if (previousRoute) {
+        const previousRoute = state?.routes?.[state.index - 1];
+        if (state && state.index > 0 && previousRoute) {
             navigation.dispatch({
                 ...CommonActions.setParams({ path: pathToUse }),
                 source: previousRoute.key,
