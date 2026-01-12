@@ -46,6 +46,7 @@ export type AgentTextMessage = {
     localId: string | null;
     createdAt: number;
     text: string;
+    isThinking?: boolean;
     meta?: MessageMeta;
 }
 

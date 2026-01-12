@@ -10,6 +10,7 @@ import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
+import { useSetting } from "@/sync/storage";
 
 export const MessageView = (props: {
   message: Message;
@@ -88,9 +89,15 @@ function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
 }) {
+  const experiments = useSetting('experiments');
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title);
   }, [props.sessionId]);
+
+  // Hide thinking messages unless experiments is enabled
+  if (props.message.isThinking && !experiments) {
+    return null;
+  }
 
   return (
     <View style={styles.agentMessageContainer}>
