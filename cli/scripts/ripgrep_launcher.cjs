@@ -40,7 +40,7 @@ function findSystemRipgrep() {
         try {
             const result = execFileSync(cmd, args, {
                 encoding: 'utf8',
-                stdio: 'ignore'
+                stdio: ['ignore', 'pipe', 'ignore']
             });
 
             if (result) {
@@ -93,7 +93,9 @@ function createRipgrepWrapper(binaryPath) {
                 stdio: 'inherit',
                 cwd: process.cwd()
             });
-            return result.status || 0;
+            if (typeof result.status === 'number') return result.status;
+            if (result.signal) return 1;
+            return 0;
         }
     };
 }
@@ -170,6 +172,11 @@ const args = process.argv.slice(2);
 // Parse the JSON-encoded arguments
 let parsedArgs;
 try {
+    if (!args[0]) {
+        console.error('Missing arguments: expected JSON-encoded argv as the first parameter.');
+        console.error('Example: node scripts/ripgrep_launcher.cjs \'["--version"]\'');
+        process.exit(1);
+    }
     parsedArgs = JSON.parse(args[0]);
 } catch (error) {
     console.error('Failed to parse arguments:', error.message);

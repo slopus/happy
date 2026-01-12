@@ -51,6 +51,15 @@ if (!variant || !VARIANTS[variant]) {
   process.exit(1);
 }
 
+if (!command) {
+  console.error('Usage: node scripts/env-wrapper.js <stable|dev> <command> [...args]');
+  console.error('');
+  console.error('Examples:');
+  console.error('  node scripts/env-wrapper.js stable daemon start');
+  console.error('  node scripts/env-wrapper.js dev auth login');
+  process.exit(1);
+}
+
 const config = VARIANTS[variant];
 
 // Create home directory if it doesn't exist

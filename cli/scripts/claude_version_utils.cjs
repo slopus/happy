@@ -131,7 +131,9 @@ function detectSourceFromPath(resolvedPath) {
     // Windows-specific detection (detect by path patterns, not current platform)
     if (normalizedPath.includes('appdata') || normalizedPath.includes('program files') || normalizedPath.endsWith('.exe')) {
         // Windows npm
-        if (normalizedPath.includes('appdata') && normalizedPath.includes('npm') && normalizedPath.includes('node_modules')) {
+        if (normalizedPath.includes('appdata') && normalizedPath.includes('npm') && normalizedPath.includes('node_modules') &&
+            normalizedPath.includes('@anthropic-ai') && normalizedPath.includes('claude-code') &&
+            !normalizedPath.includes('.claude-code-')) {
             return 'npm';
         }
 

@@ -9,14 +9,14 @@ import { homedir } from 'os';
 const hasNoWarnings = process.execArgv.includes('--no-warnings');
 const hasNoDeprecation = process.execArgv.includes('--no-deprecation');
 
+// Set development environment variables
+process.env.HAPPY_HOME_DIR = join(homedir(), '.happy-dev');
+process.env.HAPPY_VARIANT = 'dev';
+
 if (!hasNoWarnings || !hasNoDeprecation) {
   // Re-execute with the flags
   const __filename = fileURLToPath(import.meta.url);
   const scriptPath = join(dirname(__filename), '../dist/index.mjs');
-
-  // Set development environment variables
-  process.env.HAPPY_HOME_DIR = join(homedir(), '.happy-dev');
-  process.env.HAPPY_VARIANT = 'dev';
 
   try {
     execFileSync(
@@ -33,9 +33,5 @@ if (!hasNoWarnings || !hasNoDeprecation) {
   }
 } else {
   // Already have the flags, import normally
-  // Set development environment variables
-  process.env.HAPPY_HOME_DIR = join(homedir(), '.happy-dev');
-  process.env.HAPPY_VARIANT = 'dev';
-
   await import('../dist/index.mjs');
 }

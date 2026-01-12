@@ -219,6 +219,8 @@ describe('Api server error handling', () => {
         });
 
         it('should re-throw non-connection errors', async () => {
+            const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
             // Mock axios to throw a different type of error (e.g., authentication error)
             const authError = new Error('Invalid API key');
             (authError as any).code = 'UNAUTHORIZED';
@@ -229,7 +231,6 @@ describe('Api server error handling', () => {
             ).rejects.toThrow('Failed to get or create session: Invalid API key');
 
             // Should not show the offline mode message
-            const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
             expect(consoleSpy).not.toHaveBeenCalledWith(
                 expect.stringContaining('⚠️  Happy server unreachable')
             );

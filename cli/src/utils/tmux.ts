@@ -77,10 +77,12 @@ export type TmuxWindowOperation =
     | 'join-pane' | 'join' | 'break-pane' | 'break';
 
 export interface TmuxEnvironment {
-    session: string;
-    window: string;
+    /** tmux server socket path (TMUX env var first component) */
+    socket_path: string;
+    /** tmux server pid (TMUX env var second component) */
+    server_pid: number;
+    /** tmux pane identifier/index (TMUX env var third component) */
     pane: string;
-    socket_path?: string;
 }
 
 export interface TmuxCommandResult {
@@ -98,8 +100,6 @@ export interface TmuxSessionInfo {
     socket_path?: string;
     tmux_active: boolean;
     current_session?: string;
-    env_session?: string;
-    env_window?: string;
     env_pane?: string;
     available_sessions: string[];
 }
@@ -343,7 +343,8 @@ const COMMANDS_SUPPORTING_TARGET = new Set([
     'send-keys', 'capture-pane', 'new-window', 'kill-window',
     'select-window', 'split-window', 'select-pane', 'kill-pane',
     'select-layout', 'display-message', 'attach-session', 'detach-client',
-    'new-session', 'kill-session', 'list-windows', 'list-panes'
+    // NOTE: `new-session -t` targets a *group name*, not a session/window target.
+    'kill-session', 'list-windows', 'list-panes'
 ]);
 
 // Control sequences that must be separate arguments with proper typing
@@ -373,35 +374,25 @@ export class TmuxUtilities {
             return null;
         }
 
-        // Parse TMUX environment: /tmp/tmux-1000/default,4219,0
+        // TMUX environment format: socket_path,server_pid,pane_id
+        // NOTE: session name / window are NOT encoded in TMUX. Query tmux formats for those.
         try {
             const parts = tmuxEnv.split(',');
-            if (parts.length >= 3) {
-                const socketPath = parts[0];
-                // Extract last component from path (JavaScript doesn't support negative array indexing)
-                const pathParts = parts[1].split('/');
-                const sessionAndWindow = pathParts[pathParts.length - 1] || parts[1];
-                const pane = parts[2];
+            if (parts.length < 3) return null;
 
-                // Extract session name from session.window format
-                let session: string;
-                let window: string;
-                if (sessionAndWindow.includes('.')) {
-                    const parts = sessionAndWindow.split('.', 2);
-                    session = parts[0];
-                    window = parts[1] || "0";
-                } else {
-                    session = sessionAndWindow;
-                    window = "0";
-                }
+            const socketPath = parts[0]?.trim();
+            const serverPidStr = parts[1]?.trim();
+            // Prefer TMUX_PANE (pane id like %0). Fallback to TMUX env var third component (often pane index).
+            const pane = (process.env.TMUX_PANE ?? parts[2])?.trim();
 
-                return {
-                    session,
-                    window,
-                    pane,
-                    socket_path: socketPath
-                };
-            }
+            if (!socketPath || !serverPidStr || !pane) return null;
+            if (!/^\d+$/.test(serverPidStr)) return null;
+
+            return {
+                socket_path: socketPath,
+                server_pid: Number.parseInt(serverPidStr, 10),
+                pane,
+            };
         } catch (error) {
             logger.debug('[TMUX] Failed to parse TMUX environment variable:', error);
         }
@@ -448,7 +439,8 @@ export class TmuxUtilities {
             const fullCmd = [...baseCmd, ...cmd];
 
             // Add target specification for commands that support it
-            if (cmd.length > 0 && COMMANDS_SUPPORTING_TARGET.has(cmd[0])) {
+            const hasExplicitTarget = cmd.includes('-t');
+            if (!hasExplicitTarget && cmd.length > 0 && COMMANDS_SUPPORTING_TARGET.has(cmd[0])) {
                 let target = targetSession;
                 if (window) target += `:${window}`;
                 if (pane) target += `.${pane}`;
@@ -698,19 +690,12 @@ export class TmuxUtilities {
             pane: "unknown",
             socket_path: undefined,
             tmux_active: envInfo !== null,
-            current_session: envInfo?.session,
+            current_session: undefined,
             available_sessions: []
         };
 
-        // Update with environment info if it matches our target session
-        if (envInfo && envInfo.session === targetSession) {
-            info.window = envInfo.window;
-            info.pane = envInfo.pane;
+        if (envInfo) {
             info.socket_path = envInfo.socket_path;
-        } else if (envInfo) {
-            // Add environment info as separate fields
-            info.env_session = envInfo.session;
-            info.env_window = envInfo.window;
             info.env_pane = envInfo.pane;
         }
 
@@ -894,8 +879,8 @@ export class TmuxUtilities {
                 throw new TmuxSessionIdentifierError(`Window identifier required: ${sessionIdentifier}`);
             }
 
-            const result = await this.executeWinOp('kill-window', [parsed.window], parsed.session);
-            return result;
+            const result = await this.executeTmuxCommand(['kill-window'], parsed.session, parsed.window);
+            return result !== null && result.returncode === 0;
         } catch (error) {
             if (error instanceof TmuxSessionIdentifierError) {
                 logger.debug(`[TMUX] Invalid window identifier: ${error.message}`);

@@ -54,6 +54,14 @@ export class ApiSessionClient extends EventEmitter {
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
 
+    private canSend(context: string, details?: Record<string, unknown>): boolean {
+        if (!this.socket.connected) {
+            logger.debug(`[API] Socket not connected, cannot send ${context}. Message will be lost.`, details);
+            return false;
+        }
+        return true;
+    }
+
     constructor(token: string, session: Session) {
         super()
         this.token = token;
@@ -222,10 +230,7 @@ export class ApiSessionClient extends EventEmitter {
         logger.debugLargeJson('[SOCKET] Sending message through socket:', content)
 
         // Check if socket is connected before sending
-        if (!this.socket.connected) {
-            logger.debug('[API] Socket not connected, cannot send Claude session message. Message will be lost:', { type: body.type });
-            return;
-        }
+        if (!this.canSend('Claude session message', { type: body.type })) return;
 
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.socket.emit('message', {
@@ -268,10 +273,7 @@ export class ApiSessionClient extends EventEmitter {
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         
         // Check if socket is connected before sending
-        if (!this.socket.connected) {
-            logger.debug('[API] Socket not connected, cannot send message. Message will be lost:', { type: body.type });
-            // TODO: Consider implementing message queue or HTTP fallback for reliability
-        }
+        if (!this.canSend('Codex message', { type: body?.type })) return;
         
         this.socket.emit('message', {
             sid: this.sessionId,
@@ -302,6 +304,10 @@ export class ApiSessionClient extends EventEmitter {
         logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, { type: body.type, hasMessage: 'message' in body });
         
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+
+        // Check if socket is connected before sending
+        if (!this.canSend(`${agentType} message`, { agentType, type: body?.type })) return;
+
         this.socket.emit('message', {
             sid: this.sessionId,
             message: encrypted
@@ -326,6 +332,10 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+
+        // Check if socket is connected before sending
+        if (!this.canSend('session event', { eventType: event.type })) return;
+
         this.socket.emit('message', {
             sid: this.sessionId,
             message: encrypted

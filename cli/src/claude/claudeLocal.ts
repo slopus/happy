@@ -34,7 +34,7 @@ export async function claudeLocal(opts: {
 
     // Check if claudeArgs contains --continue or --resume (user passed these flags)
     const hasContinueFlag = opts.claudeArgs?.includes('--continue');
-    const hasResumeFlag = opts.claudeArgs?.includes('--resume');
+    const hasResumeFlag = opts.claudeArgs?.includes('--resume') || opts.claudeArgs?.includes('-r');
     const hasUserSessionControl = hasContinueFlag || hasResumeFlag;
 
     // Determine if we have an existing session to resume
@@ -172,7 +172,6 @@ export async function claudeLocal(opts: {
             // Session/resume args depend on whether we're in offline mode or hook mode
             if (!opts.hookSettingsPath) {
                 // Offline mode: We control session ID
-                const hasResumeFlag = opts.claudeArgs?.includes('--resume') || opts.claudeArgs?.includes('-r');
                 if (startFrom) {
                     // Resume existing session (Claude preserves the session ID)
                     args.push('--resume', startFrom)

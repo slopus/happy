@@ -285,10 +285,16 @@ describe('buildTmuxSessionIdentifier', () => {
 
 describe('TmuxUtilities.detectTmuxEnvironment', () => {
     const originalTmuxEnv = process.env.TMUX;
+    const originalTmuxPaneEnv = process.env.TMUX_PANE;
 
     // Helper to set and restore environment
-    const withTmuxEnv = (value: string | undefined, fn: () => void) => {
+    const withTmuxEnv = (value: string | undefined, fn: () => void, pane?: string | undefined) => {
         process.env.TMUX = value;
+        if (pane !== undefined) {
+            process.env.TMUX_PANE = pane;
+        } else {
+            delete process.env.TMUX_PANE;
+        }
         try {
             fn();
         } finally {
@@ -296,6 +302,11 @@ describe('TmuxUtilities.detectTmuxEnvironment', () => {
                 process.env.TMUX = originalTmuxEnv;
             } else {
                 delete process.env.TMUX;
+            }
+            if (originalTmuxPaneEnv !== undefined) {
+                process.env.TMUX_PANE = originalTmuxPaneEnv;
+            } else {
+                delete process.env.TMUX_PANE;
             }
         }
     };
@@ -313,37 +324,26 @@ describe('TmuxUtilities.detectTmuxEnvironment', () => {
             const utils = new TmuxUtilities();
             const result = utils.detectTmuxEnvironment();
             expect(result).toEqual({
-                session: '4219',
-                window: '0',
+                socket_path: '/tmp/tmux-1000/default',
+                server_pid: 4219,
                 pane: '0',
-                socket_path: '/tmp/tmux-1000/default'
             });
         });
     });
 
-    it('should parse TMUX env with session.window format', () => {
+    it('should return null for malformed TMUX env (non-numeric server pid)', () => {
         withTmuxEnv('/tmp/tmux-1000/default,mysession.mywindow,2', () => {
             const utils = new TmuxUtilities();
             const result = utils.detectTmuxEnvironment();
-            expect(result).toEqual({
-                session: 'mysession',
-                window: 'mywindow',
-                pane: '2',
-                socket_path: '/tmp/tmux-1000/default'
-            });
+            expect(result).toBeNull();
         });
     });
 
-    it('should handle TMUX env without session.window format', () => {
+    it('should return null for malformed TMUX env (non-numeric server pid, no dot)', () => {
         withTmuxEnv('/tmp/tmux-1000/default,session123,1', () => {
             const utils = new TmuxUtilities();
             const result = utils.detectTmuxEnvironment();
-            expect(result).toEqual({
-                session: 'session123',
-                window: '0',
-                pane: '1',
-                socket_path: '/tmp/tmux-1000/default'
-            });
+            expect(result).toBeNull();
         });
     });
 
@@ -353,24 +353,21 @@ describe('TmuxUtilities.detectTmuxEnvironment', () => {
             const utils = new TmuxUtilities();
             const result = utils.detectTmuxEnvironment();
             expect(result).toEqual({
-                session: '5678',
-                window: '0',
+                socket_path: '/tmp/tmux-1000/my-socket',
+                server_pid: 5678,
                 pane: '3',
-                socket_path: '/tmp/tmux-1000/my-socket'
             });
         });
     });
 
     it('should handle socket path with multiple slashes', () => {
-        // Test the array indexing fix - ensure we get the last component correctly
-        withTmuxEnv('/var/run/tmux/1000/default,session.window,0', () => {
+        withTmuxEnv('/var/run/tmux/1000/default,1234,0', () => {
             const utils = new TmuxUtilities();
             const result = utils.detectTmuxEnvironment();
             expect(result).toEqual({
-                session: 'session',
-                window: 'window',
+                socket_path: '/var/run/tmux/1000/default',
+                server_pid: 1234,
                 pane: '0',
-                socket_path: '/var/run/tmux/1000/default'
             });
         });
     });
@@ -397,10 +394,9 @@ describe('TmuxUtilities.detectTmuxEnvironment', () => {
             const result = utils.detectTmuxEnvironment();
             // Should still parse the first 3 parts correctly
             expect(result).toEqual({
-                session: '4219',
-                window: '0',
+                socket_path: '/tmp/tmux-1000/default',
+                server_pid: 4219,
                 pane: '0',
-                socket_path: '/tmp/tmux-1000/default'
             });
         });
     });
@@ -409,14 +405,20 @@ describe('TmuxUtilities.detectTmuxEnvironment', () => {
         withTmuxEnv('/tmp/tmux-1000/default,my.session.name.5,2', () => {
             const utils = new TmuxUtilities();
             const result = utils.detectTmuxEnvironment();
-            // Split on dot, so my.session becomes session=my, window=session
-            expect(result).toEqual({
-                session: 'my',
-                window: 'session',
-                pane: '2',
-                socket_path: '/tmp/tmux-1000/default'
-            });
+            expect(result).toBeNull();
         });
+    });
+
+    it('should prefer TMUX_PANE (pane id) when present', () => {
+        withTmuxEnv('/tmp/tmux-1000/default,4219,0', () => {
+            const utils = new TmuxUtilities();
+            const result = utils.detectTmuxEnvironment();
+            expect(result).toEqual({
+                socket_path: '/tmp/tmux-1000/default',
+                server_pid: 4219,
+                pane: '%0',
+            });
+        }, '%0');
     });
 });
 

@@ -149,7 +149,6 @@ describe('claudeLocal --continue handling', () => {
             addListener: vi.fn(),
             removeListener: vi.fn(),
             kill: vi.fn(),
-            on: vi.fn(),
             stdout: { on: vi.fn() },
             stderr: { on: vi.fn() },
             stdin: { on: vi.fn(), end: vi.fn() }

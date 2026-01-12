@@ -14,13 +14,18 @@ echo
 echo "2. Testing session finder with current directory..."
 node -e "
 const { resolve, join } = require('path');
-const { readdirSync, statSync, readFileSync } = require('fs');
+const { readdirSync, statSync, readFileSync, existsSync } = require('fs');
 const { homedir } = require('os');
 
 const workingDirectory = process.cwd();
 const projectId = resolve(workingDirectory).replace(/[\\\\\\/\.:]/g, '-');
 const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
 const projectDir = join(claudeConfigDir, 'projects', projectId);
+
+if (!existsSync(projectDir)) {
+    console.log('ERROR: Project directory does not exist:', projectDir);
+    process.exit(1);
+}
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\$/i;
 

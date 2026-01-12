@@ -1,4 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+function readLauncherFile(): string {
+    return readFileSync(join(__dirname, '../ripgrep_launcher.cjs'), 'utf8');
+}
 
 describe('Ripgrep Launcher Runtime Compatibility', () => {
     beforeEach(() => {
@@ -8,9 +14,7 @@ describe('Ripgrep Launcher Runtime Compatibility', () => {
     it('has correct file structure', () => {
         // Test that the launcher file has the correct structure
         expect(() => {
-            const fs = require('fs');
-            const path = require('path');
-            const content = fs.readFileSync(path.join(__dirname, '../ripgrep_launcher.cjs'), 'utf8');
+            const content = readLauncherFile();
 
             // Check for required elements
             expect(content).toContain('#!/usr/bin/env node');
@@ -22,9 +26,7 @@ describe('Ripgrep Launcher Runtime Compatibility', () => {
     it('handles --version argument gracefully', () => {
         // Test that --version handling logic exists
         expect(() => {
-            const fs = require('fs');
-            const path = require('path');
-            const content = fs.readFileSync(path.join(__dirname, '../ripgrep_launcher.cjs'), 'utf8');
+            const content = readLauncherFile();
 
             // Check that --version handling is present
             expect(content).toContain('--version');
@@ -35,9 +37,7 @@ describe('Ripgrep Launcher Runtime Compatibility', () => {
     it('detects runtime correctly', () => {
         // Test runtime detection function exists
         expect(() => {
-            const fs = require('fs');
-            const path = require('path');
-            const content = fs.readFileSync(path.join(__dirname, '../ripgrep_launcher.cjs'), 'utf8');
+            const content = readLauncherFile();
 
             // Check that runtime detection logic is present
             expect(content).toContain('detectRuntime');
@@ -50,9 +50,7 @@ describe('Ripgrep Launcher Runtime Compatibility', () => {
     it('contains fallback chain logic', () => {
         // Test that fallback logic is present
         expect(() => {
-            const fs = require('fs');
-            const path = require('path');
-            const content = fs.readFileSync(path.join(__dirname, '../ripgrep_launcher.cjs'), 'utf8');
+            const content = readLauncherFile();
 
             // Check that fallback chain is present
             expect(content).toContain('loadRipgrepNative');
@@ -65,9 +63,7 @@ describe('Ripgrep Launcher Runtime Compatibility', () => {
     it('contains cross-platform logic', () => {
         // Test that cross-platform logic is present
         expect(() => {
-            const fs = require('fs');
-            const path = require('path');
-            const content = fs.readFileSync(path.join(__dirname, '../ripgrep_launcher.cjs'), 'utf8');
+            const content = readLauncherFile();
 
             // Check for platform-specific logic
             expect(content).toContain('process.platform');
@@ -81,14 +77,22 @@ describe('Ripgrep Launcher Runtime Compatibility', () => {
     it('provides helpful error messages', () => {
         // Test that helpful error messages are present
         expect(() => {
-            const fs = require('fs');
-            const path = require('path');
-            const content = fs.readFileSync(path.join(__dirname, '../ripgrep_launcher.cjs'), 'utf8');
+            const content = readLauncherFile();
 
             // Check for helpful messages
             expect(content).toContain('brew install ripgrep');
             expect(content).toContain('winget install BurntSushi.ripgrep');
             expect(content).toContain('Search functionality unavailable');
+            expect(content).toContain('Missing arguments: expected JSON-encoded argv');
         }).not.toThrow();
     });
-});
+
+    it('does not treat signal termination as success', () => {
+        expect(() => {
+            const content = readLauncherFile();
+
+            expect(content).not.toContain('result.status || 0');
+            expect(content).toContain('result.signal');
+        }).not.toThrow();
+    });
+}); 
