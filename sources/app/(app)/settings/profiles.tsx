@@ -27,8 +27,7 @@ interface ProfileManagerProps {
 }
 
 // Profile utilities now imported from @/sync/profileUtils
-
-function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerProps) {
+const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerProps) {
     const { theme } = useUnistyles();
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const [lastUsedProfile, setLastUsedProfile] = useSettingMutable('lastUsedProfile');
@@ -143,7 +142,10 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
             if (existingIndex >= 0) {
                 // Update existing profile
                 updatedProfiles = [...profiles];
-                updatedProfiles[existingIndex] = profile;
+                updatedProfiles[existingIndex] = {
+                    ...profile,
+                    updatedAt: Date.now(),
+                };
             } else {
                 // Add new profile
                 updatedProfiles = [...profiles, profile];
@@ -402,7 +404,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
             )}
         </View>
     );
-}
+});
 
 // ProfileEditForm now imported from @/components/ProfileEditForm
 
