@@ -57,6 +57,9 @@ export const it: TranslationStructure = {
         fileViewer: 'Visualizzatore file',
         loading: 'Caricamento...',
         retry: 'Riprova',
+        delete: 'Elimina',
+        optional: 'opzionale',
+        saveAs: 'Salva con nome',
     },
 
     profile: {
@@ -66,6 +69,36 @@ export const it: TranslationStructure = {
         lastName: 'Cognome',
         username: 'Nome utente',
         status: 'Stato',
+    },
+
+    profiles: {
+        title: 'Profili',
+        subtitle: 'Gestisci i profili delle variabili ambiente per le sessioni',
+        noProfile: 'Nessun profilo',
+        noProfileDescription: 'Usa le impostazioni ambiente predefinite',
+        defaultModel: 'Modello predefinito',
+        addProfile: 'Aggiungi profilo',
+        profileName: 'Nome profilo',
+        enterName: 'Inserisci nome profilo',
+        baseURL: 'URL base',
+        authToken: 'Token di autenticazione',
+        enterToken: 'Inserisci token di autenticazione',
+        model: 'Modello',
+        tmuxSession: 'Sessione Tmux',
+        enterTmuxSession: 'Inserisci nome sessione tmux',
+        tmuxTempDir: 'Directory temporanea Tmux',
+        enterTmuxTempDir: 'Inserisci percorso directory temporanea',
+        tmuxUpdateEnvironment: 'Aggiorna ambiente automaticamente',
+        nameRequired: 'Il nome del profilo è obbligatorio',
+        deleteConfirm: 'Sei sicuro di voler eliminare il profilo "{name}"?',
+        editProfile: 'Modifica profilo',
+        addProfileTitle: 'Aggiungi nuovo profilo',
+        delete: {
+            title: 'Elimina profilo',
+            message: ({ name }: { name: string }) => `Sei sicuro di voler eliminare "${name}"? Questa azione non può essere annullata.`,
+            confirm: 'Elimina',
+            cancel: 'Annulla',
+        },
     },
 
     status: {
@@ -130,6 +163,8 @@ export const it: TranslationStructure = {
         exchangingTokens: 'Scambio dei token...',
         usage: 'Utilizzo',
         usageSubtitle: 'Vedi il tuo utilizzo API e i costi',
+        profiles: 'Profili',
+        profilesSubtitle: 'Gestisci i profili delle variabili ambiente per le sessioni',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Account ${service} collegato`,
@@ -199,6 +234,9 @@ export const it: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pressione lunga apre la finestra di copia',
         hideInactiveSessions: 'Nascondi sessioni inattive',
         hideInactiveSessionsSubtitle: 'Mostra solo le chat attive nella tua lista',
+        enhancedSessionWizard: 'Wizard sessione avanzato',
+        enhancedSessionWizardEnabled: 'Avvio sessioni con profili attivo',
+        enhancedSessionWizardDisabled: 'Usando avvio sessioni standard',
     },
 
     errors: {
@@ -382,14 +420,14 @@ export const it: TranslationStructure = {
 
     agentInput: {
         permissionMode: {
-            title: 'MODALITA PERMESSI',
+            title: 'MODALITÀ PERMESSI',
             default: 'Predefinito',
             acceptEdits: 'Accetta modifiche',
-            plan: 'Modalita piano',
-            bypassPermissions: 'Modalita YOLO',
+            plan: 'Modalità piano',
+            bypassPermissions: 'Modalità YOLO',
             badgeAcceptAllEdits: 'Accetta tutte le modifiche',
             badgeBypassAllPermissions: 'Bypassa tutti i permessi',
-            badgePlanMode: 'Modalita piano',
+            badgePlanMode: 'Modalità piano',
         },
         agent: {
             claude: 'Claude',
@@ -401,24 +439,34 @@ export const it: TranslationStructure = {
             configureInCli: 'Configura i modelli nelle impostazioni CLI',
         },
         codexPermissionMode: {
-            title: 'MODALITA PERMESSI CODEX',
+            title: 'MODALITÀ PERMESSI CODEX',
             default: 'Impostazioni CLI',
-            readOnly: 'Modalita sola lettura',
+            readOnly: 'Modalità sola lettura',
             safeYolo: 'YOLO sicuro',
             yolo: 'YOLO',
-            badgeReadOnly: 'Modalita sola lettura',
+            badgeReadOnly: 'Modalità sola lettura',
             badgeSafeYolo: 'YOLO sicuro',
             badgeYolo: 'YOLO',
         },
+        codexModel: {
+            title: 'MODELLO CODEX',
+            gpt5CodexLow: 'gpt-5-codex basso',
+            gpt5CodexMedium: 'gpt-5-codex medio',
+            gpt5CodexHigh: 'gpt-5-codex alto',
+            gpt5Minimal: 'GPT-5 Minimo',
+            gpt5Low: 'GPT-5 Basso',
+            gpt5Medium: 'GPT-5 Medio',
+            gpt5High: 'GPT-5 Alto',
+        },
         geminiPermissionMode: {
-            title: 'MODALITA PERMESSI GEMINI',
+            title: 'MODALITÀ PERMESSI GEMINI',
             default: 'Predefinito',
             acceptEdits: 'Accetta modifiche',
-            plan: 'Modalita piano',
-            bypassPermissions: 'Modalita YOLO',
+            plan: 'Modalità piano',
+            bypassPermissions: 'Modalità YOLO',
             badgeAcceptAllEdits: 'Accetta tutte le modifiche',
             badgeBypassAllPermissions: 'Bypassa tutti i permessi',
-            badgePlanMode: 'Modalita piano',
+            badgePlanMode: 'Modalità piano',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,
@@ -455,7 +503,7 @@ export const it: TranslationStructure = {
             completed: 'Strumento completato con successo',
             noOutput: 'Nessun output prodotto',
             running: 'Strumento in esecuzione...',
-            rawJsonDevMode: 'JSON grezzo (Modalita sviluppatore)',
+            rawJsonDevMode: 'JSON grezzo (Modalità sviluppatore)',
         },
         taskView: {
             initializing: 'Inizializzazione agente...',
@@ -489,6 +537,10 @@ export const it: TranslationStructure = {
             applyChanges: 'Aggiorna file',
             viewDiff: 'Modifiche file attuali',
             question: 'Domanda',
+        },
+        askUserQuestion: {
+            submit: 'Invia risposta',
+            multipleQuestions: ({ count }: { count: number }) => `${count} domande`,
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminale(cmd: ${cmd})`,
@@ -647,9 +699,9 @@ export const it: TranslationStructure = {
         deviceLinkedSuccessfully: 'Dispositivo collegato con successo',
         terminalConnectedSuccessfully: 'Terminale collegato con successo',
         invalidAuthUrl: 'URL di autenticazione non valido',
-        developerMode: 'Modalita sviluppatore',
-        developerModeEnabled: 'Modalita sviluppatore attivata',
-        developerModeDisabled: 'Modalita sviluppatore disattivata',
+        developerMode: 'Modalità sviluppatore',
+        developerModeEnabled: 'Modalità sviluppatore attivata',
+        developerModeDisabled: 'Modalità sviluppatore disattivata',
         disconnectGithub: 'Disconnetti GitHub',
         disconnectGithubConfirm: 'Sei sicuro di voler disconnettere il tuo account GitHub?',
         disconnectService: ({ service }: { service: string }) => 
@@ -722,7 +774,7 @@ export const it: TranslationStructure = {
     },
 
     message: {
-        switchedToMode: ({ mode }: { mode: string }) => `Passato alla modalita ${mode}`,
+        switchedToMode: ({ mode }: { mode: string }) => `Passato alla modalità ${mode}`,
         unknownEvent: 'Evento sconosciuto',
         usageLimitUntil: ({ time }: { time: string }) => `Limite di utilizzo raggiunto fino a ${time}`,
         unknownTime: 'ora sconosciuta',

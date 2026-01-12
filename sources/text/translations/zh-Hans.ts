@@ -36,6 +36,7 @@ export const zhHans: TranslationStructure = {
         cancel: '取消',
         authenticate: '认证',
         save: '保存',
+        saveAs: '另存为',
         error: '错误',
         success: '成功',
         ok: '确定',
@@ -59,6 +60,8 @@ export const zhHans: TranslationStructure = {
         fileViewer: '文件查看器',
         loading: '加载中...',
         retry: '重试',
+        delete: '删除',
+        optional: '可选的',
     },
 
     profile: {
@@ -69,6 +72,7 @@ export const zhHans: TranslationStructure = {
         username: '用户名',
         status: '状态',
     },
+
 
     status: {
         connected: '已连接',
@@ -132,6 +136,8 @@ export const zhHans: TranslationStructure = {
         exchangingTokens: '正在交换令牌...',
         usage: '使用情况',
         usageSubtitle: '查看 API 使用情况和费用',
+        profiles: '配置文件',
+        profilesSubtitle: '管理环境配置文件和变量',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已连接 ${service} 账户`,
@@ -201,6 +207,9 @@ export const zhHans: TranslationStructure = {
         markdownCopyV2Subtitle: '长按打开复制模态框',
         hideInactiveSessions: '隐藏非活跃会话',
         hideInactiveSessionsSubtitle: '仅在列表中显示活跃的聊天',
+        enhancedSessionWizard: '增强会话向导',
+        enhancedSessionWizardEnabled: '配置文件优先启动器已激活',
+        enhancedSessionWizardDisabled: '使用标准会话启动器',
     },
 
     errors: {
@@ -411,6 +420,16 @@ export const zhHans: TranslationStructure = {
             badgeReadOnly: 'Read Only Mode',
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
+        },
+        codexModel: {
+            title: 'CODEX MODEL',
+            gpt5CodexLow: 'gpt-5-codex low',
+            gpt5CodexMedium: 'gpt-5-codex medium',
+            gpt5CodexHigh: 'gpt-5-codex high',
+            gpt5Minimal: 'GPT-5 Minimal',
+            gpt5Low: 'GPT-5 Low',
+            gpt5Medium: 'GPT-5 Medium',
+            gpt5High: 'GPT-5 High',
         },
         geminiPermissionMode: {
             title: '权限模式',
@@ -855,6 +874,36 @@ export const zhHans: TranslationStructure = {
         usageOverTime: '使用趋势',
         byModel: '按模型',
         noData: '暂无使用数据',
+    },
+
+    profiles: {
+        title: '配置文件',
+        subtitle: '管理您的配置文件',
+        noProfile: '无配置文件',
+        noProfileDescription: '创建配置文件以管理您的环境设置',
+        addProfile: '添加配置文件',
+        addProfileTitle: '添加配置文件标题',
+        editProfile: '编辑配置文件',
+        profileName: '配置文件名称',
+        enterName: '输入配置文件名称',
+        baseURL: '基础 URL',
+        authToken: '认证令牌',
+        enterToken: '输入认证令牌',
+        model: '模型',
+        defaultModel: '默认模型',
+        tmuxSession: 'tmux 会话',
+        enterTmuxSession: '输入 tmux 会话名称',
+        tmuxTempDir: 'tmux 临时目录',
+        enterTmuxTempDir: '输入 tmux 临时目录',
+        tmuxUpdateEnvironment: '更新 tmux 环境',
+        deleteConfirm: '确定要删除此配置文件吗？',
+        nameRequired: '配置文件名称为必填项',
+        delete: {
+            title: '删除配置',
+            message: ({ name }: { name: string }) => `确定要删除"${name}"吗？此操作无法撤销。`,
+            confirm: '删除',
+            cancel: '取消',
+        },
     },
 
     feed: {

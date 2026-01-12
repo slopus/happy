@@ -13,7 +13,8 @@ export default function FeaturesSettingsScreen() {
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
-    
+    const [useEnhancedSessionWizard, setUseEnhancedSessionWizard] = useSettingMutable('useEnhancedSessionWizard');
+
     return (
         <ItemList style={{ paddingTop: 0 }}>
             {/* Experimental Features */}
@@ -53,6 +54,20 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={hideInactiveSessions}
                             onValueChange={setHideInactiveSessions}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.enhancedSessionWizard')}
+                    subtitle={useEnhancedSessionWizard
+                        ? t('settingsFeatures.enhancedSessionWizardEnabled')
+                        : t('settingsFeatures.enhancedSessionWizardDisabled')}
+                    icon={<Ionicons name="sparkles-outline" size={29} color="#AF52DE" />}
+                    rightElement={
+                        <Switch
+                            value={useEnhancedSessionWizard}
+                            onValueChange={setUseEnhancedSessionWizard}
                         />
                     }
                     showChevron={false}

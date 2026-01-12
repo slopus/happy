@@ -322,6 +322,12 @@ export const SettingsView = React.memo(function SettingsView() {
                     icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
                     onPress={() => router.push('/settings/features')}
                 />
+                <Item
+                    title={t('settings.profiles')}
+                    subtitle={t('settings.profilesSubtitle')}
+                    icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
+                    onPress={() => router.push('/settings/profiles')}
+                />
                 {experiments && (
                     <Item
                         title={t('settings.usage')}

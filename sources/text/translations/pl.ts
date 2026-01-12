@@ -45,6 +45,7 @@ export const pl: TranslationStructure = {
         cancel: 'Anuluj',
         authenticate: 'Uwierzytelnij',
         save: 'Zapisz',
+        saveAs: 'Zapisz jako',
         error: 'Błąd',
         success: 'Sukces',
         ok: 'OK',
@@ -68,6 +69,8 @@ export const pl: TranslationStructure = {
         fileViewer: 'Przeglądarka plików',
         loading: 'Ładowanie...',
         retry: 'Ponów',
+        delete: 'Usuń',
+        optional: 'opcjonalnie',
     },
 
     profile: {
@@ -78,6 +81,7 @@ export const pl: TranslationStructure = {
         username: 'Nazwa użytkownika',
         status: 'Status',
     },
+
 
     status: {
         connected: 'połączono',
@@ -141,6 +145,8 @@ export const pl: TranslationStructure = {
         exchangingTokens: 'Wymiana tokenów...',
         usage: 'Użycie',
         usageSubtitle: 'Zobacz użycie API i koszty',
+        profiles: 'Profile',
+        profilesSubtitle: 'Zarządzaj profilami zmiennych środowiskowych dla sesji',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Konto ${service} połączone`,
@@ -210,6 +216,9 @@ export const pl: TranslationStructure = {
         markdownCopyV2Subtitle: 'Długie naciśnięcie otwiera modal kopiowania',
         hideInactiveSessions: 'Ukryj nieaktywne sesje',
         hideInactiveSessionsSubtitle: 'Wyświetlaj tylko aktywne czaty na liście',
+        enhancedSessionWizard: 'Ulepszony kreator sesji',
+        enhancedSessionWizardEnabled: 'Aktywny launcher z profilem',
+        enhancedSessionWizardDisabled: 'Używanie standardowego launchera sesji',
     },
 
     errors: {
@@ -419,6 +428,16 @@ export const pl: TranslationStructure = {
             badgeReadOnly: 'Read Only Mode',
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
+        },
+        codexModel: {
+            title: 'CODEX MODEL',
+            gpt5CodexLow: 'gpt-5-codex low',
+            gpt5CodexMedium: 'gpt-5-codex medium',
+            gpt5CodexHigh: 'gpt-5-codex high',
+            gpt5Minimal: 'GPT-5 Minimal',
+            gpt5Low: 'GPT-5 Low',
+            gpt5Medium: 'GPT-5 Medium',
+            gpt5High: 'GPT-5 High',
         },
         geminiPermissionMode: {
             title: 'TRYB UPRAWNIEŃ',
@@ -885,6 +904,37 @@ export const pl: TranslationStructure = {
         friendRequestGeneric: 'Nowe zaproszenie do znajomych',
         friendAccepted: ({ name }: { name: string }) => `Jesteś teraz znajomym z ${name}`,
         friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
+    },
+
+    profiles: {
+        // Profile management feature
+        title: 'Profile',
+        subtitle: 'Zarządzaj profilami zmiennych środowiskowych dla sesji',
+        noProfile: 'Brak Profilu',
+        noProfileDescription: 'Użyj domyślnych ustawień środowiska',
+        defaultModel: 'Domyślny Model',
+        addProfile: 'Dodaj Profil',
+        profileName: 'Nazwa Profilu',
+        enterName: 'Wprowadź nazwę profilu',
+        baseURL: 'Adres URL',
+        authToken: 'Token Autentykacji',
+        enterToken: 'Wprowadź token autentykacji',
+        model: 'Model',
+        tmuxSession: 'Sesja Tmux',
+        enterTmuxSession: 'Wprowadź nazwę sesji tmux',
+        tmuxTempDir: 'Katalog tymczasowy Tmux',
+        enterTmuxTempDir: 'Wprowadź ścieżkę do katalogu tymczasowego',
+        tmuxUpdateEnvironment: 'Aktualizuj środowisko automatycznie',
+        nameRequired: 'Nazwa profilu jest wymagana',
+        deleteConfirm: 'Czy na pewno chcesz usunąć profil "{name}"?',
+        editProfile: 'Edytuj Profil',
+        addProfileTitle: 'Dodaj Nowy Profil',
+        delete: {
+            title: 'Usuń Profil',
+            message: ({ name }: { name: string }) => `Czy na pewno chcesz usunąć "${name}"? Tej czynności nie można cofnąć.`,
+            confirm: 'Usuń',
+            cancel: 'Anuluj',
+        },
     }
 } as const;
 

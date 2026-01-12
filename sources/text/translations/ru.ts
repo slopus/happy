@@ -45,6 +45,7 @@ export const ru: TranslationStructure = {
         cancel: 'Отмена',
         authenticate: 'Авторизация',
         save: 'Сохранить',
+        saveAs: 'Сохранить как',
         error: 'Ошибка',
         success: 'Успешно',
         ok: 'ОК',
@@ -68,6 +69,8 @@ export const ru: TranslationStructure = {
         fileViewer: 'Просмотр файла',
         loading: 'Загрузка...',
         retry: 'Повторить',
+        delete: 'Удалить',
+        optional: 'необязательно',
     },
 
     connect: {
@@ -113,6 +116,8 @@ export const ru: TranslationStructure = {
         exchangingTokens: 'Обмен токенов...',
         usage: 'Использование',
         usageSubtitle: 'Просмотр использования API и затрат',
+        profiles: 'Профили',
+        profilesSubtitle: 'Управление профилями переменных окружения для сессий',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,
@@ -182,6 +187,9 @@ export const ru: TranslationStructure = {
         markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
         hideInactiveSessions: 'Скрывать неактивные сессии',
         hideInactiveSessionsSubtitle: 'Показывать в списке только активные чаты',
+        enhancedSessionWizard: 'Улучшенный мастер сессий',
+        enhancedSessionWizardEnabled: 'Лаунчер с профилем активен',
+        enhancedSessionWizardDisabled: 'Используется стандартный лаунчер',
     },
 
     errors: {
@@ -363,6 +371,7 @@ export const ru: TranslationStructure = {
         status: 'Статус',
     },
 
+
     status: {
         connected: 'подключено',
         connecting: 'подключение',
@@ -419,6 +428,16 @@ export const ru: TranslationStructure = {
             badgeReadOnly: 'Только чтение',
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
+        },
+        codexModel: {
+            title: 'CODEX MODEL',
+            gpt5CodexLow: 'gpt-5-codex low',
+            gpt5CodexMedium: 'gpt-5-codex medium',
+            gpt5CodexHigh: 'gpt-5-codex high',
+            gpt5Minimal: 'GPT-5 Minimal',
+            gpt5Low: 'GPT-5 Low',
+            gpt5Medium: 'GPT-5 Medium',
+            gpt5High: 'GPT-5 High',
         },
         geminiPermissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ',
@@ -884,6 +903,37 @@ export const ru: TranslationStructure = {
         friendRequestGeneric: 'Новый запрос в друзья',
         friendAccepted: ({ name }: { name: string }) => `Вы теперь друзья с ${name}`,
         friendAcceptedGeneric: 'Запрос в друзья принят',
+    },
+
+    profiles: {
+        // Profile management feature
+        title: 'Профили',
+        subtitle: 'Управление профилями переменных окружения для сессий',
+        noProfile: 'Без Профиля',
+        noProfileDescription: 'Использовать настройки окружения по умолчанию',
+        defaultModel: 'Модель по Умолчанию',
+        addProfile: 'Добавить Профиль',
+        profileName: 'Имя Профиля',
+        enterName: 'Введите имя профиля',
+        baseURL: 'Базовый URL',
+        authToken: 'Токен Аутентификации',
+        enterToken: 'Введите токен аутентификации',
+        model: 'Модель',
+        tmuxSession: 'Сессия Tmux',
+        enterTmuxSession: 'Введите имя сессии tmux',
+        tmuxTempDir: 'Временный каталог Tmux',
+        enterTmuxTempDir: 'Введите путь к временному каталогу',
+        tmuxUpdateEnvironment: 'Обновлять окружение автоматически',
+        nameRequired: 'Имя профиля обязательно',
+        deleteConfirm: 'Вы уверены, что хотите удалить профиль "{name}"?',
+        editProfile: 'Редактировать Профиль',
+        addProfileTitle: 'Добавить Новый Профиль',
+        delete: {
+            title: 'Удалить Профиль',
+            message: ({ name }: { name: string }) => `Вы уверены, что хотите удалить "${name}"? Это действие нельзя отменить.`,
+            confirm: 'Удалить',
+            cancel: 'Отмена',
+        },
     }
 } as const;
 

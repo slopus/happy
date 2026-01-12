@@ -123,6 +123,7 @@ type ReducerMessage = {
     createdAt: number;
     role: 'user' | 'agent';
     text: string | null;
+    isThinking?: boolean;
     event: AgentEvent | null;
     tool: ToolCall | null;
     meta?: MessageMeta;
@@ -627,16 +628,18 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 processUsageData(state, msg.usage, msg.createdAt);
             }
 
-            // Process text content only (tool calls handled in Phase 2)
+            // Process text and thinking content (tool calls handled in Phase 2)
             for (let c of msg.content) {
-                if (c.type === 'text') {
+                if (c.type === 'text' || c.type === 'thinking') {
                     let mid = allocateId();
+                    const isThinking = c.type === 'thinking';
                     state.messages.set(mid, {
                         id: mid,
                         realID: msg.id,
                         role: 'agent',
                         createdAt: msg.createdAt,
-                        text: c.text,
+                        text: isThinking ? `*Thinking...*\n\n*${c.thinking}*` : c.text,
+                        isThinking,
                         tool: null,
                         event: null,
                         meta: msg.meta,
@@ -860,14 +863,16 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         } else if (msg.role === 'agent') {
             // Process agent content in sidechain
             for (let c of msg.content) {
-                if (c.type === 'text') {
+                if (c.type === 'text' || c.type === 'thinking') {
                     let mid = allocateId();
+                    const isThinking = c.type === 'thinking';
                     let textMsg: ReducerMessage = {
                         id: mid,
                         realID: msg.id,
                         role: 'agent',
                         createdAt: msg.createdAt,
-                        text: c.text,
+                        text: isThinking ? `*Thinking...*\n\n*${c.thinking}*` : c.text,
+                        isThinking,
                         tool: null,
                         event: null,
                         meta: msg.meta,
@@ -1114,6 +1119,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             createdAt: reducerMsg.createdAt,
             kind: 'agent-text',
             text: reducerMsg.text,
+            ...(reducerMsg.isThinking && { isThinking: true }),
             meta: reducerMsg.meta
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.tool !== null) {

@@ -1,6 +1,6 @@
 import { useSocketStatus, useFriendRequests, useSettings } from '@/sync/storage';
 import * as React from 'react';
-import { Text, View, Pressable } from 'react-native';
+import { Text, View, Pressable, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useHeaderHeight } from '@/utils/responsive';
@@ -14,6 +14,7 @@ import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
+import { Ionicons } from '@expo/vector-icons';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -44,6 +45,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'column',
         alignItems: 'center',
         pointerEvents: 'none',
+    },
+    titleContainerLeft: {
+        flex: 1,
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        marginLeft: 8,
+        justifyContent: 'center',
     },
     titleText: {
         fontSize: 17,
@@ -133,8 +141,8 @@ export const SidebarView = React.memo(() => {
     const inboxHasContent = useInboxHasContent();
     const settings = useSettings();
 
-    // Get connection status styling (matching sessionUtils.ts pattern)
-    const getConnectionStatus = () => {
+    // Compute connection status once per render (theme-reactive, no stale memoization)
+    const connectionStatus = (() => {
         const { status } = socketStatus;
         switch (status) {
             case 'connected':
@@ -173,16 +181,45 @@ export const SidebarView = React.memo(() => {
                     textColor: styles.statusDefault.color
                 };
         }
-    };
+    })();
+
+    // Calculate sidebar width and determine title positioning
+    // Uses same formula as SidebarNavigator.tsx:18 for consistency
+    const { width: windowWidth } = useWindowDimensions();
+    const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
+    // With experiments: 4 icons (148px total), threshold 408px > max 360px → always left-justify
+    // Without experiments: 3 icons (108px total), threshold 328px → left-justify below ~340px
+    const shouldLeftJustify = settings.experiments || sidebarWidth < 340;
 
     const handleNewSession = React.useCallback(() => {
         router.push('/new');
     }, [router]);
 
+    // Title content used in both centered and left-justified modes (DRY)
+    const titleContent = (
+        <>
+            <Text style={styles.titleText}>{t('sidebar.sessionsTitle')}</Text>
+            {connectionStatus.text && (
+                <View style={styles.statusContainer}>
+                    <StatusDot
+                        color={connectionStatus.color}
+                        isPulsing={connectionStatus.isPulsing}
+                        size={6}
+                        style={styles.statusDot}
+                    />
+                    <Text style={[styles.statusText, { color: connectionStatus.textColor }]}>
+                        {connectionStatus.text}
+                    </Text>
+                </View>
+            )}
+        </>
+    );
+
     return (
         <>
             <View style={[styles.container, { paddingTop: safeArea.top }]}>
                 <View style={[styles.header, { height: headerHeight }]}>
+                    {/* Logo - always first */}
                     <View style={styles.logoContainer}>
                         <Image
                             source={theme.dark ? require('@/assets/images/logo-white.png') : require('@/assets/images/logo-black.png')}
@@ -190,6 +227,15 @@ export const SidebarView = React.memo(() => {
                             style={[styles.logo, { height: 24, width: 24 }]}
                         />
                     </View>
+
+                    {/* Left-justified title - in document flow, prevents overlap */}
+                    {shouldLeftJustify && (
+                        <View style={styles.titleContainerLeft}>
+                            {titleContent}
+                        </View>
+                    )}
+
+                    {/* Navigation icons */}
                     <View style={styles.rightContainer}>
                         {settings.experiments && (
                             <Pressable
@@ -237,26 +283,20 @@ export const SidebarView = React.memo(() => {
                                 tintColor={theme.colors.header.tint}
                             />
                         </Pressable>
+                        <Pressable
+                            onPress={handleNewSession}
+                            hitSlop={15}
+                        >
+                            <Ionicons name="add-outline" size={28} color={theme.colors.header.tint} />
+                        </Pressable>
                     </View>
-                    <View style={styles.titleContainer}>
-                        <Text style={styles.titleText}>{t('sidebar.sessionsTitle')}</Text>
-                        {getConnectionStatus().text && (
-                            <View style={styles.statusContainer}>
-                                <StatusDot
-                                    color={getConnectionStatus().color}
-                                    isPulsing={getConnectionStatus().isPulsing}
-                                    size={6}
-                                    style={styles.statusDot}
-                                />
-                                <Text style={[
-                                    styles.statusText,
-                                    { color: getConnectionStatus().textColor }
-                                ]}>
-                                    {getConnectionStatus().text}
-                                </Text>
-                            </View>
-                        )}
-                    </View>
+
+                    {/* Centered title - absolute positioned over full header */}
+                    {!shouldLeftJustify && (
+                        <View style={styles.titleContainer}>
+                            {titleContent}
+                        </View>
+                    )}
                 </View>
                 {realtimeStatus !== 'disconnected' && (
                     <VoiceAssistantStatusBar variant="sidebar" />
