@@ -444,6 +444,10 @@ export const en = {
 
     session: {
         inputPlaceholder: 'What would you like to work on?',
+        resuming: 'Resuming...',
+        resumeFailed: 'Failed to resume session',
+        inactiveResumable: 'Inactive (resumable)',
+        inactiveNotResumable: 'Inactive',
     },
 
     commandPalette: {

@@ -243,8 +243,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             return;
         }
 
-        const agentSessionId = getAgentSessionId(session.metadata);
-        if (!agentSessionId) {
+        if (session.metadata.flavor !== 'claude' && session.metadata.flavor !== 'codex' && session.metadata.flavor !== 'gemini') {
             Modal.alert(t('common.error'), t('session.resumeFailed'));
             return;
         }
@@ -256,7 +255,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 machineId: session.metadata.machineId,
                 directory: session.metadata.path,
                 agent: session.metadata.flavor,
-                agentSessionId,
                 message: messageToSend
             });
 

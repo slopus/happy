@@ -431,6 +431,10 @@ export const ca: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Escriu un missatge...',
+        resuming: 'Reprenent...',
+        resumeFailed: 'No s’ha pogut reprendre la sessió',
+        inactiveResumable: 'Inactiva (es pot reprendre)',
+        inactiveNotResumable: 'Inactiva',
     },
 
     commandPalette: {

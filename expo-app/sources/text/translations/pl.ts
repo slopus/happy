@@ -442,6 +442,10 @@ export const pl: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Wpisz wiadomość...',
+        resuming: 'Wznawianie...',
+        resumeFailed: 'Nie udało się wznowić sesji',
+        inactiveResumable: 'Nieaktywna (można wznowić)',
+        inactiveNotResumable: 'Nieaktywna',
     },
 
     commandPalette: {

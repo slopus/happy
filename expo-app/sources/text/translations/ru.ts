@@ -567,6 +567,10 @@ export const ru: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Введите сообщение...',
+        resuming: 'Возобновление...',
+        resumeFailed: 'Не удалось возобновить сессию',
+        inactiveResumable: 'Неактивна (можно возобновить)',
+        inactiveNotResumable: 'Неактивна',
     },
 
     commandPalette: {

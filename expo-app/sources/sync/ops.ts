@@ -178,8 +178,6 @@ export interface ResumeSessionOptions {
     directory: string;
     /** The agent type (claude, codex, gemini) */
     agent: 'codex' | 'claude' | 'gemini';
-    /** The agent's session ID for resume (claudeSessionId or codexSessionId) */
-    agentSessionId: string;
     /** The initial message to send after resuming */
     message: string;
 }
@@ -189,7 +187,7 @@ export interface ResumeSessionOptions {
  * to the existing Happy session and resumes the agent.
  */
 export async function resumeSession(options: ResumeSessionOptions): Promise<ResumeSessionResult> {
-    const { sessionId, machineId, directory, agent, agentSessionId, message } = options;
+    const { sessionId, machineId, directory, agent, message } = options;
 
     try {
         const result = await apiSocket.machineRPC<ResumeSessionResult, {
@@ -197,7 +195,6 @@ export async function resumeSession(options: ResumeSessionOptions): Promise<Resu
             sessionId: string;
             directory: string;
             agent: 'codex' | 'claude' | 'gemini';
-            agentSessionId: string;
             message: string;
         }>(
             machineId,
@@ -207,7 +204,6 @@ export async function resumeSession(options: ResumeSessionOptions): Promise<Resu
                 sessionId,
                 directory,
                 agent,
-                agentSessionId,
                 message
             }
         );

@@ -433,6 +433,10 @@ export const zhHans: TranslationStructure = {
 
     session: {
         inputPlaceholder: '输入消息...',
+        resuming: '正在恢复...',
+        resumeFailed: '恢复会话失败',
+        inactiveResumable: '未激活（可恢复）',
+        inactiveNotResumable: '未激活',
     },
 
     commandPalette: {
