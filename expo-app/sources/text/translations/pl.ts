@@ -416,7 +416,18 @@ export const pl: TranslationStructure = {
             notGitRepo: 'Worktree wymaga repozytorium git',
             failed: ({ error }: { error: string }) => `Nie udało się utworzyć worktree: ${error}`,
             success: 'Worktree został utworzony pomyślnie',
-        }
+        },
+        resume: {
+            title: 'Wznów sesję',
+            optional: 'Wznów: Opcjonalnie',
+            pickerTitle: 'Wznów sesję',
+            subtitle: ({ agent }: { agent: string }) => `Wklej ID sesji ${agent}, aby wznowić`,
+            placeholder: ({ agent }: { agent: string }) => `Wklej ID sesji ${agent}…`,
+            paste: 'Wklej',
+            save: 'Zapisz',
+            clearAndRemove: 'Wyczyść',
+            helpText: 'ID sesji znajdziesz na ekranie informacji o sesji.',
+        },
     },
 
     sessionHistory: {
@@ -482,6 +493,9 @@ export const pl: TranslationStructure = {
         aiProfile: 'Profil AI',
         aiProvider: 'Dostawca AI',
         failedToCopyClaudeCodeSessionId: 'Nie udało się skopiować ID sesji Claude Code',
+        codexSessionId: 'ID sesji Codex',
+        codexSessionIdCopied: 'ID sesji Codex skopiowane do schowka',
+        failedToCopyCodexSessionId: 'Nie udało się skopiować ID sesji Codex',
         metadataCopied: 'Metadane skopiowane do schowka',
         failedToCopyMetadata: 'Nie udało się skopiować metadanych',
         failedToKillSession: 'Nie udało się zakończyć sesji',

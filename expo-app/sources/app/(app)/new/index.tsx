@@ -48,6 +48,7 @@ import { NewSessionWizard } from './NewSessionWizard';
 import { prefetchMachineDetectCli, prefetchMachineDetectCliIfStale } from '@/hooks/useMachineDetectCliCache';
 import { PopoverBoundaryProvider } from '@/components/PopoverBoundary';
 import { resolveTerminalSpawnOptions } from '@/sync/terminalSettings';
+import { canAgentResume } from '@/utils/agentCapabilities';
 
 // Optimized profile lookup utility
 const useProfileMap = (profiles: AIBackendProfile[]) => {
@@ -237,12 +238,22 @@ function NewSessionScreen() {
 
     const newSessionSidePadding = 16;
     const newSessionBottomPadding = Math.max(screenWidth < 420 ? 8 : 16, safeArea.bottom);
-    const { prompt, dataId, machineId: machineIdParam, path: pathParam, profileId: profileIdParam, secretId: secretIdParam, secretSessionOnlyId } = useLocalSearchParams<{
+    const {
+        prompt,
+        dataId,
+        machineId: machineIdParam,
+        path: pathParam,
+        profileId: profileIdParam,
+        resumeSessionId: resumeSessionIdParam,
+        secretId: secretIdParam,
+        secretSessionOnlyId,
+    } = useLocalSearchParams<{
         prompt?: string;
         dataId?: string;
         machineId?: string;
         path?: string;
         profileId?: string;
+        resumeSessionId?: string;
         secretId?: string;
         secretSessionOnlyId?: string;
     }>();
@@ -257,6 +268,16 @@ function NewSessionScreen() {
 
     // Load persisted draft state (survives remounts/screen navigation)
     const persistedDraft = React.useRef(loadNewSessionDraft()).current;
+
+    const [resumeSessionId, setResumeSessionId] = React.useState(() => {
+        if (typeof tempSessionData?.resumeSessionId === 'string') {
+            return tempSessionData.resumeSessionId;
+        }
+        if (typeof persistedDraft?.resumeSessionId === 'string') {
+            return persistedDraft.resumeSessionId;
+        }
+        return typeof resumeSessionIdParam === 'string' ? resumeSessionIdParam : '';
+    });
 
     // Settings and state
     const recentMachinePaths = useSetting('recentMachinePaths');
@@ -752,6 +773,14 @@ function NewSessionScreen() {
             setSelectedPath(trimmedPath);
         }
     }, [pathParam, selectedPath]);
+
+    // Handle resumeSessionId param from the resume picker screen
+    React.useEffect(() => {
+        if (typeof resumeSessionIdParam !== 'string') {
+            return;
+        }
+        setResumeSessionId(resumeSessionIdParam);
+    }, [resumeSessionIdParam]);
 
     // Path selection state - initialize with formatted selected path
 
@@ -1556,6 +1585,54 @@ function NewSessionScreen() {
         }
     }, [selectedMachineId, selectedPath, router]);
 
+    const handleResumeClick = React.useCallback(() => {
+        router.push({
+            pathname: '/new/pick/resume' as any,
+            params: {
+                currentResumeId: resumeSessionId,
+                agentType,
+            },
+        });
+    }, [router, resumeSessionId, agentType]);
+
+    const renderResumePicker = React.useCallback((options?: { marginBottom?: number }) => {
+        if (!canAgentResume(agentType)) {
+            return null;
+        }
+        return (
+            <Pressable
+                onPress={handleResumeClick}
+                style={(p) => ({
+                    backgroundColor: theme.colors.input.background,
+                    borderRadius: Platform.select({ default: 16, android: 20 }),
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    marginBottom: options?.marginBottom ?? 8,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    opacity: p.pressed ? 0.7 : 1,
+                })}
+            >
+                <Ionicons
+                    name="play-circle-outline"
+                    size={14}
+                    color={theme.colors.button.secondary.tint}
+                />
+                <Text style={{
+                    fontSize: 13,
+                    color: theme.colors.button.secondary.tint,
+                    fontWeight: '600',
+                    marginLeft: 6,
+                    ...Typography.default('semiBold'),
+                }}>
+                    {resumeSessionId.trim()
+                        ? `${t('newSession.resume.title')}: ${resumeSessionId.substring(0, 8)}...${resumeSessionId.substring(resumeSessionId.length - 8)}`
+                        : t('newSession.resume.optional')}
+                </Text>
+            </Pressable>
+        );
+    }, [agentType, handleResumeClick, resumeSessionId, theme]);
+
     const selectedProfileForEnvVars = React.useMemo(() => {
         if (!useProfiles || !selectedProfileId) return null;
         return profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId) || null;
@@ -1704,6 +1781,7 @@ function NewSessionScreen() {
                 agent: agentType,
                 profileId: profilesActive ? (selectedProfileId ?? '') : undefined,
                 environmentVariables,
+                resume: canAgentResume(agentType) ? (resumeSessionId.trim() || undefined) : undefined,
                 terminal,
             });
 
@@ -1753,6 +1831,7 @@ function NewSessionScreen() {
         permissionMode,
         profileMap,
         recentMachinePaths,
+        resumeSessionId,
         router,
         secretBindingsByProfileId,
         secrets,
@@ -1808,6 +1887,7 @@ function NewSessionScreen() {
             permissionMode,
             modelMode,
             sessionType,
+            resumeSessionId,
             updatedAt: Date.now(),
         });
     }, [
@@ -1815,6 +1895,7 @@ function NewSessionScreen() {
         getSessionOnlySecretValueEncByProfileIdByEnvVarName,
         modelMode,
         permissionMode,
+        resumeSessionId,
         selectedSecretId,
         selectedSecretIdByProfileIdByEnvVarName,
         selectedMachineId,
@@ -1914,6 +1995,7 @@ function NewSessionScreen() {
                             >
                                 <View style={{ paddingHorizontal: newSessionSidePadding }}>
                                     <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                                        {renderResumePicker({ marginBottom: 8 })}
                                         <AgentInput
                                             value={sessionPrompt}
                                             onChangeText={setSessionPrompt}
@@ -2158,6 +2240,7 @@ function NewSessionScreen() {
             connectionStatus,
             selectedProfileEnvVarsCount,
             handleEnvVarsClick,
+            resumePicker: renderResumePicker({ marginBottom: 16 }),
         };
     }, [
         canCreate,
@@ -2167,6 +2250,7 @@ function NewSessionScreen() {
         handleCreateSession,
         handleEnvVarsClick,
         isCreating,
+        renderResumePicker,
         selectedProfileEnvVarsCount,
         sessionPrompt,
         setSessionPrompt,

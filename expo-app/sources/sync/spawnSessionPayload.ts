@@ -19,6 +19,7 @@ export interface SpawnSessionOptions {
     // - API_TIMEOUT_MS, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
     // - Custom variables (DEEPSEEK_*, Z_AI_*, etc.)
     environmentVariables?: Record<string, string>;
+    resume?: string;
     terminal?: TerminalSpawnOptions | null;
 }
 
@@ -30,11 +31,12 @@ export type SpawnHappySessionRpcParams = {
     agent?: 'codex' | 'claude' | 'gemini'
     profileId?: string
     environmentVariables?: Record<string, string>
+    resume?: string
     terminal?: TerminalSpawnOptions
 };
 
 export function buildSpawnHappySessionRpcParams(options: SpawnSessionOptions): SpawnHappySessionRpcParams {
-    const { directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables, profileId, terminal } = options;
+    const { directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables, profileId, resume, terminal } = options;
 
     const params: SpawnHappySessionRpcParams = {
         type: 'spawn-in-directory',
@@ -44,6 +46,7 @@ export function buildSpawnHappySessionRpcParams(options: SpawnSessionOptions): S
         agent,
         profileId,
         environmentVariables,
+        resume,
     };
 
     if (terminal) {
@@ -52,4 +55,3 @@ export function buildSpawnHappySessionRpcParams(options: SpawnSessionOptions): S
 
     return params;
 }
-

@@ -11,6 +11,7 @@ export interface NewSessionData {
     path?: string;
     agentType?: 'claude' | 'codex' | 'gemini';
     sessionType?: 'simple' | 'worktree';
+    resumeSessionId?: string;
     taskId?: string;
     taskTitle?: string;
 }

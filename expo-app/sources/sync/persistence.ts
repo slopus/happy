@@ -53,6 +53,7 @@ export interface NewSessionDraft {
     permissionMode: PermissionMode;
     modelMode: ModelMode;
     sessionType: NewSessionSessionType;
+    resumeSessionId?: string;
     updatedAt: number;
 }
 

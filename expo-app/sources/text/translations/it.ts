@@ -650,7 +650,18 @@ export const it: TranslationStructure = {
             notGitRepo: 'Le worktree richiedono un repository git',
             failed: ({ error }: { error: string }) => `Impossibile creare la worktree: ${error}`,
             success: 'Worktree creata con successo',
-        }
+        },
+        resume: {
+            title: 'Riprendi sessione',
+            optional: 'Riprendi: Opzionale',
+            pickerTitle: 'Riprendi sessione',
+            subtitle: ({ agent }: { agent: string }) => `Incolla un ID sessione ${agent} per riprendere`,
+            placeholder: ({ agent }: { agent: string }) => `Incolla ID sessione ${agent}…`,
+            paste: 'Incolla',
+            save: 'Salva',
+            clearAndRemove: 'Cancella',
+            helpText: 'Puoi trovare gli ID sessione nella schermata Info sessione.',
+        },
     },
 
     sessionHistory: {
@@ -716,6 +727,9 @@ export const it: TranslationStructure = {
         aiProfile: 'Profilo IA',
         aiProvider: 'Provider IA',
         failedToCopyClaudeCodeSessionId: 'Impossibile copiare l\'ID sessione Claude Code',
+        codexSessionId: 'ID sessione Codex',
+        codexSessionIdCopied: 'ID sessione Codex copiato negli appunti',
+        failedToCopyCodexSessionId: 'Impossibile copiare l\'ID sessione Codex',
         metadataCopied: 'Metadati copiati negli appunti',
         failedToCopyMetadata: 'Impossibile copiare i metadati',
         failedToKillSession: 'Impossibile terminare la sessione',

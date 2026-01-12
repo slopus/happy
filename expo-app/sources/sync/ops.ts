@@ -144,7 +144,6 @@ export type SpawnSessionResult =
  * Spawn a new remote session on a specific machine
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
-
     const { machineId } = options;
 
     try {

@@ -418,7 +418,18 @@ export const en = {
             notGitRepo: 'Worktrees require a git repository',
             failed: ({ error }: { error: string }) => `Failed to create worktree: ${error}`,
             success: 'Worktree created successfully',
-        }
+        },
+        resume: {
+            title: 'Resume session',
+            optional: 'Resume: Optional',
+            pickerTitle: 'Resume session',
+            subtitle: ({ agent }: { agent: string }) => `Paste a ${agent} session ID to resume`,
+            placeholder: ({ agent }: { agent: string }) => `Paste ${agent} session ID…`,
+            paste: 'Paste',
+            save: 'Save',
+            clearAndRemove: 'Clear',
+            helpText: 'You can find session IDs in the Session Info screen.',
+        },
     },
 
     sessionHistory: {
@@ -484,6 +495,9 @@ export const en = {
         aiProfile: 'AI Profile',
         aiProvider: 'AI Provider',
         failedToCopyClaudeCodeSessionId: 'Failed to copy Claude Code Session ID',
+        codexSessionId: 'Codex Session ID',
+        codexSessionIdCopied: 'Codex Session ID copied to clipboard',
+        failedToCopyCodexSessionId: 'Failed to copy Codex Session ID',
         metadataCopied: 'Metadata copied to clipboard',
         failedToCopyMetadata: 'Failed to copy metadata',
         failedToKillSession: 'Failed to kill session',

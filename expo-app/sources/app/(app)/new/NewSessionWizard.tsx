@@ -117,6 +117,7 @@ export interface NewSessionWizardFooterProps {
     emptyAutocompletePrefixes: React.ComponentProps<typeof AgentInput>['autocompletePrefixes'];
     emptyAutocompleteSuggestions: React.ComponentProps<typeof AgentInput>['autocompleteSuggestions'];
     connectionStatus?: React.ComponentProps<typeof AgentInput>['connectionStatus'];
+    resumePicker?: React.ReactNode;
     selectedProfileEnvVarsCount: number;
     handleEnvVarsClick: () => void;
 }
@@ -258,6 +259,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
         emptyAutocompletePrefixes,
         emptyAutocompleteSuggestions,
         connectionStatus,
+        resumePicker,
         selectedProfileEnvVarsCount,
         handleEnvVarsClick,
     } = props.footer;
@@ -896,6 +898,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                     ) : null}
                     <View style={{ paddingHorizontal: newSessionSidePadding }}>
                         <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                            {resumePicker}
                             <AgentInput
                                 value={sessionPrompt}
                                 onChangeText={setSessionPrompt}

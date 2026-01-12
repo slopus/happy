@@ -643,7 +643,18 @@ export const ja: TranslationStructure = {
             notGitRepo: 'ワークツリーにはGitリポジトリが必要です',
             failed: ({ error }: { error: string }) => `ワークツリーの作成に失敗しました: ${error}`,
             success: 'ワークツリーが正常に作成されました',
-        }
+        },
+        resume: {
+            title: 'セッションを再開',
+            optional: '再開: 任意',
+            pickerTitle: 'セッションを再開',
+            subtitle: ({ agent }: { agent: string }) => `再開する${agent}セッションIDを貼り付けてください`,
+            placeholder: ({ agent }: { agent: string }) => `${agent}セッションIDを貼り付け…`,
+            paste: '貼り付け',
+            save: '保存',
+            clearAndRemove: 'クリア',
+            helpText: 'セッションIDは「セッション情報」画面で確認できます。',
+        },
     },
 
     sessionHistory: {
@@ -709,6 +720,9 @@ export const ja: TranslationStructure = {
         aiProfile: 'AIプロファイル',
         aiProvider: 'AIプロバイダー',
         failedToCopyClaudeCodeSessionId: 'Claude Code セッション ID のコピーに失敗しました',
+        codexSessionId: 'Codex Session ID',
+        codexSessionIdCopied: 'Codex Session IDがクリップボードにコピーされました',
+        failedToCopyCodexSessionId: 'Codex Session IDのコピーに失敗しました',
         metadataCopied: 'メタデータがクリップボードにコピーされました',
         failedToCopyMetadata: 'メタデータのコピーに失敗しました',
         failedToKillSession: 'セッションの終了に失敗しました',

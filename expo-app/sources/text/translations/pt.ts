@@ -405,7 +405,18 @@ export const pt: TranslationStructure = {
             notGitRepo: 'Worktrees requerem um repositório git',
             failed: ({ error }: { error: string }) => `Falha ao criar worktree: ${error}`,
             success: 'Worktree criado com sucesso',
-        }
+        },
+        resume: {
+            title: 'Retomar sessão',
+            optional: 'Retomar: Opcional',
+            pickerTitle: 'Retomar sessão',
+            subtitle: ({ agent }: { agent: string }) => `Cole um ID de sessão do ${agent} para retomar`,
+            placeholder: ({ agent }: { agent: string }) => `Cole o ID de sessão do ${agent}…`,
+            paste: 'Colar',
+            save: 'Salvar',
+            clearAndRemove: 'Limpar',
+            helpText: 'Você pode encontrar os IDs de sessão na tela de informações da sessão.',
+        },
     },
 
     sessionHistory: {
@@ -471,6 +482,9 @@ export const pt: TranslationStructure = {
         aiProfile: 'Perfil de IA',
         aiProvider: 'Provedor de IA',
         failedToCopyClaudeCodeSessionId: 'Falha ao copiar ID da sessão Claude Code',
+        codexSessionId: 'ID da sessão Codex',
+        codexSessionIdCopied: 'ID da sessão Codex copiado para a área de transferência',
+        failedToCopyCodexSessionId: 'Falha ao copiar ID da sessão Codex',
         metadataCopied: 'Metadados copiados para a área de transferência',
         failedToCopyMetadata: 'Falha ao copiar metadados',
         failedToKillSession: 'Falha ao encerrar sessão',

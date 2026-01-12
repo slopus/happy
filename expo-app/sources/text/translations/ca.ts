@@ -405,7 +405,18 @@ export const ca: TranslationStructure = {
             notGitRepo: 'Els worktrees requereixen un repositori git',
             failed: ({ error }: { error: string }) => `Error en crear el worktree: ${error}`,
             success: 'Worktree creat amb èxit',
-        }
+        },
+        resume: {
+            title: 'Reprendre sessió',
+            optional: 'Reprendre: Opcional',
+            pickerTitle: 'Reprendre sessió',
+            subtitle: ({ agent }: { agent: string }) => `Enganxa un ID de sessió de ${agent} per reprendre`,
+            placeholder: ({ agent }: { agent: string }) => `Enganxa l’ID de sessió de ${agent}…`,
+            paste: 'Enganxa',
+            save: 'Desa',
+            clearAndRemove: 'Esborra',
+            helpText: 'Pots trobar els IDs de sessió a la pantalla d’informació de sessió.',
+        },
     },
 
     sessionHistory: {
@@ -471,6 +482,9 @@ export const ca: TranslationStructure = {
         aiProfile: 'Perfil d\'IA',
         aiProvider: 'Proveïdor d\'IA',
         failedToCopyClaudeCodeSessionId: 'Ha fallat copiar l\'ID de la sessió de Claude Code',
+        codexSessionId: 'ID de la sessió de Codex',
+        codexSessionIdCopied: 'ID de la sessió de Codex copiat al porta-retalls',
+        failedToCopyCodexSessionId: 'Ha fallat copiar l\'ID de la sessió de Codex',
         metadataCopied: 'Metadades copiades al porta-retalls',
         failedToCopyMetadata: 'Ha fallat copiar les metadades',
         failedToKillSession: 'Ha fallat finalitzar la sessió',
