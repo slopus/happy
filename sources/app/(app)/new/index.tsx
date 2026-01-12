@@ -771,22 +771,16 @@ function NewSessionWizard() {
             version: '1.0.0',
         };
         const profileData = JSON.stringify(newProfile);
-        router.push({
-            pathname: '/(app)/new/pick/profile-edit',
-            params: { profileData },
-        });
+        router.push(`/new/pick/profile-edit?profileData=${encodeURIComponent(profileData)}` as any);
     }, [router]);
 
     const handleEditProfile = React.useCallback((profile: AIBackendProfile) => {
         const profileData = JSON.stringify(profile);
-        const params: { profileData: string; machineId?: string } = { profileData };
         if (selectedMachineId) {
-            params.machineId = selectedMachineId;
+            router.push(`/new/pick/profile-edit?profileData=${encodeURIComponent(profileData)}&machineId=${encodeURIComponent(selectedMachineId)}` as any);
+            return;
         }
-        router.push({
-            pathname: '/(app)/new/pick/profile-edit',
-            params,
-        });
+        router.push(`/new/pick/profile-edit?profileData=${encodeURIComponent(profileData)}` as any);
     }, [router, selectedMachineId]);
 
     const handleDuplicateProfile = React.useCallback((profile: AIBackendProfile) => {
@@ -799,10 +793,7 @@ function NewSessionWizard() {
             updatedAt: Date.now(),
         };
         const profileData = JSON.stringify(duplicatedProfile);
-        router.push({
-            pathname: '/(app)/new/pick/profile-edit',
-            params: { profileData },
-        });
+        router.push(`/new/pick/profile-edit?profileData=${encodeURIComponent(profileData)}` as any);
     }, [router]);
 
     // Helper to get meaningful subtitle text for profiles

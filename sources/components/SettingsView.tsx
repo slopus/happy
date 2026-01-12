@@ -320,20 +320,20 @@ export const SettingsView = React.memo(function SettingsView() {
                     title={t('settings.featuresTitle')}
                     subtitle={t('settings.featuresSubtitle')}
                     icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
-                    onPress={() => router.push('/(app)/settings/features')}
+                    onPress={() => router.push('/settings/features')}
                 />
                 <Item
                     title={t('settings.profiles')}
                     subtitle={t('settings.profilesSubtitle')}
                     icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
-                    onPress={() => router.push('/(app)/settings/profiles')}
+                    onPress={() => router.push('/settings/profiles')}
                 />
                 {experiments && (
                     <Item
                         title={t('settings.usage')}
                         subtitle={t('settings.usageSubtitle')}
                         icon={<Ionicons name="analytics-outline" size={29} color="#007AFF" />}
-                        onPress={() => router.push('/(app)/settings/usage')}
+                        onPress={() => router.push('/settings/usage')}
                     />
                 )}
             </ItemGroup>

@@ -27,7 +27,7 @@ export default function ProfileEditScreen() {
                 try {
                     return JSON.parse(params.profileData);
                 } catch {
-                    return JSON.parse(decodeURIComponent(params.profileData));
+                return JSON.parse(decodeURIComponent(params.profileData));
                 }
             } catch (error) {
                 console.error('Failed to parse profile data:', error);
