@@ -110,7 +110,7 @@ export const SettingsView = React.memo(function SettingsView() {
 
     // Anthropic connection
     const [connectingAnthropic, connectAnthropic] = useHappyAction(async () => {
-        router.push('/settings/connect/claude');
+        router.push('/(app)/settings/connect/claude');
     });
 
     // Anthropic disconnection
@@ -302,25 +302,25 @@ export const SettingsView = React.memo(function SettingsView() {
                     title={t('settings.account')}
                     subtitle={t('settings.accountSubtitle')}
                     icon={<Ionicons name="person-circle-outline" size={29} color="#007AFF" />}
-                    onPress={() => router.push('/settings/account')}
+                    onPress={() => router.push('/(app)/settings/account')}
                 />
                 <Item
                     title={t('settings.appearance')}
                     subtitle={t('settings.appearanceSubtitle')}
                     icon={<Ionicons name="color-palette-outline" size={29} color="#5856D6" />}
-                    onPress={() => router.push('/settings/appearance')}
+                    onPress={() => router.push('/(app)/settings/appearance')}
                 />
                 <Item
                     title={t('settings.voiceAssistant')}
                     subtitle={t('settings.voiceAssistantSubtitle')}
                     icon={<Ionicons name="mic-outline" size={29} color="#34C759" />}
-                    onPress={() => router.push('/settings/voice')}
+                    onPress={() => router.push('/(app)/settings/voice')}
                 />
                 <Item
                     title={t('settings.featuresTitle')}
                     subtitle={t('settings.featuresSubtitle')}
                     icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
-                    onPress={() => router.push('/settings/features')}
+                    onPress={() => router.push('/(app)/settings/features')}
                 />
                 <Item
                     title={t('settings.profiles')}
@@ -333,7 +333,7 @@ export const SettingsView = React.memo(function SettingsView() {
                         title={t('settings.usage')}
                         subtitle={t('settings.usageSubtitle')}
                         icon={<Ionicons name="analytics-outline" size={29} color="#007AFF" />}
-                        onPress={() => router.push('/settings/usage')}
+                        onPress={() => router.push('/(app)/settings/usage')}
                     />
                 )}
             </ItemGroup>
@@ -344,7 +344,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     <Item
                         title={t('settings.developerTools')}
                         icon={<Ionicons name="construct-outline" size={29} color="#5856D6" />}
-                        onPress={() => router.push('/dev')}
+                        onPress={() => router.push('/(app)/dev')}
                     />
                 </ItemGroup>
             )}
@@ -357,7 +357,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     icon={<Ionicons name="sparkles-outline" size={29} color="#FF9500" />}
                     onPress={() => {
                         trackWhatsNewClicked();
-                        router.push('/changelog');
+                        router.push('/(app)/changelog');
                     }}
                 />
                 <Item
