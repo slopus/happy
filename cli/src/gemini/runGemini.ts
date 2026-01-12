@@ -31,8 +31,8 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 
-import { createGeminiBackend } from '@/agent/acp/gemini';
-import type { AgentBackend, AgentMessage } from '@/agent/AgentBackend';
+import { createGeminiBackend } from '@/agent/factories/gemini';
+import type { AgentBackend, AgentMessage } from '@/agent';
 import { GeminiDisplay } from '@/ui/ink/GeminiDisplay';
 import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
 import { GeminiReasoningProcessor } from '@/gemini/utils/reasoningProcessor';

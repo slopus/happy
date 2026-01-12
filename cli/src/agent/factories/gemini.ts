@@ -8,9 +8,10 @@
  * the --experimental-acp flag for ACP mode.
  */
 
-import { AcpSdkBackend, type AcpSdkBackendOptions, type AcpPermissionHandler } from './AcpSdkBackend';
-import type { AgentBackend, McpServerConfig } from '../AgentBackend';
-import { agentRegistry, type AgentFactoryOptions } from '../AgentRegistry';
+import { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from '../acp/AcpBackend';
+import type { AgentBackend, McpServerConfig, AgentFactoryOptions } from '../core';
+import { agentRegistry } from '../core';
+import { geminiTransport } from '../transport';
 import { logger } from '@/ui/logger';
 import { 
   GEMINI_API_KEY_ENV, 
@@ -91,7 +92,7 @@ export function createGeminiBackend(options: GeminiBackendOptions): AgentBackend
   // We don't use --model flag to avoid potential stdout conflicts with ACP protocol
   const geminiArgs = ['--experimental-acp'];
 
-  const backendOptions: AcpSdkBackendOptions = {
+  const backendOptions: AcpBackendOptions = {
     agentName: 'gemini',
     cwd: options.cwd,
     command: geminiCommand,
@@ -107,6 +108,15 @@ export function createGeminiBackend(options: GeminiBackendOptions): AgentBackend
     },
     mcpServers: options.mcpServers,
     permissionHandler: options.permissionHandler,
+    transportHandler: geminiTransport,
+    // Check if prompt instructs the agent to change title (for auto-approval of change_title tool)
+    hasChangeTitleInstruction: (prompt: string) => {
+      const lower = prompt.toLowerCase();
+      return lower.includes('change_title') ||
+             lower.includes('change title') ||
+             lower.includes('set title') ||
+             lower.includes('mcp__happy__change_title');
+    },
   };
 
   // Determine model source for logging
@@ -122,7 +132,7 @@ export function createGeminiBackend(options: GeminiBackendOptions): AgentBackend
     mcpServerCount: options.mcpServers ? Object.keys(options.mcpServers).length : 0,
   });
 
-  return new AcpSdkBackend(backendOptions);
+  return new AcpBackend(backendOptions);
 }
 
 /**

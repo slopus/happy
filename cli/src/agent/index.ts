@@ -1,12 +1,12 @@
 /**
  * Agent Module - Universal agent backend abstraction
- * 
+ *
  * This module provides the core abstraction layer for different AI agents
  * (Claude, Codex, Gemini, OpenCode, etc.) that can be controlled through
  * the Happy CLI and mobile app.
  */
 
-// Core types and interfaces
+// Core types, interfaces, and registry - re-export from core/
 export type {
   AgentMessage,
   AgentMessageHandler,
@@ -19,22 +19,26 @@ export type {
   SessionId,
   ToolCallId,
   StartSessionResult,
-} from './AgentBackend';
+  AgentFactory,
+  AgentFactoryOptions,
+} from './core';
 
-// Registry
-export { AgentRegistry, agentRegistry, type AgentFactory, type AgentFactoryOptions } from './AgentRegistry';
+export { AgentRegistry, agentRegistry } from './core';
 
-// ACP implementations
+// ACP backend (low-level)
 export * from './acp';
+
+// Agent factories (high-level, recommended)
+export * from './factories';
 
 /**
  * Initialize all agent backends and register them with the global registry.
- * 
+ *
  * Call this function during application startup to make all agents available.
  */
 export function initializeAgents(): void {
-  // Import and register agents
-  const { registerGeminiAgent } = require('./acp/gemini');
+  // Import and register agents from factories
+  const { registerGeminiAgent } = require('./factories/gemini');
   registerGeminiAgent();
 }
 
