@@ -8,6 +8,7 @@ import * as z from 'zod';
 
 const PersistedHappySessionSchema = z.object({
   sessionId: z.string(),
+  vendorResumeId: z.string().optional(),
   encryptionKeyBase64: z.string(),
   encryptionVariant: z.union([z.literal('legacy'), z.literal('dataKey')]),
   metadata: z.any(),
@@ -42,6 +43,7 @@ export async function writePersistedHappySession(session: Session): Promise<void
 
   const persisted: PersistedHappySession = PersistedHappySessionSchema.parse({
     sessionId: session.id,
+    vendorResumeId: typeof (session.metadata as any)?.claudeSessionId === 'string' ? (session.metadata as any).claudeSessionId : undefined,
     encryptionKeyBase64: Buffer.from(session.encryptionKey).toString('base64'),
     encryptionVariant: session.encryptionVariant,
     metadata: session.metadata,
@@ -56,7 +58,7 @@ export async function writePersistedHappySession(session: Session): Promise<void
   await writeJsonAtomic(filePath, persisted);
 }
 
-export async function readPersistedHappySession(sessionId: string): Promise<Session | null> {
+export async function readPersistedHappySessionFile(sessionId: string): Promise<PersistedHappySession | null> {
   const filePath = join(sessionsDir(), `${sessionId}.json`);
   try {
     const raw = await readFile(filePath, 'utf-8');
@@ -65,21 +67,39 @@ export async function readPersistedHappySession(sessionId: string): Promise<Sess
       logger.debug('[persistedHappySession] Failed to parse persisted session', parsed.error);
       return null;
     }
-
-    const persisted = parsed.data;
-    return {
-      id: persisted.sessionId,
-      seq: 0,
-      metadata: persisted.metadata,
-      metadataVersion: persisted.metadataVersion,
-      agentState: persisted.agentState ?? null,
-      agentStateVersion: persisted.agentStateVersion,
-      encryptionKey: new Uint8Array(Buffer.from(persisted.encryptionKeyBase64, 'base64')),
-      encryptionVariant: persisted.encryptionVariant,
-    };
+    return parsed.data;
   } catch (e) {
     logger.debug('[persistedHappySession] Failed to read persisted session', e);
     return null;
   }
+}
+
+export async function readPersistedHappySession(sessionId: string): Promise<Session | null> {
+  const persisted = await readPersistedHappySessionFile(sessionId);
+  if (!persisted) return null;
+  return {
+    id: persisted.sessionId,
+    seq: 0,
+    metadata: persisted.metadata,
+    metadataVersion: persisted.metadataVersion,
+    agentState: persisted.agentState ?? null,
+    agentStateVersion: persisted.agentStateVersion,
+    encryptionKey: new Uint8Array(Buffer.from(persisted.encryptionKeyBase64, 'base64')),
+    encryptionVariant: persisted.encryptionVariant,
+  };
+}
+
+export async function updatePersistedHappySessionVendorResumeId(sessionId: string, vendorResumeId: string): Promise<void> {
+  const filePath = join(sessionsDir(), `${sessionId}.json`);
+  const current = await readPersistedHappySessionFile(sessionId);
+  if (!current) return;
+
+  const updated: PersistedHappySession = PersistedHappySessionSchema.parse({
+    ...current,
+    vendorResumeId,
+    updatedAt: Date.now(),
+  });
+
+  await writeJsonAtomic(filePath, updated);
 }
 
