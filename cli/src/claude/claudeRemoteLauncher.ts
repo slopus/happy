@@ -6,7 +6,7 @@ import React from "react";
 import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
-import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
+import { AbortError, SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
@@ -25,6 +25,50 @@ interface PermissionsField {
     result: 'approved' | 'denied';
     mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
     allowedTools?: string[];
+}
+
+type LaunchErrorInfo = {
+    asString: string;
+    name?: string;
+    message?: string;
+    code?: string;
+    stack?: string;
+};
+
+function getLaunchErrorInfo(e: unknown): LaunchErrorInfo {
+    let asString = '[unprintable error]';
+    try {
+        asString = typeof e === 'string' ? e : String(e);
+    } catch {
+        // Ignore
+    }
+
+    if (!e || typeof e !== 'object') {
+        return { asString };
+    }
+
+    const err = e as { name?: unknown; message?: unknown; code?: unknown; stack?: unknown };
+
+    const name = typeof err.name === 'string' ? err.name : undefined;
+    const message = typeof err.message === 'string' ? err.message : undefined;
+    const code = typeof err.code === 'string' || typeof err.code === 'number' ? String(err.code) : undefined;
+    const stack = typeof err.stack === 'string' ? err.stack : undefined;
+
+    return { asString, name, message, code, stack };
+}
+
+function isAbortError(e: unknown): boolean {
+    if (e instanceof AbortError) return true;
+
+    if (!e || typeof e !== 'object') {
+        return false;
+    }
+
+    const err = e as { name?: unknown; code?: unknown };
+    if (typeof err.name === 'string' && err.name === 'AbortError') return true;
+    if (typeof err.code === 'string' && err.code === 'ABORT_ERR') return true;
+
+    return false;
 }
 
 export async function claudeRemoteLauncher(session: Session): Promise<'switch' | 'exit'> {
@@ -475,8 +519,20 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                 }
             } catch (e) {
-                logger.debug('[remote]: launch error', e);
+                const abortError = isAbortError(e);
+                logger.debug('[remote]: launch error', {
+                    ...getLaunchErrorInfo(e),
+                    abortError,
+                });
+
                 if (!exitReason) {
+                    if (abortError) {
+                        if (controller.signal.aborted) {
+                            session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
+                        }
+                        continue;
+                    }
+
                     session.client.sendSessionEvent({ type: 'message', message: `Claude process error: ${formatErrorForUi(e)}` });
                     continue;
                 }
