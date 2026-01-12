@@ -134,14 +134,11 @@ export class ApiMachineClient {
                 if (!existingSessionId) {
                     throw new Error('Session ID is required for resume');
                 }
-                if (!agentSessionId) {
-                    throw new Error('Agent session ID is required for resume');
-                }
 
                 const result = await spawnSession({
                     directory,
                     agent,
-                    resume: agentSessionId,
+                    resume: typeof agentSessionId === 'string' && agentSessionId.trim() ? agentSessionId : undefined,
                     existingSessionId,
                     initialMessage: message,
                     approvedNewDirectoryCreation: true

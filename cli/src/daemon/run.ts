@@ -17,6 +17,8 @@ import { getEnvironmentInfo } from '@/ui/doctor';
 import { buildHappyCliSubprocessInvocation, spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings } from '@/persistence';
 import { supportsVendorResume } from '@/utils/agentCapabilities';
+import { readPersistedHappySessionFile } from './persistedHappySession';
+import { readPersistedHappySessionFile } from '@/daemon/persistedHappySession';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
@@ -385,7 +387,19 @@ export async function startDaemon(): Promise<void> {
 	      const { directory, sessionId, machineId, approvedNewDirectoryCreation = true, resume, existingSessionId, initialMessage } = options;
 	      const normalizedResume = typeof resume === 'string' ? resume.trim() : '';
 	      const normalizedExistingSessionId = typeof existingSessionId === 'string' ? existingSessionId.trim() : '';
-	      if ((normalizedResume || normalizedExistingSessionId) && !supportsVendorResume(options.agent)) {
+	      // If resuming an existing Happy session and no resume id was provided, derive it from local persisted session state.
+	      let effectiveResume = normalizedResume;
+	      if (!effectiveResume && normalizedExistingSessionId) {
+	        const persisted = await readPersistedHappySessionFile(normalizedExistingSessionId);
+	        const next =
+	          (persisted?.vendorResumeId && typeof persisted.vendorResumeId === 'string' ? persisted.vendorResumeId : undefined)
+	          ?? (typeof (persisted?.metadata as any)?.claudeSessionId === 'string' ? (persisted?.metadata as any).claudeSessionId : undefined);
+	        if (typeof next === 'string' && next.trim().length > 0) {
+	          effectiveResume = next.trim();
+	        }
+	      }
+
+	      if ((effectiveResume || normalizedExistingSessionId) && !supportsVendorResume(options.agent)) {
 	        return {
 	          type: 'error',
 	          errorMessage: `Resume is not supported for agent '${options.agent ?? 'claude'}'. (Upstream supports Claude vendor resume only.)`,
@@ -479,7 +493,6 @@ export async function startDaemon(): Promise<void> {
         } else {
           logger.debug('[DAEMON RUN] No profile environment variables provided by caller; skipping profile env injection');
         }
-
         // Session identity (non-secret) for cross-device display/debugging
         // Empty string means "no profile" and should still be preserved.
         const sessionProfileEnv: Record<string, string> = {};
@@ -582,10 +595,10 @@ export async function startDaemon(): Promise<void> {
 	          }
 
 	          // Try to spawn in tmux session
-          const sessionDesc = resolvedTmuxSessionName || 'current/most recent session';
-          logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
+	          const sessionDesc = resolvedTmuxSessionName || 'current/most recent session';
+	          logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
 
-          // Determine agent command - support claude, codex, and gemini
+	          // Determine agent command - support claude, codex, and gemini
 	          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
 	          const windowName = `happy-${Date.now()}-${agent}`;
 	          const tmuxTarget = `${resolvedTmuxSessionName}:${windowName}`;
@@ -607,7 +620,7 @@ export async function startDaemon(): Promise<void> {
 	            tmuxCommandEnv,
 	            extraArgs: [
 	              ...terminalRuntimeArgs,
-	              ...(normalizedResume ? ['--resume', normalizedResume] : []),
+	              ...(effectiveResume ? ['--resume', effectiveResume] : []),
 	              ...(normalizedExistingSessionId ? ['--existing-session', normalizedExistingSessionId] : []),
 	            ],
 	          });
@@ -728,13 +741,13 @@ export async function startDaemon(): Promise<void> {
 	              'plain',
               '--happy-terminal-requested',
               'tmux',
-              '--happy-terminal-fallback-reason',
+	              '--happy-terminal-fallback-reason',
 	              reason,
 	            );
 	          }
 
-	          if (normalizedResume) {
-	            args.push('--resume', normalizedResume);
+	          if (effectiveResume) {
+	            args.push('--resume', effectiveResume);
 	          }
 	          if (normalizedExistingSessionId) {
 	            args.push('--existing-session', normalizedExistingSessionId);
