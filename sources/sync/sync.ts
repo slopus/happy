@@ -1130,10 +1130,13 @@ class Sync {
         if (!this.credentials) return;
 
         const API_ENDPOINT = getServerUrl();
+        const maxRetries = 3;
+        let retryCount = 0;
+
         // Apply pending settings
         if (Object.keys(this.pendingSettings).length > 0) {
 
-            while (true) {
+            while (retryCount < maxRetries) {
                 let version = storage.getState().settingsVersion;
                 let settings = applySettings(storage.getState().settings, this.pendingSettings);
                 const response = await fetch(`${API_ENDPOINT}/v1/account/settings`, {
@@ -1156,45 +1159,44 @@ class Sync {
                     success: true
                 };
                 if (data.success) {
+                    this.pendingSettings = {};
+                    savePendingSettings({});
                     break;
                 }
                 if (data.error === 'version-mismatch') {
-                    let parsedSettings: Settings;
-                    if (data.currentSettings) {
-                        parsedSettings = settingsParse(await this.encryption.decryptRaw(data.currentSettings));
-                    } else {
-                        parsedSettings = { ...settingsDefaults };
-                    }
+                    // Parse server settings
+                    const serverSettings = data.currentSettings
+                        ? settingsParse(await this.encryption.decryptRaw(data.currentSettings))
+                        : { ...settingsDefaults };
 
-                    // Log
-                    console.log('settings', JSON.stringify({
-                        settings: parsedSettings,
-                        version: data.currentVersion
-                    }));
+                    // Merge: server base + our pending changes (our changes win)
+                    const mergedSettings = applySettings(serverSettings, this.pendingSettings);
 
-                    // Apply settings to storage
-                    storage.getState().applySettings(parsedSettings, data.currentVersion);
+                    // Update local storage with merged result at server's version
+                    storage.getState().applySettings(mergedSettings, data.currentVersion);
 
-                    // Clear pending
-                    savePendingSettings({});
-
-                    // Sync PostHog opt-out state with settings
+                    // Sync tracking state with merged settings
                     if (tracking) {
-                        if (parsedSettings.analyticsOptOut) {
-                            tracking.optOut();
-                        } else {
-                            tracking.optIn();
-                        }
+                        mergedSettings.analyticsOptOut ? tracking.optOut() : tracking.optIn();
                     }
 
+                    // Log and retry
+                    console.log('settings version-mismatch, retrying', {
+                        serverVersion: data.currentVersion,
+                        retry: retryCount + 1,
+                        pendingKeys: Object.keys(this.pendingSettings)
+                    });
+                    retryCount++;
+                    continue;
                 } else {
                     throw new Error(`Failed to sync settings: ${data.error}`);
                 }
-
-                // Wait 1 second
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                break;
             }
+        }
+
+        // If exhausted retries, throw to trigger outer backoff delay
+        if (retryCount >= maxRetries) {
+            throw new Error(`Settings sync failed after ${maxRetries} retries due to version conflicts`);
         }
 
         // Run request
