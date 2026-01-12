@@ -100,9 +100,14 @@ export class GeminiTransport implements TransportHandler {
       return null;
     }
 
-    // Validate it's actually parseable JSON
+    // Validate it's actually parseable JSON and is an object (not a primitive)
+    // JSON-RPC messages are always objects, but numbers like "105887304" parse as valid JSON
     try {
-      JSON.parse(trimmed);
+      const parsed = JSON.parse(trimmed);
+      // Must be an object or array (for batched requests), not a primitive
+      if (typeof parsed !== 'object' || parsed === null) {
+        return null;
+      }
       return line;
     } catch {
       return null;

@@ -369,8 +369,10 @@ export class AcpBackend implements AgentBackend {
               if (done) {
                 // Flush any remaining buffer
                 if (buffer.trim()) {
-                  const filtered = transport.filterStdoutLine?.(buffer) ?? buffer;
-                  if (filtered !== null) {
+                  const filtered = transport.filterStdoutLine?.(buffer);
+                  if (filtered === undefined) {
+                    controller.enqueue(encoder.encode(buffer));
+                  } else if (filtered !== null) {
                     controller.enqueue(encoder.encode(filtered));
                   } else {
                     filteredCount++;
@@ -394,10 +396,17 @@ export class AcpBackend implements AgentBackend {
                 if (!line.trim()) continue;
 
                 // Use transport handler to filter lines
-                const filtered = transport.filterStdoutLine?.(line) ?? line;
-                if (filtered !== null) {
+                // Note: filterStdoutLine returns null to filter out, string to keep
+                // If method not implemented (undefined), pass through original line
+                const filtered = transport.filterStdoutLine?.(line);
+                if (filtered === undefined) {
+                  // Method not implemented, pass through
+                  controller.enqueue(encoder.encode(line + '\n'));
+                } else if (filtered !== null) {
+                  // Method returned transformed line
                   controller.enqueue(encoder.encode(filtered + '\n'));
                 } else {
+                  // Method returned null, filter out
                   filteredCount++;
                 }
               }

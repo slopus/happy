@@ -54,7 +54,7 @@ export class DefaultTransport implements TransportHandler {
   }
 
   /**
-   * Default: pass through all lines that look like JSON
+   * Default: pass through all lines that are valid JSON objects/arrays
    */
   filterStdoutLine(line: string): string | null {
     const trimmed = line.trim();
@@ -62,10 +62,19 @@ export class DefaultTransport implements TransportHandler {
       return null;
     }
     // Only pass through lines that start with { or [ (JSON)
-    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-      return line;
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+      return null;
     }
-    return null;
+    // Validate it's actually parseable JSON and is an object/array
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed !== 'object' || parsed === null) {
+        return null;
+      }
+      return line;
+    } catch {
+      return null;
+    }
   }
 
   /**
