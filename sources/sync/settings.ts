@@ -6,61 +6,39 @@ import * as z from 'zod';
 
 // Environment variable schemas for different AI providers
 // Note: baseUrl fields accept either valid URLs or ${VAR} or ${VAR:-default} template strings
+const URL_OR_TEMPLATE_REGEX = /^\$\{[A-Z_][A-Z0-9_]*(:-[^}]*)?\}$/;
+const URL_OR_TEMPLATE_ERROR = 'Must be a valid URL or ${VAR} or ${VAR:-default} template string';
+
+function isUrlOrTemplateString(val: string): boolean {
+    if (!val) return true; // Optional or empty string
+    if (URL_OR_TEMPLATE_REGEX.test(val)) return true;
+    try {
+        new URL(val);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function urlOrTemplateStringOptional() {
+    return z.string().refine(isUrlOrTemplateString, { message: URL_OR_TEMPLATE_ERROR }).optional();
+}
+
 const AnthropicConfigSchema = z.object({
-    baseUrl: z.string().refine(
-        (val) => {
-            if (!val) return true; // Optional
-            // Allow ${VAR} and ${VAR:-default} template strings
-            if (/^\$\{[A-Z_][A-Z0-9_]*(:-[^}]*)?\}$/.test(val)) return true;
-            // Otherwise validate as URL
-            try {
-                new URL(val);
-                return true;
-            } catch {
-                return false;
-            }
-        },
-        { message: 'Must be a valid URL or ${VAR} or ${VAR:-default} template string' }
-    ).optional(),
+    baseUrl: urlOrTemplateStringOptional(),
     authToken: z.string().optional(),
     model: z.string().optional(),
 });
 
 const OpenAIConfigSchema = z.object({
     apiKey: z.string().optional(),
-    baseUrl: z.string().refine(
-        (val) => {
-            if (!val) return true;
-            // Allow ${VAR} and ${VAR:-default} template strings
-            if (/^\$\{[A-Z_][A-Z0-9_]*(:-[^}]*)?\}$/.test(val)) return true;
-            try {
-                new URL(val);
-                return true;
-            } catch {
-                return false;
-            }
-        },
-        { message: 'Must be a valid URL or ${VAR} or ${VAR:-default} template string' }
-    ).optional(),
+    baseUrl: urlOrTemplateStringOptional(),
     model: z.string().optional(),
 });
 
 const AzureOpenAIConfigSchema = z.object({
     apiKey: z.string().optional(),
-    endpoint: z.string().refine(
-        (val) => {
-            if (!val) return true;
-            // Allow ${VAR} and ${VAR:-default} template strings
-            if (/^\$\{[A-Z_][A-Z0-9_]*(:-[^}]*)?\}$/.test(val)) return true;
-            try {
-                new URL(val);
-                return true;
-            } catch {
-                return false;
-            }
-        },
-        { message: 'Must be a valid URL or ${VAR} or ${VAR:-default} template string' }
-    ).optional(),
+    endpoint: urlOrTemplateStringOptional(),
     apiVersion: z.string().optional(),
     deploymentName: z.string().optional(),
 });
