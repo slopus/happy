@@ -195,6 +195,16 @@ export async function runGemini(opts: {
   });
   session = initialSession;
 
+  // Bump agentStateVersion early so the UI can reliably treat the agent as "ready" to receive messages.
+  // The server does not currently persist agentState during initial session creation; it starts at version 0
+  // and only changes via 'update-state'. The HAPI UI uses agentStateVersion > 0 as its readiness signal.
+  // (This matches what the Claude runner already does.)
+  try {
+    session.updateAgentState((currentState) => ({ ...currentState }));
+  } catch (e) {
+    logger.debug('[gemini] Failed to prime agent state (non-fatal)', e);
+  }
+
   // Persist terminal attachment info locally (best-effort) once we have a real session ID.
   if (response && terminal) {
     try {
