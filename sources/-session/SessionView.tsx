@@ -264,9 +264,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </>
     ) : null;
 
+    // Check if user has write access (edit or admin level, or is the owner)
+    const hasWriteAccess = !session.accessLevel || session.accessLevel === 'edit' || session.accessLevel === 'admin';
+    const isReadOnly = session.accessLevel === 'view';
+
     const input = (
         <AgentInput
-            placeholder={t('session.inputPlaceholder')}
+            placeholder={isReadOnly ? t('sessionSharing.viewOnlyMode') : t('session.inputPlaceholder')}
             value={message}
             onChangeText={setMessage}
             sessionId={sessionId}
@@ -280,6 +284,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 isPulsing: sessionStatus.isPulsing
             }}
             onSend={() => {
+                if (!hasWriteAccess) {
+                    Modal.alert(t('common.error'), t('sessionSharing.noEditPermission'));
+                    return;
+                }
                 if (message.trim()) {
                     setMessage('');
                     clearDraft();
@@ -295,6 +303,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             // Autocomplete configuration
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
+            disabled={isReadOnly}
             usageData={sessionUsage ? {
                 inputTokens: sessionUsage.inputTokens,
                 outputTokens: sessionUsage.outputTokens,

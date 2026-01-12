@@ -50,6 +50,7 @@ class Sync {
     private credentials!: AuthCredentials;
     public encryptionCache = new EncryptionCache();
     private sessionsSync: InvalidateSync;
+    private sharedSessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
     private sessionReceivedMessages = new Map<string, Set<string>>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
@@ -76,6 +77,7 @@ class Sync {
 
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
+        this.sharedSessionsSync = new InvalidateSync(this.fetchSharedSessions);
         this.settingsSync = new InvalidateSync(this.syncSettings);
         this.profileSync = new InvalidateSync(this.fetchProfile);
         this.purchasesSync = new InvalidateSync(this.syncPurchases);
@@ -165,6 +167,7 @@ class Sync {
         // Invalidate sync
         log.log('🔄 #init: Invalidating all syncs');
         this.sessionsSync.invalidate();
+        this.sharedSessionsSync.invalidate();
         this.settingsSync.invalidate();
         this.profileSync.invalidate();
         this.purchasesSync.invalidate();
@@ -176,11 +179,12 @@ class Sync {
         this.artifactsSync.invalidate();
         this.feedSync.invalidate();
         this.todosSync.invalidate();
-        log.log('🔄 #init: All syncs invalidated, including artifacts and todos');
+        log.log('🔄 #init: All syncs invalidated, including shared sessions, artifacts and todos');
 
-        // Wait for both sessions and machines to load, then mark as ready
+        // Wait for sessions, shared sessions, and machines to load, then mark as ready
         Promise.all([
             this.sessionsSync.awaitQueue(),
+            this.sharedSessionsSync.awaitQueue(),
             this.machinesSync.awaitQueue()
         ]).then(() => {
             storage.getState().applyReady();
@@ -503,6 +507,7 @@ class Sync {
                     continue;
                 }
                 sessionKeys.set(session.id, decrypted);
+                this.sessionDataKeys.set(session.id, decrypted); // Store for later use
             } else {
                 sessionKeys.set(session.id, null);
             }
@@ -542,6 +547,104 @@ class Sync {
 
     }
 
+    private fetchSharedSessions = async () => {
+        if (!this.credentials) return;
+
+        const API_ENDPOINT = getServerUrl();
+        const response = await fetch(`${API_ENDPOINT}/v1/shares/sessions`, {
+            headers: {
+                'Authorization': `Bearer ${this.credentials.token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch shared sessions: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const sharedSessions = data.shares as Array<{
+            session: {
+                id: string;
+                seq: number;
+                metadata: string;
+                metadataVersion: number;
+                agentState: string | null;
+                agentStateVersion: number;
+                active: boolean;
+                activeAt: number;
+                createdAt: number;
+                updatedAt: number;
+            };
+            accessLevel: 'view' | 'edit' | 'admin';
+            encryptedDataKey: string;
+            sharedBy: {
+                id: string;
+                username: string;
+                name: string | null;
+            };
+        }>;
+
+        // Initialize all shared session encryptions
+        const sessionKeys = new Map<string, Uint8Array | null>();
+        for (const share of sharedSessions) {
+            if (share.encryptedDataKey) {
+                // Decrypt the encrypted data key using our private key
+                let decrypted = await this.encryption.decryptEncryptionKey(share.encryptedDataKey);
+                if (!decrypted) {
+                    console.error(`Failed to decrypt shared data encryption key for session ${share.session.id}`);
+                    continue;
+                }
+                sessionKeys.set(share.session.id, decrypted);
+                this.sessionDataKeys.set(share.session.id, decrypted); // Store for later use
+            }
+        }
+        await this.encryption.initializeSessions(sessionKeys);
+
+        // Decrypt shared sessions
+        let decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
+        for (const share of sharedSessions) {
+            const session = share.session;
+
+            // Get session encryption (should always exist after initialization)
+            const sessionEncryption = this.encryption.getSessionEncryption(session.id);
+            if (!sessionEncryption) {
+                console.error(`Session encryption not found for shared session ${session.id}`);
+                continue;
+            }
+
+            // Decrypt metadata and agent state
+            let metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
+            let agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
+
+            // Add owner information from sharedBy
+            const processedSession = {
+                id: session.id,
+                seq: session.seq,
+                tag: `shared-${session.id}`, // Generate a unique tag for shared sessions
+                thinking: false,
+                thinkingAt: 0,
+                metadata,
+                metadataVersion: session.metadataVersion,
+                agentState,
+                agentStateVersion: session.agentStateVersion,
+                active: session.active,
+                activeAt: session.activeAt,
+                createdAt: session.createdAt,
+                updatedAt: session.updatedAt,
+                owner: share.sharedBy.id, // Mark the actual owner
+                ownerProfile: share.sharedBy, // Include owner profile information
+                accessLevel: share.accessLevel, // Add access level
+                lastMessage: null
+            };
+            decryptedSessions.push(processedSession);
+        }
+
+        // Apply to storage
+        this.applySessions(decryptedSessions);
+        log.log(`📥 fetchSharedSessions completed - processed ${decryptedSessions.length} shared sessions`);
+    }
+
     public refreshMachines = async () => {
         return this.fetchMachines();
     }
@@ -552,6 +655,22 @@ class Sync {
 
     public getCredentials() {
         return this.credentials;
+    }
+
+    public getUserID(): string {
+        return this.serverID;
+    }
+
+    public getSessionDataKey(sessionId: string): Uint8Array | null {
+        return this.sessionDataKeys.get(sessionId) || null;
+    }
+
+    public storePublicShareKey(sessionId: string, dataKey: Uint8Array): void {
+        this.sessionDataKeys.set(sessionId, dataKey);
+    }
+
+    public getUserPublicKey(): Uint8Array {
+        return this.encryption.contentDataKey;
     }
 
     // Artifact methods
@@ -1584,6 +1703,21 @@ class Sync {
             gitStatusSync.clearForSession(sessionId);
 
             log.log(`🗑️ Session ${sessionId} deleted from local storage`);
+        } else if (updateData.body.t === 'session-shared') {
+            log.log('🤝 Session shared with me');
+            this.sharedSessionsSync.invalidate();
+        } else if (updateData.body.t === 'session-share-updated') {
+            log.log('🔄 Session share access level updated');
+            this.sharedSessionsSync.invalidate();
+        } else if (updateData.body.t === 'session-share-revoked') {
+            log.log('🚫 Session share revoked');
+            const sessionId = updateData.body.sessionId;
+            // Remove the session if we only had it through sharing
+            const session = storage.getState().sessions[sessionId];
+            if (session && session.owner !== this.serverID) {
+                storage.getState().deleteSession(sessionId);
+                this.encryption.removeSessionEncryption(sessionId);
+            }
         } else if (updateData.body.t === 'update-session') {
             const session = storage.getState().sessions[updateData.body.id];
             if (session) {

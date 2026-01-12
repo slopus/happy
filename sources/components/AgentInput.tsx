@@ -64,6 +64,7 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
+    disabled?: boolean;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -699,6 +700,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
                             maxHeight={120}
+                            editable={!props.disabled}
                         />
                     </View>
 
@@ -902,7 +904,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         props.onMicPress?.();
                                     }
                                 }}
-                                disabled={props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)}
+                                disabled={props.disabled || props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)}
                             >
                                 {props.isSending ? (
                                     <ActivityIndicator
