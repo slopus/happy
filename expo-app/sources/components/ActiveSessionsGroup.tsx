@@ -12,7 +12,7 @@ import { StatusDot } from './StatusDot';
 import { useAllMachines, useSetting } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { machineSpawnNewSession, sessionKill } from '@/sync/ops';
+import { machineSpawnNewSession, sessionArchive } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { CompactGitStatus } from './CompactGitStatus';
@@ -345,7 +345,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const swipeEnabled = Platform.OS !== 'web';
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
-        const result = await sessionKill(session.id);
+        const result = await sessionArchive(session.id);
         if (!result.success) {
             throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
         }

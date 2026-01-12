@@ -638,6 +638,39 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
     }
 }
 
+export interface SessionArchiveResponse {
+    success: boolean;
+    message?: string;
+}
+
+/**
+ * Archive a session.
+ *
+ * Primary behavior: kill the session process (same as previous "archive" behavior).
+ * Fallback: if the session RPC method is unavailable (e.g. session crashed / disconnected),
+ * mark the session inactive server-side so it no longer appears "online".
+ */
+export async function sessionArchive(sessionId: string): Promise<SessionArchiveResponse> {
+    const killResult = await sessionKill(sessionId);
+    if (killResult.success) {
+        return { success: true };
+    }
+
+    const message = killResult.message || 'Failed to archive session';
+    const isRpcMethodUnavailable = message.toLowerCase().includes('rpc method not available');
+
+    if (isRpcMethodUnavailable) {
+        try {
+            apiSocket.send('session-end', { sid: sessionId, time: Date.now() });
+        } catch {
+            // Best-effort: server will also eventually time out stale sessions.
+        }
+        return { success: true };
+    }
+
+    return { success: false, message };
+}
+
 /**
  * Permanently delete a session from the server
  * This will remove the session and all its associated data (messages, usage reports, access keys)
@@ -678,5 +711,6 @@ export type {
     SessionGetDirectoryTreeResponse,
     TreeNode,
     SessionRipgrepResponse,
-    SessionKillResponse
+    SessionKillResponse,
+    SessionArchiveResponse
 };
