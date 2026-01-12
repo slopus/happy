@@ -14,6 +14,7 @@ import { AIBackendProfile, validateProfileForAgent, getProfileEnvironmentVariabl
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { profileSyncService } from '@/sync/profileSync';
+import { randomUUID } from 'expo-crypto';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -700,6 +701,16 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const [profileApiKeys, setProfileApiKeys] = useState<Record<string, Record<string, string>>>({});
     const [profileConfigs, setProfileConfigs] = useState<Record<string, Record<string, string>>>({});
 
+    function profileNeedsConfiguration(profileId: string | null): boolean {
+        if (!profileId) return false; // Manual configuration doesn't need API keys
+        const profile = allProfiles.find(p => p.id === profileId);
+        if (!profile) return false;
+
+        // Check if profile is one that requires API keys
+        const profilesNeedingKeys = ['openai', 'azure-openai', 'azure-openai-codex', 'zai', 'microsoft', 'deepseek'];
+        return profilesNeedingKeys.includes(profile.id);
+    }
+
     // Dynamic steps based on whether profile needs configuration
     const steps: WizardStep[] = React.useMemo(() => {
         const baseSteps: WizardStep[] = experimentsEnabled
@@ -719,18 +730,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         }
 
         return baseSteps;
-    }, [experimentsEnabled, selectedProfileId]);
-
-    // Helper function to check if profile needs API keys
-    const profileNeedsConfiguration = (profileId: string | null): boolean => {
-        if (!profileId) return false; // Manual configuration doesn't need API keys
-        const profile = allProfiles.find(p => p.id === profileId);
-        if (!profile) return false;
-
-        // Check if profile is one that requires API keys
-        const profilesNeedingKeys = ['openai', 'azure-openai', 'azure-openai-codex', 'zai', 'microsoft', 'deepseek'];
-        return profilesNeedingKeys.includes(profile.id);
-    };
+    }, [experimentsEnabled, selectedProfileId, allProfiles]);
 
     // Get required fields for profile configuration
     const getProfileRequiredFields = (profileId: string | null): Array<{key: string, label: string, placeholder: string, isPassword?: boolean}> => {
@@ -870,6 +870,17 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const isFirstStep = currentStepIndex === 0;
     const isLastStep = currentStepIndex === steps.length - 1;
 
+    React.useEffect(() => {
+        // Guard: if the user changes profiles such that profileConfig is no longer required,
+        // advance to the next step (or reset to the first step if currentStep is invalid).
+        if (currentStep === 'profileConfig' && (!selectedProfileId || !profileNeedsConfiguration(selectedProfileId))) {
+            const nextStep = steps[currentStepIndex + 1] ?? steps[0] ?? 'profile';
+            if (nextStep !== currentStep) {
+                setCurrentStep(nextStep);
+            }
+        }
+    }, [currentStep, currentStepIndex, selectedProfileId, steps]);
+
     // Handler for "Use Profile As-Is" - quick session creation
     const handleUseProfileAsIs = (profile: AIBackendProfile) => {
         setSelectedProfileId(profile.id);
@@ -932,7 +943,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         ).then((profileName) => {
             if (profileName && profileName.trim()) {
                 const newProfile: AIBackendProfile = {
-                    id: crypto.randomUUID(),
+                    id: randomUUID(),
                     name: profileName.trim(),
                     description: 'Custom AI profile',
                     anthropicConfig: {},
@@ -976,7 +987,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             if (newName && newName.trim()) {
                 const duplicatedProfile: AIBackendProfile = {
                     ...profile,
-                    id: crypto.randomUUID(),
+                    id: randomUUID(),
                     name: newName.trim(),
                     description: profile.description ? `Copy of ${profile.description}` : 'Custom AI profile',
                     isBuiltIn: false,
@@ -1287,8 +1298,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 
             case 'profileConfig':
                 if (!selectedProfileId || !profileNeedsConfiguration(selectedProfileId)) {
-                    // Skip configuration if no profile selected or profile doesn't need configuration
-                    setCurrentStep(steps[currentStepIndex + 1]);
+                    // No profile configuration needed; navigation effect will auto-advance.
                     return null;
                 }
 

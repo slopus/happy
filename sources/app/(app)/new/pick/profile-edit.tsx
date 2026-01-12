@@ -22,7 +22,13 @@ export default function ProfileEditScreen() {
     const profile: AIBackendProfile = React.useMemo(() => {
         if (params.profileData) {
             try {
-                return JSON.parse(decodeURIComponent(params.profileData));
+                // Params may arrive already decoded (native) or URL-encoded (web / manual encodeURIComponent).
+                // Try raw JSON first, then fall back to decodeURIComponent.
+                try {
+                    return JSON.parse(params.profileData);
+                } catch {
+                    return JSON.parse(decodeURIComponent(params.profileData));
+                }
             } catch (error) {
                 console.error('Failed to parse profile data:', error);
             }

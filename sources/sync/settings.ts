@@ -158,7 +158,7 @@ export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claud
  *
  * 4. DAEMON EXPANDS ${VAR} from its process.env when spawning session:
  *    - Tmux mode: Shell expands via `export ANTHROPIC_AUTH_TOKEN="${Z_AI_AUTH_TOKEN}";` before launching
- *    - Non-tmux mode: Node.js spawn with env: { ...process.env, ...profileEnvVars } (shell expansion in child)
+ *    - Non-tmux mode: daemon must interpolate ${VAR} / ${VAR:-default} in env values before calling spawn() (Node does not expand placeholders)
  *
  * 5. SESSION RECEIVES actual expanded values:
  *    ANTHROPIC_AUTH_TOKEN=sk-real-key (expanded from daemon's Z_AI_AUTH_TOKEN, not literal ${Z_AI_AUTH_TOKEN})
@@ -172,7 +172,7 @@ export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claud
  * - Each session uses its selected backend for its entire lifetime (no mid-session switching)
  * - Keep secrets in shell environment, not in GUI/profile storage
  *
- * PRIORITY ORDER when spawning (daemon/run.ts):
+ * PRIORITY ORDER when spawning:
  * Final env = { ...daemon.process.env, ...expandedProfileVars, ...authVars }
  * authVars override profile, profile overrides daemon.process.env
  */

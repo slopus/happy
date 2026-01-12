@@ -326,7 +326,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     title={t('settings.profiles')}
                     subtitle={t('settings.profilesSubtitle')}
                     icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
-                    onPress={() => router.push('/settings/profiles')}
+                    onPress={() => router.push('/(app)/settings/profiles')}
                 />
                 {experiments && (
                     <Item

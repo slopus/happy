@@ -124,6 +124,9 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
             const newProfile: AIBackendProfile = {
                 ...profile,
                 id: randomUUID(), // Generate new UUID for custom profile
+                isBuiltIn: false,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
             };
 
             // Check for duplicate names (excluding the new profile)

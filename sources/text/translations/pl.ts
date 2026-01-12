@@ -926,7 +926,7 @@ export const pl: TranslationStructure = {
         enterTmuxTempDir: 'Wprowadź ścieżkę do katalogu tymczasowego',
         tmuxUpdateEnvironment: 'Aktualizuj środowisko automatycznie',
         nameRequired: 'Nazwa profilu jest wymagana',
-        deleteConfirm: 'Czy na pewno chcesz usunąć profil "{name}"?',
+        deleteConfirm: ({ name }: { name: string }) => `Czy na pewno chcesz usunąć profil "${name}"?`,
         editProfile: 'Edytuj Profil',
         addProfileTitle: 'Dodaj Nowy Profil',
         delete: {
