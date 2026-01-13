@@ -336,11 +336,14 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedPermissionMode = savedPermissionModes[session.id];
                 const existingModelMode = state.sessions[session.id]?.modelMode;
                 const savedModelMode = savedModelModes[session.id];
+                const existingPermissionModeUpdatedAt = state.sessions[session.id]?.permissionModeUpdatedAt;
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
                     permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default',
+                    // Preserve local coordination timestamp (not synced to server)
+                    permissionModeUpdatedAt: existingPermissionModeUpdatedAt ?? null,
                     modelMode: existingModelMode || savedModelMode || session.modelMode || 'default',
                 };
             });
@@ -522,13 +525,38 @@ export const storage = create<StorageState>()((set, get) => {
                 const messagesArray = Object.values(mergedMessagesMap)
                     .sort((a, b) => b.createdAt - a.createdAt);
 
+                // Infer session permission mode from the most recent user message meta.
+                // This makes permission mode "follow" the session across devices/machines without adding server fields.
+                // Local user changes should win until the next user message is sent (tracked by permissionModeUpdatedAt).
+                let inferredPermissionMode: PermissionMode | null = null;
+                let inferredPermissionModeAt: number | null = null;
+                for (const message of messagesArray) {
+                    if (message.kind !== 'user-text') continue;
+                    const mode = message.meta?.permissionMode as PermissionMode | undefined;
+                    if (!mode) continue;
+                    inferredPermissionMode = mode;
+                    inferredPermissionModeAt = message.createdAt;
+                    break;
+                }
+
                 // Update session with todos and latestUsage
                 // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
                 // This ensures latestUsage is available immediately on load, even before messages are fully loaded
                 let updatedSessions = state.sessions;
                 const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage) && session;
 
-                if (needsUpdate) {
+                const canInferPermissionMode = Boolean(
+                    session &&
+                    inferredPermissionMode &&
+                    inferredPermissionModeAt &&
+                    inferredPermissionModeAt > (session.permissionModeUpdatedAt ?? 0)
+                );
+
+                const shouldWritePermissionMode =
+                    canInferPermissionMode &&
+                    (session!.permissionMode ?? 'default') !== inferredPermissionMode;
+
+                if (needsUpdate || shouldWritePermissionMode) {
                     updatedSessions = {
                         ...state.sessions,
                         [sessionId]: {
@@ -537,9 +565,26 @@ export const storage = create<StorageState>()((set, get) => {
                             // Copy latestUsage from reducerState to make it immediately available
                             latestUsage: existingSession.reducerState.latestUsage ? {
                                 ...existingSession.reducerState.latestUsage
-                            } : session.latestUsage
+                            } : session.latestUsage,
+                            ...(shouldWritePermissionMode && {
+                                permissionMode: inferredPermissionMode,
+                                permissionModeUpdatedAt: inferredPermissionModeAt
+                            })
                         }
                     };
+
+                    // Persist permission modes (only non-default values to save space)
+                    // Note: this includes modes inferred from session messages so they load instantly on app restart.
+                    if (shouldWritePermissionMode) {
+                        const allModes: Record<string, PermissionMode> = {};
+                        Object.entries(updatedSessions).forEach(([id, sess]) => {
+                            if (sess.permissionMode && sess.permissionMode !== 'default') {
+                                allModes[id] = sess.permissionMode;
+                            }
+                        });
+                        saveSessionPermissionModes(allModes);
+                        sessionPermissionModes = allModes;
+                    }
                 }
 
                 return {
@@ -817,12 +862,17 @@ export const storage = create<StorageState>()((set, get) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
 
+            const now = Date.now();
+
             // Update the session with the new permission mode
             const updatedSessions = {
                 ...state.sessions,
                 [sessionId]: {
                     ...session,
-                    permissionMode: mode
+                    permissionMode: mode,
+                    // Mark as locally updated so older message-based inference cannot override this selection.
+                    // Newer user messages (from any device) will still take over.
+                    permissionModeUpdatedAt: now
                 }
             };
 
