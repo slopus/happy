@@ -187,7 +187,7 @@ export function EnvironmentVariablesList({
                 )}
             </ItemGroup>
 
-            <View style={{ width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center' }}>
+            <View style={{ width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center', marginTop: 12 }}>
                 {environmentVariables.map((envVar, index) => {
                     const varNameFromValue = extractVarNameFromValue(envVar.value);
                     const docs = getDocumentation(varNameFromValue || envVar.name);

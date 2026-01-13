@@ -191,7 +191,7 @@ export function ProfileEditForm({
                                 onChangeText={setTmuxSession}
                             />
                         </View>
-                        <View style={[styles.inputContainer, { paddingTop: 0, paddingBottom: 0 }]}>
+                        <View style={[styles.inputContainer, { paddingTop: 0, paddingBottom: 16 }]}>
                             <Text style={styles.fieldLabel}>Tmux Temp Directory ({t('common.optional')})</Text>
                             <TextInput
                                 style={styles.textInput}
