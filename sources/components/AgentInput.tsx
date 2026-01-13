@@ -414,6 +414,29 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Settings modal state
     const [showSettings, setShowSettings] = React.useState(false);
 
+    const permissionBadgeLabel = React.useMemo(() => {
+        const mode = props.permissionMode ?? 'default';
+
+        if (isCodex) {
+            return mode === 'default' ? t('agentInput.codexPermissionMode.default') :
+                mode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
+                    mode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
+                        mode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : '';
+        }
+
+        if (isGemini) {
+            return mode === 'default' ? t('agentInput.geminiPermissionMode.default') :
+                mode === 'acceptEdits' ? t('agentInput.geminiPermissionMode.badgeAcceptAllEdits') :
+                    mode === 'bypassPermissions' ? t('agentInput.geminiPermissionMode.badgeBypassAllPermissions') :
+                        mode === 'plan' ? t('agentInput.geminiPermissionMode.badgePlanMode') : '';
+        }
+
+        return mode === 'default' ? t('agentInput.permissionMode.default') :
+            mode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
+                mode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
+                    mode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : '';
+    }, [isCodex, isGemini, props.permissionMode]);
+
     // Handle settings button press
     const handleSettingsPress = React.useCallback(() => {
         hapticsLight();
@@ -657,11 +680,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
 
                 {/* Connection status, context warning, and permission mode */}
-                {(props.connectionStatus || contextWarning || props.permissionMode) && (
+                {(props.connectionStatus || contextWarning) && (
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
+                        justifyContent: 'flex-start',
                         paddingHorizontal: 16,
                         paddingBottom: 4,
                         minHeight: 20, // Fixed minimum height to prevent jumping
@@ -692,42 +715,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     ...Typography.default()
                                 }}>
                                     {props.connectionStatus ? '• ' : ''}{contextWarning.text}
-                                </Text>
-                            )}
-                        </View>
-                        <View style={{
-                            flexDirection: 'column',
-                            alignItems: 'flex-end',
-                            minWidth: 150, // Fixed minimum width to prevent layout shift
-                        }}>
-                            {props.permissionMode && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
-                                        props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
-                                            props.permissionMode === 'plan' ? theme.colors.permission.plan :
-                                                props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
-                                                    props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
-                                                        props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
-                                                            theme.colors.textSecondary, // Use secondary text color for default
-                                    ...Typography.default()
-                                }}>
-                                    {isCodex ? (
-                                        props.permissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
-                                            props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
-                                                props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
-                                                    props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
-                                    ) : isGemini ? (
-                                        props.permissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') :
-                                            props.permissionMode === 'acceptEdits' ? t('agentInput.geminiPermissionMode.badgeAcceptAllEdits') :
-                                                props.permissionMode === 'bypassPermissions' ? t('agentInput.geminiPermissionMode.badgeBypassAllPermissions') :
-                                                    props.permissionMode === 'plan' ? t('agentInput.geminiPermissionMode.badgePlanMode') : ''
-                                    ) : (
-                                        props.permissionMode === 'default' ? t('agentInput.permissionMode.default') :
-                                            props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
-                                                props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
-                                                    props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
-                                    )}
                                 </Text>
                             )}
                         </View>
@@ -767,11 +754,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     flexDirection: 'row',
                                     alignItems: 'center',
                                     borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 8,
+                                            paddingHorizontal: 10,
                                     paddingVertical: 6,
                                             justifyContent: 'center',
                                     height: 32,
                                     opacity: p.pressed ? 0.7 : 1,
+                                            gap: 6,
                                 })}
                             >
                                         <Octicons
@@ -779,6 +767,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             size={16}
                                             color={theme.colors.button.secondary.tint}
                                 />
+                                        <Text style={{
+                                            fontSize: 13,
+                                            color: theme.colors.button.secondary.tint,
+                                            fontWeight: '600',
+                                            ...Typography.default('semiBold'),
+                                        }}>
+                                            {permissionBadgeLabel}
+                                        </Text>
                             </Pressable>
                         )}
 
@@ -890,42 +886,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     </Pressable>
                                 )}
 
-                                {/* Path selector button */}
-                                {props.currentPath && props.onPathClick && (
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onPathClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-                                        <Ionicons
-                                            name="folder-outline"
-                                            size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {props.currentPath}
-                                        </Text>
-                                    </Pressable>
-                                )}
-
                                 {/* Abort button */}
                                 {props.onAbort && (
                                     <Shaker ref={shakerRef}>
@@ -1030,6 +990,46 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     </Pressable>
                                 </View>
                             </View>
+
+                            {/* Row 2: Path selector (separate line to match pre-PR272 layout) */}
+                            {props.currentPath && props.onPathClick && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <View style={[styles.actionButtonsLeft, { flex: 0 }]}>
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onPathClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => ({
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                borderRadius: Platform.select({ default: 16, android: 20 }),
+                                                paddingHorizontal: 10,
+                                                paddingVertical: 6,
+                                                justifyContent: 'center',
+                                                height: 32,
+                                                opacity: p.pressed ? 0.7 : 1,
+                                                gap: 6,
+                                            })}
+                                        >
+                                            <Ionicons
+                                                name="folder-outline"
+                                                size={14}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={{
+                                                fontSize: 13,
+                                                color: theme.colors.button.secondary.tint,
+                                                fontWeight: '600',
+                                                ...Typography.default('semiBold'),
+                                            }}>
+                                                {props.currentPath}
+                                            </Text>
+                                        </Pressable>
+                                    </View>
+                                </View>
+                            )}
                         </View>
                     </View>
                 </View>

@@ -1139,14 +1139,15 @@ function NewSessionWizard() {
                         style={{
                             position: 'absolute',
                             top: safeArea.top + 8,
-                            left: 8,
+                            right: 8,
                             zIndex: 1000,
-                            padding: 8,
-                            borderRadius: 16,
-                            backgroundColor: theme.colors.surface,
+                            backgroundColor: 'transparent',
+                            borderWidth: 0,
+                            padding: 0,
+                            ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
                         }}
                     >
-                        <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
+                        <Ionicons name="close" size={24} color={theme.colors.header.tint} />
                     </Pressable>
                 )}
                 <View style={{ flex: 1, justifyContent: 'flex-end' }}>
@@ -1209,14 +1210,15 @@ function NewSessionWizard() {
                     style={{
                         position: 'absolute',
                         top: safeArea.top + 8,
-                        left: 8,
+                        right: 8,
                         zIndex: 1000,
-                        padding: 8,
-                        borderRadius: 16,
-                        backgroundColor: theme.colors.surface,
+                        backgroundColor: 'transparent',
+                        borderWidth: 0,
+                        padding: 0,
+                        ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
                     }}
                 >
-                    <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
+                    <Ionicons name="close" size={24} color={theme.colors.header.tint} />
                 </Pressable>
             )}
             <View style={{ flex: 1 }}>
