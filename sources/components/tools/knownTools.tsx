@@ -612,11 +612,40 @@ export const knownTools = {
         }).partial().loose()
     },
     'edit': {
-        title: t('tools.names.editFile'),
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            // Gemini sends data in nested structure, try multiple locations
+            let filePath: string | undefined;
+            
+            // 1. Check toolCall.content[0].path
+            if (opts.tool.input?.toolCall?.content?.[0]?.path) {
+                filePath = opts.tool.input.toolCall.content[0].path;
+            }
+            // 2. Check toolCall.title (has nice "Writing to ..." format)
+            else if (opts.tool.input?.toolCall?.title) {
+                return opts.tool.input.toolCall.title;
+            }
+            // 3. Check input[0].path (array format)
+            else if (Array.isArray(opts.tool.input?.input) && opts.tool.input.input[0]?.path) {
+                filePath = opts.tool.input.input[0].path;
+            }
+            // 4. Check direct path field
+            else if (typeof opts.tool.input?.path === 'string') {
+                filePath = opts.tool.input.path;
+            }
+            
+            if (filePath) {
+                return resolvePath(filePath, opts.metadata);
+            }
+            return t('tools.names.editFile');
+        },
         icon: ICON_EDIT,
-        minimal: true,
         isMutable: true,
-        input: z.object({}).partial().loose()
+        input: z.object({
+            path: z.string().describe('The file path to edit'),
+            oldText: z.string().describe('The text to replace'),
+            newText: z.string().describe('The new text'),
+            type: z.string().optional().describe('Type of edit (diff)')
+        }).partial().loose()
     },
     'shell': {
         title: t('tools.names.terminal'),
@@ -624,6 +653,36 @@ export const knownTools = {
         minimal: true,
         isMutable: true,
         input: z.object({}).partial().loose()
+    },
+    'execute': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            // Gemini sends nice title in toolCall.title
+            if (opts.tool.input?.toolCall?.title) {
+                // Title is like "rm file.txt [cwd /path] (description)"
+                // Extract just the command part before [
+                const fullTitle = opts.tool.input.toolCall.title;
+                const bracketIdx = fullTitle.indexOf(' [');
+                if (bracketIdx > 0) {
+                    return fullTitle.substring(0, bracketIdx);
+                }
+                return fullTitle;
+            }
+            return t('tools.names.terminal');
+        },
+        icon: ICON_TERMINAL,
+        isMutable: true,
+        input: z.object({}).partial().loose(),
+        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            // Extract description from parentheses at the end
+            if (opts.tool.input?.toolCall?.title) {
+                const title = opts.tool.input.toolCall.title;
+                const parenMatch = title.match(/\(([^)]+)\)$/);
+                if (parenMatch) {
+                    return parenMatch[1];
+                }
+            }
+            return null;
+        }
     },
     'CodexPatch': {
         title: t('tools.names.applyChanges'),
