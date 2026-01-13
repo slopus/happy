@@ -195,12 +195,17 @@ export async function runGemini(opts: {
         // Don't call updateDisplayedModel here - keep current displayed model
         // The backend will use the correct model from env/config/default
       } else if (message.meta.model) {
+        const previousModel = currentModel;
         messageModel = message.meta.model;
         currentModel = messageModel;
-        // Save model to config file so it persists across sessions
-        updateDisplayedModel(messageModel, true); // Update UI and save to config
-        // Show model change message in UI (this will trigger UI re-render)
-        messageBuffer.addMessage(`Model changed to: ${messageModel}`, 'system');
+        // Only update UI and show message if model actually changed
+        if (previousModel !== messageModel) {
+          // Save model to config file so it persists across sessions
+          updateDisplayedModel(messageModel, true); // Update UI and save to config
+          // Show model change message in UI (this will trigger UI re-render)
+          messageBuffer.addMessage(`Model changed to: ${messageModel}`, 'system');
+          logger.debug(`[Gemini] Model changed from ${previousModel} to ${messageModel}`);
+        }
       }
       // If message.meta.model is undefined, keep currentModel
     }
@@ -285,7 +290,7 @@ export async function runGemini(opts: {
     logger.debug('[Gemini] Abort requested - stopping current task');
     
     // Send turn_aborted event (like Codex) when abort is requested
-    session.sendCodexMessage({
+    session.sendAgentMessage('gemini', {
       type: 'turn_aborted',
       id: randomUUID(),
     });
@@ -450,13 +455,13 @@ export async function runGemini(opts: {
   // Create reasoning processor for handling thinking/reasoning chunks
   const reasoningProcessor = new GeminiReasoningProcessor((message) => {
     // Callback to send messages directly from the processor
-    session.sendCodexMessage(message);
+    session.sendAgentMessage('gemini', message);
   });
   
   // Create diff processor for handling file edit events and diff tracking
   const diffProcessor = new GeminiDiffProcessor((message) => {
     // Callback to send messages directly from the processor
-    session.sendCodexMessage(message);
+    session.sendAgentMessage('gemini', message);
   });
   
   // Update permission handler when permission mode changes
@@ -468,6 +473,10 @@ export async function runGemini(opts: {
   let accumulatedResponse = '';
   let isResponseInProgress = false;
   let currentResponseMessageId: string | null = null; // Track the message ID for current response
+  let hadToolCallInTurn = false; // Track if any tool calls happened in this turn (for task_complete)
+  let pendingChangeTitle = false; // Track if we're waiting for change_title to complete
+  let changeTitleCompleted = false; // Track if change_title was completed in this turn
+  let taskStartedSent = false; // Track if task_started was sent this turn (prevent duplicates)
 
   /**
    * Set up message handler for Gemini backend
@@ -506,7 +515,7 @@ export async function runGemini(opts: {
           logger.debug(`[gemini] ⚠️ Error status received: ${msg.detail || 'Unknown error'}`);
           
           // Send turn_aborted event (like Codex) when error occurs
-          session.sendCodexMessage({
+          session.sendAgentMessage('gemini', {
             type: 'turn_aborted',
             id: randomUUID(),
           });
@@ -516,11 +525,15 @@ export async function runGemini(opts: {
           thinking = true;
           session.keepAlive(thinking, 'remote');
           
-          // Send task_started event (like Codex) when agent starts working
-          session.sendCodexMessage({
-            type: 'task_started',
-            id: randomUUID(),
-          });
+          // Send task_started event ONCE per turn (like Codex) when agent starts working
+          // Gemini may go running -> idle -> running multiple times during a turn
+          if (!taskStartedSent) {
+            session.sendAgentMessage('gemini', {
+              type: 'task_started',
+              id: randomUUID(),
+            });
+            taskStartedSent = true;
+          }
           
           // Show thinking indicator in UI when agent starts working (like Codex)
           // This will be updated with actual thinking text when agent_thought_chunk events arrive
@@ -531,68 +544,15 @@ export async function runGemini(opts: {
           // Don't reset accumulator here - tool calls can happen during a response
           // Accumulator will be reset when a new prompt is sent (in the main loop)
         } else if (msg.status === 'idle' || msg.status === 'stopped') {
-          if (thinking) {
-            // Clear thinking indicator when agent finishes
-            thinking = false;
-            // Remove thinking message from UI when agent finishes (like Codex)
-            // The thinking messages will be replaced by actual response
-          }
-          thinking = false;
-          session.keepAlive(thinking, 'remote');
+          // DON'T change thinking state here - Gemini makes pauses between chunks
+          // which causes multiple idle events. thinking will be set to false ONCE
+          // in the finally block when the turn is complete.
+          // This prevents UI status flickering between "working" and "online"
           
           // Complete reasoning processor when status becomes idle (like Codex)
           // Only complete if there's actually reasoning content to complete
           // Skip if this is just the initial idle status after session creation
-          const reasoningCompleted = reasoningProcessor.complete();
-          
-          // Send task_complete event (like Codex) when agent finishes
-          // Only send if this is a real task completion (not initial idle)
-          if (reasoningCompleted || isResponseInProgress) {
-            session.sendCodexMessage({
-              type: 'task_complete',
-              id: randomUUID(),
-            });
-          }
-          
-          // Send accumulated response to mobile app when response is complete
-          // Status 'idle' indicates task completion (similar to Codex's task_complete)
-          if (isResponseInProgress && accumulatedResponse.trim()) {
-            // Parse options from response text (for logging/debugging)
-            // But keep options IN the text - mobile app's parseMarkdown will extract them
-            const { text: messageText, options } = parseOptionsFromText(accumulatedResponse);
-            
-            // Mobile app parses options from text via parseMarkdown, so we need to keep them in the message
-            // Re-add options XML block to the message text if options were found
-            let finalMessageText = messageText;
-            if (options.length > 0) {
-              const optionsXml = formatOptionsXml(options);
-              finalMessageText = messageText + optionsXml;
-              logger.debug(`[gemini] Found ${options.length} options in response:`, options);
-              logger.debug(`[gemini] Keeping options in message text for mobile app parsing`);
-            } else if (hasIncompleteOptions(accumulatedResponse)) {
-              // If we have incomplete options block, still send the message
-              // The mobile app will handle incomplete blocks gracefully
-              logger.debug(`[gemini] Warning: Incomplete options block detected but sending message anyway`);
-            }
-            
-            const messageId = randomUUID();
-            
-            const messagePayload: CodexMessagePayload = {
-              type: 'message',
-              message: finalMessageText, // Include options XML in text for mobile app
-              id: messageId,
-              ...(options.length > 0 && { options }),
-            };
-            
-            logger.debug(`[gemini] Sending complete message to mobile (length: ${finalMessageText.length}): ${finalMessageText.substring(0, 100)}...`);
-            logger.debug(`[gemini] Full message payload:`, JSON.stringify(messagePayload, null, 2));
-            // Use sendCodexMessage - mobile app parses options from message text via parseMarkdown
-            session.sendCodexMessage(messagePayload);
-            accumulatedResponse = '';
-            isResponseInProgress = false;
-          }
-          // Note: sendReady() is called via emitReadyIfIdle() in the finally block after prompt completes
-          // Don't call it here to avoid duplicates
+          reasoningProcessor.complete();
         } else if (msg.status === 'error') {
           thinking = false;
           session.keepAlive(thinking, 'remote');
@@ -604,16 +564,18 @@ export async function runGemini(opts: {
           const errorMessage = msg.detail || 'Unknown error';
           messageBuffer.addMessage(`Error: ${errorMessage}`, 'status');
           
-          // Use sendCodexMessage for consistency with codex format
-          session.sendCodexMessage({
+          // Use sendAgentMessage for consistency with ACP format
+          session.sendAgentMessage('gemini', {
             type: 'message',
             message: `Error: ${errorMessage}`,
-            id: randomUUID(),
           });
         }
         break;
 
       case 'tool-call':
+        // Track that we had tool calls in this turn (for task_complete)
+        hadToolCallInTurn = true;
+        
         // Show tool call in UI like Codex does
         const toolArgs = msg.args ? JSON.stringify(msg.args).substring(0, 100) : '';
         const isInvestigationTool = msg.toolName === 'codebase_investigator' || 
@@ -625,7 +587,7 @@ export async function runGemini(opts: {
         }
         
         messageBuffer.addMessage(`Executing: ${msg.toolName}${toolArgs ? ` ${toolArgs}${toolArgs.length >= 100 ? '...' : ''}` : ''}`, 'tool');
-        session.sendCodexMessage({
+        session.sendAgentMessage('gemini', {
           type: 'tool-call',
           name: msg.toolName,
           callId: msg.callId,
@@ -635,6 +597,14 @@ export async function runGemini(opts: {
         break;
 
       case 'tool-result':
+        // Track change_title completion
+        if (msg.toolName === 'change_title' || 
+            msg.callId?.includes('change_title') ||
+            msg.toolName === 'happy__change_title') {
+          changeTitleCompleted = true;
+          logger.debug('[gemini] change_title completed');
+        }
+        
         // Show tool result in UI like Codex does
         // Check if result contains error information
         const isError = msg.result && typeof msg.result === 'object' && 'error' in msg.result;
@@ -666,8 +636,8 @@ export async function runGemini(opts: {
           messageBuffer.addMessage(`Result: ${truncatedResult}`, 'result');
         }
         
-        session.sendCodexMessage({
-          type: 'tool-call-result',
+        session.sendAgentMessage('gemini', {
+          type: 'tool-result',
           callId: msg.callId,
           output: msg.result,
           id: randomUUID(),
@@ -681,11 +651,11 @@ export async function runGemini(opts: {
         // msg.diff is optional (diff?: string), so it can be undefined
         diffProcessor.processFsEdit(msg.path || '', msg.description, msg.diff);
         
-        session.sendCodexMessage({
+        session.sendAgentMessage('gemini', {
           type: 'file-edit',
           description: msg.description,
           diff: msg.diff,
-          path: msg.path,
+          filePath: msg.path || 'unknown',
           id: randomUUID(),
         });
         break;
@@ -696,7 +666,7 @@ export async function runGemini(opts: {
           // Forward token count to mobile app (like Codex)
           // Note: Gemini ACP may not provide token_count events directly,
           // but we handle them if they come from the backend
-          session.sendCodexMessage({
+          session.sendAgentMessage('gemini', {
             type: 'token_count',
             ...(msg as any),
             id: randomUUID(),
@@ -706,21 +676,24 @@ export async function runGemini(opts: {
 
       case 'terminal-output':
         messageBuffer.addMessage(msg.data, 'result');
-        session.sendCodexMessage({
+        session.sendAgentMessage('gemini', {
           type: 'terminal-output',
           data: msg.data,
-          id: randomUUID(),
+          callId: (msg as any).callId || randomUUID(),
         });
         break;
 
       case 'permission-request':
         // Forward permission request to mobile app
-        session.sendCodexMessage({
+        // Note: toolName is in msg.payload.toolName (from AcpBackend), 
+        // msg.reason also contains the tool name
+        const payload = (msg as any).payload || {};
+        session.sendAgentMessage('gemini', {
           type: 'permission-request',
           permissionId: msg.id,
-          reason: msg.reason,
-          payload: msg.payload,
-          id: randomUUID(),
+          toolName: payload.toolName || (msg as any).reason || 'unknown',
+          description: (msg as any).reason || payload.toolName || '',
+          options: payload,
         });
         break;
 
@@ -734,7 +707,7 @@ export async function runGemini(opts: {
         logger.debug(`[gemini] Exec approval request received: ${callId}`);
         messageBuffer.addMessage(`Exec approval requested: ${callId}`, 'tool');
         
-        session.sendCodexMessage({
+        session.sendAgentMessage('gemini', {
           type: 'tool-call',
           name: 'GeminiBash', // Similar to Codex's CodexBash
           callId: callId,
@@ -755,7 +728,7 @@ export async function runGemini(opts: {
         messageBuffer.addMessage(`Modifying ${filesMsg}...`, 'tool');
         logger.debug(`[gemini] Patch apply begin: ${patchCallId}, files: ${changeCount}`);
         
-        session.sendCodexMessage({
+        session.sendAgentMessage('gemini', {
           type: 'tool-call',
           name: 'GeminiPatch', // Similar to Codex's CodexPatch
           callId: patchCallId,
@@ -783,8 +756,8 @@ export async function runGemini(opts: {
         }
         logger.debug(`[gemini] Patch apply end: ${patchEndCallId}, success: ${success}`);
         
-        session.sendCodexMessage({
-          type: 'tool-call-result',
+        session.sendAgentMessage('gemini', {
+          type: 'tool-result',
           callId: patchEndCallId,
           output: {
             stdout,
@@ -822,10 +795,9 @@ export async function runGemini(opts: {
             // This ensures user sees progress during long reasoning operations
           }
           // Also forward to mobile for UI feedback
-          session.sendCodexMessage({
+          session.sendAgentMessage('gemini', {
             type: 'thinking',
             text: thinkingText,
-            id: randomUUID(),
           });
         }
         break;
@@ -983,12 +955,20 @@ export async function runGemini(opts: {
         if (!acpSessionId) {
           throw new Error('ACP session not started');
         }
-        
+         
         // Reset accumulator when sending a new prompt (not when tool calls start)
         // Reset accumulated response for new prompt
         // This ensures a new assistant message will be created (not updating previous one)
         accumulatedResponse = '';
         isResponseInProgress = false;
+        hadToolCallInTurn = false;
+        taskStartedSent = false; // Reset so new turn can send task_started
+        
+        // Track if this prompt contains change_title instruction
+        // If so, don't send task_complete until change_title is completed
+        pendingChangeTitle = message.message.includes('change_title') || 
+                             message.message.includes('happy__change_title');
+        changeTitleCompleted = false;
         
         if (!geminiBackend || !acpSessionId) {
           throw new Error('Gemini backend or session not initialized');
@@ -1000,8 +980,71 @@ export async function runGemini(opts: {
         
         logger.debug(`[gemini] Sending prompt to Gemini (length: ${promptToSend.length}): ${promptToSend.substring(0, 100)}...`);
         logger.debug(`[gemini] Full prompt: ${promptToSend}`);
-        await geminiBackend.sendPrompt(acpSessionId, promptToSend);
-        logger.debug('[gemini] Prompt sent successfully');
+        
+        // Retry logic for transient Gemini API errors (empty response, internal errors)
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY_MS = 2000;
+        let lastError: unknown = null;
+        
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+          try {
+            await geminiBackend.sendPrompt(acpSessionId, promptToSend);
+            logger.debug('[gemini] Prompt sent successfully');
+            
+            // Wait for Gemini to finish responding (all chunks received + final idle)
+            // This ensures we don't send task_complete until response is truly done
+            if (geminiBackend.waitForResponseComplete) {
+              await geminiBackend.waitForResponseComplete(120000);
+              logger.debug('[gemini] Response complete');
+            }
+            
+            break; // Success, exit retry loop
+          } catch (promptError) {
+            lastError = promptError;
+            const errObj = promptError as any;
+            const errorDetails = errObj?.data?.details || errObj?.details || errObj?.message || '';
+            const errorCode = errObj?.code;
+            
+            // Check for quota exhausted - this is NOT retryable
+            const isQuotaError = errorDetails.includes('exhausted') || 
+                                 errorDetails.includes('quota') ||
+                                 errorDetails.includes('capacity');
+            if (isQuotaError) {
+              // Extract reset time from error message like "Your quota will reset after 3h20m35s."
+              const resetTimeMatch = errorDetails.match(/reset after (\d+h)?(\d+m)?(\d+s)?/i);
+              let resetTimeMsg = '';
+              if (resetTimeMatch) {
+                const parts = resetTimeMatch.slice(1).filter(Boolean).join('');
+                resetTimeMsg = ` Quota resets in ${parts}.`;
+              }
+              const quotaMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-2.5-flash-lite) or wait for quota reset.`;
+              messageBuffer.addMessage(quotaMsg, 'status');
+              session.sendAgentMessage('gemini', { type: 'message', message: quotaMsg });
+              throw promptError; // Don't retry quota errors
+            }
+            
+            // Check if this is a retryable error (empty response, internal error -32603)
+            const isEmptyResponseError = errorDetails.includes('empty response') || 
+                                         errorDetails.includes('Model stream ended');
+            const isInternalError = errorCode === -32603;
+            const isRetryable = isEmptyResponseError || isInternalError;
+            
+            if (isRetryable && attempt < MAX_RETRIES) {
+              logger.debug(`[gemini] Retryable error on attempt ${attempt}/${MAX_RETRIES}: ${errorDetails}`);
+              messageBuffer.addMessage(`Gemini returned empty response, retrying (${attempt}/${MAX_RETRIES})...`, 'status');
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+              continue;
+            }
+            
+            // Not retryable or max retries reached
+            throw promptError;
+          }
+        }
+        
+        if (lastError && MAX_RETRIES > 1) {
+          // If we had errors but eventually succeeded, log it
+          logger.debug('[gemini] Prompt succeeded after retries');
+        }
         
         // Mark as not first message after sending prompt
         if (first) {
@@ -1033,6 +1076,11 @@ export async function runGemini(opts: {
               const currentModel = displayedModel || 'gemini-2.5-pro';
               errorMsg = `Model "${currentModel}" not found. Available models: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite`;
             }
+            // Check for empty response / internal error after retries exhausted
+            else if (errorCode === -32603 || 
+                     errorDetails.includes('empty response') || errorDetails.includes('Model stream ended')) {
+              errorMsg = 'Gemini API returned empty response after retries. This is a temporary issue - please try again.';
+            }
             // Check for rate limit error (429) - multiple possible formats
             else if (errorCode === 429 || 
                      errorDetails.includes('429') || errorMessage.includes('429') || errorString.includes('429') ||
@@ -1041,9 +1089,17 @@ export async function runGemini(opts: {
                      errorString.includes('rateLimitExceeded') || errorString.includes('RESOURCE_EXHAUSTED')) {
               errorMsg = 'Gemini API rate limit exceeded. Please wait a moment and try again. The API will retry automatically.';
             }
-            // Check for quota exceeded error
-            else if (errorDetails.includes('quota') || errorMessage.includes('quota') || errorString.includes('quota')) {
-              errorMsg = 'Gemini API daily quota exceeded. Please wait until quota resets or use a paid API key.';
+            // Check for quota/capacity exceeded error
+            else if (errorDetails.includes('quota') || errorMessage.includes('quota') || errorString.includes('quota') ||
+                     errorDetails.includes('exhausted') || errorDetails.includes('capacity')) {
+              // Extract reset time from error message like "Your quota will reset after 3h20m35s."
+              const resetTimeMatch = (errorDetails + errorMessage + errorString).match(/reset after (\d+h)?(\d+m)?(\d+s)?/i);
+              let resetTimeMsg = '';
+              if (resetTimeMatch) {
+                const parts = resetTimeMatch.slice(1).filter(Boolean).join('');
+                resetTimeMsg = ` Quota resets in ${parts}.`;
+              }
+              errorMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-2.5-flash-lite) or wait for quota reset.`;
             }
             // Check for empty error (command not found)
             else if (Object.keys(error).length === 0) {
@@ -1058,11 +1114,10 @@ export async function runGemini(opts: {
           }
           
           messageBuffer.addMessage(errorMsg, 'status');
-          // Use sendCodexMessage for consistency with codex format
-          session.sendCodexMessage({
+          // Use sendAgentMessage for consistency with ACP format
+          session.sendAgentMessage('gemini', {
             type: 'message',
             message: errorMsg,
-            id: randomUUID(),
           });
         }
       } finally {
@@ -1070,6 +1125,47 @@ export async function runGemini(opts: {
         permissionHandler.reset();
         reasoningProcessor.abort(); // Use abort to properly finish any in-progress tool calls
         diffProcessor.reset(); // Reset diff processor on turn completion
+        
+        // Send accumulated response to mobile app ONLY when turn is complete
+        // This prevents message fragmentation from Gemini's chunked responses
+        if (accumulatedResponse.trim()) {
+          const { text: messageText, options } = parseOptionsFromText(accumulatedResponse);
+          
+          // Mobile app parses options from text via parseMarkdown
+          let finalMessageText = messageText;
+          if (options.length > 0) {
+            const optionsXml = formatOptionsXml(options);
+            finalMessageText = messageText + optionsXml;
+            logger.debug(`[gemini] Found ${options.length} options in response:`, options);
+          } else if (hasIncompleteOptions(accumulatedResponse)) {
+            logger.debug(`[gemini] Warning: Incomplete options block detected`);
+          }
+          
+          const messagePayload: CodexMessagePayload = {
+            type: 'message',
+            message: finalMessageText,
+            id: randomUUID(),
+            ...(options.length > 0 && { options }),
+          };
+          
+          logger.debug(`[gemini] Sending complete message to mobile (length: ${finalMessageText.length}): ${finalMessageText.substring(0, 100)}...`);
+          session.sendAgentMessage('gemini', messagePayload);
+          accumulatedResponse = '';
+          isResponseInProgress = false;
+        }
+        
+        // Send task_complete ONCE at the end of turn (not on every idle)
+        // This signals to the UI that the agent has finished processing
+        session.sendAgentMessage('gemini', {
+          type: 'task_complete',
+          id: randomUUID(),
+        });
+        
+        // Reset tracking flags
+        hadToolCallInTurn = false;
+        pendingChangeTitle = false;
+        changeTitleCompleted = false;
+        taskStartedSent = false;
         
         thinking = false;
         session.keepAlive(thinking, 'remote');

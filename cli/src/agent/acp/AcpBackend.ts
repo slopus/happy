@@ -521,6 +521,15 @@ export class AcpBackend implements AgentBackend {
                   // Fallback to first option if no specific match
                   optionId = options[0].optionId || 'proceed_once';
                 }
+                
+                // Emit tool-result with permissionId so UI can close the timer
+                // This is needed because tool_call_update comes with a different ID
+                this.emit({
+                  type: 'tool-result',
+                  toolName,
+                  result: { status: 'approved', decision: result.decision },
+                  callId: permissionId,
+                });
               } else {
                 // Denied or aborted - find cancel option
                 const cancelOption = options.find((opt: any) => 
@@ -529,6 +538,14 @@ export class AcpBackend implements AgentBackend {
                 if (cancelOption) {
                   optionId = cancelOption.optionId || 'cancel';
                 }
+                
+                // Emit tool-result for denied/aborted
+                this.emit({
+                  type: 'tool-result',
+                  toolName,
+                  result: { status: 'denied', decision: result.decision },
+                  callId: permissionId,
+                });
               }
               
               return { outcome: { outcome: 'selected', optionId } };
@@ -631,7 +648,7 @@ export class AcpBackend implements AgentBackend {
       this.acpSessionId = sessionResponse.sessionId;
       logger.debug(`[AcpBackend] Session created: ${this.acpSessionId}`);
 
-      this.emit({ type: 'status', status: 'idle' });
+      this.emitIdleStatus();
 
       // Send initial prompt if provided
       if (initialPrompt) {
@@ -717,7 +734,7 @@ export class AcpBackend implements AgentBackend {
             // Only emit idle if no active tool calls
             if (this.activeToolCalls.size === 0) {
               logger.debug('[AcpBackend] No more chunks received, emitting idle status');
-              this.emit({ type: 'status', status: 'idle' });
+              this.emitIdleStatus();
             } else {
               logger.debug(`[AcpBackend] Delaying idle status - ${this.activeToolCalls.size} active tool calls`);
             }
@@ -782,7 +799,7 @@ export class AcpBackend implements AgentBackend {
               // Check if we should emit idle status
               if (this.activeToolCalls.size === 0) {
                 logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
-                this.emit({ type: 'status', status: 'idle' });
+                this.emitIdleStatus();
               }
             }, timeoutMs);
             
@@ -858,7 +875,7 @@ export class AcpBackend implements AgentBackend {
             this.idleTimeout = null;
           }
           logger.debug('[AcpBackend] All tool calls completed, emitting idle status');
-          this.emit({ type: 'status', status: 'idle' });
+          this.emitIdleStatus();
         }
       } else if (status === 'failed' || status === 'cancelled') {
         // Tool call failed or was cancelled - remove from active set and clear timeout
@@ -954,7 +971,7 @@ export class AcpBackend implements AgentBackend {
             this.idleTimeout = null;
           }
           logger.debug('[AcpBackend] All tool calls completed/failed, emitting idle status');
-          this.emit({ type: 'status', status: 'idle' });
+          this.emitIdleStatus();
         }
       }
     }
@@ -1059,7 +1076,7 @@ export class AcpBackend implements AgentBackend {
               // Check if we should emit idle status
               if (this.activeToolCalls.size === 0) {
                 logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
-                this.emit({ type: 'status', status: 'idle' });
+                this.emitIdleStatus();
               }
             }, timeoutMs);
             
@@ -1124,6 +1141,10 @@ export class AcpBackend implements AgentBackend {
     }
   }
 
+  // Promise resolver for waitForIdle - set when waiting for response to complete
+  private idleResolver: (() => void) | null = null;
+  private waitingForResponse = false;
+
   async sendPrompt(sessionId: SessionId, prompt: string): Promise<void> {
     // Check if prompt contains change_title instruction (via optional callback)
     const promptHasChangeTitle = this.options.hasChangeTitleInstruction?.(prompt) ?? false;
@@ -1144,6 +1165,7 @@ export class AcpBackend implements AgentBackend {
     }
 
     this.emit({ type: 'status', status: 'running' });
+    this.waitingForResponse = true;
 
     try {
       logger.debug(`[AcpBackend] Sending prompt (length: ${prompt.length}): ${prompt.substring(0, 100)}...`);
@@ -1168,6 +1190,7 @@ export class AcpBackend implements AgentBackend {
 
     } catch (error) {
       logger.debug('[AcpBackend] Error sending prompt:', error);
+      this.waitingForResponse = false;
       
       // Extract error details for better error handling
       let errorDetail: string;
@@ -1194,6 +1217,43 @@ export class AcpBackend implements AgentBackend {
         detail: errorDetail
       });
       throw error;
+    }
+  }
+
+  /**
+   * Wait for the response to complete (idle status after all chunks received)
+   * Call this after sendPrompt to wait for Gemini to finish responding
+   */
+  async waitForResponseComplete(timeoutMs: number = 120000): Promise<void> {
+    if (!this.waitingForResponse) {
+      return; // Already completed or no prompt sent
+    }
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.idleResolver = null;
+        this.waitingForResponse = false;
+        reject(new Error('Timeout waiting for response to complete'));
+      }, timeoutMs);
+
+      this.idleResolver = () => {
+        clearTimeout(timeout);
+        this.idleResolver = null;
+        this.waitingForResponse = false;
+        resolve();
+      };
+    });
+  }
+
+  /**
+   * Helper to emit idle status and resolve any waiting promises
+   */
+  private emitIdleStatus(): void {
+    this.emit({ type: 'status', status: 'idle' });
+    // Resolve any waiting promises
+    if (this.idleResolver) {
+      logger.debug('[AcpBackend] Resolving idle waiter');
+      this.idleResolver();
     }
   }
 

@@ -258,9 +258,14 @@ export class GeminiTransport implements TransportHandler {
       }
     }
 
-    // 3. Context-based heuristic: if this is the first tool call after a prompt with change_title instruction
-    // AND input is empty/minimal, it's likely change_title
-    if (context.recentPromptHadChangeTitle && context.toolCallCountSincePrompt === 0) {
+    // 3. Check if input contains 'title' field - likely change_title
+    if (input && typeof input === 'object' && 'title' in input) {
+      return 'change_title';
+    }
+
+    // 4. Context-based heuristic: if prompt had change_title instruction
+    // and tool is "other" with empty input, it's likely change_title
+    if (context.recentPromptHadChangeTitle) {
       const isEmptyInput =
         !input ||
         (Array.isArray(input) && input.length === 0) ||
@@ -269,6 +274,19 @@ export class GeminiTransport implements TransportHandler {
       if (isEmptyInput && toolName === 'other') {
         return 'change_title';
       }
+    }
+
+    // 5. Fallback: if toolName is "other" with empty input, it's most likely change_title
+    // This is because change_title is the only MCP tool that:
+    // - Gets reported as "other" by Gemini ACP
+    // - Has empty input (title is extracted from context, not passed as input)
+    const isEmptyInput =
+      !input ||
+      (Array.isArray(input) && input.length === 0) ||
+      (typeof input === 'object' && Object.keys(input).length === 0);
+
+    if (isEmptyInput && toolName === 'other') {
+      return 'change_title';
     }
 
     // Return original tool name if we couldn't determine it
