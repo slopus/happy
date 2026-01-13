@@ -3,6 +3,7 @@ import { View, TextInput, Platform, StyleProp, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
+import { layout } from '@/components/layout';
 
 export interface SearchHeaderProps {
     value: string;
@@ -22,6 +23,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingVertical: 12,
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.divider,
+    },
+    content: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
     },
     inputWrapper: {
         flexDirection: 'row',
@@ -58,33 +64,34 @@ export function SearchHeader({
 
     return (
         <View style={[styles.container, containerStyle]}>
-            <View style={styles.inputWrapper}>
-                <Ionicons
-                    name="search-outline"
-                    size={20}
-                    color={theme.colors.textSecondary}
-                    style={{ marginRight: 8 }}
-                />
-                <TextInput
-                    value={value}
-                    onChangeText={onChangeText}
-                    placeholder={placeholder}
-                    placeholderTextColor={theme.colors.input.placeholder}
-                    autoCapitalize={autoCapitalize}
-                    autoCorrect={autoCorrect}
-                    style={styles.textInput}
-                />
-                {value.trim().length > 0 && (
+            <View style={styles.content}>
+                <View style={styles.inputWrapper}>
                     <Ionicons
-                        name="close-circle"
+                        name="search-outline"
                         size={20}
                         color={theme.colors.textSecondary}
-                        onPress={() => onChangeText('')}
-                        style={styles.clearIcon}
+                        style={{ marginRight: 8 }}
                     />
-                )}
+                    <TextInput
+                        value={value}
+                        onChangeText={onChangeText}
+                        placeholder={placeholder}
+                        placeholderTextColor={theme.colors.input.placeholder}
+                        autoCapitalize={autoCapitalize}
+                        autoCorrect={autoCorrect}
+                        style={styles.textInput}
+                    />
+                    {value.trim().length > 0 && (
+                        <Ionicons
+                            name="close-circle"
+                            size={20}
+                            color={theme.colors.textSecondary}
+                            onPress={() => onChangeText('')}
+                            style={styles.clearIcon}
+                        />
+                    )}
+                </View>
             </View>
         </View>
     );
 }
-
