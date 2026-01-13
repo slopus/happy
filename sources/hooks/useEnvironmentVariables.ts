@@ -69,12 +69,33 @@ export function useEnvironmentVariables(
                 return;
             }
 
-            // Build batched command: query all variables in single bash invocation
-            // Format: echo "VAR1=$VAR1" && echo "VAR2=$VAR2" && ...
-            // Using echo with variable expansion ensures we get daemon's environment
-            const command = validVarNames
-                .map(name => `echo "${name}=$${name}"`)
-                .join(' && ');
+            // Query variables in a single machineBash() call.
+            // Prefer a JSON protocol (via `node`) to preserve newlines and distinguish unset vs empty.
+            // Fallback to bash-only output if node isn't available.
+            const nodeScript = [
+                // node -e sets argv[1] to "-e", so args start at argv[2]
+                "const keys = process.argv.slice(2);",
+                "const out = {};",
+                "for (const k of keys) {",
+                "  out[k] = Object.prototype.hasOwnProperty.call(process.env, k) ? process.env[k] : null;",
+                "}",
+                "process.stdout.write(JSON.stringify(out));",
+            ].join("");
+            const jsonCommand = `node -e '${nodeScript.replace(/'/g, "'\\''")}' ${validVarNames.join(' ')}`;
+            // Bash fallback uses indirect expansion to avoid eval and to distinguish unset vs empty.
+            // IMPORTANT: avoid embedding literal `${...}` inside this TypeScript template string (it would be parsed as JS interpolation).
+            const bashIsSetExpr = '\\$' + '{!name+x}';
+            const bashValueExpr = '\\$' + '{!name}';
+            const bashFallback = [
+                `for name in ${validVarNames.join(' ')}; do`,
+                `if [ -n "${bashIsSetExpr}" ]; then`,
+                `printf "%s=%s\\n" "$name" "${bashValueExpr}";`,
+                `else`,
+                `printf "%s=__HAPPY_UNSET__\\n" "$name";`,
+                `fi;`,
+                `done`,
+            ].join(' ');
+            const command = `if command -v node >/dev/null 2>&1; then ${jsonCommand}; else ${bashFallback}; fi`;
 
             try {
                 const result = await machineBash(machineId, command, '/');
@@ -82,16 +103,33 @@ export function useEnvironmentVariables(
                 if (cancelled) return;
 
                 if (result.success && result.exitCode === 0) {
-                    // Parse output: "VAR1=value1\nVAR2=value2\nVAR3="
-                    const lines = result.stdout.trim().split('\n');
-                    lines.forEach(line => {
-                        const equalsIndex = line.indexOf('=');
-                        if (equalsIndex !== -1) {
-                            const name = line.substring(0, equalsIndex);
-                            const value = line.substring(equalsIndex + 1);
-                            results[name] = value || null; // Empty string → null (not set)
+                    const stdout = result.stdout;
+
+                    // JSON protocol: {"VAR":"value","MISSING":null}
+                    if (stdout.trim().startsWith('{')) {
+                        try {
+                            const parsed = JSON.parse(stdout) as Record<string, string | null>;
+                            validVarNames.forEach((name) => {
+                                results[name] = Object.prototype.hasOwnProperty.call(parsed, name) ? parsed[name] : null;
+                            });
+                        } catch {
+                            // Fall through to line parser if JSON is malformed.
                         }
-                    });
+                    }
+
+                    // Fallback line parser: "VAR=value" or "VAR=__HAPPY_UNSET__"
+                    if (Object.keys(results).length === 0) {
+                        // Do not trim: it can corrupt values with meaningful whitespace.
+                        const lines = stdout.split(/\r?\n/).filter((l) => l.length > 0);
+                        lines.forEach(line => {
+                            const equalsIndex = line.indexOf('=');
+                            if (equalsIndex !== -1) {
+                                const name = line.substring(0, equalsIndex);
+                                const value = line.substring(equalsIndex + 1);
+                                results[name] = value === '__HAPPY_UNSET__' ? null : value;
+                            }
+                        });
+                    }
 
                     // Ensure all requested variables have entries (even if missing from output)
                     validVarNames.forEach(name => {

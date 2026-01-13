@@ -1222,11 +1222,13 @@ class Sync {
             parsedSettings = { ...settingsDefaults };
         }
 
-        // Log
-        console.log('settings', JSON.stringify({
-            settings: parsedSettings,
-            version: data.settingsVersion
-        }));
+        // Avoid logging full settings in production (may contain secrets like API keys / profile env vars).
+        if (__DEV__) {
+            console.log('settings', {
+                version: data.settingsVersion,
+                schemaVersion: parsedSettings.schemaVersion,
+            });
+        }
 
         // Apply settings to storage
         storage.getState().replaceSettings(parsedSettings, data.settingsVersion);
@@ -1259,15 +1261,15 @@ class Sync {
         const data = await response.json();
         const parsedProfile = profileParse(data);
 
-        // Log profile data for debugging
-        console.log('profile', JSON.stringify({
-            id: parsedProfile.id,
-            timestamp: parsedProfile.timestamp,
-            firstName: parsedProfile.firstName,
-            lastName: parsedProfile.lastName,
-            hasAvatar: !!parsedProfile.avatar,
-            hasGitHub: !!parsedProfile.github
-        }));
+        // Keep debug logs dev-only (avoid leaking PII/noise in prod logs).
+        if (__DEV__) {
+            console.log('profile', {
+                id: parsedProfile.id,
+                timestamp: parsedProfile.timestamp,
+                hasAvatar: !!parsedProfile.avatar,
+                hasGitHub: !!parsedProfile.github,
+            });
+        }
 
         // Apply profile to storage
         storage.getState().applyProfile(parsedProfile);
