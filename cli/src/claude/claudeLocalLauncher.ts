@@ -140,7 +140,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
             return true;
         }); // When user wants to switch to remote mode
         session.queue.setOnMessage((message: string, mode) => {
-            session.lastPermissionMode = mode.permissionMode;
+            session.setLastPermissionMode(mode.permissionMode);
             // Switch to remote mode when message received
             void doSwitch();
         }); // When any message is received, abort current process, clean queue and switch to remote mode

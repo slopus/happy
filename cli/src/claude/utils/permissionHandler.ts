@@ -58,7 +58,7 @@ export class PermissionHandler {
 
     handleModeChange(mode: PermissionMode) {
         this.permissionMode = mode;
-        this.session.lastPermissionMode = mode;
+        this.session.setLastPermissionMode(mode);
     }
 
     /**
@@ -83,7 +83,7 @@ export class PermissionHandler {
         // Update permission mode
         if (response.mode) {
             this.permissionMode = response.mode;
-            this.session.lastPermissionMode = response.mode;
+            this.session.setLastPermissionMode(response.mode);
         }
 
         // Handle 

@@ -62,9 +62,8 @@ export async function loop(opts: LoopOptions) {
         jsRuntime: opts.jsRuntime
     });
 
-    // Initialize last known permission mode so local mode can spawn Claude with the right flags
-    // even before any app-driven messages arrive.
-    session.lastPermissionMode = opts.permissionMode ?? 'default';
+    // Publish initial permission mode so the app can reflect it even before any app-driven message exists.
+    session.setLastPermissionMode(opts.permissionMode ?? 'default');
 
     // Notify that session is ready
     if (opts.onSessionReady) {

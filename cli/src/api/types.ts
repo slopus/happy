@@ -344,7 +344,14 @@ export type Metadata = {
   lifecycleStateSince?: number,
   archivedBy?: string,
   archiveReason?: string,
-  flavor?: string
+  flavor?: string,
+  /**
+   * Current permission mode for the session, published by the CLI so the app can seed UI state
+   * even when there are no user messages carrying meta.permissionMode yet (e.g. local-only start).
+   */
+  permissionMode?: PermissionMode,
+  /** Timestamp (ms) for permissionMode, used for "latest wins" arbitration across devices. */
+  permissionModeUpdatedAt?: number
 };
 
 export type AgentState = {
