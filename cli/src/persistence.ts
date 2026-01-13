@@ -97,10 +97,6 @@ export const AIBackendProfileSchema = z.object({
     // Tmux configuration
     tmuxConfig: TmuxConfigSchema.optional(),
 
-    // Startup bash script (executed before spawning session)
-    // NOTE: The CLI currently only persists this field; execution is handled elsewhere.
-    startupBashScript: z.string().optional(),
-
     // Environment variables (validated)
     environmentVariables: z.array(EnvironmentVariableSchema).default([]),
 
@@ -203,7 +199,7 @@ export const CURRENT_PROFILE_VERSION = '1.0.0';
 // Settings schema version: Integer for overall Settings structure compatibility
 // Incremented when Settings structure changes (e.g., adding profiles array was v1→v2)
 // Used for migration logic in readSettings()
-export const SUPPORTED_SCHEMA_VERSION = 2;
+export const SUPPORTED_SCHEMA_VERSION = 3;
 
 // Profile version validation
 export function validateProfileVersion(profile: AIBackendProfile): boolean {
@@ -232,15 +228,12 @@ interface Settings {
   // Profile management settings (synced with happy app)
   activeProfileId?: string
   profiles: AIBackendProfile[]
-  // CLI-local environment variable cache (not synced)
-  localEnvironmentVariables: Record<string, Record<string, string>> // profileId -> env vars
 }
 
 const defaultSettings: Settings = {
   schemaVersion: SUPPORTED_SCHEMA_VERSION,
   onboardingCompleted: false,
   profiles: [],
-  localEnvironmentVariables: {}
 }
 
 /**
@@ -256,12 +249,16 @@ function migrateSettings(raw: any, fromVersion: number): any {
     if (!migrated.profiles) {
       migrated.profiles = [];
     }
-    // Ensure localEnvironmentVariables exists
-    if (!migrated.localEnvironmentVariables) {
-      migrated.localEnvironmentVariables = {};
-    }
     // Update schema version
     migrated.schemaVersion = 2;
+  }
+
+  // Migration from v2 to v3 (removed CLI-local env cache)
+  if (fromVersion < 3) {
+    if ('localEnvironmentVariables' in migrated) {
+      delete migrated.localEnvironmentVariables;
+    }
+    migrated.schemaVersion = 3;
   }
 
   // Future migrations go here:
@@ -666,67 +663,5 @@ export async function updateProfiles(profiles: unknown[]): Promise<void> {
       activeProfileId: activeProfileStillExists ? activeProfileId : undefined
     };
   });
-}
-
-/**
- * Get environment variables for a profile
- * Combines profile custom env vars with CLI-local cached env vars
- */
-export async function getEnvironmentVariables(profileId: string): Promise<Record<string, string>> {
-  const settings = await readSettings();
-  const profile = settings.profiles.find(p => p.id === profileId);
-  if (!profile) return {};
-
-  // Start with profile's environment variables (new schema)
-  const envVars: Record<string, string> = {};
-  if (profile.environmentVariables) {
-    profile.environmentVariables.forEach(envVar => {
-      envVars[envVar.name] = envVar.value;
-    });
-  }
-
-  // Override with CLI-local cached environment variables
-  const localEnvVars = settings.localEnvironmentVariables[profileId] || {};
-  Object.assign(envVars, localEnvVars);
-
-  return envVars;
-}
-
-/**
- * Set environment variables for a profile in CLI-local cache
- */
-export async function setEnvironmentVariables(profileId: string, envVars: Record<string, string>): Promise<void> {
-  await updateSettings(settings => ({
-    ...settings,
-    localEnvironmentVariables: {
-      ...settings.localEnvironmentVariables,
-      [profileId]: envVars
-    }
-  }));
-}
-
-/**
- * Get a specific environment variable for a profile
- * Checks CLI-local cache first, then profile environment variables
- */
-export async function getEnvironmentVariable(profileId: string, key: string): Promise<string | undefined> {
-  const settings = await readSettings();
-
-  // Check CLI-local cache first
-  const localEnvVars = settings.localEnvironmentVariables[profileId] || {};
-  if (localEnvVars[key] !== undefined) {
-    return localEnvVars[key];
-  }
-
-  // Fall back to profile environment variables (new schema)
-  const profile = settings.profiles.find(p => p.id === profileId);
-  if (profile?.environmentVariables) {
-    const envVar = profile.environmentVariables.find(env => env.name === key);
-    if (envVar) {
-      return envVar.value;
-    }
-  }
-
-  return undefined;
 }
 
