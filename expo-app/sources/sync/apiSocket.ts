@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { Encryption } from './encryption/encryption';
+import { observeServerTimestamp } from './time';
 
 //
 // Types
@@ -186,10 +187,26 @@ class ApiSocket {
             ...options?.headers
         };
 
-        return fetch(url, {
+        const response = await fetch(url, {
             ...options,
             headers
         });
+
+        // Best-effort server time calibration using the HTTP Date header ("server now").
+        // This avoids deriving "now" from potentially stale resource timestamps (e.g. session.updatedAt).
+        try {
+            const dateHeader = response.headers.get('date');
+            if (dateHeader) {
+                const serverNow = Date.parse(dateHeader);
+                if (!Number.isNaN(serverNow)) {
+                    observeServerTimestamp(serverNow);
+                }
+            }
+        } catch {
+            // Best-effort only
+        }
+
+        return response;
     }
 
     //

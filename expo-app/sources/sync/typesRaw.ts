@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { MessageMetaSchema, MessageMeta } from './typesMessageMeta';
+import { PERMISSION_MODES } from '@/constants/PermissionModes';
 
 //
 // Raw types
@@ -54,7 +55,7 @@ const rawToolResultContentSchema = z.object({
     permissions: z.object({
         date: z.number(),
         result: z.enum(['approved', 'denied']),
-        mode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(),
+        mode: z.enum(PERMISSION_MODES).optional(),
         allowedTools: z.array(z.string()).optional(),
         decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).optional(),
     }).optional(),

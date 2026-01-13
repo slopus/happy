@@ -21,6 +21,7 @@ import { isMutableTool } from "@/components/tools/knownTools";
 import { projectManager } from "./projectManager";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
+import { nowServerMs } from "./time";
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -263,6 +264,30 @@ export const storage = create<StorageState>()((set, get) => {
     let sessionPermissionModes = loadSessionPermissionModes();
     let sessionModelModes = loadSessionModelModes();
     let sessionPermissionModeUpdatedAts = loadSessionPermissionModeUpdatedAts();
+
+    const persistSessionPermissionData = (sessions: Record<string, Session>) => {
+        const allModes: Record<string, PermissionMode> = {};
+        const allUpdatedAts: Record<string, number> = {};
+
+        Object.entries(sessions).forEach(([id, sess]) => {
+            if (sess.permissionMode && sess.permissionMode !== 'default') {
+                allModes[id] = sess.permissionMode;
+            }
+            if (typeof sess.permissionModeUpdatedAt === 'number') {
+                allUpdatedAts[id] = sess.permissionModeUpdatedAt;
+            }
+        });
+
+        try {
+            saveSessionPermissionModes(allModes);
+            saveSessionPermissionModeUpdatedAts(allUpdatedAts);
+            sessionPermissionModes = allModes;
+            sessionPermissionModeUpdatedAts = allUpdatedAts;
+        } catch (e) {
+            console.error('Failed to persist session permission data:', e);
+        }
+    };
+
     return {
         settings,
         settingsVersion: version,
@@ -340,13 +365,38 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedModelMode = savedModelModes[session.id];
                 const existingPermissionModeUpdatedAt = state.sessions[session.id]?.permissionModeUpdatedAt;
                 const savedPermissionModeUpdatedAt = savedPermissionModeUpdatedAts[session.id];
+
+                // CLI may publish a session permission mode in encrypted metadata for local-only starts.
+                // This is a fallback signal for when there are no app-sent user messages carrying meta.permissionMode yet.
+                const metadataPermissionMode = session.metadata?.permissionMode ?? null;
+                const metadataPermissionModeUpdatedAt = session.metadata?.permissionModeUpdatedAt ?? null;
+
+                let mergedPermissionMode =
+                    existingPermissionMode ||
+                    savedPermissionMode ||
+                    session.permissionMode ||
+                    'default';
+
+                let mergedPermissionModeUpdatedAt =
+                    existingPermissionModeUpdatedAt ??
+                    savedPermissionModeUpdatedAt ??
+                    null;
+
+                if (metadataPermissionMode && typeof metadataPermissionModeUpdatedAt === 'number') {
+                    const localUpdatedAt = mergedPermissionModeUpdatedAt ?? 0;
+                    if (metadataPermissionModeUpdatedAt > localUpdatedAt) {
+                        mergedPermissionMode = metadataPermissionMode;
+                        mergedPermissionModeUpdatedAt = metadataPermissionModeUpdatedAt;
+                    }
+                }
+
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default',
+                    permissionMode: mergedPermissionMode,
                     // Preserve local coordination timestamp (not synced to server)
-                    permissionModeUpdatedAt: existingPermissionModeUpdatedAt ?? savedPermissionModeUpdatedAt ?? null,
+                    permissionModeUpdatedAt: mergedPermissionModeUpdatedAt,
                     modelMode: existingModelMode || savedModelMode || session.modelMode || 'default',
                 };
             });
@@ -535,8 +585,9 @@ export const storage = create<StorageState>()((set, get) => {
                 let inferredPermissionModeAt: number | null = null;
                 for (const message of messagesArray) {
                     if (message.kind !== 'user-text') continue;
-                    const mode = message.meta?.permissionMode as PermissionMode | undefined;
-                    if (!mode) continue;
+                    const rawMode = message.meta?.permissionMode;
+                    if (!rawMode || !PERMISSION_MODES.includes(rawMode as any)) continue;
+                    const mode = rawMode as PermissionMode;
                     inferredPermissionMode = mode;
                     inferredPermissionModeAt = message.createdAt;
                     break;
@@ -552,6 +603,9 @@ export const storage = create<StorageState>()((set, get) => {
                     session &&
                     inferredPermissionMode &&
                     inferredPermissionModeAt &&
+                    // NOTE: inferredPermissionModeAt comes from message.createdAt (server timestamp for remote messages,
+                    // and best-effort server-aligned timestamp for locally-created optimistic messages).
+                    // permissionModeUpdatedAt is stamped using nowServerMs() for clock-safe ordering across devices.
                     inferredPermissionModeAt > (session.permissionModeUpdatedAt ?? 0)
                 );
 
@@ -579,20 +633,7 @@ export const storage = create<StorageState>()((set, get) => {
                     // Persist permission modes (only non-default values to save space)
                     // Note: this includes modes inferred from session messages so they load instantly on app restart.
                     if (shouldWritePermissionMode) {
-                        const allModes: Record<string, PermissionMode> = {};
-                        const allUpdatedAts: Record<string, number> = {};
-                        Object.entries(updatedSessions).forEach(([id, sess]) => {
-                            if (sess.permissionMode && sess.permissionMode !== 'default') {
-                                allModes[id] = sess.permissionMode;
-                            }
-                            if (typeof sess.permissionModeUpdatedAt === 'number') {
-                                allUpdatedAts[id] = sess.permissionModeUpdatedAt;
-                            }
-                        });
-                        saveSessionPermissionModes(allModes);
-                        sessionPermissionModes = allModes;
-                        saveSessionPermissionModeUpdatedAts(allUpdatedAts);
-                        sessionPermissionModeUpdatedAts = allUpdatedAts;
+                        persistSessionPermissionData(updatedSessions);
                     }
                 }
 
@@ -867,11 +908,11 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
-        updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => set((state) => {
+        updateSessionPermissionMode: (sessionId: string, mode: PermissionMode) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
 
-            const now = Date.now();
+            const now = nowServerMs();
 
             // Update the session with the new permission mode
             const updatedSessions = {
@@ -885,23 +926,7 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
 
-            // Collect all permission modes for persistence
-            const allModes: Record<string, PermissionMode> = {};
-            const allUpdatedAts: Record<string, number> = {};
-            Object.entries(updatedSessions).forEach(([id, sess]) => {
-                if (sess.permissionMode && sess.permissionMode !== 'default') {
-                    allModes[id] = sess.permissionMode;
-                }
-                if (typeof sess.permissionModeUpdatedAt === 'number') {
-                    allUpdatedAts[id] = sess.permissionModeUpdatedAt;
-                }
-            });
-
-            // Persist permission modes (only non-default values to save space)
-            saveSessionPermissionModes(allModes);
-            saveSessionPermissionModeUpdatedAts(allUpdatedAts);
-            sessionPermissionModes = allModes;
-            sessionPermissionModeUpdatedAts = allUpdatedAts;
+            persistSessionPermissionData(updatedSessions);
 
             // No need to rebuild sessionListViewData since permission mode doesn't affect the list display
             return {
@@ -1040,10 +1065,17 @@ export const storage = create<StorageState>()((set, get) => {
             const modes = loadSessionPermissionModes();
             delete modes[sessionId];
             saveSessionPermissionModes(modes);
+            sessionPermissionModes = modes;
+
+            const updatedAts = loadSessionPermissionModeUpdatedAts();
+            delete updatedAts[sessionId];
+            saveSessionPermissionModeUpdatedAts(updatedAts);
+            sessionPermissionModeUpdatedAts = updatedAts;
 
             const modelModes = loadSessionModelModes();
             delete modelModes[sessionId];
             saveSessionModelModes(modelModes);
+            sessionModelModes = modelModes;
             
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(remainingSessions);

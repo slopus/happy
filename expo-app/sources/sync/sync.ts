@@ -31,6 +31,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
 import { systemPrompt } from './prompt/systemPrompt';
+import { nowServerMs } from './time';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
 import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
 import { ArtifactEncryption } from './encryption/artifactEncryption';
@@ -376,7 +377,7 @@ class Sync {
         const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
         // Add to messages - normalize the raw record
-        const createdAt = Date.now();
+        const createdAt = nowServerMs();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
         if (normalizedMessage) {
             this.applyMessages(sessionId, [normalizedMessage]);
@@ -1619,7 +1620,7 @@ class Sync {
             throw new Error(`Session encryption not ready for ${sessionId}`);
         }
 
-        // Request
+        // Request (apiSocket.request calibrates server time best-effort from the HTTP Date header)
         const response = await apiSocket.request(`/v1/sessions/${sessionId}/messages`);
         const data = await response.json();
 
