@@ -760,7 +760,7 @@ export const ca: TranslationStructure = {
         permissions: {
             yesAllowAllEdits: 'Sí, permet totes les edicions durant aquesta sessió',
             yesForTool: 'Sí, no tornis a preguntar per aquesta eina',
-            noTellClaude: 'No, i digues a Claude què fer diferent',
+            noTellClaude: 'No, proporciona comentaris',
         }
     },
 

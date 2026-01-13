@@ -792,7 +792,7 @@ export const ja: TranslationStructure = {
         permissions: {
             yesAllowAllEdits: 'はい、このセッション中のすべての編集を許可',
             yesForTool: "はい、このツールについては確認しない",
-            noTellClaude: 'いいえ、Claudeに別の方法を伝える',
+            noTellClaude: 'いいえ、フィードバックを提供',
         }
     },
 

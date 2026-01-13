@@ -223,9 +223,13 @@ class Sync {
             return;
         }
 
-        // Read permission mode and model mode from session state
+        // Read permission mode from session state
         const permissionMode = session.permissionMode || 'default';
-        const modelMode = session.modelMode || 'default';
+        
+        // Read model mode - for Gemini, default to gemini-2.5-pro if not set
+        const flavor = session.metadata?.flavor;
+        const isGemini = flavor === 'gemini';
+        const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
 
         // Generate local ID
         const localId = randomUUID();
@@ -247,8 +251,12 @@ class Sync {
             sentFrom = 'web'; // fallback
         }
 
-        // Model settings - models are configured in CLI settings
-        const model: string | null = null;
+        // Model settings - for Gemini, we pass the selected model; for others, CLI handles it
+        let model: string | null = null;
+        if (isGemini && modelMode !== 'default') {
+            // For Gemini ACP, pass the selected model to CLI
+            model = modelMode;
+        }
         const fallbackModel: string | null = null;
 
         // Create user message content with metadata
@@ -1534,13 +1542,38 @@ class Sync {
                 if (decrypted) {
                     lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
 
+                    // Check for task lifecycle events to update thinking state
+                    // This ensures UI updates even if volatile activity updates are lost
+                    const rawContent = decrypted.content as { role?: string; content?: { type?: string; data?: { type?: string } } } | null;
+                    const contentType = rawContent?.content?.type;
+                    const dataType = rawContent?.content?.data?.type;
+                    
+                    // Debug logging to trace lifecycle events
+                    if (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started') {
+                        console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}`);
+                    }
+                    
+                    const isTaskComplete = 
+                        ((contentType === 'acp' || contentType === 'codex') && 
+                            (dataType === 'task_complete' || dataType === 'turn_aborted'));
+                    
+                    const isTaskStarted = 
+                        ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started');
+                    
+                    if (isTaskComplete || isTaskStarted) {
+                        console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
+                    }
+
                     // Update session
                     const session = storage.getState().sessions[updateData.body.sid];
                     if (session) {
                         this.applySessions([{
                             ...session,
                             updatedAt: updateData.createdAt,
-                            seq: updateData.seq
+                            seq: updateData.seq,
+                            // Update thinking state based on task lifecycle events
+                            ...(isTaskComplete ? { thinking: false } : {}),
+                            ...(isTaskStarted ? { thinking: true } : {})
                         }])
                     } else {
                         // Fetch sessions again if we don't have this session
