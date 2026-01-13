@@ -1544,9 +1544,9 @@ class Sync {
 
                     // Check for task lifecycle events to update thinking state
                     // This ensures UI updates even if volatile activity updates are lost
-                    const rawContent = decrypted.content as { role?: string; content?: { type?: string; data?: { type?: string } } };
-                    const contentType = rawContent.content?.type;
-                    const dataType = rawContent.content?.data?.type;
+                    const rawContent = decrypted.content as { role?: string; content?: { type?: string; data?: { type?: string } } } | null;
+                    const contentType = rawContent?.content?.type;
+                    const dataType = rawContent?.content?.data?.type;
                     
                     // Debug logging to trace lifecycle events
                     if (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started') {

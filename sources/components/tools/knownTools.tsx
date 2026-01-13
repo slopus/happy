@@ -601,6 +601,30 @@ export const knownTools = {
         }).partial().loose(),
         result: z.object({}).partial().loose()
     },
+    // Gemini internal tools - should be hidden (minimal)
+    'search': {
+        title: t('tools.names.search'),
+        icon: ICON_SEARCH,
+        minimal: true,
+        input: z.object({
+            items: z.array(z.any()).optional(),
+            locations: z.array(z.any()).optional()
+        }).partial().loose()
+    },
+    'edit': {
+        title: t('tools.names.editFile'),
+        icon: ICON_EDIT,
+        minimal: true,
+        isMutable: true,
+        input: z.object({}).partial().loose()
+    },
+    'shell': {
+        title: t('tools.names.terminal'),
+        icon: ICON_TERMINAL,
+        minimal: true,
+        isMutable: true,
+        input: z.object({}).partial().loose()
+    },
     'CodexPatch': {
         title: t('tools.names.applyChanges'),
         icon: ICON_EDIT,
