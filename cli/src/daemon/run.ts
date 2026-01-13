@@ -13,7 +13,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings, getActiveProfile, getEnvironmentVariables, validateProfileForAgent, getProfileEnvironmentVariables } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
@@ -32,37 +32,6 @@ export const initialMachineMetadata: MachineMetadata = {
   happyHomeDir: configuration.happyHomeDir,
   happyLibDir: projectPath()
 };
-
-// Get environment variables for a profile, filtered for agent compatibility
-async function getProfileEnvironmentVariablesForAgent(
-  profileId: string,
-  agentType: 'claude' | 'codex' | 'gemini'
-): Promise<Record<string, string>> {
-  try {
-    const settings = await readSettings();
-    const profile = settings.profiles.find(p => p.id === profileId);
-
-    if (!profile) {
-      logger.debug(`[DAEMON RUN] Profile ${profileId} not found`);
-      return {};
-    }
-
-    // Check if profile is compatible with the agent
-    if (!validateProfileForAgent(profile, agentType)) {
-      logger.debug(`[DAEMON RUN] Profile ${profileId} not compatible with agent ${agentType}`);
-      return {};
-    }
-
-    // Get environment variables from profile (new schema)
-    const envVars = getProfileEnvironmentVariables(profile);
-
-    logger.debug(`[DAEMON RUN] Loaded ${Object.keys(envVars).length} environment variables from profile ${profileId} for agent ${agentType}`);
-    return envVars;
-  } catch (error) {
-    logger.debug('[DAEMON RUN] Failed to get profile environment variables:', error);
-    return {};
-  }
-}
 
 export async function startDaemon(): Promise<void> {
   // We don't have cleanup function at the time of server construction
@@ -291,7 +260,9 @@ export async function startDaemon(): Promise<void> {
         }
 
         // Layer 2: Profile environment variables
-        // Priority: GUI-provided profile > CLI local active profile > none
+        // IMPORTANT: only apply profile env when explicitly provided by the caller.
+        // We do NOT fall back to CLI-local active profile here, because sessions spawned via
+        // the daemon are typically requested by the GUI and must respect GUI opt-in gating.
         let profileEnv: Record<string, string> = {};
 
         if (options.environmentVariables && Object.keys(options.environmentVariables).length > 0) {
@@ -300,27 +271,7 @@ export async function startDaemon(): Promise<void> {
           logger.info(`[DAEMON RUN] Using GUI-provided profile environment variables (${Object.keys(profileEnv).length} vars)`);
           logger.debug(`[DAEMON RUN] GUI profile env var keys: ${Object.keys(profileEnv).join(', ')}`);
         } else {
-          // Fallback to CLI local active profile
-          try {
-            const settings = await readSettings();
-            if (settings.activeProfileId) {
-              logger.debug(`[DAEMON RUN] No GUI profile provided, loading CLI local active profile: ${settings.activeProfileId}`);
-
-              // Get profile environment variables filtered for agent compatibility
-              profileEnv = await getProfileEnvironmentVariablesForAgent(
-                settings.activeProfileId,
-                options.agent || 'claude'
-              );
-
-              logger.debug(`[DAEMON RUN] Loaded ${Object.keys(profileEnv).length} environment variables from CLI local profile for agent ${options.agent || 'claude'}`);
-              logger.debug(`[DAEMON RUN] CLI profile env var keys: ${Object.keys(profileEnv).join(', ')}`);
-            } else {
-              logger.debug('[DAEMON RUN] No CLI local active profile set');
-            }
-          } catch (error) {
-            logger.debug('[DAEMON RUN] Failed to load CLI local profile environment variables:', error);
-            // Continue without profile env vars - this is not a fatal error
-          }
+          logger.debug('[DAEMON RUN] No profile environment variables provided by caller; skipping profile env injection');
         }
 
         // Final merge: Profile vars first, then auth (auth takes precedence to protect authentication)
