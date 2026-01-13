@@ -17,21 +17,41 @@ import { logger } from '@/ui/logger';
 // Using same Zod schema as GUI for runtime validation consistency
 
 // Environment variable schemas for different AI providers (matching GUI exactly)
+//
+// NOTE: baseUrl/endpoint fields accept either valid URLs or ${VAR} or ${VAR:-default} template strings.
+const URL_OR_TEMPLATE_REGEX = /^\$\{[A-Z_][A-Z0-9_]*(:-[^}]*)?\}$/;
+const URL_OR_TEMPLATE_ERROR = 'Must be a valid URL or ${VAR} or ${VAR:-default} template string';
+
+function isUrlOrTemplateString(val: string): boolean {
+  if (!val) return true; // Optional or empty string
+  if (URL_OR_TEMPLATE_REGEX.test(val)) return true;
+  try {
+    new URL(val);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function urlOrTemplateStringOptional() {
+  return z.string().refine(isUrlOrTemplateString, { message: URL_OR_TEMPLATE_ERROR }).optional();
+}
+
 const AnthropicConfigSchema = z.object({
-    baseUrl: z.string().url().optional(),
+    baseUrl: urlOrTemplateStringOptional(),
     authToken: z.string().optional(),
     model: z.string().optional(),
 });
 
 const OpenAIConfigSchema = z.object({
     apiKey: z.string().optional(),
-    baseUrl: z.string().url().optional(),
+    baseUrl: urlOrTemplateStringOptional(),
     model: z.string().optional(),
 });
 
 const AzureOpenAIConfigSchema = z.object({
     apiKey: z.string().optional(),
-    endpoint: z.string().url().optional(),
+    endpoint: urlOrTemplateStringOptional(),
     apiVersion: z.string().optional(),
     deploymentName: z.string().optional(),
 });
@@ -63,7 +83,8 @@ const ProfileCompatibilitySchema = z.object({
 
 // AIBackendProfile schema - EXACT MATCH with GUI schema
 export const AIBackendProfileSchema = z.object({
-    id: z.string().uuid(),
+    // Accept both UUIDs (user profiles) and simple strings (built-in profiles)
+    id: z.string().min(1),
     name: z.string().min(1).max(100),
     description: z.string().max(500).optional(),
 
@@ -75,6 +96,10 @@ export const AIBackendProfileSchema = z.object({
 
     // Tmux configuration
     tmuxConfig: TmuxConfigSchema.optional(),
+
+    // Startup bash script (executed before spawning session)
+    // NOTE: The CLI currently only persists this field; execution is handled elsewhere.
+    startupBashScript: z.string().optional(),
 
     // Environment variables (validated)
     environmentVariables: z.array(EnvironmentVariableSchema).default([]),

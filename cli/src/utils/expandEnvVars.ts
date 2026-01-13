@@ -34,18 +34,20 @@ export function expandEnvironmentVariables(
     const undefinedVars: string[] = [];
 
     for (const [key, value] of Object.entries(envVars)) {
-        // Replace all ${VAR} and ${VAR:-default} references with actual values from sourceEnv
+        // Replace all ${VAR}, ${VAR:-default}, and ${VAR:=default} references with actual values from sourceEnv
         const expandedValue = value.replace(/\$\{([^}]+)\}/g, (match, expr) => {
-            // Support bash parameter expansion: ${VAR:-default}
+            // Support bash parameter expansion: ${VAR:-default} and ${VAR:=default}
             // Example: ${Z_AI_BASE_URL:-https://api.z.ai/api/anthropic}
             const colonDashIndex = expr.indexOf(':-');
+            const colonEqIndex = expr.indexOf(':=');
             let varName: string;
             let defaultValue: string | undefined;
 
-            if (colonDashIndex !== -1) {
-                // Split ${VAR:-default} into varName and defaultValue
-                varName = expr.substring(0, colonDashIndex);
-                defaultValue = expr.substring(colonDashIndex + 2);
+            if (colonDashIndex !== -1 || colonEqIndex !== -1) {
+                // Split ${VAR:-default} or ${VAR:=default} into varName and defaultValue
+                const idx = colonDashIndex !== -1 ? colonDashIndex : colonEqIndex;
+                varName = expr.substring(0, idx);
+                defaultValue = expr.substring(idx + 2);
             } else {
                 // Simple ${VAR} reference
                 varName = expr;
