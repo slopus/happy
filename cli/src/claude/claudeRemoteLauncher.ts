@@ -370,6 +370,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             let p = pending;
                             pending = null;
                             permissionHandler.handleModeChange(p.mode.permissionMode);
+                            session.lastPermissionMode = p.mode.permissionMode;
                             return p;
                         }
 
@@ -385,6 +386,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             modeHash = msg.hash;
                             mode = msg.mode;
                             permissionHandler.handleModeChange(mode.permissionMode);
+                            session.lastPermissionMode = mode.permissionMode;
                             return {
                                 message: msg.message,
                                 mode: msg.mode

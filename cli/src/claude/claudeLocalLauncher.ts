@@ -4,6 +4,37 @@ import { Session, type SessionFoundInfo } from "./session";
 import { Future } from "@/utils/future";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { formatErrorForUi } from "@/utils/formatErrorForUi";
+import type { PermissionMode } from "@/api/types";
+import { mapToClaudeMode } from "./utils/permissionMode";
+
+function upsertClaudePermissionModeArgs(args: string[] | undefined, mode: PermissionMode): string[] | undefined {
+    const filtered: string[] = [];
+    const input = args ?? [];
+
+    for (let i = 0; i < input.length; i++) {
+        const arg = input[i];
+
+        // Remove any existing permission mode flags so we can enforce the session's current mode.
+        if (arg === '--permission-mode') {
+            // Skip value if present
+            if (i + 1 < input.length) {
+                i++;
+            }
+            continue;
+        }
+        if (arg === '--dangerously-skip-permissions') {
+            continue;
+        }
+        filtered.push(arg);
+    }
+
+    const claudeMode = mapToClaudeMode(mode);
+    if (claudeMode !== 'default') {
+        filtered.push('--permission-mode', claudeMode);
+    }
+
+    return filtered.length > 0 ? filtered : undefined;
+}
 
 export async function claudeLocalLauncher(session: Session): Promise<'switch' | 'exit'> {
 
@@ -109,6 +140,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
             return true;
         }); // When user wants to switch to remote mode
         session.queue.setOnMessage((message: string, mode) => {
+            session.lastPermissionMode = mode.permissionMode;
             // Switch to remote mode when message received
             void doSwitch();
         }); // When any message is received, abort current process, clean queue and switch to remote mode
@@ -145,6 +177,10 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
             // Launch
             logger.debug('[local]: launch');
             try {
+                // Ensure local Claude Code is spawned with the current session permission mode.
+                // This is essential for remote → local switches where the app-selected mode must carry over.
+                session.claudeArgs = upsertClaudePermissionModeArgs(session.claudeArgs, session.lastPermissionMode);
+
                 await claudeLocal({
                     path: session.path,
                     sessionId: resumeFromSessionId,

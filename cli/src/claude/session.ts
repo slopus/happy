@@ -4,6 +4,7 @@ import { EnhancedMode } from "./loop";
 import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
 import type { SessionHookData } from "./utils/startHookServer";
+import type { PermissionMode } from "@/api/types";
 
 export type SessionFoundInfo = {
     sessionId: string;
@@ -30,6 +31,12 @@ export class Session {
     transcriptPath: string | null = null;
     mode: 'local' | 'remote' = 'local';
     thinking: boolean = false;
+
+    /**
+     * Last known permission mode for this session, derived from message metadata / permission responses.
+     * Used to carry permission settings across remote ↔ local mode switches.
+     */
+    lastPermissionMode: PermissionMode = 'default';
     
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((info: SessionFoundInfo) => void)[] = [];
