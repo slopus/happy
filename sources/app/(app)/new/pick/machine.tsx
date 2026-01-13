@@ -3,7 +3,7 @@ import { View, Text } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { Typography } from '@/constants/Typography';
-import { useAllMachines, useSessions } from '@/sync/storage';
+import { useAllMachines, useSessions, useSetting, useSettingMutable } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { ItemList } from '@/components/ItemList';
@@ -36,6 +36,9 @@ export default function MachinePickerScreen() {
     const params = useLocalSearchParams<{ selectedId?: string }>();
     const machines = useAllMachines();
     const sessions = useSessions();
+    const useMachinePickerSearch = useSetting('useMachinePickerSearch');
+    const useMachinePickerFavorites = useSetting('useMachinePickerFavorites');
+    const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
 
     const selectedMachine = machines.find(m => m.id === params.selectedId) || null;
 
@@ -117,9 +120,17 @@ export default function MachinePickerScreen() {
                     machines={machines}
                     selectedMachine={selectedMachine}
                     recentMachines={recentMachines}
-                    favoriteMachines={[]}
+                    favoriteMachines={useMachinePickerFavorites ? machines.filter(m => favoriteMachines.includes(m.id)) : []}
                     onSelect={handleSelectMachine}
-                    showFavorites={false}
+                    showFavorites={useMachinePickerFavorites}
+                    showSearch={useMachinePickerSearch}
+                    onToggleFavorite={useMachinePickerFavorites ? ((machine) => {
+                        const isInFavorites = favoriteMachines.includes(machine.id);
+                        setFavoriteMachines(isInFavorites
+                            ? favoriteMachines.filter(id => id !== machine.id)
+                            : [...favoriteMachines, machine.id]
+                        );
+                    }) : undefined}
                 />
             </ItemList>
         </>

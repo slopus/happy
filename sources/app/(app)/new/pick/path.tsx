@@ -3,7 +3,7 @@ import { View, Text, Pressable } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { Typography } from '@/constants/Typography';
-import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
+import { useAllMachines, useSessions, useSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -12,6 +12,9 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { layout } from '@/components/layout';
 import { MultiTextInput, MultiTextInputHandle } from '@/components/MultiTextInput';
+import { SearchHeader } from '@/components/SearchHeader';
+import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { resolveAbsolutePath } from '@/utils/pathUtils';
 
 const stylesheet = StyleSheet.create((theme) => ({
     emptyContainer: {
@@ -59,9 +62,13 @@ export default function PathPickerScreen() {
     const machines = useAllMachines();
     const sessions = useSessions();
     const recentMachinePaths = useSetting('recentMachinePaths');
+    const useDirectoryPickerSearch = useSetting('useDirectoryPickerSearch');
+    const useDirectoryPickerFavorites = useSetting('useDirectoryPickerFavorites');
+    const [favoriteDirectories, setFavoriteDirectories] = useSettingMutable('favoriteDirectories');
     const inputRef = useRef<MultiTextInputHandle>(null);
 
     const [customPath, setCustomPath] = useState(params.selectedPath || '');
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Get the selected machine
     const machine = useMemo(() => {
@@ -138,6 +145,61 @@ export default function PathPickerScreen() {
         ];
     }, [machine]);
 
+    const favoritePaths = useMemo(() => {
+        if (!useDirectoryPickerFavorites || !machine) return [];
+        const homeDir = machine.metadata?.homeDir || '/home';
+        const paths = [homeDir, ...favoriteDirectories.map((fav) => resolveAbsolutePath(fav, homeDir))];
+        const seen = new Set<string>();
+        const ordered: string[] = [];
+        for (const p of paths) {
+            if (!p) continue;
+            if (seen.has(p)) continue;
+            seen.add(p);
+            ordered.push(p);
+        }
+        return ordered;
+    }, [favoriteDirectories, machine, useDirectoryPickerFavorites]);
+
+    const filteredRecentPaths = useMemo(() => {
+        const base = useDirectoryPickerFavorites
+            ? recentPaths.filter((p) => !favoritePaths.includes(p))
+            : recentPaths;
+        if (!useDirectoryPickerSearch || !searchQuery.trim()) return base;
+        const query = searchQuery.toLowerCase();
+        return base.filter((path) => path.toLowerCase().includes(query));
+    }, [favoritePaths, recentPaths, searchQuery, useDirectoryPickerFavorites, useDirectoryPickerSearch]);
+
+    const filteredSuggestedPaths = useMemo(() => {
+        const base = useDirectoryPickerFavorites
+            ? suggestedPaths.filter((p) => !favoritePaths.includes(p))
+            : suggestedPaths;
+        if (!useDirectoryPickerSearch || !searchQuery.trim()) return base;
+        const query = searchQuery.toLowerCase();
+        return base.filter((path) => path.toLowerCase().includes(query));
+    }, [favoritePaths, searchQuery, suggestedPaths, useDirectoryPickerFavorites, useDirectoryPickerSearch]);
+
+    const filteredFavoritePaths = useMemo(() => {
+        if (!useDirectoryPickerFavorites) return [];
+        if (!useDirectoryPickerSearch || !searchQuery.trim()) return favoritePaths;
+        const query = searchQuery.toLowerCase();
+        return favoritePaths.filter((path) => path.toLowerCase().includes(query));
+    }, [favoritePaths, searchQuery, useDirectoryPickerFavorites, useDirectoryPickerSearch]);
+
+    const toggleFavorite = React.useCallback((absolutePath: string) => {
+        if (!machine) return;
+        const homeDir = machine.metadata?.homeDir || '/home';
+        if (absolutePath === homeDir) return;
+
+        const relativePath = formatPathRelativeToHome(absolutePath, homeDir);
+        const resolved = resolveAbsolutePath(relativePath, homeDir);
+        const isInFavorites = favoriteDirectories.some((fav) => resolveAbsolutePath(fav, homeDir) === resolved);
+
+        setFavoriteDirectories(isInFavorites
+            ? favoriteDirectories.filter((fav) => resolveAbsolutePath(fav, homeDir) !== resolved)
+            : [...favoriteDirectories, relativePath]
+        );
+    }, [favoriteDirectories, machine, setFavoriteDirectories]);
+
     if (!machine) {
         return (
             <>
@@ -199,7 +261,14 @@ export default function PathPickerScreen() {
                     )
                 }}
             />
-            <ItemList keyboardShouldPersistTaps="handled">
+            <ItemList style={{ paddingTop: 0 }} keyboardShouldPersistTaps="handled">
+                {useDirectoryPickerSearch && (
+                    <SearchHeader
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        placeholder="Search paths..."
+                    />
+                )}
                 <View style={styles.contentWrapper}>
                     <ItemGroup title="Enter Path">
                         <View style={styles.pathInputContainer}>
@@ -217,11 +286,13 @@ export default function PathPickerScreen() {
                         </View>
                     </ItemGroup>
 
-                    {recentPaths.length > 0 && (
-                        <ItemGroup title="Recent Paths">
-                            {recentPaths.map((path, index) => {
+                    {useDirectoryPickerFavorites && filteredFavoritePaths.length > 0 && (
+                        <ItemGroup title="Favorite Paths">
+                            {filteredFavoritePaths.map((path, index) => {
                                 const isSelected = customPath.trim() === path;
-                                const isLast = index === recentPaths.length - 1;
+                                const isLast = index === filteredFavoritePaths.length - 1;
+                                const isHome = machine?.metadata?.homeDir ? path === machine.metadata.homeDir : false;
+                                const favoriteIconName = isHome ? 'home-outline' : 'star';
                                 return (
                                     <Item
                                         key={path}
@@ -234,6 +305,22 @@ export default function PathPickerScreen() {
                                         selected={isSelected}
                                         showChevron={false}
                                         pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                        rightElement={useDirectoryPickerFavorites ? (
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                disabled={isHome}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleFavorite(path);
+                                                }}
+                                            >
+                                                <Ionicons
+                                                    name={favoriteIconName}
+                                                    size={20}
+                                                    color={isHome ? theme.colors.textSecondary : theme.colors.button.primary.background}
+                                                />
+                                            </Pressable>
+                                        ) : null}
                                         showDivider={!isLast}
                                     />
                                 );
@@ -241,11 +328,12 @@ export default function PathPickerScreen() {
                         </ItemGroup>
                     )}
 
-                    {recentPaths.length === 0 && suggestedPaths.length > 0 && (
-                        <ItemGroup title="Suggested Paths">
-                            {suggestedPaths.map((path, index) => {
+                    {filteredRecentPaths.length > 0 && (
+                        <ItemGroup title="Recent Paths">
+                            {filteredRecentPaths.map((path, index) => {
                                 const isSelected = customPath.trim() === path;
-                                const isLast = index === suggestedPaths.length - 1;
+                                const isLast = index === filteredRecentPaths.length - 1;
+                                const isFavorite = useDirectoryPickerFavorites && favoritePaths.includes(path);
                                 return (
                                     <Item
                                         key={path}
@@ -258,6 +346,61 @@ export default function PathPickerScreen() {
                                         selected={isSelected}
                                         showChevron={false}
                                         pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                        rightElement={useDirectoryPickerFavorites ? (
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleFavorite(path);
+                                                }}
+                                            >
+                                                <Ionicons
+                                                    name={isFavorite ? 'star' : 'star-outline'}
+                                                    size={20}
+                                                    color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
+                                                />
+                                            </Pressable>
+                                        ) : null}
+                                        showDivider={!isLast}
+                                    />
+                                );
+                            })}
+                        </ItemGroup>
+                    )}
+
+                    {filteredRecentPaths.length === 0 && filteredSuggestedPaths.length > 0 && (
+                        <ItemGroup title="Suggested Paths">
+                            {filteredSuggestedPaths.map((path, index) => {
+                                const isSelected = customPath.trim() === path;
+                                const isLast = index === filteredSuggestedPaths.length - 1;
+                                const isFavorite = useDirectoryPickerFavorites && favoritePaths.includes(path);
+                                return (
+                                    <Item
+                                        key={path}
+                                        title={path}
+                                        leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
+                                        onPress={() => {
+                                            setCustomPath(path);
+                                            setTimeout(() => inputRef.current?.focus(), 50);
+                                        }}
+                                        selected={isSelected}
+                                        showChevron={false}
+                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                        rightElement={useDirectoryPickerFavorites ? (
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleFavorite(path);
+                                                }}
+                                            >
+                                                <Ionicons
+                                                    name={isFavorite ? 'star' : 'star-outline'}
+                                                    size={20}
+                                                    color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
+                                                />
+                                            </Pressable>
+                                        ) : null}
                                         showDivider={!isLast}
                                     />
                                 );

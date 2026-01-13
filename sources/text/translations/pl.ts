@@ -222,6 +222,14 @@ export const pl: TranslationStructure = {
         profiles: 'AI Profiles',
         profilesEnabled: 'Profile selection enabled',
         profilesDisabled: 'Profile selection disabled',
+        machinePickerSearch: 'Machine Picker Search',
+        machinePickerSearchSubtitle: 'Show a search field in machine pickers',
+        machinePickerFavorites: 'Machine Picker Favorites',
+        machinePickerFavoritesSubtitle: 'Show a favorites section in machine pickers',
+        directoryPickerSearch: 'Path Picker Search',
+        directoryPickerSearchSubtitle: 'Show a search field in path pickers',
+        directoryPickerFavorites: 'Path Picker Favorites',
+        directoryPickerFavoritesSubtitle: 'Show a favorites section in path pickers',
     },
 
     errors: {

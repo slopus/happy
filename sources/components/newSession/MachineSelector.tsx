@@ -15,10 +15,10 @@ export interface MachineSelectorProps {
     showFavorites?: boolean;
     showRecent?: boolean;
     showSearch?: boolean;
-    compactItems?: boolean;
     searchPlaceholder?: string;
     recentSectionTitle?: string;
     favoritesSectionTitle?: string;
+    allSectionTitle?: string;
     noItemsMessage?: string;
 }
 
@@ -32,10 +32,10 @@ export function MachineSelector({
     showFavorites = true,
     showRecent = true,
     showSearch = true,
-    compactItems = true,
     searchPlaceholder = 'Type to filter machines...',
     recentSectionTitle = 'Recent Machines',
     favoritesSectionTitle = 'Favorite Machines',
+    allSectionTitle = 'All Machines',
     noItemsMessage = 'No machines available',
 }: MachineSelectorProps) {
     const { theme } = useUnistyles();
@@ -49,14 +49,14 @@ export function MachineSelector({
                 getItemIcon: () => (
                     <Ionicons
                         name="desktop-outline"
-                        size={24}
+                        size={29}
                         color={theme.colors.textSecondary}
                     />
                 ),
                 getRecentItemIcon: () => (
                     <Ionicons
                         name="time-outline"
-                        size={24}
+                        size={29}
                         color={theme.colors.textSecondary}
                     />
                 ),
@@ -84,12 +84,12 @@ export function MachineSelector({
                 searchPlaceholder,
                 recentSectionTitle,
                 favoritesSectionTitle,
+                allSectionTitle,
                 noItemsMessage,
                 showFavorites,
                 showRecent,
                 showSearch,
                 allowCustomInput: false,
-                compactItems,
             }}
             items={machines}
             recentItems={recentMachines}
@@ -100,4 +100,3 @@ export function MachineSelector({
         />
     );
 }
-

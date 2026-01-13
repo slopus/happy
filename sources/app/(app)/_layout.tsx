@@ -329,7 +329,8 @@ export default function RootLayout() {
                 name="new/index"
                 options={{
                     headerTitle: t('newSession.title'),
-                    headerBackTitle: t('common.back'),
+                    headerShown: true,
+                    headerBackTitle: t('common.cancel'),
                     presentation: 'modal',
                 }}
             />

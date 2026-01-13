@@ -15,6 +15,10 @@ export default function FeaturesSettingsScreen() {
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const [useEnhancedSessionWizard, setUseEnhancedSessionWizard] = useSettingMutable('useEnhancedSessionWizard');
+    const [useMachinePickerSearch, setUseMachinePickerSearch] = useSettingMutable('useMachinePickerSearch');
+    const [useMachinePickerFavorites, setUseMachinePickerFavorites] = useSettingMutable('useMachinePickerFavorites');
+    const [useDirectoryPickerSearch, setUseDirectoryPickerSearch] = useSettingMutable('useDirectoryPickerSearch');
+    const [useDirectoryPickerFavorites, setUseDirectoryPickerFavorites] = useSettingMutable('useDirectoryPickerFavorites');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -71,6 +75,34 @@ export default function FeaturesSettingsScreen() {
                             onValueChange={setUseEnhancedSessionWizard}
                         />
                     }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.machinePickerSearch')}
+                    subtitle={t('settingsFeatures.machinePickerSearchSubtitle')}
+                    icon={<Ionicons name="search-outline" size={29} color="#007AFF" />}
+                    rightElement={<Switch value={useMachinePickerSearch} onValueChange={setUseMachinePickerSearch} />}
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.machinePickerFavorites')}
+                    subtitle={t('settingsFeatures.machinePickerFavoritesSubtitle')}
+                    icon={<Ionicons name="star-outline" size={29} color="#FFCC00" />}
+                    rightElement={<Switch value={useMachinePickerFavorites} onValueChange={setUseMachinePickerFavorites} />}
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.directoryPickerSearch')}
+                    subtitle={t('settingsFeatures.directoryPickerSearchSubtitle')}
+                    icon={<Ionicons name="search-outline" size={29} color="#007AFF" />}
+                    rightElement={<Switch value={useDirectoryPickerSearch} onValueChange={setUseDirectoryPickerSearch} />}
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.directoryPickerFavorites')}
+                    subtitle={t('settingsFeatures.directoryPickerFavoritesSubtitle')}
+                    icon={<Ionicons name="star-outline" size={29} color="#FFCC00" />}
+                    rightElement={<Switch value={useDirectoryPickerFavorites} onValueChange={setUseDirectoryPickerFavorites} />}
                     showChevron={false}
                 />
                 <Item
