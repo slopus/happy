@@ -94,7 +94,7 @@ class Sync {
             await this.registerPushToken();
         }
         this.pushTokenSync = new InvalidateSync(registerPushToken);
-        this.activityAccumulator = new ActivityUpdateAccumulator(this.flushActivityUpdates.bind(this), 2000);
+        this.activityAccumulator = new ActivityUpdateAccumulator(this.flushActivityUpdates.bind(this), 500); // Reduced from 2000ms for faster terminal feedback on mobile
 
         // Listen for app state changes to refresh purchases
         AppState.addEventListener('change', (nextAppState) => {
