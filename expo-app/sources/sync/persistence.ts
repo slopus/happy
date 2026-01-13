@@ -328,6 +328,27 @@ export function saveSessionPermissionModes(modes: Record<string, PermissionMode>
     mmkv.set('session-permission-modes', JSON.stringify(modes));
 }
 
+export function loadSessionPermissionModeUpdatedAts(): Record<string, number> {
+    const raw = mmkv.getString('session-permission-mode-updated-ats');
+    if (raw) {
+        try {
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object') {
+                return {};
+            }
+            return parsed;
+        } catch (e) {
+            console.error('Failed to parse session permission mode updated timestamps', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionPermissionModeUpdatedAts(updatedAts: Record<string, number>) {
+    mmkv.set('session-permission-mode-updated-ats', JSON.stringify(updatedAts));
+}
+
 export function loadSessionModelModes(): Record<string, SessionModelMode> {
     const modes = mmkv.getString('session-model-modes');
     if (modes) {
