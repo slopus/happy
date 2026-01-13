@@ -1173,7 +1173,7 @@ class Sync {
                     const mergedSettings = applySettings(serverSettings, this.pendingSettings);
 
                     // Update local storage with merged result at server's version
-                    storage.getState().applySettings(mergedSettings, data.currentVersion);
+                    storage.getState().replaceSettings(mergedSettings, data.currentVersion);
 
                     // Sync tracking state with merged settings
                     if (tracking) {
@@ -1229,7 +1229,7 @@ class Sync {
         }));
 
         // Apply settings to storage
-        storage.getState().applySettings(parsedSettings, data.settingsVersion);
+        storage.getState().replaceSettings(parsedSettings, data.settingsVersion);
 
         // Sync PostHog opt-out state with settings
         if (tracking) {

@@ -26,7 +26,8 @@ export function loadSettings(): { settings: Settings, version: number | null } {
     if (settings) {
         try {
             const parsed = JSON.parse(settings);
-            return { settings: settingsParse(parsed.settings), version: parsed.version };
+            const version = typeof parsed.version === 'number' ? parsed.version : null;
+            return { settings: settingsParse(parsed.settings), version };
         } catch (e) {
             console.error('Failed to parse settings', e);
             return { settings: { ...settingsDefaults }, version: null };

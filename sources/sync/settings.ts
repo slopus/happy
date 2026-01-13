@@ -354,28 +354,58 @@ export function settingsParse(settings: unknown): Settings {
         return { ...settingsDefaults };
     }
 
-    const parsed = SettingsSchemaPartial.safeParse(settings);
-    if (!parsed.success) {
-        // For invalid settings, preserve unknown fields but use defaults for known fields
-        const unknownFields = { ...(settings as any) };
-        // Remove all known schema fields from unknownFields
-        const knownFields = Object.keys(SettingsSchema.shape);
-        knownFields.forEach(key => delete unknownFields[key]);
-        return { ...settingsDefaults, ...unknownFields };
-    }
+    // IMPORTANT: be tolerant of partially-invalid settings objects.
+    // A single invalid field (e.g. one malformed profile) must not reset all other known settings to defaults.
+    const input = settings as Record<string, unknown>;
+    const result: any = { ...settingsDefaults };
+
+    // Parse known fields individually to avoid whole-object failure.
+    (Object.keys(SettingsSchema.shape) as Array<keyof typeof SettingsSchema.shape>).forEach((key) => {
+        if (!(key in input)) return;
+
+        // Special-case profiles: validate per profile entry, keep valid ones.
+        if (key === 'profiles') {
+            const profilesValue = input[key];
+            if (Array.isArray(profilesValue)) {
+                const parsedProfiles: AIBackendProfile[] = [];
+                for (const rawProfile of profilesValue) {
+                    const parsedProfile = AIBackendProfileSchema.safeParse(rawProfile);
+                    if (parsedProfile.success) {
+                        parsedProfiles.push(parsedProfile.data);
+                    } else if (__DEV__) {
+                        console.warn('[settingsParse] Dropping invalid profile entry', parsedProfile.error.issues);
+                    }
+                }
+                result.profiles = parsedProfiles;
+            }
+            return;
+        }
+
+        const schema = SettingsSchema.shape[key];
+        const parsedField = schema.safeParse(input[key]);
+        if (parsedField.success) {
+            result[key] = parsedField.data;
+        } else if (__DEV__) {
+            console.warn(`[settingsParse] Invalid settings field "${String(key)}" - using default`, parsedField.error.issues);
+        }
+    });
 
     // Migration: Convert old 'zh' language code to 'zh-Hans'
-    if (parsed.data.preferredLanguage === 'zh') {
-        console.log('[Settings Migration] Converting language code from "zh" to "zh-Hans"');
-        parsed.data.preferredLanguage = 'zh-Hans';
+    if (result.preferredLanguage === 'zh') {
+        if (__DEV__) {
+            console.log('[Settings Migration] Converting language code from "zh" to "zh-Hans"');
+        }
+        result.preferredLanguage = 'zh-Hans';
     }
 
-    // Merge defaults, parsed settings, and preserve unknown fields
-    const unknownFields = { ...(settings as any) };
-    // Remove known fields from unknownFields to preserve only the unknown ones
-    Object.keys(parsed.data).forEach(key => delete unknownFields[key]);
+    // Preserve unknown fields (forward compatibility).
+    for (const [key, value] of Object.entries(input)) {
+        if (!(key in SettingsSchema.shape)) {
+            result[key] = value;
+        }
+    }
 
-    return { ...settingsDefaults, ...parsed.data, ...unknownFields };
+    return result as Settings;
 }
 
 //

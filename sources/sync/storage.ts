@@ -102,6 +102,7 @@ interface StorageState {
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
     applyMessagesLoaded: (sessionId: string) => void;
     applySettings: (settings: Settings, version: number) => void;
+    replaceSettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
     applyPurchases: (customerInfo: CustomerInfo) => void;
@@ -629,7 +630,7 @@ export const storage = create<StorageState>()((set, get) => {
             };
         }),
         applySettings: (settings: Settings, version: number) => set((state) => {
-            if (state.settingsVersion === null || state.settingsVersion < version) {
+            if (state.settingsVersion == null || state.settingsVersion < version) {
                 saveSettings(settings, version);
                 return {
                     ...state,
@@ -639,6 +640,14 @@ export const storage = create<StorageState>()((set, get) => {
             } else {
                 return state;
             }
+        }),
+        replaceSettings: (settings: Settings, version: number) => set((state) => {
+            saveSettings(settings, version);
+            return {
+                ...state,
+                settings,
+                settingsVersion: version
+            };
         }),
         applyLocalSettings: (delta: Partial<LocalSettings>) => set((state) => {
             const updatedLocalSettings = applyLocalSettings(state.localSettings, delta);
