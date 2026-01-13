@@ -430,11 +430,13 @@ export class AcpBackend implements AgentBackend {
         },
         requestPermission: async (params: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
           
-          const permissionId = randomUUID();
           const extendedParams = params as ExtendedRequestPermissionRequest;
           const toolCall = extendedParams.toolCall;
           let toolName = toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool';
-          const toolCallId = toolCall?.id || permissionId;
+          // Use toolCallId as the single source of truth for permission ID
+          // This ensures mobile app sends back the same ID that we use to store pending requests
+          const toolCallId = toolCall?.id || randomUUID();
+          const permissionId = toolCallId; // Use same ID for consistency!
           
           // Extract input/arguments from various possible locations FIRST (before checking toolName)
           let input: Record<string, unknown> = {};
@@ -1274,7 +1276,9 @@ export class AcpBackend implements AgentBackend {
   async respondToPermission(requestId: string, approved: boolean): Promise<void> {
     logger.debug(`[AcpBackend] Permission response: ${requestId} = ${approved}`);
     this.emit({ type: 'permission-response', id: requestId, approved });
-    // TODO: Implement actual permission response when needed
+    // IMPORTANT: The actual ACP permission response is handled synchronously
+    // within the `requestPermission` method via `this.options.permissionHandler`.
+    // This method only emits an internal event for other parts of the CLI to react to.
   }
 
   async dispose(): Promise<void> {
