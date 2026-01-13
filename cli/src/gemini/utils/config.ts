@@ -18,6 +18,9 @@ import { GEMINI_MODEL_ENV, DEFAULT_GEMINI_MODEL } from '../constants';
 export interface GeminiLocalConfig {
   token: string | null;
   model: string | null;
+  googleCloudProject: string | null;
+  /** Email associated with the stored Google Cloud Project (for per-account projects) */
+  googleCloudProjectEmail: string | null;
 }
 
 /**
@@ -27,6 +30,8 @@ export interface GeminiLocalConfig {
 export function readGeminiLocalConfig(): GeminiLocalConfig {
   let token: string | null = null;
   let model: string | null = null;
+  let googleCloudProject: string | null = null;
+  let googleCloudProjectEmail: string | null = null;
   
   // Try common Gemini CLI config locations
   // Gemini CLI stores OAuth tokens in ~/.gemini/oauth_creds.json after 'gemini auth'
@@ -61,6 +66,19 @@ export function readGeminiLocalConfig(): GeminiLocalConfig {
             logger.debug(`[Gemini] Found model in ${configPath}: ${model}`);
           }
         }
+        
+        // Try to read Google Cloud Project from config
+        if (!googleCloudProject) {
+          const foundProject = config.googleCloudProject || config.google_cloud_project || config.projectId;
+          if (foundProject && typeof foundProject === 'string') {
+            googleCloudProject = foundProject;
+            // Also get the associated email if stored
+            if (config.googleCloudProjectEmail && typeof config.googleCloudProjectEmail === 'string') {
+              googleCloudProjectEmail = config.googleCloudProjectEmail;
+            }
+            logger.debug(`[Gemini] Found Google Cloud Project in ${configPath}: ${googleCloudProject}${googleCloudProjectEmail ? ` (for ${googleCloudProjectEmail})` : ''}`);
+          }
+        }
       } catch (error) {
         logger.debug(`[Gemini] Failed to read config from ${configPath}:`, error);
       }
@@ -86,7 +104,17 @@ export function readGeminiLocalConfig(): GeminiLocalConfig {
     }
   }
 
-  return { token, model };
+  // Also check environment variable for Google Cloud Project
+  if (!googleCloudProject) {
+    const envProject = process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT_ID;
+    if (envProject) {
+      googleCloudProject = envProject;
+      googleCloudProjectEmail = null; // Env var applies to all accounts
+      logger.debug(`[Gemini] Found Google Cloud Project from env: ${googleCloudProject}`);
+    }
+  }
+
+  return { token, model, googleCloudProject, googleCloudProjectEmail };
 }
 
 /**
@@ -158,6 +186,49 @@ export function saveGeminiModelToConfig(model: string): void {
   } catch (error) {
     logger.debug(`[Gemini] Failed to save model to config:`, error);
     // Don't throw - this is not critical
+  }
+}
+
+/**
+ * Save Google Cloud Project ID to Gemini config file
+ * 
+ * @param projectId - The Google Cloud Project ID to save
+ * @param email - Optional email to associate with this project (for per-account projects)
+ */
+export function saveGoogleCloudProjectToConfig(projectId: string, email?: string): void {
+  try {
+    const configDir = join(homedir(), '.gemini');
+    const configPath = join(configDir, 'config.json');
+    
+    // Create directory if it doesn't exist
+    if (!existsSync(configDir)) {
+      mkdirSync(configDir, { recursive: true });
+    }
+    
+    // Read existing config or create new one
+    let config: Record<string, unknown> = {};
+    if (existsSync(configPath)) {
+      try {
+        config = JSON.parse(readFileSync(configPath, 'utf-8'));
+      } catch {
+        config = {};
+      }
+    }
+    
+    // Update project in config
+    config.googleCloudProject = projectId;
+    
+    // Store the associated email if provided
+    if (email) {
+      config.googleCloudProjectEmail = email;
+    }
+    
+    // Write config back
+    writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    logger.debug(`[Gemini] Saved Google Cloud Project "${projectId}"${email ? ` for ${email}` : ''} to ${configPath}`);
+  } catch (error) {
+    logger.debug(`[Gemini] Failed to save Google Cloud Project to config:`, error);
+    throw error; // This is important - let user know if save failed
   }
 }
 

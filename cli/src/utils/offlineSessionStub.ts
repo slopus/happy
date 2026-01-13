@@ -35,6 +35,7 @@ export function createOfflineSessionStub(sessionTag: string): ApiSessionClient {
     return {
         sessionId: `offline-${sessionTag}`,
         sendCodexMessage: () => {},
+        sendAgentMessage: () => {},
         sendClaudeSessionMessage: () => {},
         keepAlive: () => {},
         sendSessionEvent: () => {},

@@ -148,6 +148,14 @@ export interface AgentBackend {
   respondToPermission?(requestId: string, approved: boolean): Promise<void>;
   
   /**
+   * Wait for the current response to complete.
+   * Call this after sendPrompt to wait for all chunks to be received.
+   * 
+   * @param timeoutMs - Maximum time to wait in milliseconds (default: 120000)
+   */
+  waitForResponseComplete?(timeoutMs?: number): Promise<void>;
+  
+  /**
    * Clean up resources and close the backend.
    */
   dispose(): Promise<void>;

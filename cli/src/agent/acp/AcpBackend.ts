@@ -1,14 +1,15 @@
 /**
- * AcpSdkBackend - Agent Client Protocol backend using official SDK
- * 
- * This module provides a backend implementation using the official
- * @agentclientprotocol/sdk for direct control over the ACP protocol.
+ * AcpBackend - Agent Client Protocol backend using official SDK
+ *
+ * This module provides a universal backend implementation using the official
+ * @agentclientprotocol/sdk. Agent-specific behavior (timeouts, filtering,
+ * error handling) is delegated to TransportHandler implementations.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { Readable, Writable } from 'node:stream';
-import { 
-  ClientSideConnection, 
+import {
+  ClientSideConnection,
   ndJsonStream,
   type Client,
   type Agent,
@@ -21,23 +22,22 @@ import {
   type ContentBlock,
 } from '@agentclientprotocol/sdk';
 import { randomUUID } from 'node:crypto';
-import type { 
-  AgentBackend, 
-  AgentMessage, 
-  AgentMessageHandler, 
+import type {
+  AgentBackend,
+  AgentMessage,
+  AgentMessageHandler,
   SessionId,
   StartSessionResult,
   McpServerConfig,
-} from '../AgentBackend';
+} from '../core';
 import { logger } from '@/ui/logger';
 import packageJson from '../../../package.json';
 import {
-  isInvestigationTool,
-  determineToolName,
-  getRealToolName,
-  getToolCallTimeout,
-} from './utils';
-import { hasChangeTitleInstruction } from '@/gemini/utils/promptUtils';
+  type TransportHandler,
+  type StderrContext,
+  type ToolNameContext,
+  DefaultTransport,
+} from '../transport';
 
 /**
  * Extended RequestPermissionRequest with additional fields that may be present
@@ -86,9 +86,6 @@ type ExtendedSessionNotification = SessionNotification & {
   };
 }
 
-/** Timeout for ACP initialization in milliseconds (2 minutes - Gemini CLI can be slow on first start) */
-const ACP_INIT_TIMEOUT_MS = 120000;
-
 /**
  * Permission handler interface for ACP backends
  */
@@ -108,29 +105,35 @@ export interface AcpPermissionHandler {
 }
 
 /**
- * Configuration for AcpSdkBackend
+ * Configuration for AcpBackend
  */
-export interface AcpSdkBackendOptions {
+export interface AcpBackendOptions {
   /** Agent name for identification */
   agentName: string;
-  
+
   /** Working directory for the agent */
   cwd: string;
-  
+
   /** Command to spawn the ACP agent */
   command: string;
-  
+
   /** Arguments for the agent command */
   args?: string[];
-  
+
   /** Environment variables to pass to the agent */
   env?: Record<string, string>;
-  
+
   /** MCP servers to make available to the agent */
   mcpServers?: Record<string, McpServerConfig>;
-  
+
   /** Optional permission handler for tool approval */
   permissionHandler?: AcpPermissionHandler;
+
+  /** Transport handler for agent-specific behavior (timeouts, filtering, etc.) */
+  transportHandler?: TransportHandler;
+
+  /** Optional callback to check if prompt has change_title instruction */
+  hasChangeTitleInstruction?: (prompt: string) => boolean;
 }
 
 /**
@@ -149,7 +152,7 @@ function nodeToWebStreams(
       return new Promise((resolve, reject) => {
         const ok = stdin.write(chunk, (err) => {
           if (err) {
-            logger.debug(`[AcpSdkBackend] Error writing to stdin:`, err);
+            logger.debug(`[AcpBackend] Error writing to stdin:`, err);
             reject(err);
           }
         });
@@ -181,7 +184,7 @@ function nodeToWebStreams(
         controller.close();
       });
       stdout.on('error', (err) => {
-        logger.debug(`[AcpSdkBackend] Stdout error:`, err);
+        logger.debug(`[AcpBackend] Stdout error:`, err);
         controller.error(err);
       });
     },
@@ -196,7 +199,7 @@ function nodeToWebStreams(
 /**
  * ACP backend using the official @agentclientprotocol/sdk
  */
-export class AcpSdkBackend implements AgentBackend {
+export class AcpBackend implements AgentBackend {
   private listeners: AgentMessageHandler[] = [];
   private process: ChildProcess | null = null;
   private connection: ClientSideConnection | null = null;
@@ -209,22 +212,26 @@ export class AcpSdkBackend implements AgentBackend {
   private toolCallStartTimes = new Map<string, number>();
   /** Pending permission requests that need response */
   private pendingPermissions = new Map<string, (response: RequestPermissionResponse) => void>();
-  
+
   /** Map from permission request ID to real tool call ID for tracking */
   private permissionToToolCallMap = new Map<string, string>();
-  
+
   /** Map from real tool call ID to tool name for auto-approval */
   private toolCallIdToNameMap = new Map<string, string>();
-  
+
   /** Track if we just sent a prompt with change_title instruction */
   private recentPromptHadChangeTitle = false;
-  
+
   /** Track tool calls count since last prompt (to identify first tool call) */
   private toolCallCountSincePrompt = 0;
   /** Timeout for emitting 'idle' status after last message chunk */
   private idleTimeout: NodeJS.Timeout | null = null;
 
-  constructor(private options: AcpSdkBackendOptions) {
+  /** Transport handler for agent-specific behavior */
+  private readonly transport: TransportHandler;
+
+  constructor(private options: AcpBackendOptions) {
+    this.transport = options.transportHandler ?? new DefaultTransport(options.agentName);
   }
 
   onMessage(handler: AgentMessageHandler): void {
@@ -244,7 +251,7 @@ export class AcpSdkBackend implements AgentBackend {
       try {
         listener(msg);
       } catch (error) {
-        logger.warn('[AcpSdkBackend] Error in message handler:', error);
+        logger.warn('[AcpBackend] Error in message handler:', error);
       }
     }
   }
@@ -258,7 +265,7 @@ export class AcpSdkBackend implements AgentBackend {
     this.emit({ type: 'status', status: 'starting' });
 
     try {
-      logger.debug(`[AcpSdkBackend] Starting session: ${sessionId}`);
+      logger.debug(`[AcpBackend] Starting session: ${sessionId}`);
       // Spawn the ACP agent process
       const args = this.options.args || [];
       
@@ -293,61 +300,46 @@ export class AcpSdkBackend implements AgentBackend {
         throw new Error('Failed to create stdio pipes');
       }
 
-      // Suppress stderr output - redirect to logger only (not console)
-      // Gemini CLI may output debug info to stderr, but we don't want it in console
-      // However, we need to detect API errors (like 429 rate limit) and notify the user
+      // Handle stderr output via transport handler
       this.process.stderr.on('data', (data: Buffer) => {
         const text = data.toString();
-        // Only log to file, never to console
-        if (text.trim()) {
-          // Check if we have active investigation tools - log stderr more verbosely for them
-          const hasActiveInvestigation = Array.from(this.activeToolCalls).some(id => 
-            isInvestigationTool(id)
-          );
-          
-          if (hasActiveInvestigation) {
-            logger.debug(`[AcpSdkBackend] 🔍 Agent stderr (during investigation): ${text.trim()}`);
-          } else {
-            logger.debug(`[AcpSdkBackend] Agent stderr: ${text.trim()}`);
+        if (!text.trim()) return;
+
+        // Build context for transport handler
+        const hasActiveInvestigation = this.transport.isInvestigationTool
+          ? Array.from(this.activeToolCalls).some(id => this.transport.isInvestigationTool!(id))
+          : false;
+
+        const context: StderrContext = {
+          activeToolCalls: this.activeToolCalls,
+          hasActiveInvestigation,
+        };
+
+        // Log to file (not console)
+        if (hasActiveInvestigation) {
+          logger.debug(`[AcpBackend] 🔍 Agent stderr (during investigation): ${text.trim()}`);
+        } else {
+          logger.debug(`[AcpBackend] Agent stderr: ${text.trim()}`);
+        }
+
+        // Let transport handler process stderr and optionally emit messages
+        if (this.transport.handleStderr) {
+          const result = this.transport.handleStderr(text, context);
+          if (result.message) {
+            this.emit(result.message);
           }
-          
-          // Detect API errors in stderr (429 rate limit, 404 not found, etc.)
-          // These errors come from gemini-cli when API calls fail
-          // Note: gemini-cli handles retries internally, we don't need to track or show these
-          if (text.includes('status 429') || text.includes('code":429') || 
-              text.includes('rateLimitExceeded') || text.includes('RESOURCE_EXHAUSTED')) {
-            // Rate limit error - log for debugging but don't show to user
-            // Gemini CLI will handle retries internally
-            logger.debug('[AcpSdkBackend] ⚠️ Detected rate limit error (429) in stderr - gemini-cli will handle retry');
-          } else if (text.includes('status 404') || text.includes('code":404')) {
-            // Not found error - emit error status
-            logger.debug('[AcpSdkBackend] ⚠️ Detected 404 error in stderr');
-            this.emit({
-              type: 'status',
-              status: 'error',
-              detail: 'Model not found. Available models: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite'
-            });
-          } else if (hasActiveInvestigation && (
-            text.includes('timeout') || text.includes('Timeout') || 
-            text.includes('failed') || text.includes('Failed') ||
-            text.includes('error') || text.includes('Error')
-          )) {
-            // Log any errors/timeouts during investigation tools for debugging
-            logger.debug(`[AcpSdkBackend] 🔍 Investigation tool stderr error/timeout: ${text.trim()}`);
-          }
-          
         }
       });
 
       this.process.on('error', (err) => {
         // Log to file only, not console
-        logger.debug(`[AcpSdkBackend] Process error:`, err);
+        logger.debug(`[AcpBackend] Process error:`, err);
         this.emit({ type: 'status', status: 'error', detail: err.message });
       });
 
       this.process.on('exit', (code, signal) => {
         if (!this.disposed && code !== 0 && code !== null) {
-          logger.debug(`[AcpSdkBackend] Process exited with code ${code}, signal ${signal}`);
+          logger.debug(`[AcpBackend] Process exited with code ${code}, signal ${signal}`);
           this.emit({ type: 'status', status: 'stopped', detail: `Exit code: ${code}` });
         }
       });
@@ -360,9 +352,9 @@ export class AcpSdkBackend implements AgentBackend {
       const writable = streams.writable;
       const readable = streams.readable;
 
-      // Filter out non-JSON data before it reaches ndJsonStream
-      // Gemini CLI outputs debug info (experiments, flags, etc.) to stdout
-      // which breaks ACP protocol parsing. We filter it silently.
+      // Filter stdout via transport handler before ACP parsing
+      // Some agents output debug info that breaks JSON-RPC parsing
+      const transport = this.transport;
       const filteredReadable = new ReadableStream<Uint8Array>({
         async start(controller) {
           const reader = readable.getReader();
@@ -370,67 +362,57 @@ export class AcpSdkBackend implements AgentBackend {
           const encoder = new TextEncoder();
           let buffer = '';
           let filteredCount = 0;
-          
-          // Helper function to check if a string is valid JSON
-          const isValidJSON = (str: string): boolean => {
-            const trimmed = str.trim();
-            if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) {
-              return false;
-            }
-            try {
-              JSON.parse(trimmed);
-              return true;
-            } catch {
-              return false;
-            }
-          };
-          
+
           try {
             while (true) {
               const { done, value } = await reader.read();
               if (done) {
                 // Flush any remaining buffer
                 if (buffer.trim()) {
-                  if (isValidJSON(buffer)) {
+                  const filtered = transport.filterStdoutLine?.(buffer);
+                  if (filtered === undefined) {
                     controller.enqueue(encoder.encode(buffer));
+                  } else if (filtered !== null) {
+                    controller.enqueue(encoder.encode(filtered));
                   } else {
                     filteredCount++;
                   }
                 }
                 if (filteredCount > 0) {
-                  logger.debug(`[AcpSdkBackend] Filtered out ${filteredCount} non-JSON lines from gemini CLI stdout`);
+                  logger.debug(`[AcpBackend] Filtered out ${filteredCount} non-JSON lines from ${transport.agentName} stdout`);
                 }
                 controller.close();
                 break;
               }
-              
+
               // Decode and accumulate data
               buffer += decoder.decode(value, { stream: true });
-              
+
               // Process line by line (ndJSON is line-delimited)
               const lines = buffer.split('\n');
               buffer = lines.pop() || ''; // Keep last incomplete line in buffer
-              
+
               for (const line of lines) {
-                const trimmed = line.trim();
-                
-                // Skip empty lines
-                if (!trimmed) {
-                  continue;
-                }
-                
-                // Validate JSON before passing through
-                if (isValidJSON(trimmed)) {
-                  // Valid JSON line - pass it through
+                if (!line.trim()) continue;
+
+                // Use transport handler to filter lines
+                // Note: filterStdoutLine returns null to filter out, string to keep
+                // If method not implemented (undefined), pass through original line
+                const filtered = transport.filterStdoutLine?.(line);
+                if (filtered === undefined) {
+                  // Method not implemented, pass through
                   controller.enqueue(encoder.encode(line + '\n'));
+                } else if (filtered !== null) {
+                  // Method returned transformed line
+                  controller.enqueue(encoder.encode(filtered + '\n'));
                 } else {
-                  // Non-JSON or invalid JSON - silently skip it
+                  // Method returned null, filter out
                   filteredCount++;
                 }
               }
             }
           } catch (error) {
-            logger.debug(`[AcpSdkBackend] Error filtering stdout stream:`, error);
+            logger.debug(`[AcpBackend] Error filtering stdout stream:`, error);
             controller.error(error);
           } finally {
             reader.releaseLock();
@@ -448,11 +430,13 @@ export class AcpSdkBackend implements AgentBackend {
         },
         requestPermission: async (params: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
           
-          const permissionId = randomUUID();
           const extendedParams = params as ExtendedRequestPermissionRequest;
           const toolCall = extendedParams.toolCall;
           let toolName = toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool';
-          const toolCallId = toolCall?.id || permissionId;
+          // Use toolCallId as the single source of truth for permission ID
+          // This ensures mobile app sends back the same ID that we use to store pending requests
+          const toolCallId = toolCall?.id || randomUUID();
+          const permissionId = toolCallId; // Use same ID for consistency!
           
           // Extract input/arguments from various possible locations FIRST (before checking toolName)
           let input: Record<string, unknown> = {};
@@ -464,19 +448,14 @@ export class AcpSdkBackend implements AgentBackend {
           }
           
           // If toolName is "other" or "Unknown tool", try to determine real tool name
-          toolName = determineToolName(
-            toolName,
-            toolCallId,
-            input,
-            params,
-            {
-              recentPromptHadChangeTitle: this.recentPromptHadChangeTitle,
-              toolCallCountSincePrompt: this.toolCallCountSincePrompt,
-            }
-          );
+          const context: ToolNameContext = {
+            recentPromptHadChangeTitle: this.recentPromptHadChangeTitle,
+            toolCallCountSincePrompt: this.toolCallCountSincePrompt,
+          };
+          toolName = this.transport.determineToolName?.(toolName, toolCallId, input, context) ?? toolName;
           
           if (toolName !== (toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool')) {
-            logger.debug(`[AcpSdkBackend] Detected tool name: ${toolName} from toolCallId: ${toolCallId}`);
+            logger.debug(`[AcpBackend] Detected tool name: ${toolName} from toolCallId: ${toolCallId}`);
           }
           
           // Increment tool call counter for context tracking
@@ -485,8 +464,8 @@ export class AcpSdkBackend implements AgentBackend {
           const options = extendedParams.options || [];
           
           // Log permission request for debugging (include full params to understand structure)
-          logger.debug(`[AcpSdkBackend] Permission request: tool=${toolName}, toolCallId=${toolCallId}, input=`, JSON.stringify(input));
-          logger.debug(`[AcpSdkBackend] Permission request params structure:`, JSON.stringify({
+          logger.debug(`[AcpBackend] Permission request: tool=${toolName}, toolCallId=${toolCallId}, input=`, JSON.stringify(input));
+          logger.debug(`[AcpBackend] Permission request params structure:`, JSON.stringify({
             hasToolCall: !!toolCall,
             toolCallKind: toolCall?.kind,
             toolCallId: toolCall?.id,
@@ -544,6 +523,15 @@ export class AcpSdkBackend implements AgentBackend {
                   // Fallback to first option if no specific match
                   optionId = options[0].optionId || 'proceed_once';
                 }
+                
+                // Emit tool-result with permissionId so UI can close the timer
+                // This is needed because tool_call_update comes with a different ID
+                this.emit({
+                  type: 'tool-result',
+                  toolName,
+                  result: { status: 'approved', decision: result.decision },
+                  callId: permissionId,
+                });
               } else {
                 // Denied or aborted - find cancel option
                 const cancelOption = options.find((opt: any) => 
@@ -552,12 +540,20 @@ export class AcpSdkBackend implements AgentBackend {
                 if (cancelOption) {
                   optionId = cancelOption.optionId || 'cancel';
                 }
+                
+                // Emit tool-result for denied/aborted
+                this.emit({
+                  type: 'tool-result',
+                  toolName,
+                  result: { status: 'denied', decision: result.decision },
+                  callId: permissionId,
+                });
               }
               
               return { outcome: { outcome: 'selected', optionId } };
             } catch (error) {
               // Log to file only, not console
-              logger.debug('[AcpSdkBackend] Error in permission handler:', error);
+              logger.debug('[AcpBackend] Error in permission handler:', error);
               // Fallback to deny on error
               return { outcome: { outcome: 'selected', optionId: 'cancel' } };
             }
@@ -594,7 +590,7 @@ export class AcpSdkBackend implements AgentBackend {
         },
       };
 
-      logger.debug(`[AcpSdkBackend] Initializing connection...`);
+      logger.debug(`[AcpBackend] Initializing connection...`);
       let initTimeout: NodeJS.Timeout | null = null;
       const initResponse = await Promise.race([
         this.connection.initialize(initRequest).then((result) => {
@@ -606,13 +602,14 @@ export class AcpSdkBackend implements AgentBackend {
           return result;
         }),
         new Promise<never>((_, reject) => {
+          const timeout = this.transport.getInitTimeout();
           initTimeout = setTimeout(() => {
-            logger.debug(`[AcpSdkBackend] Initialize timeout after ${ACP_INIT_TIMEOUT_MS}ms`);
-            reject(new Error(`Initialize timeout after ${ACP_INIT_TIMEOUT_MS}ms - Gemini CLI did not respond`));
-          }, ACP_INIT_TIMEOUT_MS);
+            logger.debug(`[AcpBackend] Initialize timeout after ${timeout}ms`);
+            reject(new Error(`Initialize timeout after ${timeout}ms - ${this.transport.agentName} did not respond`));
+          }, timeout);
         }),
       ]);
-      logger.debug(`[AcpSdkBackend] Initialize completed`);
+      logger.debug(`[AcpBackend] Initialize completed`);
 
       // Create a new session
       const mcpServers = this.options.mcpServers 
@@ -631,7 +628,7 @@ export class AcpSdkBackend implements AgentBackend {
         mcpServers: mcpServers as unknown as NewSessionRequest['mcpServers'],
       };
 
-      logger.debug(`[AcpSdkBackend] Creating new session...`);
+      logger.debug(`[AcpBackend] Creating new session...`);
       let newSessionTimeout: NodeJS.Timeout | null = null;
       const sessionResponse = await Promise.race([
         this.connection.newSession(newSessionRequest).then((result) => {
@@ -643,22 +640,23 @@ export class AcpSdkBackend implements AgentBackend {
           return result;
         }),
         new Promise<never>((_, reject) => {
+          const timeout = this.transport.getInitTimeout();
           newSessionTimeout = setTimeout(() => {
-            logger.debug(`[AcpSdkBackend] NewSession timeout after ${ACP_INIT_TIMEOUT_MS}ms`);
-            reject(new Error('New session timeout'));
-          }, ACP_INIT_TIMEOUT_MS);
+            logger.debug(`[AcpBackend] NewSession timeout after ${timeout}ms`);
+            reject(new Error(`New session timeout after ${timeout}ms - ${this.transport.agentName} did not respond`));
+          }, timeout);
         }),
       ]);
       this.acpSessionId = sessionResponse.sessionId;
-      logger.debug(`[AcpSdkBackend] Session created: ${this.acpSessionId}`);
+      logger.debug(`[AcpBackend] Session created: ${this.acpSessionId}`);
 
-      this.emit({ type: 'status', status: 'idle' });
+      this.emitIdleStatus();
 
       // Send initial prompt if provided
       if (initialPrompt) {
         this.sendPrompt(sessionId, initialPrompt).catch((error) => {
           // Log to file only, not console
-          logger.debug('[AcpSdkBackend] Error sending initial prompt:', error);
+          logger.debug('[AcpBackend] Error sending initial prompt:', error);
           this.emit({ type: 'status', status: 'error', detail: String(error) });
         });
       }
@@ -667,7 +665,7 @@ export class AcpSdkBackend implements AgentBackend {
 
     } catch (error) {
       // Log to file only, not console
-      logger.debug('[AcpSdkBackend] Error starting session:', error);
+      logger.debug('[AcpBackend] Error starting session:', error);
       this.emit({ 
         type: 'status', 
         status: 'error', 
@@ -683,7 +681,7 @@ export class AcpSdkBackend implements AgentBackend {
     const update = notification.update;
     
     if (!update) {
-      logger.debug('[AcpSdkBackend] Received session update without update field:', params);
+      logger.debug('[AcpBackend] Received session update without update field:', params);
       return;
     }
 
@@ -691,7 +689,7 @@ export class AcpSdkBackend implements AgentBackend {
     
     // Log session updates for debugging (but not every chunk to avoid log spam)
     if (sessionUpdateType !== 'agent_message_chunk') {
-      logger.debug(`[AcpSdkBackend] Received session update: ${sessionUpdateType}`, JSON.stringify({
+      logger.debug(`[AcpBackend] Received session update: ${sessionUpdateType}`, JSON.stringify({
         sessionUpdate: sessionUpdateType,
         toolCallId: update.toolCallId,
         status: update.status,
@@ -720,7 +718,7 @@ export class AcpSdkBackend implements AgentBackend {
             payload: { text },
           });
         } else {
-          logger.debug(`[AcpSdkBackend] Received message chunk (length: ${text.length}): ${text.substring(0, 50)}...`);
+          logger.debug(`[AcpBackend] Received message chunk (length: ${text.length}): ${text.substring(0, 50)}...`);
           this.emit({
             type: 'model-output',
             textDelta: text,
@@ -737,10 +735,10 @@ export class AcpSdkBackend implements AgentBackend {
           this.idleTimeout = setTimeout(() => {
             // Only emit idle if no active tool calls
             if (this.activeToolCalls.size === 0) {
-              logger.debug('[AcpSdkBackend] No more chunks received, emitting idle status');
-              this.emit({ type: 'status', status: 'idle' });
+              logger.debug('[AcpBackend] No more chunks received, emitting idle status');
+              this.emitIdleStatus();
             } else {
-              logger.debug(`[AcpSdkBackend] Delaying idle status - ${this.activeToolCalls.size} active tool calls`);
+              logger.debug(`[AcpBackend] Delaying idle status - ${this.activeToolCalls.size} active tool calls`);
             }
             this.idleTimeout = null;
           }, 500); // 500ms delay to batch chunks (reduced from 500ms, but still enough for options)
@@ -754,7 +752,7 @@ export class AcpSdkBackend implements AgentBackend {
       const toolCallId = update.toolCallId;
       
       if (!toolCallId) {
-        logger.debug('[AcpSdkBackend] Tool call update without toolCallId:', update);
+        logger.debug('[AcpBackend] Tool call update without toolCallId:', update);
         return;
       }
       
@@ -763,29 +761,30 @@ export class AcpSdkBackend implements AgentBackend {
         if (!this.activeToolCalls.has(toolCallId)) {
           const startTime = Date.now();
           const toolKind = update.kind || 'unknown';
-          const isInvestigation = isInvestigationTool(toolCallId, toolKind);
+          const isInvestigation = this.transport.isInvestigationTool?.(toolCallId, typeof toolKind === 'string' ? toolKind : undefined) ?? false;
           
           // Determine real tool name from toolCallId (e.g., "change_title-1765385846663" -> "change_title")
-          const realToolName = getRealToolName(toolCallId, toolKind);
+          const extractedName = this.transport.extractToolNameFromId?.(toolCallId);
+          const realToolName = extractedName ?? (typeof toolKind === 'string' ? toolKind : 'unknown');
           
           // Store mapping for permission requests
           this.toolCallIdToNameMap.set(toolCallId, realToolName);
           
           this.activeToolCalls.add(toolCallId);
           this.toolCallStartTimes.set(toolCallId, startTime);
-          logger.debug(`[AcpSdkBackend] ⏱️ Set startTime for ${toolCallId} at ${new Date(startTime).toISOString()} (from tool_call_update)`);
+          logger.debug(`[AcpBackend] ⏱️ Set startTime for ${toolCallId} at ${new Date(startTime).toISOString()} (from tool_call_update)`);
           
           // Increment tool call counter for context tracking
           this.toolCallCountSincePrompt++;
           
-          logger.debug(`[AcpSdkBackend] 🔧 Tool call START: ${toolCallId} (${toolKind} -> ${realToolName})${isInvestigation ? ' [INVESTIGATION TOOL]' : ''}`);
+          logger.debug(`[AcpBackend] 🔧 Tool call START: ${toolCallId} (${toolKind} -> ${realToolName})${isInvestigation ? ' [INVESTIGATION TOOL]' : ''}`);
           if (isInvestigation) {
-            logger.debug(`[AcpSdkBackend] 🔍 Investigation tool detected (by toolCallId) - extended timeout (10min) will be used`);
+            logger.debug(`[AcpBackend] 🔍 Investigation tool detected (by toolCallId) - extended timeout (10min) will be used`);
           }
           
           // Set timeout for tool call completion (especially important for investigation tools)
           // This ensures timeout is set even if tool_call event doesn't arrive
-          const timeoutMs = getToolCallTimeout(toolCallId, toolKind);
+          const timeoutMs = this.transport.getToolCallTimeout?.(toolCallId, typeof toolKind === 'string' ? toolKind : undefined) ?? 120000;
           
           // Only set timeout if not already set (from tool_call event)
           if (!this.toolCallTimeouts.has(toolCallId)) {
@@ -794,22 +793,22 @@ export class AcpSdkBackend implements AgentBackend {
               const duration = startTime ? Date.now() - startTime : null;
               const durationStr = duration ? `${(duration / 1000).toFixed(2)}s` : 'unknown';
               
-              logger.debug(`[AcpSdkBackend] ⏱️ Tool call TIMEOUT (from tool_call_update): ${toolCallId} (${toolKind}) after ${(timeoutMs / 1000).toFixed(0)}s - Duration: ${durationStr}, removing from active set`);
+              logger.debug(`[AcpBackend] ⏱️ Tool call TIMEOUT (from tool_call_update): ${toolCallId} (${toolKind}) after ${(timeoutMs / 1000).toFixed(0)}s - Duration: ${durationStr}, removing from active set`);
               this.activeToolCalls.delete(toolCallId);
               this.toolCallStartTimes.delete(toolCallId);
               this.toolCallTimeouts.delete(toolCallId);
               
               // Check if we should emit idle status
               if (this.activeToolCalls.size === 0) {
-                logger.debug('[AcpSdkBackend] No more active tool calls after timeout, emitting idle status');
-                this.emit({ type: 'status', status: 'idle' });
+                logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
+                this.emitIdleStatus();
               }
             }, timeoutMs);
             
             this.toolCallTimeouts.set(toolCallId, timeout);
-            logger.debug(`[AcpSdkBackend] ⏱️ Set timeout for ${toolCallId}: ${(timeoutMs / 1000).toFixed(0)}s${isInvestigation ? ' (investigation tool)' : ''}`);
+            logger.debug(`[AcpBackend] ⏱️ Set timeout for ${toolCallId}: ${(timeoutMs / 1000).toFixed(0)}s${isInvestigation ? ' (investigation tool)' : ''}`);
           } else {
-            logger.debug(`[AcpSdkBackend] Timeout already set for ${toolCallId}, skipping`);
+            logger.debug(`[AcpBackend] Timeout already set for ${toolCallId}, skipping`);
           }
           
           // Clear idle timeout - tool call is starting, agent is working
@@ -832,7 +831,7 @@ export class AcpSdkBackend implements AgentBackend {
           
           // Log tool call details for investigation tools
           if (isInvestigation && args.objective) {
-            logger.debug(`[AcpSdkBackend] 🔍 Investigation tool objective: ${String(args.objective).substring(0, 100)}...`);
+            logger.debug(`[AcpBackend] 🔍 Investigation tool objective: ${String(args.objective).substring(0, 100)}...`);
           }
           
           this.emit({
@@ -843,7 +842,7 @@ export class AcpSdkBackend implements AgentBackend {
           });
         } else {
           // Tool call already tracked - might be an update
-          logger.debug(`[AcpSdkBackend] Tool call ${toolCallId} already tracked, status: ${status}`);
+          logger.debug(`[AcpBackend] Tool call ${toolCallId} already tracked, status: ${status}`);
         }
       } else if (status === 'completed') {
         // Tool call finished - remove from active set and clear timeout
@@ -861,7 +860,7 @@ export class AcpSdkBackend implements AgentBackend {
         }
         
         const durationStr = duration ? `${(duration / 1000).toFixed(2)}s` : 'unknown';
-        logger.debug(`[AcpSdkBackend] ✅ Tool call COMPLETED: ${toolCallId} (${toolKind}) - Duration: ${durationStr}. Active tool calls: ${this.activeToolCalls.size}`);
+        logger.debug(`[AcpBackend] ✅ Tool call COMPLETED: ${toolCallId} (${toolKind}) - Duration: ${durationStr}. Active tool calls: ${this.activeToolCalls.size}`);
         
         this.emit({
           type: 'tool-result',
@@ -877,8 +876,8 @@ export class AcpSdkBackend implements AgentBackend {
             clearTimeout(this.idleTimeout);
             this.idleTimeout = null;
           }
-          logger.debug('[AcpSdkBackend] All tool calls completed, emitting idle status');
-          this.emit({ type: 'status', status: 'idle' });
+          logger.debug('[AcpBackend] All tool calls completed, emitting idle status');
+          this.emitIdleStatus();
         }
       } else if (status === 'failed' || status === 'cancelled') {
         // Tool call failed or was cancelled - remove from active set and clear timeout
@@ -886,27 +885,27 @@ export class AcpSdkBackend implements AgentBackend {
         const startTime = this.toolCallStartTimes.get(toolCallId);
         const duration = startTime ? Date.now() - startTime : null;
         const toolKind = update.kind || 'unknown';
-        const isInvestigation = isInvestigationTool(toolCallId, toolKind);
+        const isInvestigation = this.transport.isInvestigationTool?.(toolCallId, typeof toolKind === 'string' ? toolKind : undefined) ?? false;
         const hadTimeout = this.toolCallTimeouts.has(toolCallId);
         
         // Log detailed timing information for investigation tools BEFORE cleanup
         if (isInvestigation) {
           const durationStr = duration ? `${(duration / 1000).toFixed(2)}s` : 'unknown';
           const durationMinutes = duration ? (duration / 1000 / 60).toFixed(2) : 'unknown';
-          logger.debug(`[AcpSdkBackend] 🔍 Investigation tool ${status.toUpperCase()} after ${durationMinutes} minutes (${durationStr})`);
+          logger.debug(`[AcpBackend] 🔍 Investigation tool ${status.toUpperCase()} after ${durationMinutes} minutes (${durationStr})`);
           
           // Check if this matches a 3-minute timeout pattern
           if (duration) {
             const threeMinutes = 3 * 60 * 1000;
             const tolerance = 5000; // 5 second tolerance
             if (Math.abs(duration - threeMinutes) < tolerance) {
-              logger.debug(`[AcpSdkBackend] 🔍 ⚠️ Investigation tool failed at ~3 minutes - likely Gemini CLI timeout, not our timeout`);
+              logger.debug(`[AcpBackend] 🔍 ⚠️ Investigation tool failed at ~3 minutes - likely Gemini CLI timeout, not our timeout`);
             }
           }
           
-          logger.debug(`[AcpSdkBackend] 🔍 Investigation tool FAILED - full update.content:`, JSON.stringify(update.content, null, 2));
-          logger.debug(`[AcpSdkBackend] 🔍 Investigation tool timeout status BEFORE cleanup: ${hadTimeout ? 'timeout was set' : 'no timeout was set'}`);
-          logger.debug(`[AcpSdkBackend] 🔍 Investigation tool startTime status BEFORE cleanup: ${startTime ? `set at ${new Date(startTime).toISOString()}` : 'not set'}`);
+          logger.debug(`[AcpBackend] 🔍 Investigation tool FAILED - full update.content:`, JSON.stringify(update.content, null, 2));
+          logger.debug(`[AcpBackend] 🔍 Investigation tool timeout status BEFORE cleanup: ${hadTimeout ? 'timeout was set' : 'no timeout was set'}`);
+          logger.debug(`[AcpBackend] 🔍 Investigation tool startTime status BEFORE cleanup: ${startTime ? `set at ${new Date(startTime).toISOString()}` : 'not set'}`);
         }
         
         // Now cleanup - remove from active set and clear timeout
@@ -917,13 +916,13 @@ export class AcpSdkBackend implements AgentBackend {
         if (timeout) {
           clearTimeout(timeout);
           this.toolCallTimeouts.delete(toolCallId);
-          logger.debug(`[AcpSdkBackend] Cleared timeout for ${toolCallId} (tool call ${status})`);
+          logger.debug(`[AcpBackend] Cleared timeout for ${toolCallId} (tool call ${status})`);
         } else {
-          logger.debug(`[AcpSdkBackend] No timeout found for ${toolCallId} (tool call ${status}) - timeout may not have been set`);
+          logger.debug(`[AcpBackend] No timeout found for ${toolCallId} (tool call ${status}) - timeout may not have been set`);
         }
         
         const durationStr = duration ? `${(duration / 1000).toFixed(2)}s` : 'unknown';
-        logger.debug(`[AcpSdkBackend] ❌ Tool call ${status.toUpperCase()}: ${toolCallId} (${toolKind}) - Duration: ${durationStr}. Active tool calls: ${this.activeToolCalls.size}`);
+        logger.debug(`[AcpBackend] ❌ Tool call ${status.toUpperCase()}: ${toolCallId} (${toolKind}) - Duration: ${durationStr}. Active tool calls: ${this.activeToolCalls.size}`);
         
         // Extract error information from update.content if available
         let errorDetail: string | undefined;
@@ -952,9 +951,9 @@ export class AcpSdkBackend implements AgentBackend {
         }
         
         if (errorDetail) {
-          logger.debug(`[AcpSdkBackend] ❌ Tool call error details: ${errorDetail.substring(0, 500)}`);
+          logger.debug(`[AcpBackend] ❌ Tool call error details: ${errorDetail.substring(0, 500)}`);
         } else {
-          logger.debug(`[AcpSdkBackend] ❌ Tool call ${status} but no error details in update.content`);
+          logger.debug(`[AcpBackend] ❌ Tool call ${status} but no error details in update.content`);
         }
         
         // Emit tool-result with error information so user can see what went wrong
@@ -973,8 +972,8 @@ export class AcpSdkBackend implements AgentBackend {
             clearTimeout(this.idleTimeout);
             this.idleTimeout = null;
           }
-          logger.debug('[AcpSdkBackend] All tool calls completed/failed, emitting idle status');
-          this.emit({ type: 'status', status: 'idle' });
+          logger.debug('[AcpBackend] All tool calls completed/failed, emitting idle status');
+          this.emitIdleStatus();
         }
       }
     }
@@ -1013,7 +1012,7 @@ export class AcpSdkBackend implements AgentBackend {
         
         if (hasActiveInvestigation && this.activeToolCalls.size > 0) {
           const activeToolCallsList = Array.from(this.activeToolCalls);
-          logger.debug(`[AcpSdkBackend] 💭 Thinking chunk received (${text.length} chars) during active tool calls: ${activeToolCallsList.join(', ')}`);
+          logger.debug(`[AcpBackend] 💭 Thinking chunk received (${text.length} chars) during active tool calls: ${activeToolCallsList.join(', ')}`);
         }
         
         // Emit as thinking event - don't show as regular message
@@ -1030,7 +1029,7 @@ export class AcpSdkBackend implements AgentBackend {
       const toolCallId = update.toolCallId;
       const status = update.status;
       
-      logger.debug(`[AcpSdkBackend] Received tool_call: toolCallId=${toolCallId}, status=${status}, kind=${update.kind}`);
+      logger.debug(`[AcpBackend] Received tool_call: toolCallId=${toolCallId}, status=${status}, kind=${update.kind}`);
       
       // tool_call can come without explicit status, assume 'in_progress' if status is missing
       const isInProgress = !status || status === 'in_progress' || status === 'pending';
@@ -1042,8 +1041,8 @@ export class AcpSdkBackend implements AgentBackend {
           const startTime = Date.now();
           this.activeToolCalls.add(toolCallId);
           this.toolCallStartTimes.set(toolCallId, startTime);
-          logger.debug(`[AcpSdkBackend] Added tool call ${toolCallId} to active set. Total active: ${this.activeToolCalls.size}`);
-          logger.debug(`[AcpSdkBackend] ⏱️ Set startTime for ${toolCallId} at ${new Date(startTime).toISOString()}`);
+          logger.debug(`[AcpBackend] Added tool call ${toolCallId} to active set. Total active: ${this.activeToolCalls.size}`);
+          logger.debug(`[AcpBackend] ⏱️ Set startTime for ${toolCallId} at ${new Date(startTime).toISOString()}`);
           
           // Clear idle timeout - tool call is starting, agent is working
           if (this.idleTimeout) {
@@ -1055,13 +1054,14 @@ export class AcpSdkBackend implements AgentBackend {
           // Think tools typically complete quickly, but we set a longer timeout for other tools
           // codebase_investigator and similar investigation tools can take 5+ minutes, so we use a much longer timeout
           // NOTE: update.kind may be "think" even for codebase_investigator, so we check toolCallId instead
-          const isInvestigation = isInvestigationTool(toolCallId, update.kind);
-          
+          const toolKindStr = typeof update.kind === 'string' ? update.kind : undefined;
+          const isInvestigation = this.transport.isInvestigationTool?.(toolCallId, toolKindStr) ?? false;
+
           if (isInvestigation) {
-            logger.debug(`[AcpSdkBackend] 🔍 Investigation tool detected (toolCallId: ${toolCallId}, kind: ${update.kind}) - using extended timeout (10min)`);
+            logger.debug(`[AcpBackend] 🔍 Investigation tool detected (toolCallId: ${toolCallId}, kind: ${update.kind}) - using extended timeout (10min)`);
           }
-          
-          const timeoutMs = getToolCallTimeout(toolCallId, update.kind);
+
+          const timeoutMs = this.transport.getToolCallTimeout?.(toolCallId, toolKindStr) ?? 120000;
           
           // Only set timeout if not already set (from tool_call_update)
           if (!this.toolCallTimeouts.has(toolCallId)) {
@@ -1070,22 +1070,22 @@ export class AcpSdkBackend implements AgentBackend {
               const duration = startTime ? Date.now() - startTime : null;
               const durationStr = duration ? `${(duration / 1000).toFixed(2)}s` : 'unknown';
               
-              logger.debug(`[AcpSdkBackend] ⏱️ Tool call TIMEOUT (from tool_call): ${toolCallId} (${update.kind}) after ${(timeoutMs / 1000).toFixed(0)}s - Duration: ${durationStr}, removing from active set`);
+              logger.debug(`[AcpBackend] ⏱️ Tool call TIMEOUT (from tool_call): ${toolCallId} (${update.kind}) after ${(timeoutMs / 1000).toFixed(0)}s - Duration: ${durationStr}, removing from active set`);
               this.activeToolCalls.delete(toolCallId);
               this.toolCallStartTimes.delete(toolCallId);
               this.toolCallTimeouts.delete(toolCallId);
               
               // Check if we should emit idle status
               if (this.activeToolCalls.size === 0) {
-                logger.debug('[AcpSdkBackend] No more active tool calls after timeout, emitting idle status');
-                this.emit({ type: 'status', status: 'idle' });
+                logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
+                this.emitIdleStatus();
               }
             }, timeoutMs);
             
             this.toolCallTimeouts.set(toolCallId, timeout);
-            logger.debug(`[AcpSdkBackend] ⏱️ Set timeout for ${toolCallId}: ${(timeoutMs / 1000).toFixed(0)}s${isInvestigation ? ' (investigation tool)' : ''}`);
+            logger.debug(`[AcpBackend] ⏱️ Set timeout for ${toolCallId}: ${(timeoutMs / 1000).toFixed(0)}s${isInvestigation ? ' (investigation tool)' : ''}`);
           } else {
-            logger.debug(`[AcpSdkBackend] Timeout already set for ${toolCallId}, skipping`);
+            logger.debug(`[AcpBackend] Timeout already set for ${toolCallId}, skipping`);
           }
           
           // Emit running status when tool call starts
@@ -1104,7 +1104,7 @@ export class AcpSdkBackend implements AgentBackend {
             args.locations = update.locations;
           }
           
-          logger.debug(`[AcpSdkBackend] Emitting tool-call event: toolName=${update.kind}, toolCallId=${toolCallId}, args=`, JSON.stringify(args));
+          logger.debug(`[AcpBackend] Emitting tool-call event: toolName=${update.kind}, toolCallId=${toolCallId}, args=`, JSON.stringify(args));
           
           this.emit({
             type: 'tool-call',
@@ -1113,10 +1113,10 @@ export class AcpSdkBackend implements AgentBackend {
             callId: toolCallId,
           });
         } else {
-          logger.debug(`[AcpSdkBackend] Tool call ${toolCallId} already in active set, skipping`);
+          logger.debug(`[AcpBackend] Tool call ${toolCallId} already in active set, skipping`);
         }
       } else {
-        logger.debug(`[AcpSdkBackend] Tool call ${toolCallId} not in progress (status: ${status}), skipping`);
+        logger.debug(`[AcpBackend] Tool call ${toolCallId} not in progress (status: ${status}), skipping`);
       }
     }
 
@@ -1139,20 +1139,24 @@ export class AcpSdkBackend implements AgentBackend {
         !update.messageChunk &&
         !update.plan &&
         !update.thinking) {
-      logger.debug(`[AcpSdkBackend] Unhandled session update type: ${sessionUpdateType}`, JSON.stringify(update, null, 2));
+      logger.debug(`[AcpBackend] Unhandled session update type: ${sessionUpdateType}`, JSON.stringify(update, null, 2));
     }
   }
 
+  // Promise resolver for waitForIdle - set when waiting for response to complete
+  private idleResolver: (() => void) | null = null;
+  private waitingForResponse = false;
+
   async sendPrompt(sessionId: SessionId, prompt: string): Promise<void> {
-    // Check if prompt contains change_title instruction
-    const promptHasChangeTitle = hasChangeTitleInstruction(prompt);
-    
+    // Check if prompt contains change_title instruction (via optional callback)
+    const promptHasChangeTitle = this.options.hasChangeTitleInstruction?.(prompt) ?? false;
+
     // Reset tool call counter and set flag
     this.toolCallCountSincePrompt = 0;
     this.recentPromptHadChangeTitle = promptHasChangeTitle;
     
     if (promptHasChangeTitle) {
-      logger.debug('[AcpSdkBackend] Prompt contains change_title instruction - will auto-approve first "other" tool call if it matches pattern');
+      logger.debug('[AcpBackend] Prompt contains change_title instruction - will auto-approve first "other" tool call if it matches pattern');
     }
     if (this.disposed) {
       throw new Error('Backend has been disposed');
@@ -1163,10 +1167,11 @@ export class AcpSdkBackend implements AgentBackend {
     }
 
     this.emit({ type: 'status', status: 'running' });
+    this.waitingForResponse = true;
 
     try {
-      logger.debug(`[AcpSdkBackend] Sending prompt (length: ${prompt.length}): ${prompt.substring(0, 100)}...`);
-      logger.debug(`[AcpSdkBackend] Full prompt: ${prompt}`);
+      logger.debug(`[AcpBackend] Sending prompt (length: ${prompt.length}): ${prompt.substring(0, 100)}...`);
+      logger.debug(`[AcpBackend] Full prompt: ${prompt}`);
       
       const contentBlock: ContentBlock = {
         type: 'text',
@@ -1178,15 +1183,16 @@ export class AcpSdkBackend implements AgentBackend {
         prompt: [contentBlock],
       };
 
-      logger.debug(`[AcpSdkBackend] Prompt request:`, JSON.stringify(promptRequest, null, 2));
+      logger.debug(`[AcpBackend] Prompt request:`, JSON.stringify(promptRequest, null, 2));
       await this.connection.prompt(promptRequest);
-      logger.debug('[AcpSdkBackend] Prompt request sent to ACP connection');
+      logger.debug('[AcpBackend] Prompt request sent to ACP connection');
       
       // Don't emit 'idle' here - it will be emitted after all message chunks are received
       // The idle timeout in handleSessionUpdate will emit 'idle' after the last chunk
 
     } catch (error) {
-      logger.debug('[AcpSdkBackend] Error sending prompt:', error);
+      logger.debug('[AcpBackend] Error sending prompt:', error);
+      this.waitingForResponse = false;
       
       // Extract error details for better error handling
       let errorDetail: string;
@@ -1216,6 +1222,43 @@ export class AcpSdkBackend implements AgentBackend {
     }
   }
 
+  /**
+   * Wait for the response to complete (idle status after all chunks received)
+   * Call this after sendPrompt to wait for Gemini to finish responding
+   */
+  async waitForResponseComplete(timeoutMs: number = 120000): Promise<void> {
+    if (!this.waitingForResponse) {
+      return; // Already completed or no prompt sent
+    }
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.idleResolver = null;
+        this.waitingForResponse = false;
+        reject(new Error('Timeout waiting for response to complete'));
+      }, timeoutMs);
+
+      this.idleResolver = () => {
+        clearTimeout(timeout);
+        this.idleResolver = null;
+        this.waitingForResponse = false;
+        resolve();
+      };
+    });
+  }
+
+  /**
+   * Helper to emit idle status and resolve any waiting promises
+   */
+  private emitIdleStatus(): void {
+    this.emit({ type: 'status', status: 'idle' });
+    // Resolve any waiting promises
+    if (this.idleResolver) {
+      logger.debug('[AcpBackend] Resolving idle waiter');
+      this.idleResolver();
+    }
+  }
+
   async cancel(sessionId: SessionId): Promise<void> {
     if (!this.connection || !this.acpSessionId) {
       return;
@@ -1226,20 +1269,22 @@ export class AcpSdkBackend implements AgentBackend {
       this.emit({ type: 'status', status: 'stopped', detail: 'Cancelled by user' });
     } catch (error) {
       // Log to file only, not console
-      logger.debug('[AcpSdkBackend] Error cancelling:', error);
+      logger.debug('[AcpBackend] Error cancelling:', error);
     }
   }
 
   async respondToPermission(requestId: string, approved: boolean): Promise<void> {
-    logger.debug(`[AcpSdkBackend] Permission response: ${requestId} = ${approved}`);
+    logger.debug(`[AcpBackend] Permission response: ${requestId} = ${approved}`);
     this.emit({ type: 'permission-response', id: requestId, approved });
-    // TODO: Implement actual permission response when needed
+    // IMPORTANT: The actual ACP permission response is handled synchronously
+    // within the `requestPermission` method via `this.options.permissionHandler`.
+    // This method only emits an internal event for other parts of the CLI to react to.
   }
 
   async dispose(): Promise<void> {
     if (this.disposed) return;
     
-    logger.debug('[AcpSdkBackend] Disposing backend');
+    logger.debug('[AcpBackend] Disposing backend');
     this.disposed = true;
 
     // Try graceful shutdown first
@@ -1251,7 +1296,7 @@ export class AcpSdkBackend implements AgentBackend {
           new Promise((resolve) => setTimeout(resolve, 2000)), // 2s timeout for graceful shutdown
         ]);
       } catch (error) {
-        logger.debug('[AcpSdkBackend] Error during graceful shutdown:', error);
+        logger.debug('[AcpBackend] Error during graceful shutdown:', error);
       }
     }
 
@@ -1264,7 +1309,7 @@ export class AcpSdkBackend implements AgentBackend {
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           if (this.process) {
-            logger.debug('[AcpSdkBackend] Force killing process');
+            logger.debug('[AcpBackend] Force killing process');
             this.process.kill('SIGKILL');
           }
           resolve();

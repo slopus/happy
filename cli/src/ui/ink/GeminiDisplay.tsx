@@ -40,7 +40,8 @@ export const GeminiDisplay: React.FC<GeminiDisplayProps> = ({ messageBuffer, log
       setMessages(newMessages);
       
       // Extract model from [MODEL:...] messages when messages update
-      const modelMessage = newMessages.find(msg => 
+      // Use reverse + find to get the LATEST model message (in case model was changed)
+      const modelMessage = [...newMessages].reverse().find(msg => 
         msg.type === 'system' && msg.content.startsWith('[MODEL:')
       );
       
