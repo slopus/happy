@@ -252,10 +252,7 @@ export async function runCodex(opts: {
             }
             
             abortController.abort();
-            messageQueue.reset();
-            permissionHandler.reset();
             reasoningProcessor.abort();
-            diffProcessor.reset();
             logger.debug('[Codex] Abort completed - session remains active');
         } catch (error) {
             logger.debug('[Codex] Error during abort:', error);
@@ -290,6 +287,13 @@ export async function runCodex(opts: {
                 session.sendSessionDeath();
                 await session.flush();
                 await session.close();
+            }
+
+            // Force close Codex transport (best-effort) so we don't leave stray processes
+            try {
+                await client.forceCloseSession();
+            } catch (e) {
+                logger.debug('[Codex] Error while force closing Codex session during termination', e);
             }
 
             // Stop caffeinate
@@ -713,11 +717,9 @@ export async function runCodex(opts: {
                 if (isAbortError) {
                     messageBuffer.addMessage('Aborted by user', 'status');
                     session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
-                    // Session was already stored in handleAbort(), no need to store again
-                    // Mark session as not created to force proper resume on next message
-                    wasCreated = false;
-                    currentModeHash = null;
-                    logger.debug('[Codex] Marked session as not created after abort for proper resume');
+                    // Abort cancels the current task/inference but keeps the Codex session alive.
+                    // Do not clear session state here; the next user message should continue on the
+                    // existing session if possible.
                 } else {
                     messageBuffer.addMessage('Process exited unexpectedly', 'status');
                     session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
@@ -767,9 +769,9 @@ export async function runCodex(opts: {
         } catch (e) {
             logger.debug('[codex]: Error while closing session', e);
         }
-        logger.debug('[codex]: client.disconnect begin');
-        await client.disconnect();
-        logger.debug('[codex]: client.disconnect done');
+        logger.debug('[codex]: client.forceCloseSession begin');
+        await client.forceCloseSession();
+        logger.debug('[codex]: client.forceCloseSession done');
         // Stop Happy MCP server
         logger.debug('[codex]: happyServer.stop');
         happyServer.stop();
