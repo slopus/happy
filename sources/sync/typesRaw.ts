@@ -206,6 +206,68 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
             id: z.string()
         })
     ])
+}), z.object({
+    // ACP (Agent Communication Protocol) - unified format for all agent providers
+    type: z.literal('acp'),
+    provider: z.enum(['gemini', 'codex', 'claude', 'opencode']),
+    data: z.discriminatedUnion('type', [
+        // Core message types
+        z.object({ type: z.literal('reasoning'), message: z.string() }),
+        z.object({ type: z.literal('message'), message: z.string() }),
+        z.object({ type: z.literal('thinking'), text: z.string() }),
+        // Tool interactions
+        z.object({
+            type: z.literal('tool-call'),
+            callId: z.string(),
+            input: z.any(),
+            name: z.string(),
+            id: z.string()
+        }),
+        z.object({
+            type: z.literal('tool-result'),
+            callId: z.string(),
+            output: z.any(),
+            id: z.string(),
+            isError: z.boolean().optional()
+        }),
+        // Hyphenated tool-call-result (for backwards compatibility with CLI)
+        z.object({
+            type: z.literal('tool-call-result'),
+            callId: z.string(),
+            output: z.any(),
+            id: z.string()
+        }),
+        // File operations
+        z.object({
+            type: z.literal('file-edit'),
+            description: z.string(),
+            filePath: z.string(),
+            diff: z.string().optional(),
+            oldContent: z.string().optional(),
+            newContent: z.string().optional(),
+            id: z.string()
+        }),
+        // Terminal/command output
+        z.object({
+            type: z.literal('terminal-output'),
+            data: z.string(),
+            callId: z.string()
+        }),
+        // Task lifecycle events
+        z.object({ type: z.literal('task_started'), id: z.string() }),
+        z.object({ type: z.literal('task_complete'), id: z.string() }),
+        z.object({ type: z.literal('turn_aborted'), id: z.string() }),
+        // Permissions
+        z.object({
+            type: z.literal('permission-request'),
+            permissionId: z.string(),
+            toolName: z.string(),
+            description: z.string(),
+            options: z.any().optional()
+        }),
+        // Usage/metrics
+        z.object({ type: z.literal('token_count') }).passthrough()
+    ])
 })]);
 
 /**
@@ -576,6 +638,180 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     meta: raw.meta
                 } satisfies NormalizedMessage;
             }
+        }
+        // ACP (Agent Communication Protocol) - unified format for all agent providers
+        if (raw.content.type === 'acp') {
+            if (raw.content.data.type === 'message') {
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'text',
+                        text: raw.content.data.message,
+                        uuid: id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+            if (raw.content.data.type === 'reasoning') {
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'text',
+                        text: raw.content.data.message,
+                        uuid: id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+            if (raw.content.data.type === 'tool-call') {
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: raw.content.data.callId,
+                        name: raw.content.data.name || 'unknown',
+                        input: raw.content.data.input,
+                        description: null,
+                        uuid: raw.content.data.id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+            if (raw.content.data.type === 'tool-result') {
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: raw.content.data.callId,
+                        content: raw.content.data.output,
+                        is_error: raw.content.data.isError ?? false,
+                        uuid: raw.content.data.id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+            // Handle hyphenated tool-call-result (backwards compatibility)
+            if (raw.content.data.type === 'tool-call-result') {
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: raw.content.data.callId,
+                        content: raw.content.data.output,
+                        is_error: false,
+                        uuid: raw.content.data.id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+            if (raw.content.data.type === 'thinking') {
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'thinking',
+                        thinking: raw.content.data.text,
+                        uuid: id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+            if (raw.content.data.type === 'file-edit') {
+                // Map file-edit to tool-call for UI rendering
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: raw.content.data.id,
+                        name: 'file-edit',
+                        input: {
+                            filePath: raw.content.data.filePath,
+                            description: raw.content.data.description,
+                            diff: raw.content.data.diff,
+                            oldContent: raw.content.data.oldContent,
+                            newContent: raw.content.data.newContent
+                        },
+                        description: raw.content.data.description,
+                        uuid: raw.content.data.id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+            if (raw.content.data.type === 'terminal-output') {
+                // Map terminal-output to tool-result
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: raw.content.data.callId,
+                        content: raw.content.data.data,
+                        is_error: false,
+                        uuid: id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+            if (raw.content.data.type === 'permission-request') {
+                // Map permission-request to tool-call for UI to show permission dialog
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: raw.content.data.permissionId,
+                        name: raw.content.data.toolName,
+                        input: raw.content.data.options ?? {},
+                        description: raw.content.data.description,
+                        uuid: id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+            // Task lifecycle events (task_started, task_complete, turn_aborted) and token_count
+            // are status/metrics - skip normalization, they don't need UI rendering
         }
     }
     return null;

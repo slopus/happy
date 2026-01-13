@@ -431,12 +431,12 @@ export const en = {
         geminiPermissionMode: {
             title: 'GEMINI PERMISSION MODE',
             default: 'Default',
-            acceptEdits: 'Accept Edits',
-            plan: 'Plan Mode',
-            bypassPermissions: 'Yolo Mode',
-            badgeAcceptAllEdits: 'Accept All Edits',
-            badgeBypassAllPermissions: 'Bypass All Permissions',
-            badgePlanMode: 'Plan Mode',
+            readOnly: 'Read Only',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Read Only',
+            badgeSafeYolo: 'Safe YOLO',
+            badgeYolo: 'YOLO',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% left`,
@@ -759,7 +759,7 @@ export const en = {
         permissions: {
             yesAllowAllEdits: 'Yes, allow all edits during this session',
             yesForTool: "Yes, don't ask again for this tool",
-            noTellClaude: 'No, and tell Claude what to do differently',
+            noTellClaude: 'No, and provide feedback',
         }
     },
 

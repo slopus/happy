@@ -442,12 +442,12 @@ export const ru: TranslationStructure = {
         geminiPermissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ',
             default: 'По умолчанию',
-            acceptEdits: 'Принимать правки',
-            plan: 'Режим планирования',
-            bypassPermissions: 'YOLO режим',
-            badgeAcceptAllEdits: 'Принимать все правки',
-            badgeBypassAllPermissions: 'Обход всех разрешений',
-            badgePlanMode: 'Режим планирования',
+            readOnly: 'Только чтение',
+            safeYolo: 'Безопасный YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Только чтение',
+            badgeSafeYolo: 'Безопасный YOLO',
+            badgeYolo: 'YOLO',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `Осталось ${percent}%`,
@@ -758,7 +758,7 @@ export const ru: TranslationStructure = {
         permissions: {
             yesAllowAllEdits: 'Да, разрешить все правки в этой сессии',
             yesForTool: 'Да, больше не спрашивать для этого инструмента',
-            noTellClaude: 'Нет, и сказать Claude что делать по-другому',
+            noTellClaude: 'Нет, дать обратную связь',
         }
     },
 
