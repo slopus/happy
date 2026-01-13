@@ -94,11 +94,28 @@ export async function runGemini(opts: {
   // Fetch Gemini cloud token (from 'happy connect gemini')
   //
   let cloudToken: string | undefined = undefined;
+  let currentUserEmail: string | undefined = undefined;
   try {
     const vendorToken = await api.getVendorToken('gemini');
     if (vendorToken?.oauth?.access_token) {
       cloudToken = vendorToken.oauth.access_token;
       logger.debug('[Gemini] Using OAuth token from Happy cloud');
+      
+      // Extract email from id_token for per-account project matching
+      if (vendorToken.oauth.id_token) {
+        try {
+          const parts = vendorToken.oauth.id_token.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+            if (payload.email) {
+              currentUserEmail = payload.email;
+              logger.debug(`[Gemini] Current user email: ${currentUserEmail}`);
+            }
+          }
+        } catch {
+          logger.debug('[Gemini] Failed to decode id_token for email');
+        }
+      }
     }
   } catch (error) {
     logger.debug('[Gemini] Failed to fetch cloud token:', error);
@@ -514,12 +531,15 @@ export async function runGemini(opts: {
         break;
 
       case 'status':
-        // Log status changes for debugging
-        logger.debug(`[gemini] Status changed: ${msg.status}${msg.detail ? ` - ${msg.detail}` : ''}`);
+        // Log status changes for debugging - stringify object details
+        const statusDetail = msg.detail 
+          ? (typeof msg.detail === 'object' ? JSON.stringify(msg.detail) : String(msg.detail))
+          : '';
+        logger.debug(`[gemini] Status changed: ${msg.status}${statusDetail ? ` - ${statusDetail}` : ''}`);
         
         // Log error status with details
         if (msg.status === 'error') {
-          logger.debug(`[gemini] ⚠️ Error status received: ${msg.detail || 'Unknown error'}`);
+          logger.debug(`[gemini] ⚠️ Error status received: ${statusDetail || 'Unknown error'}`);
           
           // Send turn_aborted event (like Codex) when error occurs
           session.sendAgentMessage('gemini', {
@@ -567,8 +587,28 @@ export async function runGemini(opts: {
           isResponseInProgress = false;
           currentResponseMessageId = null;
           
-          // Show error in CLI UI
-          const errorMessage = msg.detail || 'Unknown error';
+          // Show error in CLI UI - handle object errors properly
+          let errorMessage = 'Unknown error';
+          if (msg.detail) {
+            if (typeof msg.detail === 'object') {
+              // Extract message from error object
+              const detailObj = msg.detail as Record<string, unknown>;
+              errorMessage = (detailObj.message as string) || 
+                           (detailObj.details as string) || 
+                           JSON.stringify(detailObj);
+            } else {
+              errorMessage = String(msg.detail);
+            }
+          }
+          
+          // Check for authentication error and provide helpful message
+          if (errorMessage.includes('Authentication required')) {
+            errorMessage = `Authentication required.\n` +
+              `For Google Workspace accounts, run: happy gemini project set <project-id>\n` +
+              `Or use a different Google account: happy connect gemini\n` +
+              `Guide: https://goo.gle/gemini-cli-auth-docs#workspace-gca`;
+          }
+          
           messageBuffer.addMessage(`Error: ${errorMessage}`, 'status');
           
           // Use sendAgentMessage for consistency with ACP format
@@ -879,6 +919,7 @@ export async function runGemini(opts: {
           mcpServers,
           permissionHandler,
           cloudToken,
+          currentUserEmail,
           // Pass model from message - if undefined, will use local config/env/default
           // If explicitly null, will skip local config and use env/default
           model: modelToUse,
@@ -930,6 +971,7 @@ export async function runGemini(opts: {
               mcpServers,
               permissionHandler,
               cloudToken,
+              currentUserEmail,
               // Pass model from message - if undefined, will use local config/env/default
               // If explicitly null, will skip local config and use env/default
               model: modelToUse,
@@ -1132,6 +1174,15 @@ export async function runGemini(opts: {
                 resetTimeMsg = ` Quota resets in ${parts}.`;
               }
               errorMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-2.5-flash-lite) or wait for quota reset.`;
+            }
+            // Check for authentication error (Google Workspace accounts need project ID)
+            else if (errorMessage.includes('Authentication required') || 
+                     errorDetails.includes('Authentication required') ||
+                     errorCode === -32000) {
+              errorMsg = `Authentication required. For Google Workspace accounts, you need to set a Google Cloud Project:\n` +
+                         `  happy gemini project set <your-project-id>\n` +
+                         `Or use a different Google account: happy connect gemini\n` +
+                         `Guide: https://goo.gle/gemini-cli-auth-docs#workspace-gca`;
             }
             // Check for empty error (command not found)
             else if (Object.keys(error).length === 0) {

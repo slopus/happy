@@ -35,6 +35,9 @@ export interface GeminiBackendOptions extends AgentFactoryOptions {
   /** OAuth token from Happy cloud (via 'happy connect gemini') - highest priority */
   cloudToken?: string;
   
+  /** Current user email (from OAuth id_token) - used to match per-account project ID */
+  currentUserEmail?: string;
+  
   /** Model to use. If undefined, will use local config, env var, or default.
    *  If explicitly set to null, will use default (skip local config).
    *  (defaults to GEMINI_MODEL env var or 'gemini-2.5-pro') */
@@ -92,6 +95,22 @@ export function createGeminiBackend(options: GeminiBackendOptions): AgentBackend
   // We don't use --model flag to avoid potential stdout conflicts with ACP protocol
   const geminiArgs = ['--experimental-acp'];
 
+  // Get Google Cloud Project from local config (for Workspace accounts)
+  // Only use if: no email stored (global), or email matches current user
+  let googleCloudProject: string | null = null;
+  if (localConfig.googleCloudProject) {
+    const storedEmail = localConfig.googleCloudProjectEmail;
+    const currentEmail = options.currentUserEmail;
+    
+    // Use project if: no email stored (applies to all), or emails match
+    if (!storedEmail || storedEmail === currentEmail) {
+      googleCloudProject = localConfig.googleCloudProject;
+      logger.debug(`[Gemini] Using Google Cloud Project: ${googleCloudProject}${storedEmail ? ` (for ${storedEmail})` : ' (global)'}`);
+    } else {
+      logger.debug(`[Gemini] Skipping stored Google Cloud Project (stored for ${storedEmail}, current user is ${currentEmail || 'unknown'})`);
+    }
+  }
+
   const backendOptions: AcpBackendOptions = {
     agentName: 'gemini',
     cwd: options.cwd,
@@ -102,6 +121,11 @@ export function createGeminiBackend(options: GeminiBackendOptions): AgentBackend
       ...(apiKey ? { [GEMINI_API_KEY_ENV]: apiKey, [GOOGLE_API_KEY_ENV]: apiKey } : {}),
       // Pass model via env var - gemini CLI reads GEMINI_MODEL automatically
       [GEMINI_MODEL_ENV]: model,
+      // Pass Google Cloud Project for Workspace accounts
+      ...(googleCloudProject ? { 
+        GOOGLE_CLOUD_PROJECT: googleCloudProject,
+        GOOGLE_CLOUD_PROJECT_ID: googleCloudProject,
+      } : {}),
       // Suppress debug output from gemini CLI to avoid stdout pollution
       NODE_ENV: 'production',
       DEBUG: '',
