@@ -274,8 +274,15 @@ export async function startDaemon(): Promise<void> {
           logger.debug('[DAEMON RUN] No profile environment variables provided by caller; skipping profile env injection');
         }
 
-        // Final merge: Profile vars first, then auth (auth takes precedence to protect authentication)
-        let extraEnv = { ...profileEnv, ...authEnv };
+        // Session identity (non-secret) for cross-device display/debugging
+        // Empty string means "no profile" and should still be preserved.
+        const sessionProfileEnv: Record<string, string> = {};
+        if (options.profileId !== undefined) {
+          sessionProfileEnv.HAPPY_SESSION_PROFILE_ID = options.profileId;
+        }
+
+        // Final merge: profile vars + session identity, then auth (auth takes precedence to protect authentication)
+        let extraEnv = { ...profileEnv, ...sessionProfileEnv, ...authEnv };
         logger.debug(`[DAEMON RUN] Final environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
 
         // Expand ${VAR} references from daemon's process.env

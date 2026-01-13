@@ -67,11 +67,17 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         controlledByUser: false,
     };
 
+    const profileIdEnv = process.env.HAPPY_SESSION_PROFILE_ID;
+    const profileId = profileIdEnv !== undefined
+        ? (profileIdEnv.trim() ? profileIdEnv.trim() : null)
+        : undefined;
+
     const metadata: Metadata = {
         path: process.cwd(),
         host: os.hostname(),
         version: packageJson.version,
         os: os.platform(),
+        ...(profileIdEnv !== undefined ? { profileId } : {}),
         machineId: opts.machineId,
         homeDir: os.homedir(),
         happyHomeDir: configuration.happyHomeDir,

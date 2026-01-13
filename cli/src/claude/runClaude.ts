@@ -88,6 +88,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         host: os.hostname(),
         version: packageJson.version,
         os: os.platform(),
+        ...(profileIdEnv !== undefined ? { profileId } : {}),
         machineId: machineId,
         homeDir: os.homedir(),
         happyHomeDir: configuration.happyHomeDir,

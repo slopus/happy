@@ -122,6 +122,14 @@ export interface SpawnSessionOptions {
     approvedNewDirectoryCreation?: boolean;
     agent?: 'claude' | 'codex' | 'gemini';
     token?: string;
+    /**
+     * Session-scoped profile identity for display/debugging across devices.
+     * This is NOT the profile content; actual runtime behavior is still driven
+     * by environmentVariables passed for this spawn.
+     *
+     * Empty string is allowed and means "no profile".
+     */
+    profileId?: string;
     environmentVariables?: {
         // Anthropic Claude API configuration
         ANTHROPIC_BASE_URL?: string;        // Custom API endpoint (overrides default)
