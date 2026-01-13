@@ -207,6 +207,9 @@ export const en = {
         enhancedSessionWizard: 'Enhanced Session Wizard',
         enhancedSessionWizardEnabled: 'Profile-first session launcher active',
         enhancedSessionWizardDisabled: 'Using standard session launcher',
+        profiles: 'AI Profiles',
+        profilesEnabled: 'Profile selection enabled',
+        profilesDisabled: 'Profile selection disabled',
     },
 
     errors: {

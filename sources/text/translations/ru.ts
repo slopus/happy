@@ -190,6 +190,9 @@ export const ru: TranslationStructure = {
         enhancedSessionWizard: 'Улучшенный мастер сессий',
         enhancedSessionWizardEnabled: 'Лаунчер с профилем активен',
         enhancedSessionWizardDisabled: 'Используется стандартный лаунчер',
+        profiles: 'AI Profiles',
+        profilesEnabled: 'Profile selection enabled',
+        profilesDisabled: 'Profile selection disabled',
     },
 
     errors: {

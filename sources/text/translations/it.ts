@@ -237,6 +237,9 @@ export const it: TranslationStructure = {
         enhancedSessionWizard: 'Wizard sessione avanzato',
         enhancedSessionWizardEnabled: 'Avvio sessioni con profili attivo',
         enhancedSessionWizardDisabled: 'Usando avvio sessioni standard',
+        profiles: 'AI Profiles',
+        profilesEnabled: 'Profile selection enabled',
+        profilesDisabled: 'Profile selection disabled',
     },
 
     errors: {

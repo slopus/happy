@@ -9,6 +9,7 @@ import { t } from '@/text';
 
 export default function FeaturesSettingsScreen() {
     const [experiments, setExperiments] = useSettingMutable('experiments');
+    const [useProfiles, setUseProfiles] = useSettingMutable('useProfiles');
     const [agentInputEnterToSend, setAgentInputEnterToSend] = useSettingMutable('agentInputEnterToSend');
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
@@ -68,6 +69,20 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={useEnhancedSessionWizard}
                             onValueChange={setUseEnhancedSessionWizard}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.profiles')}
+                    subtitle={useProfiles
+                        ? t('settingsFeatures.profilesEnabled')
+                        : t('settingsFeatures.profilesDisabled')}
+                    icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
+                    rightElement={
+                        <Switch
+                            value={useProfiles}
+                            onValueChange={setUseProfiles}
                         />
                     }
                     showChevron={false}

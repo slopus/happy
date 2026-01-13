@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, TextInput, Pressable } from 'react-native';
+import { View, Text, TextInput, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
+import { Switch } from '@/components/Switch';
 
 export interface EnvironmentVariableCardProps {
     variable: { name: string; value: string };
@@ -74,7 +75,7 @@ export function EnvironmentVariableCard({
     const [remoteVariableName, setRemoteVariableName] = React.useState(parsed.remoteVariableName);
     const [defaultValue, setDefaultValue] = React.useState(parsed.defaultValue);
 
-    // Query remote machine for variable value (only if checkbox enabled and not secret)
+    // Query remote machine for variable value (only if toggle enabled and not secret)
     const shouldQueryRemote = useRemoteVariable && !isSecret && remoteVariableName.trim() !== '';
     const { variables: remoteValues } = useEnvironmentVariables(
         machineId,
@@ -100,16 +101,21 @@ export function EnvironmentVariableCard({
 
     return (
         <View style={{
-            backgroundColor: theme.colors.input.background,
-            borderRadius: theme.borderRadius.xl,
-            padding: theme.margins.lg,
-            marginBottom: theme.margins.md
+            backgroundColor: theme.colors.surface,
+            borderRadius: 16,
+            padding: 16,
+            marginHorizontal: 12,
+            marginBottom: 12,
+            shadowColor: theme.colors.shadow.color,
+            shadowOffset: { width: 0, height: 0.33 },
+            shadowOpacity: theme.colors.shadow.opacity,
+            shadowRadius: 0,
+            elevation: 1,
         }}>
             {/* Header row with variable name and action buttons */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                 <Text style={{
-                    fontSize: 12,
-                    fontWeight: '600',
+                    fontSize: 13,
                     color: theme.colors.text,
                     ...Typography.default('semiBold')
                 }}>
@@ -147,60 +153,44 @@ export function EnvironmentVariableCard({
                 </Text>
             )}
 
-            {/* Checkbox: First try copying variable from remote machine */}
-            <Pressable
-                style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    marginBottom: 8,
-                }}
-                onPress={() => setUseRemoteVariable(!useRemoteVariable)}
-            >
-                <View style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: theme.borderRadius.sm,
-                    borderWidth: 2,
-                    borderColor: useRemoteVariable ? theme.colors.button.primary.background : theme.colors.textSecondary,
-                    backgroundColor: useRemoteVariable ? theme.colors.button.primary.background : 'transparent',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    marginRight: theme.margins.sm,
-                }}>
-                    {useRemoteVariable && (
-                        <Ionicons name="checkmark" size={theme.iconSize.small} color={theme.colors.button.primary.tint} />
-                    )}
-                </View>
+            {/* Toggle: Copy from remote machine */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <Text style={{
                     fontSize: 11,
                     color: theme.colors.textSecondary,
                     ...Typography.default()
                 }}>
-                    First try copying variable from remote machine:
+                    Copy from remote machine
                 </Text>
-            </Pressable>
+                <Switch
+                    value={useRemoteVariable}
+                    onValueChange={setUseRemoteVariable}
+                />
+            </View>
 
-            {/* Remote variable name input */}
-            <TextInput
-                style={{
-                    backgroundColor: theme.colors.surface,
-                    borderRadius: theme.borderRadius.lg,
-                    padding: theme.margins.sm,
-                    fontSize: 14,
-                    color: theme.colors.text,
-                    marginBottom: 4,
-                    borderWidth: 1,
-                    borderColor: theme.colors.textSecondary,
-                    opacity: useRemoteVariable ? 1 : 0.5,
-                }}
-                placeholder="Variable name (e.g., Z_AI_MODEL)"
-                placeholderTextColor={theme.colors.input.placeholder}
-                value={remoteVariableName}
-                onChangeText={setRemoteVariableName}
-                editable={useRemoteVariable}
-                autoCapitalize="none"
-                autoCorrect={false}
-            />
+            {/* Remote variable name input (only when enabled) */}
+            {useRemoteVariable && (
+                <TextInput
+                    style={{
+                        ...Typography.default('regular'),
+                        backgroundColor: theme.colors.input.background,
+                        borderRadius: 10,
+                        paddingHorizontal: 12,
+                        paddingVertical: Platform.select({ ios: 10, default: 12 }),
+                        fontSize: Platform.select({ ios: 17, default: 16 }),
+                        lineHeight: Platform.select({ ios: 22, default: 24 }),
+                        letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+                        color: theme.colors.input.text,
+                        marginBottom: 4,
+                    }}
+                    placeholder="Variable name (e.g., Z_AI_MODEL)"
+                    placeholderTextColor={theme.colors.input.placeholder}
+                    value={remoteVariableName}
+                    onChangeText={setRemoteVariableName}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                />
+            )}
 
             {/* Remote variable status */}
             {useRemoteVariable && !isSecret && machineId && remoteVariableName.trim() !== '' && (
@@ -212,7 +202,7 @@ export function EnvironmentVariableCard({
                             fontStyle: 'italic',
                             ...Typography.default()
                         }}>
-                            ⏳ Checking remote machine...
+                            Checking remote machine...
                         </Text>
                     ) : remoteValue === null ? (
                         <Text style={{
@@ -220,7 +210,7 @@ export function EnvironmentVariableCard({
                             color: theme.colors.warning,
                             ...Typography.default()
                         }}>
-                            ✗ Value not found
+                            Value not found
                         </Text>
                     ) : (
                         <>
@@ -229,7 +219,7 @@ export function EnvironmentVariableCard({
                                 color: theme.colors.success,
                                 ...Typography.default()
                             }}>
-                                ✓ Value found: {remoteValue}
+                                Value found
                             </Text>
                             {showRemoteDiffersWarning && (
                                 <Text style={{
@@ -238,7 +228,7 @@ export function EnvironmentVariableCard({
                                     marginTop: 2,
                                     ...Typography.default()
                                 }}>
-                                    ⚠️ Differs from documented value: {expectedValue}
+                                    Differs from documented value: {expectedValue}
                                 </Text>
                             )}
                         </>
@@ -254,7 +244,7 @@ export function EnvironmentVariableCard({
                     fontStyle: 'italic',
                     ...Typography.default()
                 }}>
-                    ℹ️ Select a machine to check if variable exists
+                    Select a machine to check if variable exists
                 </Text>
             )}
 
@@ -267,33 +257,35 @@ export function EnvironmentVariableCard({
                     fontStyle: 'italic',
                     ...Typography.default()
                 }}>
-                    🔒 Secret value - not retrieved for security
+                    Secret value - not retrieved for security
                 </Text>
             )}
 
-            {/* Default value label */}
+            {/* Value label */}
             <Text style={{
                 fontSize: 11,
                 color: theme.colors.textSecondary,
                 marginBottom: 4,
                 ...Typography.default()
             }}>
-                Default value:
+                {useRemoteVariable ? 'Default value:' : 'Value:'}
             </Text>
 
             {/* Default value input */}
             <TextInput
                 style={{
-                    backgroundColor: theme.colors.surface,
-                    borderRadius: theme.borderRadius.lg,
-                    padding: theme.margins.sm,
-                    fontSize: 14,
-                    color: theme.colors.text,
+                    ...Typography.default('regular'),
+                    backgroundColor: theme.colors.input.background,
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: Platform.select({ ios: 10, default: 12 }),
+                    fontSize: Platform.select({ ios: 17, default: 16 }),
+                    lineHeight: Platform.select({ ios: 22, default: 24 }),
+                    letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+                    color: theme.colors.input.text,
                     marginBottom: 4,
-                    borderWidth: 1,
-                    borderColor: theme.colors.textSecondary,
                 }}
-                placeholder={expectedValue || "Value"}
+                placeholder={expectedValue || (useRemoteVariable ? 'Default value' : 'Value')}
                 placeholderTextColor={theme.colors.input.placeholder}
                 value={defaultValue}
                 onChangeText={setDefaultValue}
@@ -310,7 +302,7 @@ export function EnvironmentVariableCard({
                     marginBottom: 8,
                     ...Typography.default()
                 }}>
-                    ⚠️ Overriding documented default: {expectedValue}
+                    Overriding documented default: {expectedValue}
                 </Text>
             )}
 

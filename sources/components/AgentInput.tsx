@@ -306,13 +306,29 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Profile data
     const profiles = useSetting('profiles');
     const currentProfile = React.useMemo(() => {
-        if (!props.profileId) return null;
+        if (props.profileId === undefined || props.profileId === null || props.profileId.trim() === '') {
+            return null;
+        }
         // Check custom profiles first
         const customProfile = profiles.find(p => p.id === props.profileId);
         if (customProfile) return customProfile;
         // Check built-in profiles
         return getBuiltInProfile(props.profileId);
     }, [profiles, props.profileId]);
+
+    const profileLabel = React.useMemo(() => {
+        if (props.profileId === undefined) {
+            return null;
+        }
+        if (props.profileId === null || props.profileId.trim() === '') {
+            return t('profiles.noProfile');
+        }
+        if (currentProfile) {
+            return currentProfile.name;
+        }
+        const shortId = props.profileId.length > 8 ? `${props.profileId.slice(0, 8)}…` : props.profileId;
+        return `${t('status.unknown')} (${shortId})`;
+    }, [props.profileId, currentProfile]);
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
@@ -644,14 +660,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         paddingBottom: 4,
                         minHeight: 20, // Fixed minimum height to prevent jumping
                     }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 11 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                             {props.connectionStatus && (
                                 <>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                         <StatusDot
                                             color={props.connectionStatus.dotColor}
                                             isPulsing={props.connectionStatus.isPulsing}
                                             size={6}
+                                        style={{ marginRight: 6 }}
                                         />
                                         <Text style={{
                                             fontSize: 11,
@@ -660,74 +676,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         }}>
                                             {props.connectionStatus.text}
                                         </Text>
-                                    </View>
-                                    {/* CLI Status - only shown when provided (wizard only) */}
-                                    {props.connectionStatus.cliStatus && (
-                                        <>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.claude
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    {props.connectionStatus.cliStatus.claude ? '✓' : '✗'}
-                                                </Text>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.claude
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    claude
-                                                </Text>
-                                            </View>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.codex
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    {props.connectionStatus.cliStatus.codex ? '✓' : '✗'}
-                                                </Text>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.codex
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    codex
-                                                </Text>
-                                            </View>
-                                            {props.connectionStatus.cliStatus.gemini !== undefined && (
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                    <Text style={{
-                                                        fontSize: 11,
-                                                        color: props.connectionStatus.cliStatus.gemini
-                                                            ? theme.colors.success
-                                                            : theme.colors.textDestructive,
-                                                        ...Typography.default()
-                                                    }}>
-                                                        {props.connectionStatus.cliStatus.gemini ? '✓' : '✗'}
-                                                    </Text>
-                                                    <Text style={{
-                                                        fontSize: 11,
-                                                        color: props.connectionStatus.cliStatus.gemini
-                                                            ? theme.colors.success
-                                                            : theme.colors.textDestructive,
-                                                        ...Typography.default()
-                                                    }}>
-                                                        gemini
-                                                    </Text>
-                                                </View>
-                                            )}
-                                        </>
-                                    )}
                                 </>
                             )}
                             {contextWarning && (
@@ -780,87 +728,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     </View>
                 )}
 
-                {/* Box 1: Context Information (Machine + Path) - Only show if either exists */}
-                {(props.machineName !== undefined || props.currentPath) && (
-                    <View style={{
-                        backgroundColor: theme.colors.surfacePressed,
-                        borderRadius: 12,
-                        padding: 8,
-                        marginBottom: 8,
-                        gap: 4,
-                    }}>
-                        {/* Machine chip */}
-                        {props.machineName !== undefined && props.onMachineClick && (
-                            <Pressable
-                                onPress={() => {
-                                    hapticsLight();
-                                    props.onMachineClick?.();
-                                }}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                style={(p) => ({
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 6,
-                                    height: 32,
-                                    opacity: p.pressed ? 0.7 : 1,
-                                    gap: 6,
-                                })}
-                            >
-                                <Ionicons
-                                    name="desktop-outline"
-                                    size={14}
-                                    color={theme.colors.textSecondary}
-                                />
-                                <Text style={{
-                                    fontSize: 13,
-                                    color: theme.colors.text,
-                                    fontWeight: '600',
-                                    ...Typography.default('semiBold'),
-                                }}>
-                                    {props.machineName === null ? t('agentInput.noMachinesAvailable') : props.machineName}
-                                </Text>
-                            </Pressable>
-                        )}
-
-                        {/* Path chip */}
-                        {props.currentPath && props.onPathClick && (
-                            <Pressable
-                                onPress={() => {
-                                    hapticsLight();
-                                    props.onPathClick?.();
-                                }}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                style={(p) => ({
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 6,
-                                    height: 32,
-                                    opacity: p.pressed ? 0.7 : 1,
-                                    gap: 6,
-                                })}
-                            >
-                                <Ionicons
-                                    name="folder-outline"
-                                    size={14}
-                                    color={theme.colors.textSecondary}
-                                />
-                                <Text style={{
-                                    fontSize: 13,
-                                    color: theme.colors.text,
-                                    fontWeight: '600',
-                                    ...Typography.default('semiBold'),
-                                }}>
-                                    {props.currentPath}
-                                </Text>
-                            </Pressable>
-                        )}
-                    </View>
-                )}
-
                 {/* Box 2: Action Area (Input + Send) */}
                 <View style={styles.unifiedPanel}>
                     {/* Input field */}
@@ -887,63 +754,63 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                                 {/* Settings button */}
                                 {props.onPermissionModeChange && (
-                                    <Pressable
+                            <Pressable
                                         onPress={handleSettingsPress}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                style={(p) => ({
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    borderRadius: Platform.select({ default: 16, android: 20 }),
                                             paddingHorizontal: 8,
-                                            paddingVertical: 6,
+                                    paddingVertical: 6,
                                             justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                        })}
-                                    >
+                                    height: 32,
+                                    opacity: p.pressed ? 0.7 : 1,
+                                })}
+                            >
                                         <Octicons
                                             name={'gear'}
                                             size={16}
                                             color={theme.colors.button.secondary.tint}
-                                        />
-                                    </Pressable>
-                                )}
+                                />
+                            </Pressable>
+                        )}
 
                                 {/* Profile selector button - FIRST */}
-                                {props.profileId && props.onProfileClick && (
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
+                                {props.onProfileClick && (
+                            <Pressable
+                                onPress={() => {
+                                    hapticsLight();
                                             props.onProfileClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
+                                }}
+                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                style={(p) => ({
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    borderRadius: Platform.select({ default: 16, android: 20 }),
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 6,
                                             justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-                                        <Ionicons
+                                    height: 32,
+                                    opacity: p.pressed ? 0.7 : 1,
+                                    gap: 6,
+                                })}
+                            >
+                                <Ionicons
                                             name="person-outline"
-                                            size={14}
+                                    size={14}
                                             color={theme.colors.button.secondary.tint}
-                                        />
-                                        <Text style={{
-                                            fontSize: 13,
+                                />
+                                <Text style={{
+                                    fontSize: 13,
                                             color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {currentProfile?.name || 'Select Profile'}
-                                        </Text>
-                                    </Pressable>
-                                )}
+                                    fontWeight: '600',
+                                    ...Typography.default('semiBold'),
+                                }}>
+                                            {profileLabel ?? t('profiles.noProfile')}
+                                </Text>
+                            </Pressable>
+                        )}
 
                                 {/* Agent selector button */}
                                 {props.agentType && props.onAgentClick && (
@@ -977,6 +844,78 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             ...Typography.default('semiBold'),
                                         }}>
                                             {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : t('agentInput.agent.gemini')}
+                                        </Text>
+                                    </Pressable>
+                                )}
+
+                                {/* Machine selector button */}
+                                {(props.machineName !== undefined) && props.onMachineClick && (
+                                    <Pressable
+                                        onPress={() => {
+                                            hapticsLight();
+                                            props.onMachineClick?.();
+                                        }}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 6,
+                                            justifyContent: 'center',
+                                            height: 32,
+                                            opacity: p.pressed ? 0.7 : 1,
+                                            gap: 6,
+                                        })}
+                                    >
+                                        <Ionicons
+                                            name="desktop-outline"
+                                            size={14}
+                                            color={theme.colors.button.secondary.tint}
+                                        />
+                                        <Text style={{
+                                            fontSize: 13,
+                                            color: theme.colors.button.secondary.tint,
+                                            fontWeight: '600',
+                                            ...Typography.default('semiBold'),
+                                        }}>
+                                            {props.machineName === null ? t('agentInput.noMachinesAvailable') : props.machineName}
+                                        </Text>
+                                    </Pressable>
+                                )}
+
+                                {/* Path selector button */}
+                                {props.currentPath && props.onPathClick && (
+                                    <Pressable
+                                        onPress={() => {
+                                            hapticsLight();
+                                            props.onPathClick?.();
+                                        }}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 6,
+                                            justifyContent: 'center',
+                                            height: 32,
+                                            opacity: p.pressed ? 0.7 : 1,
+                                            gap: 6,
+                                        })}
+                                    >
+                                        <Ionicons
+                                            name="folder-outline"
+                                            size={14}
+                                            color={theme.colors.button.secondary.tint}
+                                        />
+                                        <Text style={{
+                                            fontSize: 13,
+                                            color: theme.colors.button.secondary.tint,
+                                            fontWeight: '600',
+                                            ...Typography.default('semiBold'),
+                                        }}>
+                                            {props.currentPath}
                                         </Text>
                                     </Pressable>
                                 )}

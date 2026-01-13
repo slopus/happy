@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput } from 'react-native';
-import Constants from 'expo-constants';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, storage, useSetting, useSettingMutable, useSessions } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
@@ -33,7 +32,8 @@ import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput } from '@/components/MultiTextInput';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
-import { SearchableListSelector, SelectorConfig } from '@/components/SearchableListSelector';
+import { MachineSelector } from '@/components/newSession/MachineSelector';
+import { DirectorySelector } from '@/components/newSession/DirectorySelector';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
 
 // Simple temporary state for passing selections back from picker screens
@@ -258,11 +258,13 @@ function NewSessionWizard() {
     const { theme, rt } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
-    const { prompt, dataId, machineId: machineIdParam, path: pathParam } = useLocalSearchParams<{
+    const headerHeight = useHeaderHeight();
+    const { prompt, dataId, machineId: machineIdParam, path: pathParam, profileId: profileIdParam } = useLocalSearchParams<{
         prompt?: string;
         dataId?: string;
         machineId?: string;
         path?: string;
+        profileId?: string;
     }>();
 
     // Try to get data from temporary store first
@@ -284,6 +286,7 @@ function NewSessionWizard() {
     // Control A (false): Simpler AgentInput-driven layout
     // Variant B (true): Enhanced profile-first wizard with sections
     const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
+    const useProfiles = useSetting('useProfiles');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
     const experimentsEnabled = useSetting('experiments');
@@ -305,11 +308,21 @@ function NewSessionWizard() {
 
     // Wizard state
     const [selectedProfileId, setSelectedProfileId] = React.useState<string | null>(() => {
+        if (!useProfiles) {
+            return null;
+        }
         if (lastUsedProfile && profileMap.has(lastUsedProfile)) {
             return lastUsedProfile;
         }
-        return 'anthropic'; // Default to Anthropic
+        // Default to "no profile" so default session creation remains unchanged.
+        return null;
     });
+
+    React.useEffect(() => {
+        if (!useProfiles && selectedProfileId !== null) {
+            setSelectedProfileId(null);
+        }
+    }, [useProfiles, selectedProfileId]);
     const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
         // Check if agent type was provided in temp data
         if (tempSessionData?.agentType) {
@@ -661,12 +674,8 @@ function NewSessionWizard() {
 
     // Validation
     const canCreate = React.useMemo(() => {
-        return (
-            selectedProfileId !== null &&
-            selectedMachineId !== null &&
-            selectedPath.trim() !== ''
-        );
-    }, [selectedProfileId, selectedMachineId, selectedPath]);
+        return selectedMachineId !== null && selectedPath.trim() !== '';
+    }, [selectedMachineId, selectedPath]);
 
     const selectProfile = React.useCallback((profileId: string) => {
         setSelectedProfileId(profileId);
@@ -703,6 +712,25 @@ function NewSessionWizard() {
         }
     }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, experimentsEnabled]);
 
+    // Handle profile route param from picker screens
+    React.useEffect(() => {
+        if (!useProfiles) {
+            return;
+        }
+        if (typeof profileIdParam !== 'string') {
+            return;
+        }
+        if (profileIdParam === '') {
+            if (selectedProfileId !== null) {
+                setSelectedProfileId(null);
+            }
+            return;
+        }
+        if (profileIdParam !== selectedProfileId) {
+            selectProfile(profileIdParam);
+        }
+    }, [profileIdParam, selectedProfileId, selectProfile, useProfiles]);
+
     // Reset permission mode to 'default' when agent type changes and current mode is invalid for new agent
     React.useEffect(() => {
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
@@ -738,8 +766,17 @@ function NewSessionWizard() {
     }, []);
 
     const handleAgentInputProfileClick = React.useCallback(() => {
-        scrollToSection(profileSectionRef);
-    }, [scrollToSection]);
+        if (!useProfiles) {
+            return;
+        }
+        router.push({
+            pathname: '/new/pick/profile',
+            params: {
+                ...(selectedProfileId ? { selectedId: selectedProfileId } : {}),
+                ...(selectedMachineId ? { machineId: selectedMachineId } : {}),
+            },
+        });
+    }, [router, selectedMachineId, selectedProfileId, useProfiles]);
 
     const handleAgentInputMachineClick = React.useCallback(() => {
         scrollToSection(machineSectionRef);
@@ -749,52 +786,9 @@ function NewSessionWizard() {
         scrollToSection(pathSectionRef);
     }, [scrollToSection]);
 
-    const handleAgentInputPermissionChange = React.useCallback((mode: PermissionMode) => {
-        setPermissionMode(mode);
-        scrollToSection(permissionSectionRef);
-    }, [scrollToSection]);
-
     const handleAgentInputAgentClick = React.useCallback(() => {
         scrollToSection(profileSectionRef); // Agent tied to profile section
     }, [scrollToSection]);
-
-    const handleAddProfile = React.useCallback(() => {
-        const newProfile: AIBackendProfile = {
-            id: randomUUID(),
-            name: '',
-            anthropicConfig: {},
-            environmentVariables: [],
-            compatibility: { claude: true, codex: true, gemini: true },
-            isBuiltIn: false,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            version: '1.0.0',
-        };
-        const profileData = JSON.stringify(newProfile);
-        router.push(`/new/pick/profile-edit?profileData=${encodeURIComponent(profileData)}` as any);
-    }, [router]);
-
-    const handleEditProfile = React.useCallback((profile: AIBackendProfile) => {
-        const profileData = JSON.stringify(profile);
-        if (selectedMachineId) {
-            router.push(`/new/pick/profile-edit?profileData=${encodeURIComponent(profileData)}&machineId=${encodeURIComponent(selectedMachineId)}` as any);
-            return;
-        }
-        router.push(`/new/pick/profile-edit?profileData=${encodeURIComponent(profileData)}` as any);
-    }, [router, selectedMachineId]);
-
-    const handleDuplicateProfile = React.useCallback((profile: AIBackendProfile) => {
-        const duplicatedProfile: AIBackendProfile = {
-            ...profile,
-            id: randomUUID(),
-            name: `${profile.name} (Copy)`,
-            isBuiltIn: false,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-        };
-        const profileData = JSON.stringify(duplicatedProfile);
-        router.push(`/new/pick/profile-edit?profileData=${encodeURIComponent(profileData)}` as any);
-    }, [router]);
 
     // Helper to get meaningful subtitle text for profiles
     const getProfileSubtitle = React.useCallback((profile: AIBackendProfile): string => {
@@ -878,27 +872,6 @@ function NewSessionWizard() {
         return parts.join(', ');
     }, [agentType, isProfileAvailable, daemonEnv]);
 
-    const handleDeleteProfile = React.useCallback((profile: AIBackendProfile) => {
-        Modal.alert(
-            t('profiles.delete.title'),
-            t('profiles.delete.message', { name: profile.name }),
-            [
-                { text: t('profiles.delete.cancel'), style: 'cancel' },
-                {
-                    text: t('profiles.delete.confirm'),
-                    style: 'destructive',
-                    onPress: () => {
-                        const updatedProfiles = profiles.filter(p => p.id !== profile.id);
-                        setProfiles(updatedProfiles); // Use mutable setter for persistence
-                        if (selectedProfileId === profile.id) {
-                            setSelectedProfileId('anthropic'); // Default to Anthropic
-                        }
-                    }
-                }
-            ]
-        );
-    }, [profiles, selectedProfileId, setProfiles]);
-
     // Handle machine and path selection callbacks
     React.useEffect(() => {
         let handler = (machineId: string) => {
@@ -954,8 +927,21 @@ function NewSessionWizard() {
     }, [profiles, setProfiles]);
 
     const handleMachineClick = React.useCallback(() => {
-        router.push('/new/pick/machine');
-    }, [router]);
+        router.push({
+            pathname: '/new/pick/machine',
+            params: selectedMachineId ? { selectedId: selectedMachineId } : {},
+        });
+    }, [router, selectedMachineId]);
+
+    const handleProfileClick = React.useCallback(() => {
+        router.push({
+            pathname: '/new/pick/profile',
+            params: {
+                ...(selectedProfileId ? { selectedId: selectedProfileId } : {}),
+                ...(selectedMachineId ? { machineId: selectedMachineId } : {}),
+            },
+        });
+    }, [router, selectedMachineId, selectedProfileId]);
 
     const handlePathClick = React.useCallback(() => {
         if (selectedMachineId) {
@@ -1004,17 +990,26 @@ function NewSessionWizard() {
 
             // Save settings
             const updatedPaths = [{ machineId: selectedMachineId, path: selectedPath }, ...recentMachinePaths.filter(rp => rp.machineId !== selectedMachineId)].slice(0, 10);
-            sync.applySettings({
+            const profilesActive = useProfiles;
+
+            // Keep prod session creation behavior unchanged:
+            // only persist/apply profiles & model when an explicit opt-in flag is enabled.
+            const settingsUpdate: Parameters<typeof sync.applySettings>[0] = {
                 recentMachinePaths: updatedPaths,
                 lastUsedAgent: agentType,
-                lastUsedProfile: selectedProfileId,
                 lastUsedPermissionMode: permissionMode,
-                lastUsedModelMode: modelMode,
-            });
+            };
+            if (profilesActive) {
+                settingsUpdate.lastUsedProfile = selectedProfileId;
+            }
+            if (useEnhancedSessionWizard) {
+                settingsUpdate.lastUsedModelMode = modelMode;
+            }
+            sync.applySettings(settingsUpdate);
 
             // Get environment variables from selected profile
             let environmentVariables = undefined;
-            if (selectedProfileId) {
+            if (profilesActive && selectedProfileId) {
                 const selectedProfile = profileMap.get(selectedProfileId);
                 if (selectedProfile) {
                     environmentVariables = transformProfileToEnvironmentVars(selectedProfile, agentType);
@@ -1026,6 +1021,7 @@ function NewSessionWizard() {
                 directory: actualPath,
                 approvedNewDirectoryCreation: true,
                 agent: agentType,
+                profileId: profilesActive ? (selectedProfileId ?? '') : undefined,
                 environmentVariables
             });
 
@@ -1064,7 +1060,7 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router, useEnhancedSessionWizard]);
 
     const screenWidth = useWindowDimensions().width;
 
@@ -1122,7 +1118,7 @@ function NewSessionWizard() {
         return (
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + safeArea.bottom + 16 : 0}
                 style={styles.container}
             >
                 <View style={{ flex: 1, justifyContent: 'flex-end' }}>
@@ -1147,20 +1143,19 @@ function NewSessionWizard() {
                                 onSend={handleCreateSession}
                                 isSendDisabled={!canCreate}
                                 isSending={isCreating}
-                                placeholder="What would you like to work on?"
+                                placeholder={t('session.inputPlaceholder')}
                                 autocompletePrefixes={[]}
                                 autocompleteSuggestions={async () => []}
                                 agentType={agentType}
                                 onAgentClick={handleAgentClick}
                                 permissionMode={permissionMode}
                                 onPermissionModeChange={handlePermissionModeChange}
-                                modelMode={modelMode}
-                                onModelModeChange={setModelMode}
                                 connectionStatus={connectionStatus}
                                 machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                                 onMachineClick={handleMachineClick}
                                 currentPath={selectedPath}
                                 onPathClick={handlePathClick}
+                                {...(useProfiles ? { profileId: selectedProfileId, onProfileClick: handleProfileClick } : {})}
                             />
                         </View>
                     </View>
@@ -1176,7 +1171,7 @@ function NewSessionWizard() {
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + safeArea.bottom + 16 : 0}
             style={styles.container}
         >
             <View style={{ flex: 1 }}>
@@ -1253,11 +1248,15 @@ function NewSessionWizard() {
                             {/* Section 1: Profile Management */}
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
                                 <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>1.</Text>
-                                <Ionicons name="person-outline" size={18} color={theme.colors.text} />
-                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Choose AI Profile</Text>
+                                <Ionicons name={useProfiles ? "person-outline" : "hardware-chip-outline"} size={18} color={theme.colors.text} />
+                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
+                                    {useProfiles ? 'Choose AI Profile' : 'Select AI'}
+                                </Text>
                             </View>
                             <Text style={styles.sectionDescription}>
-                                Choose which AI backend runs your session (Claude or Codex). Create custom profiles for alternative APIs.
+                                {useProfiles
+                                    ? 'Choose which AI backend runs your session (Claude or Codex). Create custom profiles for alternative APIs.'
+                                    : 'Choose which AI runs your session.'}
                             </Text>
 
                             {/* Missing CLI Installation Banners */}
@@ -1477,157 +1476,52 @@ function NewSessionWizard() {
                                 </View>
                             )}
 
-                            {/* Custom profiles - show first */}
-                            {profiles.map((profile) => {
-                                const availability = isProfileAvailable(profile);
-
-                                return (
-                                    <Pressable
-                                        key={profile.id}
-                                        style={[
-                                            styles.profileListItem,
-                                            selectedProfileId === profile.id && styles.profileListItemSelected,
-                                            !availability.available && { opacity: 0.5 }
-                                        ]}
-                                        onPress={() => availability.available && selectProfile(profile.id)}
-                                        disabled={!availability.available}
-                                    >
-                                        <View style={[styles.profileIcon, { backgroundColor: theme.colors.button.secondary.tint }]}>
-                                            <Text style={{ fontSize: 16, color: theme.colors.button.primary.tint, ...Typography.default() }}>
-                                                {profile.compatibility.claude && profile.compatibility.codex ? '✳꩜' :
-                                                 profile.compatibility.claude ? '✳' : '꩜'}
-                                            </Text>
-                                        </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.profileListName}>{profile.name}</Text>
-                                            <Text style={styles.profileListDetails}>
-                                                {getProfileSubtitle(profile)}
-                                            </Text>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                            {selectedProfileId === profile.id && (
-                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
-                                            )}
-                                            <Pressable
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                onPress={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDeleteProfile(profile);
-                                                }}
-                                            >
-                                                <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
-                                            </Pressable>
-                                            <Pressable
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                onPress={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDuplicateProfile(profile);
-                                                }}
-                                            >
-                                                <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                            </Pressable>
-                                            <Pressable
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                onPress={(e) => {
-                                                    e.stopPropagation();
-                                                    handleEditProfile(profile);
-                                                }}
-                                            >
-                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                            </Pressable>
-                                        </View>
-                                    </Pressable>
-                                );
-                            })}
-
-                            {/* Built-in profiles - show after custom */}
-                            {DEFAULT_PROFILES.map((profileDisplay) => {
-                                const profile = getBuiltInProfile(profileDisplay.id);
-                                if (!profile) return null;
-
-                                const availability = isProfileAvailable(profile);
-
-                                return (
-                                    <Pressable
-                                        key={profile.id}
-                                        style={[
-                                            styles.profileListItem,
-                                            selectedProfileId === profile.id && styles.profileListItemSelected,
-                                            !availability.available && { opacity: 0.5 }
-                                        ]}
-                                        onPress={() => availability.available && selectProfile(profile.id)}
-                                        disabled={!availability.available}
-                                    >
-                                        <View style={styles.profileIcon}>
-                                            <Text style={{ fontSize: 16, color: theme.colors.button.primary.tint, ...Typography.default() }}>
-                                                {profile.compatibility.claude && profile.compatibility.codex ? '✳꩜' :
-                                                 profile.compatibility.claude ? '✳' : '꩜'}
-                                            </Text>
-                                        </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.profileListName}>{profile.name}</Text>
-                                            <Text style={styles.profileListDetails}>
-                                                {getProfileSubtitle(profile)}
-                                            </Text>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                            {selectedProfileId === profile.id && (
-                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
-                                            )}
-                                            <Pressable
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                onPress={(e) => {
-                                                    e.stopPropagation();
-                                                    handleEditProfile(profile);
-                                                }}
-                                            >
-                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                            </Pressable>
-                                        </View>
-                                    </Pressable>
-                                );
-                            })}
-
-                            {/* Profile Action Buttons */}
-                            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                                <Pressable
-                                    style={[styles.addProfileButton, { flex: 1 }]}
-                                    onPress={handleAddProfile}
-                                >
-                                    <Ionicons name="add-circle-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                    <Text style={styles.addProfileButtonText}>
-                                        Add
-                                    </Text>
-                                </Pressable>
-                                <Pressable
-                                    style={[
-                                        styles.addProfileButton,
-                                        { flex: 1 },
-                                        !selectedProfile && { opacity: 0.4 }
-                                    ]}
-                                    onPress={() => selectedProfile && handleDuplicateProfile(selectedProfile)}
-                                    disabled={!selectedProfile}
-                                >
-                                    <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                    <Text style={styles.addProfileButtonText}>
-                                        Duplicate
-                                    </Text>
-                                </Pressable>
-                                <Pressable
-                                    style={[
-                                        styles.addProfileButton,
-                                        { flex: 1 },
-                                        (!selectedProfile || selectedProfile.isBuiltIn) && { opacity: 0.4 }
-                                    ]}
-                                    onPress={() => selectedProfile && !selectedProfile.isBuiltIn && handleDeleteProfile(selectedProfile)}
-                                    disabled={!selectedProfile || selectedProfile.isBuiltIn}
-                                >
-                                    <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
-                                    <Text style={[styles.addProfileButtonText, { color: theme.colors.deleteAction }]}>
-                                        Delete
-                                    </Text>
-                                </Pressable>
-                            </View>
+                            {useProfiles ? (
+                                <ItemGroup title="">
+                                    <Item
+                                        title={selectedProfile ? selectedProfile.name : t('profiles.noProfile')}
+                                        subtitle={selectedProfile ? getProfileSubtitle(selectedProfile) : t('profiles.noProfileDescription')}
+                                        leftElement={
+                                            <Ionicons
+                                                name="person-outline"
+                                                size={24}
+                                                color={theme.colors.textSecondary}
+                                            />
+                                        }
+                                        onPress={handleProfileClick}
+                                    />
+                                </ItemGroup>
+                            ) : (
+                                <ItemGroup title="">
+                                    <Item
+                                        title="Claude"
+                                        subtitle="Claude CLI"
+                                        leftElement={<Ionicons name="sparkles-outline" size={24} color={theme.colors.textSecondary} />}
+                                        selected={agentType === 'claude'}
+                                        onPress={() => setAgentType('claude')}
+                                        showChevron={false}
+                                    />
+                                    <Item
+                                        title="Codex"
+                                        subtitle="Codex CLI"
+                                        leftElement={<Ionicons name="terminal-outline" size={24} color={theme.colors.textSecondary} />}
+                                        selected={agentType === 'codex'}
+                                        onPress={() => setAgentType('codex')}
+                                        showChevron={false}
+                                    />
+                                    {experimentsEnabled && (
+                                        <Item
+                                            title="Gemini"
+                                            subtitle="Gemini CLI"
+                                            leftElement={<Ionicons name="planet-outline" size={24} color={theme.colors.textSecondary} />}
+                                            selected={agentType === 'gemini'}
+                                            onPress={() => setAgentType('gemini')}
+                                            showChevron={false}
+                                            showDivider={false}
+                                        />
+                                    )}
+                                </ItemGroup>
+                            )}
 
                             {/* Section 2: Machine Selection */}
                             <View ref={machineSectionRef}>
@@ -1639,61 +1533,13 @@ function NewSessionWizard() {
                             </View>
 
                             <View style={{ marginBottom: 24 }}>
-                                <SearchableListSelector<typeof machines[0]>
-                                    config={{
-                                    getItemId: (machine) => machine.id,
-                                    getItemTitle: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,
-                                    getItemSubtitle: undefined,
-                                    getItemIcon: (machine) => (
-                                        <Ionicons
-                                            name="desktop-outline"
-                                            size={24}
-                                            color={theme.colors.textSecondary}
-                                        />
-                                    ),
-                                    getRecentItemIcon: (machine) => (
-                                        <Ionicons
-                                            name="time-outline"
-                                            size={24}
-                                            color={theme.colors.textSecondary}
-                                        />
-                                    ),
-                                    getItemStatus: (machine) => {
-                                        const offline = !isMachineOnline(machine);
-                                        return {
-                                            text: offline ? 'offline' : 'online',
-                                            color: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
-                                            dotColor: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
-                                            isPulsing: !offline,
-                                        };
-                                    },
-                                    formatForDisplay: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,
-                                    parseFromDisplay: (text) => {
-                                        return machines.find(m =>
-                                            m.metadata?.displayName === text || m.metadata?.host === text || m.id === text
-                                        ) || null;
-                                    },
-                                    filterItem: (machine, searchText) => {
-                                        const displayName = (machine.metadata?.displayName || '').toLowerCase();
-                                        const host = (machine.metadata?.host || '').toLowerCase();
-                                        const search = searchText.toLowerCase();
-                                        return displayName.includes(search) || host.includes(search);
-                                    },
-                                    searchPlaceholder: "Type to filter machines...",
-                                    recentSectionTitle: "Recent Machines",
-                                    favoritesSectionTitle: "Favorite Machines",
-                                    noItemsMessage: "No machines available",
-                                    showFavorites: true,
-                                    showRecent: true,
-                                    showSearch: true,
-                                    allowCustomInput: false,
-                                    compactItems: true,
-                                }}
-                                items={machines}
-                                recentItems={recentMachines}
-                                favoriteItems={machines.filter(m => favoriteMachines.includes(m.id))}
-                                selectedItem={selectedMachine || null}
-                                onSelect={(machine) => {
+                                <MachineSelector
+                                    machines={machines}
+                                    selectedMachine={selectedMachine || null}
+                                    recentMachines={recentMachines}
+                                    favoriteMachines={machines.filter(m => favoriteMachines.includes(m.id))}
+                                    showFavorites={true}
+                                    onSelect={(machine) => {
                                     setSelectedMachineId(machine.id);
                                     const bestPath = getRecentPathForMachine(machine.id, recentMachinePaths);
                                     setSelectedPath(bestPath);
@@ -1719,92 +1565,33 @@ function NewSessionWizard() {
                             </View>
 
                             <View style={{ marginBottom: 24 }}>
-                                <SearchableListSelector<string>
-                                    config={{
-                                    getItemId: (path) => path,
-                                    getItemTitle: (path) => formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir),
-                                    getItemSubtitle: undefined,
-                                    getItemIcon: (path) => (
-                                        <Ionicons
-                                            name="folder-outline"
-                                            size={24}
-                                            color={theme.colors.textSecondary}
-                                        />
-                                    ),
-                                    getRecentItemIcon: (path) => (
-                                        <Ionicons
-                                            name="time-outline"
-                                            size={24}
-                                            color={theme.colors.textSecondary}
-                                        />
-                                    ),
-                                    getFavoriteItemIcon: (path) => (
-                                        <Ionicons
-                                            name={path === selectedMachine?.metadata?.homeDir ? "home-outline" : "star-outline"}
-                                            size={24}
-                                            color={theme.colors.textSecondary}
-                                        />
-                                    ),
-                                    canRemoveFavorite: (path) => path !== selectedMachine?.metadata?.homeDir,
-                                    formatForDisplay: (path) => formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir),
-                                    parseFromDisplay: (text) => {
-                                        if (selectedMachine?.metadata?.homeDir) {
-                                            return resolveAbsolutePath(text, selectedMachine.metadata.homeDir);
+                                <DirectorySelector
+                                    machineHomeDir={selectedMachine?.metadata?.homeDir}
+                                    selectedPath={selectedPath}
+                                    recentPaths={recentPaths}
+                                    favoritePaths={(() => {
+                                        if (!selectedMachine?.metadata?.homeDir) return [];
+                                        const homeDir = selectedMachine.metadata.homeDir;
+                                        return [homeDir, ...favoriteDirectories.map(fav => resolveAbsolutePath(fav, homeDir))];
+                                    })()}
+                                    onSelect={(path) => setSelectedPath(path)}
+                                    onToggleFavorite={(path) => {
+                                        const homeDir = selectedMachine?.metadata?.homeDir;
+                                        if (!homeDir) return;
+                                        if (path === homeDir) return;
+
+                                        const relativePath = formatPathRelativeToHome(path, homeDir);
+                                        const isInFavorites = favoriteDirectories.some(fav =>
+                                            resolveAbsolutePath(fav, homeDir) === path
+                                        );
+                                        if (isInFavorites) {
+                                            setFavoriteDirectories(favoriteDirectories.filter(fav =>
+                                                resolveAbsolutePath(fav, homeDir) !== path
+                                            ));
+                                        } else {
+                                            setFavoriteDirectories([...favoriteDirectories, relativePath]);
                                         }
-                                        return null;
-                                    },
-                                    filterItem: (path, searchText) => {
-                                        const displayPath = formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir);
-                                        return displayPath.toLowerCase().includes(searchText.toLowerCase());
-                                    },
-                                    searchPlaceholder: "Type to filter or enter custom directory...",
-                                    recentSectionTitle: "Recent Directories",
-                                    favoritesSectionTitle: "Favorite Directories",
-                                    noItemsMessage: "No recent directories",
-                                    showFavorites: true,
-                                    showRecent: true,
-                                    showSearch: true,
-                                    allowCustomInput: true,
-                                    compactItems: true,
-                                }}
-                                items={recentPaths}
-                                recentItems={recentPaths}
-                                favoriteItems={(() => {
-                                    if (!selectedMachine?.metadata?.homeDir) return [];
-                                    const homeDir = selectedMachine.metadata.homeDir;
-                                    // Include home directory plus user favorites
-                                    return [homeDir, ...favoriteDirectories.map(fav => resolveAbsolutePath(fav, homeDir))];
-                                })()}
-                                selectedItem={selectedPath}
-                                onSelect={(path) => {
-                                    setSelectedPath(path);
-                                }}
-                                onToggleFavorite={(path) => {
-                                    const homeDir = selectedMachine?.metadata?.homeDir;
-                                    if (!homeDir) return;
-
-                                    // Don't allow removing home directory (handled by canRemoveFavorite)
-                                    if (path === homeDir) return;
-
-                                    // Convert to relative format for storage
-                                    const relativePath = formatPathRelativeToHome(path, homeDir);
-
-                                    // Check if already in favorites
-                                    const isInFavorites = favoriteDirectories.some(fav =>
-                                        resolveAbsolutePath(fav, homeDir) === path
-                                    );
-
-                                    if (isInFavorites) {
-                                        // Remove from favorites
-                                        setFavoriteDirectories(favoriteDirectories.filter(fav =>
-                                            resolveAbsolutePath(fav, homeDir) !== path
-                                        ));
-                                    } else {
-                                        // Add to favorites
-                                        setFavoriteDirectories([...favoriteDirectories, relativePath]);
-                                    }
-                                }}
-                                    context={{ homeDir: selectedMachine?.metadata?.homeDir }}
+                                    }}
                                 />
                             </View>
 
@@ -1835,14 +1622,14 @@ function NewSessionWizard() {
                                             <Ionicons
                                                 name={option.icon as any}
                                                 size={24}
-                                                color={permissionMode === option.value ? theme.colors.button.primary.tint : theme.colors.textSecondary}
+                                                color={permissionMode === option.value ? theme.colors.button.primary.background : theme.colors.textSecondary}
                                             />
                                         }
                                         rightElement={permissionMode === option.value ? (
                                             <Ionicons
                                                 name="checkmark-circle"
                                                 size={20}
-                                                color={theme.colors.button.primary.tint}
+                                                color={theme.colors.button.primary.background}
                                             />
                                         ) : null}
                                         onPress={() => setPermissionMode(option.value)}
@@ -1851,7 +1638,7 @@ function NewSessionWizard() {
                                         showDivider={index < array.length - 1}
                                         style={permissionMode === option.value ? {
                                             borderWidth: 2,
-                                            borderColor: theme.colors.button.primary.tint,
+                                            borderColor: theme.colors.button.primary.background,
                                             borderRadius: Platform.select({ ios: 10, default: 16 }),
                                         } : undefined}
                                     />
@@ -1897,13 +1684,11 @@ function NewSessionWizard() {
                             onSend={handleCreateSession}
                             isSendDisabled={!canCreate}
                             isSending={isCreating}
-                            placeholder="What would you like to work on?"
+                            placeholder={t('session.inputPlaceholder')}
                             autocompletePrefixes={[]}
                             autocompleteSuggestions={async () => []}
                             agentType={agentType}
                             onAgentClick={handleAgentInputAgentClick}
-                            permissionMode={permissionMode}
-                            onPermissionModeChange={handleAgentInputPermissionChange}
                             modelMode={modelMode}
                             onModelModeChange={setModelMode}
                             connectionStatus={connectionStatus}
@@ -1911,8 +1696,7 @@ function NewSessionWizard() {
                             onMachineClick={handleAgentInputMachineClick}
                             currentPath={selectedPath}
                             onPathClick={handleAgentInputPathClick}
-                            profileId={selectedProfileId}
-                            onProfileClick={handleAgentInputProfileClick}
+                                {...(useProfiles ? { profileId: selectedProfileId, onProfileClick: handleAgentInputProfileClick } : {})}
                         />
                     </View>
                 </View>

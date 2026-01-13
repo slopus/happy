@@ -84,9 +84,6 @@ export const AIBackendProfileSchema = z.object({
     // Tmux configuration
     tmuxConfig: TmuxConfigSchema.optional(),
 
-    // Startup bash script (executed before spawning session)
-    startupBashScript: z.string().optional(),
-
     // Environment variables (validated)
     environmentVariables: z.array(EnvironmentVariableSchema).default([]),
 
@@ -241,6 +238,7 @@ export const SettingsSchema = z.object({
     wrapLinesInDiffs: z.boolean().describe('Whether to wrap long lines in diff views'),
     analyticsOptOut: z.boolean().describe('Whether to opt out of anonymous analytics'),
     experiments: z.boolean().describe('Whether to enable experimental features'),
+    useProfiles: z.boolean().describe('Whether to enable AI backend profiles feature'),
     useEnhancedSessionWizard: z.boolean().describe('A/B test flag: Use enhanced profile-based session wizard UI'),
     alwaysShowContextSize: z.boolean().describe('Always show context size in agent input'),
     agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
@@ -310,6 +308,7 @@ export const settingsDefaults: Settings = {
     wrapLinesInDiffs: false,
     analyticsOptOut: false,
     experiments: false,
+    useProfiles: false,
     useEnhancedSessionWizard: false,
     alwaysShowContextSize: false,
     agentInputEnterToSend: true,

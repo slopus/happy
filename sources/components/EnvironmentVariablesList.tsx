@@ -5,6 +5,9 @@ import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { EnvironmentVariableCard } from './EnvironmentVariableCard';
 import type { ProfileDocumentation } from '@/sync/profileUtils';
+import { ItemGroup } from '@/components/ItemGroup';
+import { Item } from '@/components/Item';
+import { layout } from '@/components/layout';
 
 export interface EnvironmentVariablesListProps {
     environmentVariables: Array<{ name: string; value: string }>;
@@ -101,158 +104,115 @@ export function EnvironmentVariablesList({
 
     return (
         <View style={{ marginBottom: 16 }}>
-            {/* Section header */}
-            <Text style={{
-                fontSize: 14,
-                fontWeight: '600',
-                color: theme.colors.text,
-                marginBottom: 12,
-                ...Typography.default('semiBold')
-            }}>
-                Environment Variables
-            </Text>
+            <ItemGroup title="Environment Variables">
+                <Item
+                    title={showAddForm ? 'Cancel' : 'Add Variable'}
+                    icon={
+                        <Ionicons
+                            name={showAddForm ? 'close-circle-outline' : 'add-circle-outline'}
+                            size={29}
+                            color={theme.colors.button.secondary.tint}
+                        />
+                    }
+                    showChevron={false}
+                    onPress={() => {
+                        if (showAddForm) {
+                            setShowAddForm(false);
+                            setNewVarName('');
+                            setNewVarValue('');
+                        } else {
+                            setShowAddForm(true);
+                        }
+                    }}
+                />
 
-            {/* Add Variable Button */}
-            <Pressable
-                style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: theme.colors.button.primary.background,
-                    borderRadius: theme.borderRadius.md,
-                    paddingHorizontal: theme.margins.md,
-                    paddingVertical: 6,
-                    gap: 6,
-                    marginBottom: theme.margins.md
-                }}
-                onPress={() => setShowAddForm(true)}
-            >
-                <Ionicons name="add" size={theme.iconSize.medium} color={theme.colors.button.primary.tint} />
-                <Text style={{
-                    fontSize: 13,
-                    fontWeight: '600',
-                    color: theme.colors.button.primary.tint,
-                    ...Typography.default('semiBold')
-                }}>
-                    Add Variable
-                </Text>
-            </Pressable>
+                {showAddForm && (
+                    <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+                        <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            backgroundColor: theme.colors.input.background,
+                            borderRadius: 10,
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            marginBottom: 8,
+                        }}>
+                            <TextInput
+                                style={{ flex: 1, fontSize: 16, color: theme.colors.input.text, ...Typography.default('regular') }}
+                                placeholder="Variable name (e.g., MY_CUSTOM_VAR)"
+                                placeholderTextColor={theme.colors.input.placeholder}
+                                value={newVarName}
+                                onChangeText={setNewVarName}
+                                autoCapitalize="characters"
+                                autoCorrect={false}
+                            />
+                        </View>
 
-            {/* Add variable inline form */}
-            {showAddForm && (
-                <View style={{
-                    backgroundColor: theme.colors.input.background,
-                    borderRadius: theme.borderRadius.lg,
-                    padding: theme.margins.md,
-                    marginBottom: theme.margins.md,
-                    borderWidth: 2,
-                    borderColor: theme.colors.button.primary.background,
-                }}>
-                    <TextInput
-                        style={{
-                            backgroundColor: theme.colors.surface,
-                            borderRadius: theme.borderRadius.lg,
-                            padding: theme.margins.sm,
-                            fontSize: 14,
-                            color: theme.colors.text,
-                            marginBottom: theme.margins.sm,
-                            borderWidth: 1,
-                            borderColor: theme.colors.textSecondary,
-                        }}
-                        placeholder="Variable name (e.g., MY_CUSTOM_VAR)"
-                        placeholderTextColor={theme.colors.input.placeholder}
-                        value={newVarName}
-                        onChangeText={setNewVarName}
-                        autoCapitalize="characters"
-                        autoCorrect={false}
-                    />
-                    <TextInput
-                        style={{
-                            backgroundColor: theme.colors.surface,
-                            borderRadius: theme.borderRadius.lg,
-                            padding: theme.margins.sm,
-                            fontSize: 14,
-                            color: theme.colors.text,
-                            marginBottom: theme.margins.md,
-                            borderWidth: 1,
-                            borderColor: theme.colors.textSecondary,
-                        }}
-                        placeholder="Value (e.g., my-value or ${MY_VAR})"
-                        placeholderTextColor={theme.colors.input.placeholder}
-                        value={newVarValue}
-                        onChangeText={setNewVarValue}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                    />
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            backgroundColor: theme.colors.input.background,
+                            borderRadius: 10,
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            marginBottom: 12,
+                        }}>
+                            <TextInput
+                                style={{ flex: 1, fontSize: 16, color: theme.colors.input.text, ...Typography.default('regular') }}
+                                placeholder="Value (e.g., my-value or ${MY_VAR})"
+                                placeholderTextColor={theme.colors.input.placeholder}
+                                value={newVarValue}
+                                onChangeText={setNewVarValue}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                            />
+                        </View>
+
                         <Pressable
-                            style={{
-                                flex: 1,
-                                backgroundColor: theme.colors.surface,
-                                borderRadius: 6,
-                                padding: theme.margins.sm,
-                                alignItems: 'center',
-                                borderWidth: 1,
-                                borderColor: theme.colors.textSecondary,
-                            }}
-                            onPress={() => {
-                                setShowAddForm(false);
-                                setNewVarName('');
-                                setNewVarValue('');
-                            }}
-                        >
-                            <Text style={{
-                                fontSize: 14,
-                                color: theme.colors.textSecondary,
-                                ...Typography.default()
-                            }}>
-                                Cancel
-                            </Text>
-                        </Pressable>
-                        <Pressable
-                            style={{
-                                flex: 1,
-                                backgroundColor: theme.colors.button.primary.background,
-                                borderRadius: 6,
-                                padding: theme.margins.sm,
-                                alignItems: 'center',
-                            }}
                             onPress={handleAddVariable}
+                            disabled={!newVarName.trim()}
+                            style={({ pressed }) => ({
+                                backgroundColor: theme.colors.button.primary.background,
+                                borderRadius: 10,
+                                paddingVertical: 10,
+                                alignItems: 'center',
+                                opacity: !newVarName.trim() ? 0.5 : pressed ? 0.85 : 1,
+                            })}
                         >
-                            <Text style={{
-                                fontSize: 14,
-                                fontWeight: '600',
-                                color: theme.colors.button.primary.tint,
-                                ...Typography.default('semiBold')
-                            }}>
+                            <Text style={{ color: theme.colors.button.primary.tint, ...Typography.default('semiBold') }}>
                                 Add
                             </Text>
                         </Pressable>
                     </View>
-                </View>
-            )}
+                )}
+            </ItemGroup>
 
-            {/* Variable cards */}
-            {environmentVariables.map((envVar, index) => {
-                const varNameFromValue = extractVarNameFromValue(envVar.value);
-                const docs = getDocumentation(varNameFromValue || envVar.name);
+            <View style={{ width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center' }}>
+                {environmentVariables.map((envVar, index) => {
+                    const varNameFromValue = extractVarNameFromValue(envVar.value);
+                    const docs = getDocumentation(varNameFromValue || envVar.name);
 
-                // Auto-detect secrets if not explicitly documented
-                const isSecret = docs.isSecret || /TOKEN|KEY|SECRET|AUTH/i.test(envVar.name) || /TOKEN|KEY|SECRET|AUTH/i.test(varNameFromValue || '');
+                    const SECRET_NAME_REGEX = /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i;
+                    const isSecret =
+                        docs.isSecret ||
+                        SECRET_NAME_REGEX.test(envVar.name) ||
+                        SECRET_NAME_REGEX.test(varNameFromValue || '');
 
-                return (
-                    <EnvironmentVariableCard
-                        key={index}
-                        variable={envVar}
-                        machineId={machineId}
-                        expectedValue={docs.expectedValue}
-                        description={docs.description}
-                        isSecret={isSecret}
-                        onUpdate={(newValue) => handleUpdateVariable(index, newValue)}
-                        onDelete={() => handleDeleteVariable(index)}
-                        onDuplicate={() => handleDuplicateVariable(index)}
-                    />
-                );
-            })}
+                    return (
+                        <EnvironmentVariableCard
+                            key={index}
+                            variable={envVar}
+                            machineId={machineId}
+                            expectedValue={docs.expectedValue}
+                            description={docs.description}
+                            isSecret={isSecret}
+                            onUpdate={(newValue) => handleUpdateVariable(index, newValue)}
+                            onDelete={() => handleDeleteVariable(index)}
+                            onDuplicate={() => handleDuplicateVariable(index)}
+                        />
+                    );
+                })}
+            </View>
         </View>
     );
 }

@@ -1,25 +1,19 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettingMutable } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
-import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { Modal } from '@/modal';
-import { layout } from '@/components/layout';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useWindowDimensions } from 'react-native';
 import { AIBackendProfile } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
 import { ProfileEditForm } from '@/components/ProfileEditForm';
 import { randomUUID } from 'expo-crypto';
-
-interface ProfileDisplay {
-    id: string;
-    name: string;
-    isBuiltIn: boolean;
-}
+import { ItemList } from '@/components/ItemList';
+import { ItemGroup } from '@/components/ItemGroup';
+import { Item } from '@/components/Item';
+import { Switch } from '@/components/Switch';
 
 interface ProfileManagerProps {
     onProfileSelect?: (profile: AIBackendProfile | null) => void;
@@ -29,12 +23,35 @@ interface ProfileManagerProps {
 // Profile utilities now imported from @/sync/profileUtils
 const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerProps) {
     const { theme } = useUnistyles();
+    const [useProfiles, setUseProfiles] = useSettingMutable('useProfiles');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const [lastUsedProfile, setLastUsedProfile] = useSettingMutable('lastUsedProfile');
     const [editingProfile, setEditingProfile] = React.useState<AIBackendProfile | null>(null);
     const [showAddForm, setShowAddForm] = React.useState(false);
-    const safeArea = useSafeAreaInsets();
-    const screenWidth = useWindowDimensions().width;
+
+    if (!useProfiles) {
+        return (
+            <ItemList style={{ paddingTop: 0 }}>
+                <ItemGroup
+                    title={t('settingsFeatures.profiles')}
+                    footer={t('settingsFeatures.profilesDisabled')}
+                >
+                    <Item
+                        title={t('settingsFeatures.profiles')}
+                        subtitle={t('settingsFeatures.profilesDisabled')}
+                        icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
+                        rightElement={
+                            <Switch
+                                value={useProfiles}
+                                onValueChange={setUseProfiles}
+                            />
+                        }
+                        showChevron={false}
+                    />
+                </ItemGroup>
+            </ItemList>
+        );
+    }
 
     const handleAddProfile = () => {
         setEditingProfile({
@@ -159,232 +176,111 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     };
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
-            <ScrollView
-                style={{ flex: 1 }}
-                contentContainerStyle={{
-                    paddingHorizontal: screenWidth > 700 ? 16 : 8,
-                    paddingBottom: safeArea.bottom + 100,
-                }}
-            >
-                <View style={[{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }]}>
-                    <Text style={{
-                        fontSize: 24,
-                        fontWeight: 'bold',
-                        color: theme.colors.text,
-                        marginVertical: 16,
-                        ...Typography.default('semiBold')
-                    }}>
-                        {t('profiles.title')}
-                    </Text>
-
-                    {/* None option - no profile */}
-                    <Pressable
-                        style={{
-                            backgroundColor: theme.colors.input.background,
-                            borderRadius: 12,
-                            padding: 16,
-                            marginBottom: 12,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            borderWidth: selectedProfileId === null ? 2 : 0,
-                            borderColor: theme.colors.text,
-                        }}
+        <View style={{ flex: 1 }}>
+            <ItemList style={{ paddingTop: 0 }}>
+                <ItemGroup footer={t('profiles.subtitle')}>
+                    <Item
+                        title={t('profiles.noProfile')}
+                        subtitle={t('profiles.noProfileDescription')}
+                        icon={<Ionicons name="radio-button-off-outline" size={29} color={theme.colors.textSecondary} />}
                         onPress={() => handleSelectProfile(null)}
-                    >
-                        <View style={{
-                            width: 24,
-                            height: 24,
-                            borderRadius: 12,
-                            backgroundColor: theme.colors.button.secondary.tint,
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            marginRight: 12,
-                        }}>
-                            <Ionicons name="remove" size={16} color="white" />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={{
-                                fontSize: 16,
-                                fontWeight: '600',
-                                color: theme.colors.text,
-                                ...Typography.default('semiBold')
-                            }}>
-                                {t('profiles.noProfile')}
-                            </Text>
-                            <Text style={{
-                                fontSize: 14,
-                                color: theme.colors.textSecondary,
-                                marginTop: 2,
-                                ...Typography.default()
-                            }}>
-                                {t('profiles.noProfileDescription')}
-                            </Text>
-                        </View>
-                        {selectedProfileId === null && (
-                            <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
-                        )}
-                    </Pressable>
+                        showChevron={false}
+                        selected={selectedProfileId === null}
+                        rightElement={selectedProfileId === null
+                            ? <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
+                            : null}
+                    />
+                </ItemGroup>
 
-                    {/* Built-in profiles */}
+                <ItemGroup>
                     {DEFAULT_PROFILES.map((profileDisplay) => {
                         const profile = getBuiltInProfile(profileDisplay.id);
                         if (!profile) return null;
 
+                        const isSelected = selectedProfileId === profile.id;
                         return (
-                            <Pressable
+                            <Item
                                 key={profile.id}
-                                style={{
-                                    backgroundColor: theme.colors.input.background,
-                                    borderRadius: 12,
-                                    padding: 16,
-                                    marginBottom: 12,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    borderWidth: selectedProfileId === profile.id ? 2 : 0,
-                                    borderColor: theme.colors.text,
-                                }}
+                                title={profile.name}
+                                subtitle={t('profiles.defaultModel')}
+                                icon={<Ionicons name="star" size={29} color={theme.colors.button.primary.background} />}
                                 onPress={() => handleSelectProfile(profile.id)}
-                            >
-                                <View style={{
-                                    width: 24,
-                                    height: 24,
-                                    borderRadius: 12,
-                                    backgroundColor: theme.colors.button.primary.background,
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    marginRight: 12,
-                                }}>
-                                    <Ionicons name="star" size={16} color="white" />
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={{
-                                        fontSize: 16,
-                                        fontWeight: '600',
-                                        color: theme.colors.text,
-                                        ...Typography.default('semiBold')
-                                    }}>
-                                        {profile.name}
-                                    </Text>
-                                    <Text style={{
-                                        fontSize: 14,
-                                        color: theme.colors.textSecondary,
-                                        marginTop: 2,
-                                        ...Typography.default()
-                                    }}>
-                                        {profile.anthropicConfig?.model || 'Default model'}
-                                        {profile.anthropicConfig?.baseUrl && ` • ${profile.anthropicConfig.baseUrl}`}
-                                    </Text>
-                                </View>
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    {selectedProfileId === profile.id && (
-                                        <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} style={{ marginRight: 12 }} />
-                                    )}
-                                    <Pressable
-                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                        onPress={() => handleEditProfile(profile)}
-                                    >
-                                        <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                    </Pressable>
-                                </View>
-                            </Pressable>
+                                showChevron={false}
+                                selected={isSelected}
+                                rightElement={
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        {isSelected && (
+                                            <Ionicons
+                                                name="checkmark-circle"
+                                                size={20}
+                                                color={theme.colors.text}
+                                                style={{ marginRight: 12 }}
+                                            />
+                                        )}
+                                        <Pressable
+                                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                            onPress={() => handleEditProfile(profile)}
+                                        >
+                                            <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                        </Pressable>
+                                    </View>
+                                }
+                            />
                         );
                     })}
 
-                    {/* Custom profiles */}
-                    {profiles.map((profile) => (
-                        <Pressable
-                            key={profile.id}
-                            style={{
-                                backgroundColor: theme.colors.input.background,
-                                borderRadius: 12,
-                                padding: 16,
-                                marginBottom: 12,
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                borderWidth: selectedProfileId === profile.id ? 2 : 0,
-                                borderColor: theme.colors.text,
-                            }}
-                            onPress={() => handleSelectProfile(profile.id)}
-                        >
-                            <View style={{
-                                width: 24,
-                                height: 24,
-                                borderRadius: 12,
-                                backgroundColor: theme.colors.button.secondary.tint,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                marginRight: 12,
-                            }}>
-                                <Ionicons name="person" size={16} color="white" />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '600',
-                                    color: theme.colors.text,
-                                    ...Typography.default('semiBold')
-                                }}>
-                                    {profile.name}
-                                </Text>
-                                <Text style={{
-                                    fontSize: 14,
-                                    color: theme.colors.textSecondary,
-                                    marginTop: 2,
-                                    ...Typography.default()
-                                }}>
-                                    {profile.anthropicConfig?.model || t('profiles.defaultModel')}
-                                    {profile.tmuxConfig?.sessionName && ` • tmux: ${profile.tmuxConfig.sessionName}`}
-                                    {profile.tmuxConfig?.tmpDir && ` • dir: ${profile.tmuxConfig.tmpDir}`}
-                                </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                {selectedProfileId === profile.id && (
-                                    <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} style={{ marginRight: 12 }} />
-                                )}
-                                <Pressable
-                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                    onPress={() => handleEditProfile(profile)}
-                                >
-                                    <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                </Pressable>
-                                <Pressable
-                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                    onPress={() => void handleDeleteProfile(profile)}
-                                    style={{ marginLeft: 16 }}
-                                >
-                                    <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
-                                </Pressable>
-                            </View>
-                        </Pressable>
-                    ))}
+                    {profiles.map((profile) => {
+                        const isSelected = selectedProfileId === profile.id;
+                        const subtitleParts: string[] = [t('profiles.defaultModel')];
+                        if (profile.tmuxConfig?.sessionName) subtitleParts.push(`tmux: ${profile.tmuxConfig.sessionName}`);
+                        if (profile.tmuxConfig?.tmpDir) subtitleParts.push(`dir: ${profile.tmuxConfig.tmpDir}`);
 
-                    {/* Add profile button */}
-                    <Pressable
-                        style={{
-                            backgroundColor: theme.colors.surface,
-                            borderRadius: 12,
-                            padding: 16,
-                            marginBottom: 12,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}
+                        return (
+                            <Item
+                                key={profile.id}
+                                title={profile.name}
+                                subtitle={subtitleParts.join(' • ')}
+                                icon={<Ionicons name="person" size={29} color={theme.colors.textSecondary} />}
+                                onPress={() => handleSelectProfile(profile.id)}
+                                showChevron={false}
+                                selected={isSelected}
+                                rightElement={
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        {isSelected && (
+                                            <Ionicons
+                                                name="checkmark-circle"
+                                                size={20}
+                                                color={theme.colors.text}
+                                                style={{ marginRight: 12 }}
+                                            />
+                                        )}
+                                        <Pressable
+                                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                            onPress={() => handleEditProfile(profile)}
+                                        >
+                                            <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                        </Pressable>
+                                        <Pressable
+                                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                            onPress={() => void handleDeleteProfile(profile)}
+                                            style={{ marginLeft: 16 }}
+                                        >
+                                            <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
+                                        </Pressable>
+                                    </View>
+                                }
+                            />
+                        );
+                    })}
+
+                    <Item
+                        title={t('profiles.addProfile')}
+                        icon={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}
                         onPress={handleAddProfile}
-                    >
-                        <Ionicons name="add-circle-outline" size={20} color={theme.colors.button.secondary.tint} />
-                        <Text style={{
-                            fontSize: 16,
-                            fontWeight: '600',
-                            color: theme.colors.button.secondary.tint,
-                            marginLeft: 8,
-                            ...Typography.default('semiBold')
-                        }}>
-                            {t('profiles.addProfile')}
-                        </Text>
-                    </Pressable>
-                </View>
-            </ScrollView>
+                        showChevron={false}
+                    />
+                </ItemGroup>
+            </ItemList>
 
             {/* Profile Add/Edit Modal */}
             {showAddForm && editingProfile && (
@@ -422,8 +318,11 @@ const profileManagerStyles = StyleSheet.create((theme) => ({
     },
     modalContent: {
         width: '100%',
-        maxWidth: Math.min(layout.maxWidth, 600),
+        maxWidth: 600,
         maxHeight: '90%',
+        borderRadius: 16,
+        overflow: 'hidden',
+        backgroundColor: theme.colors.groupped.background,
     },
 }));
 

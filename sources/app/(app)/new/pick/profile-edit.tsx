@@ -90,7 +90,7 @@ export default function ProfileEditScreen() {
 const profileEditScreenStyles = StyleSheet.create((theme, rt) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: theme.colors.groupped.background,
         paddingTop: rt.insets.top,
         paddingBottom: rt.insets.bottom,
     },
