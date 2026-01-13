@@ -186,7 +186,21 @@ export async function startDaemon(): Promise<void> {
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
-      logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
+      // Do NOT log raw options: it may include secrets (token / env vars).
+      const envKeys = options.environmentVariables && typeof options.environmentVariables === 'object'
+        ? Object.keys(options.environmentVariables as Record<string, unknown>)
+        : [];
+      logger.debugLargeJson('[DAEMON RUN] Spawning session', {
+        directory: options.directory,
+        sessionId: options.sessionId,
+        machineId: options.machineId,
+        approvedNewDirectoryCreation: options.approvedNewDirectoryCreation,
+        agent: options.agent,
+        profileId: options.profileId,
+        hasToken: !!options.token,
+        environmentVariableCount: envKeys.length,
+        environmentVariableKeys: envKeys,
+      });
 
       const { directory, sessionId, machineId, approvedNewDirectoryCreation = true } = options;
       let directoryCreated = false;
@@ -250,7 +264,7 @@ export async function startDaemon(): Promise<void> {
             const codexHomeDir = tmp.dirSync();
 
             // Write the token to the temporary directory
-            await fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
+            fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
 
             // Set the environment variable for Codex
             authEnv.CODEX_HOME = codexHomeDir.name;
