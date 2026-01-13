@@ -73,14 +73,6 @@ export function DirectorySelector({
                         color={theme.colors.textSecondary}
                     />
                 ),
-                getFavoriteItemIcon: (path) => (
-                    <Ionicons
-                        name={path === homeDir ? 'home-outline' : 'star-outline'}
-                        size={29}
-                        color={theme.colors.textSecondary}
-                    />
-                ),
-                canRemoveFavorite: (path) => path !== homeDir,
                 formatForDisplay: (path) => formatPathRelativeToHome(path, homeDir),
                 parseFromDisplay: (text) => {
                     const trimmed = text.trim();

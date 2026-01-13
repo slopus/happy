@@ -295,10 +295,7 @@ function NewSessionWizard() {
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
     const experimentsEnabled = useSetting('experiments');
-    const useMachinePickerSearch = useSetting('useMachinePickerSearch');
-    const useMachinePickerFavorites = useSetting('useMachinePickerFavorites');
-    const useDirectoryPickerSearch = useSetting('useDirectoryPickerSearch');
-    const useDirectoryPickerFavorites = useSetting('useDirectoryPickerFavorites');
+    const usePickerSearch = useSetting('usePickerSearch');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
     const [favoriteDirectories, setFavoriteDirectories] = useSettingMutable('favoriteDirectories');
@@ -1583,22 +1580,22 @@ function NewSessionWizard() {
                                     machines={machines}
                                     selectedMachine={selectedMachine || null}
                                     recentMachines={recentMachines}
-                                    favoriteMachines={useMachinePickerFavorites ? machines.filter(m => favoriteMachines.includes(m.id)) : []}
-                                    showFavorites={useMachinePickerFavorites}
-                                    showSearch={useMachinePickerSearch}
+                                    favoriteMachines={machines.filter(m => favoriteMachines.includes(m.id))}
+                                    showFavorites={true}
+                                    showSearch={usePickerSearch}
                                     onSelect={(machine) => {
                                     setSelectedMachineId(machine.id);
                                     const bestPath = getRecentPathForMachine(machine.id, recentMachinePaths);
                                     setSelectedPath(bestPath);
                                 }}
-                                onToggleFavorite={useMachinePickerFavorites ? ((machine) => {
+                                onToggleFavorite={(machine) => {
                                     const isInFavorites = favoriteMachines.includes(machine.id);
                                     if (isInFavorites) {
                                         setFavoriteMachines(favoriteMachines.filter(id => id !== machine.id));
                                     } else {
                                         setFavoriteMachines([...favoriteMachines, machine.id]);
                                     }
-                                }) : undefined}
+                                }}
                                 />
                             </View>
 
@@ -1616,18 +1613,17 @@ function NewSessionWizard() {
                                     machineHomeDir={selectedMachine?.metadata?.homeDir}
                                     selectedPath={selectedPath}
                                     recentPaths={recentPaths}
-                                    favoritePaths={useDirectoryPickerFavorites ? (() => {
+                                    favoritePaths={(() => {
                                         if (!selectedMachine?.metadata?.homeDir) return [];
                                         const homeDir = selectedMachine.metadata.homeDir;
-                                        return [homeDir, ...favoriteDirectories.map(fav => resolveAbsolutePath(fav, homeDir))];
-                                    })() : []}
-                                    showFavorites={useDirectoryPickerFavorites}
-                                    showSearch={useDirectoryPickerSearch}
+                                        return favoriteDirectories.map((fav) => resolveAbsolutePath(fav, homeDir));
+                                    })()}
+                                    showFavorites={true}
+                                    showSearch={usePickerSearch}
                                     onSelect={(path) => setSelectedPath(path)}
-                                    onToggleFavorite={useDirectoryPickerFavorites ? ((path) => {
+                                    onToggleFavorite={(path) => {
                                         const homeDir = selectedMachine?.metadata?.homeDir;
                                         if (!homeDir) return;
-                                        if (path === homeDir) return;
 
                                         const relativePath = formatPathRelativeToHome(path, homeDir);
                                         const isInFavorites = favoriteDirectories.some(fav =>
@@ -1640,7 +1636,7 @@ function NewSessionWizard() {
                                         } else {
                                             setFavoriteDirectories([...favoriteDirectories, relativePath]);
                                         }
-                                    }) : undefined}
+                                    }}
                                 />
                             </View>
 

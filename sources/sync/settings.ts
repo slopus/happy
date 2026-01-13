@@ -240,10 +240,7 @@ export const SettingsSchema = z.object({
     experiments: z.boolean().describe('Whether to enable experimental features'),
     useProfiles: z.boolean().describe('Whether to enable AI backend profiles feature'),
     useEnhancedSessionWizard: z.boolean().describe('A/B test flag: Use enhanced profile-based session wizard UI'),
-    useMachinePickerSearch: z.boolean().describe('Whether to show search in machine picker UIs'),
-    useMachinePickerFavorites: z.boolean().describe('Whether to show favorites in machine picker UIs'),
-    useDirectoryPickerSearch: z.boolean().describe('Whether to show search in directory/path picker UIs'),
-    useDirectoryPickerFavorites: z.boolean().describe('Whether to show favorites in directory/path picker UIs'),
+    usePickerSearch: z.boolean().describe('Whether to show search in machine/path picker UIs'),
     alwaysShowContextSize: z.boolean().describe('Always show context size in agent input'),
     agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
     avatarStyle: z.string().describe('Avatar display style'),
@@ -314,10 +311,7 @@ export const settingsDefaults: Settings = {
     experiments: false,
     useProfiles: false,
     useEnhancedSessionWizard: false,
-    useMachinePickerSearch: false,
-    useMachinePickerFavorites: false,
-    useDirectoryPickerSearch: false,
-    useDirectoryPickerFavorites: false,
+    usePickerSearch: false,
     alwaysShowContextSize: false,
     agentInputEnterToSend: true,
     avatarStyle: 'brutalist',
@@ -335,8 +329,8 @@ export const settingsDefaults: Settings = {
     // Profile management defaults
     profiles: [],
     lastUsedProfile: null,
-    // Default favorite directories (real common directories on Unix-like systems)
-    favoriteDirectories: ['~/src', '~/Desktop', '~/Documents'],
+    // Favorite directories (empty by default)
+    favoriteDirectories: [],
     // Favorite machines (empty by default)
     favoriteMachines: [],
     // Dismissed CLI warnings (empty by default)

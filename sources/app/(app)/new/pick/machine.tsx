@@ -36,8 +36,7 @@ export default function MachinePickerScreen() {
     const params = useLocalSearchParams<{ selectedId?: string }>();
     const machines = useAllMachines();
     const sessions = useSessions();
-    const useMachinePickerSearch = useSetting('useMachinePickerSearch');
-    const useMachinePickerFavorites = useSetting('useMachinePickerFavorites');
+    const usePickerSearch = useSetting('usePickerSearch');
     const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
 
     const selectedMachine = machines.find(m => m.id === params.selectedId) || null;
@@ -120,17 +119,17 @@ export default function MachinePickerScreen() {
                     machines={machines}
                     selectedMachine={selectedMachine}
                     recentMachines={recentMachines}
-                    favoriteMachines={useMachinePickerFavorites ? machines.filter(m => favoriteMachines.includes(m.id)) : []}
+                    favoriteMachines={machines.filter(m => favoriteMachines.includes(m.id))}
                     onSelect={handleSelectMachine}
-                    showFavorites={useMachinePickerFavorites}
-                    showSearch={useMachinePickerSearch}
-                    onToggleFavorite={useMachinePickerFavorites ? ((machine) => {
+                    showFavorites={true}
+                    showSearch={usePickerSearch}
+                    onToggleFavorite={(machine) => {
                         const isInFavorites = favoriteMachines.includes(machine.id);
                         setFavoriteMachines(isInFavorites
                             ? favoriteMachines.filter(id => id !== machine.id)
                             : [...favoriteMachines, machine.id]
                         );
-                    }) : undefined}
+                    }}
                 />
             </ItemList>
         </>
