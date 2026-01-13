@@ -89,6 +89,7 @@ export function EmptyMainScreen() {
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
     const { theme } = useUnistyles();
     const styles = stylesheet;
+    const isWeb = Platform.OS === 'web';
 
     return (
         <View style={styles.container}>
@@ -104,7 +105,32 @@ export function EmptyMainScreen() {
             </View>
 
 
-            {Platform.OS !== 'web' && (
+            {isWeb ? (
+                <View style={styles.buttonsContainer}>
+                    <View style={styles.buttonWrapperSecondary}>
+                        <RoundButton
+                            title={t('connect.enterUrlManually')}
+                            size="normal"
+                            display="inverted"
+                            onPress={async () => {
+                                const url = await Modal.prompt(
+                                    t('modals.authenticateTerminal'),
+                                    t('modals.pasteUrlFromTerminal'),
+                                    {
+                                        placeholder: 'happy://terminal?...',
+                                        cancelText: t('common.cancel'),
+                                        confirmText: t('common.authenticate')
+                                    }
+                                );
+
+                                if (url?.trim()) {
+                                    connectWithUrl(url.trim());
+                                }
+                            }}
+                        />
+                    </View>
+                </View>
+            ) : (
                 <>
                     <View style={styles.stepsContainer}>
                         <View style={styles.stepRow}>
