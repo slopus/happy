@@ -42,7 +42,7 @@ import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
 import { GeminiReasoningProcessor } from '@/gemini/utils/reasoningProcessor';
 import { GeminiDiffProcessor } from '@/gemini/utils/diffProcessor';
 import type { GeminiMode, CodexMessagePayload } from '@/gemini/types';
-import type { PermissionMode } from '@/api/types';
+import { CODEX_GEMINI_PERMISSION_MODES, isCodexGeminiPermissionMode, type CodexGeminiPermissionMode, type PermissionMode } from '@/api/types';
 import { GEMINI_MODEL_ENV, DEFAULT_GEMINI_MODEL, CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import {
   readGeminiLocalConfig,
@@ -64,6 +64,7 @@ export async function runGemini(opts: {
   credentials: Credentials;
   startedBy?: 'daemon' | 'terminal';
   terminalRuntime?: import('@/terminal/terminalRuntimeFlags').TerminalRuntimeFlags | null;
+  permissionMode?: PermissionMode;
 }): Promise<void> {
   //
   // Define session
@@ -129,11 +130,19 @@ export async function runGemini(opts: {
   // Create session
   //
 
+  const initialPermissionMode: PermissionMode =
+    opts.permissionMode && isCodexGeminiPermissionMode(opts.permissionMode)
+      ? opts.permissionMode
+      : 'default';
+
   const { state, metadata } = createSessionMetadata({
     flavor: 'gemini',
     machineId,
     startedBy: opts.startedBy,
     terminalRuntime: opts.terminalRuntime ?? null,
+    terminalRuntime: opts.terminalRuntime ?? null,
+    permissionMode: initialPermissionMode,
+    permissionModeUpdatedAt: Date.now(),
   });
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
   const terminal = buildTerminalMetadataFromRuntimeFlags(opts.terminalRuntime ?? null);
@@ -229,31 +238,29 @@ export async function runGemini(opts: {
   const conversationHistory = new ConversationHistory({ maxMessages: 20, maxCharacters: 50000 });
 
   // Track current overrides to apply per message
-  let currentPermissionMode: PermissionMode | undefined = undefined;
+  let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
   let currentModel: string | undefined = undefined;
 
   session.onUserMessage((message) => {
     // Resolve permission mode (validate) - same as Codex
     let messagePermissionMode = currentPermissionMode;
     if (message.meta?.permissionMode) {
-      const validModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
-      if (validModes.includes(message.meta.permissionMode as PermissionMode)) {
+      if (CODEX_GEMINI_PERMISSION_MODES.includes(message.meta.permissionMode as CodexGeminiPermissionMode)) {
         messagePermissionMode = message.meta.permissionMode as PermissionMode;
         currentPermissionMode = messagePermissionMode;
         // Update permission handler with new mode
         updatePermissionMode(messagePermissionMode);
         logger.debug(`[Gemini] Permission mode updated from user message to: ${currentPermissionMode}`);
+        session.updateMetadata((current) => ({
+          ...current,
+          permissionMode: currentPermissionMode,
+          permissionModeUpdatedAt: Date.now(),
+        }));
       } else {
         logger.debug(`[Gemini] Invalid permission mode received: ${message.meta.permissionMode}`);
       }
     } else {
       logger.debug(`[Gemini] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
-    }
-    
-    // Initialize permission mode if not set yet
-    if (currentPermissionMode === undefined) {
-      currentPermissionMode = 'default';
-      updatePermissionMode('default');
     }
 
     // Resolve model; explicit null resets to default (undefined)

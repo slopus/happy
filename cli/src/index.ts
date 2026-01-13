@@ -30,12 +30,52 @@ import { claudeCliPath } from './claude/claudeLocal'
 import { execFileSync } from 'node:child_process'
 import { parseAndStripTerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags'
 import { handleAttachCommand } from '@/commands/attach'
+import { CODEX_GEMINI_PERMISSION_MODES, CODEX_PERMISSION_MODES, PERMISSION_MODES, isCodexGeminiPermissionMode, isCodexPermissionMode, isPermissionMode, type PermissionMode } from '@/api/types'
 
 
 (async () => {
   const parsed = parseAndStripTerminalRuntimeFlags(process.argv.slice(2))
   const terminalRuntime = parsed.terminal
   const args = parsed.argv
+
+  const parseSessionStartArgs = (): {
+    startedBy: 'daemon' | 'terminal' | undefined
+    permissionMode: PermissionMode | undefined
+  } => {
+    let startedBy: 'daemon' | 'terminal' | undefined = undefined
+    let permissionMode: PermissionMode | undefined = undefined
+
+    for (let i = 1; i < args.length; i++) {
+      const arg = args[i]
+      if (arg === '--started-by') {
+        if (i + 1 >= args.length) {
+          console.error(chalk.red('Missing value for --started-by (expected: daemon|terminal)'))
+          process.exit(1)
+        }
+        const value = args[++i]
+        if (value !== 'daemon' && value !== 'terminal') {
+          console.error(chalk.red(`Invalid --started-by value: ${value}. Expected: daemon|terminal`))
+          process.exit(1)
+        }
+        startedBy = value
+      } else if (arg === '--permission-mode') {
+        if (i + 1 >= args.length) {
+          console.error(chalk.red(`Missing value for --permission-mode. Valid values: ${PERMISSION_MODES.join(', ')}`))
+          process.exit(1)
+        }
+        const value = args[++i]
+        if (!isPermissionMode(value)) {
+          console.error(chalk.red(`Invalid --permission-mode value: ${value}. Valid values: ${PERMISSION_MODES.join(', ')}`))
+          process.exit(1)
+        }
+        permissionMode = value
+      } else if (arg === '--yolo') {
+        permissionMode = 'yolo'
+      }
+    }
+
+    return { startedBy, permissionMode }
+  }
 
   // If --version is passed - do not log, its likely daemon inquiring about our version
   if (!args.includes('--version')) {
@@ -128,18 +168,17 @@ import { handleAttachCommand } from '@/commands/attach'
     try {
       const { runCodex } = await import('@/codex/runCodex');
       
-      // Parse startedBy argument
-      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
-      for (let i = 1; i < args.length; i++) {
-        if (args[i] === '--started-by') {
-          startedBy = args[++i] as 'daemon' | 'terminal';
-        }
+      const { startedBy, permissionMode } = parseSessionStartArgs()
+      if (permissionMode && !isCodexPermissionMode(permissionMode)) {
+        console.error(chalk.red(`Invalid --permission-mode for codex: ${permissionMode}. Valid values: ${CODEX_PERMISSION_MODES.join(', ')}`))
+        console.error(chalk.gray('Tip: use --yolo for full bypass-like behavior.'))
+        process.exit(1)
       }
       
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
-      await runCodex({credentials, startedBy, terminalRuntime});
+      await runCodex({credentials, startedBy, terminalRuntime, permissionMode});
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
@@ -333,12 +372,11 @@ import { handleAttachCommand } from '@/commands/attach'
     try {
       const { runGemini } = await import('@/gemini/runGemini');
       
-      // Parse startedBy argument
-      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
-      for (let i = 1; i < args.length; i++) {
-        if (args[i] === '--started-by') {
-          startedBy = args[++i] as 'daemon' | 'terminal';
-        }
+      const { startedBy, permissionMode } = parseSessionStartArgs()
+      if (permissionMode && !isCodexGeminiPermissionMode(permissionMode)) {
+        console.error(chalk.red(`Invalid --permission-mode for gemini: ${permissionMode}. Valid values: ${CODEX_GEMINI_PERMISSION_MODES.join(', ')}`))
+        console.error(chalk.gray('Tip: use --yolo for full bypass-like behavior.'))
+        process.exit(1)
       }
       
       const {
@@ -358,7 +396,7 @@ import { handleAttachCommand } from '@/commands/attach'
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      await runGemini({credentials, startedBy, terminalRuntime});
+      await runGemini({credentials, startedBy, terminalRuntime, permissionMode});
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {

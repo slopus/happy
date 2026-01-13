@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { UsageSchema } from '@/claude/types'
 
 /**
- * Permission mode type - includes both Claude and Codex modes
+ * Permission mode values - includes both Claude and Codex modes
  * Must match MessageMetaSchema.permissionMode enum values
  *
  * Claude modes: default, acceptEdits, bypassPermissions, plan
@@ -13,7 +13,45 @@ import { UsageSchema } from '@/claude/types'
  * - safe-yolo → default
  * - read-only → default
  */
-export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo'
+const CODEX_GEMINI_NON_DEFAULT_PERMISSION_MODES = ['read-only', 'safe-yolo', 'yolo'] as const
+export const CODEX_GEMINI_PERMISSION_MODES = ['default', ...CODEX_GEMINI_NON_DEFAULT_PERMISSION_MODES] as const
+
+const CLAUDE_ONLY_PERMISSION_MODES = ['acceptEdits', 'bypassPermissions', 'plan'] as const
+
+// Keep stable ordering for readability/help text:
+// default, claude-only, then codex/gemini-only.
+export const PERMISSION_MODES = [
+  'default',
+  ...CLAUDE_ONLY_PERMISSION_MODES,
+  ...CODEX_GEMINI_NON_DEFAULT_PERMISSION_MODES,
+] as const
+
+export type PermissionMode = (typeof PERMISSION_MODES)[number]
+
+export function isPermissionMode(value: string): value is PermissionMode {
+  return PERMISSION_MODES.includes(value as PermissionMode)
+}
+
+export type CodexGeminiPermissionMode = (typeof CODEX_GEMINI_PERMISSION_MODES)[number]
+
+export function isCodexGeminiPermissionMode(value: PermissionMode): value is CodexGeminiPermissionMode {
+  return (CODEX_GEMINI_PERMISSION_MODES as readonly string[]).includes(value)
+}
+
+// Codex supports the Codex/Gemini subset, plus bypassPermissions as an alias for yolo/full access.
+export const CODEX_PERMISSION_MODES = [
+  'default',
+  'read-only',
+  'safe-yolo',
+  'yolo',
+  'bypassPermissions',
+] as const
+
+export type CodexPermissionMode = (typeof CODEX_PERMISSION_MODES)[number]
+
+export function isCodexPermissionMode(value: PermissionMode): value is CodexPermissionMode {
+  return (CODEX_PERMISSION_MODES as readonly string[]).includes(value)
+}
 
 /**
  * Usage data type from Claude
@@ -242,7 +280,7 @@ export type SessionMessage = z.infer<typeof SessionMessageSchema>
  */
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(), // Source identifier
-  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(), // Permission mode for this message
+  permissionMode: z.enum(PERMISSION_MODES).optional(), // Permission mode for this message
   model: z.string().nullable().optional(), // Model name for this message (null = reset)
   fallbackModel: z.string().nullable().optional(), // Fallback model for this message (null = reset)
   customSystemPrompt: z.string().nullable().optional(), // Custom system prompt for this message (null = reset)

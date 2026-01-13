@@ -84,6 +84,7 @@ export async function runCodex(opts: {
     credentials: Credentials;
     startedBy?: 'daemon' | 'terminal';
     terminalRuntime?: import('@/terminal/terminalRuntimeFlags').TerminalRuntimeFlags | null;
+    permissionMode?: import('@/api/types').PermissionMode;
 }): Promise<void> {
     // Use shared PermissionMode type for cross-agent compatibility
     type PermissionMode = import('@/api/types').PermissionMode;
@@ -126,11 +127,15 @@ export async function runCodex(opts: {
     // Create session
     //
 
+    const initialPermissionMode = opts.permissionMode ?? 'default';
     const { state, metadata } = createSessionMetadata({
         flavor: 'codex',
         machineId,
         startedBy: opts.startedBy,
         terminalRuntime: opts.terminalRuntime ?? null,
+        terminalRuntime: opts.terminalRuntime ?? null,
+        permissionMode: initialPermissionMode,
+        permissionModeUpdatedAt: Date.now(),
     });
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     const terminal = buildTerminalMetadataFromRuntimeFlags(opts.terminalRuntime ?? null);
@@ -196,7 +201,7 @@ export async function runCodex(opts: {
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
-    let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
+    let currentPermissionMode: import('@/api/types').PermissionMode | undefined = initialPermissionMode;
     let currentModel: string | undefined = undefined;
 
     session.onUserMessage((message) => {
@@ -206,6 +211,11 @@ export async function runCodex(opts: {
             messagePermissionMode = message.meta.permissionMode as import('@/api/types').PermissionMode;
             currentPermissionMode = messagePermissionMode;
             logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
+            session.updateMetadata((current) => ({
+                ...current,
+                permissionMode: currentPermissionMode,
+                permissionModeUpdatedAt: Date.now(),
+            }));
         } else {
             logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
         }
