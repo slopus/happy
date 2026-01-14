@@ -1,5 +1,18 @@
 import { AIBackendProfile } from './settings';
 
+export type ProfilePrimaryCli = 'claude' | 'codex' | 'gemini' | 'multi' | 'none';
+
+export function getProfilePrimaryCli(profile: AIBackendProfile | null | undefined): ProfilePrimaryCli {
+    if (!profile) return 'none';
+    const supported = Object.entries(profile.compatibility ?? {})
+        .filter(([, isSupported]) => isSupported)
+        .map(([cli]) => cli as 'claude' | 'codex' | 'gemini');
+
+    if (supported.length === 0) return 'none';
+    if (supported.length === 1) return supported[0];
+    return 'multi';
+}
+
 /**
  * Documentation and expected values for built-in profiles.
  * These help users understand what environment variables to set and their expected values.

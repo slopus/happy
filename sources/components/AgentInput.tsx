@@ -22,7 +22,7 @@ import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
-import { getBuiltInProfile } from '@/sync/profileUtils';
+import { getBuiltInProfile, getProfilePrimaryCli } from '@/sync/profileUtils';
 
 interface AgentInputProps {
     value: string;
@@ -35,6 +35,7 @@ interface AgentInputProps {
     isMicActive?: boolean;
     permissionMode?: PermissionMode;
     onPermissionModeChange?: (mode: PermissionMode) => void;
+    onPermissionClick?: () => void;
     modelMode?: ModelMode;
     onModelModeChange?: (mode: ModelMode) => void;
     metadata?: Metadata | null;
@@ -332,11 +333,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         return `${t('status.unknown')} (${shortId})`;
 	    }, [props.profileId, currentProfile]);
 
-	    const profileIcon = React.useMemo(() => {
-	        if (props.profileId === null) return 'radio-button-off-outline';
-	        if (typeof props.profileId === 'string' && props.profileId.trim() === '') return 'radio-button-off-outline';
-	        return 'person-outline';
-	    }, [props.profileId]);
+		    const profileIcon = React.useMemo(() => {
+		        if (props.profileId === null) return 'radio-button-off-outline';
+		        if (typeof props.profileId === 'string' && props.profileId.trim() === '') return 'radio-button-off-outline';
+                const primary = getProfilePrimaryCli(currentProfile);
+                if (primary === 'claude') return 'cloud-outline';
+                if (primary === 'codex') return 'terminal-outline';
+                if (primary === 'gemini') return 'planet-outline';
+                if (primary === 'multi') return 'sparkles-outline';
+		        return 'person-outline';
+		    }, [currentProfile, props.profileId]);
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
@@ -442,6 +448,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         hapticsLight();
         setShowSettings(prev => !prev);
     }, []);
+
+    const showPermissionChip = Boolean(props.onPermissionModeChange || props.onPermissionClick);
 
     // Handle settings selection
     const handleSettingsSelect = React.useCallback((mode: PermissionMode) => {
@@ -745,14 +753,21 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <View style={styles.actionButtonsLeft}>
 
-                                {/* Settings button */}
-                                {props.onPermissionModeChange && (
-                            <Pressable
-                                        onPress={handleSettingsPress}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                style={(p) => ({
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
+                                {/* Permission chip (popover in standard flow, scroll in wizard) */}
+                                {showPermissionChip && (
+	                            <Pressable
+	                                        onPress={() => {
+                                            hapticsLight();
+                                            if (props.onPermissionClick) {
+                                                props.onPermissionClick();
+                                                return;
+                                            }
+                                            handleSettingsPress();
+                                        }}
+	                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+	                                style={(p) => ({
+	                                    flexDirection: 'row',
+	                                    alignItems: 'center',
                                     borderRadius: Platform.select({ default: 16, android: 20 }),
                                             paddingHorizontal: 10,
                                     paddingVertical: 6,
@@ -760,13 +775,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     height: 32,
                                     opacity: p.pressed ? 0.7 : 1,
                                             gap: 6,
-                                })}
-                            >
+	                                })}
+	                            >
                                         <Octicons
                                             name={'gear'}
                                             size={16}
                                             color={theme.colors.button.secondary.tint}
-                                />
+	                                />
                                         <Text style={{
                                             fontSize: 13,
                                             color: theme.colors.button.secondary.tint,
@@ -775,8 +790,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         }}>
                                             {permissionBadgeLabel}
                                         </Text>
-                            </Pressable>
-                        )}
+	                            </Pressable>
+	                        )}
 
                                 {/* Profile selector button - FIRST */}
                                 {props.onProfileClick && (

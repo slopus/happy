@@ -133,11 +133,7 @@ export function ProfileEditForm({
             )}
 
             <ItemGroup title="Default Session Type">
-                <React.Fragment>
-                    <View style={styles.selectorContainer}>
-                        <SessionTypeSelector value={defaultSessionType} onChange={setDefaultSessionType} />
-                    </View>
-                </React.Fragment>
+                <SessionTypeSelector value={defaultSessionType} onChange={setDefaultSessionType} title={null} />
             </ItemGroup>
 
             <ItemGroup title="Default Permission Mode">

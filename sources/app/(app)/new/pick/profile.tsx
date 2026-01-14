@@ -8,7 +8,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { useSetting, useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
-import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
+import { getBuiltInProfile, DEFAULT_PROFILES, getProfilePrimaryCli } from '@/sync/profileUtils';
 import { useUnistyles } from 'react-native-unistyles';
 import { randomUUID } from 'expo-crypto';
 import { AIBackendProfile } from '@/sync/settings';
@@ -24,6 +24,30 @@ export default function ProfilePickerScreen() {
 
     const selectedId = typeof params.selectedId === 'string' ? params.selectedId : '';
     const machineId = typeof params.machineId === 'string' ? params.machineId : undefined;
+
+    const profileIconContainerStyle = React.useMemo(() => ({
+        width: 29,
+        height: 29,
+        borderRadius: 14.5,
+        backgroundColor: theme.colors.surfacePressed,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+    }), [theme.colors.surfacePressed]);
+
+    const renderProfileIcon = React.useCallback((profile: AIBackendProfile) => {
+        const primary = getProfilePrimaryCli(profile);
+        const iconName =
+            primary === 'claude' ? 'cloud-outline' :
+                primary === 'codex' ? 'terminal-outline' :
+                    primary === 'gemini' ? 'planet-outline' :
+                        primary === 'multi' ? 'sparkles-outline' :
+                            'person-outline';
+        return (
+            <View style={profileIconContainerStyle}>
+                <Ionicons name={iconName as any} size={18} color={theme.colors.textSecondary} />
+            </View>
+        );
+    }, [profileIconContainerStyle, theme.colors.textSecondary]);
 
     const setProfileParamAndClose = React.useCallback((profileId: string) => {
         const state = navigation.getState();
@@ -154,7 +178,7 @@ export default function ProfilePickerScreen() {
                                         key={profile.id}
                                         title={profile.name}
                                         subtitle={t('profiles.defaultModel')}
-                                        icon={<Ionicons name="star" size={29} color={theme.colors.button.secondary.tint} />}
+                                        icon={renderProfileIcon(profile)}
                                         onPress={() => setProfileParamAndClose(profile.id)}
                                         showChevron={false}
                                         selected={isSelected}
@@ -200,7 +224,7 @@ export default function ProfilePickerScreen() {
                                         key={profile.id}
                                         title={profile.name}
                                         subtitle={t('profiles.defaultModel')}
-                                        icon={<Ionicons name="person" size={29} color={theme.colors.textSecondary} />}
+                                        icon={renderProfileIcon(profile)}
                                         onPress={() => setProfileParamAndClose(profile.id)}
                                         showChevron={false}
                                         selected={isSelected}

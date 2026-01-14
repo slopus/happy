@@ -21,7 +21,7 @@ import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
 import { PermissionMode, ModelMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
-import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
+import { getBuiltInProfile, DEFAULT_PROFILES, getProfilePrimaryCli } from '@/sync/profileUtils';
 import { AgentInput } from '@/components/AgentInput';
 import { StyleSheet } from 'react-native-unistyles';
 import { randomUUID } from 'expo-crypto';
@@ -820,49 +820,65 @@ function NewSessionWizard() {
     }, [agentType, permissionMode]);
 
     // Scroll to section helpers - for AgentInput button clicks
-    const scrollToSection = React.useCallback((ref: React.RefObject<View | Text | null>) => {
-        if (!ref.current || !scrollViewRef.current) return;
-
-        // Use requestAnimationFrame to ensure layout is painted before measuring
-        requestAnimationFrame(() => {
-            if (ref.current && scrollViewRef.current) {
-                ref.current.measureLayout(
-                    scrollViewRef.current as any,
-                    (x, y) => {
-                        scrollViewRef.current?.scrollTo({ y: y - 20, animated: true });
-                    },
-                    () => {
-                        console.warn('measureLayout failed');
-                    }
-                );
-            }
-        });
+    const wizardSectionOffsets = React.useRef<{ profile?: number; machine?: number; path?: number; permission?: number }>({});
+    const registerWizardSectionOffset = React.useCallback((key: keyof typeof wizardSectionOffsets.current) => {
+        return (e: any) => {
+            wizardSectionOffsets.current[key] = e?.nativeEvent?.layout?.y ?? 0;
+        };
+    }, []);
+    const scrollToWizardSection = React.useCallback((key: keyof typeof wizardSectionOffsets.current) => {
+        const y = wizardSectionOffsets.current[key];
+        if (typeof y !== 'number' || !scrollViewRef.current) return;
+        scrollViewRef.current.scrollTo({ y: Math.max(0, y - 20), animated: true });
     }, []);
 
     const handleAgentInputProfileClick = React.useCallback(() => {
-        if (!useProfiles) {
-            return;
-        }
-        router.push({
-            pathname: '/new/pick/profile',
-            params: {
-                ...(selectedProfileId ? { selectedId: selectedProfileId } : {}),
-                ...(selectedMachineId ? { machineId: selectedMachineId } : {}),
-            },
-        });
-    }, [router, selectedMachineId, selectedProfileId, useProfiles]);
+        scrollToWizardSection('profile');
+    }, [scrollToWizardSection]);
 
     const handleAgentInputMachineClick = React.useCallback(() => {
-        scrollToSection(machineSectionRef);
-    }, [scrollToSection]);
+        scrollToWizardSection('machine');
+    }, [scrollToWizardSection]);
 
     const handleAgentInputPathClick = React.useCallback(() => {
-        scrollToSection(pathSectionRef);
-    }, [scrollToSection]);
+        scrollToWizardSection('path');
+    }, [scrollToWizardSection]);
+
+    const handleAgentInputPermissionClick = React.useCallback(() => {
+        scrollToWizardSection('permission');
+    }, [scrollToWizardSection]);
 
     const handleAgentInputAgentClick = React.useCallback(() => {
-        scrollToSection(profileSectionRef); // Agent tied to profile section
-    }, [scrollToSection]);
+        scrollToWizardSection('profile');
+    }, [scrollToWizardSection]);
+
+    const profileIconContainerStyle = React.useMemo(() => ({
+        width: 29,
+        height: 29,
+        borderRadius: 14.5,
+        backgroundColor: theme.colors.surfacePressed,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+    }), [theme.colors.surfacePressed]);
+
+    const renderProfileLeftElement = React.useCallback((profile: AIBackendProfile) => {
+        const primary = getProfilePrimaryCli(profile);
+        const iconName =
+            primary === 'claude' ? 'cloud-outline' :
+                primary === 'codex' ? 'terminal-outline' :
+                    primary === 'gemini' ? 'planet-outline' :
+                        primary === 'multi' ? 'sparkles-outline' :
+                            'person-outline';
+        return (
+            <View style={profileIconContainerStyle}>
+                <Ionicons
+                    name={iconName as any}
+                    size={18}
+                    color={theme.colors.textSecondary}
+                />
+            </View>
+        );
+    }, [profileIconContainerStyle, theme.colors.textSecondary]);
 
     // Helper to get meaningful subtitle text for profiles
     const getProfileSubtitle = React.useCallback((profile: AIBackendProfile): string => {
@@ -1248,7 +1264,7 @@ function NewSessionWizard() {
                     <View style={[
                         { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
                     ]}>
-                        <View ref={profileSectionRef} style={styles.wizardContainer}>
+                        <View ref={profileSectionRef} onLayout={registerWizardSectionOffset('profile')} style={styles.wizardContainer}>
                             {/* CLI Detection Status Banner - shows after detection completes */}
                             {selectedMachineId && cliAvailability.timestamp > 0 && selectedMachine && connectionStatus && (
                                 <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
@@ -1565,7 +1581,7 @@ function NewSessionWizard() {
                                                     key={profile.id}
                                                     title={profile.name}
                                                     subtitle={getProfileSubtitle(profile)}
-                                                    leftElement={<Ionicons name="star" size={29} color={theme.colors.button.secondary.tint} />}
+                                                    leftElement={renderProfileLeftElement(profile)}
                                                     showChevron={false}
                                                     selected={isSelected}
                                                     disabled={!availability.available}
@@ -1614,7 +1630,7 @@ function NewSessionWizard() {
                                                     key={profile.id}
                                                     title={profile.name}
                                                     subtitle={getProfileSubtitle(profile)}
-                                                    leftElement={<Ionicons name="person" size={29} color={theme.colors.textSecondary} />}
+                                                    leftElement={renderProfileLeftElement(profile)}
                                                     showChevron={false}
                                                     selected={isSelected}
                                                     disabled={!availability.available}
@@ -1706,8 +1722,10 @@ function NewSessionWizard() {
                                 </ItemGroup>
                             )}
 
+                            <View style={{ height: 24 }} />
+
                             {/* Section 2: Machine Selection */}
-                            <View ref={machineSectionRef}>
+                            <View ref={machineSectionRef} onLayout={registerWizardSectionOffset('machine')}>
                                 <View style={styles.wizardSectionHeaderRow}>
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>2.</Text>
                                     <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
@@ -1740,7 +1758,7 @@ function NewSessionWizard() {
                             </View>
 
                             {/* Section 3: Working Directory */}
-                            <View ref={pathSectionRef}>
+                            <View ref={pathSectionRef} onLayout={registerWizardSectionOffset('path')}>
                                 <View style={styles.wizardSectionHeaderRow}>
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>3.</Text>
                                     <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
@@ -1761,7 +1779,7 @@ function NewSessionWizard() {
                             </View>
 
                             {/* Section 4: Permission Mode */}
-                            <View ref={permissionSectionRef}>
+                            <View ref={permissionSectionRef} onLayout={registerWizardSectionOffset('permission')}>
 	                                <View style={styles.wizardSectionHeaderRow}>
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>4.</Text>
                                     <Ionicons name="shield-outline" size={18} color={theme.colors.text} />
@@ -1810,7 +1828,9 @@ function NewSessionWizard() {
                                 ))}
                             </ItemGroup>
 
-                            <View style={{ paddingHorizontal: 16, marginBottom: 24 }}>
+                            <View style={{ height: 24 }} />
+
+                            <View style={{ marginBottom: 12 }}>
                                 <SessionTypeSelector value={sessionType} onChange={setSessionType} />
                             </View>
                         </View>
@@ -1821,26 +1841,28 @@ function NewSessionWizard() {
                 {/* Section 5: AgentInput - Sticky at bottom */}
                 <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
                     <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                        <AgentInput
-                            value={sessionPrompt}
-                            onChangeText={setSessionPrompt}
-                            onSend={handleCreateSession}
-                            isSendDisabled={!canCreate}
-                            isSending={isCreating}
-                            placeholder={t('session.inputPlaceholder')}
-                            autocompletePrefixes={[]}
-                            autocompleteSuggestions={async () => []}
-                            agentType={agentType}
-                            onAgentClick={handleAgentInputAgentClick}
-                            modelMode={modelMode}
-                            onModelModeChange={setModelMode}
-                            connectionStatus={connectionStatus}
-                            machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
-                            onMachineClick={handleAgentInputMachineClick}
-                            currentPath={selectedPath}
-                            onPathClick={handleAgentInputPathClick}
+                            <AgentInput
+                                value={sessionPrompt}
+                                onChangeText={setSessionPrompt}
+                                onSend={handleCreateSession}
+                                isSendDisabled={!canCreate}
+                                isSending={isCreating}
+                                placeholder={t('session.inputPlaceholder')}
+                                autocompletePrefixes={[]}
+                                autocompleteSuggestions={async () => []}
+                                agentType={agentType}
+                                onAgentClick={handleAgentInputAgentClick}
+                                permissionMode={permissionMode}
+                                onPermissionClick={handleAgentInputPermissionClick}
+                                modelMode={modelMode}
+                                onModelModeChange={setModelMode}
+                                connectionStatus={connectionStatus}
+                                machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
+                                onMachineClick={handleAgentInputMachineClick}
+                                currentPath={selectedPath}
+                                onPathClick={handleAgentInputPathClick}
                                 {...(useProfiles ? { profileId: selectedProfileId, onProfileClick: handleAgentInputProfileClick } : {})}
-                        />
+                            />
                     </View>
                 </View>
             </View>
