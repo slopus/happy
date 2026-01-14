@@ -25,19 +25,15 @@ export function ProfileCompatibilityIcon({ profile, size = 29, style }: Props) {
                 {
                     width: size,
                     height: size,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: theme.colors.divider,
                     alignItems: 'center',
                     justifyContent: 'center',
                 },
                 style,
             ]}
         >
-            <Text style={{ fontSize: 16, color: theme.colors.textSecondary, ...Typography.default() }}>
+            <Text style={{ fontSize: 18, color: theme.colors.textSecondary, ...Typography.default() }}>
                 {glyph}
             </Text>
         </View>
     );
 }
-

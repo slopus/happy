@@ -22,7 +22,7 @@ import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
-import { getBuiltInProfile, getProfilePrimaryCli } from '@/sync/profileUtils';
+import { getBuiltInProfile } from '@/sync/profileUtils';
 
 interface AgentInputProps {
     value: string;
@@ -334,15 +334,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 	    }, [props.profileId, currentProfile]);
 
 		    const profileIcon = React.useMemo(() => {
-		        if (props.profileId === null) return 'settings-outline';
-		        if (typeof props.profileId === 'string' && props.profileId.trim() === '') return 'settings-outline';
-                const primary = getProfilePrimaryCli(currentProfile);
-                if (primary === 'claude') return 'cloud-outline';
-                if (primary === 'codex') return 'terminal-outline';
-                if (primary === 'gemini') return 'planet-outline';
-                if (primary === 'multi') return 'sparkles-outline';
-		        return 'person-outline';
-		    }, [currentProfile, props.profileId]);
+		        // Always show a stable "profile" icon so the chip reads as Profile selection (not "current provider").
+		        return 'person-circle-outline';
+		    }, []);
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
@@ -777,11 +771,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             gap: 6,
 	                                })}
 	                            >
-                                        <Octicons
-                                            name={'gear'}
-                                            size={16}
-                                            color={theme.colors.button.secondary.tint}
-	                                />
+	                                        <Ionicons
+	                                            name="shield-checkmark-outline"
+	                                            size={16}
+	                                            color={theme.colors.button.secondary.tint}
+		                                />
                                         <Text style={{
                                             fontSize: 13,
                                             color: theme.colors.button.secondary.tint,
