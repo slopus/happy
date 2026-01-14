@@ -4,6 +4,7 @@ import { LocalSettings, localSettingsDefaults, localSettingsParse } from './loca
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
+import type { ModelMode } from '@/components/PermissionModeSelector';
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
@@ -18,6 +19,7 @@ export interface NewSessionDraft {
     selectedProfileId: string | null;
     agentType: NewSessionAgentType;
     permissionMode: PermissionMode;
+    modelMode: ModelMode;
     sessionType: NewSessionSessionType;
     updatedAt: number;
 }
@@ -148,6 +150,9 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const permissionMode: PermissionMode = typeof parsed.permissionMode === 'string'
             ? (parsed.permissionMode as PermissionMode)
             : 'default';
+        const modelMode: ModelMode = typeof parsed.modelMode === 'string'
+            ? (parsed.modelMode as ModelMode)
+            : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
 
@@ -158,6 +163,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             selectedProfileId,
             agentType,
             permissionMode,
+            modelMode,
             sessionType,
             updatedAt,
         };

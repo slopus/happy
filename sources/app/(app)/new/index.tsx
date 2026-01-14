@@ -403,6 +403,17 @@ function NewSessionWizard() {
         const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'default', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
         const validGeminiModes: ModelMode[] = ['default'];
 
+        if (persistedDraft?.modelMode) {
+            const draftMode = persistedDraft.modelMode as ModelMode;
+            if (agentType === 'codex' && validCodexModes.includes(draftMode)) {
+                return draftMode;
+            } else if (agentType === 'claude' && validClaudeModes.includes(draftMode)) {
+                return draftMode;
+            } else if (agentType === 'gemini' && validGeminiModes.includes(draftMode)) {
+                return draftMode;
+            }
+        }
+
         if (lastUsedModelMode) {
             if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
                 return lastUsedModelMode as ModelMode;
@@ -671,6 +682,7 @@ function NewSessionWizard() {
             selectedProfileId: useProfiles ? selectedProfileId : null,
             agentType,
             permissionMode,
+            modelMode,
             sessionType,
             updatedAt: Date.now(),
         });
@@ -678,7 +690,7 @@ function NewSessionWizard() {
         const profileData = JSON.stringify(profile);
         const base = `/new/pick/profile-edit?profileData=${encodeURIComponent(profileData)}`;
         router.push(selectedMachineId ? `${base}&machineId=${encodeURIComponent(selectedMachineId)}` as any : base as any);
-    }, [agentType, permissionMode, router, selectedMachineId, selectedPath, selectedProfileId, sessionPrompt, sessionType, useProfiles]);
+    }, [agentType, modelMode, permissionMode, router, selectedMachineId, selectedPath, selectedProfileId, sessionPrompt, sessionType, useProfiles]);
 
     const handleAddProfile = React.useCallback(() => {
         openProfileEdit(createEmptyCustomProfile());
@@ -1370,10 +1382,11 @@ function NewSessionWizard() {
             selectedProfileId: useProfiles ? selectedProfileId : null,
             agentType,
             permissionMode,
+            modelMode,
             sessionType,
             updatedAt: Date.now(),
         });
-    }, [agentType, permissionMode, selectedMachineId, selectedPath, selectedProfileId, sessionPrompt, sessionType, useProfiles]);
+    }, [agentType, modelMode, permissionMode, selectedMachineId, selectedPath, selectedProfileId, sessionPrompt, sessionType, useProfiles]);
 
     // Persist the current wizard state so it survives remounts and screen navigation
     // Uses debouncing to avoid excessive writes
