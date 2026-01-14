@@ -1028,19 +1028,34 @@ function NewSessionWizard() {
 
     const handleAgentClick = React.useCallback(() => {
         if (useProfiles && selectedProfileId !== null) {
-            Modal.alert(
-                'AI Backend',
-                'AI backend is selected by your profile. To change it, select a different profile.',
-                [
-                    { text: t('common.ok'), style: 'cancel' },
-                    { text: 'Change Profile', onPress: handleProfileClick },
-                ],
-            );
+            const profile = profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId);
+            const supportedAgents = profile
+                ? (Object.entries(profile.compatibility) as Array<[string, boolean]>)
+                    .filter(([, supported]) => supported)
+                    .map(([agent]) => agent as 'claude' | 'codex' | 'gemini')
+                    .filter((agent) => agent !== 'gemini' || allowGemini)
+                : [];
+
+            if (supportedAgents.length <= 1) {
+                Modal.alert(
+                    'AI Backend',
+                    'AI backend is selected by your profile. To change it, select a different profile.',
+                    [
+                        { text: t('common.ok'), style: 'cancel' },
+                        { text: 'Change Profile', onPress: handleProfileClick },
+                    ],
+                );
+                return;
+            }
+
+            const currentIndex = supportedAgents.indexOf(agentType);
+            const nextIndex = (currentIndex + 1) % supportedAgents.length;
+            setAgentType(supportedAgents[nextIndex] ?? supportedAgents[0] ?? 'claude');
             return;
         }
 
         handleAgentCycle();
-    }, [handleAgentCycle, handleProfileClick, selectedProfileId, useProfiles]);
+    }, [agentType, allowGemini, handleAgentCycle, handleProfileClick, profileMap, selectedProfileId, setAgentType, useProfiles]);
 
     const handlePathClick = React.useCallback(() => {
         if (selectedMachineId) {
@@ -1692,16 +1707,17 @@ function NewSessionWizard() {
                                             selected={!selectedProfileId}
                                             onPress={() => setSelectedProfileId(null)}
                                             pressableStyle={!selectedProfileId ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                            rightElement={
-                                                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                                    <Ionicons
-                                                        name="checkmark-circle"
-                                                        size={24}
-                                                        color={theme.colors.button.primary.background}
-                                                        style={{ opacity: selectedProfileId ? 0 : 1 }}
-                                                    />
-                                                </View>
-                                            }
+                                            rightElement={!selectedProfileId
+                                                ? (
+                                                    <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                                        <Ionicons
+                                                            name="checkmark-circle"
+                                                            size={24}
+                                                            color={theme.colors.button.primary.background}
+                                                        />
+                                                    </View>
+                                                )
+                                                : null}
                                             showDivider={nonFavoriteBuiltInProfiles.length > 0}
                                         />
                                         {nonFavoriteBuiltInProfiles.map((profile, index) => {

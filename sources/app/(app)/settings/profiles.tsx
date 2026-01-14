@@ -187,21 +187,6 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     return (
         <View style={{ flex: 1 }}>
             <ItemList style={{ paddingTop: 0 }}>
-                <ItemGroup footer={t('profiles.subtitle')}>
-                    <Item
-                        title={t('profiles.noProfile')}
-                        subtitle={t('profiles.noProfileDescription')}
-                        icon={<Ionicons name="radio-button-off-outline" size={29} color={theme.colors.textSecondary} />}
-                        onPress={() => handleSelectProfile(null)}
-                        showChevron={false}
-                        selected={selectedProfileId === null}
-                        pressableStyle={selectedProfileId === null ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                        rightElement={selectedProfileId === null
-                            ? <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
-                            : null}
-                    />
-                </ItemGroup>
-
                 {favoriteProfileItems.length > 0 && (
                     <ItemGroup title="Favorites">
                         {favoriteProfileItems.map((profile) => {
@@ -350,7 +335,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                     </ItemGroup>
                 )}
 
-                <ItemGroup title="Built-in Profiles">
+                <ItemGroup title="Built-in Profiles" footer={t('profiles.subtitle')}>
                     {nonFavoriteBuiltInProfiles.map((profile) => {
                         const isSelected = selectedProfileId === profile.id;
                         const isFavorite = favoriteProfileIdSet.has(profile.id);
