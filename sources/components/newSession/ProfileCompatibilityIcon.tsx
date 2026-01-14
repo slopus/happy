@@ -12,6 +12,7 @@ type Props = {
 
 export function ProfileCompatibilityIcon({ profile, size = 29, style }: Props) {
     const { theme } = useUnistyles();
+    const glyphSize = Math.round(size * 0.75);
 
     const glyph =
         profile.compatibility?.claude && profile.compatibility?.codex ? '✳꩜' :
@@ -31,7 +32,7 @@ export function ProfileCompatibilityIcon({ profile, size = 29, style }: Props) {
                 style,
             ]}
         >
-            <Text style={{ fontSize: 18, color: theme.colors.textSecondary, ...Typography.default() }}>
+            <Text style={{ fontSize: glyphSize, color: theme.colors.textSecondary, ...Typography.default() }}>
                 {glyph}
             </Text>
         </View>

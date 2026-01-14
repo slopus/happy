@@ -772,7 +772,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 	                                })}
 	                            >
 	                                        <Ionicons
-	                                            name="shield-checkmark-outline"
+	                                            name="shield-half-outline"
 	                                            size={16}
 	                                            color={theme.colors.button.secondary.tint}
 		                                />
