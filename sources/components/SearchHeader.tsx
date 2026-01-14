@@ -12,6 +12,9 @@ export interface SearchHeaderProps {
     containerStyle?: StyleProp<ViewStyle>;
     autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
     autoCorrect?: boolean;
+    inputRef?: React.Ref<TextInput>;
+    onFocus?: () => void;
+    onBlur?: () => void;
 }
 
 const INPUT_BORDER_RADIUS = 10;
@@ -58,6 +61,9 @@ export function SearchHeader({
     containerStyle,
     autoCapitalize = 'none',
     autoCorrect = false,
+    inputRef,
+    onFocus,
+    onBlur,
 }: SearchHeaderProps) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
@@ -73,12 +79,15 @@ export function SearchHeader({
                         style={{ marginRight: 8 }}
                     />
                     <TextInput
+                        ref={inputRef}
                         value={value}
                         onChangeText={onChangeText}
                         placeholder={placeholder}
                         placeholderTextColor={theme.colors.input.placeholder}
                         autoCapitalize={autoCapitalize}
                         autoCorrect={autoCorrect}
+                        onFocus={onFocus}
+                        onBlur={onBlur}
                         style={styles.textInput}
                     />
                     {value.trim().length > 0 && (

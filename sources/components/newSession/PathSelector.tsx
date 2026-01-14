@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -59,6 +59,8 @@ export function PathSelector({
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const inputRef = useRef<MultiTextInputHandle>(null);
+    const searchInputRef = useRef<any>(null);
+    const searchWasFocusedRef = useRef(false);
 
     const [uncontrolledSearchQuery, setUncontrolledSearchQuery] = useState('');
     const searchQuery = controlledSearchQuery ?? uncontrolledSearchQuery;
@@ -157,6 +159,20 @@ export function PathSelector({
         usePickerSearch,
     ]);
 
+    useEffect(() => {
+        if (!usePickerSearch || searchVariant !== 'group') return;
+        if (!searchWasFocusedRef.current) return;
+
+        const id = setTimeout(() => {
+            // Keep the search box usable while it moves between groups by restoring focus.
+            // (The underlying TextInput unmounts/remounts as placement changes.)
+            try {
+                searchInputRef.current?.focus?.();
+            } catch { }
+        }, 0);
+        return () => clearTimeout(id);
+    }, [effectiveGroupSearchPlacement, searchVariant, usePickerSearch]);
+
     const showNoMatchesRow = usePickerSearch && searchQuery.trim().length > 0;
     const shouldRenderFavoritesGroup = filteredFavoritePaths.length > 0 || effectiveGroupSearchPlacement === 'favorites';
     const shouldRenderRecentGroup = filteredRecentPaths.length > 0 || effectiveGroupSearchPlacement === 'recent';
@@ -242,6 +258,9 @@ export function PathSelector({
                             value={searchQuery}
                             onChangeText={setSearchQuery}
                             placeholder="Search paths..."
+                            inputRef={searchInputRef}
+                            onFocus={() => { searchWasFocusedRef.current = true; }}
+                            onBlur={() => { searchWasFocusedRef.current = false; }}
                             containerStyle={{
                                 backgroundColor: 'transparent',
                                 borderBottomWidth: 0,
@@ -285,6 +304,9 @@ export function PathSelector({
                             value={searchQuery}
                             onChangeText={setSearchQuery}
                             placeholder="Search paths..."
+                            inputRef={searchInputRef}
+                            onFocus={() => { searchWasFocusedRef.current = true; }}
+                            onBlur={() => { searchWasFocusedRef.current = false; }}
                             containerStyle={{
                                 backgroundColor: 'transparent',
                                 borderBottomWidth: 0,
@@ -350,6 +372,9 @@ export function PathSelector({
                             value={searchQuery}
                             onChangeText={setSearchQuery}
                             placeholder="Search paths..."
+                            inputRef={searchInputRef}
+                            onFocus={() => { searchWasFocusedRef.current = true; }}
+                            onBlur={() => { searchWasFocusedRef.current = false; }}
                             containerStyle={{
                                 backgroundColor: 'transparent',
                                 borderBottomWidth: 0,
@@ -415,6 +440,9 @@ export function PathSelector({
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         placeholder="Search paths..."
+                        inputRef={searchInputRef}
+                        onFocus={() => { searchWasFocusedRef.current = true; }}
+                        onBlur={() => { searchWasFocusedRef.current = false; }}
                         containerStyle={{
                             backgroundColor: 'transparent',
                             borderBottomWidth: 0,
