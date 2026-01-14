@@ -34,6 +34,7 @@ import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '
 import { MachineSelector } from '@/components/newSession/MachineSelector';
 import { PathSelector } from '@/components/newSession/PathSelector';
 import { SearchHeader } from '@/components/SearchHeader';
+import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -859,21 +860,8 @@ function NewSessionWizard() {
     }, [scrollToWizardSection]);
 
     const renderProfileLeftElement = React.useCallback((profile: AIBackendProfile) => {
-        const primary = getProfilePrimaryCli(profile);
-        const iconName =
-            primary === 'claude' ? 'cloud-outline' :
-                primary === 'codex' ? 'terminal-outline' :
-                    primary === 'gemini' ? 'planet-outline' :
-                        primary === 'multi' ? 'sparkles-outline' :
-                            'person-outline';
-        return (
-            <Ionicons
-                name={iconName as any}
-                size={29}
-                color={theme.colors.textSecondary}
-            />
-        );
-    }, [theme.colors.textSecondary]);
+        return <ProfileCompatibilityIcon profile={profile} />;
+    }, []);
 
     // Helper to get meaningful subtitle text for profiles
     const getProfileSubtitle = React.useCallback((profile: AIBackendProfile): string => {
@@ -1339,7 +1327,7 @@ function NewSessionWizard() {
                                 <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>1.</Text>
                                 <Ionicons name={useProfiles ? "person-outline" : "hardware-chip-outline"} size={18} color={theme.colors.text} />
                                 <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
-                                    {useProfiles ? 'Choose AI Profile' : 'Select AI'}
+                                    {useProfiles ? 'Choose AI Profile & Backend' : 'Select AI'}
                                 </Text>
                             </View>
                             <Text style={styles.sectionDescription}>

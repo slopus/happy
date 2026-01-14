@@ -8,11 +8,12 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { useSetting, useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
-import { getBuiltInProfile, DEFAULT_PROFILES, getProfilePrimaryCli } from '@/sync/profileUtils';
+import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
 import { useUnistyles } from 'react-native-unistyles';
 import { randomUUID } from 'expo-crypto';
 import { AIBackendProfile } from '@/sync/settings';
 import { Modal } from '@/modal';
+import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
 
 export default function ProfilePickerScreen() {
     const { theme } = useUnistyles();
@@ -26,17 +27,8 @@ export default function ProfilePickerScreen() {
     const machineId = typeof params.machineId === 'string' ? params.machineId : undefined;
 
     const renderProfileIcon = React.useCallback((profile: AIBackendProfile) => {
-        const primary = getProfilePrimaryCli(profile);
-        const iconName =
-            primary === 'claude' ? 'cloud-outline' :
-                primary === 'codex' ? 'terminal-outline' :
-                    primary === 'gemini' ? 'planet-outline' :
-                        primary === 'multi' ? 'sparkles-outline' :
-                            'person-outline';
-        return (
-            <Ionicons name={iconName as any} size={29} color={theme.colors.textSecondary} />
-        );
-    }, [theme.colors.textSecondary]);
+        return <ProfileCompatibilityIcon profile={profile} />;
+    }, []);
 
     const setProfileParamAndClose = React.useCallback((profileId: string) => {
         const state = navigation.getState();
