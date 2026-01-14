@@ -120,22 +120,29 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         return new Set(favoriteItems.map((item) => config.getItemId(item)));
     }, [favoriteItems, config]);
 
+    const baseRecentItems = React.useMemo(() => {
+        return recentItems.filter((item) => !favoriteIds.has(config.getItemId(item)));
+    }, [recentItems, favoriteIds, config]);
+
+    const baseAllItems = React.useMemo(() => {
+        const recentIds = new Set(baseRecentItems.map((item) => config.getItemId(item)));
+        return items.filter((item) => !favoriteIds.has(config.getItemId(item)) && !recentIds.has(config.getItemId(item)));
+    }, [items, baseRecentItems, favoriteIds, config]);
+
     const filteredFavoriteItems = React.useMemo(() => {
         if (!inputText.trim()) return favoriteItems;
         return favoriteItems.filter((item) => config.filterItem(item, inputText, context));
     }, [favoriteItems, inputText, config, context]);
 
     const filteredRecentItems = React.useMemo(() => {
-        const base = recentItems.filter((item) => !favoriteIds.has(config.getItemId(item)));
-        if (!inputText.trim()) return base;
-        return base.filter((item) => config.filterItem(item, inputText, context));
-    }, [recentItems, favoriteIds, inputText, config, context]);
+        if (!inputText.trim()) return baseRecentItems;
+        return baseRecentItems.filter((item) => config.filterItem(item, inputText, context));
+    }, [baseRecentItems, inputText, config, context]);
 
     const filteredItems = React.useMemo(() => {
-        const base = items.filter((item) => !favoriteIds.has(config.getItemId(item)));
-        if (!inputText.trim()) return base;
-        return base.filter((item) => config.filterItem(item, inputText, context));
-    }, [items, favoriteIds, inputText, config, context]);
+        if (!inputText.trim()) return baseAllItems;
+        return baseAllItems.filter((item) => config.filterItem(item, inputText, context));
+    }, [baseAllItems, inputText, config, context]);
 
     const handleInputChange = (text: string) => {
         setInputText(text);
@@ -246,17 +253,29 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         ? filteredRecentItems
         : filteredRecentItems.slice(0, RECENT_ITEMS_DEFAULT_VISIBLE);
 
-    const hasRecentGroup = showRecent && filteredRecentItems.length > 0;
-    const hasFavoritesGroup = showFavorites && filteredFavoriteItems.length > 0;
-    const hasAllGroup = showAll && filteredItems.length > 0;
+    const hasRecentGroupBase = showRecent && baseRecentItems.length > 0;
+    const hasFavoritesGroupBase = showFavorites && favoriteItems.length > 0;
+    const hasAllGroupBase = showAll && baseAllItems.length > 0;
 
     const effectiveSearchPlacement = React.useMemo(() => {
         if (!showSearch) return 'header' as const;
-        if (searchPlacement === 'recent' && !hasRecentGroup) return 'header' as const;
-        if (searchPlacement === 'favorites' && !hasFavoritesGroup) return 'header' as const;
-        if (searchPlacement === 'all' && !hasAllGroup) return 'header' as const;
-        return searchPlacement;
-    }, [hasAllGroup, hasFavoritesGroup, hasRecentGroup, searchPlacement, showSearch]);
+        if (searchPlacement === 'header') return 'header' as const;
+
+        if (searchPlacement === 'favorites' && hasFavoritesGroupBase) return 'favorites' as const;
+        if (searchPlacement === 'recent' && hasRecentGroupBase) return 'recent' as const;
+        if (searchPlacement === 'all' && hasAllGroupBase) return 'all' as const;
+
+        // Fall back to the first visible group so the search never disappears.
+        if (hasFavoritesGroupBase) return 'favorites' as const;
+        if (hasRecentGroupBase) return 'recent' as const;
+        if (hasAllGroupBase) return 'all' as const;
+        return 'header' as const;
+    }, [hasAllGroupBase, hasFavoritesGroupBase, hasRecentGroupBase, searchPlacement, showSearch]);
+
+    const showNoMatches = inputText.trim().length > 0;
+    const shouldRenderRecentGroup = showRecent && (filteredRecentItems.length > 0 || (effectiveSearchPlacement === 'recent' && showSearch && hasRecentGroupBase));
+    const shouldRenderFavoritesGroup = showFavorites && (filteredFavoriteItems.length > 0 || (effectiveSearchPlacement === 'favorites' && showSearch && hasFavoritesGroupBase));
+    const shouldRenderAllGroup = showAll && (filteredItems.length > 0 || (effectiveSearchPlacement === 'all' && showSearch && hasAllGroupBase));
 
     const searchNodeHeader = showSearch ? (
         <SearchHeader
@@ -278,28 +297,39 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         />
     ) : null;
 
+    const renderEmptyRow = (title: string) => (
+        <Item
+            title={title}
+            showChevron={false}
+            showDivider={false}
+            disabled={true}
+        />
+    );
+
     return (
         <>
             {effectiveSearchPlacement === 'header' && searchNodeHeader}
 
-            {hasRecentGroup && (
+            {shouldRenderRecentGroup && (
                 <ItemGroup title={config.recentSectionTitle}>
                     {effectiveSearchPlacement === 'recent' && searchNodeEmbedded}
-                    {recentItemsToShow.map((item, index, arr) => {
-                        const itemId = config.getItemId(item);
-                        const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
-                        const isSelected = itemId === selectedId;
-                        const isLast = index === arr.length - 1;
+                    {recentItemsToShow.length === 0
+                        ? renderEmptyRow(showNoMatches ? 'No matches' : config.noItemsMessage)
+                        : recentItemsToShow.map((item, index, arr) => {
+                            const itemId = config.getItemId(item);
+                            const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
+                            const isSelected = itemId === selectedId;
+                            const isLast = index === arr.length - 1;
 
-                        const showDivider = !isLast ||
-                            (!inputText.trim() &&
-                                !showAllRecent &&
-                                filteredRecentItems.length > RECENT_ITEMS_DEFAULT_VISIBLE);
+                            const showDivider = !isLast ||
+                                (!inputText.trim() &&
+                                    !showAllRecent &&
+                                    filteredRecentItems.length > RECENT_ITEMS_DEFAULT_VISIBLE);
 
-                        return renderItem(item, isSelected, isLast, showDivider, true, false);
-                    })}
+                            return renderItem(item, isSelected, isLast, showDivider, true, false);
+                        })}
 
-                    {!inputText.trim() && filteredRecentItems.length > RECENT_ITEMS_DEFAULT_VISIBLE && (
+                    {!inputText.trim() && filteredRecentItems.length > RECENT_ITEMS_DEFAULT_VISIBLE && recentItemsToShow.length > 0 && (
                         <Item
                             title={showAllRecent
                                 ? t('machineLauncher.showLess')
@@ -314,29 +344,40 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 </ItemGroup>
             )}
 
-            {hasFavoritesGroup && (
+            {shouldRenderFavoritesGroup && (
                 <ItemGroup title={config.favoritesSectionTitle}>
                     {effectiveSearchPlacement === 'favorites' && searchNodeEmbedded}
-                    {filteredFavoriteItems.map((item, index) => {
-                        const itemId = config.getItemId(item);
-                        const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
-                        const isSelected = itemId === selectedId;
-                        const isLast = index === filteredFavoriteItems.length - 1;
-                        return renderItem(item, isSelected, isLast, !isLast, false, true);
-                    })}
+                    {filteredFavoriteItems.length === 0
+                        ? renderEmptyRow(showNoMatches ? 'No matches' : config.noItemsMessage)
+                        : filteredFavoriteItems.map((item, index) => {
+                            const itemId = config.getItemId(item);
+                            const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
+                            const isSelected = itemId === selectedId;
+                            const isLast = index === filteredFavoriteItems.length - 1;
+                            return renderItem(item, isSelected, isLast, !isLast, false, true);
+                        })}
                 </ItemGroup>
             )}
 
-            {hasAllGroup && (
+            {shouldRenderAllGroup && (
                 <ItemGroup title={config.allSectionTitle ?? config.recentSectionTitle.replace('Recent ', 'All ')}>
                     {effectiveSearchPlacement === 'all' && searchNodeEmbedded}
-                    {filteredItems.map((item, index) => {
-                        const itemId = config.getItemId(item);
-                        const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
-                        const isSelected = itemId === selectedId;
-                        const isLast = index === filteredItems.length - 1;
-                        return renderItem(item, isSelected, isLast, !isLast, false, false);
-                    })}
+                    {filteredItems.length === 0
+                        ? renderEmptyRow(showNoMatches ? 'No matches' : config.noItemsMessage)
+                        : filteredItems.map((item, index) => {
+                            const itemId = config.getItemId(item);
+                            const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
+                            const isSelected = itemId === selectedId;
+                            const isLast = index === filteredItems.length - 1;
+                            return renderItem(item, isSelected, isLast, !isLast, false, false);
+                        })}
+                </ItemGroup>
+            )}
+
+            {!shouldRenderRecentGroup && !shouldRenderFavoritesGroup && !shouldRenderAllGroup && (
+                <ItemGroup>
+                    {effectiveSearchPlacement !== 'header' && searchNodeEmbedded}
+                    {renderEmptyRow(showNoMatches ? 'No matches' : config.noItemsMessage)}
                 </ItemGroup>
             )}
         </>
