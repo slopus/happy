@@ -180,21 +180,31 @@ export function PathSelector({
                 </View>
             </ItemGroup>
 
-            {usePickerSearch && searchVariant === 'group' && (
-                <ItemGroup title="Search Paths">
-                    <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-                        <SearchHeader
-                            value={searchQuery}
-                            onChangeText={setSearchQuery}
-                            placeholder="Search paths..."
-                            containerStyle={{
-                                backgroundColor: 'transparent',
-                                paddingHorizontal: 0,
-                                paddingVertical: 0,
-                                borderBottomWidth: 0,
-                            }}
-                        />
-                    </View>
+            {usePickerSearch && searchVariant === 'group' && filteredRecentPaths.length > 0 && (
+                <ItemGroup title="Recent Paths">
+                    <SearchHeader
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        placeholder="Search paths..."
+                    />
+                    {filteredRecentPaths.map((path, index) => {
+                        const isSelected = selectedPath.trim() === path;
+                        const isLast = index === filteredRecentPaths.length - 1;
+                        const isFavorite = favoritePaths.includes(path);
+                        return (
+                            <Item
+                                key={path}
+                                title={path}
+                                leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
+                                onPress={() => setPathAndFocus(path)}
+                                selected={isSelected}
+                                showChevron={false}
+                                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                rightElement={renderRightElement(path, isSelected, isFavorite)}
+                                showDivider={!isLast}
+                            />
+                        );
+                    })}
                 </ItemGroup>
             )}
 
@@ -220,7 +230,7 @@ export function PathSelector({
                 </ItemGroup>
             )}
 
-            {filteredRecentPaths.length > 0 && (
+            {filteredRecentPaths.length > 0 && searchVariant !== 'group' && (
                 <ItemGroup title="Recent Paths">
                     {filteredRecentPaths.map((path, index) => {
                         const isSelected = selectedPath.trim() === path;
@@ -243,7 +253,35 @@ export function PathSelector({
                 </ItemGroup>
             )}
 
-            {filteredRecentPaths.length === 0 && filteredSuggestedPaths.length > 0 && (
+            {usePickerSearch && searchVariant === 'group' && filteredRecentPaths.length === 0 && filteredSuggestedPaths.length > 0 && (
+                <ItemGroup title="Suggested Paths">
+                    <SearchHeader
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        placeholder="Search paths..."
+                    />
+                    {filteredSuggestedPaths.map((path, index) => {
+                        const isSelected = selectedPath.trim() === path;
+                        const isLast = index === filteredSuggestedPaths.length - 1;
+                        const isFavorite = favoritePaths.includes(path);
+                        return (
+                            <Item
+                                key={path}
+                                title={path}
+                                leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
+                                onPress={() => setPathAndFocus(path)}
+                                selected={isSelected}
+                                showChevron={false}
+                                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                rightElement={renderRightElement(path, isSelected, isFavorite)}
+                                showDivider={!isLast}
+                            />
+                        );
+                    })}
+                </ItemGroup>
+            )}
+
+            {filteredRecentPaths.length === 0 && filteredSuggestedPaths.length > 0 && searchVariant !== 'group' && (
                 <ItemGroup title="Suggested Paths">
                     {filteredSuggestedPaths.map((path, index) => {
                         const isSelected = selectedPath.trim() === path;

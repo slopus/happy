@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, TextInput } from 'react-native';
+import { View, Text, Pressable, TextInput, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
@@ -187,31 +187,33 @@ export function EnvironmentVariablesList({
                 )}
             </ItemGroup>
 
-            <View style={{ width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center', marginTop: 12 }}>
-                {environmentVariables.map((envVar, index) => {
-                    const varNameFromValue = extractVarNameFromValue(envVar.value);
-                    const docs = getDocumentation(varNameFromValue || envVar.name);
+            <View style={{ width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center', paddingHorizontal: Platform.select({ ios: 0, default: 4 }) }}>
+                <View style={{ marginHorizontal: Platform.select({ ios: 16, default: 12 }), marginTop: 12 }}>
+                    {environmentVariables.map((envVar, index) => {
+                        const varNameFromValue = extractVarNameFromValue(envVar.value);
+                        const docs = getDocumentation(varNameFromValue || envVar.name);
 
-                    const SECRET_NAME_REGEX = /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i;
-                    const isSecret =
-                        docs.isSecret ||
-                        SECRET_NAME_REGEX.test(envVar.name) ||
-                        SECRET_NAME_REGEX.test(varNameFromValue || '');
+                        const SECRET_NAME_REGEX = /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i;
+                        const isSecret =
+                            docs.isSecret ||
+                            SECRET_NAME_REGEX.test(envVar.name) ||
+                            SECRET_NAME_REGEX.test(varNameFromValue || '');
 
-                    return (
-                        <EnvironmentVariableCard
-                            key={index}
-                            variable={envVar}
-                            machineId={machineId}
-                            expectedValue={docs.expectedValue}
-                            description={docs.description}
-                            isSecret={isSecret}
-                            onUpdate={(newValue) => handleUpdateVariable(index, newValue)}
-                            onDelete={() => handleDeleteVariable(index)}
-                            onDuplicate={() => handleDuplicateVariable(index)}
-                        />
-                    );
-                })}
+                        return (
+                            <EnvironmentVariableCard
+                                key={index}
+                                variable={envVar}
+                                machineId={machineId}
+                                expectedValue={docs.expectedValue}
+                                description={docs.description}
+                                isSecret={isSecret}
+                                onUpdate={(newValue) => handleUpdateVariable(index, newValue)}
+                                onDelete={() => handleDeleteVariable(index)}
+                                onDuplicate={() => handleDuplicateVariable(index)}
+                            />
+                        );
+                    })}
+                </View>
             </View>
         </View>
     );

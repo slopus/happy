@@ -79,6 +79,7 @@ export interface SearchableListSelectorProps<T> {
     showFavorites?: boolean;
     showRecent?: boolean;
     showSearch?: boolean;
+    searchPlacement?: 'header' | 'recent' | 'favorites' | 'all';
 }
 
 const RECENT_ITEMS_DEFAULT_VISIBLE = 5;
@@ -107,6 +108,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         showFavorites = config.showFavorites !== false,
         showRecent = config.showRecent !== false,
         showSearch = config.showSearch !== false,
+        searchPlacement = 'header',
     } = props;
     const showAll = config.showAll !== false;
 
@@ -243,18 +245,33 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         ? filteredRecentItems
         : filteredRecentItems.slice(0, RECENT_ITEMS_DEFAULT_VISIBLE);
 
+    const hasRecentGroup = showRecent && filteredRecentItems.length > 0;
+    const hasFavoritesGroup = showFavorites && filteredFavoriteItems.length > 0;
+    const hasAllGroup = showAll && filteredItems.length > 0;
+
+    const effectiveSearchPlacement = React.useMemo(() => {
+        if (!showSearch) return 'header' as const;
+        if (searchPlacement === 'recent' && !hasRecentGroup) return 'header' as const;
+        if (searchPlacement === 'favorites' && !hasFavoritesGroup) return 'header' as const;
+        if (searchPlacement === 'all' && !hasAllGroup) return 'header' as const;
+        return searchPlacement;
+    }, [hasAllGroup, hasFavoritesGroup, hasRecentGroup, searchPlacement, showSearch]);
+
+    const searchNode = showSearch ? (
+        <SearchHeader
+            value={inputText}
+            onChangeText={handleInputChange}
+            placeholder={config.searchPlaceholder}
+        />
+    ) : null;
+
     return (
         <>
-            {showSearch && (
-                <SearchHeader
-                    value={inputText}
-                    onChangeText={handleInputChange}
-                    placeholder={config.searchPlaceholder}
-                />
-            )}
+            {effectiveSearchPlacement === 'header' && searchNode}
 
-            {showRecent && filteredRecentItems.length > 0 && (
+            {hasRecentGroup && (
                 <ItemGroup title={config.recentSectionTitle}>
+                    {effectiveSearchPlacement === 'recent' && searchNode}
                     {recentItemsToShow.map((item, index, arr) => {
                         const itemId = config.getItemId(item);
                         const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
@@ -284,8 +301,9 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 </ItemGroup>
             )}
 
-            {showFavorites && filteredFavoriteItems.length > 0 && (
+            {hasFavoritesGroup && (
                 <ItemGroup title={config.favoritesSectionTitle}>
+                    {effectiveSearchPlacement === 'favorites' && searchNode}
                     {filteredFavoriteItems.map((item, index) => {
                         const itemId = config.getItemId(item);
                         const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
@@ -296,8 +314,9 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 </ItemGroup>
             )}
 
-            {showAll && filteredItems.length > 0 && (
+            {hasAllGroup && (
                 <ItemGroup title={config.allSectionTitle ?? config.recentSectionTitle.replace('Recent ', 'All ')}>
+                    {effectiveSearchPlacement === 'all' && searchNode}
                     {filteredItems.map((item, index) => {
                         const itemId = config.getItemId(item);
                         const selectedId = selectedItem ? config.getItemId(selectedItem) : null;

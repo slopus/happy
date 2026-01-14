@@ -15,6 +15,7 @@ export interface MachineSelectorProps {
     showFavorites?: boolean;
     showRecent?: boolean;
     showSearch?: boolean;
+    searchPlacement?: 'header' | 'recent' | 'favorites' | 'all';
     searchPlaceholder?: string;
     recentSectionTitle?: string;
     favoritesSectionTitle?: string;
@@ -32,6 +33,7 @@ export function MachineSelector({
     showFavorites = true,
     showRecent = true,
     showSearch = true,
+    searchPlacement = 'header',
     searchPlaceholder = 'Type to filter machines...',
     recentSectionTitle = 'Recent Machines',
     favoritesSectionTitle = 'Favorite Machines',
@@ -97,6 +99,7 @@ export function MachineSelector({
             selectedItem={selectedMachine}
             onSelect={onSelect}
             onToggleFavorite={onToggleFavorite}
+            searchPlacement={searchPlacement}
         />
     );
 }

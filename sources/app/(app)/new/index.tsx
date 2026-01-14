@@ -705,39 +705,9 @@ function NewSessionWizard() {
             .map(item => item.machine);
     }, [sessions, machines]);
 
-    const [wizardMachineSearchQuery, setWizardMachineSearchQuery] = React.useState('');
-    const normalizedWizardMachineSearchQuery = React.useMemo(() => wizardMachineSearchQuery.trim().toLowerCase(), [wizardMachineSearchQuery]);
-
     const favoriteMachineItems = React.useMemo(() => {
         return machines.filter(m => favoriteMachines.includes(m.id));
     }, [machines, favoriteMachines]);
-
-    const wizardMachineMatchesSearch = React.useCallback((machine: (typeof machines)[number]) => {
-        if (!useMachinePickerSearch || !normalizedWizardMachineSearchQuery) return true;
-        const displayName = (machine.metadata?.displayName || '').toLowerCase();
-        const host = (machine.metadata?.host || '').toLowerCase();
-        const id = (machine.id || '').toLowerCase();
-        const query = normalizedWizardMachineSearchQuery;
-        return displayName.includes(query) || host.includes(query) || id.includes(query);
-    }, [normalizedWizardMachineSearchQuery, useMachinePickerSearch]);
-
-    const wizardMachines = React.useMemo(() => {
-        return useMachinePickerSearch && normalizedWizardMachineSearchQuery
-            ? machines.filter(wizardMachineMatchesSearch)
-            : machines;
-    }, [machines, normalizedWizardMachineSearchQuery, useMachinePickerSearch, wizardMachineMatchesSearch]);
-
-    const wizardRecentMachines = React.useMemo(() => {
-        return useMachinePickerSearch && normalizedWizardMachineSearchQuery
-            ? recentMachines.filter(wizardMachineMatchesSearch)
-            : recentMachines;
-    }, [normalizedWizardMachineSearchQuery, recentMachines, useMachinePickerSearch, wizardMachineMatchesSearch]);
-
-    const wizardFavoriteMachineItems = React.useMemo(() => {
-        return useMachinePickerSearch && normalizedWizardMachineSearchQuery
-            ? favoriteMachineItems.filter(wizardMachineMatchesSearch)
-            : favoriteMachineItems;
-    }, [favoriteMachineItems, normalizedWizardMachineSearchQuery, useMachinePickerSearch, wizardMachineMatchesSearch]);
 
     const recentPaths = React.useMemo(() => {
         if (!selectedMachineId) return [];
@@ -1793,34 +1763,15 @@ function NewSessionWizard() {
                             </View>
 
                             <View style={{ marginBottom: 24 }}>
-                                {useMachinePickerSearch && (
-                                    <>
-                                        <ItemGroup title="Search Machines">
-                                            <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-                                                <SearchHeader
-                                                    value={wizardMachineSearchQuery}
-                                                    onChangeText={setWizardMachineSearchQuery}
-                                                    placeholder="Search machines..."
-                                                    containerStyle={{
-                                                        backgroundColor: 'transparent',
-                                                        paddingHorizontal: 0,
-                                                        paddingVertical: 0,
-                                                        borderBottomWidth: 0,
-                                                    }}
-                                                />
-                                            </View>
-                                        </ItemGroup>
-                                        <View style={{ height: 12 }} />
-                                    </>
-                                )}
-
                                 <MachineSelector
-                                    machines={wizardMachines}
+                                    machines={machines}
                                     selectedMachine={selectedMachine || null}
-                                    recentMachines={wizardRecentMachines}
-                                    favoriteMachines={wizardFavoriteMachineItems}
+                                    recentMachines={recentMachines}
+                                    favoriteMachines={favoriteMachineItems}
                                     showFavorites={true}
-                                    showSearch={false}
+                                    showSearch={useMachinePickerSearch}
+                                    searchPlacement="all"
+                                    searchPlaceholder="Search machines..."
                                     onSelect={(machine) => {
                                         setSelectedMachineId(machine.id);
                                         const bestPath = getRecentPathForMachine(machine.id, recentMachinePaths);

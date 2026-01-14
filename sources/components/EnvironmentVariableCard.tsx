@@ -104,7 +104,6 @@ export function EnvironmentVariableCard({
             backgroundColor: theme.colors.surface,
             borderRadius: 16,
             padding: 16,
-            marginHorizontal: Platform.select({ ios: 16, default: 12 }),
             marginBottom: 12,
             shadowColor: theme.colors.shadow.color,
             shadowOffset: { width: 0, height: 0.33 },
@@ -156,7 +155,8 @@ export function EnvironmentVariableCard({
             {/* Toggle: Copy from remote machine */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <Text style={{
-                    fontSize: 11,
+                    flex: 1,
+                    fontSize: 13,
                     color: theme.colors.textSecondary,
                     ...Typography.default()
                 }}>
