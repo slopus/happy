@@ -108,6 +108,61 @@ export function PathSelector({
         return base.filter((path) => path.toLowerCase().includes(query));
     }, [favoritePaths, searchQuery, suggestedPaths, usePickerSearch]);
 
+    const baseRecentPaths = useMemo(() => {
+        return recentPaths.filter((p) => !favoritePaths.includes(p));
+    }, [favoritePaths, recentPaths]);
+
+    const baseSuggestedPaths = useMemo(() => {
+        return suggestedPaths.filter((p) => !favoritePaths.includes(p));
+    }, [favoritePaths, suggestedPaths]);
+
+    const effectiveGroupSearchPlacement = useMemo(() => {
+        if (!usePickerSearch || searchVariant !== 'group') return null as null | 'favorites' | 'recent' | 'suggested' | 'fallback';
+        const preferred: 'suggested' | 'recent' | 'favorites' | 'fallback' =
+            baseSuggestedPaths.length > 0 ? 'suggested'
+                : baseRecentPaths.length > 0 ? 'recent'
+                    : favoritePaths.length > 0 ? 'favorites'
+                        : 'fallback';
+
+        if (preferred === 'suggested') {
+            if (filteredSuggestedPaths.length > 0) return 'suggested';
+            if (filteredFavoritePaths.length > 0) return 'favorites';
+            if (filteredRecentPaths.length > 0) return 'recent';
+            return 'suggested';
+        }
+
+        if (preferred === 'recent') {
+            if (filteredRecentPaths.length > 0) return 'recent';
+            if (filteredFavoritePaths.length > 0) return 'favorites';
+            if (filteredSuggestedPaths.length > 0) return 'suggested';
+            return 'recent';
+        }
+
+        if (preferred === 'favorites') {
+            if (filteredFavoritePaths.length > 0) return 'favorites';
+            if (filteredRecentPaths.length > 0) return 'recent';
+            if (filteredSuggestedPaths.length > 0) return 'suggested';
+            return 'favorites';
+        }
+
+        return 'fallback';
+    }, [
+        baseRecentPaths.length,
+        baseSuggestedPaths.length,
+        favoritePaths.length,
+        filteredFavoritePaths.length,
+        filteredRecentPaths.length,
+        filteredSuggestedPaths.length,
+        searchVariant,
+        usePickerSearch,
+    ]);
+
+    const showNoMatchesRow = usePickerSearch && searchQuery.trim().length > 0;
+    const shouldRenderFavoritesGroup = filteredFavoritePaths.length > 0 || effectiveGroupSearchPlacement === 'favorites';
+    const shouldRenderRecentGroup = filteredRecentPaths.length > 0 || effectiveGroupSearchPlacement === 'recent';
+    const shouldRenderSuggestedGroup = filteredSuggestedPaths.length > 0 || effectiveGroupSearchPlacement === 'suggested';
+    const shouldRenderFallbackGroup = effectiveGroupSearchPlacement === 'fallback';
+
     const toggleFavorite = React.useCallback((absolutePath: string) => {
         const homeDir = machineHomeDir || '/home';
 
@@ -180,57 +235,88 @@ export function PathSelector({
                 </View>
             </ItemGroup>
 
-            {usePickerSearch && searchVariant === 'group' && filteredRecentPaths.length > 0 && (
+            {usePickerSearch && searchVariant === 'group' && shouldRenderRecentGroup && (
                 <ItemGroup title="Recent Paths">
-                    <SearchHeader
-                        value={searchQuery}
-                        onChangeText={setSearchQuery}
-                        placeholder="Search paths..."
-                        containerStyle={{
-                            backgroundColor: 'transparent',
-                            borderBottomWidth: 0,
-                        }}
-                    />
-                    {filteredRecentPaths.map((path, index) => {
-                        const isSelected = selectedPath.trim() === path;
-                        const isLast = index === filteredRecentPaths.length - 1;
-                        const isFavorite = favoritePaths.includes(path);
-                        return (
+                    {effectiveGroupSearchPlacement === 'recent' && (
+                        <SearchHeader
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            placeholder="Search paths..."
+                            containerStyle={{
+                                backgroundColor: 'transparent',
+                                borderBottomWidth: 0,
+                            }}
+                        />
+                    )}
+                    {filteredRecentPaths.length === 0
+                        ? (
                             <Item
-                                key={path}
-                                title={path}
-                                leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
-                                onPress={() => setPathAndFocus(path)}
-                                selected={isSelected}
+                                title={showNoMatchesRow ? 'No matches' : 'No recent paths'}
                                 showChevron={false}
-                                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                rightElement={renderRightElement(path, isSelected, isFavorite)}
-                                showDivider={!isLast}
+                                showDivider={false}
+                                disabled={true}
                             />
-                        );
-                    })}
+                        )
+                        : filteredRecentPaths.map((path, index) => {
+                            const isSelected = selectedPath.trim() === path;
+                            const isLast = index === filteredRecentPaths.length - 1;
+                            const isFavorite = favoritePaths.includes(path);
+                            return (
+                                <Item
+                                    key={path}
+                                    title={path}
+                                    leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
+                                    onPress={() => setPathAndFocus(path)}
+                                    selected={isSelected}
+                                    showChevron={false}
+                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                    rightElement={renderRightElement(path, isSelected, isFavorite)}
+                                    showDivider={!isLast}
+                                />
+                            );
+                        })}
                 </ItemGroup>
             )}
 
-            {filteredFavoritePaths.length > 0 && (
+            {shouldRenderFavoritesGroup && (
                 <ItemGroup title="Favorite Paths">
-                    {filteredFavoritePaths.map((path, index) => {
-                        const isSelected = selectedPath.trim() === path;
-                        const isLast = index === filteredFavoritePaths.length - 1;
-                        return (
+                    {usePickerSearch && searchVariant === 'group' && effectiveGroupSearchPlacement === 'favorites' && (
+                        <SearchHeader
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            placeholder="Search paths..."
+                            containerStyle={{
+                                backgroundColor: 'transparent',
+                                borderBottomWidth: 0,
+                            }}
+                        />
+                    )}
+                    {filteredFavoritePaths.length === 0
+                        ? (
                             <Item
-                                key={path}
-                                title={path}
-                                leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
-                                onPress={() => setPathAndFocus(path)}
-                                selected={isSelected}
+                                title={showNoMatchesRow ? 'No matches' : 'No favorite paths'}
                                 showChevron={false}
-                                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                rightElement={renderRightElement(path, isSelected, true)}
-                                showDivider={!isLast}
+                                showDivider={false}
+                                disabled={true}
                             />
-                        );
-                    })}
+                        )
+                        : filteredFavoritePaths.map((path, index) => {
+                            const isSelected = selectedPath.trim() === path;
+                            const isLast = index === filteredFavoritePaths.length - 1;
+                            return (
+                                <Item
+                                    key={path}
+                                    title={path}
+                                    leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
+                                    onPress={() => setPathAndFocus(path)}
+                                    selected={isSelected}
+                                    showChevron={false}
+                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                    rightElement={renderRightElement(path, isSelected, true)}
+                                    showDivider={!isLast}
+                                />
+                            );
+                        })}
                 </ItemGroup>
             )}
 
@@ -257,35 +343,46 @@ export function PathSelector({
                 </ItemGroup>
             )}
 
-            {usePickerSearch && searchVariant === 'group' && filteredRecentPaths.length === 0 && filteredSuggestedPaths.length > 0 && (
+            {usePickerSearch && searchVariant === 'group' && shouldRenderSuggestedGroup && (
                 <ItemGroup title="Suggested Paths">
-                    <SearchHeader
-                        value={searchQuery}
-                        onChangeText={setSearchQuery}
-                        placeholder="Search paths..."
-                        containerStyle={{
-                            backgroundColor: 'transparent',
-                            borderBottomWidth: 0,
-                        }}
-                    />
-                    {filteredSuggestedPaths.map((path, index) => {
-                        const isSelected = selectedPath.trim() === path;
-                        const isLast = index === filteredSuggestedPaths.length - 1;
-                        const isFavorite = favoritePaths.includes(path);
-                        return (
+                    {effectiveGroupSearchPlacement === 'suggested' && (
+                        <SearchHeader
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            placeholder="Search paths..."
+                            containerStyle={{
+                                backgroundColor: 'transparent',
+                                borderBottomWidth: 0,
+                            }}
+                        />
+                    )}
+                    {filteredSuggestedPaths.length === 0
+                        ? (
                             <Item
-                                key={path}
-                                title={path}
-                                leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
-                                onPress={() => setPathAndFocus(path)}
-                                selected={isSelected}
+                                title={showNoMatchesRow ? 'No matches' : 'No suggested paths'}
                                 showChevron={false}
-                                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                rightElement={renderRightElement(path, isSelected, isFavorite)}
-                                showDivider={!isLast}
+                                showDivider={false}
+                                disabled={true}
                             />
-                        );
-                    })}
+                        )
+                        : filteredSuggestedPaths.map((path, index) => {
+                            const isSelected = selectedPath.trim() === path;
+                            const isLast = index === filteredSuggestedPaths.length - 1;
+                            const isFavorite = favoritePaths.includes(path);
+                            return (
+                                <Item
+                                    key={path}
+                                    title={path}
+                                    leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
+                                    onPress={() => setPathAndFocus(path)}
+                                    selected={isSelected}
+                                    showChevron={false}
+                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                    rightElement={renderRightElement(path, isSelected, isFavorite)}
+                                    showDivider={!isLast}
+                                />
+                            );
+                        })}
                 </ItemGroup>
             )}
 
@@ -309,6 +406,26 @@ export function PathSelector({
                             />
                         );
                     })}
+                </ItemGroup>
+            )}
+
+            {usePickerSearch && searchVariant === 'group' && shouldRenderFallbackGroup && (
+                <ItemGroup title="Paths">
+                    <SearchHeader
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        placeholder="Search paths..."
+                        containerStyle={{
+                            backgroundColor: 'transparent',
+                            borderBottomWidth: 0,
+                        }}
+                    />
+                    <Item
+                        title={showNoMatchesRow ? 'No matches' : 'No paths'}
+                        showChevron={false}
+                        showDivider={false}
+                        disabled={true}
+                    />
                 </ItemGroup>
             )}
         </>
