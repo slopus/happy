@@ -253,14 +253,17 @@ const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 
 
 function NewSessionWizard() {
     const { theme, rt } = useUnistyles();
-	    const router = useRouter();
-	    const safeArea = useSafeAreaInsets();
-	    const headerHeight = useHeaderHeight();
-	    const screenWidth = useWindowDimensions().width;
-	    const { prompt, dataId, machineId: machineIdParam, path: pathParam, profileId: profileIdParam } = useLocalSearchParams<{
-	        prompt?: string;
-	        dataId?: string;
-	        machineId?: string;
+		    const router = useRouter();
+		    const safeArea = useSafeAreaInsets();
+		    const headerHeight = useHeaderHeight();
+		    const screenWidth = useWindowDimensions().width;
+
+	    const newSessionSidePadding = 16;
+	    const newSessionBottomPadding = Math.max(screenWidth < 420 ? 8 : 16, safeArea.bottom);
+		    const { prompt, dataId, machineId: machineIdParam, path: pathParam, profileId: profileIdParam } = useLocalSearchParams<{
+		        prompt?: string;
+		        dataId?: string;
+		        machineId?: string;
         path?: string;
         profileId?: string;
     }>();
@@ -1406,23 +1409,23 @@ function NewSessionWizard() {
                     </Pressable>
                 )}
                 <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-                    {/* Session type selector only if experiments enabled */}
-                    {experimentsEnabled && (
-                        <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, marginBottom: 16 }}>
-                            <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                                <SessionTypeSelector
-                                    value={sessionType}
+	                    {/* Session type selector only if experiments enabled */}
+	                    {experimentsEnabled && (
+	                        <View style={{ paddingHorizontal: newSessionSidePadding, marginBottom: 16 }}>
+	                            <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+	                                <SessionTypeSelector
+	                                    value={sessionType}
                                     onChange={setSessionType}
                                 />
                             </View>
                         </View>
                     )}
-
-                    {/* AgentInput with inline chips - sticky at bottom */}
-                    <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
-                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                            <AgentInput
-                                value={sessionPrompt}
+	
+	                    {/* AgentInput with inline chips - sticky at bottom */}
+	                    <View style={{ paddingHorizontal: newSessionSidePadding, paddingBottom: newSessionBottomPadding }}>
+	                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+	                            <AgentInput
+	                                value={sessionPrompt}
                                 onChangeText={setSessionPrompt}
                                 onSend={handleCreateSession}
                                 isSendDisabled={!canCreate}
@@ -2119,12 +2122,12 @@ function NewSessionWizard() {
                     </View>
                 </View>
                 </ScrollView>
-
-                {/* AgentInput - Sticky at bottom */}
-                <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
-                    <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                            <AgentInput
-                                value={sessionPrompt}
+	
+	                {/* AgentInput - Sticky at bottom */}
+	                <View style={{ paddingHorizontal: newSessionSidePadding, paddingBottom: newSessionBottomPadding }}>
+	                    <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+	                            <AgentInput
+	                                value={sessionPrompt}
                                 onChangeText={setSessionPrompt}
                                 onSend={handleCreateSession}
                                 isSendDisabled={!canCreate}
