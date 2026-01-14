@@ -32,6 +32,13 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
     }
 
     /**
+     * Update session reference (override for type visibility)
+     */
+    updateSession(newSession: ApiSessionClient): void {
+        super.updateSession(newSession);
+    }
+
+    /**
      * Set the current permission mode
      * This affects how tool calls are automatically approved/denied
      */
