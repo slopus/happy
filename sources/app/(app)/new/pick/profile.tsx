@@ -241,7 +241,7 @@ export default function ProfilePickerScreen() {
                             <Item
                                 title={t('profiles.noProfile')}
                                 subtitle={t('profiles.noProfileDescription')}
-                                icon={<Ionicons name="home-outline" size={24} color={theme.colors.textSecondary} />}
+                                icon={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
                                 onPress={() => setProfileParamAndClose('')}
                                 showChevron={false}
                                 selected={selectedId === ''}

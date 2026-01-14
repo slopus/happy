@@ -358,7 +358,7 @@ function NewSessionWizard() {
 
     // Agent cycling handler (for cycling through claude -> codex -> gemini)
     // Note: Does NOT persist immediately - persistence is handled by useEffect below
-    const handleAgentClick = React.useCallback(() => {
+    const handleAgentCycle = React.useCallback(() => {
         setAgentType(prev => {
             // Cycle: claude -> codex -> (gemini?) -> claude
             if (prev === 'claude') return 'codex';
@@ -1026,6 +1026,22 @@ function NewSessionWizard() {
         });
     }, [router, selectedMachineId, selectedProfileId]);
 
+    const handleAgentClick = React.useCallback(() => {
+        if (useProfiles && selectedProfileId !== null) {
+            Modal.alert(
+                'AI Backend',
+                'AI backend is selected by your profile. To change it, select a different profile.',
+                [
+                    { text: t('common.ok'), style: 'cancel' },
+                    { text: 'Change Profile', onPress: handleProfileClick },
+                ],
+            );
+            return;
+        }
+
+        handleAgentCycle();
+    }, [handleAgentCycle, handleProfileClick, selectedProfileId, useProfiles]);
+
     const handlePathClick = React.useCallback(() => {
         if (selectedMachineId) {
             router.push({
@@ -1671,7 +1687,7 @@ function NewSessionWizard() {
                                         <Item
                                             title={t('profiles.noProfile')}
                                             subtitle={t('profiles.noProfileDescription')}
-                                            leftElement={<Ionicons name="home-outline" size={24} color={theme.colors.textSecondary} />}
+                                            leftElement={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
                                             showChevron={false}
                                             selected={!selectedProfileId}
                                             onPress={() => setSelectedProfileId(null)}
@@ -1682,7 +1698,7 @@ function NewSessionWizard() {
                                                         name="checkmark-circle"
                                                         size={24}
                                                         color={theme.colors.button.primary.background}
-                                                        style={{ opacity: selectedProfileId ? 1 : 0 }}
+                                                        style={{ opacity: selectedProfileId ? 0 : 1 }}
                                                     />
                                                 </View>
                                             }

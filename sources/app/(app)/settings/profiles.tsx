@@ -197,7 +197,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                         selected={selectedProfileId === null}
                         pressableStyle={selectedProfileId === null ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                         rightElement={selectedProfileId === null
-                            ? <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
+                            ? <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
                             : null}
                     />
                 </ItemGroup>
