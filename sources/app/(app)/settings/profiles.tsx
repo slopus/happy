@@ -240,12 +240,11 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                                     title={profile.name}
                                     subtitle={getProfileBackendSubtitle(profile)}
                                     leftElement={<ProfileCompatibilityIcon profile={profile} />}
-                                    onPress={() => handleSelectProfile(profile.id)}
-                                    showChevron={false}
-                                    selected={isSelected}
-                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                    rightElement={(
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+	                                    onPress={() => handleSelectProfile(profile.id)}
+	                                    showChevron={false}
+	                                    selected={isSelected}
+	                                    rightElement={(
+	                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                                             <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
                                                 <Ionicons
                                                     name="checkmark-circle"
@@ -315,12 +314,11 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                                     title={profile.name}
                                     subtitle={getProfileBackendSubtitle(profile)}
                                     leftElement={<ProfileCompatibilityIcon profile={profile} />}
-                                    onPress={() => handleSelectProfile(profile.id)}
-                                    showChevron={false}
-                                    selected={isSelected}
-                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                    rightElement={(
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+	                                onPress={() => handleSelectProfile(profile.id)}
+	                                showChevron={false}
+	                                selected={isSelected}
+	                                rightElement={(
+	                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                                             <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
                                                 <Ionicons
                                                     name="checkmark-circle"
@@ -387,12 +385,11 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                                 title={profile.name}
                                 subtitle={getProfileBackendSubtitle(profile)}
                                 leftElement={<ProfileCompatibilityIcon profile={profile} />}
-                                onPress={() => handleSelectProfile(profile.id)}
-                                showChevron={false}
-                                selected={isSelected}
-                                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                rightElement={(
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+	                                onPress={() => handleSelectProfile(profile.id)}
+	                                showChevron={false}
+	                                selected={isSelected}
+	                                rightElement={(
+	                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                                         <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
                                             <Ionicons
                                                 name="checkmark-circle"

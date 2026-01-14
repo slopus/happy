@@ -281,17 +281,16 @@ export function PathSelector({
                             const isLast = index === filteredRecentPaths.length - 1;
                             const isFavorite = favoritePaths.includes(path);
                             return (
-                                <Item
-                                    key={path}
-                                    title={path}
-                                    leftElement={<Ionicons name="folder-outline" size={24} color={theme.colors.textSecondary} />}
-                                    onPress={() => setPathAndFocus(path)}
-                                    selected={isSelected}
-                                    showChevron={false}
-                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                    rightElement={renderRightElement(path, isSelected, isFavorite)}
-                                    showDivider={!isLast}
-                                />
+	                                <Item
+	                                    key={path}
+	                                    title={path}
+	                                    leftElement={<Ionicons name="folder-outline" size={24} color={theme.colors.textSecondary} />}
+	                                    onPress={() => setPathAndFocus(path)}
+	                                    selected={isSelected}
+	                                    showChevron={false}
+	                                    rightElement={renderRightElement(path, isSelected, isFavorite)}
+	                                    showDivider={!isLast}
+	                                />
                             );
                         })}
                 </ItemGroup>
@@ -326,17 +325,16 @@ export function PathSelector({
                             const isSelected = selectedPath.trim() === path;
                             const isLast = index === filteredFavoritePaths.length - 1;
                             return (
-                                <Item
-                                    key={path}
-                                    title={path}
-                                    leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
-                                    onPress={() => setPathAndFocus(path)}
-                                    selected={isSelected}
-                                    showChevron={false}
-                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                    rightElement={renderRightElement(path, isSelected, true)}
-                                    showDivider={!isLast}
-                                />
+	                                <Item
+	                                    key={path}
+	                                    title={path}
+	                                    leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
+	                                    onPress={() => setPathAndFocus(path)}
+	                                    selected={isSelected}
+	                                    showChevron={false}
+	                                    rightElement={renderRightElement(path, isSelected, true)}
+	                                    showDivider={!isLast}
+	                                />
                             );
                         })}
                 </ItemGroup>
@@ -349,17 +347,16 @@ export function PathSelector({
                         const isLast = index === filteredRecentPaths.length - 1;
                         const isFavorite = favoritePaths.includes(path);
                         return (
-                            <Item
-                                key={path}
-                                title={path}
-                                leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
-                                onPress={() => setPathAndFocus(path)}
-                                selected={isSelected}
-                                showChevron={false}
-                                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                rightElement={renderRightElement(path, isSelected, isFavorite)}
-                                showDivider={!isLast}
-                            />
+	                            <Item
+	                                key={path}
+	                                title={path}
+	                                leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
+	                                onPress={() => setPathAndFocus(path)}
+	                                selected={isSelected}
+	                                showChevron={false}
+	                                rightElement={renderRightElement(path, isSelected, isFavorite)}
+	                                showDivider={!isLast}
+	                            />
                         );
                     })}
                 </ItemGroup>
@@ -395,17 +392,16 @@ export function PathSelector({
                             const isLast = index === filteredSuggestedPaths.length - 1;
                             const isFavorite = favoritePaths.includes(path);
                             return (
-                                <Item
-                                    key={path}
-                                    title={path}
-                                    leftElement={<Ionicons name="folder-outline" size={24} color={theme.colors.textSecondary} />}
-                                    onPress={() => setPathAndFocus(path)}
-                                    selected={isSelected}
-                                    showChevron={false}
-                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                    rightElement={renderRightElement(path, isSelected, isFavorite)}
-                                    showDivider={!isLast}
-                                />
+	                                <Item
+	                                    key={path}
+	                                    title={path}
+	                                    leftElement={<Ionicons name="folder-outline" size={24} color={theme.colors.textSecondary} />}
+	                                    onPress={() => setPathAndFocus(path)}
+	                                    selected={isSelected}
+	                                    showChevron={false}
+	                                    rightElement={renderRightElement(path, isSelected, isFavorite)}
+	                                    showDivider={!isLast}
+	                                />
                             );
                         })}
                 </ItemGroup>
@@ -418,17 +414,16 @@ export function PathSelector({
                         const isLast = index === filteredSuggestedPaths.length - 1;
                         const isFavorite = favoritePaths.includes(path);
                         return (
-                                <Item
-                                    key={path}
-                                    title={path}
-                                    leftElement={<Ionicons name="folder-outline" size={24} color={theme.colors.textSecondary} />}
-                                    onPress={() => setPathAndFocus(path)}
-                                    selected={isSelected}
-                                    showChevron={false}
-                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                    rightElement={renderRightElement(path, isSelected, isFavorite)}
-                                showDivider={!isLast}
-                            />
+	                                <Item
+	                                    key={path}
+	                                    title={path}
+	                                    leftElement={<Ionicons name="folder-outline" size={24} color={theme.colors.textSecondary} />}
+	                                    onPress={() => setPathAndFocus(path)}
+	                                    selected={isSelected}
+	                                    showChevron={false}
+	                                    rightElement={renderRightElement(path, isSelected, isFavorite)}
+	                                showDivider={!isLast}
+	                            />
                         );
                     })}
                 </ItemGroup>

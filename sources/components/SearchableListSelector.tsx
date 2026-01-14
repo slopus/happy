@@ -242,7 +242,6 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 onPress={() => onSelect(item)}
                 showChevron={false}
                 selected={isSelected}
-                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                 showDivider={showDividerOverride !== undefined ? showDividerOverride : !isLast}
             />
         );

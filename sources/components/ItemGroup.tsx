@@ -11,6 +11,8 @@ import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
+export const ItemGroupSelectionContext = React.createContext<{ selectableItemCount: number } | null>(null);
+
 interface ItemChildProps {
     showDivider?: boolean;
     [key: string]: any;
@@ -95,6 +97,25 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
         containerStyle
     } = props;
 
+    const selectableItemCount = React.useMemo(() => {
+        const countSelectable = (node: React.ReactNode): number => {
+            return React.Children.toArray(node).reduce<number>((count, child) => {
+                if (!React.isValidElement<ItemChildProps>(child)) {
+                    return count;
+                }
+                if (child.type === React.Fragment) {
+                    return count + countSelectable(child.props.children);
+                }
+                const propsAny = child.props as any;
+                const hasTitle = typeof propsAny?.title === 'string';
+                const isSelectable = typeof propsAny?.onPress === 'function' || typeof propsAny?.onLongPress === 'function';
+                return count + (hasTitle && isSelectable ? 1 : 0);
+            }, 0);
+        };
+
+        return countSelectable(children);
+    }, [children]);
+
     return (
         <View style={[styles.wrapper, style]}>
             <View style={styles.container}>
@@ -116,21 +137,23 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
 
                 {/* Content Container */}
                 <View style={[styles.contentContainer, containerStyle]}>
-                    {React.Children.map(children, (child, index) => {
-                        if (React.isValidElement<ItemChildProps>(child)) {
-                            // Don't add props to React.Fragment
-                            if (child.type === React.Fragment) {
-                                return child;
+                    <ItemGroupSelectionContext.Provider value={{ selectableItemCount }}>
+                        {React.Children.map(children, (child, index) => {
+                            if (React.isValidElement<ItemChildProps>(child)) {
+                                // Don't add props to React.Fragment
+                                if (child.type === React.Fragment) {
+                                    return child;
+                                }
+                                const isLast = index === React.Children.count(children) - 1;
+                                const childProps = child.props as ItemChildProps;
+                                return React.cloneElement(child, {
+                                    ...childProps,
+                                    showDivider: !isLast && childProps.showDivider !== false
+                                });
                             }
-                            const isLast = index === React.Children.count(children) - 1;
-                            const childProps = child.props as ItemChildProps;
-                            return React.cloneElement(child, {
-                                ...childProps,
-                                showDivider: !isLast && childProps.showDivider !== false
-                            });
-                        }
-                        return child;
-                    })}
+                            return child;
+                        })}
+                    </ItemGroupSelectionContext.Provider>
                 </View>
 
                 {/* Footer */}

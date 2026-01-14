@@ -227,7 +227,6 @@ export function ProfileEditForm({
                         onPress={() => setDefaultPermissionMode(option.value)}
                         showChevron={false}
                         selected={defaultPermissionMode === option.value}
-                        pressableStyle={defaultPermissionMode === option.value ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                         showDivider={index < array.length - 1}
                     />
                 ))}

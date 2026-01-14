@@ -220,11 +220,10 @@ export default function ProfilePickerScreen() {
 		                                            icon={renderProfileIcon(profile)}
 		                                            onPress={() => setProfileParamAndClose(profile.id)}
 		                                            showChevron={false}
-	                                            selected={isSelected}
-	                                            pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                            rightElement={renderProfileRowRightElement(profile, isSelected, true)}
-                                            showDivider={!isLast}
-                                        />
+		                                            selected={isSelected}
+	                                            rightElement={renderProfileRowRightElement(profile, isSelected, true)}
+	                                            showDivider={!isLast}
+	                                        />
                                     );
                                 })}
                             </ItemGroup>
@@ -244,11 +243,10 @@ export default function ProfilePickerScreen() {
 		                                        icon={renderProfileIcon(profile)}
 		                                        onPress={() => setProfileParamAndClose(profile.id)}
 		                                        showChevron={false}
-	                                            selected={isSelected}
-	                                            pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                            rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
-                                            showDivider={!isLast}
-                                        />
+		                                            selected={isSelected}
+	                                            rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
+	                                            showDivider={!isLast}
+	                                        />
                                     );
                                 })}
                             </ItemGroup>
@@ -260,12 +258,11 @@ export default function ProfilePickerScreen() {
                                 subtitle={t('profiles.noProfileDescription')}
                                 icon={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
                                 onPress={() => setProfileParamAndClose('')}
-                                showChevron={false}
-                                selected={selectedId === ''}
-                                pressableStyle={selectedId === '' ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                rightElement={selectedId === ''
-                                    ? <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
-                                    : null}
+	                                showChevron={false}
+	                                selected={selectedId === ''}
+	                                rightElement={selectedId === ''
+	                                    ? <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
+	                                    : null}
                                 showDivider={nonFavoriteBuiltInProfiles.length > 0}
                             />
                             {nonFavoriteBuiltInProfiles.map((profile, index) => {
@@ -279,12 +276,11 @@ export default function ProfilePickerScreen() {
 	                                        subtitle={getProfileSubtitle(profile)}
 	                                        icon={renderProfileIcon(profile)}
 	                                        onPress={() => setProfileParamAndClose(profile.id)}
-	                                        showChevron={false}
-	                                        selected={isSelected}
-	                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                        rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
-                                        showDivider={!isLast}
-                                    />
+		                                        showChevron={false}
+		                                        selected={isSelected}
+	                                        rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
+	                                        showDivider={!isLast}
+	                                    />
                                 );
                             })}
                         </ItemGroup>

@@ -1658,11 +1658,10 @@ function NewSessionWizard() {
                                                         title={profile.name}
                                                         subtitle={getProfileSubtitle(profile)}
                                                         leftElement={renderProfileLeftElement(profile)}
-                                                        showChevron={false}
-                                                        selected={isSelected}
-                                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                                        disabled={!availability.available}
-                                                        onPress={() => {
+	                                                        showChevron={false}
+	                                                        selected={isSelected}
+	                                                        disabled={!availability.available}
+	                                                        onPress={() => {
                                                             if (!availability.available) return;
                                                             if (ignoreProfileRowPressRef.current) {
                                                                 ignoreProfileRowPressRef.current = false;
@@ -1691,11 +1690,10 @@ function NewSessionWizard() {
                                                         title={profile.name}
                                                         subtitle={getProfileSubtitle(profile)}
                                                         leftElement={renderProfileLeftElement(profile)}
-                                                        showChevron={false}
-                                                        selected={isSelected}
-                                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                                        disabled={!availability.available}
-                                                        onPress={() => {
+	                                                        showChevron={false}
+	                                                        selected={isSelected}
+	                                                        disabled={!availability.available}
+	                                                        onPress={() => {
                                                             if (!availability.available) return;
                                                             if (ignoreProfileRowPressRef.current) {
                                                                 ignoreProfileRowPressRef.current = false;
@@ -1716,12 +1714,11 @@ function NewSessionWizard() {
                                             title={t('profiles.noProfile')}
                                             subtitle={t('profiles.noProfileDescription')}
                                             leftElement={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
-                                            showChevron={false}
-                                            selected={!selectedProfileId}
-                                            onPress={() => setSelectedProfileId(null)}
-                                            pressableStyle={!selectedProfileId ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                            rightElement={!selectedProfileId
-                                                ? (
+	                                            showChevron={false}
+	                                            selected={!selectedProfileId}
+	                                            onPress={() => setSelectedProfileId(null)}
+	                                            rightElement={!selectedProfileId
+	                                                ? (
                                                     <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
                                                         <Ionicons
                                                             name="checkmark-circle"
@@ -1744,11 +1741,10 @@ function NewSessionWizard() {
                                                     title={profile.name}
                                                     subtitle={getProfileSubtitle(profile)}
                                                     leftElement={renderProfileLeftElement(profile)}
-                                                    showChevron={false}
-                                                    selected={isSelected}
-                                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                                    disabled={!availability.available}
-                                                    onPress={() => {
+	                                                    showChevron={false}
+	                                                    selected={isSelected}
+	                                                    disabled={!availability.available}
+	                                                    onPress={() => {
                                                         if (!availability.available) return;
                                                         if (ignoreProfileRowPressRef.current) {
                                                             ignoreProfileRowPressRef.current = false;
@@ -2042,11 +2038,10 @@ function NewSessionWizard() {
                                                 key={option.key}
                                                 title={option.title}
                                                 subtitle={disabledReason ?? option.subtitle}
-                                                leftElement={<Ionicons name={option.icon} size={24} color={theme.colors.textSecondary} />}
-                                                selected={isSelected}
-                                                disabled={!!disabledReason}
-                                                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                                onPress={() => {
+	                                                leftElement={<Ionicons name={option.icon} size={24} color={theme.colors.textSecondary} />}
+	                                                selected={isSelected}
+	                                                disabled={!!disabledReason}
+	                                                onPress={() => {
                                                     if (disabledReason) {
                                                         Modal.alert(
                                                             'AI Backend',
@@ -2177,12 +2172,11 @@ function NewSessionWizard() {
                                                 color={theme.colors.button.primary.background}
                                             />
 	                                        ) : null}
-	                                        onPress={() => handlePermissionModeChange(option.value)}
-	                                        showChevron={false}
-	                                        selected={permissionMode === option.value}
-	                                        pressableStyle={permissionMode === option.value ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-	                                        showDivider={index < array.length - 1}
-	                                    />
+		                                        onPress={() => handlePermissionModeChange(option.value)}
+		                                        showChevron={false}
+		                                        selected={permissionMode === option.value}
+		                                        showDivider={index < array.length - 1}
+		                                    />
 	                                ))}
 	                            </ItemGroup>
 

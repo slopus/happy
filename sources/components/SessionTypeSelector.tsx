@@ -48,7 +48,6 @@ export function SessionTypeSelectorRows({ value, onChange }: Pick<SessionTypeSel
                     </View>
                 )}
                 selected={value === 'simple'}
-                pressableStyle={value === 'simple' ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                 onPress={() => onChange('simple')}
                 showChevron={false}
                 showDivider={true}
@@ -62,7 +61,6 @@ export function SessionTypeSelectorRows({ value, onChange }: Pick<SessionTypeSel
                     </View>
                 )}
                 selected={value === 'worktree'}
-                pressableStyle={value === 'worktree' ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                 onPress={() => onChange('worktree')}
                 showChevron={false}
                 showDivider={false}
@@ -82,4 +80,3 @@ export function SessionTypeSelector({ value, onChange, title = t('newSession.ses
         </ItemGroup>
     );
 }
-
