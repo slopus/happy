@@ -83,7 +83,7 @@ export interface SearchableListSelectorProps<T> {
 
 const RECENT_ITEMS_DEFAULT_VISIBLE = 5;
 const STATUS_DOT_TEXT_GAP = 4;
-const ITEM_SPACING_GAP = 8;
+const ITEM_SPACING_GAP = 16;
 
 const stylesheet = StyleSheet.create((theme) => ({
     showMoreTitle: {

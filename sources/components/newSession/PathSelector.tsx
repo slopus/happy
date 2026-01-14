@@ -39,6 +39,8 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
+const ITEM_RIGHT_GAP = 16;
+
 export function PathSelector({
     machineHomeDir,
     selectedPath,
@@ -115,6 +117,34 @@ export function PathSelector({
         setTimeout(() => inputRef.current?.focus(), 50);
     }, [onChangeSelectedPath]);
 
+    const renderRightElement = React.useCallback((absolutePath: string, isSelected: boolean, isFavorite: boolean) => {
+        return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_RIGHT_GAP }}>
+                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons
+                        name="checkmark-circle"
+                        size={24}
+                        color={theme.colors.button.primary.background}
+                        style={{ opacity: isSelected ? 1 : 0 }}
+                    />
+                </View>
+                <Pressable
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    onPress={(e) => {
+                        e.stopPropagation();
+                        toggleFavorite(absolutePath);
+                    }}
+                >
+                    <Ionicons
+                        name={isFavorite ? 'star' : 'star-outline'}
+                        size={20}
+                        color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
+                    />
+                </Pressable>
+            </View>
+        );
+    }, [theme.colors.button.primary.background, theme.colors.textSecondary, toggleFavorite]);
+
     return (
         <>
             {usePickerSearch && (
@@ -155,21 +185,7 @@ export function PathSelector({
                                 selected={isSelected}
                                 showChevron={false}
                                 pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                rightElement={(
-                                    <Pressable
-                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                        onPress={(e) => {
-                                            e.stopPropagation();
-                                            toggleFavorite(path);
-                                        }}
-                                    >
-                                        <Ionicons
-                                            name="star"
-                                            size={20}
-                                            color={theme.colors.button.primary.background}
-                                        />
-                                    </Pressable>
-                                )}
+                                rightElement={renderRightElement(path, isSelected, true)}
                                 showDivider={!isLast}
                             />
                         );
@@ -192,21 +208,7 @@ export function PathSelector({
                                 selected={isSelected}
                                 showChevron={false}
                                 pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                rightElement={(
-                                    <Pressable
-                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                        onPress={(e) => {
-                                            e.stopPropagation();
-                                            toggleFavorite(path);
-                                        }}
-                                    >
-                                        <Ionicons
-                                            name={isFavorite ? 'star' : 'star-outline'}
-                                            size={20}
-                                            color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
-                                        />
-                                    </Pressable>
-                                )}
+                                rightElement={renderRightElement(path, isSelected, isFavorite)}
                                 showDivider={!isLast}
                             />
                         );
@@ -229,21 +231,7 @@ export function PathSelector({
                                 selected={isSelected}
                                 showChevron={false}
                                 pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                rightElement={(
-                                    <Pressable
-                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                        onPress={(e) => {
-                                            e.stopPropagation();
-                                            toggleFavorite(path);
-                                        }}
-                                    >
-                                        <Ionicons
-                                            name={isFavorite ? 'star' : 'star-outline'}
-                                            size={20}
-                                            color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
-                                        />
-                                    </Pressable>
-                                )}
+                                rightElement={renderRightElement(path, isSelected, isFavorite)}
                                 showDivider={!isLast}
                             />
                         );

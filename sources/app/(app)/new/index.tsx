@@ -1104,6 +1104,17 @@ function NewSessionWizard() {
     const showInlineClose = screenWidth < 520;
 
     const handleCloseModal = React.useCallback(() => {
+        // On web (especially mobile), `router.back()` can be a no-op if the modal is the first history entry.
+        // Fall back to home so the user always has an exit.
+        if (Platform.OS === 'web') {
+            if (typeof window !== 'undefined' && window.history.length > 1) {
+                router.back();
+            } else {
+                router.replace('/');
+            }
+            return;
+        }
+
         router.back();
     }, [router]);
 
@@ -1166,6 +1177,8 @@ function NewSessionWizard() {
             >
                 {showInlineClose && (
                     <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t('common.cancel')}
                         onPress={handleCloseModal}
                         hitSlop={12}
                         style={{
@@ -1235,13 +1248,15 @@ function NewSessionWizard() {
             keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + safeArea.bottom + 16 : 0}
             style={styles.container}
         >
-            {showInlineClose && (
-                <Pressable
-                    onPress={handleCloseModal}
-                    hitSlop={12}
-                    style={{
-                        position: 'absolute',
-                        top: safeArea.top + 8,
+                {showInlineClose && (
+                    <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t('common.cancel')}
+                        onPress={handleCloseModal}
+                        hitSlop={12}
+                        style={{
+                            position: 'absolute',
+                            top: safeArea.top + 8,
                         right: 8,
                         zIndex: 1000,
                         backgroundColor: 'transparent',
