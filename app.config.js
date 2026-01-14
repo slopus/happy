@@ -34,7 +34,11 @@ export default {
             infoPlist: {
                 NSMicrophoneUsageDescription: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations with AI.",
                 NSLocalNetworkUsageDescription: "Allow $(PRODUCT_NAME) to find and connect to local devices on your network.",
-                NSBonjourServices: ["_http._tcp", "_https._tcp"]
+                NSBonjourServices: ["_http._tcp", "_https._tcp"],
+                NSAppTransportSecurity: {
+                    NSAllowsLocalNetworking: true,
+                    NSAllowsArbitraryLoads: false
+                }
             },
             associatedDomains: variant === 'production' ? ["applinks:app.happy.engineering"] : []
         },
