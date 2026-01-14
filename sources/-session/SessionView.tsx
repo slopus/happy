@@ -273,17 +273,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             permissionMode={permissionMode}
             onPermissionModeChange={updatePermissionMode}
             metadata={session.metadata}
-            profileId={session.metadata?.profileId ?? undefined}
-            onProfileClick={session.metadata?.profileId !== undefined ? () => {
-                const profileId = session.metadata?.profileId;
-                const profileInfo = (profileId === null || (typeof profileId === 'string' && profileId.trim() === ''))
-                    ? t('profiles.noProfile')
-                    : (typeof profileId === 'string' ? profileId : t('status.unknown'));
-                Modal.alert(
-                    t('profiles.title'),
-                    `This session uses: ${profileInfo}\n\nProfiles are fixed per session. To use a different profile, start a new session.`,
-                );
-            } : undefined}
             connectionStatus={{
                 text: sessionStatus.statusText,
                 color: sessionStatus.statusColor,

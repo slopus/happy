@@ -80,6 +80,11 @@ interface AgentInputProps {
 
 const MAX_CONTEXT_SIZE = 190000;
 
+function truncateWithEllipsis(value: string, maxChars: number) {
+    if (value.length <= maxChars) return value;
+    return `${value.slice(0, maxChars)}…`;
+}
+
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         alignItems: 'center',
@@ -417,27 +422,27 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Settings modal state
     const [showSettings, setShowSettings] = React.useState(false);
 
-    const permissionBadgeLabel = React.useMemo(() => {
+    const permissionChipLabel = React.useMemo(() => {
         const mode = props.permissionMode ?? 'default';
 
         if (isCodex) {
-            return mode === 'default' ? t('agentInput.codexPermissionMode.default') :
-                mode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
-                    mode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
-                        mode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : '';
+            return mode === 'default' ? 'CLI' :
+                mode === 'read-only' ? 'RO' :
+                    mode === 'safe-yolo' ? 'Safe' :
+                        mode === 'yolo' ? 'YOLO' : '';
         }
 
         if (isGemini) {
             return mode === 'default' ? t('agentInput.geminiPermissionMode.default') :
-                mode === 'acceptEdits' ? t('agentInput.geminiPermissionMode.badgeAcceptAllEdits') :
-                    mode === 'bypassPermissions' ? t('agentInput.geminiPermissionMode.badgeBypassAllPermissions') :
-                        mode === 'plan' ? t('agentInput.geminiPermissionMode.badgePlanMode') : '';
+                mode === 'acceptEdits' ? 'Accept' :
+                    mode === 'bypassPermissions' ? 'YOLO' :
+                        mode === 'plan' ? 'Plan' : '';
         }
 
         return mode === 'default' ? t('agentInput.permissionMode.default') :
-            mode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
-                mode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
-                    mode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : '';
+            mode === 'acceptEdits' ? 'Accept' :
+                mode === 'bypassPermissions' ? 'YOLO' :
+                    mode === 'plan' ? 'Plan' : '';
     }, [isCodex, isGemini, props.permissionMode]);
 
     // Handle settings button press
@@ -775,7 +780,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 	                                })}
 	                            >
 		                                        <Ionicons
-		                                            name="shield-outline"
+		                                            name="settings-outline"
 		                                            size={16}
 		                                            color={theme.colors.button.secondary.tint}
 			                                />
@@ -785,7 +790,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             fontWeight: '600',
                                             ...Typography.default('semiBold'),
                                         }}>
-                                            {permissionBadgeLabel}
+                                            {permissionChipLabel}
                                         </Text>
 	                            </Pressable>
 	                        )}
@@ -923,16 +928,18 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 	                                            size={16}
 	                                            color={theme.colors.button.secondary.tint}
 	                                        />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {props.machineName === null ? t('agentInput.noMachinesAvailable') : props.machineName}
-                                        </Text>
-                                    </Pressable>
-                                )}
+	                                        <Text style={{
+	                                            fontSize: 13,
+	                                            color: theme.colors.button.secondary.tint,
+	                                            fontWeight: '600',
+	                                            ...Typography.default('semiBold'),
+	                                        }}>
+	                                            {props.machineName === null
+	                                                ? t('agentInput.noMachinesAvailable')
+	                                                : truncateWithEllipsis(props.machineName, 12)}
+	                                        </Text>
+	                                    </Pressable>
+	                                )}
 
                                 {/* Abort button */}
                                 {props.onAbort && (
