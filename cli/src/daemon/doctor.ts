@@ -8,46 +8,59 @@
 import psList from 'ps-list';
 import spawn from 'cross-spawn';
 
+export type HappyProcessInfo = { pid: number; command: string; type: string };
+
 /**
  * Find all Happy CLI processes (including current process)
  */
-export async function findAllHappyProcesses(): Promise<Array<{ pid: number, command: string, type: string }>> {
+export function classifyHappyProcess(proc: { pid: number; name?: string; cmd?: string }): HappyProcessInfo | null {
+  const cmd = proc.cmd || '';
+  const name = proc.name || '';
+
+  // NOTE: Be intentionally strict here. This classification is used for PID reuse safety
+  // (reattach + stopSession). A false positive could cause us to adopt/kill a non-Happy process.
+  const isHappy =
+    (name === 'node' &&
+      (cmd.includes('happy-cli') ||
+        cmd.includes('dist/index.mjs') ||
+        cmd.includes('bin/happy.mjs') ||
+        (cmd.includes('tsx') && cmd.includes('src/index.ts') && cmd.includes('happy-cli')))) ||
+    cmd.includes('happy.mjs') ||
+    cmd.includes('happy-coder') ||
+    name === 'happy';
+
+  if (!isHappy) return null;
+
+  // Classify process type
+  let type = 'unknown';
+  if (proc.pid === process.pid) {
+    type = 'current';
+  } else if (cmd.includes('--version')) {
+    type = cmd.includes('tsx') ? 'dev-daemon-version-check' : 'daemon-version-check';
+  } else if (cmd.includes('daemon start-sync') || cmd.includes('daemon start')) {
+    type = cmd.includes('tsx') ? 'dev-daemon' : 'daemon';
+  } else if (cmd.includes('--started-by daemon')) {
+    type = cmd.includes('tsx') ? 'dev-daemon-spawned' : 'daemon-spawned-session';
+  } else if (cmd.includes('doctor')) {
+    type = cmd.includes('tsx') ? 'dev-doctor' : 'doctor';
+  } else if (cmd.includes('--yolo')) {
+    type = 'dev-session';
+  } else {
+    type = cmd.includes('tsx') ? 'dev-related' : 'user-session';
+  }
+
+  return { pid: proc.pid, command: cmd || name, type };
+}
+
+export async function findAllHappyProcesses(): Promise<HappyProcessInfo[]> {
   try {
     const processes = await psList();
-    const allProcesses: Array<{ pid: number, command: string, type: string }> = [];
+    const allProcesses: HappyProcessInfo[] = [];
     
     for (const proc of processes) {
-      const cmd = proc.cmd || '';
-      const name = proc.name || '';
-      
-      // Check if it's a Happy process
-      const isHappy = name.includes('happy') || 
-                      name === 'node' && (cmd.includes('happy-cli') || cmd.includes('dist/index.mjs')) ||
-                      cmd.includes('happy.mjs') ||
-                      cmd.includes('happy-coder') ||
-                      (cmd.includes('tsx') && cmd.includes('src/index.ts') && cmd.includes('happy-cli'));
-      
-      if (!isHappy) continue;
-
-      // Classify process type
-      let type = 'unknown';
-      if (proc.pid === process.pid) {
-        type = 'current';
-      } else if (cmd.includes('--version')) {
-        type = cmd.includes('tsx') ? 'dev-daemon-version-check' : 'daemon-version-check';
-      } else if (cmd.includes('daemon start-sync') || cmd.includes('daemon start')) {
-        type = cmd.includes('tsx') ? 'dev-daemon' : 'daemon';
-      } else if (cmd.includes('--started-by daemon')) {
-        type = cmd.includes('tsx') ? 'dev-daemon-spawned' : 'daemon-spawned-session';
-      } else if (cmd.includes('doctor')) {
-        type = cmd.includes('tsx') ? 'dev-doctor' : 'doctor';
-      } else if (cmd.includes('--yolo')) {
-        type = 'dev-session';
-      } else {
-        type = cmd.includes('tsx') ? 'dev-related' : 'user-session';
-      }
-
-      allProcesses.push({ pid: proc.pid, command: cmd || name, type });
+      const classified = classifyHappyProcess(proc);
+      if (!classified) continue;
+      allProcesses.push(classified);
     }
 
     return allProcesses;
@@ -56,7 +69,7 @@ export async function findAllHappyProcesses(): Promise<Array<{ pid: number, comm
   }
 }
 
-export async function findHappyProcessByPid(pid: number): Promise<{ pid: number, command: string, type: string } | null> {
+export async function findHappyProcessByPid(pid: number): Promise<HappyProcessInfo | null> {
   const all = await findAllHappyProcesses();
   return all.find((p) => p.pid === pid) ?? null;
 }
