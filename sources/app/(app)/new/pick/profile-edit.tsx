@@ -10,6 +10,10 @@ import { ProfileEditForm } from '@/components/ProfileEditForm';
 import { AIBackendProfile } from '@/sync/settings';
 import { layout } from '@/components/layout';
 import { callbacks } from '../index';
+import { useSettingMutable } from '@/sync/storage';
+import { DEFAULT_PROFILES, getBuiltInProfile } from '@/sync/profileUtils';
+import { convertBuiltInProfileToCustom } from '@/sync/profileMutations';
+import { Modal } from '@/modal';
 
 export default function ProfileEditScreen() {
     const { theme } = useUnistyles();
@@ -17,6 +21,8 @@ export default function ProfileEditScreen() {
     const params = useLocalSearchParams<{ profileData?: string; machineId?: string }>();
     const screenWidth = useWindowDimensions().width;
     const headerHeight = useHeaderHeight();
+    const [profiles, setProfiles] = useSettingMutable('profiles');
+    const [, setLastUsedProfile] = useSettingMutable('lastUsedProfile');
 
     // Deserialize profile from URL params
     const profile: AIBackendProfile = React.useMemo(() => {
@@ -27,7 +33,7 @@ export default function ProfileEditScreen() {
                 try {
                     return JSON.parse(params.profileData);
                 } catch {
-                return JSON.parse(decodeURIComponent(params.profileData));
+                    return JSON.parse(decodeURIComponent(params.profileData));
                 }
             } catch (error) {
                 console.error('Failed to parse profile data:', error);
@@ -48,8 +54,43 @@ export default function ProfileEditScreen() {
     }, [params.profileData]);
 
     const handleSave = (savedProfile: AIBackendProfile) => {
-        // Call the callback to notify wizard of saved profile
-        callbacks.onProfileSaved(savedProfile);
+        if (!savedProfile.name || savedProfile.name.trim() === '') {
+            Modal.alert(t('common.error'), 'Enter a profile name.');
+            return;
+        }
+
+        const isBuiltIn =
+            savedProfile.isBuiltIn === true ||
+            DEFAULT_PROFILES.some((bp) => bp.id === savedProfile.id) ||
+            !!getBuiltInProfile(savedProfile.id);
+
+        let profileToSave = savedProfile;
+        if (isBuiltIn) {
+            profileToSave = convertBuiltInProfileToCustom(savedProfile);
+        }
+
+        // Duplicate name guard (same behavior as settings/profiles)
+        const isDuplicateName = profiles.some((p) => {
+            if (isBuiltIn) {
+                return p.name.trim() === profileToSave.name.trim();
+            }
+            return p.id !== profileToSave.id && p.name.trim() === profileToSave.name.trim();
+        });
+        if (isDuplicateName) {
+            Modal.alert(t('common.error'), 'A profile with that name already exists.');
+            return;
+        }
+
+        const existingIndex = profiles.findIndex((p) => p.id === profileToSave.id);
+        const updatedProfiles = existingIndex >= 0
+            ? profiles.map((p, idx) => idx === existingIndex ? { ...profileToSave, updatedAt: Date.now() } : p)
+            : [...profiles, profileToSave];
+
+        setProfiles(updatedProfiles);
+        setLastUsedProfile(profileToSave.id);
+
+        // Still notify the /new screen in case it is mounted and wants to update selection immediately.
+        callbacks.onProfileSaved(profileToSave);
         router.back();
     };
 

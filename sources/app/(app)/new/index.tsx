@@ -425,11 +425,23 @@ function NewSessionWizard() {
         return null;
     });
 
-    const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
+    const hasUserSelectedPermissionModeRef = React.useRef(false);
+    const permissionModeRef = React.useRef(permissionMode);
+    React.useEffect(() => {
+        permissionModeRef.current = permissionMode;
+    }, [permissionMode]);
+
+    const applyPermissionMode = React.useCallback((mode: PermissionMode, source: 'user' | 'auto') => {
         setPermissionMode(mode);
-        // Save the new selection immediately
         sync.applySettings({ lastUsedPermissionMode: mode });
+        if (source === 'user') {
+            hasUserSelectedPermissionModeRef.current = true;
+        }
     }, []);
+
+    const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
+        applyPermissionMode(mode, 'user');
+    }, [applyPermissionMode]);
 
     //
     // Path selection
@@ -759,6 +771,7 @@ function NewSessionWizard() {
     }, [selectedMachineId, selectedPath]);
 
     const selectProfile = React.useCallback((profileId: string) => {
+        const prevSelectedProfileId = selectedProfileId;
         setSelectedProfileId(profileId);
         // Check both custom profiles and built-in profiles
         const profile = profileMap.get(profileId) || getBuiltInProfile(profileId);
@@ -776,12 +789,19 @@ function NewSessionWizard() {
             if (profile.defaultSessionType) {
                 setSessionType(profile.defaultSessionType);
             }
-            // Set permission mode from profile's default
-            if (profile.defaultPermissionMode) {
-                setPermissionMode(profile.defaultPermissionMode as PermissionMode);
+
+            // Apply permission defaults only on first selection (or if the user hasn't explicitly chosen one).
+            // Switching between profiles should not reset permissions when the backend stays the same.
+            if (!hasUserSelectedPermissionModeRef.current && profile.defaultPermissionMode) {
+                const nextMode = profile.defaultPermissionMode as PermissionMode;
+                // If the user is switching profiles (not initial selection), keep their current permissionMode.
+                const isInitialProfileSelection = prevSelectedProfileId === null;
+                if (isInitialProfileSelection) {
+                    applyPermissionMode(nextMode, 'auto');
+                }
             }
         }
-    }, [agentType, allowGemini, profileMap]);
+    }, [agentType, allowGemini, applyPermissionMode, profileMap, selectedProfileId]);
 
     // Handle profile route param from picker screens
     React.useEffect(() => {
@@ -823,19 +843,66 @@ function NewSessionWizard() {
         }
     }, [agentType, allowGemini, profileMap, selectedProfileId, useProfiles]);
 
-    // Reset permission mode to 'default' when agent type changes and current mode is invalid for new agent
+    const prevAgentTypeRef = React.useRef(agentType);
+
+    const mapPermissionModeAcrossAgents = React.useCallback((mode: PermissionMode, from: 'claude' | 'codex' | 'gemini', to: 'claude' | 'codex' | 'gemini'): PermissionMode => {
+        if (from === to) return mode;
+
+        const toCodex = to === 'codex';
+        if (toCodex) {
+            // Claude/Gemini -> Codex
+            switch (mode) {
+                case 'bypassPermissions':
+                    return 'yolo';
+                case 'plan':
+                    return 'safe-yolo';
+                case 'acceptEdits':
+                    return 'safe-yolo';
+                case 'default':
+                    return 'default';
+                default:
+                    return 'default';
+            }
+        }
+
+        // Codex -> Claude/Gemini
+        switch (mode) {
+            case 'yolo':
+                return 'bypassPermissions';
+            case 'safe-yolo':
+                return 'plan';
+            case 'read-only':
+                return 'default';
+            case 'default':
+                return 'default';
+            default:
+                return 'default';
+        }
+    }, []);
+
+    // When agent type changes, keep the "permission level" consistent by mapping modes across backends.
     React.useEffect(() => {
+        const prev = prevAgentTypeRef.current;
+        if (prev === agentType) {
+            return;
+        }
+        prevAgentTypeRef.current = agentType;
+
+        const current = permissionModeRef.current;
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
         const validCodexModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
 
-        const isValidForCurrentAgent = agentType === 'codex'
-            ? validCodexModes.includes(permissionMode)
-            : validClaudeModes.includes(permissionMode);
+        const isValidForNewAgent = agentType === 'codex'
+            ? validCodexModes.includes(current)
+            : validClaudeModes.includes(current);
 
-        if (!isValidForCurrentAgent) {
-            setPermissionMode('default');
+        if (isValidForNewAgent) {
+            return;
         }
-    }, [agentType, permissionMode]);
+
+        const mapped = mapPermissionModeAcrossAgents(current, prev, agentType);
+        applyPermissionMode(mapped, 'auto');
+    }, [agentType, applyPermissionMode, mapPermissionModeAcrossAgents]);
 
     // Scroll to section helpers - for AgentInput button clicks
     const wizardSectionOffsets = React.useRef<{ profile?: number; agent?: number; machine?: number; path?: number; permission?: number; sessionType?: number }>({});
@@ -1915,22 +1982,22 @@ function NewSessionWizard() {
 		                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Permission Mode</Text>
 		                                </View>
 		                            </View>
-	                            <ItemGroup title="">
-	                                {(agentType === 'codex'
-	                                    ? [
-	                                        { value: 'default' as PermissionMode, label: t('agentInput.codexPermissionMode.default'), description: 'Use CLI permission settings', icon: 'shield-half-outline' },
-	                                        { value: 'read-only' as PermissionMode, label: t('agentInput.codexPermissionMode.readOnly'), description: 'Read-only mode', icon: 'eye-outline' },
-	                                        { value: 'safe-yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.safeYolo'), description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
-	                                        { value: 'yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.yolo'), description: 'Full access, skip permissions', icon: 'flash-outline' },
-	                                    ]
-	                                    : [
-	                                        { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-half-outline' },
-	                                        { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
-	                                        { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-	                                        { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
-	                                    ]
-	                                ).map((option, index, array) => (
-                                    <Item
+		                            <ItemGroup title="">
+		                                {(agentType === 'codex'
+		                                    ? [
+		                                        { value: 'default' as PermissionMode, label: t('agentInput.codexPermissionMode.default'), description: 'Use CLI permission settings', icon: 'shield-half-outline' },
+		                                        { value: 'read-only' as PermissionMode, label: t('agentInput.codexPermissionMode.readOnly'), description: 'Read-only mode', icon: 'eye-outline' },
+		                                        { value: 'safe-yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.safeYolo'), description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
+		                                        { value: 'yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.yolo'), description: 'Full access, skip permissions', icon: 'flash-outline' },
+		                                    ]
+		                                    : [
+		                                        { value: 'default' as PermissionMode, label: t(agentType === 'gemini' ? 'agentInput.geminiPermissionMode.default' : 'agentInput.permissionMode.default'), description: 'Ask for permissions', icon: 'shield-half-outline' },
+		                                        { value: 'acceptEdits' as PermissionMode, label: t(agentType === 'gemini' ? 'agentInput.geminiPermissionMode.acceptEdits' : 'agentInput.permissionMode.acceptEdits'), description: 'Auto-approve edits', icon: 'checkmark-outline' },
+		                                        { value: 'plan' as PermissionMode, label: t(agentType === 'gemini' ? 'agentInput.geminiPermissionMode.plan' : 'agentInput.permissionMode.plan'), description: 'Plan before executing', icon: 'list-outline' },
+		                                        { value: 'bypassPermissions' as PermissionMode, label: t(agentType === 'gemini' ? 'agentInput.geminiPermissionMode.bypassPermissions' : 'agentInput.permissionMode.bypassPermissions'), description: 'Skip all permissions', icon: 'flash-outline' },
+		                                    ]
+		                                ).map((option, index, array) => (
+	                                    <Item
                                         key={option.value}
                                         title={option.label}
                                         subtitle={option.description}
@@ -1947,15 +2014,15 @@ function NewSessionWizard() {
                                                 size={24}
                                                 color={theme.colors.button.primary.background}
                                             />
-                                        ) : null}
-                                        onPress={() => setPermissionMode(option.value)}
-                                        showChevron={false}
-                                        selected={permissionMode === option.value}
-                                        pressableStyle={permissionMode === option.value ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                        showDivider={index < array.length - 1}
-                                    />
-                                ))}
-                            </ItemGroup>
+	                                        ) : null}
+	                                        onPress={() => handlePermissionModeChange(option.value)}
+	                                        showChevron={false}
+	                                        selected={permissionMode === option.value}
+	                                        pressableStyle={permissionMode === option.value ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+	                                        showDivider={index < array.length - 1}
+	                                    />
+	                                ))}
+	                            </ItemGroup>
 
 	                            <View style={{ height: 24 }} />
 
