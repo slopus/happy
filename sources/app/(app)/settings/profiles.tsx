@@ -9,11 +9,13 @@ import { Modal } from '@/modal';
 import { AIBackendProfile } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
 import { ProfileEditForm } from '@/components/ProfileEditForm';
-import { randomUUID } from 'expo-crypto';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { Switch } from '@/components/Switch';
+import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
+import { buildProfileGroups } from '@/sync/profileGrouping';
+import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 
 interface ProfileManagerProps {
     onProfileSelect?: (profile: AIBackendProfile | null) => void;
@@ -26,6 +28,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     const [useProfiles, setUseProfiles] = useSettingMutable('useProfiles');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const [lastUsedProfile, setLastUsedProfile] = useSettingMutable('lastUsedProfile');
+    const [favoriteProfileIds, setFavoriteProfileIds] = useSettingMutable('favoriteProfiles');
     const [editingProfile, setEditingProfile] = React.useState<AIBackendProfile | null>(null);
     const [showAddForm, setShowAddForm] = React.useState(false);
 
@@ -54,22 +57,17 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     }
 
     const handleAddProfile = () => {
-        setEditingProfile({
-            id: randomUUID(),
-            name: '',
-            anthropicConfig: {},
-            environmentVariables: [],
-            compatibility: { claude: true, codex: true, gemini: true },
-            isBuiltIn: false,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            version: '1.0.0',
-        });
+        setEditingProfile(createEmptyCustomProfile());
         setShowAddForm(true);
     };
 
     const handleEditProfile = (profile: AIBackendProfile) => {
         setEditingProfile({ ...profile });
+        setShowAddForm(true);
+    };
+
+    const handleDuplicateProfile = (profile: AIBackendProfile) => {
+        setEditingProfile(duplicateProfileForEdit(profile));
         setShowAddForm(true);
     };
 
@@ -115,6 +113,23 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
         setLastUsedProfile(profileId);
     };
 
+    const {
+        favoriteProfiles: favoriteProfileItems,
+        customProfiles: nonFavoriteCustomProfiles,
+        builtInProfiles: nonFavoriteBuiltInProfiles,
+        favoriteIds: favoriteProfileIdSet,
+    } = React.useMemo(() => {
+        return buildProfileGroups({ customProfiles: profiles, favoriteProfileIds });
+    }, [favoriteProfileIds, profiles]);
+
+    const toggleFavoriteProfile = (profileId: string) => {
+        if (favoriteProfileIdSet.has(profileId)) {
+            setFavoriteProfileIds(favoriteProfileIds.filter((id) => id !== profileId));
+        } else {
+            setFavoriteProfileIds([profileId, ...favoriteProfileIds]);
+        }
+    };
+
     const handleSaveProfile = (profile: AIBackendProfile) => {
         // Profile validation - ensure name is not empty
         if (!profile.name || profile.name.trim() === '') {
@@ -126,13 +141,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
 
         // For built-in profiles, create a new custom profile instead of modifying the built-in
         if (isBuiltIn) {
-            const newProfile: AIBackendProfile = {
-                ...profile,
-                id: randomUUID(), // Generate new UUID for custom profile
-                isBuiltIn: false,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-            };
+            const newProfile = convertBuiltInProfileToCustom(profile);
 
             // Check for duplicate names (excluding the new profile)
             const isDuplicate = profiles.some(p =>
@@ -186,93 +195,224 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                         onPress={() => handleSelectProfile(null)}
                         showChevron={false}
                         selected={selectedProfileId === null}
+                        pressableStyle={selectedProfileId === null ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                         rightElement={selectedProfileId === null
                             ? <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
                             : null}
                     />
                 </ItemGroup>
 
-                <ItemGroup>
-                    {DEFAULT_PROFILES.map((profileDisplay) => {
-                        const profile = getBuiltInProfile(profileDisplay.id);
-                        if (!profile) return null;
+                {favoriteProfileItems.length > 0 && (
+                    <ItemGroup title="Favorites">
+                        {favoriteProfileItems.map((profile) => {
+                            const isSelected = selectedProfileId === profile.id;
+                            const isFavorite = favoriteProfileIdSet.has(profile.id);
+                            return (
+                                <Item
+                                    key={profile.id}
+                                    title={profile.name}
+                                    subtitle={t('profiles.defaultModel')}
+                                    leftElement={<ProfileCompatibilityIcon profile={profile} />}
+                                    onPress={() => handleSelectProfile(profile.id)}
+                                    showChevron={false}
+                                    selected={isSelected}
+                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                    rightElement={(
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                                            <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                                <Ionicons
+                                                    name="checkmark-circle"
+                                                    size={24}
+                                                    color={theme.colors.button.primary.background}
+                                                    style={{ opacity: isSelected ? 1 : 0 }}
+                                                />
+                                            </View>
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleFavoriteProfile(profile.id);
+                                                }}
+                                            >
+                                                <Ionicons
+                                                    name={isFavorite ? 'star' : 'star-outline'}
+                                                    size={20}
+                                                    color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
+                                                />
+                                            </Pressable>
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    handleEditProfile(profile);
+                                                }}
+                                            >
+                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                            </Pressable>
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDuplicateProfile(profile);
+                                                }}
+                                            >
+                                                <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                            </Pressable>
+                                            {!profile.isBuiltIn && (
+                                                <Pressable
+                                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                    onPress={(e) => {
+                                                        e.stopPropagation();
+                                                        void handleDeleteProfile(profile);
+                                                    }}
+                                                >
+                                                    <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
+                                                </Pressable>
+                                            )}
+                                        </View>
+                                    )}
+                                />
+                            );
+                        })}
+                    </ItemGroup>
+                )}
 
+                {nonFavoriteCustomProfiles.length > 0 && (
+                    <ItemGroup title="Your Profiles">
+                        {nonFavoriteCustomProfiles.map((profile) => {
+                            const isSelected = selectedProfileId === profile.id;
+                            const isFavorite = favoriteProfileIdSet.has(profile.id);
+                            return (
+                                <Item
+                                    key={profile.id}
+                                    title={profile.name}
+                                    subtitle={t('profiles.defaultModel')}
+                                    leftElement={<ProfileCompatibilityIcon profile={profile} />}
+                                    onPress={() => handleSelectProfile(profile.id)}
+                                    showChevron={false}
+                                    selected={isSelected}
+                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                    rightElement={(
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                                            <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                                <Ionicons
+                                                    name="checkmark-circle"
+                                                    size={24}
+                                                    color={theme.colors.button.primary.background}
+                                                    style={{ opacity: isSelected ? 1 : 0 }}
+                                                />
+                                            </View>
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleFavoriteProfile(profile.id);
+                                                }}
+                                            >
+                                                <Ionicons
+                                                    name={isFavorite ? 'star' : 'star-outline'}
+                                                    size={20}
+                                                    color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
+                                                />
+                                            </Pressable>
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    handleEditProfile(profile);
+                                                }}
+                                            >
+                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                            </Pressable>
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDuplicateProfile(profile);
+                                                }}
+                                            >
+                                                <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                            </Pressable>
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    void handleDeleteProfile(profile);
+                                                }}
+                                            >
+                                                <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
+                                            </Pressable>
+                                        </View>
+                                    )}
+                                />
+                            );
+                        })}
+                    </ItemGroup>
+                )}
+
+                <ItemGroup title="Built-in Profiles">
+                    {nonFavoriteBuiltInProfiles.map((profile) => {
                         const isSelected = selectedProfileId === profile.id;
+                        const isFavorite = favoriteProfileIdSet.has(profile.id);
                         return (
                             <Item
                                 key={profile.id}
                                 title={profile.name}
                                 subtitle={t('profiles.defaultModel')}
-                                icon={<Ionicons name="star" size={29} color={theme.colors.button.primary.background} />}
+                                leftElement={<ProfileCompatibilityIcon profile={profile} />}
                                 onPress={() => handleSelectProfile(profile.id)}
                                 showChevron={false}
                                 selected={isSelected}
-                                rightElement={
-                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                        {isSelected && (
+                                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                rightElement={(
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                                        <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
                                             <Ionicons
                                                 name="checkmark-circle"
-                                                size={20}
-                                                color={theme.colors.text}
-                                                style={{ marginRight: 12 }}
+                                                size={24}
+                                                color={theme.colors.button.primary.background}
+                                                style={{ opacity: isSelected ? 1 : 0 }}
                                             />
-                                        )}
+                                        </View>
                                         <Pressable
                                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                            onPress={() => handleEditProfile(profile)}
+                                            onPress={(e) => {
+                                                e.stopPropagation();
+                                                toggleFavoriteProfile(profile.id);
+                                            }}
                                         >
-                                            <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                        </Pressable>
-                                    </View>
-                                }
-                            />
-                        );
-                    })}
-
-                    {profiles.map((profile) => {
-                        const isSelected = selectedProfileId === profile.id;
-                        const subtitleParts: string[] = [t('profiles.defaultModel')];
-                        if (profile.tmuxConfig?.sessionName) subtitleParts.push(`tmux: ${profile.tmuxConfig.sessionName}`);
-                        if (profile.tmuxConfig?.tmpDir) subtitleParts.push(`dir: ${profile.tmuxConfig.tmpDir}`);
-
-                        return (
-                            <Item
-                                key={profile.id}
-                                title={profile.name}
-                                subtitle={subtitleParts.join(' • ')}
-                                icon={<Ionicons name="person" size={29} color={theme.colors.textSecondary} />}
-                                onPress={() => handleSelectProfile(profile.id)}
-                                showChevron={false}
-                                selected={isSelected}
-                                rightElement={
-                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                        {isSelected && (
                                             <Ionicons
-                                                name="checkmark-circle"
+                                                name={isFavorite ? 'star' : 'star-outline'}
                                                 size={20}
-                                                color={theme.colors.text}
-                                                style={{ marginRight: 12 }}
+                                                color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
                                             />
-                                        )}
+                                        </Pressable>
                                         <Pressable
                                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                            onPress={() => handleEditProfile(profile)}
+                                            onPress={(e) => {
+                                                e.stopPropagation();
+                                                handleEditProfile(profile);
+                                            }}
                                         >
                                             <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
                                         </Pressable>
                                         <Pressable
                                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                            onPress={() => void handleDeleteProfile(profile)}
-                                            style={{ marginLeft: 16 }}
+                                            onPress={(e) => {
+                                                e.stopPropagation();
+                                                handleDuplicateProfile(profile);
+                                            }}
                                         >
-                                            <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
+                                            <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
                                         </Pressable>
                                     </View>
-                                }
+                                )}
                             />
                         );
                     })}
+                </ItemGroup>
 
+                <ItemGroup>
                     <Item
                         title={t('profiles.addProfile')}
                         icon={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}

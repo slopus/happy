@@ -126,6 +126,7 @@ describe('settings', () => {
                 lastUsedProfile: null,
                 favoriteDirectories: [],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {
@@ -164,6 +165,7 @@ describe('settings', () => {
                 lastUsedProfile: null,
                 favoriteDirectories: [],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             });
         });
@@ -202,6 +204,7 @@ describe('settings', () => {
                 lastUsedProfile: null,
                 favoriteDirectories: [],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {};
@@ -242,6 +245,7 @@ describe('settings', () => {
                 lastUsedProfile: null,
                 favoriteDirectories: [],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {
@@ -287,6 +291,7 @@ describe('settings', () => {
                 lastUsedProfile: null,
                 favoriteDirectories: [],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             expect(applySettings(currentSettings, {})).toEqual(currentSettings);
@@ -341,6 +346,7 @@ describe('settings', () => {
                 lastUsedProfile: null,
                 favoriteDirectories: [],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: any = {
@@ -407,6 +413,7 @@ describe('settings', () => {
                 lastUsedProfile: null,
                 favoriteDirectories: ['~/src', '~/Desktop', '~/Documents'],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             });
         });
