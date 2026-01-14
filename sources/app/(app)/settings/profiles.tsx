@@ -16,6 +16,7 @@ import { Switch } from '@/components/Switch';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
 import { buildProfileGroups } from '@/sync/profileGrouping';
 import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
+import { useSetting } from '@/sync/storage';
 
 interface ProfileManagerProps {
     onProfileSelect?: (profile: AIBackendProfile | null) => void;
@@ -31,6 +32,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     const [favoriteProfileIds, setFavoriteProfileIds] = useSettingMutable('favoriteProfiles');
     const [editingProfile, setEditingProfile] = React.useState<AIBackendProfile | null>(null);
     const [showAddForm, setShowAddForm] = React.useState(false);
+    const experimentsEnabled = useSetting('experiments');
 
     if (!useProfiles) {
         return (
@@ -130,9 +132,18 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
         }
     };
 
+    const getProfileBackendSubtitle = React.useCallback((profile: Pick<AIBackendProfile, 'compatibility'>) => {
+        const parts: string[] = [];
+        if (profile.compatibility?.claude) parts.push(t('agentInput.agent.claude'));
+        if (profile.compatibility?.codex) parts.push(t('agentInput.agent.codex'));
+        if (experimentsEnabled && profile.compatibility?.gemini) parts.push(t('agentInput.agent.gemini'));
+        return parts.length > 0 ? parts.join(' • ') : '';
+    }, [experimentsEnabled]);
+
     const handleSaveProfile = (profile: AIBackendProfile) => {
         // Profile validation - ensure name is not empty
         if (!profile.name || profile.name.trim() === '') {
+            Modal.alert(t('common.error'), 'Enter a profile name.');
             return;
         }
 
@@ -148,6 +159,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                 p.name.trim() === newProfile.name.trim()
             );
             if (isDuplicate) {
+                Modal.alert(t('common.error'), 'A profile with that name already exists.');
                 return;
             }
 
@@ -159,6 +171,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                 p.id !== profile.id && p.name.trim() === profile.name.trim()
             );
             if (isDuplicate) {
+                Modal.alert(t('common.error'), 'A profile with that name already exists.');
                 return;
             }
 
@@ -196,7 +209,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                                 <Item
                                     key={profile.id}
                                     title={profile.name}
-                                    subtitle={t('profiles.defaultModel')}
+                                    subtitle={getProfileBackendSubtitle(profile)}
                                     leftElement={<ProfileCompatibilityIcon profile={profile} />}
                                     onPress={() => handleSelectProfile(profile.id)}
                                     showChevron={false}
@@ -271,7 +284,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                                 <Item
                                     key={profile.id}
                                     title={profile.name}
-                                    subtitle={t('profiles.defaultModel')}
+                                    subtitle={getProfileBackendSubtitle(profile)}
                                     leftElement={<ProfileCompatibilityIcon profile={profile} />}
                                     onPress={() => handleSelectProfile(profile.id)}
                                     showChevron={false}
@@ -343,7 +356,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                             <Item
                                 key={profile.id}
                                 title={profile.name}
-                                subtitle={t('profiles.defaultModel')}
+                                subtitle={getProfileBackendSubtitle(profile)}
                                 leftElement={<ProfileCompatibilityIcon profile={profile} />}
                                 onPress={() => handleSelectProfile(profile.id)}
                                 showChevron={false}
@@ -409,8 +422,14 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
 
             {/* Profile Add/Edit Modal */}
             {showAddForm && editingProfile && (
-                <View style={profileManagerStyles.modalOverlay}>
-                    <View style={profileManagerStyles.modalContent}>
+                <Pressable
+                    style={profileManagerStyles.modalOverlay}
+                    onPress={() => {
+                        setShowAddForm(false);
+                        setEditingProfile(null);
+                    }}
+                >
+                    <Pressable style={profileManagerStyles.modalContent} onPress={() => { }}>
                         <ProfileEditForm
                             profile={editingProfile}
                             machineId={null}
@@ -420,8 +439,8 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                                 setEditingProfile(null);
                             }}
                         />
-                    </View>
-                </View>
+                    </Pressable>
+                </Pressable>
             )}
         </View>
     );

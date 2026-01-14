@@ -21,6 +21,7 @@ export default function ProfilePickerScreen() {
     const navigation = useNavigation();
     const params = useLocalSearchParams<{ selectedId?: string; machineId?: string }>();
     const useProfiles = useSetting('useProfiles');
+    const experimentsEnabled = useSetting('experiments');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const [favoriteProfileIds, setFavoriteProfileIds] = useSettingMutable('favoriteProfiles');
 
@@ -30,6 +31,22 @@ export default function ProfilePickerScreen() {
     const renderProfileIcon = React.useCallback((profile: AIBackendProfile) => {
         return <ProfileCompatibilityIcon profile={profile} />;
     }, []);
+
+    const getProfileBackendSubtitle = React.useCallback((profile: Pick<AIBackendProfile, 'compatibility'>) => {
+        const parts: string[] = [];
+        if (profile.compatibility?.claude) parts.push(t('agentInput.agent.claude'));
+        if (profile.compatibility?.codex) parts.push(t('agentInput.agent.codex'));
+        if (experimentsEnabled && profile.compatibility?.gemini) parts.push(t('agentInput.agent.gemini'));
+        return parts.length > 0 ? parts.join(' • ') : '';
+    }, [experimentsEnabled]);
+
+    const getProfileSubtitle = React.useCallback((profile: AIBackendProfile) => {
+        const backend = getProfileBackendSubtitle(profile);
+        if (profile.isBuiltIn) {
+            return backend ? `Built-in · ${backend}` : 'Built-in';
+        }
+        return backend;
+    }, [getProfileBackendSubtitle]);
 
     const setProfileParamAndClose = React.useCallback((profileId: string) => {
         const state = navigation.getState();
@@ -196,15 +213,15 @@ export default function ProfilePickerScreen() {
                                     const isSelected = selectedId === profile.id;
                                     const isLast = index === favoriteProfileItems.length - 1;
                                     return (
-                                        <Item
-                                            key={profile.id}
-                                            title={profile.name}
-                                            subtitle={t('profiles.defaultModel')}
-                                            icon={renderProfileIcon(profile)}
-                                            onPress={() => setProfileParamAndClose(profile.id)}
-                                            showChevron={false}
-                                            selected={isSelected}
-                                            pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+		                                        <Item
+		                                            key={profile.id}
+		                                            title={profile.name}
+		                                            subtitle={getProfileSubtitle(profile)}
+		                                            icon={renderProfileIcon(profile)}
+		                                            onPress={() => setProfileParamAndClose(profile.id)}
+		                                            showChevron={false}
+	                                            selected={isSelected}
+	                                            pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                             rightElement={renderProfileRowRightElement(profile, isSelected, true)}
                                             showDivider={!isLast}
                                         />
@@ -220,15 +237,15 @@ export default function ProfilePickerScreen() {
                                     const isLast = index === nonFavoriteCustomProfiles.length - 1;
                                     const isFavorite = favoriteProfileIdSet.has(profile.id);
                                     return (
-                                        <Item
-                                            key={profile.id}
-                                            title={profile.name}
-                                            subtitle={t('profiles.defaultModel')}
-                                            icon={renderProfileIcon(profile)}
-                                            onPress={() => setProfileParamAndClose(profile.id)}
-                                            showChevron={false}
-                                            selected={isSelected}
-                                            pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+		                                    <Item
+		                                        key={profile.id}
+		                                        title={profile.name}
+		                                        subtitle={getProfileSubtitle(profile)}
+		                                        icon={renderProfileIcon(profile)}
+		                                        onPress={() => setProfileParamAndClose(profile.id)}
+		                                        showChevron={false}
+	                                            selected={isSelected}
+	                                            pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                             rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
                                             showDivider={!isLast}
                                         />
@@ -256,15 +273,15 @@ export default function ProfilePickerScreen() {
                                 const isLast = index === nonFavoriteBuiltInProfiles.length - 1;
                                 const isFavorite = favoriteProfileIdSet.has(profile.id);
                                 return (
-                                    <Item
-                                        key={profile.id}
-                                        title={profile.name}
-                                        subtitle={t('profiles.defaultModel')}
-                                        icon={renderProfileIcon(profile)}
-                                        onPress={() => setProfileParamAndClose(profile.id)}
-                                        showChevron={false}
-                                        selected={isSelected}
-                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+	                                    <Item
+	                                        key={profile.id}
+	                                        title={profile.name}
+	                                        subtitle={getProfileSubtitle(profile)}
+	                                        icon={renderProfileIcon(profile)}
+	                                        onPress={() => setProfileParamAndClose(profile.id)}
+	                                        showChevron={false}
+	                                        selected={isSelected}
+	                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                         rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
                                         showDivider={!isLast}
                                     />

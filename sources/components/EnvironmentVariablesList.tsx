@@ -8,6 +8,8 @@ import type { ProfileDocumentation } from '@/sync/profileUtils';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { layout } from '@/components/layout';
+import { Modal } from '@/modal';
+import { t } from '@/text';
 
 export interface EnvironmentVariablesListProps {
     environmentVariables: Array<{ name: string; value: string }>;
@@ -32,6 +34,19 @@ export function EnvironmentVariablesList({
     const [showAddForm, setShowAddForm] = React.useState(false);
     const [newVarName, setNewVarName] = React.useState('');
     const [newVarValue, setNewVarValue] = React.useState('');
+
+    const webNoOutline = React.useMemo(() => (Platform.select({
+        web: {
+            outline: 'none',
+            outlineStyle: 'none',
+            outlineWidth: 0,
+            outlineColor: 'transparent',
+            boxShadow: 'none',
+            WebkitBoxShadow: 'none',
+            WebkitAppearance: 'none',
+        },
+        default: {},
+    }) as object), []);
 
     // Helper to get expected value and description from documentation
     const getDocumentation = React.useCallback((varName: string) => {
@@ -79,20 +94,29 @@ export function EnvironmentVariablesList({
     }, [environmentVariables, onChange]);
 
     const handleAddVariable = React.useCallback(() => {
-        if (!newVarName.trim()) return;
+        const normalizedName = newVarName.trim().toUpperCase();
+        if (!normalizedName) {
+            Modal.alert(t('common.error'), 'Enter a variable name.');
+            return;
+        }
 
         // Validate variable name format
-        if (!/^[A-Z_][A-Z0-9_]*$/.test(newVarName.trim())) {
+        if (!/^[A-Z_][A-Z0-9_]*$/.test(normalizedName)) {
+            Modal.alert(
+                t('common.error'),
+                'Variable names must be uppercase letters, numbers, and underscores, and cannot start with a number.',
+            );
             return;
         }
 
         // Check for duplicates
-        if (environmentVariables.some(v => v.name === newVarName.trim())) {
+        if (environmentVariables.some(v => v.name === normalizedName)) {
+            Modal.alert(t('common.error'), 'That variable already exists.');
             return;
         }
 
         onChange([...environmentVariables, {
-            name: newVarName.trim(),
+            name: normalizedName,
             value: newVarValue.trim() || ''
         }]);
 
@@ -100,7 +124,7 @@ export function EnvironmentVariablesList({
         setNewVarName('');
         setNewVarValue('');
         setShowAddForm(false);
-    }, [newVarName, newVarValue, environmentVariables, onChange]);
+    }, [environmentVariables, newVarName, newVarValue, onChange]);
 
     return (
         <View style={{ marginBottom: 16 }}>
@@ -138,11 +162,11 @@ export function EnvironmentVariablesList({
                             marginBottom: 8,
                         }}>
                             <TextInput
-                                style={{ flex: 1, fontSize: 16, color: theme.colors.input.text, ...Typography.default('regular') }}
+                                style={{ flex: 1, fontSize: 16, color: theme.colors.input.text, ...Typography.default('regular'), ...webNoOutline }}
                                 placeholder="Variable name (e.g., MY_CUSTOM_VAR)"
                                 placeholderTextColor={theme.colors.input.placeholder}
                                 value={newVarName}
-                                onChangeText={setNewVarName}
+                                onChangeText={(text) => setNewVarName(text.toUpperCase())}
                                 autoCapitalize="characters"
                                 autoCorrect={false}
                             />
@@ -158,7 +182,7 @@ export function EnvironmentVariablesList({
                             marginBottom: 12,
                         }}>
                             <TextInput
-                                style={{ flex: 1, fontSize: 16, color: theme.colors.input.text, ...Typography.default('regular') }}
+                                style={{ flex: 1, fontSize: 16, color: theme.colors.input.text, ...Typography.default('regular'), ...webNoOutline }}
                                 placeholder="Value (e.g., my-value or ${MY_VAR})"
                                 placeholderTextColor={theme.colors.input.placeholder}
                                 value={newVarValue}
@@ -188,7 +212,7 @@ export function EnvironmentVariablesList({
             </ItemGroup>
 
             <View style={{ width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center', paddingHorizontal: Platform.select({ ios: 0, default: 4 }) }}>
-                <View style={{ marginHorizontal: Platform.select({ ios: 16, default: 12 }), marginTop: 12 }}>
+                <View style={{ marginHorizontal: Platform.select({ ios: 16, default: 12 }), marginTop: 16 }}>
                     {environmentVariables.map((envVar, index) => {
                         const varNameFromValue = extractVarNameFromValue(envVar.value);
                         const docs = getDocumentation(varNameFromValue || envVar.name);

@@ -66,14 +66,14 @@ export function DirectorySelector({
                 getItemIcon: () => (
                     <Ionicons
                         name="folder-outline"
-                        size={29}
+                        size={24}
                         color={theme.colors.textSecondary}
                     />
                 ),
                 getRecentItemIcon: () => (
                     <Ionicons
                         name="time-outline"
-                        size={29}
+                        size={24}
                         color={theme.colors.textSecondary}
                     />
                 ),

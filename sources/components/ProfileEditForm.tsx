@@ -16,6 +16,7 @@ import { getBuiltInProfileDocumentation } from '@/sync/profileUtils';
 import { EnvironmentVariablesList } from '@/components/EnvironmentVariablesList';
 import { useSetting } from '@/sync/storage';
 import { Modal } from '@/modal';
+import { RoundButton } from '@/components/RoundButton';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
@@ -34,7 +35,7 @@ export function ProfileEditForm({
 }: ProfileEditFormProps) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
-    const groupStyle = React.useMemo(() => ({ marginBottom: 8 }), []);
+    const groupStyle = React.useMemo(() => ({ marginBottom: 12 }), []);
     const experimentsEnabled = useSetting('experiments');
 
     const profileDocs = React.useMemo(() => {
@@ -88,6 +89,7 @@ export function ProfileEditForm({
 
     const handleSave = React.useCallback(() => {
         if (!name.trim()) {
+            Modal.alert(t('common.error'), 'Enter a profile name.');
             return;
         }
 
@@ -264,14 +266,26 @@ export function ProfileEditForm({
                 />
             </View>
 
-            <ItemGroup>
-                <Item title={t('common.cancel')} onPress={onCancel} showChevron={false} />
-                <Item
-                    title={profile.isBuiltIn ? t('common.saveAs') : t('common.save')}
-                    onPress={handleSave}
-                    showChevron={false}
-                />
-            </ItemGroup>
+            <View style={{ paddingHorizontal: Platform.select({ ios: 32, default: 24 }), paddingTop: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                    <View style={{ flex: 1 }}>
+                        <RoundButton
+                            size="normal"
+                            display="inverted"
+                            title={t('common.cancel')}
+                            onPress={onCancel}
+                            style={{ backgroundColor: theme.colors.surface, borderColor: theme.colors.divider }}
+                        />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <RoundButton
+                            size="normal"
+                            title={profile.isBuiltIn ? t('common.saveAs') : t('common.save')}
+                            onPress={handleSave}
+                        />
+                    </View>
+                </View>
+            </View>
         </ItemList>
     );
 }
@@ -301,6 +315,18 @@ const stylesheet = StyleSheet.create((theme) => ({
         lineHeight: Platform.select({ ios: 22, default: 24 }),
         letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
         color: theme.colors.input.text,
+        ...(Platform.select({
+            web: {
+                outline: 'none',
+                outlineStyle: 'none',
+                outlineWidth: 0,
+                outlineColor: 'transparent',
+                boxShadow: 'none',
+                WebkitBoxShadow: 'none',
+                WebkitAppearance: 'none',
+            },
+            default: {},
+        }) as object),
     },
     multilineInput: {
         ...Typography.default('regular'),
@@ -313,5 +339,17 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.input.text,
         fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
         minHeight: 120,
+        ...(Platform.select({
+            web: {
+                outline: 'none',
+                outlineStyle: 'none',
+                outlineWidth: 0,
+                outlineColor: 'transparent',
+                boxShadow: 'none',
+                WebkitBoxShadow: 'none',
+                WebkitAppearance: 'none',
+            },
+            default: {},
+        }) as object),
     },
 }));

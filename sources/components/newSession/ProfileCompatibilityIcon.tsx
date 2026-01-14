@@ -24,10 +24,11 @@ export function ProfileCompatibilityIcon({ profile, size = 32, style }: Props) {
                     hasGemini ? '✦' :
                         '•';
 
+    // Match visual size across glyphs (codex glyph runs larger; claude glyph runs smaller).
     const glyphSize =
-        glyph === '✳' ? Math.round(size * 1.0) :
-            glyph === '꩜' ? Math.round(size * 0.9) :
-                glyph === '✳꩜' ? Math.round(size * 0.8) :
+        glyph === '✳' ? Math.round(size * 1.08) :
+            glyph === '꩜' ? Math.round(size * 0.82) :
+                glyph === '✳꩜' ? Math.round(size * 0.78) :
                     Math.round(size * 0.85);
 
     return (

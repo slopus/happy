@@ -69,8 +69,28 @@ export function EnvironmentVariableCard({
 }: EnvironmentVariableCardProps) {
     const { theme } = useUnistyles();
 
+    const webNoOutline = React.useMemo(() => (Platform.select({
+        web: {
+            outline: 'none',
+            outlineStyle: 'none',
+            outlineWidth: 0,
+            outlineColor: 'transparent',
+            boxShadow: 'none',
+            WebkitBoxShadow: 'none',
+            WebkitAppearance: 'none',
+        },
+        default: {},
+    }) as object), []);
+
     const secondaryTextStyle = React.useMemo(() => ({
         fontSize: Platform.select({ ios: 15, default: 14 }),
+        lineHeight: 20,
+        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
+        ...Typography.default(),
+    }), []);
+
+    const remoteToggleLabelStyle = React.useMemo(() => ({
+        fontSize: Platform.select({ ios: 16, default: 15 }),
         lineHeight: 20,
         letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
         ...Typography.default(),
@@ -108,6 +128,7 @@ export function EnvironmentVariableCard({
 
     return (
         <View style={{
+            width: '100%',
             backgroundColor: theme.colors.surface,
             borderRadius: 16,
             padding: 16,
@@ -163,7 +184,7 @@ export function EnvironmentVariableCard({
                 <Text style={{
                     flex: 1,
                     color: theme.colors.textSecondary,
-                    ...secondaryTextStyle,
+                    ...remoteToggleLabelStyle,
                 }}>
                     Copy from remote machine
                 </Text>
@@ -187,6 +208,7 @@ export function EnvironmentVariableCard({
                         letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
                         color: theme.colors.input.text,
                         marginBottom: 4,
+                        ...webNoOutline,
                     }}
                     placeholder="Variable name (e.g., Z_AI_MODEL)"
                     placeholderTextColor={theme.colors.input.placeholder}
@@ -282,6 +304,7 @@ export function EnvironmentVariableCard({
                     letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
                     color: theme.colors.input.text,
                     marginBottom: 4,
+                    ...webNoOutline,
                 }}
                 placeholder={expectedValue || (useRemoteVariable ? 'Default value' : 'Value')}
                 placeholderTextColor={theme.colors.input.placeholder}
