@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput } from 'react-native';
+import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, storage, useSetting, useSettingMutable, useSessions } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
@@ -139,23 +139,6 @@ const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 
 	        paddingHorizontal: 16,
 	        ...Typography.default()
 	    },
-        wizardInputWrapper: {
-            paddingHorizontal: 16,
-            marginBottom: 12,
-        },
-        wizardTextInput: {
-            ...Typography.default('regular'),
-            backgroundColor: theme.colors.input.background,
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            paddingVertical: Platform.select({ ios: 10, default: 12 }),
-            fontSize: Platform.select({ ios: 17, default: 16 }),
-            lineHeight: Platform.select({ ios: 22, default: 24 }),
-            letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
-            color: theme.colors.input.text,
-            borderWidth: 0.5,
-            borderColor: theme.colors.divider,
-        },
     profileListItem: {
         backgroundColor: theme.colors.input.background,
         borderRadius: 12,
@@ -447,10 +430,6 @@ function NewSessionWizard() {
     const [selectedPath, setSelectedPath] = React.useState<string>(() => {
         return getRecentPathForMachine(selectedMachineId, recentMachinePaths);
     });
-    const [workingDirInput, setWorkingDirInput] = React.useState<string>(() => {
-        return getRecentPathForMachine(selectedMachineId, recentMachinePaths);
-    });
-    const [isEditingWorkingDir, setIsEditingWorkingDir] = React.useState(false);
     const [sessionPrompt, setSessionPrompt] = React.useState(() => {
         return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
     });
@@ -630,13 +609,59 @@ function NewSessionWizard() {
         return machines.find(m => m.id === selectedMachineId);
     }, [selectedMachineId, machines]);
 
-    React.useEffect(() => {
-        if (isEditingWorkingDir) {
-            return;
-        }
-        const homeDir = selectedMachine?.metadata?.homeDir;
-        setWorkingDirInput(selectedPath ? formatPathRelativeToHome(selectedPath, homeDir) : '');
-    }, [isEditingWorkingDir, selectedMachine?.metadata?.homeDir, selectedPath]);
+    const openProfileEdit = React.useCallback((profile: AIBackendProfile) => {
+        const profileData = JSON.stringify(profile);
+        const base = `/new/pick/profile-edit?profileData=${encodeURIComponent(profileData)}`;
+        router.push(selectedMachineId ? `${base}&machineId=${encodeURIComponent(selectedMachineId)}` as any : base as any);
+    }, [router, selectedMachineId]);
+
+    const handleAddProfile = React.useCallback(() => {
+        const newProfile: AIBackendProfile = {
+            id: randomUUID(),
+            name: '',
+            anthropicConfig: {},
+            environmentVariables: [],
+            compatibility: { claude: true, codex: true, gemini: true },
+            isBuiltIn: false,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            version: '1.0.0',
+        };
+        openProfileEdit(newProfile);
+    }, [openProfileEdit]);
+
+    const handleDuplicateProfile = React.useCallback((profile: AIBackendProfile) => {
+        const duplicated: AIBackendProfile = {
+            ...profile,
+            id: randomUUID(),
+            name: `${profile.name} (Copy)`,
+            isBuiltIn: false,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+        };
+        openProfileEdit(duplicated);
+    }, [openProfileEdit]);
+
+    const handleDeleteProfile = React.useCallback((profile: AIBackendProfile) => {
+        Modal.alert(
+            t('profiles.delete.title'),
+            t('profiles.delete.message', { name: profile.name }),
+            [
+                { text: t('profiles.delete.cancel'), style: 'cancel' },
+                {
+                    text: t('profiles.delete.confirm'),
+                    style: 'destructive',
+                    onPress: () => {
+                        const updatedProfiles = profiles.filter(p => p.id !== profile.id);
+                        setProfiles(updatedProfiles);
+                        if (selectedProfileId === profile.id) {
+                            setSelectedProfileId(null);
+                        }
+                    },
+                },
+            ],
+        );
+    }, [profiles, selectedProfileId, setProfiles]);
 
     // Get recent paths for the selected machine
     // Recent machines computed from sessions (for inline machine selection)
@@ -1504,6 +1529,13 @@ function NewSessionWizard() {
                                 <>
                                     <ItemGroup title="">
                                         <Item
+                                            title={t('profiles.addProfile')}
+                                            subtitle={t('profiles.subtitle')}
+                                            leftElement={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}
+                                            onPress={handleAddProfile}
+                                            showChevron={false}
+                                        />
+                                        <Item
                                             title={t('profiles.noProfile')}
                                             subtitle={t('profiles.noProfileDescription')}
                                             leftElement={<Ionicons name="radio-button-off-outline" size={29} color={theme.colors.textSecondary} />}
@@ -1531,6 +1563,36 @@ function NewSessionWizard() {
                                                     selected={isSelected}
                                                     disabled={!availability.available}
                                                     onPress={() => selectProfile(profile.id)}
+                                                    rightElement={
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                                                            <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                                                <Ionicons
+                                                                    name="checkmark-circle"
+                                                                    size={24}
+                                                                    color={theme.colors.button.primary.background}
+                                                                    style={{ opacity: isSelected ? 1 : 0 }}
+                                                                />
+                                                            </View>
+                                                            <Pressable
+                                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                                onPress={(e) => {
+                                                                    e.stopPropagation();
+                                                                    openProfileEdit(profile);
+                                                                }}
+                                                            >
+                                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                                            </Pressable>
+                                                            <Pressable
+                                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                                onPress={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDuplicateProfile(profile);
+                                                                }}
+                                                            >
+                                                                <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                                            </Pressable>
+                                                        </View>
+                                                    }
                                                     showDivider={!isLast}
                                                 />
                                             );
@@ -1550,18 +1612,49 @@ function NewSessionWizard() {
                                                     selected={isSelected}
                                                     disabled={!availability.available}
                                                     onPress={() => selectProfile(profile.id)}
+                                                    rightElement={
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                                                            <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                                                <Ionicons
+                                                                    name="checkmark-circle"
+                                                                    size={24}
+                                                                    color={theme.colors.button.primary.background}
+                                                                    style={{ opacity: isSelected ? 1 : 0 }}
+                                                                />
+                                                            </View>
+                                                            <Pressable
+                                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                                onPress={(e) => {
+                                                                    e.stopPropagation();
+                                                                    openProfileEdit(profile);
+                                                                }}
+                                                            >
+                                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                                            </Pressable>
+                                                            <Pressable
+                                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                                onPress={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDuplicateProfile(profile);
+                                                                }}
+                                                            >
+                                                                <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                                            </Pressable>
+                                                            <Pressable
+                                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                                onPress={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDeleteProfile(profile);
+                                                                }}
+                                                            >
+                                                                <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
+                                                            </Pressable>
+                                                        </View>
+                                                    }
                                                     showDivider={!isLast}
                                                 />
                                             );
                                         })}
-                                    </ItemGroup>
-                                    <ItemGroup title="">
-                                        <Item
-                                            title={t('profiles.title')}
-                                            subtitle={t('profiles.subtitle')}
-                                            leftElement={<Ionicons name="create-outline" size={29} color={theme.colors.textSecondary} />}
-                                            onPress={handleProfileClick}
-                                        />
                                     </ItemGroup>
                                 </>
                             ) : (
@@ -1639,40 +1732,6 @@ function NewSessionWizard() {
                             </View>
 
                             <View style={{ marginBottom: 24 }}>
-                                <View style={styles.wizardInputWrapper}>
-                                    <TextInput
-                                        value={workingDirInput}
-                                        onFocus={() => setIsEditingWorkingDir(true)}
-                                        onBlur={() => {
-                                            setIsEditingWorkingDir(false);
-                                            const trimmed = workingDirInput.trim();
-                                            if (!trimmed) {
-                                                setSelectedPath('');
-                                                return;
-                                            }
-                                            const homeDir = selectedMachine?.metadata?.homeDir;
-                                            const resolved = trimmed.startsWith('~') ? resolveAbsolutePath(trimmed, homeDir) : trimmed;
-                                            setSelectedPath(resolved);
-                                        }}
-                                        onChangeText={(text) => {
-                                            setWorkingDirInput(text);
-                                            const trimmed = text.trim();
-                                            if (!trimmed) {
-                                                setSelectedPath('');
-                                                return;
-                                            }
-                                            const homeDir = selectedMachine?.metadata?.homeDir;
-                                            const resolved = trimmed.startsWith('~') ? resolveAbsolutePath(trimmed, homeDir) : trimmed;
-                                            setSelectedPath(resolved);
-                                        }}
-                                        placeholder="Enter directory (e.g. ~/src or /Users/you/project)"
-                                        placeholderTextColor={theme.colors.input.placeholder}
-                                        autoCapitalize="none"
-                                        autoCorrect={false}
-                                        style={styles.wizardTextInput}
-                                    />
-                                </View>
-
                                 <DirectorySelector
                                     machineHomeDir={selectedMachine?.metadata?.homeDir}
                                     selectedPath={selectedPath}
@@ -1693,12 +1752,10 @@ function NewSessionWizard() {
                                         return favoriteDirectories.map((fav) => resolveAbsolutePath(fav, homeDir));
                                     })()}
                                     showFavorites={true}
-                                    showSearch={false}
+                                    showSearch={true}
+                                    searchPlaceholder="Type to filter or enter custom directory..."
                                     onSelect={(path) => {
-                                        const homeDir = selectedMachine?.metadata?.homeDir;
-                                        setIsEditingWorkingDir(false);
                                         setSelectedPath(path);
-                                        setWorkingDirInput(formatPathRelativeToHome(path, homeDir));
                                     }}
                                     onToggleFavorite={(path) => {
                                         const homeDir = selectedMachine?.metadata?.homeDir;
