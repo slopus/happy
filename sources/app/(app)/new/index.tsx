@@ -35,6 +35,7 @@ import { PathSelector } from '@/components/newSession/PathSelector';
 import { SearchHeader } from '@/components/SearchHeader';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
 import { EnvironmentVariablesPreviewModal } from '@/components/newSession/EnvironmentVariablesPreviewModal';
+import { ProfileActionsMenuModal } from '@/components/newSession/ProfileActionsMenuModal';
 import { buildProfileGroups } from '@/sync/profileGrouping';
 import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 
@@ -251,13 +252,14 @@ const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 
 
 function NewSessionWizard() {
     const { theme, rt } = useUnistyles();
-    const router = useRouter();
-    const safeArea = useSafeAreaInsets();
-    const headerHeight = useHeaderHeight();
-    const { prompt, dataId, machineId: machineIdParam, path: pathParam, profileId: profileIdParam } = useLocalSearchParams<{
-        prompt?: string;
-        dataId?: string;
-        machineId?: string;
+	    const router = useRouter();
+	    const safeArea = useSafeAreaInsets();
+	    const headerHeight = useHeaderHeight();
+	    const screenWidth = useWindowDimensions().width;
+	    const { prompt, dataId, machineId: machineIdParam, path: pathParam, profileId: profileIdParam } = useLocalSearchParams<{
+	        prompt?: string;
+	        dataId?: string;
+	        machineId?: string;
         path?: string;
         profileId?: string;
     }>();
@@ -971,16 +973,76 @@ function NewSessionWizard() {
         } as any);
     }, [selectedMachine, selectedMachineId]);
 
-    const renderProfileLeftElement = React.useCallback((profile: AIBackendProfile) => {
-        return <ProfileCompatibilityIcon profile={profile} />;
-    }, []);
+	    const renderProfileLeftElement = React.useCallback((profile: AIBackendProfile) => {
+	        return <ProfileCompatibilityIcon profile={profile} />;
+	    }, []);
 
-    const renderProfileRightElement = React.useCallback((profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
-        const envVarCount = Object.keys(getProfileEnvironmentVariables(profile)).length;
-        return (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons
+	    const openProfileActionsMenu = React.useCallback((profile: AIBackendProfile, isFavorite: boolean) => {
+	        Modal.show({
+	            component: ProfileActionsMenuModal,
+	            props: {
+	                profileName: profile.name,
+	                isFavorite,
+	                hasEnvVars: Object.keys(getProfileEnvironmentVariables(profile)).length > 0,
+	                canDelete: !profile.isBuiltIn,
+	                onToggleFavorite: () => toggleFavoriteProfile(profile.id),
+	                onViewEnvVars: () => openProfileEnvVarsPreview(profile),
+	                onEdit: () => openProfileEdit(profile),
+	                onCopy: () => handleDuplicateProfile(profile),
+	                onDelete: !profile.isBuiltIn ? () => handleDeleteProfile(profile) : undefined,
+	            },
+	        } as any);
+	    }, [handleDeleteProfile, handleDuplicateProfile, openProfileEdit, openProfileEnvVarsPreview, toggleFavoriteProfile]);
+
+	    const renderProfileRightElement = React.useCallback((profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
+	        const envVarCount = Object.keys(getProfileEnvironmentVariables(profile)).length;
+	        const compact = screenWidth < 420;
+
+	        if (compact) {
+	            return (
+	                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+	                    <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+	                        <Ionicons
+	                            name="checkmark-circle"
+	                            size={24}
+	                            color={theme.colors.button.primary.background}
+	                            style={{ opacity: isSelected ? 1 : 0 }}
+	                        />
+	                    </View>
+	                    {envVarCount > 0 && (
+	                        <Pressable
+	                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+	                            onPressIn={() => {
+	                                ignoreProfileRowPressRef.current = true;
+	                            }}
+	                            onPress={(e) => {
+	                                e.stopPropagation();
+	                                openProfileEnvVarsPreview(profile);
+	                            }}
+	                        >
+	                            <Ionicons name="list-outline" size={22} color={theme.colors.button.secondary.tint} />
+	                        </Pressable>
+	                    )}
+	                    <Pressable
+	                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+	                        onPressIn={() => {
+	                            ignoreProfileRowPressRef.current = true;
+	                        }}
+	                        onPress={(e) => {
+	                            e.stopPropagation();
+	                            openProfileActionsMenu(profile, isFavorite);
+	                        }}
+	                    >
+	                        <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.button.secondary.tint} />
+	                    </Pressable>
+	                </View>
+	            );
+	        }
+
+	        return (
+	            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+	                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+	                    <Ionicons
                         name="checkmark-circle"
                         size={24}
                         color={theme.colors.button.primary.background}
@@ -1059,15 +1121,17 @@ function NewSessionWizard() {
         );
     }, [
         handleDeleteProfile,
-        handleDuplicateProfile,
-        openProfileEnvVarsPreview,
-        openProfileEdit,
-        theme.colors.button.primary.background,
-        theme.colors.button.secondary.tint,
-        theme.colors.deleteAction,
-        theme.colors.textSecondary,
-        toggleFavoriteProfile,
-    ]);
+	        handleDuplicateProfile,
+	        openProfileEnvVarsPreview,
+	        openProfileActionsMenu,
+	        openProfileEdit,
+	        screenWidth,
+	        theme.colors.button.primary.background,
+	        theme.colors.button.secondary.tint,
+	        theme.colors.deleteAction,
+	        theme.colors.textSecondary,
+	        toggleFavoriteProfile,
+	    ]);
 
     // Helper to get meaningful subtitle text for profiles
     const getProfileSubtitle = React.useCallback((profile: AIBackendProfile): string => {
@@ -1321,8 +1385,7 @@ function NewSessionWizard() {
         }
     }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router, useEnhancedSessionWizard]);
 
-    const screenWidth = useWindowDimensions().width;
-    const showInlineClose = screenWidth < 520;
+	    const showInlineClose = screenWidth < 520;
 
     const handleCloseModal = React.useCallback(() => {
         // On web (especially mobile), `router.back()` can be a no-op if the modal is the first history entry.

@@ -230,13 +230,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         justifyContent: 'space-between',
         paddingHorizontal: 0,
     },
-    actionButtonsLeft: {
-        flexDirection: 'row',
-        gap: 8,
-        flex: 1,
-        flexWrap: 'wrap',
-        overflow: 'visible',
-    },
+	    actionButtonsLeft: {
+	        flexDirection: 'row',
+	        columnGap: 8,
+	        rowGap: 6,
+	        flex: 1,
+	        flexWrap: 'wrap',
+	        overflow: 'visible',
+	    },
     actionButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -741,13 +742,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             maxHeight={120}
                         />
                     </View>
-
-                    {/* Action buttons below input */}
-                    <View style={styles.actionButtonsContainer}>
-                        <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
-                            {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
-                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <View style={styles.actionButtonsLeft}>
+	
+	                    {/* Action buttons below input */}
+	                    <View style={styles.actionButtonsContainer}>
+	                        <View style={{ flexDirection: 'column', flex: 1, gap: screenWidth < 420 ? 4 : 6 }}>
+	                            {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
+	                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+	                                <View style={[styles.actionButtonsLeft, screenWidth < 420 ? { rowGap: 4 } : null]}>
 
                                 {/* Permission chip (popover in standard flow, scroll in wizard) */}
                                 {showPermissionChip && (
