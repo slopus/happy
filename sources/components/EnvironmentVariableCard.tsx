@@ -104,7 +104,7 @@ export function EnvironmentVariableCard({
             backgroundColor: theme.colors.surface,
             borderRadius: 16,
             padding: 16,
-            marginHorizontal: 12,
+            marginHorizontal: Platform.select({ ios: 16, default: 12 }),
             marginBottom: 12,
             shadowColor: theme.colors.shadow.color,
             shadowOffset: { width: 0, height: 0.33 },

@@ -224,6 +224,10 @@ export const pl: TranslationStructure = {
         profilesDisabled: 'Profile selection disabled',
         pickerSearch: 'Picker Search',
         pickerSearchSubtitle: 'Show a search field in machine and path pickers',
+        machinePickerSearch: 'Machine search',
+        machinePickerSearchSubtitle: 'Show a search field in machine pickers',
+        pathPickerSearch: 'Path search',
+        pathPickerSearchSubtitle: 'Show a search field in path pickers',
     },
 
     errors: {

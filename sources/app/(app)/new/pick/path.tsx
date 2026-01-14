@@ -10,6 +10,7 @@ import { t } from '@/text';
 import { ItemList } from '@/components/ItemList';
 import { layout } from '@/components/layout';
 import { PathSelector } from '@/components/newSession/PathSelector';
+import { SearchHeader } from '@/components/SearchHeader';
 
 const stylesheet = StyleSheet.create((theme) => ({
     emptyContainer: {
@@ -57,10 +58,11 @@ export default function PathPickerScreen() {
     const machines = useAllMachines();
     const sessions = useSessions();
     const recentMachinePaths = useSetting('recentMachinePaths');
-    const usePickerSearch = useSetting('usePickerSearch');
+    const usePathPickerSearch = useSetting('usePathPickerSearch');
     const [favoriteDirectories, setFavoriteDirectories] = useSettingMutable('favoriteDirectories');
 
     const [customPath, setCustomPath] = useState(params.selectedPath || '');
+    const [pathSearchQuery, setPathSearchQuery] = useState('');
 
     // Get the selected machine
     const machine = useMemo(() => {
@@ -188,13 +190,23 @@ export default function PathPickerScreen() {
                 }}
             />
             <ItemList style={{ paddingTop: 0 }} keyboardShouldPersistTaps="handled">
+                {usePathPickerSearch && (
+                    <SearchHeader
+                        value={pathSearchQuery}
+                        onChangeText={setPathSearchQuery}
+                        placeholder="Search paths..."
+                    />
+                )}
                 <View style={styles.contentWrapper}>
                     <PathSelector
                         machineHomeDir={machine.metadata?.homeDir || '/home'}
                         selectedPath={customPath}
                         onChangeSelectedPath={setCustomPath}
                         recentPaths={recentPaths}
-                        usePickerSearch={usePickerSearch}
+                        usePickerSearch={usePathPickerSearch}
+                        searchVariant="none"
+                        searchQuery={pathSearchQuery}
+                        onChangeSearchQuery={setPathSearchQuery}
                         favoriteDirectories={favoriteDirectories}
                         onChangeFavoriteDirectories={setFavoriteDirectories}
                     />

@@ -15,7 +15,8 @@ export default function FeaturesSettingsScreen() {
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const [useEnhancedSessionWizard, setUseEnhancedSessionWizard] = useSettingMutable('useEnhancedSessionWizard');
-    const [usePickerSearch, setUsePickerSearch] = useSettingMutable('usePickerSearch');
+    const [useMachinePickerSearch, setUseMachinePickerSearch] = useSettingMutable('useMachinePickerSearch');
+    const [usePathPickerSearch, setUsePathPickerSearch] = useSettingMutable('usePathPickerSearch');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -75,10 +76,17 @@ export default function FeaturesSettingsScreen() {
                     showChevron={false}
                 />
                 <Item
-                    title={t('settingsFeatures.pickerSearch')}
-                    subtitle={t('settingsFeatures.pickerSearchSubtitle')}
+                    title={t('settingsFeatures.machinePickerSearch')}
+                    subtitle={t('settingsFeatures.machinePickerSearchSubtitle')}
                     icon={<Ionicons name="search-outline" size={29} color="#007AFF" />}
-                    rightElement={<Switch value={usePickerSearch} onValueChange={setUsePickerSearch} />}
+                    rightElement={<Switch value={useMachinePickerSearch} onValueChange={setUseMachinePickerSearch} />}
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.pathPickerSearch')}
+                    subtitle={t('settingsFeatures.pathPickerSearchSubtitle')}
+                    icon={<Ionicons name="folder-outline" size={29} color="#007AFF" />}
+                    rightElement={<Switch value={usePathPickerSearch} onValueChange={setUsePathPickerSearch} />}
                     showChevron={false}
                 />
                 <Item

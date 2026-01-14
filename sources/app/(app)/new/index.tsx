@@ -33,6 +33,7 @@ import { StatusDot } from '@/components/StatusDot';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
 import { MachineSelector } from '@/components/newSession/MachineSelector';
 import { PathSelector } from '@/components/newSession/PathSelector';
+import { SearchHeader } from '@/components/SearchHeader';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -281,7 +282,8 @@ function NewSessionWizard() {
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
     const experimentsEnabled = useSetting('experiments');
-    const usePickerSearch = useSetting('usePickerSearch');
+    const useMachinePickerSearch = useSetting('useMachinePickerSearch');
+    const usePathPickerSearch = useSetting('usePathPickerSearch');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
     const [favoriteDirectories, setFavoriteDirectories] = useSettingMutable('favoriteDirectories');
@@ -702,6 +704,40 @@ function NewSessionWizard() {
             .sort((a, b) => b.timestamp - a.timestamp)
             .map(item => item.machine);
     }, [sessions, machines]);
+
+    const [wizardMachineSearchQuery, setWizardMachineSearchQuery] = React.useState('');
+    const normalizedWizardMachineSearchQuery = React.useMemo(() => wizardMachineSearchQuery.trim().toLowerCase(), [wizardMachineSearchQuery]);
+
+    const favoriteMachineItems = React.useMemo(() => {
+        return machines.filter(m => favoriteMachines.includes(m.id));
+    }, [machines, favoriteMachines]);
+
+    const wizardMachineMatchesSearch = React.useCallback((machine: (typeof machines)[number]) => {
+        if (!useMachinePickerSearch || !normalizedWizardMachineSearchQuery) return true;
+        const displayName = (machine.metadata?.displayName || '').toLowerCase();
+        const host = (machine.metadata?.host || '').toLowerCase();
+        const id = (machine.id || '').toLowerCase();
+        const query = normalizedWizardMachineSearchQuery;
+        return displayName.includes(query) || host.includes(query) || id.includes(query);
+    }, [normalizedWizardMachineSearchQuery, useMachinePickerSearch]);
+
+    const wizardMachines = React.useMemo(() => {
+        return useMachinePickerSearch && normalizedWizardMachineSearchQuery
+            ? machines.filter(wizardMachineMatchesSearch)
+            : machines;
+    }, [machines, normalizedWizardMachineSearchQuery, useMachinePickerSearch, wizardMachineMatchesSearch]);
+
+    const wizardRecentMachines = React.useMemo(() => {
+        return useMachinePickerSearch && normalizedWizardMachineSearchQuery
+            ? recentMachines.filter(wizardMachineMatchesSearch)
+            : recentMachines;
+    }, [normalizedWizardMachineSearchQuery, recentMachines, useMachinePickerSearch, wizardMachineMatchesSearch]);
+
+    const wizardFavoriteMachineItems = React.useMemo(() => {
+        return useMachinePickerSearch && normalizedWizardMachineSearchQuery
+            ? favoriteMachineItems.filter(wizardMachineMatchesSearch)
+            : favoriteMachineItems;
+    }, [favoriteMachineItems, normalizedWizardMachineSearchQuery, useMachinePickerSearch, wizardMachineMatchesSearch]);
 
     const recentPaths = React.useMemo(() => {
         if (!selectedMachineId) return [];
@@ -1580,9 +1616,17 @@ function NewSessionWizard() {
                                             showChevron={false}
                                             selected={!selectedProfileId}
                                             onPress={() => setSelectedProfileId(null)}
+                                            rightElement={
+                                                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                                    <Ionicons
+                                                        name="checkmark-circle"
+                                                        size={24}
+                                                        color={theme.colors.button.primary.background}
+                                                        style={{ opacity: selectedProfileId ? 0 : 1 }}
+                                                    />
+                                                </View>
+                                            }
                                         />
-                                    </ItemGroup>
-                                    <ItemGroup title="">
                                         {DEFAULT_PROFILES.map((profileDisplay, index) => {
                                             const profile = getBuiltInProfile(profileDisplay.id);
                                             if (!profile) return null;
@@ -1749,13 +1793,34 @@ function NewSessionWizard() {
                             </View>
 
                             <View style={{ marginBottom: 24 }}>
+                                {useMachinePickerSearch && (
+                                    <>
+                                        <ItemGroup title="Search Machines">
+                                            <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+                                                <SearchHeader
+                                                    value={wizardMachineSearchQuery}
+                                                    onChangeText={setWizardMachineSearchQuery}
+                                                    placeholder="Search machines..."
+                                                    containerStyle={{
+                                                        backgroundColor: 'transparent',
+                                                        paddingHorizontal: 0,
+                                                        paddingVertical: 0,
+                                                        borderBottomWidth: 0,
+                                                    }}
+                                                />
+                                            </View>
+                                        </ItemGroup>
+                                        <View style={{ height: 12 }} />
+                                    </>
+                                )}
+
                                 <MachineSelector
-                                    machines={machines}
+                                    machines={wizardMachines}
                                     selectedMachine={selectedMachine || null}
-                                    recentMachines={recentMachines}
-                                    favoriteMachines={machines.filter(m => favoriteMachines.includes(m.id))}
+                                    recentMachines={wizardRecentMachines}
+                                    favoriteMachines={wizardFavoriteMachineItems}
                                     showFavorites={true}
-                                    showSearch={usePickerSearch}
+                                    showSearch={false}
                                     onSelect={(machine) => {
                                         setSelectedMachineId(machine.id);
                                         const bestPath = getRecentPathForMachine(machine.id, recentMachinePaths);
@@ -1782,15 +1847,16 @@ function NewSessionWizard() {
                             </View>
 
                             <View style={{ marginBottom: 24 }}>
-                                <PathSelector
-                                    machineHomeDir={selectedMachine?.metadata?.homeDir || '/home'}
-                                    selectedPath={selectedPath}
-                                    onChangeSelectedPath={setSelectedPath}
-                                    recentPaths={recentPaths}
-                                    usePickerSearch={usePickerSearch}
-                                    favoriteDirectories={favoriteDirectories}
-                                    onChangeFavoriteDirectories={setFavoriteDirectories}
-                                />
+                                    <PathSelector
+                                        machineHomeDir={selectedMachine?.metadata?.homeDir || '/home'}
+                                        selectedPath={selectedPath}
+                                        onChangeSelectedPath={setSelectedPath}
+                                        recentPaths={recentPaths}
+                                        usePickerSearch={usePathPickerSearch}
+                                        searchVariant="group"
+                                        favoriteDirectories={favoriteDirectories}
+                                        onChangeFavoriteDirectories={setFavoriteDirectories}
+                                    />
                             </View>
 
                             {/* Section 4: Permission Mode */}

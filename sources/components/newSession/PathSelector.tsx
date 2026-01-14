@@ -15,6 +15,9 @@ export interface PathSelectorProps {
     onChangeSelectedPath: (path: string) => void;
     recentPaths: string[];
     usePickerSearch: boolean;
+    searchVariant?: 'header' | 'group' | 'none';
+    searchQuery?: string;
+    onChangeSearchQuery?: (text: string) => void;
     favoriteDirectories: string[];
     onChangeFavoriteDirectories: (dirs: string[]) => void;
 }
@@ -47,13 +50,19 @@ export function PathSelector({
     onChangeSelectedPath,
     recentPaths,
     usePickerSearch,
+    searchVariant = 'header',
+    searchQuery: controlledSearchQuery,
+    onChangeSearchQuery: onChangeSearchQueryProp,
     favoriteDirectories,
     onChangeFavoriteDirectories,
 }: PathSelectorProps) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const inputRef = useRef<MultiTextInputHandle>(null);
-    const [searchQuery, setSearchQuery] = useState('');
+
+    const [uncontrolledSearchQuery, setUncontrolledSearchQuery] = useState('');
+    const searchQuery = controlledSearchQuery ?? uncontrolledSearchQuery;
+    const setSearchQuery = onChangeSearchQueryProp ?? setUncontrolledSearchQuery;
 
     const suggestedPaths = useMemo(() => {
         const homeDir = machineHomeDir || '/home';
@@ -147,7 +156,7 @@ export function PathSelector({
 
     return (
         <>
-            {usePickerSearch && (
+            {usePickerSearch && searchVariant === 'header' && (
                 <SearchHeader
                     value={searchQuery}
                     onChangeText={setSearchQuery}
@@ -170,6 +179,24 @@ export function PathSelector({
                     </View>
                 </View>
             </ItemGroup>
+
+            {usePickerSearch && searchVariant === 'group' && (
+                <ItemGroup title="Search Paths">
+                    <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+                        <SearchHeader
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            placeholder="Search paths..."
+                            containerStyle={{
+                                backgroundColor: 'transparent',
+                                paddingHorizontal: 0,
+                                paddingVertical: 0,
+                                borderBottomWidth: 0,
+                            }}
+                        />
+                    </View>
+                </ItemGroup>
+            )}
 
             {filteredFavoritePaths.length > 0 && (
                 <ItemGroup title="Favorite Paths">

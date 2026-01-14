@@ -240,7 +240,10 @@ export const SettingsSchema = z.object({
     experiments: z.boolean().describe('Whether to enable experimental features'),
     useProfiles: z.boolean().describe('Whether to enable AI backend profiles feature'),
     useEnhancedSessionWizard: z.boolean().describe('A/B test flag: Use enhanced profile-based session wizard UI'),
-    usePickerSearch: z.boolean().describe('Whether to show search in machine/path picker UIs'),
+    // Legacy combined toggle (kept for backward compatibility; see settingsParse migration)
+    usePickerSearch: z.boolean().describe('Whether to show search in machine/path picker UIs (legacy combined toggle)'),
+    useMachinePickerSearch: z.boolean().describe('Whether to show search in machine picker UIs'),
+    usePathPickerSearch: z.boolean().describe('Whether to show search in path picker UIs'),
     alwaysShowContextSize: z.boolean().describe('Always show context size in agent input'),
     agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
     avatarStyle: z.string().describe('Avatar display style'),
@@ -312,6 +315,8 @@ export const settingsDefaults: Settings = {
     useProfiles: false,
     useEnhancedSessionWizard: false,
     usePickerSearch: false,
+    useMachinePickerSearch: false,
+    usePathPickerSearch: false,
     alwaysShowContextSize: false,
     agentInputEnterToSend: true,
     avatarStyle: 'brutalist',
@@ -390,6 +395,18 @@ export function settingsParse(settings: unknown): Settings {
             console.log('[Settings Migration] Converting language code from "zh" to "zh-Hans"');
         }
         result.preferredLanguage = 'zh-Hans';
+    }
+
+    // Migration: Convert legacy combined picker-search toggle into per-picker toggles.
+    // Only apply if new fields were not present in persisted settings.
+    const hasMachineSearch = 'useMachinePickerSearch' in input;
+    const hasPathSearch = 'usePathPickerSearch' in input;
+    if (!hasMachineSearch && !hasPathSearch) {
+        const legacy = SettingsSchema.shape.usePickerSearch.safeParse(input.usePickerSearch);
+        if (legacy.success && legacy.data === true) {
+            result.useMachinePickerSearch = true;
+            result.usePathPickerSearch = true;
+        }
     }
 
     // Preserve unknown fields (forward compatibility).
