@@ -12,13 +12,17 @@ type Props = {
 
 export function ProfileCompatibilityIcon({ profile, size = 29, style }: Props) {
     const { theme } = useUnistyles();
-    const glyphSize = Math.round(size * 0.75);
 
     const glyph =
         profile.compatibility?.claude && profile.compatibility?.codex ? '✳꩜' :
             profile.compatibility?.claude ? '✳' :
                 profile.compatibility?.codex ? '꩜' :
                     '•';
+
+    const glyphSize =
+        glyph === '✳' ? Math.round(size * 0.85) :
+            glyph === '✳꩜' ? Math.round(size * 0.7) :
+                Math.round(size * 0.75);
 
     return (
         <View
