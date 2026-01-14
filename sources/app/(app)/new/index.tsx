@@ -27,14 +27,12 @@ import { StyleSheet } from 'react-native-unistyles';
 import { randomUUID } from 'expo-crypto';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
 import { useEnvironmentVariables, resolveEnvVarSubstitution, extractEnvVarReferences } from '@/hooks/useEnvironmentVariables';
-import { formatPathRelativeToHome } from '@/utils/sessionUtils';
-import { resolveAbsolutePath } from '@/utils/pathUtils';
-import { MultiTextInput } from '@/components/MultiTextInput';
+
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
 import { MachineSelector } from '@/components/newSession/MachineSelector';
-import { DirectorySelector } from '@/components/newSession/DirectorySelector';
+import { PathSelector } from '@/components/newSession/PathSelector';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -206,18 +204,6 @@ const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 
         fontSize: 13,
         flex: 1,
         ...Typography.default()
-    },
-    advancedHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 12,
-    },
-    advancedHeaderText: {
-        fontSize: 13,
-        fontWeight: '500',
-        color: theme.colors.textSecondary,
-        ...Typography.default(),
     },
     permissionGrid: {
         flexDirection: 'row',
@@ -434,7 +420,6 @@ function NewSessionWizard() {
         return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
     });
     const [isCreating, setIsCreating] = React.useState(false);
-    const [showAdvanced, setShowAdvanced] = React.useState(false);
 
     // Handle machineId route param from picker screens (main's navigation pattern)
     React.useEffect(() => {
@@ -450,6 +435,32 @@ function NewSessionWizard() {
             setSelectedPath(bestPath);
         }
     }, [machineIdParam, machines, recentMachinePaths, selectedMachineId]);
+
+    // Ensure a machine is pre-selected once machines have loaded (wizard expects this).
+    React.useEffect(() => {
+        if (selectedMachineId !== null) {
+            return;
+        }
+        if (machines.length === 0) {
+            return;
+        }
+
+        let machineIdToUse: string | null = null;
+        if (recentMachinePaths.length > 0) {
+            for (const recent of recentMachinePaths) {
+                if (machines.find(m => m.id === recent.machineId)) {
+                    machineIdToUse = recent.machineId;
+                    break;
+                }
+            }
+        }
+        if (!machineIdToUse) {
+            machineIdToUse = machines[0].id;
+        }
+
+        setSelectedMachineId(machineIdToUse);
+        setSelectedPath(getRecentPathForMachine(machineIdToUse, recentMachinePaths));
+    }, [machines, recentMachinePaths, selectedMachineId]);
 
     // Handle path route param from picker screens (main's navigation pattern)
     React.useEffect(() => {
@@ -552,40 +563,43 @@ function NewSessionWizard() {
         }
     }, [selectedMachineId, dismissedCLIWarnings, setDismissedCLIWarnings]);
 
-    // Helper to check if profile is available (compatible + CLI detected)
+    // Helper to check if profile is available (CLI detected + experiments gating)
     const isProfileAvailable = React.useCallback((profile: AIBackendProfile): { available: boolean; reason?: string } => {
-        // Check profile compatibility with selected agent type
-        if (!validateProfileForAgent(profile, agentType)) {
-            // Build list of agents this profile supports (excluding current)
-            // Uses Object.entries to iterate over compatibility flags - scales automatically with new agents
-            const supportedAgents = (Object.entries(profile.compatibility) as [string, boolean][])
-                .filter(([agent, supported]) => supported && agent !== agentType)
-                .map(([agent]) => agent.charAt(0).toUpperCase() + agent.slice(1)); // 'claude' -> 'Claude'
-            const required = supportedAgents.join(' or ') || 'another agent';
-            return {
-                available: false,
-                reason: `requires-agent:${required}`,
-            };
-        }
-
-        // Check if required CLI is detected on machine (only if detection completed)
-        // Determine required CLI: if profile supports exactly one CLI, that CLI is required
-        // Uses Object.entries to iterate - scales automatically when new agents are added
         const supportedCLIs = (Object.entries(profile.compatibility) as [string, boolean][])
             .filter(([, supported]) => supported)
-            .map(([agent]) => agent);
-        const requiredCLI = supportedCLIs.length === 1 ? supportedCLIs[0] as 'claude' | 'codex' | 'gemini' : null;
+            .map(([agent]) => agent as 'claude' | 'codex' | 'gemini');
 
-        if (requiredCLI && cliAvailability[requiredCLI] === false) {
+        const allowedCLIs = supportedCLIs.filter((cli) => cli !== 'gemini' || experimentsEnabled);
+
+        if (allowedCLIs.length === 0) {
             return {
                 available: false,
-                reason: `cli-not-detected:${requiredCLI}`,
+                reason: 'no-supported-cli',
             };
         }
 
-        // Optimistic: If detection hasn't completed (null) or profile supports both, assume available
+        // If a profile requires exactly one CLI, enforce that one.
+        if (allowedCLIs.length === 1) {
+            const requiredCLI = allowedCLIs[0];
+            if (cliAvailability[requiredCLI] === false) {
+                return {
+                    available: false,
+                    reason: `cli-not-detected:${requiredCLI}`,
+                };
+            }
+            return { available: true };
+        }
+
+        // Multi-CLI profiles: available if *any* supported CLI is available (or detection not finished).
+        const anyAvailable = allowedCLIs.some((cli) => cliAvailability[cli] !== false);
+        if (!anyAvailable) {
+            return {
+                available: false,
+                reason: 'cli-not-detected:any',
+            };
+        }
         return { available: true };
-    }, [agentType, cliAvailability]);
+    }, [cliAvailability, experimentsEnabled]);
 
     // Computed values
     const compatibleProfiles = React.useMemo(() => {
@@ -1529,13 +1543,6 @@ function NewSessionWizard() {
                                 <>
                                     <ItemGroup title="">
                                         <Item
-                                            title={t('profiles.addProfile')}
-                                            subtitle={t('profiles.subtitle')}
-                                            leftElement={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}
-                                            onPress={handleAddProfile}
-                                            showChevron={false}
-                                        />
-                                        <Item
                                             title={t('profiles.noProfile')}
                                             subtitle={t('profiles.noProfileDescription')}
                                             leftElement={<Ionicons name="radio-button-off-outline" size={29} color={theme.colors.textSecondary} />}
@@ -1656,6 +1663,16 @@ function NewSessionWizard() {
                                             );
                                         })}
                                     </ItemGroup>
+                                    <ItemGroup title="">
+                                        <Item
+                                            title={t('profiles.addProfile')}
+                                            subtitle={t('profiles.subtitle')}
+                                            leftElement={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}
+                                            onPress={handleAddProfile}
+                                            showChevron={false}
+                                            showDivider={false}
+                                        />
+                                    </ItemGroup>
                                 </>
                             ) : (
                                 <ItemGroup title="">
@@ -1732,47 +1749,14 @@ function NewSessionWizard() {
                             </View>
 
                             <View style={{ marginBottom: 24 }}>
-                                <DirectorySelector
-                                    machineHomeDir={selectedMachine?.metadata?.homeDir}
+                                <PathSelector
+                                    machineHomeDir={selectedMachine?.metadata?.homeDir || '/home'}
                                     selectedPath={selectedPath}
+                                    onChangeSelectedPath={setSelectedPath}
                                     recentPaths={recentPaths}
-                                    suggestedPaths={(() => {
-                                        const homeDir = selectedMachine?.metadata?.homeDir;
-                                        if (!homeDir) return [];
-                                        return [
-                                            homeDir,
-                                            `${homeDir}/projects`,
-                                            `${homeDir}/Documents`,
-                                            `${homeDir}/Desktop`,
-                                        ];
-                                    })()}
-                                    favoritePaths={(() => {
-                                        if (!selectedMachine?.metadata?.homeDir) return [];
-                                        const homeDir = selectedMachine.metadata.homeDir;
-                                        return favoriteDirectories.map((fav) => resolveAbsolutePath(fav, homeDir));
-                                    })()}
-                                    showFavorites={true}
-                                    showSearch={true}
-                                    searchPlaceholder="Type to filter or enter custom directory..."
-                                    onSelect={(path) => {
-                                        setSelectedPath(path);
-                                    }}
-                                    onToggleFavorite={(path) => {
-                                        const homeDir = selectedMachine?.metadata?.homeDir;
-                                        if (!homeDir) return;
-
-                                        const relativePath = formatPathRelativeToHome(path, homeDir);
-                                        const isInFavorites = favoriteDirectories.some((fav) =>
-                                            resolveAbsolutePath(fav, homeDir) === path
-                                        );
-                                        if (isInFavorites) {
-                                            setFavoriteDirectories(
-                                                favoriteDirectories.filter((fav) => resolveAbsolutePath(fav, homeDir) !== path)
-                                            );
-                                        } else {
-                                            setFavoriteDirectories([...favoriteDirectories, relativePath]);
-                                        }
-                                    }}
+                                    usePickerSearch={usePickerSearch}
+                                    favoriteDirectories={favoriteDirectories}
+                                    onChangeFavoriteDirectories={setFavoriteDirectories}
                                 />
                             </View>
 
@@ -1826,31 +1810,9 @@ function NewSessionWizard() {
                                 ))}
                             </ItemGroup>
 
-                            {/* Section 5: Advanced Options (Collapsible) */}
-                            {experimentsEnabled && (
-                                <>
-                                    <Pressable
-                                        style={styles.advancedHeader}
-                                        onPress={() => setShowAdvanced(!showAdvanced)}
-                                    >
-                                        <Text style={styles.advancedHeaderText}>Advanced Options</Text>
-                                        <Ionicons
-                                            name={showAdvanced ? "chevron-up" : "chevron-down"}
-                                            size={20}
-                                            color={theme.colors.text}
-                                        />
-                                    </Pressable>
-
-                                    {showAdvanced && (
-                                        <View style={{ marginBottom: 12 }}>
-                                            <SessionTypeSelector
-                                                value={sessionType}
-                                                onChange={setSessionType}
-                                            />
-                                        </View>
-                                    )}
-                                </>
-                            )}
+                            <View style={{ paddingHorizontal: 16, marginBottom: 24 }}>
+                                <SessionTypeSelector value={sessionType} onChange={setSessionType} />
+                            </View>
                         </View>
                     </View>
                 </View>
