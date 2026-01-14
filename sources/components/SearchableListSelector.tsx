@@ -83,7 +83,7 @@ export interface SearchableListSelectorProps<T> {
 
 const RECENT_ITEMS_DEFAULT_VISIBLE = 5;
 const STATUS_DOT_TEXT_GAP = 4;
-const ITEM_SPACING_GAP = 4;
+const ITEM_SPACING_GAP = 8;
 
 const stylesheet = StyleSheet.create((theme) => ({
     showMoreTitle: {
@@ -219,14 +219,15 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 rightElement={(
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_SPACING_GAP }}>
                         {renderStatus(status)}
-                        {renderFavoriteToggle(item, isFavorite)}
-                        {isSelected && (
+                        <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
                             <Ionicons
                                 name="checkmark-circle"
                                 size={24}
                                 color={theme.colors.button.primary.background}
+                                style={{ opacity: isSelected ? 1 : 0 }}
                             />
-                        )}
+                        </View>
+                        {renderFavoriteToggle(item, isFavorite)}
                     </View>
                 )}
                 onPress={() => onSelect(item)}

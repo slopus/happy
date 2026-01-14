@@ -121,7 +121,7 @@ const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 
 	        gap: 8,
 	        marginBottom: 8,
 	        marginTop: 12,
-	        paddingHorizontal: Platform.select({ ios: 32, default: 28 }),
+	        paddingHorizontal: 16,
 	    },
 	    sectionHeader: {
 	        fontSize: 14,
@@ -136,11 +136,11 @@ const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 
 	        color: theme.colors.textSecondary,
 	        marginBottom: 12,
 	        lineHeight: 18,
-	        paddingHorizontal: Platform.select({ ios: 32, default: 28 }),
+	        paddingHorizontal: 16,
 	        ...Typography.default()
 	    },
         wizardInputWrapper: {
-            paddingHorizontal: Platform.select({ ios: 32, default: 28 }),
+            paddingHorizontal: 16,
             marginBottom: 12,
         },
         wizardTextInput: {
@@ -830,82 +830,30 @@ function NewSessionWizard() {
         const parts: string[] = [];
         const availability = isProfileAvailable(profile);
 
-        // Add "Built-in" indicator first for built-in profiles
         if (profile.isBuiltIn) {
             parts.push('Built-in');
         }
 
-        // Add CLI type second (before warnings/availability)
         if (profile.compatibility.claude && profile.compatibility.codex) {
-            parts.push('Claude & Codex CLI');
+            parts.push('Claude & Codex');
         } else if (profile.compatibility.claude) {
-            parts.push('Claude CLI');
+            parts.push('Claude');
         } else if (profile.compatibility.codex) {
-            parts.push('Codex CLI');
+            parts.push('Codex');
         }
 
-        // Add availability warning if unavailable
         if (!availability.available && availability.reason) {
             if (availability.reason.startsWith('requires-agent:')) {
                 const required = availability.reason.split(':')[1];
-                parts.push(`⚠️ This profile uses ${required} CLI only`);
+                parts.push(`Requires ${required}`);
             } else if (availability.reason.startsWith('cli-not-detected:')) {
                 const cli = availability.reason.split(':')[1];
-                const cliName = cli === 'claude' ? 'Claude' : 'Codex';
-                parts.push(`⚠️ ${cliName} CLI not detected (this profile needs it)`);
+                parts.push(`${cli} CLI not detected`);
             }
         }
 
-        // Get model name - check both anthropicConfig and environmentVariables
-        let modelName: string | undefined;
-        if (profile.anthropicConfig?.model) {
-            // User set in GUI - literal value, no evaluation needed
-            modelName = profile.anthropicConfig.model;
-        } else if (profile.openaiConfig?.model) {
-            modelName = profile.openaiConfig.model;
-        } else {
-            // Check environmentVariables - may need ${VAR} evaluation
-            const modelEnvVar = profile.environmentVariables?.find(ev => ev.name === 'ANTHROPIC_MODEL');
-            if (modelEnvVar) {
-                const resolved = resolveEnvVarSubstitution(modelEnvVar.value, daemonEnv);
-                if (resolved) {
-                    // Show as "VARIABLE: value" when evaluated from ${VAR}
-                    const varName = modelEnvVar.value.match(/^\$\{(.+)\}$/)?.[1];
-                    modelName = varName ? `${varName}: ${resolved}` : resolved;
-                } else {
-                    // Show raw ${VAR} if not resolved (machine not selected or var not set)
-                    modelName = modelEnvVar.value;
-                }
-            }
-        }
-
-        if (modelName) {
-            parts.push(modelName);
-        }
-
-        // Add base URL if exists in environmentVariables
-        const baseUrlEnvVar = profile.environmentVariables?.find(ev => ev.name === 'ANTHROPIC_BASE_URL');
-        if (baseUrlEnvVar) {
-            const resolved = resolveEnvVarSubstitution(baseUrlEnvVar.value, daemonEnv);
-            if (resolved) {
-                // Extract hostname and show with variable name
-                const varName = baseUrlEnvVar.value.match(/^\$\{([A-Z_][A-Z0-9_]*)/)?.[1];
-                try {
-                    const url = new URL(resolved);
-                    const display = varName ? `${varName}: ${url.hostname}` : url.hostname;
-                    parts.push(display);
-                } catch {
-                    // Not a valid URL, show as-is with variable name
-                    parts.push(varName ? `${varName}: ${resolved}` : resolved);
-                }
-            } else {
-                // Show raw ${VAR} if not resolved (machine not selected or var not set)
-                parts.push(baseUrlEnvVar.value);
-            }
-        }
-
-        return parts.join(', ');
-    }, [agentType, isProfileAvailable, daemonEnv]);
+        return parts.join(' · ');
+    }, [isProfileAvailable]);
 
     // Handle machine and path selection callbacks
     React.useEffect(() => {
@@ -1264,57 +1212,59 @@ function NewSessionWizard() {
                         <View ref={profileSectionRef} style={styles.wizardContainer}>
                             {/* CLI Detection Status Banner - shows after detection completes */}
                             {selectedMachineId && cliAvailability.timestamp > 0 && selectedMachine && connectionStatus && (
-                                <View style={{
-                                    backgroundColor: theme.colors.surfacePressed,
-                                    borderRadius: 10,
-                                    padding: 10,
-                                    paddingRight: 18,
-                                    marginBottom: 12,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    gap: STATUS_ITEM_GAP,
-                                }}>
-                                    <Ionicons name="desktop-outline" size={16} color={theme.colors.textSecondary} />
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: STATUS_ITEM_GAP, flexWrap: 'wrap' }}>
-                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            {selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Machine'}:
-                                        </Text>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                            <StatusDot
-                                                color={connectionStatus.dotColor}
-                                                isPulsing={connectionStatus.isPulsing}
-                                                size={6}
-                                            />
-                                            <Text style={{ fontSize: 11, color: connectionStatus.color, ...Typography.default() }}>
-                                                {connectionStatus.text}
+                                <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
+                                    <View style={{
+                                        backgroundColor: theme.colors.surfacePressed,
+                                        borderRadius: 10,
+                                        padding: 10,
+                                        paddingRight: 18,
+                                        marginBottom: 12,
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        gap: STATUS_ITEM_GAP,
+                                    }}>
+                                        <Ionicons name="desktop-outline" size={16} color={theme.colors.textSecondary} />
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: STATUS_ITEM_GAP, flexWrap: 'wrap' }}>
+                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                {selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Machine'}:
                                             </Text>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                {cliAvailability.claude ? '✓' : '✗'}
-                                            </Text>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                claude
-                                            </Text>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                {cliAvailability.codex ? '✓' : '✗'}
-                                            </Text>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                codex
-                                            </Text>
-                                        </View>
-                                        {experimentsEnabled && (
                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                    {cliAvailability.gemini ? '✓' : '✗'}
-                                                </Text>
-                                                <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                    gemini
+                                                <StatusDot
+                                                    color={connectionStatus.dotColor}
+                                                    isPulsing={connectionStatus.isPulsing}
+                                                    size={6}
+                                                />
+                                                <Text style={{ fontSize: 11, color: connectionStatus.color, ...Typography.default() }}>
+                                                    {connectionStatus.text}
                                                 </Text>
                                             </View>
-                                        )}
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                    {cliAvailability.claude ? '✓' : '✗'}
+                                                </Text>
+                                                <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                    claude
+                                                </Text>
+                                            </View>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                    {cliAvailability.codex ? '✓' : '✗'}
+                                                </Text>
+                                                <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                    codex
+                                                </Text>
+                                            </View>
+                                            {experimentsEnabled && (
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                    <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                        {cliAvailability.gemini ? '✓' : '✗'}
+                                                    </Text>
+                                                    <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                        gemini
+                                                    </Text>
+                                                </View>
+                                            )}
+                                        </View>
                                     </View>
                                 </View>
                             )}
@@ -1551,20 +1501,69 @@ function NewSessionWizard() {
                             )}
 
                             {useProfiles ? (
-                                <ItemGroup title="">
-                                    <Item
-                                        title={selectedProfile ? selectedProfile.name : t('profiles.noProfile')}
-                                        subtitle={selectedProfile ? getProfileSubtitle(selectedProfile) : t('profiles.noProfileDescription')}
-                                        leftElement={
-                                            <Ionicons
-                                                name={selectedProfile ? "person-outline" : "radio-button-off-outline"}
-                                                size={29}
-                                                color={theme.colors.textSecondary}
-                                            />
-                                        }
-                                        onPress={handleProfileClick}
-                                    />
-                                </ItemGroup>
+                                <>
+                                    <ItemGroup title="">
+                                        <Item
+                                            title={t('profiles.noProfile')}
+                                            subtitle={t('profiles.noProfileDescription')}
+                                            leftElement={<Ionicons name="radio-button-off-outline" size={29} color={theme.colors.textSecondary} />}
+                                            showChevron={false}
+                                            selected={!selectedProfileId}
+                                            onPress={() => setSelectedProfileId(null)}
+                                        />
+                                    </ItemGroup>
+                                    <ItemGroup title="">
+                                        {DEFAULT_PROFILES.map((profileDisplay, index) => {
+                                            const profile = getBuiltInProfile(profileDisplay.id);
+                                            if (!profile) return null;
+
+                                            const availability = isProfileAvailable(profile);
+                                            const isSelected = selectedProfileId === profile.id;
+                                            const isLast = index === DEFAULT_PROFILES.length - 1 && profiles.length === 0;
+
+                                            return (
+                                                <Item
+                                                    key={profile.id}
+                                                    title={profile.name}
+                                                    subtitle={getProfileSubtitle(profile)}
+                                                    leftElement={<Ionicons name="star" size={29} color={theme.colors.button.secondary.tint} />}
+                                                    showChevron={false}
+                                                    selected={isSelected}
+                                                    disabled={!availability.available}
+                                                    onPress={() => selectProfile(profile.id)}
+                                                    showDivider={!isLast}
+                                                />
+                                            );
+                                        })}
+                                        {profiles.map((profile, index) => {
+                                            const availability = isProfileAvailable(profile);
+                                            const isSelected = selectedProfileId === profile.id;
+                                            const isLast = index === profiles.length - 1;
+
+                                            return (
+                                                <Item
+                                                    key={profile.id}
+                                                    title={profile.name}
+                                                    subtitle={getProfileSubtitle(profile)}
+                                                    leftElement={<Ionicons name="person" size={29} color={theme.colors.textSecondary} />}
+                                                    showChevron={false}
+                                                    selected={isSelected}
+                                                    disabled={!availability.available}
+                                                    onPress={() => selectProfile(profile.id)}
+                                                    showDivider={!isLast}
+                                                />
+                                            );
+                                        })}
+                                    </ItemGroup>
+                                    <ItemGroup title="">
+                                        <Item
+                                            title={t('profiles.title')}
+                                            subtitle={t('profiles.subtitle')}
+                                            leftElement={<Ionicons name="create-outline" size={29} color={theme.colors.textSecondary} />}
+                                            onPress={handleProfileClick}
+                                        />
+                                    </ItemGroup>
+                                </>
                             ) : (
                                 <ItemGroup title="">
                                     <Item
