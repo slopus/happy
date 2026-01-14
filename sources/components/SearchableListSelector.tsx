@@ -197,7 +197,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
             >
                 <Ionicons
                     name={isFavorite ? 'star' : 'star-outline'}
-                    size={20}
+                    size={24}
                     color={disabled ? theme.colors.textSecondary : color}
                 />
             </Pressable>

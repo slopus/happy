@@ -51,14 +51,14 @@ export function MachineSelector({
                 getItemIcon: () => (
                     <Ionicons
                         name="desktop-outline"
-                        size={29}
+                        size={24}
                         color={theme.colors.textSecondary}
                     />
                 ),
                 getRecentItemIcon: () => (
                     <Ionicons
                         name="time-outline"
-                        size={29}
+                        size={24}
                         color={theme.colors.textSecondary}
                     />
                 ),

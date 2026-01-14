@@ -883,7 +883,7 @@ function NewSessionWizard() {
                 >
                     <Ionicons
                         name={isFavorite ? 'star' : 'star-outline'}
-                        size={20}
+                        size={24}
                         color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
                     />
                 </Pressable>
@@ -1386,7 +1386,6 @@ function NewSessionWizard() {
 
                             {/* Section 1: Profile Management */}
 	                            <View style={styles.wizardSectionHeaderRow}>
-                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>1.</Text>
                                 <Ionicons name={useProfiles ? "person-outline" : "hardware-chip-outline"} size={18} color={theme.colors.text} />
                                 <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
                                     {useProfiles ? 'Select AI Profile & Backend' : 'Select AI'}
@@ -1617,28 +1616,6 @@ function NewSessionWizard() {
 
                             {useProfiles ? (
                                 <>
-                                    <ItemGroup title="" footer={t('profiles.subtitle')}>
-                                        <Item
-                                            title={t('profiles.noProfile')}
-                                            subtitle={t('profiles.noProfileDescription')}
-                                            leftElement={<Ionicons name="settings-outline" size={29} color={theme.colors.textSecondary} />}
-                                            showChevron={false}
-                                            selected={!selectedProfileId}
-                                            onPress={() => setSelectedProfileId(null)}
-                                            pressableStyle={!selectedProfileId ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                            rightElement={
-                                                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                                    <Ionicons
-                                                        name="checkmark-circle"
-                                                        size={24}
-                                                        color={theme.colors.button.primary.background}
-                                                        style={{ opacity: selectedProfileId ? 0 : 1 }}
-                                                    />
-                                                </View>
-                                            }
-                                        />
-                                    </ItemGroup>
-
                                     {favoriteProfileItems.length > 0 && (
                                         <ItemGroup title="Favorites">
                                             {favoriteProfileItems.map((profile, index) => {
@@ -1691,6 +1668,26 @@ function NewSessionWizard() {
                                     )}
 
                                     <ItemGroup title="Built-in Profiles">
+                                        <Item
+                                            title={t('profiles.noProfile')}
+                                            subtitle={t('profiles.noProfileDescription')}
+                                            leftElement={<Ionicons name="home-outline" size={24} color={theme.colors.textSecondary} />}
+                                            showChevron={false}
+                                            selected={!selectedProfileId}
+                                            onPress={() => setSelectedProfileId(null)}
+                                            pressableStyle={!selectedProfileId ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                            rightElement={
+                                                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                                    <Ionicons
+                                                        name="checkmark-circle"
+                                                        size={24}
+                                                        color={theme.colors.button.primary.background}
+                                                        style={{ opacity: selectedProfileId ? 1 : 0 }}
+                                                    />
+                                                </View>
+                                            }
+                                            showDivider={nonFavoriteBuiltInProfiles.length > 0}
+                                        />
                                         {nonFavoriteBuiltInProfiles.map((profile, index) => {
                                             const availability = isProfileAvailable(profile);
                                             const isSelected = selectedProfileId === profile.id;
@@ -1761,7 +1758,6 @@ function NewSessionWizard() {
                             {/* Section 2: Machine Selection */}
                             <View ref={machineSectionRef} onLayout={registerWizardSectionOffset('machine')}>
                                 <View style={styles.wizardSectionHeaderRow}>
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>2.</Text>
                                     <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Machine</Text>
                                 </View>
@@ -1796,7 +1792,6 @@ function NewSessionWizard() {
                             {/* Section 3: Working Directory */}
                             <View ref={pathSectionRef} onLayout={registerWizardSectionOffset('path')}>
                                 <View style={styles.wizardSectionHeaderRow}>
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>3.</Text>
                                     <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Working Directory</Text>
                                 </View>
@@ -1818,11 +1813,10 @@ function NewSessionWizard() {
                             {/* Section 4: Permission Mode */}
 	                            <View ref={permissionSectionRef} onLayout={registerWizardSectionOffset('permission')}>
 		                                <View style={styles.wizardSectionHeaderRow}>
-	                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>4.</Text>
-	                                    <Ionicons name="shield-half-outline" size={18} color={theme.colors.text} />
-	                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Permission Mode</Text>
-	                                </View>
-	                            </View>
+		                                    <Ionicons name="shield-half-outline" size={18} color={theme.colors.text} />
+		                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Permission Mode</Text>
+		                                </View>
+		                            </View>
 	                            <ItemGroup title="">
 	                                {(agentType === 'codex'
 	                                    ? [
@@ -1870,7 +1864,6 @@ function NewSessionWizard() {
 	                            {/* Section 5: Session Type */}
 	                            <View onLayout={registerWizardSectionOffset('sessionType')}>
 	                                <View style={styles.wizardSectionHeaderRow}>
-	                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>5.</Text>
 	                                    <Ionicons name="layers-outline" size={18} color={theme.colors.text} />
 	                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Session Type</Text>
 	                                </View>

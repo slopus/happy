@@ -217,7 +217,7 @@ export function PathSelector({
                 >
                     <Ionicons
                         name={isFavorite ? 'star' : 'star-outline'}
-                        size={20}
+                        size={24}
                         color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
                     />
                 </Pressable>

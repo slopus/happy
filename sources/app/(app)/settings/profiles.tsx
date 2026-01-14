@@ -227,19 +227,19 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                                                     style={{ opacity: isSelected ? 1 : 0 }}
                                                 />
                                             </View>
-                                            <Pressable
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                onPress={(e) => {
-                                                    e.stopPropagation();
-                                                    toggleFavoriteProfile(profile.id);
-                                                }}
-                                            >
-                                                <Ionicons
-                                                    name={isFavorite ? 'star' : 'star-outline'}
-                                                    size={20}
-                                                    color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
-                                                />
-                                            </Pressable>
+	                                            <Pressable
+	                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+	                                                onPress={(e) => {
+	                                                    e.stopPropagation();
+	                                                    toggleFavoriteProfile(profile.id);
+	                                                }}
+	                                            >
+	                                                <Ionicons
+	                                                    name={isFavorite ? 'star' : 'star-outline'}
+	                                                    size={24}
+	                                                    color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
+	                                                />
+	                                            </Pressable>
                                             <Pressable
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                                 onPress={(e) => {
@@ -302,19 +302,19 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                                                     style={{ opacity: isSelected ? 1 : 0 }}
                                                 />
                                             </View>
-                                            <Pressable
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                onPress={(e) => {
-                                                    e.stopPropagation();
-                                                    toggleFavoriteProfile(profile.id);
-                                                }}
-                                            >
-                                                <Ionicons
-                                                    name={isFavorite ? 'star' : 'star-outline'}
-                                                    size={20}
-                                                    color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
-                                                />
-                                            </Pressable>
+	                                            <Pressable
+	                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+	                                                onPress={(e) => {
+	                                                    e.stopPropagation();
+	                                                    toggleFavoriteProfile(profile.id);
+	                                                }}
+	                                            >
+	                                                <Ionicons
+	                                                    name={isFavorite ? 'star' : 'star-outline'}
+	                                                    size={24}
+	                                                    color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
+	                                                />
+	                                            </Pressable>
                                             <Pressable
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                                 onPress={(e) => {
@@ -374,19 +374,19 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                                                 style={{ opacity: isSelected ? 1 : 0 }}
                                             />
                                         </View>
-                                        <Pressable
-                                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                            onPress={(e) => {
-                                                e.stopPropagation();
-                                                toggleFavoriteProfile(profile.id);
-                                            }}
-                                        >
-                                            <Ionicons
-                                                name={isFavorite ? 'star' : 'star-outline'}
-                                                size={20}
-                                                color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
-                                            />
-                                        </Pressable>
+	                                            <Pressable
+	                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+	                                                onPress={(e) => {
+	                                                    e.stopPropagation();
+	                                                    toggleFavoriteProfile(profile.id);
+	                                                }}
+	                                            >
+	                                                <Ionicons
+	                                                    name={isFavorite ? 'star' : 'star-outline'}
+	                                                    size={24}
+	                                                    color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
+	                                                />
+	                                            </Pressable>
                                         <Pressable
                                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                             onPress={(e) => {

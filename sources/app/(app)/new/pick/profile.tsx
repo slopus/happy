@@ -116,7 +116,7 @@ export default function ProfilePickerScreen() {
                 >
                     <Ionicons
                         name={isFavorite ? 'star' : 'star-outline'}
-                        size={20}
+                        size={24}
                         color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
                     />
                 </Pressable>
@@ -190,21 +190,6 @@ export default function ProfilePickerScreen() {
                     </ItemGroup>
                 ) : (
                     <>
-                        <ItemGroup footer={t('profiles.subtitle')}>
-                            <Item
-                                title={t('profiles.noProfile')}
-                                subtitle={t('profiles.noProfileDescription')}
-                                icon={<Ionicons name="settings-outline" size={29} color={theme.colors.textSecondary} />}
-                                onPress={() => setProfileParamAndClose('')}
-                                showChevron={false}
-                                selected={selectedId === ''}
-                                pressableStyle={selectedId === '' ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                rightElement={selectedId === ''
-                                    ? <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
-                                    : null}
-                            />
-                        </ItemGroup>
-
                         {favoriteProfileItems.length > 0 && (
                             <ItemGroup title="Favorites">
                                 {favoriteProfileItems.map((profile, index) => {
@@ -253,6 +238,19 @@ export default function ProfilePickerScreen() {
                         )}
 
                         <ItemGroup title="Built-in Profiles">
+                            <Item
+                                title={t('profiles.noProfile')}
+                                subtitle={t('profiles.noProfileDescription')}
+                                icon={<Ionicons name="home-outline" size={24} color={theme.colors.textSecondary} />}
+                                onPress={() => setProfileParamAndClose('')}
+                                showChevron={false}
+                                selected={selectedId === ''}
+                                pressableStyle={selectedId === '' ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                rightElement={selectedId === ''
+                                    ? <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
+                                    : null}
+                                showDivider={nonFavoriteBuiltInProfiles.length > 0}
+                            />
                             {nonFavoriteBuiltInProfiles.map((profile, index) => {
                                 const isSelected = selectedId === profile.id;
                                 const isLast = index === nonFavoriteBuiltInProfiles.length - 1;
