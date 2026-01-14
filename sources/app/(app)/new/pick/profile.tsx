@@ -14,6 +14,8 @@ import { Modal } from '@/modal';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
 import { buildProfileGroups } from '@/sync/profileGrouping';
 import { createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
+import { ItemRowActions } from '@/components/ItemRowActions';
+import type { ItemAction } from '@/components/ItemActionsMenuModal';
 
 export default function ProfilePickerScreen() {
     const { theme } = useUnistyles();
@@ -113,65 +115,60 @@ export default function ProfilePickerScreen() {
         );
     }, [profiles, selectedId, setProfileParamAndClose, setProfiles]);
 
-    const renderProfileRowRightElement = React.useCallback((profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
-        return (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+	    const renderProfileRowRightElement = React.useCallback((profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
+	        const actions: ItemAction[] = [
+	            {
+	                id: 'favorite',
+	                title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
+	                icon: isFavorite ? 'star' : 'star-outline',
+	                color: isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary,
+	                onPress: () => toggleFavoriteProfile(profile.id),
+	            },
+	            {
+	                id: 'edit',
+	                title: 'Edit profile',
+	                icon: 'create-outline',
+	                onPress: () => openProfileEdit(profile),
+	            },
+	            {
+	                id: 'copy',
+	                title: 'Duplicate profile',
+	                icon: 'copy-outline',
+	                onPress: () => handleDuplicateProfile(profile),
+	            },
+	        ];
+	        if (!profile.isBuiltIn) {
+	            actions.push({
+	                id: 'delete',
+	                title: 'Delete profile',
+	                icon: 'trash-outline',
+	                destructive: true,
+	                onPress: () => handleDeleteProfile(profile),
+	            });
+	        }
+
+	        return (
+	            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+	                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
                     <Ionicons
                         name="checkmark-circle"
                         size={24}
                         color={theme.colors.button.primary.background}
-                        style={{ opacity: isSelected ? 1 : 0 }}
-                    />
-                </View>
-                <Pressable
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    onPress={(e) => {
-                        e.stopPropagation();
-                        toggleFavoriteProfile(profile.id);
-                    }}
-                >
-                    <Ionicons
-                        name={isFavorite ? 'star' : 'star-outline'}
-                        size={24}
-                        color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
-                    />
-                </Pressable>
-                <Pressable
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    onPress={(e) => {
-                        e.stopPropagation();
-                        openProfileEdit(profile);
-                    }}
-                >
-                    <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                </Pressable>
-                <Pressable
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    onPress={(e) => {
-                        e.stopPropagation();
-                        handleDuplicateProfile(profile);
-                    }}
-                >
-                    <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
-                </Pressable>
-                {!profile.isBuiltIn && (
-                    <Pressable
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        onPress={(e) => {
-                            e.stopPropagation();
-                            handleDeleteProfile(profile);
-                        }}
-                    >
-                        <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
-                    </Pressable>
-                )}
-            </View>
-        );
-    }, [
-        handleDeleteProfile,
-        handleDuplicateProfile,
-        openProfileEdit,
+	                        style={{ opacity: isSelected ? 1 : 0 }}
+	                    />
+	                </View>
+	                <ItemRowActions
+	                    title={profile.name}
+	                    actions={actions}
+	                    compactActionIds={['edit']}
+	                    iconSize={20}
+	                />
+	            </View>
+	        );
+	    }, [
+	        handleDeleteProfile,
+	        handleDuplicateProfile,
+	        openProfileEdit,
         theme.colors.button.primary.background,
         theme.colors.button.secondary.tint,
         theme.colors.deleteAction,

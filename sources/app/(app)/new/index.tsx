@@ -35,9 +35,10 @@ import { PathSelector } from '@/components/newSession/PathSelector';
 import { SearchHeader } from '@/components/SearchHeader';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
 import { EnvironmentVariablesPreviewModal } from '@/components/newSession/EnvironmentVariablesPreviewModal';
-import { ProfileActionsMenuModal } from '@/components/newSession/ProfileActionsMenuModal';
 import { buildProfileGroups } from '@/sync/profileGrouping';
 import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
+import { ItemRowActions } from '@/components/ItemRowActions';
+import type { ItemAction } from '@/components/ItemActionsMenuModal';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -977,66 +978,45 @@ function NewSessionWizard() {
 	        return <ProfileCompatibilityIcon profile={profile} />;
 	    }, []);
 
-	    const openProfileActionsMenu = React.useCallback((profile: AIBackendProfile, isFavorite: boolean) => {
-	        Modal.show({
-	            component: ProfileActionsMenuModal,
-	            props: {
-	                profileName: profile.name,
-	                isFavorite,
-	                hasEnvVars: Object.keys(getProfileEnvironmentVariables(profile)).length > 0,
-	                canDelete: !profile.isBuiltIn,
-	                onToggleFavorite: () => toggleFavoriteProfile(profile.id),
-	                onViewEnvVars: () => openProfileEnvVarsPreview(profile),
-	                onEdit: () => openProfileEdit(profile),
-	                onCopy: () => handleDuplicateProfile(profile),
-	                onDelete: !profile.isBuiltIn ? () => handleDeleteProfile(profile) : undefined,
-	            },
-	        } as any);
-	    }, [handleDeleteProfile, handleDuplicateProfile, openProfileEdit, openProfileEnvVarsPreview, toggleFavoriteProfile]);
-
 	    const renderProfileRightElement = React.useCallback((profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
 	        const envVarCount = Object.keys(getProfileEnvironmentVariables(profile)).length;
-	        const compact = screenWidth < 420;
 
-	        if (compact) {
-	            return (
-	                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-	                    <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-	                        <Ionicons
-	                            name="checkmark-circle"
-	                            size={24}
-	                            color={theme.colors.button.primary.background}
-	                            style={{ opacity: isSelected ? 1 : 0 }}
-	                        />
-	                    </View>
-	                    {envVarCount > 0 && (
-	                        <Pressable
-	                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-	                            onPressIn={() => {
-	                                ignoreProfileRowPressRef.current = true;
-	                            }}
-	                            onPress={(e) => {
-	                                e.stopPropagation();
-	                                openProfileEnvVarsPreview(profile);
-	                            }}
-	                        >
-	                            <Ionicons name="list-outline" size={22} color={theme.colors.button.secondary.tint} />
-	                        </Pressable>
-	                    )}
-	                    <Pressable
-	                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-	                        onPressIn={() => {
-	                            ignoreProfileRowPressRef.current = true;
-	                        }}
-	                        onPress={(e) => {
-	                            e.stopPropagation();
-	                            openProfileActionsMenu(profile, isFavorite);
-	                        }}
-	                    >
-	                        <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.button.secondary.tint} />
-	                    </Pressable>
-	                </View>
-	            );
+	        const actions: ItemAction[] = [];
+	        if (envVarCount > 0) {
+	            actions.push({
+	                id: 'envVars',
+	                title: 'View environment variables',
+	                icon: 'list-outline',
+	                onPress: () => openProfileEnvVarsPreview(profile),
+	            });
+	        }
+	        actions.push({
+	            id: 'favorite',
+	            title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
+	            icon: isFavorite ? 'star' : 'star-outline',
+	            color: isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary,
+	            onPress: () => toggleFavoriteProfile(profile.id),
+	        });
+	        actions.push({
+	            id: 'edit',
+	            title: 'Edit profile',
+	            icon: 'create-outline',
+	            onPress: () => openProfileEdit(profile),
+	        });
+	        actions.push({
+	            id: 'copy',
+	            title: 'Duplicate profile',
+	            icon: 'copy-outline',
+	            onPress: () => handleDuplicateProfile(profile),
+	        });
+	        if (!profile.isBuiltIn) {
+	            actions.push({
+	                id: 'delete',
+	                title: 'Delete profile',
+	                icon: 'trash-outline',
+	                destructive: true,
+	                onPress: () => handleDeleteProfile(profile),
+	            });
 	        }
 
 	        return (
@@ -1045,85 +1025,25 @@ function NewSessionWizard() {
 	                    <Ionicons
                         name="checkmark-circle"
                         size={24}
-                        color={theme.colors.button.primary.background}
-                        style={{ opacity: isSelected ? 1 : 0 }}
-                    />
-                </View>
-                <Pressable
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    onPressIn={() => {
-                        ignoreProfileRowPressRef.current = true;
-                    }}
-                    onPress={(e) => {
-                        e.stopPropagation();
-                        toggleFavoriteProfile(profile.id);
-                    }}
-                >
-                    <Ionicons
-                        name={isFavorite ? 'star' : 'star-outline'}
-                        size={24}
-                        color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
-                    />
-                </Pressable>
-                {envVarCount > 0 && (
-                    <Pressable
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        onPressIn={() => {
-                            ignoreProfileRowPressRef.current = true;
-                        }}
-                        onPress={(e) => {
-                            e.stopPropagation();
-                            openProfileEnvVarsPreview(profile);
-                        }}
-                    >
-                        <Ionicons name="list-outline" size={22} color={theme.colors.button.secondary.tint} />
-                    </Pressable>
-                )}
-                <Pressable
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    onPressIn={() => {
-                        ignoreProfileRowPressRef.current = true;
-                    }}
-                    onPress={(e) => {
-                        e.stopPropagation();
-                        openProfileEdit(profile);
-                    }}
-                >
-                    <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                </Pressable>
-                <Pressable
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    onPressIn={() => {
-                        ignoreProfileRowPressRef.current = true;
-                    }}
-                    onPress={(e) => {
-                        e.stopPropagation();
-                        handleDuplicateProfile(profile);
-                    }}
-                >
-                    <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
-                </Pressable>
-                {!profile.isBuiltIn && (
-                    <Pressable
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        onPressIn={() => {
-                            ignoreProfileRowPressRef.current = true;
-                        }}
-                        onPress={(e) => {
-                            e.stopPropagation();
-                            handleDeleteProfile(profile);
-                        }}
-                    >
-                        <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
-                    </Pressable>
-                )}
-            </View>
-        );
-    }, [
-        handleDeleteProfile,
+	                        color={theme.colors.button.primary.background}
+	                        style={{ opacity: isSelected ? 1 : 0 }}
+	                    />
+	                </View>
+	                <ItemRowActions
+	                    title={profile.name}
+	                    actions={actions}
+	                    compactActionIds={envVarCount > 0 ? ['envVars'] : []}
+	                    iconSize={20}
+	                    onActionPressIn={() => {
+	                        ignoreProfileRowPressRef.current = true;
+	                    }}
+	                />
+	            </View>
+	        );
+	    }, [
+	        handleDeleteProfile,
 	        handleDuplicateProfile,
 	        openProfileEnvVarsPreview,
-	        openProfileActionsMenu,
 	        openProfileEdit,
 	        screenWidth,
 	        theme.colors.button.primary.background,
