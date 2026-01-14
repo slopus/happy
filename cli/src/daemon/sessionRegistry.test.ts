@@ -91,11 +91,16 @@ describe('sessionRegistry', () => {
     const { configuration } = await import('@/configuration');
     const { writeSessionMarker } = await import('./sessionRegistry');
 
+    // 64 hex chars (sha256)
+    const processCommandHash = 'a'.repeat(64);
+
     await writeSessionMarker({
       pid: 54321,
       happySessionId: 'sess-xyz',
       startedBy: 'daemon',
       cwd: '/tmp',
+      processCommandHash,
+      processCommand: 'node dist/index.mjs --started-by daemon',
     });
 
     const filePath = join(configuration.happyHomeDir, 'tmp', 'daemon-sessions', 'pid-54321.json');
@@ -105,6 +110,8 @@ describe('sessionRegistry', () => {
     expect(parsed.happySessionId).toBe('sess-xyz');
     expect(parsed.happyHomeDir).toBe(configuration.happyHomeDir);
     expect(parsed.startedBy).toBe('daemon');
+    expect(parsed.processCommandHash).toBe(processCommandHash);
+    expect(parsed.processCommand).toBe('node dist/index.mjs --started-by daemon');
     expect(typeof parsed.createdAt).toBe('number');
     expect(typeof parsed.updatedAt).toBe('number');
   });

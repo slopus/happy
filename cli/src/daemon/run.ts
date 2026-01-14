@@ -20,7 +20,7 @@ import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquire
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
 import { findAllHappyProcesses, findHappyProcessByPid } from './doctor';
-import { listSessionMarkers, removeSessionMarker, writeSessionMarker } from './sessionRegistry';
+import { hashProcessCommand, listSessionMarkers, removeSessionMarker, writeSessionMarker } from './sessionRegistry';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
@@ -54,7 +54,8 @@ async function getPreferredHostName(): Promise<string> {
     ?? fallback;
 }
 
-const ALLOWED_HAPPY_SESSION_PROCESS_TYPES = new Set(['daemon-spawned-session', 'user-session', 'dev-daemon-spawned', 'dev-session', 'dev-related']);
+// IMPORTANT: keep this strict. A false positive here could cause us to adopt/kill an unrelated process.
+const ALLOWED_HAPPY_SESSION_PROCESS_TYPES = new Set(['daemon-spawned-session', 'user-session', 'dev-daemon-spawned', 'dev-session']);
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -232,6 +233,7 @@ export async function startDaemon(): Promise<void> {
       const markers = await listSessionMarkers();
       const happyProcesses = await findAllHappyProcesses();
       const happyPidToType = new Map(happyProcesses.map((p) => [p.pid, p.type] as const));
+      const happyPidToCommandHash = new Map(happyProcesses.map((p) => [p.pid, hashProcessCommand(p.command)] as const));
       let adopted = 0;
       for (const marker of markers) {
         try {
@@ -249,12 +251,27 @@ export async function startDaemon(): Promise<void> {
           );
           continue;
         }
+        // Stronger PID reuse safety: require the marker's observed command hash to match what is currently running.
+        if (!marker.processCommandHash) {
+          logger.debug(
+            `[DAEMON RUN] Skipping marker PID ${marker.pid} during reattach: marker missing processCommandHash (fail-closed)`
+          );
+          continue;
+        }
+        const currentHash = happyPidToCommandHash.get(marker.pid);
+        if (!currentHash || currentHash !== marker.processCommandHash) {
+          logger.debug(
+            `[DAEMON RUN] Skipping marker PID ${marker.pid} during reattach: process command hash mismatch (PID reuse safety)`
+          );
+          continue;
+        }
         if (pidToTrackedSession.has(marker.pid)) continue;
         pidToTrackedSession.set(marker.pid, {
           startedBy: marker.startedBy ?? 'reattached',
           happySessionId: marker.happySessionId,
           happySessionMetadataFromLocalWebhook: marker.metadata,
           pid: marker.pid,
+          processCommandHash: marker.processCommandHash,
           reattachedFromDiskMarker: true,
         });
         adopted++;
@@ -319,13 +336,28 @@ export async function startDaemon(): Promise<void> {
       }
 
       // Best-effort: write/update marker so future daemon restarts can reattach.
-      void writeSessionMarker({
-        pid,
-        happySessionId: sessionId,
-        startedBy: sessionMetadata.startedBy ?? 'terminal',
-        cwd: sessionMetadata.path,
-        metadata: sessionMetadata,
-      }).catch((e) => {
+      // Also capture a process command hash so reattach/stop can be PID-reuse-safe.
+      void (async () => {
+        const proc = await findHappyProcessByPid(pid);
+        const processCommandHash = proc?.command ? hashProcessCommand(proc.command) : undefined;
+        if (processCommandHash) {
+          // Store on the tracked session too so stopSession can require a match.
+          const s = pidToTrackedSession.get(pid);
+          if (s) s.processCommandHash = processCommandHash;
+        } else {
+          logger.debug(`[DAEMON RUN] Could not determine process command for PID ${pid}; marker will be weaker`);
+        }
+
+        await writeSessionMarker({
+          pid,
+          happySessionId: sessionId,
+          startedBy: sessionMetadata.startedBy ?? 'terminal',
+          cwd: sessionMetadata.path,
+          processCommandHash,
+          processCommand: proc?.command,
+          metadata: sessionMetadata,
+        });
+      })().catch((e) => {
         logger.debug('[DAEMON RUN] Failed to write session marker', e);
       });
     };
@@ -813,7 +845,7 @@ export async function startDaemon(): Promise<void> {
           } else {
             // Safety for reattached sessions: verify PID still looks like a Happy session process before SIGTERM.
             // This mitigates PID reuse killing unrelated processes while still allowing UI/archive to stop sessions.
-            if (session.reattachedFromDiskMarker) {
+            {
               const proc = await findHappyProcessByPid(pid);
               if (!proc || !ALLOWED_HAPPY_SESSION_PROCESS_TYPES.has(proc.type)) {
                 logger.warn(
@@ -821,6 +853,17 @@ export async function startDaemon(): Promise<void> {
                     `Observed process type: ${proc?.type ?? 'unknown'}`
                 );
                 return false;
+              }
+              // If we have a command hash recorded (from marker or webhook), require it to match.
+              if (session.processCommandHash) {
+                const currentHash = hashProcessCommand(proc.command);
+                if (currentHash !== session.processCommandHash) {
+                  logger.warn(
+                    `[DAEMON RUN] Refusing to SIGTERM PID ${pid} for session ${sessionId} (PID reuse safety). ` +
+                      `Observed command hash mismatch`
+                  );
+                  return false;
+                }
               }
             }
             // For externally started sessions, try to kill by PID

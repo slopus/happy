@@ -1,5 +1,6 @@
 import { configuration } from '@/configuration';
 import { logger } from '@/ui/logger';
+import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as z from 'zod';
@@ -13,10 +14,18 @@ const DaemonSessionMarkerSchema = z.object({
   flavor: z.enum(['claude', 'codex', 'gemini']).optional(),
   startedBy: z.enum(['daemon', 'terminal']).optional(),
   cwd: z.string().optional(),
+  // Process identity safety (PID reuse mitigation). Hash of the observed process command line.
+  processCommandHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  // Optional debug-only sample of the observed command (best-effort; may be truncated by ps-list).
+  processCommand: z.string().optional(),
   metadata: z.any().optional(),
 });
 
 export type DaemonSessionMarker = z.infer<typeof DaemonSessionMarkerSchema>;
+
+export function hashProcessCommand(command: string): string {
+  return createHash('sha256').update(command).digest('hex');
+}
 
 function daemonSessionsDir(): string {
   return join(configuration.happyHomeDir, 'tmp', 'daemon-sessions');

@@ -13,6 +13,11 @@ export interface TrackedSession {
   happySessionId?: string;
   happySessionMetadataFromLocalWebhook?: Metadata;
   pid: number;
+  /**
+   * Hash of the observed process command line for PID reuse safety.
+   * If present, we require this to match before sending SIGTERM by PID.
+   */
+  processCommandHash?: string;
   childProcess?: ChildProcess;
   error?: string;
   directoryCreated?: boolean;
