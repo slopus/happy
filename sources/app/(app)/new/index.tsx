@@ -283,7 +283,6 @@ function NewSessionWizard() {
     const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
     const useProfiles = useSetting('useProfiles');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
-    const lastUsedModelMode = useSetting('lastUsedModelMode');
     const experimentsEnabled = useSetting('experiments');
     const useMachinePickerSearch = useSetting('useMachinePickerSearch');
     const usePathPickerSearch = useSetting('usePathPickerSearch');
@@ -411,16 +410,6 @@ function NewSessionWizard() {
                 return draftMode;
             } else if (agentType === 'gemini' && validGeminiModes.includes(draftMode)) {
                 return draftMode;
-            }
-        }
-
-        if (lastUsedModelMode) {
-            if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            } else if (agentType === 'gemini' && validGeminiModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
             }
         }
         return agentType === 'codex' ? 'gpt-5-codex-high' : 'default';
@@ -1274,9 +1263,6 @@ function NewSessionWizard() {
             };
             if (profilesActive) {
                 settingsUpdate.lastUsedProfile = selectedProfileId;
-            }
-            if (useEnhancedSessionWizard) {
-                settingsUpdate.lastUsedModelMode = modelMode;
             }
             sync.applySettings(settingsUpdate);
 
