@@ -5,9 +5,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { EnvironmentVariableCard } from './EnvironmentVariableCard';
 import type { ProfileDocumentation } from '@/sync/profileUtils';
-import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { layout } from '@/components/layout';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 
@@ -128,28 +126,26 @@ export function EnvironmentVariablesList({
 
     return (
         <View style={{ marginBottom: 16 }}>
-            <View style={{ width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center', paddingHorizontal: Platform.select({ ios: 0, default: 4 }) }}>
-                <View style={{
-                    paddingTop: Platform.select({ ios: 35, default: 16 }),
-                    paddingBottom: Platform.select({ ios: 6, default: 8 }),
-                    paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+            <View style={{
+                paddingTop: Platform.select({ ios: 35, default: 16 }),
+                paddingBottom: Platform.select({ ios: 6, default: 8 }),
+                paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+            }}>
+                <Text style={{
+                    ...Typography.default('regular'),
+                    color: theme.colors.groupped.sectionTitle,
+                    fontSize: Platform.select({ ios: 13, default: 14 }),
+                    lineHeight: Platform.select({ ios: 18, default: 20 }),
+                    letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+                    textTransform: 'uppercase',
+                    fontWeight: Platform.select({ ios: 'normal', default: '500' } as any),
                 }}>
-                    <Text style={{
-                        ...Typography.default('regular'),
-                        color: theme.colors.groupped.sectionTitle,
-                        fontSize: Platform.select({ ios: 13, default: 14 }),
-                        lineHeight: Platform.select({ ios: 18, default: 20 }),
-                        letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
-                        textTransform: 'uppercase',
-                        fontWeight: Platform.select({ ios: 'normal', default: '500' } as any),
-                    }}>
-                        Environment Variables
-                    </Text>
-                </View>
+                    Environment Variables
+                </Text>
             </View>
 
-            <View style={{ width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center', paddingHorizontal: Platform.select({ ios: 0, default: 4 }) }}>
-                <View style={{ marginHorizontal: Platform.select({ ios: 16, default: 12 }), marginTop: 16 }}>
+            {environmentVariables.length > 0 && (
+                <View style={{ marginHorizontal: Platform.select({ ios: 16, default: 12 }) }}>
                     {environmentVariables.map((envVar, index) => {
                         const varNameFromValue = extractVarNameFromValue(envVar.value);
                         const docs = getDocumentation(varNameFromValue || envVar.name);
@@ -175,9 +171,19 @@ export function EnvironmentVariablesList({
                         );
                     })}
                 </View>
-            </View>
+            )}
 
-            <ItemGroup>
+            <View style={{
+                backgroundColor: theme.colors.surface,
+                marginHorizontal: Platform.select({ ios: 16, default: 12 }),
+                borderRadius: Platform.select({ ios: 10, default: 16 }),
+                overflow: 'hidden',
+                shadowColor: theme.colors.shadow.color,
+                shadowOffset: { width: 0, height: 0.33 },
+                shadowOpacity: theme.colors.shadow.opacity,
+                shadowRadius: 0,
+                elevation: 1,
+            }}>
                 <Item
                     title={showAddForm ? 'Cancel' : 'Add Variable'}
                     icon={
@@ -258,7 +264,7 @@ export function EnvironmentVariablesList({
                         </Pressable>
                     </View>
                 )}
-            </ItemGroup>
+            </View>
         </View>
     );
 }

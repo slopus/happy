@@ -127,6 +127,9 @@ export default function ProfileEditScreen() {
             // Notify the /new screen only for newly created profiles (Add / Duplicate / Save As).
             callbacks.onProfileSaved(profileToSave);
         }
+        // Prevent the unsaved-changes guard from triggering on successful save.
+        isDirtyRef.current = false;
+        setIsDirty(false);
         router.back();
     };
 

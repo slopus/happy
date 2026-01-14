@@ -326,6 +326,10 @@ function NewSessionWizard() {
         if (!useProfiles) {
             return null;
         }
+        const draftProfileId = persistedDraft?.selectedProfileId;
+        if (draftProfileId && profileMap.has(draftProfileId)) {
+            return draftProfileId;
+        }
         if (lastUsedProfile && profileMap.has(lastUsedProfile)) {
             return lastUsedProfile;
         }
@@ -659,10 +663,22 @@ function NewSessionWizard() {
     }, [selectedMachineId, machines]);
 
     const openProfileEdit = React.useCallback((profile: AIBackendProfile) => {
+        // Persist wizard state before navigating so selection doesn't reset on return.
+        saveNewSessionDraft({
+            input: sessionPrompt,
+            selectedMachineId,
+            selectedPath,
+            selectedProfileId: useProfiles ? selectedProfileId : null,
+            agentType,
+            permissionMode,
+            sessionType,
+            updatedAt: Date.now(),
+        });
+
         const profileData = JSON.stringify(profile);
         const base = `/new/pick/profile-edit?profileData=${encodeURIComponent(profileData)}`;
         router.push(selectedMachineId ? `${base}&machineId=${encodeURIComponent(selectedMachineId)}` as any : base as any);
-    }, [router, selectedMachineId]);
+    }, [agentType, permissionMode, router, selectedMachineId, selectedPath, selectedProfileId, sessionPrompt, sessionType, useProfiles]);
 
     const handleAddProfile = React.useCallback(() => {
         openProfileEdit(createEmptyCustomProfile());
@@ -809,17 +825,19 @@ function NewSessionWizard() {
         if (!useProfiles) {
             return;
         }
-        if (typeof profileIdParam !== 'string') {
+
+        const nextProfileIdFromParams = Array.isArray(profileIdParam) ? profileIdParam[0] : profileIdParam;
+        if (typeof nextProfileIdFromParams !== 'string') {
             return;
         }
-        if (profileIdParam === '') {
+        if (nextProfileIdFromParams === '') {
             if (selectedProfileId !== null) {
                 setSelectedProfileId(null);
             }
             return;
         }
-        if (profileIdParam !== selectedProfileId) {
-            selectProfile(profileIdParam);
+        if (nextProfileIdFromParams !== selectedProfileId) {
+            selectProfile(nextProfileIdFromParams);
         }
     }, [profileIdParam, selectedProfileId, selectProfile, useProfiles]);
 
@@ -1344,6 +1362,19 @@ function NewSessionWizard() {
         };
     }, [selectedMachine, selectedMachineId, cliAvailability, experimentsEnabled, theme]);
 
+    const persistDraftNow = React.useCallback(() => {
+        saveNewSessionDraft({
+            input: sessionPrompt,
+            selectedMachineId,
+            selectedPath,
+            selectedProfileId: useProfiles ? selectedProfileId : null,
+            agentType,
+            permissionMode,
+            sessionType,
+            updatedAt: Date.now(),
+        });
+    }, [agentType, permissionMode, selectedMachineId, selectedPath, selectedProfileId, sessionPrompt, sessionType, useProfiles]);
+
     // Persist the current wizard state so it survives remounts and screen navigation
     // Uses debouncing to avoid excessive writes
     const draftSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1352,22 +1383,14 @@ function NewSessionWizard() {
             clearTimeout(draftSaveTimerRef.current);
         }
         draftSaveTimerRef.current = setTimeout(() => {
-            saveNewSessionDraft({
-                input: sessionPrompt,
-                selectedMachineId,
-                selectedPath,
-                agentType,
-                permissionMode,
-                sessionType,
-                updatedAt: Date.now(),
-            });
+            persistDraftNow();
         }, 250);
         return () => {
             if (draftSaveTimerRef.current) {
                 clearTimeout(draftSaveTimerRef.current);
             }
         };
-    }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType]);
+    }, [persistDraftNow]);
 
     // ========================================================================
     // CONTROL A: Simpler AgentInput-driven layout (flag OFF)

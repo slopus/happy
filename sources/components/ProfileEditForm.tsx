@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TextInput, ViewStyle, Linking, Platform } from 'react-native';
+import { View, Text, TextInput, ViewStyle, Linking, Platform, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
@@ -16,7 +16,6 @@ import { getBuiltInProfileDocumentation } from '@/sync/profileUtils';
 import { EnvironmentVariablesList } from '@/components/EnvironmentVariablesList';
 import { useSetting } from '@/sync/storage';
 import { Modal } from '@/modal';
-import { RoundButton } from '@/components/RoundButton';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
@@ -312,19 +311,38 @@ export function ProfileEditForm({
             <View style={{ paddingHorizontal: Platform.select({ ios: 32, default: 24 }), paddingTop: 12 }}>
                 <View style={{ flexDirection: 'row', gap: 12 }}>
                     <View style={{ flex: 1 }}>
-                        <RoundButton
-                            size="normal"
-                            display="inverted"
-                            title={t('common.cancel')}
+                        <Pressable
                             onPress={onCancel}
-                        />
+                            style={({ pressed }) => ({
+                                backgroundColor: theme.colors.surface,
+                                borderColor: theme.colors.divider,
+                                borderWidth: 1,
+                                borderRadius: 10,
+                                paddingVertical: 12,
+                                alignItems: 'center',
+                                opacity: pressed ? 0.85 : 1,
+                            })}
+                        >
+                            <Text style={{ color: theme.colors.text, ...Typography.default('semiBold') }}>
+                                {t('common.cancel')}
+                            </Text>
+                        </Pressable>
                     </View>
                     <View style={{ flex: 1 }}>
-                        <RoundButton
-                            size="normal"
-                            title={profile.isBuiltIn ? t('common.saveAs') : t('common.save')}
+                        <Pressable
                             onPress={handleSave}
-                        />
+                            style={({ pressed }) => ({
+                                backgroundColor: theme.colors.button.primary.background,
+                                borderRadius: 10,
+                                paddingVertical: 12,
+                                alignItems: 'center',
+                                opacity: pressed ? 0.85 : 1,
+                            })}
+                        >
+                            <Text style={{ color: theme.colors.button.primary.tint, ...Typography.default('semiBold') }}>
+                                {profile.isBuiltIn ? t('common.saveAs') : t('common.save')}
+                            </Text>
+                        </Pressable>
                     </View>
                 </View>
             </View>

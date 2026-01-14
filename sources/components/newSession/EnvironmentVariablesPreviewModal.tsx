@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
@@ -33,6 +33,7 @@ function isSecretLike(name: string) {
 
 export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPreviewModalProps) {
     const { theme } = useUnistyles();
+    const { height: windowHeight } = useWindowDimensions();
 
     const envVarEntries = React.useMemo(() => {
         return Object.entries(props.environmentVariables)
@@ -54,17 +55,20 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
     const { variables: machineEnv } = useEnvironmentVariables(props.machineId, refsToQuery);
 
     const title = props.profileName ? `Env Vars · ${props.profileName}` : 'Environment Variables';
+    const maxHeight = Math.min(720, Math.max(360, Math.floor(windowHeight * 0.85)));
 
     return (
         <View style={{
             width: '92%',
             maxWidth: 560,
-            maxHeight: '82%',
+            height: maxHeight,
+            maxHeight,
             backgroundColor: theme.colors.groupped.background,
             borderRadius: 16,
             overflow: 'hidden',
             borderWidth: 1,
             borderColor: theme.colors.divider,
+            flexShrink: 1,
         }}>
             <View style={{
                 paddingHorizontal: 16,
@@ -92,7 +96,7 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
                 </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
                 <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
                     <Text style={{
                         color: theme.colors.textSecondary,
@@ -101,8 +105,15 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
                         letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
                         ...Typography.default(),
                     }}>
-                        These environment variables are sent when starting the session.
-                        {props.machineName ? ` Values are resolved using the daemon on ${props.machineName}.` : ' Values are resolved using the daemon on the selected machine.'}
+                        These environment variables are sent when starting the session. Values are resolved using the daemon on{' '}
+                        {props.machineName ? (
+                            <Text style={{ color: theme.colors.status.connected, ...Typography.default('semiBold') }}>
+                                {props.machineName}
+                            </Text>
+                        ) : (
+                            'the selected machine'
+                        )}
+                        .
                     </Text>
                 </View>
 

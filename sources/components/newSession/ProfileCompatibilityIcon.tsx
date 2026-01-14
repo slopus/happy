@@ -48,18 +48,22 @@ export function ProfileCompatibilityIcon({ profile, size = 32, style }: Props) {
                 </Text>
             ) : (
                 <View style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
-                    {glyphs.map((item) => (
-                        <Text
-                            key={item.key}
-                            style={{
-                                fontSize: Math.round(size * multiScale * item.factor),
-                                color: theme.colors.textSecondary,
-                                ...Typography.default(),
-                            }}
-                        >
-                            {item.glyph}
-                        </Text>
-                    ))}
+                    {glyphs.map((item) => {
+                        const fontSize = Math.round(size * multiScale * item.factor);
+                        return (
+                            <Text
+                                key={item.key}
+                                style={{
+                                    fontSize,
+                                    lineHeight: Math.max(10, Math.round(fontSize * 0.92)),
+                                    color: theme.colors.textSecondary,
+                                    ...Typography.default(),
+                                }}
+                            >
+                                {item.glyph}
+                            </Text>
+                        );
+                    })}
                 </View>
             )}
         </View>
