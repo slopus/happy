@@ -69,6 +69,13 @@ export function EnvironmentVariableCard({
 }: EnvironmentVariableCardProps) {
     const { theme } = useUnistyles();
 
+    const secondaryTextStyle = React.useMemo(() => ({
+        fontSize: Platform.select({ ios: 15, default: 14 }),
+        lineHeight: 20,
+        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
+        ...Typography.default(),
+    }), []);
+
     // Parse current value
     const parsed = parseVariableValue(variable.value);
     const [useRemoteVariable, setUseRemoteVariable] = React.useState(parsed.useRemoteVariable);
@@ -143,10 +150,9 @@ export function EnvironmentVariableCard({
             {/* Description */}
             {description && (
                 <Text style={{
-                    fontSize: 11,
                     color: theme.colors.textSecondary,
                     marginBottom: 8,
-                    ...Typography.default()
+                    ...secondaryTextStyle,
                 }}>
                     {description}
                 </Text>
@@ -156,9 +162,8 @@ export function EnvironmentVariableCard({
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <Text style={{
                     flex: 1,
-                    fontSize: 13,
                     color: theme.colors.textSecondary,
-                    ...Typography.default()
+                    ...secondaryTextStyle,
                 }}>
                     Copy from remote machine
                 </Text>
@@ -197,36 +202,32 @@ export function EnvironmentVariableCard({
                 <View style={{ marginBottom: 8 }}>
                     {remoteValue === undefined ? (
                         <Text style={{
-                            fontSize: 11,
                             color: theme.colors.textSecondary,
                             fontStyle: 'italic',
-                            ...Typography.default()
+                            ...secondaryTextStyle,
                         }}>
                             Checking remote machine...
                         </Text>
                     ) : remoteValue === null ? (
                         <Text style={{
-                            fontSize: 11,
                             color: theme.colors.warning,
-                            ...Typography.default()
+                            ...secondaryTextStyle,
                         }}>
                             Value not found
                         </Text>
                     ) : (
                         <>
                             <Text style={{
-                                fontSize: 11,
                                 color: theme.colors.success,
-                                ...Typography.default()
+                                ...secondaryTextStyle,
                             }}>
                                 Value found
                             </Text>
                             {showRemoteDiffersWarning && (
                                 <Text style={{
-                                    fontSize: 11,
                                     color: theme.colors.textSecondary,
                                     marginTop: 2,
-                                    ...Typography.default()
+                                    ...secondaryTextStyle,
                                 }}>
                                     Differs from documented value: {expectedValue}
                                 </Text>
@@ -238,11 +239,10 @@ export function EnvironmentVariableCard({
 
             {useRemoteVariable && !isSecret && !machineId && (
                 <Text style={{
-                    fontSize: 11,
                     color: theme.colors.textSecondary,
                     marginBottom: 8,
                     fontStyle: 'italic',
-                    ...Typography.default()
+                    ...secondaryTextStyle,
                 }}>
                     Select a machine to check if variable exists
                 </Text>
@@ -251,11 +251,10 @@ export function EnvironmentVariableCard({
             {/* Security message for secrets */}
             {isSecret && (
                 <Text style={{
-                    fontSize: 11,
                     color: theme.colors.textSecondary,
                     marginBottom: 8,
                     fontStyle: 'italic',
-                    ...Typography.default()
+                    ...secondaryTextStyle,
                 }}>
                     Secret value - not retrieved for security
                 </Text>
@@ -263,10 +262,9 @@ export function EnvironmentVariableCard({
 
             {/* Value label */}
             <Text style={{
-                fontSize: 11,
                 color: theme.colors.textSecondary,
                 marginBottom: 4,
-                ...Typography.default()
+                ...secondaryTextStyle,
             }}>
                 {useRemoteVariable ? 'Default value:' : 'Value:'}
             </Text>
@@ -297,10 +295,9 @@ export function EnvironmentVariableCard({
             {/* Default override warning */}
             {showDefaultOverrideWarning && !isSecret && (
                 <Text style={{
-                    fontSize: 11,
                     color: theme.colors.textSecondary,
                     marginBottom: 8,
-                    ...Typography.default()
+                    ...secondaryTextStyle,
                 }}>
                     Overriding documented default: {expectedValue}
                 </Text>
@@ -308,10 +305,9 @@ export function EnvironmentVariableCard({
 
             {/* Session preview */}
             <Text style={{
-                fontSize: 11,
                 color: theme.colors.textSecondary,
                 marginTop: 4,
-                ...Typography.default()
+                ...secondaryTextStyle,
             }}>
                 Session will receive: {variable.name} = {
                     isSecret

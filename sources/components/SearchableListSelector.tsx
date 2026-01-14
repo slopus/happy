@@ -235,6 +235,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 onPress={() => onSelect(item)}
                 showChevron={false}
                 selected={isSelected}
+                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                 showDivider={showDividerOverride !== undefined ? showDividerOverride : !isLast}
             />
         );
@@ -257,7 +258,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         return searchPlacement;
     }, [hasAllGroup, hasFavoritesGroup, hasRecentGroup, searchPlacement, showSearch]);
 
-    const searchNode = showSearch ? (
+    const searchNodeHeader = showSearch ? (
         <SearchHeader
             value={inputText}
             onChangeText={handleInputChange}
@@ -265,13 +266,25 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         />
     ) : null;
 
+    const searchNodeEmbedded = showSearch ? (
+        <SearchHeader
+            value={inputText}
+            onChangeText={handleInputChange}
+            placeholder={config.searchPlaceholder}
+            containerStyle={{
+                backgroundColor: 'transparent',
+                borderBottomWidth: 0,
+            }}
+        />
+    ) : null;
+
     return (
         <>
-            {effectiveSearchPlacement === 'header' && searchNode}
+            {effectiveSearchPlacement === 'header' && searchNodeHeader}
 
             {hasRecentGroup && (
                 <ItemGroup title={config.recentSectionTitle}>
-                    {effectiveSearchPlacement === 'recent' && searchNode}
+                    {effectiveSearchPlacement === 'recent' && searchNodeEmbedded}
                     {recentItemsToShow.map((item, index, arr) => {
                         const itemId = config.getItemId(item);
                         const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
@@ -303,7 +316,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
 
             {hasFavoritesGroup && (
                 <ItemGroup title={config.favoritesSectionTitle}>
-                    {effectiveSearchPlacement === 'favorites' && searchNode}
+                    {effectiveSearchPlacement === 'favorites' && searchNodeEmbedded}
                     {filteredFavoriteItems.map((item, index) => {
                         const itemId = config.getItemId(item);
                         const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
@@ -316,7 +329,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
 
             {hasAllGroup && (
                 <ItemGroup title={config.allSectionTitle ?? config.recentSectionTitle.replace('Recent ', 'All ')}>
-                    {effectiveSearchPlacement === 'all' && searchNode}
+                    {effectiveSearchPlacement === 'all' && searchNodeEmbedded}
                     {filteredItems.map((item, index) => {
                         const itemId = config.getItemId(item);
                         const selectedId = selectedItem ? config.getItemId(selectedItem) : null;

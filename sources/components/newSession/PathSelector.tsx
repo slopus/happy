@@ -186,6 +186,10 @@ export function PathSelector({
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         placeholder="Search paths..."
+                        containerStyle={{
+                            backgroundColor: 'transparent',
+                            borderBottomWidth: 0,
+                        }}
                     />
                     {filteredRecentPaths.map((path, index) => {
                         const isSelected = selectedPath.trim() === path;
@@ -259,6 +263,10 @@ export function PathSelector({
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         placeholder="Search paths..."
+                        containerStyle={{
+                            backgroundColor: 'transparent',
+                            borderBottomWidth: 0,
+                        }}
                     />
                     {filteredSuggestedPaths.map((path, index) => {
                         const isSelected = selectedPath.trim() === path;

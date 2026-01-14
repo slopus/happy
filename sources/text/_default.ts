@@ -895,7 +895,7 @@ export const en = {
         // Profile management feature
         title: 'Profiles',
         subtitle: 'Manage environment variable profiles for sessions',
-        noProfile: 'No Profile',
+        noProfile: 'Default',
         noProfileDescription: 'Use default environment settings',
         defaultModel: 'Default Model',
         addProfile: 'Add Profile',

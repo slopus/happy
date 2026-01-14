@@ -32,6 +32,7 @@ export function ProfileEditForm({
 }: ProfileEditFormProps) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
+    const groupStyle = React.useMemo(() => ({ marginBottom: 8 }), []);
 
     const profileDocs = React.useMemo(() => {
         if (!profile.isBuiltIn) return null;
@@ -108,7 +109,7 @@ export function ProfileEditForm({
 
     return (
         <ItemList style={containerStyle} keyboardShouldPersistTaps="handled">
-            <ItemGroup title={t('profiles.profileName')}>
+            <ItemGroup title={t('profiles.profileName')} style={groupStyle}>
                 <React.Fragment>
                     <View style={styles.inputContainer}>
                         <TextInput
@@ -123,7 +124,7 @@ export function ProfileEditForm({
             </ItemGroup>
 
             {profile.isBuiltIn && profileDocs?.setupGuideUrl && (
-                <ItemGroup title="Setup Instructions" footer={profileDocs.description}>
+                <ItemGroup title="Setup Instructions" footer={profileDocs.description} style={groupStyle}>
                     <Item
                         title="View Official Setup Guide"
                         icon={<Ionicons name="book-outline" size={29} color={theme.colors.button.secondary.tint} />}
@@ -132,11 +133,11 @@ export function ProfileEditForm({
                 </ItemGroup>
             )}
 
-            <ItemGroup title="Default Session Type">
+            <ItemGroup title="Default Session Type" style={groupStyle}>
                 <SessionTypeSelector value={defaultSessionType} onChange={setDefaultSessionType} title={null} />
             </ItemGroup>
 
-            <ItemGroup title="Default Permission Mode">
+            <ItemGroup title="Default Permission Mode" style={groupStyle}>
                 {[
                     { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
                     { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
@@ -162,12 +163,13 @@ export function ProfileEditForm({
                         onPress={() => setDefaultPermissionMode(option.value)}
                         showChevron={false}
                         selected={defaultPermissionMode === option.value}
+                        pressableStyle={defaultPermissionMode === option.value ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                         showDivider={index < array.length - 1}
                     />
                 ))}
             </ItemGroup>
 
-            <ItemGroup title="Tmux">
+            <ItemGroup title="Tmux" style={groupStyle}>
                 <Item
                     title="Spawn Sessions in Tmux"
                     subtitle={useTmux ? 'Sessions spawn in new tmux windows.' : 'Sessions spawn in regular shell (no tmux integration)'}
@@ -203,12 +205,14 @@ export function ProfileEditForm({
                 )}
             </ItemGroup>
 
-            <EnvironmentVariablesList
-                environmentVariables={environmentVariables}
-                machineId={machineId}
-                profileDocs={profileDocs}
-                onChange={setEnvironmentVariables}
-            />
+            <View style={groupStyle}>
+                <EnvironmentVariablesList
+                    environmentVariables={environmentVariables}
+                    machineId={machineId}
+                    profileDocs={profileDocs}
+                    onChange={setEnvironmentVariables}
+                />
+            </View>
 
             <ItemGroup>
                 <Item title={t('common.cancel')} onPress={onCancel} showChevron={false} />

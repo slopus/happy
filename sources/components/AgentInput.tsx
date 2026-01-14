@@ -334,8 +334,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 	    }, [props.profileId, currentProfile]);
 
 		    const profileIcon = React.useMemo(() => {
-		        if (props.profileId === null) return 'radio-button-off-outline';
-		        if (typeof props.profileId === 'string' && props.profileId.trim() === '') return 'radio-button-off-outline';
+		        if (props.profileId === null) return 'settings-outline';
+		        if (typeof props.profileId === 'string' && props.profileId.trim() === '') return 'settings-outline';
                 const primary = getProfilePrimaryCli(currentProfile);
                 if (primary === 'claude') return 'cloud-outline';
                 if (primary === 'codex') return 'terminal-outline';

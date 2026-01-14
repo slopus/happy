@@ -858,15 +858,6 @@ function NewSessionWizard() {
         scrollToWizardSection('profile');
     }, [scrollToWizardSection]);
 
-    const profileIconContainerStyle = React.useMemo(() => ({
-        width: 29,
-        height: 29,
-        borderRadius: 14.5,
-        backgroundColor: theme.colors.surfacePressed,
-        alignItems: 'center' as const,
-        justifyContent: 'center' as const,
-    }), [theme.colors.surfacePressed]);
-
     const renderProfileLeftElement = React.useCallback((profile: AIBackendProfile) => {
         const primary = getProfilePrimaryCli(profile);
         const iconName =
@@ -876,15 +867,13 @@ function NewSessionWizard() {
                         primary === 'multi' ? 'sparkles-outline' :
                             'person-outline';
         return (
-            <View style={profileIconContainerStyle}>
-                <Ionicons
-                    name={iconName as any}
-                    size={18}
-                    color={theme.colors.textSecondary}
-                />
-            </View>
+            <Ionicons
+                name={iconName as any}
+                size={29}
+                color={theme.colors.textSecondary}
+            />
         );
-    }, [profileIconContainerStyle, theme.colors.textSecondary]);
+    }, [theme.colors.textSecondary]);
 
     // Helper to get meaningful subtitle text for profiles
     const getProfileSubtitle = React.useCallback((profile: AIBackendProfile): string => {
@@ -1582,10 +1571,11 @@ function NewSessionWizard() {
                                         <Item
                                             title={t('profiles.noProfile')}
                                             subtitle={t('profiles.noProfileDescription')}
-                                            leftElement={<Ionicons name="radio-button-off-outline" size={29} color={theme.colors.textSecondary} />}
+                                            leftElement={<Ionicons name="settings-outline" size={29} color={theme.colors.textSecondary} />}
                                             showChevron={false}
                                             selected={!selectedProfileId}
                                             onPress={() => setSelectedProfileId(null)}
+                                            pressableStyle={!selectedProfileId ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                             rightElement={
                                                 <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
                                                     <Ionicons
@@ -1613,6 +1603,7 @@ function NewSessionWizard() {
                                                     leftElement={renderProfileLeftElement(profile)}
                                                     showChevron={false}
                                                     selected={isSelected}
+                                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                                     disabled={!availability.available}
                                                     onPress={() => selectProfile(profile.id)}
                                                     rightElement={
@@ -1662,6 +1653,7 @@ function NewSessionWizard() {
                                                     leftElement={renderProfileLeftElement(profile)}
                                                     showChevron={false}
                                                     selected={isSelected}
+                                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                                     disabled={!availability.available}
                                                     onPress={() => selectProfile(profile.id)}
                                                     rightElement={

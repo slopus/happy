@@ -25,15 +25,6 @@ export default function ProfilePickerScreen() {
     const selectedId = typeof params.selectedId === 'string' ? params.selectedId : '';
     const machineId = typeof params.machineId === 'string' ? params.machineId : undefined;
 
-    const profileIconContainerStyle = React.useMemo(() => ({
-        width: 29,
-        height: 29,
-        borderRadius: 14.5,
-        backgroundColor: theme.colors.surfacePressed,
-        alignItems: 'center' as const,
-        justifyContent: 'center' as const,
-    }), [theme.colors.surfacePressed]);
-
     const renderProfileIcon = React.useCallback((profile: AIBackendProfile) => {
         const primary = getProfilePrimaryCli(profile);
         const iconName =
@@ -43,11 +34,9 @@ export default function ProfilePickerScreen() {
                         primary === 'multi' ? 'sparkles-outline' :
                             'person-outline';
         return (
-            <View style={profileIconContainerStyle}>
-                <Ionicons name={iconName as any} size={18} color={theme.colors.textSecondary} />
-            </View>
+            <Ionicons name={iconName as any} size={29} color={theme.colors.textSecondary} />
         );
-    }, [profileIconContainerStyle, theme.colors.textSecondary]);
+    }, [theme.colors.textSecondary]);
 
     const setProfileParamAndClose = React.useCallback((profileId: string) => {
         const state = navigation.getState();
@@ -157,10 +146,11 @@ export default function ProfilePickerScreen() {
                             <Item
                                 title={t('profiles.noProfile')}
                                 subtitle={t('profiles.noProfileDescription')}
-                                icon={<Ionicons name="radio-button-off-outline" size={29} color={theme.colors.textSecondary} />}
+                                icon={<Ionicons name="settings-outline" size={29} color={theme.colors.textSecondary} />}
                                 onPress={() => setProfileParamAndClose('')}
                                 showChevron={false}
                                 selected={selectedId === ''}
+                                pressableStyle={selectedId === '' ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                 rightElement={selectedId === ''
                                     ? <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
                                     : null}
@@ -182,6 +172,7 @@ export default function ProfilePickerScreen() {
                                         onPress={() => setProfileParamAndClose(profile.id)}
                                         showChevron={false}
                                         selected={isSelected}
+                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                         rightElement={
                                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                                 {isSelected && (
@@ -228,6 +219,7 @@ export default function ProfilePickerScreen() {
                                         onPress={() => setProfileParamAndClose(profile.id)}
                                         showChevron={false}
                                         selected={isSelected}
+                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                         rightElement={
                                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                                 {isSelected && (
