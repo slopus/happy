@@ -773,11 +773,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             gap: 6,
 	                                })}
 	                            >
-	                                        <Ionicons
-	                                            name="shield-half-outline"
-	                                            size={16}
-	                                            color={theme.colors.button.secondary.tint}
-		                                />
+		                                        <Ionicons
+		                                            name="shield-outline"
+		                                            size={16}
+		                                            color={theme.colors.button.secondary.tint}
+			                                />
                                         <Text style={{
                                             fontSize: 13,
                                             color: theme.colors.button.secondary.tint,

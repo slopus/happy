@@ -204,7 +204,7 @@ export function ProfileEditForm({
 
             <ItemGroup title="Default Permission Mode" style={groupStyle}>
                 {[
-                    { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-half-outline' },
+                    { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
                     { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
                     { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
                     { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
@@ -317,7 +317,6 @@ export function ProfileEditForm({
                             display="inverted"
                             title={t('common.cancel')}
                             onPress={onCancel}
-                            style={{ backgroundColor: theme.colors.surface, borderColor: theme.colors.divider }}
                         />
                     </View>
                     <View style={{ flex: 1 }}>

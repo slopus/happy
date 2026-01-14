@@ -3,6 +3,7 @@ import { Text, View, type ViewStyle } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import type { AIBackendProfile } from '@/sync/settings';
+import { useSetting } from '@/sync/storage';
 
 type Props = {
     profile: Pick<AIBackendProfile, 'compatibility'>;
@@ -12,10 +13,11 @@ type Props = {
 
 export function ProfileCompatibilityIcon({ profile, size = 32, style }: Props) {
     const { theme } = useUnistyles();
+    const experimentsEnabled = useSetting('experiments');
 
     const hasClaude = !!profile.compatibility?.claude;
     const hasCodex = !!profile.compatibility?.codex;
-    const hasGemini = !!profile.compatibility?.gemini;
+    const hasGemini = experimentsEnabled && !!profile.compatibility?.gemini;
 
     const glyphs = React.useMemo(() => {
         const items: Array<{ key: string; glyph: string; factor: number }> = [];
@@ -26,7 +28,7 @@ export function ProfileCompatibilityIcon({ profile, size = 32, style }: Props) {
         return items;
     }, [hasClaude, hasCodex, hasGemini]);
 
-    const multiScale = glyphs.length === 1 ? 1 : glyphs.length === 2 ? 0.55 : 0.45;
+    const multiScale = glyphs.length === 1 ? 1 : glyphs.length === 2 ? 0.6 : 0.5;
 
     return (
         <View
@@ -45,7 +47,7 @@ export function ProfileCompatibilityIcon({ profile, size = 32, style }: Props) {
                     {glyphs[0].glyph}
                 </Text>
             ) : (
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                <View style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
                     {glyphs.map((item) => (
                         <Text
                             key={item.key}

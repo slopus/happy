@@ -938,11 +938,26 @@ function NewSessionWizard() {
         scrollToWizardSection('agent');
     }, [scrollToWizardSection]);
 
+    const ignoreProfileRowPressRef = React.useRef(false);
+
+    const openProfileEnvVarsPreview = React.useCallback((profile: AIBackendProfile) => {
+        Modal.show({
+            component: EnvironmentVariablesPreviewModal,
+            props: {
+                environmentVariables: getProfileEnvironmentVariables(profile),
+                machineId: selectedMachineId,
+                machineName: selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host,
+                profileName: profile.name,
+            },
+        } as any);
+    }, [selectedMachine, selectedMachineId]);
+
     const renderProfileLeftElement = React.useCallback((profile: AIBackendProfile) => {
         return <ProfileCompatibilityIcon profile={profile} />;
     }, []);
 
     const renderProfileRightElement = React.useCallback((profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
+        const envVarCount = Object.keys(getProfileEnvironmentVariables(profile)).length;
         return (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                 <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
@@ -955,6 +970,9 @@ function NewSessionWizard() {
                 </View>
                 <Pressable
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    onPressIn={() => {
+                        ignoreProfileRowPressRef.current = true;
+                    }}
                     onPress={(e) => {
                         e.stopPropagation();
                         toggleFavoriteProfile(profile.id);
@@ -966,8 +984,25 @@ function NewSessionWizard() {
                         color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
                     />
                 </Pressable>
+                {envVarCount > 0 && (
+                    <Pressable
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        onPressIn={() => {
+                            ignoreProfileRowPressRef.current = true;
+                        }}
+                        onPress={(e) => {
+                            e.stopPropagation();
+                            openProfileEnvVarsPreview(profile);
+                        }}
+                    >
+                        <Ionicons name="list-outline" size={22} color={theme.colors.button.secondary.tint} />
+                    </Pressable>
+                )}
                 <Pressable
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    onPressIn={() => {
+                        ignoreProfileRowPressRef.current = true;
+                    }}
                     onPress={(e) => {
                         e.stopPropagation();
                         openProfileEdit(profile);
@@ -977,6 +1012,9 @@ function NewSessionWizard() {
                 </Pressable>
                 <Pressable
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    onPressIn={() => {
+                        ignoreProfileRowPressRef.current = true;
+                    }}
                     onPress={(e) => {
                         e.stopPropagation();
                         handleDuplicateProfile(profile);
@@ -987,6 +1025,9 @@ function NewSessionWizard() {
                 {!profile.isBuiltIn && (
                     <Pressable
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        onPressIn={() => {
+                            ignoreProfileRowPressRef.current = true;
+                        }}
                         onPress={(e) => {
                             e.stopPropagation();
                             handleDeleteProfile(profile);
@@ -1000,6 +1041,7 @@ function NewSessionWizard() {
     }, [
         handleDeleteProfile,
         handleDuplicateProfile,
+        openProfileEnvVarsPreview,
         openProfileEdit,
         theme.colors.button.primary.background,
         theme.colors.button.secondary.tint,
@@ -1535,7 +1577,14 @@ function NewSessionWizard() {
                                                         selected={isSelected}
                                                         pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                                         disabled={!availability.available}
-                                                        onPress={() => availability.available && selectProfile(profile.id)}
+                                                        onPress={() => {
+                                                            if (!availability.available) return;
+                                                            if (ignoreProfileRowPressRef.current) {
+                                                                ignoreProfileRowPressRef.current = false;
+                                                                return;
+                                                            }
+                                                            selectProfile(profile.id);
+                                                        }}
                                                         rightElement={renderProfileRightElement(profile, isSelected, true)}
                                                         showDivider={!isLast}
                                                     />
@@ -1561,7 +1610,14 @@ function NewSessionWizard() {
                                                         selected={isSelected}
                                                         pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                                         disabled={!availability.available}
-                                                        onPress={() => availability.available && selectProfile(profile.id)}
+                                                        onPress={() => {
+                                                            if (!availability.available) return;
+                                                            if (ignoreProfileRowPressRef.current) {
+                                                                ignoreProfileRowPressRef.current = false;
+                                                                return;
+                                                            }
+                                                            selectProfile(profile.id);
+                                                        }}
                                                         rightElement={renderProfileRightElement(profile, isSelected, isFavorite)}
                                                         showDivider={!isLast}
                                                     />
@@ -1607,7 +1663,14 @@ function NewSessionWizard() {
                                                     selected={isSelected}
                                                     pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                                     disabled={!availability.available}
-                                                    onPress={() => availability.available && selectProfile(profile.id)}
+                                                    onPress={() => {
+                                                        if (!availability.available) return;
+                                                        if (ignoreProfileRowPressRef.current) {
+                                                            ignoreProfileRowPressRef.current = false;
+                                                            return;
+                                                        }
+                                                        selectProfile(profile.id);
+                                                    }}
                                                     rightElement={renderProfileRightElement(profile, isSelected, isFavorite)}
                                                     showDivider={!isLast}
                                                 />
@@ -1992,20 +2055,20 @@ function NewSessionWizard() {
                             {/* Section 4: Permission Mode */}
 	                            <View ref={permissionSectionRef} onLayout={registerWizardSectionOffset('permission')}>
 		                                <View style={styles.wizardSectionHeaderRow}>
-		                                    <Ionicons name="shield-half-outline" size={18} color={theme.colors.text} />
+		                                    <Ionicons name="shield-outline" size={18} color={theme.colors.text} />
 		                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Permission Mode</Text>
 		                                </View>
 		                            </View>
 		                            <ItemGroup title="">
 		                                {(agentType === 'codex'
 		                                    ? [
-		                                        { value: 'default' as PermissionMode, label: t('agentInput.codexPermissionMode.default'), description: 'Use CLI permission settings', icon: 'shield-half-outline' },
+		                                        { value: 'default' as PermissionMode, label: t('agentInput.codexPermissionMode.default'), description: 'Use CLI permission settings', icon: 'shield-outline' },
 		                                        { value: 'read-only' as PermissionMode, label: t('agentInput.codexPermissionMode.readOnly'), description: 'Read-only mode', icon: 'eye-outline' },
 		                                        { value: 'safe-yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.safeYolo'), description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
 		                                        { value: 'yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.yolo'), description: 'Full access, skip permissions', icon: 'flash-outline' },
 		                                    ]
 		                                    : [
-		                                        { value: 'default' as PermissionMode, label: t(agentType === 'gemini' ? 'agentInput.geminiPermissionMode.default' : 'agentInput.permissionMode.default'), description: 'Ask for permissions', icon: 'shield-half-outline' },
+		                                        { value: 'default' as PermissionMode, label: t(agentType === 'gemini' ? 'agentInput.geminiPermissionMode.default' : 'agentInput.permissionMode.default'), description: 'Ask for permissions', icon: 'shield-outline' },
 		                                        { value: 'acceptEdits' as PermissionMode, label: t(agentType === 'gemini' ? 'agentInput.geminiPermissionMode.acceptEdits' : 'agentInput.permissionMode.acceptEdits'), description: 'Auto-approve edits', icon: 'checkmark-outline' },
 		                                        { value: 'plan' as PermissionMode, label: t(agentType === 'gemini' ? 'agentInput.geminiPermissionMode.plan' : 'agentInput.permissionMode.plan'), description: 'Plan before executing', icon: 'list-outline' },
 		                                        { value: 'bypassPermissions' as PermissionMode, label: t(agentType === 'gemini' ? 'agentInput.geminiPermissionMode.bypassPermissions' : 'agentInput.permissionMode.bypassPermissions'), description: 'Skip all permissions', icon: 'flash-outline' },
@@ -2081,7 +2144,12 @@ function NewSessionWizard() {
                                 onMachineClick={handleAgentInputMachineClick}
                                 currentPath={selectedPath}
                                 onPathClick={handleAgentInputPathClick}
-                                {...(useProfiles ? { profileId: selectedProfileId, onProfileClick: handleAgentInputProfileClick } : {})}
+                                {...(useProfiles ? {
+                                    profileId: selectedProfileId,
+                                    onProfileClick: handleAgentInputProfileClick,
+                                    envVarsCount: selectedProfileEnvVarsCount || undefined,
+                                    onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
+                                } : {})}
                             />
                     </View>
                 </View>
