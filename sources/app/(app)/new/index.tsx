@@ -139,6 +139,23 @@ const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 
 	        paddingHorizontal: Platform.select({ ios: 32, default: 28 }),
 	        ...Typography.default()
 	    },
+        wizardInputWrapper: {
+            paddingHorizontal: Platform.select({ ios: 32, default: 28 }),
+            marginBottom: 12,
+        },
+        wizardTextInput: {
+            ...Typography.default('regular'),
+            backgroundColor: theme.colors.input.background,
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: Platform.select({ ios: 10, default: 12 }),
+            fontSize: Platform.select({ ios: 17, default: 16 }),
+            lineHeight: Platform.select({ ios: 22, default: 24 }),
+            letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+            color: theme.colors.input.text,
+            borderWidth: 0.5,
+            borderColor: theme.colors.divider,
+        },
     profileListItem: {
         backgroundColor: theme.colors.input.background,
         borderRadius: 12,
@@ -430,6 +447,10 @@ function NewSessionWizard() {
     const [selectedPath, setSelectedPath] = React.useState<string>(() => {
         return getRecentPathForMachine(selectedMachineId, recentMachinePaths);
     });
+    const [workingDirInput, setWorkingDirInput] = React.useState<string>(() => {
+        return getRecentPathForMachine(selectedMachineId, recentMachinePaths);
+    });
+    const [isEditingWorkingDir, setIsEditingWorkingDir] = React.useState(false);
     const [sessionPrompt, setSessionPrompt] = React.useState(() => {
         return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
     });
@@ -608,6 +629,14 @@ function NewSessionWizard() {
         if (!selectedMachineId) return null;
         return machines.find(m => m.id === selectedMachineId);
     }, [selectedMachineId, machines]);
+
+    React.useEffect(() => {
+        if (isEditingWorkingDir) {
+            return;
+        }
+        const homeDir = selectedMachine?.metadata?.homeDir;
+        setWorkingDirInput(selectedPath ? formatPathRelativeToHome(selectedPath, homeDir) : '');
+    }, [isEditingWorkingDir, selectedMachine?.metadata?.homeDir, selectedPath]);
 
     // Get recent paths for the selected machine
     // Recent machines computed from sessions (for inline machine selection)
@@ -1611,6 +1640,40 @@ function NewSessionWizard() {
                             </View>
 
                             <View style={{ marginBottom: 24 }}>
+                                <View style={styles.wizardInputWrapper}>
+                                    <TextInput
+                                        value={workingDirInput}
+                                        onFocus={() => setIsEditingWorkingDir(true)}
+                                        onBlur={() => {
+                                            setIsEditingWorkingDir(false);
+                                            const trimmed = workingDirInput.trim();
+                                            if (!trimmed) {
+                                                setSelectedPath('');
+                                                return;
+                                            }
+                                            const homeDir = selectedMachine?.metadata?.homeDir;
+                                            const resolved = trimmed.startsWith('~') ? resolveAbsolutePath(trimmed, homeDir) : trimmed;
+                                            setSelectedPath(resolved);
+                                        }}
+                                        onChangeText={(text) => {
+                                            setWorkingDirInput(text);
+                                            const trimmed = text.trim();
+                                            if (!trimmed) {
+                                                setSelectedPath('');
+                                                return;
+                                            }
+                                            const homeDir = selectedMachine?.metadata?.homeDir;
+                                            const resolved = trimmed.startsWith('~') ? resolveAbsolutePath(trimmed, homeDir) : trimmed;
+                                            setSelectedPath(resolved);
+                                        }}
+                                        placeholder="Enter directory (e.g. ~/src or /Users/you/project)"
+                                        placeholderTextColor={theme.colors.input.placeholder}
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                        style={styles.wizardTextInput}
+                                    />
+                                </View>
+
                                 <DirectorySelector
                                     machineHomeDir={selectedMachine?.metadata?.homeDir}
                                     selectedPath={selectedPath}
@@ -1631,8 +1694,13 @@ function NewSessionWizard() {
                                         return favoriteDirectories.map((fav) => resolveAbsolutePath(fav, homeDir));
                                     })()}
                                     showFavorites={true}
-                                    showSearch={usePickerSearch}
-                                    onSelect={(path) => setSelectedPath(path)}
+                                    showSearch={false}
+                                    onSelect={(path) => {
+                                        const homeDir = selectedMachine?.metadata?.homeDir;
+                                        setIsEditingWorkingDir(false);
+                                        setSelectedPath(path);
+                                        setWorkingDirInput(formatPathRelativeToHome(path, homeDir));
+                                    }}
                                     onToggleFavorite={(path) => {
                                         const homeDir = selectedMachine?.metadata?.homeDir;
                                         if (!homeDir) return;
