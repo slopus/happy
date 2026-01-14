@@ -1595,44 +1595,6 @@ function NewSessionScreen() {
         });
     }, [router, resumeSessionId, agentType]);
 
-    const renderResumePicker = React.useCallback((options?: { marginBottom?: number }) => {
-        if (!canAgentResume(agentType)) {
-            return null;
-        }
-        return (
-            <Pressable
-                onPress={handleResumeClick}
-                style={(p) => ({
-                    backgroundColor: theme.colors.input.background,
-                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    marginBottom: options?.marginBottom ?? 8,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    opacity: p.pressed ? 0.7 : 1,
-                })}
-            >
-                <Ionicons
-                    name="play-circle-outline"
-                    size={14}
-                    color={theme.colors.button.secondary.tint}
-                />
-                <Text style={{
-                    fontSize: 13,
-                    color: theme.colors.button.secondary.tint,
-                    fontWeight: '600',
-                    marginLeft: 6,
-                    ...Typography.default('semiBold'),
-                }}>
-                    {resumeSessionId.trim()
-                        ? `${t('newSession.resume.title')}: ${resumeSessionId.substring(0, 8)}...${resumeSessionId.substring(resumeSessionId.length - 8)}`
-                        : t('newSession.resume.optional')}
-                </Text>
-            </Pressable>
-        );
-    }, [agentType, handleResumeClick, resumeSessionId, theme]);
-
     const selectedProfileForEnvVars = React.useMemo(() => {
         if (!useProfiles || !selectedProfileId) return null;
         return profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId) || null;
@@ -1995,7 +1957,6 @@ function NewSessionScreen() {
                             >
                                 <View style={{ paddingHorizontal: newSessionSidePadding }}>
                                     <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                                        {renderResumePicker({ marginBottom: 8 })}
                                         <AgentInput
                                             value={sessionPrompt}
                                             onChangeText={setSessionPrompt}
@@ -2016,6 +1977,8 @@ function NewSessionScreen() {
                                             onMachineClick={handleMachineClick}
                                             currentPath={selectedPath}
                                             onPathClick={handlePathClick}
+                                            resumeSessionId={canAgentResume(agentType) ? resumeSessionId : undefined}
+                                            onResumeClick={canAgentResume(agentType) ? handleResumeClick : undefined}
                                             contentPaddingHorizontal={0}
                                             {...(useProfiles
                                                 ? {
@@ -2240,17 +2203,20 @@ function NewSessionScreen() {
             connectionStatus,
             selectedProfileEnvVarsCount,
             handleEnvVarsClick,
-            resumePicker: renderResumePicker({ marginBottom: 16 }),
+            resumeSessionId,
+            onResumeClick: canAgentResume(agentType) ? handleResumeClick : undefined,
         };
     }, [
+        agentType,
         canCreate,
         connectionStatus,
         emptyAutocompletePrefixes,
         emptyAutocompleteSuggestions,
         handleCreateSession,
         handleEnvVarsClick,
+        handleResumeClick,
         isCreating,
-        renderResumePicker,
+        resumeSessionId,
         selectedProfileEnvVarsCount,
         sessionPrompt,
         setSessionPrompt,

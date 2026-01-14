@@ -117,7 +117,8 @@ export interface NewSessionWizardFooterProps {
     emptyAutocompletePrefixes: React.ComponentProps<typeof AgentInput>['autocompletePrefixes'];
     emptyAutocompleteSuggestions: React.ComponentProps<typeof AgentInput>['autocompleteSuggestions'];
     connectionStatus?: React.ComponentProps<typeof AgentInput>['connectionStatus'];
-    resumePicker?: React.ReactNode;
+    resumeSessionId?: string | null;
+    onResumeClick?: () => void;
     selectedProfileEnvVarsCount: number;
     handleEnvVarsClick: () => void;
 }
@@ -259,7 +260,8 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
         emptyAutocompletePrefixes,
         emptyAutocompleteSuggestions,
         connectionStatus,
-        resumePicker,
+        resumeSessionId,
+        onResumeClick,
         selectedProfileEnvVarsCount,
         handleEnvVarsClick,
     } = props.footer;
@@ -898,7 +900,6 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                     ) : null}
                     <View style={{ paddingHorizontal: newSessionSidePadding }}>
                         <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                            {resumePicker}
                             <AgentInput
                                 value={sessionPrompt}
                                 onChangeText={setSessionPrompt}
@@ -920,6 +921,8 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                 onMachineClick={handleAgentInputMachineClick}
                                 currentPath={selectedPath}
                                 onPathClick={handleAgentInputPathClick}
+                                resumeSessionId={resumeSessionId}
+                                onResumeClick={onResumeClick}
                                 contentPaddingHorizontal={0}
                                 {...(useProfiles ? {
                                     profileId: selectedProfileId,

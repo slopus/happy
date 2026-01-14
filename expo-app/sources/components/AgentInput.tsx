@@ -71,6 +71,8 @@ interface AgentInputProps {
     onMachineClick?: () => void;
     currentPath?: string | null;
     onPathClick?: () => void;
+    resumeSessionId?: string | null;
+    onResumeClick?: () => void;
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
@@ -1474,6 +1476,48 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             />
                                             <Text style={styles.actionChipText}>
                                                 {props.currentPath}
+                                            </Text>
+                                        </Pressable>
+	                                    </View>
+	                                </View>
+                            ) : null,
+
+                            // Row 3: Resume selector (below path chip)
+                            (!actionBarShouldScroll && !actionBarIsCollapsed && props.onResumeClick) ? (
+                                <View key="row3" style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                                    <View style={[styles.actionButtonsLeft, { flex: 0 }]}>
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onResumeClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => ({
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                borderRadius: Platform.select({ default: 16, android: 20 }),
+                                                paddingHorizontal: 10,
+                                                paddingVertical: 6,
+                                                justifyContent: 'center',
+                                                height: 32,
+                                                opacity: p.pressed ? 0.7 : 1,
+                                                gap: 6,
+                                            })}
+                                        >
+                                            <Ionicons
+                                                name="play-circle-outline"
+                                                size={14}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={{
+                                                fontSize: 13,
+                                                color: theme.colors.button.secondary.tint,
+                                                fontWeight: '600',
+                                                ...Typography.default('semiBold'),
+                                            }}>
+                                                {typeof props.resumeSessionId === 'string' && props.resumeSessionId.trim()
+                                                    ? `${t('newSession.resume.title')}: ${props.resumeSessionId.substring(0, 8)}...${props.resumeSessionId.substring(props.resumeSessionId.length - 8)}`
+                                                    : t('newSession.resume.optional')}
                                             </Text>
                                         </Pressable>
                                     </View>
