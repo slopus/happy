@@ -14,6 +14,8 @@ import { Item } from '@/components/Item';
 import { Switch } from '@/components/Switch';
 import { getBuiltInProfileDocumentation } from '@/sync/profileUtils';
 import { EnvironmentVariablesList } from '@/components/EnvironmentVariablesList';
+import { useSetting } from '@/sync/storage';
+import { Modal } from '@/modal';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
@@ -33,6 +35,7 @@ export function ProfileEditForm({
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const groupStyle = React.useMemo(() => ({ marginBottom: 8 }), []);
+    const experimentsEnabled = useSetting('experiments');
 
     const profileDocs = React.useMemo(() => {
         if (!profile.isBuiltIn) return null;
@@ -53,6 +56,21 @@ export function ProfileEditForm({
     const [defaultPermissionMode, setDefaultPermissionMode] = React.useState<PermissionMode>(
         (profile.defaultPermissionMode as PermissionMode) || 'default',
     );
+    const [compatibility, setCompatibility] = React.useState<NonNullable<AIBackendProfile['compatibility']>>(
+        profile.compatibility || { claude: true, codex: true, gemini: true },
+    );
+
+    const toggleCompatibility = React.useCallback((key: keyof AIBackendProfile['compatibility']) => {
+        setCompatibility((prev) => {
+            const next = { ...prev, [key]: !prev[key] };
+            const enabledCount = Object.values(next).filter(Boolean).length;
+            if (enabledCount === 0) {
+                Modal.alert(t('common.error'), 'Select at least one AI backend.');
+                return prev;
+            }
+            return next;
+        });
+    }, []);
 
     const openSetupGuide = React.useCallback(async () => {
         const url = profileDocs?.setupGuideUrl;
@@ -93,9 +111,11 @@ export function ProfileEditForm({
                   },
             defaultSessionType,
             defaultPermissionMode,
+            compatibility,
             updatedAt: Date.now(),
         });
     }, [
+        compatibility,
         defaultPermissionMode,
         defaultSessionType,
         environmentVariables,
@@ -167,6 +187,36 @@ export function ProfileEditForm({
                         showDivider={index < array.length - 1}
                     />
                 ))}
+            </ItemGroup>
+
+            <ItemGroup title="AI Backend" style={groupStyle}>
+                <Item
+                    title="Claude"
+                    subtitle="Claude CLI"
+                    leftElement={<Ionicons name="sparkles-outline" size={24} color={theme.colors.textSecondary} />}
+                    rightElement={<Switch value={compatibility.claude} onValueChange={() => toggleCompatibility('claude')} />}
+                    showChevron={false}
+                    onPress={() => toggleCompatibility('claude')}
+                />
+                <Item
+                    title="Codex"
+                    subtitle="Codex CLI"
+                    leftElement={<Ionicons name="terminal-outline" size={24} color={theme.colors.textSecondary} />}
+                    rightElement={<Switch value={compatibility.codex} onValueChange={() => toggleCompatibility('codex')} />}
+                    showChevron={false}
+                    onPress={() => toggleCompatibility('codex')}
+                />
+                {experimentsEnabled && (
+                    <Item
+                        title="Gemini"
+                        subtitle="Gemini CLI (experimental)"
+                        leftElement={<Ionicons name="planet-outline" size={24} color={theme.colors.textSecondary} />}
+                        rightElement={<Switch value={compatibility.gemini} onValueChange={() => toggleCompatibility('gemini')} />}
+                        showChevron={false}
+                        onPress={() => toggleCompatibility('gemini')}
+                        showDivider={false}
+                    />
+                )}
             </ItemGroup>
 
             <ItemGroup title="Tmux" style={groupStyle}>

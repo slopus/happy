@@ -763,24 +763,14 @@ function NewSessionWizard() {
         // Check both custom profiles and built-in profiles
         const profile = profileMap.get(profileId) || getBuiltInProfile(profileId);
         if (profile) {
-            // Auto-select agent based on profile's EXCLUSIVE compatibility
-            // Only switch if profile supports exactly one CLI - scales automatically with new agents
-            const supportedCLIs = (Object.entries(profile.compatibility) as [string, boolean][])
+            const supportedAgents = (Object.entries(profile.compatibility) as Array<[string, boolean]>)
                 .filter(([, supported]) => supported)
-                .map(([agent]) => agent);
+                .map(([agent]) => agent as 'claude' | 'codex' | 'gemini')
+                .filter((agent) => agent !== 'gemini' || allowGemini);
 
-            if (supportedCLIs.length === 1) {
-                const requiredAgent = supportedCLIs[0] as 'claude' | 'codex' | 'gemini';
-                // Check if this agent is available and allowed
-                const isAvailable = cliAvailability[requiredAgent] !== false;
-                const isAllowed = requiredAgent !== 'gemini' || experimentsEnabled;
-
-                if (isAvailable && isAllowed) {
-                    setAgentType(requiredAgent);
-                }
-                // If the required CLI is unavailable or not allowed, keep current agent (profile will show as unavailable)
+            if (supportedAgents.length > 0 && !supportedAgents.includes(agentType)) {
+                setAgentType(supportedAgents[0] ?? 'claude');
             }
-            // If supportedCLIs.length > 1, profile supports multiple CLIs - don't force agent switch
 
             // Set session type from profile's default
             if (profile.defaultSessionType) {
@@ -791,7 +781,7 @@ function NewSessionWizard() {
                 setPermissionMode(profile.defaultPermissionMode as PermissionMode);
             }
         }
-    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, experimentsEnabled]);
+    }, [agentType, allowGemini, profileMap]);
 
     // Handle profile route param from picker screens
     React.useEffect(() => {
@@ -812,6 +802,27 @@ function NewSessionWizard() {
         }
     }, [profileIdParam, selectedProfileId, selectProfile, useProfiles]);
 
+    // Keep agentType compatible with the currently selected profile.
+    React.useEffect(() => {
+        if (!useProfiles || selectedProfileId === null) {
+            return;
+        }
+
+        const profile = profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId);
+        if (!profile) {
+            return;
+        }
+
+        const supportedAgents = (Object.entries(profile.compatibility) as Array<[string, boolean]>)
+            .filter(([, supported]) => supported)
+            .map(([agent]) => agent as 'claude' | 'codex' | 'gemini')
+            .filter((agent) => agent !== 'gemini' || allowGemini);
+
+        if (supportedAgents.length > 0 && !supportedAgents.includes(agentType)) {
+            setAgentType(supportedAgents[0] ?? 'claude');
+        }
+    }, [agentType, allowGemini, profileMap, selectedProfileId, useProfiles]);
+
     // Reset permission mode to 'default' when agent type changes and current mode is invalid for new agent
     React.useEffect(() => {
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
@@ -827,7 +838,7 @@ function NewSessionWizard() {
     }, [agentType, permissionMode]);
 
     // Scroll to section helpers - for AgentInput button clicks
-    const wizardSectionOffsets = React.useRef<{ profile?: number; machine?: number; path?: number; permission?: number; sessionType?: number }>({});
+    const wizardSectionOffsets = React.useRef<{ profile?: number; agent?: number; machine?: number; path?: number; permission?: number; sessionType?: number }>({});
     const registerWizardSectionOffset = React.useCallback((key: keyof typeof wizardSectionOffsets.current) => {
         return (e: any) => {
             wizardSectionOffsets.current[key] = e?.nativeEvent?.layout?.y ?? 0;
@@ -856,7 +867,7 @@ function NewSessionWizard() {
     }, [scrollToWizardSection]);
 
     const handleAgentInputAgentClick = React.useCallback(() => {
-        scrollToWizardSection('profile');
+        scrollToWizardSection('agent');
     }, [scrollToWizardSection]);
 
     const renderProfileLeftElement = React.useCallback((profile: AIBackendProfile) => {
@@ -1415,16 +1426,140 @@ function NewSessionWizard() {
                                 </View>
                             )}
 
-                            {/* Section 1: Profile Management */}
-	                            <View style={styles.wizardSectionHeaderRow}>
-                                <Ionicons name={useProfiles ? "person-outline" : "hardware-chip-outline"} size={18} color={theme.colors.text} />
-                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
-                                    {useProfiles ? 'Select AI Profile & Backend' : 'Select AI'}
-                                </Text>
+                            {useProfiles && (
+                                <>
+                                    <View style={styles.wizardSectionHeaderRow}>
+                                        <Ionicons name="person-outline" size={18} color={theme.colors.text} />
+                                        <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
+                                            Select AI Profile
+                                        </Text>
+                                    </View>
+                                    <Text style={styles.sectionDescription}>
+                                        Select a profile to apply environment variables and defaults to your session.
+                                    </Text>
+
+                                    {favoriteProfileItems.length > 0 && (
+                                        <ItemGroup title="Favorites">
+                                            {favoriteProfileItems.map((profile, index) => {
+                                                const availability = isProfileAvailable(profile);
+                                                const isSelected = selectedProfileId === profile.id;
+                                                const isLast = index === favoriteProfileItems.length - 1;
+                                                return (
+                                                    <Item
+                                                        key={profile.id}
+                                                        title={profile.name}
+                                                        subtitle={getProfileSubtitle(profile)}
+                                                        leftElement={renderProfileLeftElement(profile)}
+                                                        showChevron={false}
+                                                        selected={isSelected}
+                                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                                        disabled={!availability.available}
+                                                        onPress={() => availability.available && selectProfile(profile.id)}
+                                                        rightElement={renderProfileRightElement(profile, isSelected, true)}
+                                                        showDivider={!isLast}
+                                                    />
+                                                );
+                                            })}
+                                        </ItemGroup>
+                                    )}
+
+                                    {nonFavoriteCustomProfiles.length > 0 && (
+                                        <ItemGroup title="Your Profiles">
+                                            {nonFavoriteCustomProfiles.map((profile, index) => {
+                                                const availability = isProfileAvailable(profile);
+                                                const isSelected = selectedProfileId === profile.id;
+                                                const isLast = index === nonFavoriteCustomProfiles.length - 1;
+                                                const isFavorite = favoriteProfileIdSet.has(profile.id);
+                                                return (
+                                                    <Item
+                                                        key={profile.id}
+                                                        title={profile.name}
+                                                        subtitle={getProfileSubtitle(profile)}
+                                                        leftElement={renderProfileLeftElement(profile)}
+                                                        showChevron={false}
+                                                        selected={isSelected}
+                                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                                        disabled={!availability.available}
+                                                        onPress={() => availability.available && selectProfile(profile.id)}
+                                                        rightElement={renderProfileRightElement(profile, isSelected, isFavorite)}
+                                                        showDivider={!isLast}
+                                                    />
+                                                );
+                                            })}
+                                        </ItemGroup>
+                                    )}
+
+                                    <ItemGroup title="Built-in Profiles">
+                                        <Item
+                                            title={t('profiles.noProfile')}
+                                            subtitle={t('profiles.noProfileDescription')}
+                                            leftElement={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
+                                            showChevron={false}
+                                            selected={!selectedProfileId}
+                                            onPress={() => setSelectedProfileId(null)}
+                                            pressableStyle={!selectedProfileId ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                            rightElement={!selectedProfileId
+                                                ? (
+                                                    <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                                        <Ionicons
+                                                            name="checkmark-circle"
+                                                            size={24}
+                                                            color={theme.colors.button.primary.background}
+                                                        />
+                                                    </View>
+                                                )
+                                                : null}
+                                            showDivider={nonFavoriteBuiltInProfiles.length > 0}
+                                        />
+                                        {nonFavoriteBuiltInProfiles.map((profile, index) => {
+                                            const availability = isProfileAvailable(profile);
+                                            const isSelected = selectedProfileId === profile.id;
+                                            const isLast = index === nonFavoriteBuiltInProfiles.length - 1;
+                                            const isFavorite = favoriteProfileIdSet.has(profile.id);
+                                            return (
+                                                <Item
+                                                    key={profile.id}
+                                                    title={profile.name}
+                                                    subtitle={getProfileSubtitle(profile)}
+                                                    leftElement={renderProfileLeftElement(profile)}
+                                                    showChevron={false}
+                                                    selected={isSelected}
+                                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                                    disabled={!availability.available}
+                                                    onPress={() => availability.available && selectProfile(profile.id)}
+                                                    rightElement={renderProfileRightElement(profile, isSelected, isFavorite)}
+                                                    showDivider={!isLast}
+                                                />
+                                            );
+                                        })}
+                                    </ItemGroup>
+                                    <ItemGroup title="">
+                                        <Item
+                                            title={t('profiles.addProfile')}
+                                            subtitle={t('profiles.subtitle')}
+                                            leftElement={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}
+                                            onPress={handleAddProfile}
+                                            showChevron={false}
+                                            showDivider={false}
+                                        />
+                                    </ItemGroup>
+
+                                    <View style={{ height: 24 }} />
+                                </>
+                            )}
+
+                            {/* Section: AI Backend */}
+                            <View onLayout={registerWizardSectionOffset('agent')}>
+                                <View style={styles.wizardSectionHeaderRow}>
+                                    <Ionicons name="hardware-chip-outline" size={18} color={theme.colors.text} />
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
+                                        Select AI Backend
+                                    </Text>
+                                </View>
                             </View>
                             <Text style={styles.sectionDescription}>
-                                {useProfiles
-                                    ? 'Select which AI backend runs your session (Claude or Codex). Create custom profiles for alternative APIs.'
+                                {useProfiles && selectedProfileId
+                                    ? 'Limited by your selected profile and available CLIs on this machine.'
                                     : 'Select which AI runs your session.'}
                             </Text>
 
@@ -1573,7 +1708,7 @@ function NewSessionWizard() {
                                 </View>
                             )}
 
-                            {selectedMachineId && cliAvailability.gemini === false && experimentsEnabled && !isWarningDismissed('gemini') && !hiddenBanners.gemini && (
+                            {selectedMachineId && cliAvailability.gemini === false && allowGemini && !isWarningDismissed('gemini') && !hiddenBanners.gemini && (
                                 <View style={{
                                     backgroundColor: theme.colors.box.warning.background,
                                     borderRadius: 10,
@@ -1645,145 +1780,76 @@ function NewSessionWizard() {
                                 </View>
                             )}
 
-                            {useProfiles ? (
-                                <>
-                                    {favoriteProfileItems.length > 0 && (
-                                        <ItemGroup title="Favorites">
-                                            {favoriteProfileItems.map((profile, index) => {
-                                                const availability = isProfileAvailable(profile);
-                                                const isSelected = selectedProfileId === profile.id;
-                                                const isLast = index === favoriteProfileItems.length - 1;
-                                                return (
-                                                    <Item
-                                                        key={profile.id}
-                                                        title={profile.name}
-                                                        subtitle={getProfileSubtitle(profile)}
-                                                        leftElement={renderProfileLeftElement(profile)}
-                                                        showChevron={false}
-                                                        selected={isSelected}
-                                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                                        disabled={!availability.available}
-                                                        onPress={() => availability.available && selectProfile(profile.id)}
-                                                        rightElement={renderProfileRightElement(profile, isSelected, true)}
-                                                        showDivider={!isLast}
-                                                    />
-                                                );
-                                            })}
-                                        </ItemGroup>
-                                    )}
+                            <ItemGroup title={<View />} headerStyle={{ paddingTop: 0, paddingBottom: 0 }}>
+                                {(() => {
+                                    const selectedProfile = useProfiles && selectedProfileId
+                                        ? (profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId))
+                                        : null;
 
-                                    {nonFavoriteCustomProfiles.length > 0 && (
-                                        <ItemGroup title="Your Profiles">
-                                            {nonFavoriteCustomProfiles.map((profile, index) => {
-                                                const availability = isProfileAvailable(profile);
-                                                const isSelected = selectedProfileId === profile.id;
-                                                const isLast = index === nonFavoriteCustomProfiles.length - 1;
-                                                const isFavorite = favoriteProfileIdSet.has(profile.id);
-                                                return (
-                                                    <Item
-                                                        key={profile.id}
-                                                        title={profile.name}
-                                                        subtitle={getProfileSubtitle(profile)}
-                                                        leftElement={renderProfileLeftElement(profile)}
-                                                        showChevron={false}
-                                                        selected={isSelected}
-                                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                                        disabled={!availability.available}
-                                                        onPress={() => availability.available && selectProfile(profile.id)}
-                                                        rightElement={renderProfileRightElement(profile, isSelected, isFavorite)}
-                                                        showDivider={!isLast}
-                                                    />
-                                                );
-                                            })}
-                                        </ItemGroup>
-                                    )}
+                                    const options: Array<{
+                                        key: 'claude' | 'codex' | 'gemini';
+                                        title: string;
+                                        subtitle: string;
+                                        icon: React.ComponentProps<typeof Ionicons>['name'];
+                                    }> = [
+                                        { key: 'claude', title: 'Claude', subtitle: 'Claude CLI', icon: 'sparkles-outline' },
+                                        { key: 'codex', title: 'Codex', subtitle: 'Codex CLI', icon: 'terminal-outline' },
+                                        ...(allowGemini ? [{ key: 'gemini' as const, title: 'Gemini', subtitle: 'Gemini CLI', icon: 'planet-outline' as const }] : []),
+                                    ];
 
-                                    <ItemGroup title="Built-in Profiles">
-                                        <Item
-                                            title={t('profiles.noProfile')}
-                                            subtitle={t('profiles.noProfileDescription')}
-                                            leftElement={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
-                                            showChevron={false}
-                                            selected={!selectedProfileId}
-                                            onPress={() => setSelectedProfileId(null)}
-                                            pressableStyle={!selectedProfileId ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                            rightElement={!selectedProfileId
-                                                ? (
+                                    return options.map((option, index) => {
+                                        const compatible = !selectedProfile || !!selectedProfile.compatibility?.[option.key];
+                                        const cliOk = cliAvailability[option.key] !== false;
+                                        const disabledReason = !compatible
+                                            ? 'Not compatible with the selected profile.'
+                                            : !cliOk
+                                                ? `${option.title} CLI not detected on this machine.`
+                                                : null;
+
+                                        const isSelected = agentType === option.key;
+
+                                        return (
+                                            <Item
+                                                key={option.key}
+                                                title={option.title}
+                                                subtitle={disabledReason ?? option.subtitle}
+                                                leftElement={<Ionicons name={option.icon} size={24} color={theme.colors.textSecondary} />}
+                                                selected={isSelected}
+                                                disabled={!!disabledReason}
+                                                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                                onPress={() => {
+                                                    if (disabledReason) {
+                                                        Modal.alert(
+                                                            'AI Backend',
+                                                            disabledReason,
+                                                            compatible
+                                                                ? [{ text: t('common.ok'), style: 'cancel' }]
+                                                                : [
+                                                                    { text: t('common.ok'), style: 'cancel' },
+                                                                    ...(useProfiles && selectedProfileId ? [{ text: 'Change Profile', onPress: handleAgentInputProfileClick }] : []),
+                                                                ],
+                                                        );
+                                                        return;
+                                                    }
+                                                    setAgentType(option.key);
+                                                }}
+                                                rightElement={(
                                                     <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
                                                         <Ionicons
                                                             name="checkmark-circle"
                                                             size={24}
                                                             color={theme.colors.button.primary.background}
+                                                            style={{ opacity: isSelected ? 1 : 0 }}
                                                         />
                                                     </View>
-                                                )
-                                                : null}
-                                            showDivider={nonFavoriteBuiltInProfiles.length > 0}
-                                        />
-                                        {nonFavoriteBuiltInProfiles.map((profile, index) => {
-                                            const availability = isProfileAvailable(profile);
-                                            const isSelected = selectedProfileId === profile.id;
-                                            const isLast = index === nonFavoriteBuiltInProfiles.length - 1;
-                                            const isFavorite = favoriteProfileIdSet.has(profile.id);
-                                            return (
-                                                <Item
-                                                    key={profile.id}
-                                                    title={profile.name}
-                                                    subtitle={getProfileSubtitle(profile)}
-                                                    leftElement={renderProfileLeftElement(profile)}
-                                                    showChevron={false}
-                                                    selected={isSelected}
-                                                    pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                                    disabled={!availability.available}
-                                                    onPress={() => availability.available && selectProfile(profile.id)}
-                                                    rightElement={renderProfileRightElement(profile, isSelected, isFavorite)}
-                                                    showDivider={!isLast}
-                                                />
-                                            );
-                                        })}
-                                    </ItemGroup>
-                                    <ItemGroup title="">
-                                        <Item
-                                            title={t('profiles.addProfile')}
-                                            subtitle={t('profiles.subtitle')}
-                                            leftElement={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}
-                                            onPress={handleAddProfile}
-                                            showChevron={false}
-                                            showDivider={false}
-                                        />
-                                    </ItemGroup>
-                                </>
-                            ) : (
-                                <ItemGroup title="">
-                                    <Item
-                                        title="Claude"
-                                        subtitle="Claude CLI"
-                                        leftElement={<Ionicons name="sparkles-outline" size={24} color={theme.colors.textSecondary} />}
-                                        selected={agentType === 'claude'}
-                                        onPress={() => setAgentType('claude')}
-                                        showChevron={false}
-                                    />
-                                    <Item
-                                            title="Codex"
-                                            subtitle="Codex CLI"
-                                            leftElement={<Ionicons name="terminal-outline" size={24} color={theme.colors.textSecondary} />}
-                                            selected={agentType === 'codex'}
-                                            onPress={() => setAgentType('codex')}
-                                            showChevron={false}
-                                        />
-                                    {allowGemini && (
-                                        <Item
-                                            title="Gemini"
-                                            subtitle="Gemini CLI"
-                                            leftElement={<Ionicons name="planet-outline" size={24} color={theme.colors.textSecondary} />}
-                                            selected={agentType === 'gemini'}
-                                            onPress={() => setAgentType('gemini')}
-                                            showChevron={false}
-                                            showDivider={false}
-                                        />
-                                    )}
-                                </ItemGroup>
-                            )}
+                                                )}
+                                                showChevron={false}
+                                                showDivider={index < options.length - 1}
+                                            />
+                                        );
+                                    });
+                                })()}
+                            </ItemGroup>
 
                             <View style={{ height: 24 }} />
 

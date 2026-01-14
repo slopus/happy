@@ -10,19 +10,25 @@ type Props = {
     style?: ViewStyle;
 };
 
-export function ProfileCompatibilityIcon({ profile, size = 29, style }: Props) {
+export function ProfileCompatibilityIcon({ profile, size = 32, style }: Props) {
     const { theme } = useUnistyles();
 
+    const hasClaude = !!profile.compatibility?.claude;
+    const hasCodex = !!profile.compatibility?.codex;
+    const hasGemini = !!profile.compatibility?.gemini;
+
     const glyph =
-        profile.compatibility?.claude && profile.compatibility?.codex ? '✳꩜' :
-            profile.compatibility?.claude ? '✳' :
-                profile.compatibility?.codex ? '꩜' :
-                    '•';
+        hasClaude && hasCodex ? '✳꩜' :
+            hasClaude ? '✳' :
+                hasCodex ? '꩜' :
+                    hasGemini ? '✦' :
+                        '•';
 
     const glyphSize =
-        glyph === '✳' ? Math.round(size * 0.9) :
-            glyph === '✳꩜' ? Math.round(size * 0.7) :
-                Math.round(size * 0.75);
+        glyph === '✳' ? Math.round(size * 1.0) :
+            glyph === '꩜' ? Math.round(size * 0.9) :
+                glyph === '✳꩜' ? Math.round(size * 0.8) :
+                    Math.round(size * 0.85);
 
     return (
         <View
