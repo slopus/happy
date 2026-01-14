@@ -9,6 +9,7 @@ export interface DirectorySelectorProps {
     machineHomeDir?: string | null;
     selectedPath: string;
     recentPaths: string[];
+    suggestedPaths?: string[];
     favoritePaths?: string[];
     onSelect: (path: string) => void;
     onToggleFavorite?: (path: string) => void;
@@ -26,6 +27,7 @@ export function DirectorySelector({
     machineHomeDir,
     selectedPath,
     recentPaths,
+    suggestedPaths = [],
     favoritePaths = [],
     onSelect,
     onToggleFavorite,
@@ -40,18 +42,20 @@ export function DirectorySelector({
 }: DirectorySelectorProps) {
     const { theme } = useUnistyles();
     const homeDir = machineHomeDir || undefined;
+    const recentOrSuggestedPaths = recentPaths.length > 0 ? recentPaths : suggestedPaths;
+    const recentTitle = recentPaths.length > 0 ? recentSectionTitle : 'Suggested Directories';
 
     const allPaths = React.useMemo(() => {
         const seen = new Set<string>();
         const ordered: string[] = [];
-        for (const p of [...favoritePaths, ...recentPaths]) {
+        for (const p of [...favoritePaths, ...recentOrSuggestedPaths]) {
             if (!p) continue;
             if (seen.has(p)) continue;
             seen.add(p);
             ordered.push(p);
         }
         return ordered;
-    }, [favoritePaths, recentPaths]);
+    }, [favoritePaths, recentOrSuggestedPaths]);
 
     return (
         <SearchableListSelector<string>
@@ -86,7 +90,7 @@ export function DirectorySelector({
                     return displayPath.toLowerCase().includes(searchText.toLowerCase());
                 },
                 searchPlaceholder,
-                recentSectionTitle,
+                recentSectionTitle: recentTitle,
                 favoritesSectionTitle,
                 allSectionTitle,
                 noItemsMessage,
@@ -97,7 +101,7 @@ export function DirectorySelector({
                 allowCustomInput: true,
             }}
             items={allPaths}
-            recentItems={recentPaths}
+            recentItems={recentOrSuggestedPaths}
             favoriteItems={favoritePaths}
             selectedItem={selectedPath || null}
             onSelect={onSelect}

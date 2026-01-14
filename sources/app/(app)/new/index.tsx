@@ -33,6 +33,8 @@ import { MultiTextInput } from '@/components/MultiTextInput';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
+import { MachineSelector } from '@/components/newSession/MachineSelector';
+import { DirectorySelector } from '@/components/newSession/DirectorySelector';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -293,8 +295,11 @@ function NewSessionWizard() {
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
     const experimentsEnabled = useSetting('experiments');
+    const usePickerSearch = useSetting('usePickerSearch');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
+    const [favoriteDirectories, setFavoriteDirectories] = useSettingMutable('favoriteDirectories');
+    const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
     const [dismissedCLIWarnings, setDismissedCLIWarnings] = useSettingMutable('dismissedCLIWarnings');
 
     // Combined profiles (built-in + custom)
@@ -462,6 +467,8 @@ function NewSessionWizard() {
     // Refs for scrolling to sections
     const scrollViewRef = React.useRef<ScrollView>(null);
     const profileSectionRef = React.useRef<View>(null);
+    const machineSectionRef = React.useRef<View>(null);
+    const pathSectionRef = React.useRef<View>(null);
     const permissionSectionRef = React.useRef<View>(null);
 
     // CLI Detection - automatic, non-blocking detection of installed CLIs on selected machine
@@ -778,24 +785,12 @@ function NewSessionWizard() {
     }, [router, selectedMachineId, selectedProfileId, useProfiles]);
 
     const handleAgentInputMachineClick = React.useCallback(() => {
-        router.push({
-            pathname: '/new/pick/machine',
-            params: selectedMachineId ? { selectedId: selectedMachineId } : {},
-        });
-    }, [router, selectedMachineId]);
+        scrollToSection(machineSectionRef);
+    }, [scrollToSection]);
 
     const handleAgentInputPathClick = React.useCallback(() => {
-        if (!selectedMachineId) {
-            return;
-        }
-        router.push({
-            pathname: '/new/pick/path',
-            params: {
-                machineId: selectedMachineId,
-                selectedPath,
-            },
-        });
-    }, [router, selectedMachineId, selectedPath]);
+        scrollToSection(pathSectionRef);
+    }, [scrollToSection]);
 
     const handleAgentInputAgentClick = React.useCallback(() => {
         scrollToSection(profileSectionRef); // Agent tied to profile section
@@ -1573,24 +1568,89 @@ function NewSessionWizard() {
                                 </ItemGroup>
                             )}
 
-                            <ItemGroup title="2. Select Machine">
-                                <Item
-                                    title={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || 'Select Machine'}
-                                    subtitle={selectedMachine ? 'Tap to change' : 'Pick a machine to run your session'}
-                                    leftElement={<Ionicons name="desktop-outline" size={24} color={theme.colors.textSecondary} />}
-                                    onPress={handleMachineClick}
-                                />
-                            </ItemGroup>
+                            {/* Section 2: Machine Selection */}
+                            <View ref={machineSectionRef}>
+                                <View style={styles.wizardSectionHeaderRow}>
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>2.</Text>
+                                    <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Machine</Text>
+                                </View>
+                            </View>
 
-                            <ItemGroup title="3. Select Working Directory">
-                                <Item
-                                    title={selectedPath ? formatPathRelativeToHome(selectedPath, selectedMachine?.metadata?.homeDir) : 'Select Working Directory'}
-                                    subtitle={selectedMachine ? 'Tap to change' : 'Select a machine first'}
-                                    leftElement={<Ionicons name="folder-outline" size={24} color={theme.colors.textSecondary} />}
-                                    onPress={handlePathClick}
-                                    disabled={!selectedMachineId}
+                            <View style={{ marginBottom: 24 }}>
+                                <MachineSelector
+                                    machines={machines}
+                                    selectedMachine={selectedMachine || null}
+                                    recentMachines={recentMachines}
+                                    favoriteMachines={machines.filter(m => favoriteMachines.includes(m.id))}
+                                    showFavorites={true}
+                                    showSearch={usePickerSearch}
+                                    onSelect={(machine) => {
+                                        setSelectedMachineId(machine.id);
+                                        const bestPath = getRecentPathForMachine(machine.id, recentMachinePaths);
+                                        setSelectedPath(bestPath);
+                                    }}
+                                    onToggleFavorite={(machine) => {
+                                        const isInFavorites = favoriteMachines.includes(machine.id);
+                                        if (isInFavorites) {
+                                            setFavoriteMachines(favoriteMachines.filter(id => id !== machine.id));
+                                        } else {
+                                            setFavoriteMachines([...favoriteMachines, machine.id]);
+                                        }
+                                    }}
                                 />
-                            </ItemGroup>
+                            </View>
+
+                            {/* Section 3: Working Directory */}
+                            <View ref={pathSectionRef}>
+                                <View style={styles.wizardSectionHeaderRow}>
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>3.</Text>
+                                    <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Working Directory</Text>
+                                </View>
+                            </View>
+
+                            <View style={{ marginBottom: 24 }}>
+                                <DirectorySelector
+                                    machineHomeDir={selectedMachine?.metadata?.homeDir}
+                                    selectedPath={selectedPath}
+                                    recentPaths={recentPaths}
+                                    suggestedPaths={(() => {
+                                        const homeDir = selectedMachine?.metadata?.homeDir;
+                                        if (!homeDir) return [];
+                                        return [
+                                            homeDir,
+                                            `${homeDir}/projects`,
+                                            `${homeDir}/Documents`,
+                                            `${homeDir}/Desktop`,
+                                        ];
+                                    })()}
+                                    favoritePaths={(() => {
+                                        if (!selectedMachine?.metadata?.homeDir) return [];
+                                        const homeDir = selectedMachine.metadata.homeDir;
+                                        return favoriteDirectories.map((fav) => resolveAbsolutePath(fav, homeDir));
+                                    })()}
+                                    showFavorites={true}
+                                    showSearch={usePickerSearch}
+                                    onSelect={(path) => setSelectedPath(path)}
+                                    onToggleFavorite={(path) => {
+                                        const homeDir = selectedMachine?.metadata?.homeDir;
+                                        if (!homeDir) return;
+
+                                        const relativePath = formatPathRelativeToHome(path, homeDir);
+                                        const isInFavorites = favoriteDirectories.some((fav) =>
+                                            resolveAbsolutePath(fav, homeDir) === path
+                                        );
+                                        if (isInFavorites) {
+                                            setFavoriteDirectories(
+                                                favoriteDirectories.filter((fav) => resolveAbsolutePath(fav, homeDir) !== path)
+                                            );
+                                        } else {
+                                            setFavoriteDirectories([...favoriteDirectories, relativePath]);
+                                        }
+                                    }}
+                                />
+                            </View>
 
                             {/* Section 4: Permission Mode */}
                             <View ref={permissionSectionRef}>
