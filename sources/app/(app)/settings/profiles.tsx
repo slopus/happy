@@ -32,7 +32,13 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     const [favoriteProfileIds, setFavoriteProfileIds] = useSettingMutable('favoriteProfiles');
     const [editingProfile, setEditingProfile] = React.useState<AIBackendProfile | null>(null);
     const [showAddForm, setShowAddForm] = React.useState(false);
+    const [isEditingDirty, setIsEditingDirty] = React.useState(false);
+    const isEditingDirtyRef = React.useRef(false);
     const experimentsEnabled = useSetting('experiments');
+
+    React.useEffect(() => {
+        isEditingDirtyRef.current = isEditingDirty;
+    }, [isEditingDirty]);
 
     if (!useProfiles) {
         return (
@@ -72,6 +78,30 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
         setEditingProfile(duplicateProfileForEdit(profile));
         setShowAddForm(true);
     };
+
+    const closeEditor = React.useCallback(() => {
+        setShowAddForm(false);
+        setEditingProfile(null);
+        setIsEditingDirty(false);
+    }, []);
+
+    const requestCloseEditor = React.useCallback(() => {
+        void (async () => {
+            if (!isEditingDirtyRef.current) {
+                closeEditor();
+                return;
+            }
+            const discard = await Modal.confirm(
+                'Discard changes?',
+                'You have unsaved changes. Discard them?',
+                { destructive: true, confirmText: 'Discard', cancelText: 'Keep editing' },
+            );
+            if (discard) {
+                isEditingDirtyRef.current = false;
+                closeEditor();
+            }
+        })();
+    }, [closeEditor]);
 
     const handleDeleteProfile = async (profile: AIBackendProfile) => {
         const confirmed = await Modal.confirm(
@@ -193,8 +223,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
             setProfiles(updatedProfiles);
         }
 
-        setShowAddForm(false);
-        setEditingProfile(null);
+        closeEditor();
     };
 
     return (
@@ -424,20 +453,15 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
             {showAddForm && editingProfile && (
                 <Pressable
                     style={profileManagerStyles.modalOverlay}
-                    onPress={() => {
-                        setShowAddForm(false);
-                        setEditingProfile(null);
-                    }}
+                    onPress={requestCloseEditor}
                 >
                     <Pressable style={profileManagerStyles.modalContent} onPress={() => { }}>
                         <ProfileEditForm
                             profile={editingProfile}
                             machineId={null}
                             onSave={handleSaveProfile}
-                            onCancel={() => {
-                                setShowAddForm(false);
-                                setEditingProfile(null);
-                            }}
+                            onCancel={requestCloseEditor}
+                            onDirtyChange={setIsEditingDirty}
                         />
                     </Pressable>
                 </Pressable>

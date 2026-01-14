@@ -17,19 +17,16 @@ export function ProfileCompatibilityIcon({ profile, size = 32, style }: Props) {
     const hasCodex = !!profile.compatibility?.codex;
     const hasGemini = !!profile.compatibility?.gemini;
 
-    const glyph =
-        hasClaude && hasCodex ? '✳꩜' :
-            hasClaude ? '✳' :
-                hasCodex ? '꩜' :
-                    hasGemini ? '✦' :
-                        '•';
+    const glyphs = React.useMemo(() => {
+        const items: Array<{ key: string; glyph: string; factor: number }> = [];
+        if (hasClaude) items.push({ key: 'claude', glyph: '✳', factor: 1.14 });
+        if (hasCodex) items.push({ key: 'codex', glyph: '꩜', factor: 0.82 });
+        if (hasGemini) items.push({ key: 'gemini', glyph: '✦', factor: 0.88 });
+        if (items.length === 0) items.push({ key: 'none', glyph: '•', factor: 0.85 });
+        return items;
+    }, [hasClaude, hasCodex, hasGemini]);
 
-    // Match visual size across glyphs (codex glyph runs larger; claude glyph runs smaller).
-    const glyphSize =
-        glyph === '✳' ? Math.round(size * 1.08) :
-            glyph === '꩜' ? Math.round(size * 0.82) :
-                glyph === '✳꩜' ? Math.round(size * 0.78) :
-                    Math.round(size * 0.85);
+    const multiScale = glyphs.length === 1 ? 1 : glyphs.length === 2 ? 0.55 : 0.45;
 
     return (
         <View
@@ -43,9 +40,26 @@ export function ProfileCompatibilityIcon({ profile, size = 32, style }: Props) {
                 style,
             ]}
         >
-            <Text style={{ fontSize: glyphSize, color: theme.colors.textSecondary, ...Typography.default() }}>
-                {glyph}
-            </Text>
+            {glyphs.length === 1 ? (
+                <Text style={{ fontSize: Math.round(size * glyphs[0].factor), color: theme.colors.textSecondary, ...Typography.default() }}>
+                    {glyphs[0].glyph}
+                </Text>
+            ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                    {glyphs.map((item) => (
+                        <Text
+                            key={item.key}
+                            style={{
+                                fontSize: Math.round(size * multiScale * item.factor),
+                                color: theme.colors.textSecondary,
+                                ...Typography.default(),
+                            }}
+                        >
+                            {item.glyph}
+                        </Text>
+                    ))}
+                </View>
+            )}
         </View>
     );
 }

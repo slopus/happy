@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
 import { useHeaderHeight } from '@react-navigation/elements';
@@ -18,11 +19,18 @@ import { Modal } from '@/modal';
 export default function ProfileEditScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
+    const navigation = useNavigation();
     const params = useLocalSearchParams<{ profileData?: string; machineId?: string }>();
     const screenWidth = useWindowDimensions().width;
     const headerHeight = useHeaderHeight();
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const [, setLastUsedProfile] = useSettingMutable('lastUsedProfile');
+    const [isDirty, setIsDirty] = React.useState(false);
+    const isDirtyRef = React.useRef(false);
+
+    React.useEffect(() => {
+        isDirtyRef.current = isDirty;
+    }, [isDirty]);
 
     // Deserialize profile from URL params
     const profile: AIBackendProfile = React.useMemo(() => {
@@ -53,6 +61,32 @@ export default function ProfileEditScreen() {
         };
     }, [params.profileData]);
 
+    const confirmDiscard = React.useCallback(async () => {
+        return Modal.confirm(
+            'Discard changes?',
+            'You have unsaved changes. Discard them?',
+            { destructive: true, confirmText: 'Discard', cancelText: 'Keep editing' },
+        );
+    }, []);
+
+    React.useEffect(() => {
+        const subscription = (navigation as any)?.addListener?.('beforeRemove', (e: any) => {
+            if (!isDirtyRef.current) return;
+
+            e.preventDefault();
+
+            void (async () => {
+                const discard = await confirmDiscard();
+                if (discard) {
+                    isDirtyRef.current = false;
+                    (navigation as any).dispatch(e.data.action);
+                }
+            })();
+        });
+
+        return subscription;
+    }, [confirmDiscard, navigation]);
+
     const handleSave = (savedProfile: AIBackendProfile) => {
         if (!savedProfile.name || savedProfile.name.trim() === '') {
             Modal.alert(t('common.error'), 'Enter a profile name.');
@@ -82,21 +116,33 @@ export default function ProfileEditScreen() {
         }
 
         const existingIndex = profiles.findIndex((p) => p.id === profileToSave.id);
+        const isNewProfile = existingIndex < 0;
         const updatedProfiles = existingIndex >= 0
             ? profiles.map((p, idx) => idx === existingIndex ? { ...profileToSave, updatedAt: Date.now() } : p)
             : [...profiles, profileToSave];
 
         setProfiles(updatedProfiles);
-        setLastUsedProfile(profileToSave.id);
-
-        // Still notify the /new screen in case it is mounted and wants to update selection immediately.
-        callbacks.onProfileSaved(profileToSave);
+        if (isNewProfile) {
+            setLastUsedProfile(profileToSave.id);
+            // Notify the /new screen only for newly created profiles (Add / Duplicate / Save As).
+            callbacks.onProfileSaved(profileToSave);
+        }
         router.back();
     };
 
-    const handleCancel = () => {
-        router.back();
-    };
+    const handleCancel = React.useCallback(() => {
+        void (async () => {
+            if (!isDirtyRef.current) {
+                router.back();
+                return;
+            }
+            const discard = await confirmDiscard();
+            if (discard) {
+                isDirtyRef.current = false;
+                router.back();
+            }
+        })();
+    }, [confirmDiscard, router]);
 
     return (
         <KeyboardAvoidingView
@@ -121,6 +167,7 @@ export default function ProfileEditScreen() {
                         machineId={params.machineId || null}
                         onSave={handleSave}
                         onCancel={handleCancel}
+                        onDirtyChange={setIsDirty}
                     />
                 </View>
             </View>

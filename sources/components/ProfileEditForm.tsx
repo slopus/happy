@@ -23,6 +23,7 @@ export interface ProfileEditFormProps {
     machineId: string | null;
     onSave: (profile: AIBackendProfile) => void;
     onCancel: () => void;
+    onDirtyChange?: (isDirty: boolean) => void;
     containerStyle?: ViewStyle;
 }
 
@@ -31,6 +32,7 @@ export function ProfileEditForm({
     machineId,
     onSave,
     onCancel,
+    onDirtyChange,
     containerStyle,
 }: ProfileEditFormProps) {
     const { theme } = useUnistyles();
@@ -60,6 +62,47 @@ export function ProfileEditForm({
     const [compatibility, setCompatibility] = React.useState<NonNullable<AIBackendProfile['compatibility']>>(
         profile.compatibility || { claude: true, codex: true, gemini: true },
     );
+
+    const initialSnapshotRef = React.useRef<string | null>(null);
+    if (initialSnapshotRef.current === null) {
+        initialSnapshotRef.current = JSON.stringify({
+            name,
+            environmentVariables,
+            useTmux,
+            tmuxSession,
+            tmuxTmpDir,
+            defaultSessionType,
+            defaultPermissionMode,
+            compatibility,
+        });
+    }
+
+    const isDirty = React.useMemo(() => {
+        const currentSnapshot = JSON.stringify({
+            name,
+            environmentVariables,
+            useTmux,
+            tmuxSession,
+            tmuxTmpDir,
+            defaultSessionType,
+            defaultPermissionMode,
+            compatibility,
+        });
+        return currentSnapshot !== initialSnapshotRef.current;
+    }, [
+        compatibility,
+        defaultPermissionMode,
+        defaultSessionType,
+        environmentVariables,
+        name,
+        tmuxSession,
+        tmuxTmpDir,
+        useTmux,
+    ]);
+
+    React.useEffect(() => {
+        onDirtyChange?.(isDirty);
+    }, [isDirty, onDirtyChange]);
 
     const toggleCompatibility = React.useCallback((key: keyof AIBackendProfile['compatibility']) => {
         setCompatibility((prev) => {

@@ -74,6 +74,8 @@ interface AgentInputProps {
     minHeight?: number;
     profileId?: string | null;
     onProfileClick?: () => void;
+    envVarsCount?: number;
+    onEnvVarsClick?: () => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -807,11 +809,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     gap: 6,
                                 })}
                             >
-	                                <Ionicons
-	                                            name={profileIcon as any}
-	                                    size={14}
-	                                            color={theme.colors.button.secondary.tint}
-	                                />
+		                                <Ionicons
+		                                            name={profileIcon as any}
+		                                    size={16}
+		                                            color={theme.colors.button.secondary.tint}
+		                                />
                                 <Text style={{
                                     fontSize: 13,
                                             color: theme.colors.button.secondary.tint,
@@ -820,8 +822,44 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 }}>
                                             {profileLabel ?? t('profiles.noProfile')}
                                 </Text>
-                            </Pressable>
+                                    </Pressable>
                         )}
+
+                                {/* Env vars preview (standard flow) */}
+                                {props.onEnvVarsClick && (
+                                    <Pressable
+                                        onPress={() => {
+                                            hapticsLight();
+                                            props.onEnvVarsClick?.();
+                                        }}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 6,
+                                            justifyContent: 'center',
+                                            height: 32,
+                                            opacity: p.pressed ? 0.7 : 1,
+                                            gap: 6,
+                                        })}
+                                    >
+	                                        <Ionicons
+	                                            name="list-outline"
+	                                            size={16}
+	                                            color={theme.colors.button.secondary.tint}
+	                                        />
+                                        <Text style={{
+                                            fontSize: 13,
+                                            color: theme.colors.button.secondary.tint,
+                                            fontWeight: '600',
+                                            ...Typography.default('semiBold'),
+                                        }}>
+                                            {props.envVarsCount ? `Env Vars (${props.envVarsCount})` : 'Env Vars'}
+                                        </Text>
+                                    </Pressable>
+                                )}
 
                                 {/* Agent selector button */}
                                 {props.agentType && props.onAgentClick && (
@@ -843,11 +881,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             gap: 6,
                                         })}
                                     >
-                                        <Octicons
-                                            name="cpu"
-                                            size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
+	                                        <Octicons
+	                                            name="cpu"
+	                                            size={16}
+	                                            color={theme.colors.button.secondary.tint}
+	                                        />
                                         <Text style={{
                                             fontSize: 13,
                                             color: theme.colors.button.secondary.tint,
@@ -879,11 +917,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             gap: 6,
                                         })}
                                     >
-                                        <Ionicons
-                                            name="desktop-outline"
-                                            size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
+	                                        <Ionicons
+	                                            name="desktop-outline"
+	                                            size={16}
+	                                            color={theme.colors.button.secondary.tint}
+	                                        />
                                         <Text style={{
                                             fontSize: 13,
                                             color: theme.colors.button.secondary.tint,
@@ -1022,11 +1060,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 gap: 6,
                                             })}
                                         >
-                                            <Ionicons
-                                                name="folder-outline"
-                                                size={14}
-                                                color={theme.colors.button.secondary.tint}
-                                            />
+	                                            <Ionicons
+	                                                name="folder-outline"
+	                                                size={16}
+	                                                color={theme.colors.button.secondary.tint}
+	                                            />
                                             <Text style={{
                                                 fontSize: 13,
                                                 color: theme.colors.button.secondary.tint,

@@ -34,6 +34,7 @@ import { MachineSelector } from '@/components/newSession/MachineSelector';
 import { PathSelector } from '@/components/newSession/PathSelector';
 import { SearchHeader } from '@/components/SearchHeader';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
+import { EnvironmentVariablesPreviewModal } from '@/components/newSession/EnvironmentVariablesPreviewModal';
 import { buildProfileGroups } from '@/sync/profileGrouping';
 import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 
@@ -1055,37 +1056,18 @@ function NewSessionWizard() {
 
     React.useEffect(() => {
         let handler = (savedProfile: AIBackendProfile) => {
-            // Handle saved profile from profile-edit screen
-
-            // Check if this is a built-in profile being edited
-            const isBuiltIn = DEFAULT_PROFILES.some(bp => bp.id === savedProfile.id);
-            let profileToSave = savedProfile;
-
-            // For built-in profiles, create a new custom profile instead of modifying the built-in
-            if (isBuiltIn) {
-                profileToSave = convertBuiltInProfileToCustom(savedProfile);
+            // Only auto-select newly created profiles (Add / Duplicate / Save As).
+            // Edits to other profiles should not change the current selection.
+            const wasExisting = profiles.some(p => p.id === savedProfile.id);
+            if (!wasExisting) {
+                setSelectedProfileId(savedProfile.id);
             }
-
-            const existingIndex = profiles.findIndex(p => p.id === profileToSave.id);
-            let updatedProfiles: AIBackendProfile[];
-
-            if (existingIndex >= 0) {
-                // Update existing profile
-                updatedProfiles = [...profiles];
-                updatedProfiles[existingIndex] = profileToSave;
-            } else {
-                // Add new profile
-                updatedProfiles = [...profiles, profileToSave];
-            }
-
-            setProfiles(updatedProfiles); // Use mutable setter for persistence
-            setSelectedProfileId(profileToSave.id);
         };
         onProfileSaved = handler;
         return () => {
             onProfileSaved = () => { };
         };
-    }, [profiles, setProfiles]);
+    }, [profiles]);
 
     const handleMachineClick = React.useCallback(() => {
         router.push({
@@ -1146,6 +1128,33 @@ function NewSessionWizard() {
             });
         }
     }, [selectedMachineId, selectedPath, router]);
+
+    const selectedProfileForEnvVars = React.useMemo(() => {
+        if (!useProfiles || !selectedProfileId) return null;
+        return profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId) || null;
+    }, [profileMap, selectedProfileId, useProfiles]);
+
+    const selectedProfileEnvVars = React.useMemo(() => {
+        if (!selectedProfileForEnvVars) return {};
+        return transformProfileToEnvironmentVars(selectedProfileForEnvVars, agentType) ?? {};
+    }, [agentType, selectedProfileForEnvVars]);
+
+    const selectedProfileEnvVarsCount = React.useMemo(() => {
+        return Object.keys(selectedProfileEnvVars).length;
+    }, [selectedProfileEnvVars]);
+
+    const handleEnvVarsClick = React.useCallback(() => {
+        if (!selectedProfileForEnvVars) return;
+        Modal.show({
+            component: EnvironmentVariablesPreviewModal,
+            props: {
+                environmentVariables: selectedProfileEnvVars,
+                machineId: selectedMachineId,
+                machineName: selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host,
+                profileName: selectedProfileForEnvVars.name,
+            },
+        } as any);
+    }, [selectedMachine, selectedMachineId, selectedProfileEnvVars, selectedProfileForEnvVars]);
 
     // Session creation
     const handleCreateSession = React.useCallback(async () => {
@@ -1383,7 +1392,12 @@ function NewSessionWizard() {
                                 onMachineClick={handleMachineClick}
                                 currentPath={selectedPath}
                                 onPathClick={handlePathClick}
-                                {...(useProfiles ? { profileId: selectedProfileId, onProfileClick: handleProfileClick } : {})}
+                                {...(useProfiles ? {
+                                    profileId: selectedProfileId,
+                                    onProfileClick: handleProfileClick,
+                                    envVarsCount: selectedProfileEnvVarsCount || undefined,
+                                    onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
+                                } : {})}
                             />
                         </View>
                     </View>
