@@ -84,6 +84,7 @@ export function BaseModal({
                 </TouchableWithoutFeedback>
                 
                 <Animated.View
+                    pointerEvents="box-none"
                     style={[
                         styles.content,
                         {
@@ -117,6 +118,9 @@ const styles = StyleSheet.create({
         backgroundColor: 'black'
     },
     content: {
-        zIndex: 1
+        zIndex: 1,
+        // On web, some modal children use percentage widths; ensure they center reliably.
+        width: '100%',
+        alignItems: 'center',
     }
 });

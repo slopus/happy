@@ -233,7 +233,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 	    actionButtonsLeft: {
 	        flexDirection: 'row',
 	        columnGap: 8,
-	        rowGap: 6,
+	        rowGap: 3,
 	        flex: 1,
 	        flexWrap: 'wrap',
 	        overflow: 'visible',
@@ -745,10 +745,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 	
 	                    {/* Action buttons below input */}
 	                    <View style={styles.actionButtonsContainer}>
-	                        <View style={{ flexDirection: 'column', flex: 1, gap: screenWidth < 420 ? 4 : 6 }}>
+	                        <View style={{ flexDirection: 'column', flex: 1, gap: screenWidth < 420 ? 2 : 3 }}>
 	                            {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
 	                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-	                                <View style={[styles.actionButtonsLeft, screenWidth < 420 ? { rowGap: 4 } : null]}>
+	                                <View style={[styles.actionButtonsLeft, screenWidth < 420 ? { rowGap: 3 } : null]}>
 
                                 {/* Permission chip (popover in standard flow, scroll in wizard) */}
                                 {showPermissionChip && (
