@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
-import { SessionTypeSelector } from '@/components/SessionTypeSelector';
+import { SessionTypeSelector, SessionTypeSelectorRows } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
@@ -124,14 +124,14 @@ const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 
 	        marginTop: 12,
 	        paddingHorizontal: 16,
 	    },
-	    sectionHeader: {
-	        fontSize: 14,
-	        fontWeight: '600',
-	        color: theme.colors.text,
-	        marginBottom: 8,
-	        marginTop: 12,
-	        ...Typography.default('semiBold')
-	    },
+		    sectionHeader: {
+		        fontSize: 17,
+		        fontWeight: '600',
+		        color: theme.colors.text,
+		        marginBottom: 8,
+		        marginTop: 12,
+		        ...Typography.default('semiBold')
+		    },
 	    sectionDescription: {
 	        fontSize: 12,
 	        color: theme.colors.textSecondary,
@@ -827,7 +827,7 @@ function NewSessionWizard() {
     }, [agentType, permissionMode]);
 
     // Scroll to section helpers - for AgentInput button clicks
-    const wizardSectionOffsets = React.useRef<{ profile?: number; machine?: number; path?: number; permission?: number }>({});
+    const wizardSectionOffsets = React.useRef<{ profile?: number; machine?: number; path?: number; permission?: number; sessionType?: number }>({});
     const registerWizardSectionOffset = React.useCallback((key: keyof typeof wizardSectionOffsets.current) => {
         return (e: any) => {
             wizardSectionOffsets.current[key] = e?.nativeEvent?.layout?.y ?? 0;
@@ -1389,13 +1389,13 @@ function NewSessionWizard() {
                                 <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>1.</Text>
                                 <Ionicons name={useProfiles ? "person-outline" : "hardware-chip-outline"} size={18} color={theme.colors.text} />
                                 <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
-                                    {useProfiles ? 'Choose AI Profile & Backend' : 'Select AI'}
+                                    {useProfiles ? 'Select AI Profile & Backend' : 'Select AI'}
                                 </Text>
                             </View>
                             <Text style={styles.sectionDescription}>
                                 {useProfiles
-                                    ? 'Choose which AI backend runs your session (Claude or Codex). Create custom profiles for alternative APIs.'
-                                    : 'Choose which AI runs your session.'}
+                                    ? 'Select which AI backend runs your session (Claude or Codex). Create custom profiles for alternative APIs.'
+                                    : 'Select which AI runs your session.'}
                             </Text>
 
                             {/* Missing CLI Installation Banners */}
@@ -1816,28 +1816,28 @@ function NewSessionWizard() {
                             </View>
 
                             {/* Section 4: Permission Mode */}
-                            <View ref={permissionSectionRef} onLayout={registerWizardSectionOffset('permission')}>
-	                                <View style={styles.wizardSectionHeaderRow}>
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>4.</Text>
-                                    <Ionicons name="shield-outline" size={18} color={theme.colors.text} />
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Permission Mode</Text>
-                                </View>
-                            </View>
-                            <ItemGroup title="">
-                                {(agentType === 'codex'
-                                    ? [
-                                        { value: 'default' as PermissionMode, label: t('agentInput.codexPermissionMode.default'), description: 'Use CLI permission settings', icon: 'shield-outline' },
-                                        { value: 'read-only' as PermissionMode, label: t('agentInput.codexPermissionMode.readOnly'), description: 'Read-only mode', icon: 'eye-outline' },
-                                        { value: 'safe-yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.safeYolo'), description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
-                                        { value: 'yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.yolo'), description: 'Full access, skip permissions', icon: 'flash-outline' },
-                                    ]
-                                    : [
-                                        { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                                        { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                                        { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                                        { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
-                                    ]
-                                ).map((option, index, array) => (
+	                            <View ref={permissionSectionRef} onLayout={registerWizardSectionOffset('permission')}>
+		                                <View style={styles.wizardSectionHeaderRow}>
+	                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>4.</Text>
+	                                    <Ionicons name="shield-half-outline" size={18} color={theme.colors.text} />
+	                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Permission Mode</Text>
+	                                </View>
+	                            </View>
+	                            <ItemGroup title="">
+	                                {(agentType === 'codex'
+	                                    ? [
+	                                        { value: 'default' as PermissionMode, label: t('agentInput.codexPermissionMode.default'), description: 'Use CLI permission settings', icon: 'shield-half-outline' },
+	                                        { value: 'read-only' as PermissionMode, label: t('agentInput.codexPermissionMode.readOnly'), description: 'Read-only mode', icon: 'eye-outline' },
+	                                        { value: 'safe-yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.safeYolo'), description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
+	                                        { value: 'yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.yolo'), description: 'Full access, skip permissions', icon: 'flash-outline' },
+	                                    ]
+	                                    : [
+	                                        { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-half-outline' },
+	                                        { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
+	                                        { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
+	                                        { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
+	                                    ]
+	                                ).map((option, index, array) => (
                                     <Item
                                         key={option.value}
                                         title={option.label}
@@ -1865,17 +1865,28 @@ function NewSessionWizard() {
                                 ))}
                             </ItemGroup>
 
-                            <View style={{ height: 24 }} />
+	                            <View style={{ height: 24 }} />
 
-                            <View style={{ marginBottom: 12 }}>
-                                <SessionTypeSelector value={sessionType} onChange={setSessionType} />
-                            </View>
-                        </View>
+	                            {/* Section 5: Session Type */}
+	                            <View onLayout={registerWizardSectionOffset('sessionType')}>
+	                                <View style={styles.wizardSectionHeaderRow}>
+	                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>5.</Text>
+	                                    <Ionicons name="layers-outline" size={18} color={theme.colors.text} />
+	                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Session Type</Text>
+	                                </View>
+	                            </View>
+
+	                            <View style={{ marginBottom: 0 }}>
+	                                <ItemGroup title={<View />} headerStyle={{ paddingTop: 0, paddingBottom: 0 }}>
+	                                    <SessionTypeSelectorRows value={sessionType} onChange={setSessionType} />
+	                                </ItemGroup>
+	                            </View>
+	                        </View>
                     </View>
                 </View>
                 </ScrollView>
 
-                {/* Section 5: AgentInput - Sticky at bottom */}
+                {/* AgentInput - Sticky at bottom */}
                 <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
                     <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
                             <AgentInput

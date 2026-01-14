@@ -20,7 +20,7 @@ export function ProfileCompatibilityIcon({ profile, size = 29, style }: Props) {
                     '•';
 
     const glyphSize =
-        glyph === '✳' ? Math.round(size * 0.85) :
+        glyph === '✳' ? Math.round(size * 0.9) :
             glyph === '✳꩜' ? Math.round(size * 0.7) :
                 Math.round(size * 0.75);
 
