@@ -242,14 +242,6 @@ function SessionInfoContent({ session }: { session: Session }) {
 	                        icon={<Ionicons name="pulse-outline" size={29} color={sessionStatus.isConnected ? "#34C759" : "#8E8E93"} />}
 	                        showChevron={false}
 	                    />
-                        {useProfiles && session.metadata?.profileId !== undefined && (
-                            <Item
-                                title="AI Profile"
-                                detail={profileLabel}
-                                icon={<Ionicons name="person-circle-outline" size={29} color="#007AFF" />}
-                                showChevron={false}
-                            />
-                        )}
 	                    <Item
 	                        title={t('sessionInfo.created')}
 	                        subtitle={formatDate(session.createdAt)}
@@ -330,22 +322,30 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 showChevron={false}
                             />
                         )}
-                        <Item
-                            title={t('sessionInfo.aiProvider')}
-                            subtitle={(() => {
-                                const flavor = session.metadata.flavor || 'claude';
-                                if (flavor === 'claude') return 'Claude';
-                                if (flavor === 'gpt' || flavor === 'openai') return 'Codex';
-                                if (flavor === 'gemini') return 'Gemini';
-                                return flavor;
-                            })()}
-                            icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
-                            showChevron={false}
-                        />
-                        {session.metadata.hostPid && (
-                            <Item
-                                title={t('sessionInfo.processId')}
-                                subtitle={session.metadata.hostPid.toString()}
+	                        <Item
+	                            title={t('sessionInfo.aiProvider')}
+	                            subtitle={(() => {
+	                                const flavor = session.metadata.flavor || 'claude';
+	                                if (flavor === 'claude') return 'Claude';
+	                                if (flavor === 'gpt' || flavor === 'openai') return 'Codex';
+	                                if (flavor === 'gemini') return 'Gemini';
+	                                return flavor;
+	                            })()}
+	                            icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
+	                            showChevron={false}
+	                        />
+                            {useProfiles && session.metadata?.profileId !== undefined && (
+                                <Item
+                                    title="AI Profile"
+                                    detail={profileLabel}
+                                    icon={<Ionicons name="person-circle-outline" size={29} color="#5856D6" />}
+                                    showChevron={false}
+                                />
+                            )}
+	                        {session.metadata.hostPid && (
+	                            <Item
+	                                title={t('sessionInfo.processId')}
+	                                subtitle={session.metadata.hostPid.toString()}
                                 icon={<Ionicons name="terminal-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
                             />
