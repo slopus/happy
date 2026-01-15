@@ -16,50 +16,76 @@ import { logger } from '@/ui/logger';
 // AI backend profile schema - MUST match happy app exactly
 // Using same Zod schema as GUI for runtime validation consistency
 
-// Environment variable schemas for different AI providers (matching GUI exactly)
-//
-// NOTE: baseUrl/endpoint fields accept either valid URLs or ${VAR} or ${VAR:-default} template strings.
-const URL_OR_TEMPLATE_REGEX = /^\$\{[A-Z_][A-Z0-9_]*(:-[^}]*)?\}$/;
-const URL_OR_TEMPLATE_ERROR = 'Must be a valid URL or ${VAR} or ${VAR:-default} template string';
+function mergeEnvironmentVariables(
+  existing: unknown,
+  additions: Record<string, string | undefined>
+): Array<{ name: string; value: string }> {
+  const map = new Map<string, string>();
 
-function isUrlOrTemplateString(val: string): boolean {
-  if (!val) return true; // Optional or empty string
-  if (URL_OR_TEMPLATE_REGEX.test(val)) return true;
-  try {
-    new URL(val);
-    return true;
-  } catch {
-    return false;
+  if (Array.isArray(existing)) {
+    for (const entry of existing) {
+      if (!entry || typeof entry !== 'object') continue;
+      const record = entry as Record<string, unknown>;
+      const name = record.name;
+      const value = record.value;
+      if (typeof name !== 'string' || typeof value !== 'string') continue;
+      map.set(name, value);
+    }
   }
+
+  for (const [name, value] of Object.entries(additions)) {
+    if (typeof value !== 'string') continue;
+    if (!map.has(name)) {
+      map.set(name, value);
+    }
+  }
+
+  return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
 }
 
-function urlOrTemplateStringOptional() {
-  return z.string().refine(isUrlOrTemplateString, { message: URL_OR_TEMPLATE_ERROR }).optional();
+function normalizeLegacyProfileConfig(profile: unknown): unknown {
+  if (!profile || typeof profile !== 'object') return profile;
+
+  const raw = profile as Record<string, unknown>;
+
+  const readString = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
+  const asRecord = (value: unknown): Record<string, unknown> | null =>
+    value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+
+  const anthropicConfig = asRecord(raw.anthropicConfig);
+  const openaiConfig = asRecord(raw.openaiConfig);
+  const azureOpenAIConfig = asRecord(raw.azureOpenAIConfig);
+  const togetherAIConfig = asRecord(raw.togetherAIConfig);
+
+  const additions: Record<string, string | undefined> = {
+    ANTHROPIC_BASE_URL: readString(anthropicConfig?.baseUrl),
+    ANTHROPIC_AUTH_TOKEN: readString(anthropicConfig?.authToken),
+    ANTHROPIC_MODEL: readString(anthropicConfig?.model),
+    OPENAI_API_KEY: readString(openaiConfig?.apiKey),
+    OPENAI_BASE_URL: readString(openaiConfig?.baseUrl),
+    OPENAI_MODEL: readString(openaiConfig?.model),
+    AZURE_OPENAI_API_KEY: readString(azureOpenAIConfig?.apiKey),
+    AZURE_OPENAI_ENDPOINT: readString(azureOpenAIConfig?.endpoint),
+    AZURE_OPENAI_API_VERSION: readString(azureOpenAIConfig?.apiVersion),
+    AZURE_OPENAI_DEPLOYMENT_NAME: readString(azureOpenAIConfig?.deploymentName),
+    TOGETHER_API_KEY: readString(togetherAIConfig?.apiKey),
+    TOGETHER_MODEL: readString(togetherAIConfig?.model),
+  };
+
+  const environmentVariables = mergeEnvironmentVariables(raw.environmentVariables, additions);
+
+  // Remove legacy provider config objects. Any values are preserved via environmentVariables migration above.
+  const rest: Record<string, unknown> = { ...raw };
+  delete rest.anthropicConfig;
+  delete rest.openaiConfig;
+  delete rest.azureOpenAIConfig;
+  delete rest.togetherAIConfig;
+
+  return {
+    ...rest,
+    environmentVariables,
+  };
 }
-
-const AnthropicConfigSchema = z.object({
-    baseUrl: urlOrTemplateStringOptional(),
-    authToken: z.string().optional(),
-    model: z.string().optional(),
-});
-
-const OpenAIConfigSchema = z.object({
-    apiKey: z.string().optional(),
-    baseUrl: urlOrTemplateStringOptional(),
-    model: z.string().optional(),
-});
-
-const AzureOpenAIConfigSchema = z.object({
-    apiKey: z.string().optional(),
-    endpoint: urlOrTemplateStringOptional(),
-    apiVersion: z.string().optional(),
-    deploymentName: z.string().optional(),
-});
-
-const TogetherAIConfigSchema = z.object({
-    apiKey: z.string().optional(),
-    model: z.string().optional(),
-});
 
 // Tmux configuration schema (matching GUI exactly)
 const TmuxConfigSchema = z.object({
@@ -81,18 +107,12 @@ const ProfileCompatibilitySchema = z.object({
     gemini: z.boolean().default(true),
 });
 
-// AIBackendProfile schema - EXACT MATCH with GUI schema
-export const AIBackendProfileSchema = z.object({
+// AIBackendProfile schema - MUST match happy app
+export const AIBackendProfileSchema = z.preprocess(normalizeLegacyProfileConfig, z.object({
     // Accept both UUIDs (user profiles) and simple strings (built-in profiles)
     id: z.string().min(1),
     name: z.string().min(1).max(100),
     description: z.string().max(500).optional(),
-
-    // Agent-specific configurations
-    anthropicConfig: AnthropicConfigSchema.optional(),
-    openaiConfig: OpenAIConfigSchema.optional(),
-    azureOpenAIConfig: AzureOpenAIConfigSchema.optional(),
-    togetherAIConfig: TogetherAIConfigSchema.optional(),
 
     // Tmux configuration
     tmuxConfig: TmuxConfigSchema.optional(),
@@ -122,7 +142,7 @@ export const AIBackendProfileSchema = z.object({
     createdAt: z.number().default(() => Date.now()),
     updatedAt: z.number().default(() => Date.now()),
     version: z.string().default('1.0.0'),
-});
+}));
 
 export type AIBackendProfile = z.infer<typeof AIBackendProfileSchema>;
 
@@ -138,34 +158,6 @@ export function getProfileEnvironmentVariables(profile: AIBackendProfile): Recor
   profile.environmentVariables.forEach(envVar => {
     envVars[envVar.name] = envVar.value;
   });
-
-  // Add Anthropic config
-  if (profile.anthropicConfig) {
-    if (profile.anthropicConfig.baseUrl) envVars.ANTHROPIC_BASE_URL = profile.anthropicConfig.baseUrl;
-    if (profile.anthropicConfig.authToken) envVars.ANTHROPIC_AUTH_TOKEN = profile.anthropicConfig.authToken;
-    if (profile.anthropicConfig.model) envVars.ANTHROPIC_MODEL = profile.anthropicConfig.model;
-  }
-
-  // Add OpenAI config
-  if (profile.openaiConfig) {
-    if (profile.openaiConfig.apiKey) envVars.OPENAI_API_KEY = profile.openaiConfig.apiKey;
-    if (profile.openaiConfig.baseUrl) envVars.OPENAI_BASE_URL = profile.openaiConfig.baseUrl;
-    if (profile.openaiConfig.model) envVars.OPENAI_MODEL = profile.openaiConfig.model;
-  }
-
-  // Add Azure OpenAI config
-  if (profile.azureOpenAIConfig) {
-    if (profile.azureOpenAIConfig.apiKey) envVars.AZURE_OPENAI_API_KEY = profile.azureOpenAIConfig.apiKey;
-    if (profile.azureOpenAIConfig.endpoint) envVars.AZURE_OPENAI_ENDPOINT = profile.azureOpenAIConfig.endpoint;
-    if (profile.azureOpenAIConfig.apiVersion) envVars.AZURE_OPENAI_API_VERSION = profile.azureOpenAIConfig.apiVersion;
-    if (profile.azureOpenAIConfig.deploymentName) envVars.AZURE_OPENAI_DEPLOYMENT_NAME = profile.azureOpenAIConfig.deploymentName;
-  }
-
-  // Add Together AI config
-  if (profile.togetherAIConfig) {
-    if (profile.togetherAIConfig.apiKey) envVars.TOGETHER_API_KEY = profile.togetherAIConfig.apiKey;
-    if (profile.togetherAIConfig.model) envVars.TOGETHER_MODEL = profile.togetherAIConfig.model;
-  }
 
   // Add Tmux config
   if (profile.tmuxConfig) {
@@ -199,6 +191,7 @@ export const CURRENT_PROFILE_VERSION = '1.0.0';
 // Settings schema version: Integer for overall Settings structure compatibility
 // Incremented when Settings structure changes (e.g., adding profiles array was v1→v2)
 // Used for migration logic in readSettings()
+// NOTE: This is the schema for happy-cli's local settings file (not the Happy app's server-synced account settings).
 export const SUPPORTED_SCHEMA_VERSION = 3;
 
 // Profile version validation
@@ -262,7 +255,7 @@ function migrateSettings(raw: any, fromVersion: number): any {
   }
 
   // Future migrations go here:
-  // if (fromVersion < 3) { ... }
+  // if (fromVersion < 4) { ... }
 
   return migrated;
 }
@@ -664,4 +657,3 @@ export async function updateProfiles(profiles: unknown[]): Promise<void> {
     };
   });
 }
-
