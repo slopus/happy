@@ -110,6 +110,7 @@ export function EnvironmentVariableCard({
     );
 
     const remoteValue = remoteValues[remoteVariableName];
+    const hasFallback = defaultValue.trim() !== '';
 
     // Update parent when local state changes
     React.useEffect(() => {
@@ -131,6 +132,15 @@ export function EnvironmentVariableCard({
             ? `\${${remoteVariableName}${defaultValue ? `:-${defaultValue}` : ''}}`
             : defaultValue;
 
+    const resolvedSessionValue =
+        isSecret
+            ? (useRemoteVariable && remoteVariableName
+                ? `\${${remoteVariableName}${defaultValue ? `:-***` : ''}} - hidden for security`
+                : (defaultValue ? '***hidden***' : '(empty)'))
+            : (useRemoteVariable && machineId && remoteValue !== undefined
+                ? (remoteValue === null || remoteValue === '' ? (hasFallback ? defaultValue : '(empty)') : remoteValue)
+                : (computedTemplateValue || '(empty)'));
+
     return (
         <View style={{
             width: '100%',
@@ -147,7 +157,9 @@ export function EnvironmentVariableCard({
             {/* Header row with variable name and action buttons */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                 <Text style={{
-                    fontSize: 13,
+                    fontSize: Platform.select({ ios: 17, default: 16 }),
+                    lineHeight: Platform.select({ ios: 22, default: 24 }),
+                    letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
                     color: theme.colors.text,
                     ...Typography.default('semiBold')
                 }}>
@@ -315,12 +327,16 @@ export function EnvironmentVariableCard({
                         }}>
                             Checking machine environment...
                         </Text>
-                    ) : remoteValue === null ? (
+                    ) : (remoteValue === null || remoteValue === '') ? (
                         <Text style={{
                             color: theme.colors.warning,
                             ...secondaryTextStyle,
                         }}>
-                            Value not found
+                            {remoteValue === '' ? (
+                                hasFallback ? 'Empty on machine (using fallback)' : 'Empty on machine'
+                            ) : (
+                                hasFallback ? 'Not found on machine (using fallback)' : 'Not found on machine'
+                            )}
                         </Text>
                     ) : (
                         <>
@@ -350,15 +366,7 @@ export function EnvironmentVariableCard({
                 marginTop: 4,
                 ...secondaryTextStyle,
             }}>
-                Session will receive: {variable.name} = {
-                    isSecret
-                        ? (useRemoteVariable && remoteVariableName
-                            ? `\${${remoteVariableName}${defaultValue ? `:-***` : ''}} - hidden for security`
-                            : (defaultValue ? '***hidden***' : '(empty)'))
-                        : (useRemoteVariable && machineId && remoteValue !== undefined && remoteValue !== null
-                            ? remoteValue
-                            : (computedTemplateValue || '(empty)'))
-                }
+                Session will receive: {variable.name} = {resolvedSessionValue}
             </Text>
         </View>
     );

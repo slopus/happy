@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TextInput, ViewStyle, Linking, Platform, Pressable } from 'react-native';
+import { View, Text, TextInput, ViewStyle, Linking, Platform, Pressable, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
@@ -14,8 +14,10 @@ import { Item } from '@/components/Item';
 import { Switch } from '@/components/Switch';
 import { getBuiltInProfileDocumentation } from '@/sync/profileUtils';
 import { EnvironmentVariablesList } from '@/components/EnvironmentVariablesList';
-import { useSetting } from '@/sync/storage';
+import { useSetting, useAllMachines, useMachine, useSettingMutable } from '@/sync/storage';
 import { Modal } from '@/modal';
+import { MachineSelector } from '@/components/newSession/MachineSelector';
+import type { Machine } from '@/sync/storageTypes';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
@@ -24,6 +26,90 @@ export interface ProfileEditFormProps {
     onCancel: () => void;
     onDirtyChange?: (isDirty: boolean) => void;
     containerStyle?: ViewStyle;
+}
+
+interface MachinePreviewModalProps {
+    machines: Machine[];
+    favoriteMachineIds: string[];
+    selectedMachineId: string | null;
+    onSelect: (machineId: string) => void;
+    onToggleFavorite: (machineId: string) => void;
+    onClose: () => void;
+}
+
+function MachinePreviewModal(props: MachinePreviewModalProps) {
+    const { theme } = useUnistyles();
+    const { height: windowHeight } = useWindowDimensions();
+
+    const selectedMachine = React.useMemo(() => {
+        if (!props.selectedMachineId) return null;
+        return props.machines.find((m) => m.id === props.selectedMachineId) ?? null;
+    }, [props.machines, props.selectedMachineId]);
+
+    const favoriteMachines = React.useMemo(() => {
+        const byId = new Map(props.machines.map((m) => [m.id, m] as const));
+        return props.favoriteMachineIds.map((id) => byId.get(id)).filter(Boolean) as Machine[];
+    }, [props.favoriteMachineIds, props.machines]);
+
+    const maxHeight = Math.min(720, Math.max(420, Math.floor(windowHeight * 0.85)));
+
+    return (
+        <View style={{
+            width: '92%',
+            maxWidth: 560,
+            height: maxHeight,
+            maxHeight,
+            backgroundColor: theme.colors.groupped.background,
+            borderRadius: 16,
+            overflow: 'hidden',
+            borderWidth: 1,
+            borderColor: theme.colors.divider,
+            flexShrink: 1,
+        }}>
+            <View style={{
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderBottomWidth: 1,
+                borderBottomColor: theme.colors.divider,
+            }}>
+                <Text style={{
+                    fontSize: 17,
+                    color: theme.colors.text,
+                    ...Typography.default('semiBold'),
+                }}>
+                    Preview Machine
+                </Text>
+
+                <Pressable
+                    onPress={props.onClose}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                >
+                    <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
+                </Pressable>
+            </View>
+
+            <View style={{ flex: 1 }}>
+                <MachineSelector
+                    machines={props.machines}
+                    selectedMachine={selectedMachine}
+                    favoriteMachines={favoriteMachines}
+                    showRecent={false}
+                    showFavorites={favoriteMachines.length > 0}
+                    showSearch
+                    searchPlacement={favoriteMachines.length > 0 ? 'favorites' : 'all'}
+                    onSelect={(machine) => {
+                        props.onSelect(machine.id);
+                        props.onClose();
+                    }}
+                    onToggleFavorite={(machine) => props.onToggleFavorite(machine.id)}
+                />
+            </View>
+        </View>
+    );
 }
 
 export function ProfileEditForm({
@@ -38,6 +124,38 @@ export function ProfileEditForm({
     const styles = stylesheet;
     const groupStyle = React.useMemo(() => ({ marginBottom: 12 }), []);
     const experimentsEnabled = useSetting('experiments');
+    const machines = useAllMachines();
+    const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
+    const routeMachine = machineId;
+    const [previewMachineId, setPreviewMachineId] = React.useState<string | null>(routeMachine);
+
+    React.useEffect(() => {
+        setPreviewMachineId(routeMachine);
+    }, [routeMachine]);
+
+    const resolvedMachineId = routeMachine ?? previewMachineId;
+    const resolvedMachine = useMachine(resolvedMachineId ?? '');
+
+    const toggleFavoriteMachineId = React.useCallback((machineIdToToggle: string) => {
+        if (favoriteMachines.includes(machineIdToToggle)) {
+            setFavoriteMachines(favoriteMachines.filter((id) => id !== machineIdToToggle));
+        } else {
+            setFavoriteMachines([machineIdToToggle, ...favoriteMachines]);
+        }
+    }, [favoriteMachines, setFavoriteMachines]);
+
+    const showMachinePreviewPicker = React.useCallback(() => {
+        Modal.show({
+            component: MachinePreviewModal,
+            props: {
+                machines,
+                favoriteMachineIds: favoriteMachines,
+                selectedMachineId: previewMachineId,
+                onSelect: setPreviewMachineId,
+                onToggleFavorite: toggleFavoriteMachineId,
+            },
+        } as any);
+    }, [favoriteMachines, machines, previewMachineId, toggleFavoriteMachineId]);
 
     const profileDocs = React.useMemo(() => {
         if (!profile.isBuiltIn) return null;
@@ -298,10 +416,33 @@ export function ProfileEditForm({
                 )}
             </ItemGroup>
 
+            {!routeMachine && (
+                <ItemGroup title="Preview Machine" style={groupStyle}>
+                    <Item
+                        title={resolvedMachine ? (resolvedMachine.metadata?.displayName || resolvedMachine.metadata?.host || resolvedMachine.id) : 'Select machine'}
+                        subtitle={resolvedMachine ? 'Resolve machine environment variables for this profile.' : 'Select a machine to preview resolved values.'}
+                        icon={<Ionicons name="desktop-outline" size={29} color={theme.colors.button.secondary.tint} />}
+                        onPress={showMachinePreviewPicker}
+                    />
+                </ItemGroup>
+            )}
+
+            {routeMachine && resolvedMachine && (
+                <View style={{ paddingHorizontal: Platform.select({ ios: 32, default: 24 }), paddingBottom: 8 }}>
+                    <Text style={{ color: theme.colors.textSecondary, ...Typography.default() }}>
+                        Resolving against{' '}
+                        <Text style={{ color: theme.colors.status.connected, ...Typography.default('semiBold') }}>
+                            {resolvedMachine.metadata?.displayName || resolvedMachine.metadata?.host || resolvedMachine.id}
+                        </Text>
+                        .
+                    </Text>
+                </View>
+            )}
+
             <View style={groupStyle}>
                 <EnvironmentVariablesList
                     environmentVariables={environmentVariables}
-                    machineId={machineId}
+                    machineId={resolvedMachineId}
                     profileDocs={profileDocs}
                     onChange={setEnvironmentVariables}
                 />

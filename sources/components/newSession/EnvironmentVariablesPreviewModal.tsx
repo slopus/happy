@@ -34,6 +34,26 @@ function isSecretLike(name: string) {
 export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPreviewModalProps) {
     const { theme } = useUnistyles();
     const { height: windowHeight } = useWindowDimensions();
+    const scrollRef = React.useRef<ScrollView>(null);
+    const scrollYRef = React.useRef(0);
+
+    const handleScroll = React.useCallback((e: any) => {
+        scrollYRef.current = e?.nativeEvent?.contentOffset?.y ?? 0;
+    }, []);
+
+    // On web, RN ScrollView inside a modal doesn't reliably respond to mouse wheel / trackpad scroll.
+    // Manually translate wheel deltas into scrollTo.
+    const handleWheel = React.useCallback((e: any) => {
+        if (Platform.OS !== 'web') return;
+        const deltaY = e?.deltaY;
+        if (typeof deltaY !== 'number' || Number.isNaN(deltaY)) return;
+
+        if (e?.cancelable) {
+            e?.preventDefault?.();
+        }
+        e?.stopPropagation?.();
+        scrollRef.current?.scrollTo({ y: Math.max(0, scrollYRef.current + deltaY), animated: false });
+    }, []);
 
     const envVarEntries = React.useMemo(() => {
         return Object.entries(props.environmentVariables)
@@ -58,18 +78,21 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
     const maxHeight = Math.min(720, Math.max(360, Math.floor(windowHeight * 0.85)));
 
     return (
-        <View style={{
-            width: '92%',
-            maxWidth: 560,
-            height: maxHeight,
-            maxHeight,
-            backgroundColor: theme.colors.groupped.background,
-            borderRadius: 16,
-            overflow: 'hidden',
-            borderWidth: 1,
-            borderColor: theme.colors.divider,
-            flexShrink: 1,
-        }}>
+        <View
+            style={{
+                width: '92%',
+                maxWidth: 560,
+                height: maxHeight,
+                maxHeight,
+                backgroundColor: theme.colors.groupped.background,
+                borderRadius: 16,
+                overflow: 'hidden',
+                borderWidth: 1,
+                borderColor: theme.colors.divider,
+                flexShrink: 1,
+            }}
+            {...(Platform.OS === 'web' ? ({ onWheel: handleWheel } as any) : {})}
+        >
             <View style={{
                 paddingHorizontal: 16,
                 paddingVertical: 12,
@@ -96,7 +119,16 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
                 </Pressable>
             </View>
 
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
+            <ScrollView
+                ref={scrollRef}
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingBottom: 16, flexGrow: 1 }}
+                showsVerticalScrollIndicator
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                onScroll={handleScroll}
+                scrollEventThrottle={16}
+            >
                 <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
                     <Text style={{
                         color: theme.colors.textSecondary,
@@ -135,21 +167,51 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
                             const parsed = parseTemplateValue(envVar.value);
                             const secret = isSecretLike(envVar.name) || (parsed?.sourceVar ? isSecretLike(parsed.sourceVar) : false);
 
+                            const hasMachineContext = Boolean(props.machineId);
+                            const resolvedValue = parsed?.sourceVar ? machineEnv[parsed.sourceVar] : undefined;
+                            const isMachineBased = Boolean(parsed?.sourceVar);
+
                             let displayValue: string;
                             if (secret) {
                                 displayValue = '•••';
                             } else if (parsed) {
-                                const resolved = machineEnv[parsed.sourceVar];
-                                if (resolved === undefined) {
+                                if (!hasMachineContext) {
+                                    displayValue = `\${${parsed.sourceVar}${parsed.fallback ? `:-${parsed.fallback}` : ''}}`;
+                                } else if (resolvedValue === undefined) {
                                     displayValue = `\${${parsed.sourceVar}${parsed.fallback ? `:-${parsed.fallback}` : ''}} (checking…)`;
-                                } else if (resolved === null || resolved === '') {
+                                } else if (resolvedValue === null || resolvedValue === '') {
                                     displayValue = parsed.fallback ? parsed.fallback : '(empty)';
                                 } else {
-                                    displayValue = resolved;
+                                    displayValue = resolvedValue;
                                 }
                             } else {
                                 displayValue = envVar.value || '(empty)';
                             }
+
+                            const detailLabel = (() => {
+                                if (secret) return undefined;
+                                if (!isMachineBased) return 'Fixed';
+                                if (!hasMachineContext) return 'Machine';
+                                if (resolvedValue === undefined) return 'Checking';
+                                if (resolvedValue === null || resolvedValue === '') return parsed?.fallback ? 'Fallback' : 'Missing';
+                                return 'Machine';
+                            })();
+
+                            const detailColor = (() => {
+                                if (!detailLabel) return theme.colors.textSecondary;
+                                if (detailLabel === 'Machine') return theme.colors.status.connected;
+                                if (detailLabel === 'Fallback' || detailLabel === 'Missing') return theme.colors.warning;
+                                return theme.colors.textSecondary;
+                            })();
+
+                            const rightElement = (() => {
+                                if (secret) return undefined;
+                                if (!isMachineBased) return undefined;
+                                if (!hasMachineContext || detailLabel === 'Checking') {
+                                    return <Ionicons name="time-outline" size={18} color={theme.colors.textSecondary} />;
+                                }
+                                return <Ionicons name="desktop-outline" size={18} color={detailColor} />;
+                            })();
 
                             return (
                                 <Item
@@ -158,6 +220,14 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
                                     subtitle={displayValue}
                                     subtitleLines={0}
                                     copy={secret ? false : displayValue}
+                                    detail={detailLabel}
+                                    detailStyle={{
+                                        fontSize: 13,
+                                        color: detailColor,
+                                        ...Typography.default('semiBold'),
+                                    }}
+                                    rightElement={rightElement}
+                                    showChevron={false}
                                 />
                             );
                         })}
