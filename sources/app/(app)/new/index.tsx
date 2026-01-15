@@ -2066,24 +2066,24 @@ function NewSessionWizard() {
 		                                </View>
 		                            </View>
 		                            <ItemGroup title="">
-		                                {(agentType === 'codex'
+		                                {(agentType === 'codex' || agentType === 'gemini'
 		                                    ? [
-		                                        { value: 'default' as PermissionMode, label: t('agentInput.codexPermissionMode.default'), description: 'Use CLI permission settings', icon: 'shield-outline' },
-		                                        { value: 'read-only' as PermissionMode, label: t('agentInput.codexPermissionMode.readOnly'), description: 'Read-only mode', icon: 'eye-outline' },
-		                                        { value: 'safe-yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.safeYolo'), description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
-		                                        { value: 'yolo' as PermissionMode, label: t('agentInput.codexPermissionMode.yolo'), description: 'Full access, skip permissions', icon: 'flash-outline' },
+		                                        { value: 'default' as PermissionMode, label: t(agentType === 'codex' ? 'agentInput.codexPermissionMode.default' : 'agentInput.geminiPermissionMode.default'), description: 'Use CLI permission settings', icon: 'shield-outline' },
+		                                        { value: 'read-only' as PermissionMode, label: t(agentType === 'codex' ? 'agentInput.codexPermissionMode.readOnly' : 'agentInput.geminiPermissionMode.readOnly'), description: 'Read-only mode', icon: 'eye-outline' },
+		                                        { value: 'safe-yolo' as PermissionMode, label: t(agentType === 'codex' ? 'agentInput.codexPermissionMode.safeYolo' : 'agentInput.geminiPermissionMode.safeYolo'), description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
+		                                        { value: 'yolo' as PermissionMode, label: t(agentType === 'codex' ? 'agentInput.codexPermissionMode.yolo' : 'agentInput.geminiPermissionMode.yolo'), description: 'Full access, skip permissions', icon: 'flash-outline' },
 		                                    ]
 		                                    : [
-		                                        { value: 'default' as PermissionMode, label: t(agentType === 'gemini' ? 'agentInput.geminiPermissionMode.default' : 'agentInput.permissionMode.default'), description: 'Ask for permissions', icon: 'shield-outline' },
-		                                        { value: 'acceptEdits' as PermissionMode, label: t(agentType === 'gemini' ? 'agentInput.geminiPermissionMode.acceptEdits' : 'agentInput.permissionMode.acceptEdits'), description: 'Auto-approve edits', icon: 'checkmark-outline' },
-		                                        { value: 'plan' as PermissionMode, label: t(agentType === 'gemini' ? 'agentInput.geminiPermissionMode.plan' : 'agentInput.permissionMode.plan'), description: 'Plan before executing', icon: 'list-outline' },
-		                                        { value: 'bypassPermissions' as PermissionMode, label: t(agentType === 'gemini' ? 'agentInput.geminiPermissionMode.bypassPermissions' : 'agentInput.permissionMode.bypassPermissions'), description: 'Skip all permissions', icon: 'flash-outline' },
+		                                        { value: 'default' as PermissionMode, label: t('agentInput.permissionMode.default'), description: 'Ask for permissions', icon: 'shield-outline' },
+		                                        { value: 'acceptEdits' as PermissionMode, label: t('agentInput.permissionMode.acceptEdits'), description: 'Auto-approve edits', icon: 'checkmark-outline' },
+		                                        { value: 'plan' as PermissionMode, label: t('agentInput.permissionMode.plan'), description: 'Plan before executing', icon: 'list-outline' },
+		                                        { value: 'bypassPermissions' as PermissionMode, label: t('agentInput.permissionMode.bypassPermissions'), description: 'Skip all permissions', icon: 'flash-outline' },
 		                                    ]
 		                                ).map((option, index, array) => (
-	                                    <Item
-                                        key={option.value}
-                                        title={option.label}
-                                        subtitle={option.description}
+		                                    <Item
+	                                        key={option.value}
+	                                        title={option.label}
+	                                        subtitle={option.description}
                                         leftElement={
                                             <Ionicons
                                                 name={option.icon as any}

@@ -473,12 +473,12 @@ export const ja: TranslationStructure = {
         geminiPermissionMode: {
             title: 'GEMINI権限モード',
             default: 'デフォルト',
-            acceptEdits: '編集を許可',
-            plan: 'プランモード',
-            bypassPermissions: 'Yoloモード',
-            badgeAcceptAllEdits: 'すべての編集を許可',
-            badgeBypassAllPermissions: 'すべての権限をバイパス',
-            badgePlanMode: 'プランモード',
+            readOnly: '読み取り専用モード',
+            safeYolo: 'セーフYOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: '読み取り専用モード',
+            badgeSafeYolo: 'セーフYOLO',
+            badgeYolo: 'YOLO',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `残り ${percent}%`,
