@@ -129,12 +129,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             }
         });
 
-        try {
-            const abortController = new AbortController();
-            const abortOnSignal = () => abortController.abort();
-            process.once('SIGINT', abortOnSignal);
-            process.once('SIGTERM', abortOnSignal);
+        const abortController = new AbortController();
+        const abortOnSignal = () => abortController.abort();
+        process.once('SIGINT', abortOnSignal);
+        process.once('SIGTERM', abortOnSignal);
 
+        try {
             await claudeLocal({
                 path: workingDirectory,
                 sessionId: null,
