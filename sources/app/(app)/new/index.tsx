@@ -106,9 +106,17 @@ const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 
         flex: 1,
         justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
         paddingTop: Platform.OS === 'web' ? 0 : 40,
+        ...(Platform.select({
+            web: { minHeight: 0 },
+            default: {},
+        }) as any),
     },
     scrollContainer: {
         flex: 1,
+        ...(Platform.select({
+            web: { minHeight: 0 },
+            default: {},
+        }) as any),
     },
 		    contentContainer: {
 		        width: '100%',
@@ -256,11 +264,10 @@ function NewSessionWizard() {
 			    const router = useRouter();
 			    const safeArea = useSafeAreaInsets();
 			    const headerHeight = useHeaderHeight();
-			    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+			    const { width: screenWidth } = useWindowDimensions();
 
 		    const newSessionSidePadding = 16;
 		    const newSessionBottomPadding = Math.max(screenWidth < 420 ? 8 : 16, safeArea.bottom);
-		    const webModalHeight = Platform.OS === 'web' ? Math.min(Math.max(520, screenHeight - 48), 860) : undefined;
 		    const { prompt, dataId, machineId: machineIdParam, path: pathParam, profileId: profileIdParam } = useLocalSearchParams<{
 		        prompt?: string;
 		        dataId?: string;
@@ -1387,7 +1394,7 @@ function NewSessionWizard() {
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + safeArea.bottom + 16 : 0}
-                style={[styles.container, Platform.OS === 'web' ? ({ height: webModalHeight } as any) : null]}
+                style={styles.container}
             >
                 {showInlineClose && (
                     <Pressable
@@ -1483,7 +1490,7 @@ function NewSessionWizard() {
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + safeArea.bottom + 16 : 0}
-            style={[styles.container, Platform.OS === 'web' ? ({ height: webModalHeight } as any) : null]}
+            style={styles.container}
         >
                 {showInlineClose && (
                     <Pressable

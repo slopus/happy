@@ -267,6 +267,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         flexShrink: 0,
         marginLeft: 8,
+        marginRight: 8,
     },
     sendButtonActive: {
         backgroundColor: theme.colors.button.primary.background,
