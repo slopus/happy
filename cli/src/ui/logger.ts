@@ -84,9 +84,7 @@ class Logger {
     maxStringLength: number = 100,
     maxArrayLength: number = 10,
   ): void {
-    if (!process.env.DEBUG) {
-      this.debug(`In production, skipping message inspection`)
-    }
+    if (!process.env.DEBUG) return;
 
     // Some of our messages are huge, but we still want to show them in the logs
     const truncateStrings = (obj: unknown): unknown => {

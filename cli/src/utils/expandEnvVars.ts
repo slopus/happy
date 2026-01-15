@@ -8,8 +8,8 @@ import { logger } from '@/ui/logger';
  * Example: { ANTHROPIC_AUTH_TOKEN: "${Z_AI_AUTH_TOKEN}" }
  *
  * When daemon spawns sessions:
- * - Tmux mode: Shell automatically expands ${VAR}
- * - Non-tmux mode: Node.js spawn does NOT expand ${VAR}
+ * - Tmux mode: tmux launches a shell, but shells do not expand ${VAR} placeholders embedded inside env values automatically
+ * - Non-tmux mode: Node.js spawn does NOT expand ${VAR} placeholders
  *
  * This utility ensures ${VAR} expansion works in both modes.
  *
@@ -54,16 +54,14 @@ export function expandEnvironmentVariables(
             }
 
             const resolvedValue = sourceEnv[varName];
-            if (resolvedValue !== undefined) {
+            const shouldTreatEmptyAsMissing = defaultValue !== undefined;
+            const isMissing = resolvedValue === undefined || (shouldTreatEmptyAsMissing && resolvedValue === '');
+
+            if (!isMissing) {
                 // Variable found in source environment - use its value
-                // Log for debugging (mask secret-looking values)
-                const isSensitive = varName.toLowerCase().includes('token') ||
-                                   varName.toLowerCase().includes('key') ||
-                                   varName.toLowerCase().includes('secret');
-                const displayValue = isSensitive
-                    ? (resolvedValue ? `<${resolvedValue.length} chars>` : '<empty>')
-                    : resolvedValue;
-                logger.debug(`[EXPAND ENV] Expanded ${varName} from daemon env: ${displayValue}`);
+                if (process.env.DEBUG) {
+                    logger.debug(`[EXPAND ENV] Expanded ${varName} from daemon env`);
+                }
 
                 // Warn if empty string (common mistake)
                 if (resolvedValue === '') {
@@ -73,7 +71,9 @@ export function expandEnvironmentVariables(
                 return resolvedValue;
             } else if (defaultValue !== undefined) {
                 // Variable not found but default value provided - use default
-                logger.debug(`[EXPAND ENV] Using default value for ${varName}: ${defaultValue}`);
+                if (process.env.DEBUG) {
+                    logger.debug(`[EXPAND ENV] Using default value for ${varName}`);
+                }
                 return defaultValue;
             } else {
                 // Variable not found and no default - keep placeholder and warn

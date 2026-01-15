@@ -17,6 +17,56 @@ import { join } from 'node:path'
 import { projectPath } from '@/projectPath'
 import packageJson from '../../package.json'
 
+export function maskValue(value: string): string;
+export function maskValue(value: string | undefined): string | undefined;
+export function maskValue(value: string | undefined): string | undefined {
+    if (value === undefined) return undefined;
+    if (value.trim() === '') return '<empty>';
+
+    // Treat ${VAR} templates as safe to display (they do not contain secrets themselves).
+    if (/^\$\{[A-Z_][A-Z0-9_]*\}$/.test(value)) return value;
+
+    // For templates with default values, preserve the template structure but mask the fallback.
+    // Example: ${OPENAI_API_KEY:-sk-...} -> ${OPENAI_API_KEY:-<N chars>}
+    const matchWithFallback = value.match(/^\$\{([A-Z_][A-Z0-9_]*)(:-|:=)(.*)\}$/);
+    if (matchWithFallback) {
+        const [, sourceVar, operator, fallback] = matchWithFallback;
+        if (fallback === '') return `\${${sourceVar}${operator}}`;
+        return `\${${sourceVar}${operator}${maskValue(fallback)}}`;
+    }
+
+    return `<${value.length} chars>`;
+}
+
+type SettingsForDisplay = Awaited<ReturnType<typeof readSettings>>;
+
+function redactSettingsForDisplay(settings: SettingsForDisplay): SettingsForDisplay {
+    const redacted = JSON.parse(JSON.stringify(settings ?? {})) as SettingsForDisplay;
+    const redactedRecord = redacted as unknown as Record<string, unknown>;
+
+    // Remove any legacy CLI-local env cache; it may contain secrets.
+    if (Object.prototype.hasOwnProperty.call(redactedRecord, 'localEnvironmentVariables')) {
+        delete redactedRecord.localEnvironmentVariables;
+    }
+
+    if (Array.isArray(redacted.profiles)) {
+        redacted.profiles = redacted.profiles.map((profile) => {
+            const p = { ...profile };
+
+            if (Array.isArray(p.environmentVariables)) {
+                p.environmentVariables = p.environmentVariables.map((ev) => ({
+                    ...ev,
+                    value: maskValue(ev.value),
+                }));
+            }
+
+            return p;
+        });
+    }
+
+    return redacted;
+}
+
 /**
  * Get relevant environment information for debugging
  */
@@ -120,7 +170,7 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
         try {
             const settings = await readSettings();
             console.log(chalk.bold('\n📄 Settings (settings.json):'));
-            console.log(chalk.gray(JSON.stringify(settings, null, 2)));
+            console.log(chalk.gray(JSON.stringify(redactSettingsForDisplay(settings), null, 2)));
         } catch (error) {
             console.log(chalk.bold('\n📄 Settings:'));
             console.log(chalk.red('❌ Failed to read settings'));
