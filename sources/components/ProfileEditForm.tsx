@@ -427,22 +427,11 @@ export function ProfileEditForm({
                 </ItemGroup>
             )}
 
-            {routeMachine && resolvedMachine && (
-                <View style={{ paddingHorizontal: Platform.select({ ios: 32, default: 24 }), paddingBottom: 8 }}>
-                    <Text style={{ color: theme.colors.textSecondary, ...Typography.default() }}>
-                        Resolving against{' '}
-                        <Text style={{ color: theme.colors.status.connected, ...Typography.default('semiBold') }}>
-                            {resolvedMachine.metadata?.displayName || resolvedMachine.metadata?.host || resolvedMachine.id}
-                        </Text>
-                        .
-                    </Text>
-                </View>
-            )}
-
             <View style={groupStyle}>
                 <EnvironmentVariablesList
                     environmentVariables={environmentVariables}
                     machineId={resolvedMachineId}
+                    machineName={resolvedMachine ? (resolvedMachine.metadata?.displayName || resolvedMachine.metadata?.host || resolvedMachine.id) : null}
                     profileDocs={profileDocs}
                     onChange={setEnvironmentVariables}
                 />

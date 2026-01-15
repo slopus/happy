@@ -309,8 +309,8 @@ export function EnvironmentVariableCard({
                         placeholder="Source variable name (e.g., Z_AI_MODEL)"
                         placeholderTextColor={theme.colors.input.placeholder}
                         value={remoteVariableName}
-                        onChangeText={setRemoteVariableName}
-                        autoCapitalize="none"
+                        onChangeText={(text) => setRemoteVariableName(text.toUpperCase())}
+                        autoCapitalize="characters"
                         autoCorrect={false}
                     />
                 </>

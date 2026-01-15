@@ -12,6 +12,7 @@ import { t } from '@/text';
 export interface EnvironmentVariablesListProps {
     environmentVariables: Array<{ name: string; value: string }>;
     machineId: string | null;
+    machineName?: string | null;
     profileDocs?: ProfileDocumentation | null;
     onChange: (newVariables: Array<{ name: string; value: string }>) => void;
 }
@@ -23,6 +24,7 @@ export interface EnvironmentVariablesListProps {
 export function EnvironmentVariablesList({
     environmentVariables,
     machineId,
+    machineName,
     profileDocs,
     onChange,
 }: EnvironmentVariablesListProps) {
@@ -130,6 +132,9 @@ export function EnvironmentVariablesList({
                 paddingTop: Platform.select({ ios: 35, default: 16 }),
                 paddingBottom: Platform.select({ ios: 6, default: 8 }),
                 paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
             }}>
                 <Text style={{
                     ...Typography.default('regular'),
@@ -142,6 +147,21 @@ export function EnvironmentVariablesList({
                 }}>
                     Environment Variables
                 </Text>
+
+                {machineId && machineName && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="desktop-outline" size={14} color={theme.colors.status.connected} />
+                        <Text style={{
+                            ...Typography.default('semiBold'),
+                            color: theme.colors.status.connected,
+                            fontSize: Platform.select({ ios: 13, default: 14 }),
+                            lineHeight: Platform.select({ ios: 18, default: 20 }),
+                            letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+                        }}>
+                            {machineName}
+                        </Text>
+                    </View>
+                )}
             </View>
 
             {environmentVariables.length > 0 && (
