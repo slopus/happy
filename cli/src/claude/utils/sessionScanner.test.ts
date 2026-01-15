@@ -7,17 +7,33 @@ import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
 import { getProjectPath } from './path'
 
+async function waitFor(predicate: () => boolean, timeoutMs: number = 2000, intervalMs: number = 25): Promise<void> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) return
+    await new Promise(resolve => setTimeout(resolve, intervalMs))
+  }
+  throw new Error('Timed out waiting for condition')
+}
+
 describe('sessionScanner', () => {
   let testDir: string
   let projectDir: string
   let collectedMessages: RawJSONLines[]
   let scanner: Awaited<ReturnType<typeof createSessionScanner>> | null = null
+  let originalClaudeConfigDir: string | undefined
+  let claudeConfigDir: string
   
   beforeEach(async () => {
     testDir = join(tmpdir(), `scanner-test-${Date.now()}`)
     await mkdir(testDir, { recursive: true })
+    
+    // Ensure the scanner and this test agree on where session files live.
+    // (getProjectPath uses CLAUDE_CONFIG_DIR + a sanitized project id derived from workingDirectory.)
+    originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR
+    claudeConfigDir = join(testDir, 'claude-config')
+    process.env.CLAUDE_CONFIG_DIR = claudeConfigDir
 
-    // Use the same path calculation as the scanner to ensure paths match
     projectDir = getProjectPath(testDir)
     await mkdir(projectDir, { recursive: true })
 
@@ -31,6 +47,12 @@ describe('sessionScanner', () => {
       scanner = null
     }
     
+    if (originalClaudeConfigDir === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+    }
+
     if (existsSync(testDir)) {
       await rm(testDir, { recursive: true, force: true })
     }
@@ -61,7 +83,7 @@ describe('sessionScanner', () => {
     // Write first line
     await writeFile(sessionFile1, lines1[0] + '\n')
     scanner.onNewSession(sessionId1)
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await waitFor(() => collectedMessages.length >= 1)
     
     expect(collectedMessages).toHaveLength(1)
     expect(collectedMessages[0].type).toBe('user')
@@ -74,7 +96,7 @@ describe('sessionScanner', () => {
     // Write second line with delay
     await new Promise(resolve => setTimeout(resolve, 50))
     await appendFile(sessionFile1, lines1[1] + '\n')
-    await new Promise(resolve => setTimeout(resolve, 200))
+    await waitFor(() => collectedMessages.length >= 2)
     
     expect(collectedMessages).toHaveLength(2)
     expect(collectedMessages[1].type).toBe('assistant')
@@ -100,7 +122,7 @@ describe('sessionScanner', () => {
     await writeFile(sessionFile2, initialContent)
     
     scanner.onNewSession(sessionId2)
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await waitFor(() => collectedMessages.length >= phase1Count + 1)
     
     // Should have added only 1 new message (summary) 
     // The historical user + assistant messages (lines 1-2) are deduplicated because they have same UUIDs
@@ -110,7 +132,7 @@ describe('sessionScanner', () => {
     // Write new messages (user asks for ls tool) - this is line 3
     await new Promise(resolve => setTimeout(resolve, 50))
     await appendFile(sessionFile2, lines2[3] + '\n')
-    await new Promise(resolve => setTimeout(resolve, 200))
+    await waitFor(() => collectedMessages.some(m => m.type === 'user' && m.message.content === 'run ls tool '))
     
     // Find the user message we just added
     const userMessages = collectedMessages.filter(m => m.type === 'user')
@@ -125,7 +147,12 @@ describe('sessionScanner', () => {
       await new Promise(resolve => setTimeout(resolve, 50))
       await appendFile(sessionFile2, lines2[i] + '\n')
     }
-    await new Promise(resolve => setTimeout(resolve, 300))
+    await waitFor(() => collectedMessages.some(m =>
+      m.type === 'assistant' &&
+      Array.isArray((m.message?.content as any)) &&
+      typeof (m.message?.content as any)[0]?.text === 'string' &&
+      (m.message?.content as any)[0].text.includes('0-say-lol-session.jsonl')
+    ), 5000)
     
     // Final count check
     const finalMessages = collectedMessages.slice(phase1Count)
