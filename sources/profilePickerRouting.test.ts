@@ -23,4 +23,3 @@ describe('ProfilePickerScreen routing', () => {
         expect(content).toContain('params.profileId');
     });
 });
-
