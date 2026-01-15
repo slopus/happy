@@ -178,7 +178,7 @@ export function EnvironmentVariablesList({
 
                         return (
                             <EnvironmentVariableCard
-                                key={index}
+                                key={envVar.name}
                                 variable={envVar}
                                 machineId={machineId}
                                 machineName={machineName ?? null}

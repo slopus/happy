@@ -41,12 +41,17 @@ export function resolveEnvVarSubstitution(
         const defaultValue = match[2]; // :- default
 
         const daemonValue = daemonEnv[varName];
-        if (daemonValue !== undefined && daemonValue !== null) {
+        // For ${VAR:-default} and ${VAR:=default}, treat empty string as "missing" (bash semantics).
+        // For plain ${VAR}, preserve empty string (it is an explicit value).
+        if (daemonValue !== undefined && daemonValue !== null && daemonValue !== '') {
             return daemonValue;
         }
         // Variable not set - use default if provided
         if (defaultValue !== undefined) {
             return defaultValue;
+        }
+        if (daemonValue === '') {
+            return '';
         }
         return null;
     }

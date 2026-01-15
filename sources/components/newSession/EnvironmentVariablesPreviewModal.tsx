@@ -66,6 +66,8 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
         envVarEntries.forEach((envVar) => {
             const parsed = parseTemplateValue(envVar.value);
             if (parsed?.sourceVar) {
+                // Never fetch secret-like values into UI memory.
+                if (isSecretLike(envVar.name) || isSecretLike(parsed.sourceVar)) return;
                 refs.add(parsed.sourceVar);
             }
         });
