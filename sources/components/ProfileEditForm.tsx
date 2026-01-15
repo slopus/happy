@@ -307,15 +307,13 @@ export function ProfileEditForm({
                 />
             </View>
 
-            <View style={{ paddingHorizontal: Platform.select({ ios: 32, default: 24 }), paddingTop: 12 }}>
+            <View style={{ paddingHorizontal: Platform.select({ ios: 16, default: 12 }), paddingTop: 12 }}>
                 <View style={{ flexDirection: 'row', gap: 12 }}>
                     <View style={{ flex: 1 }}>
                         <Pressable
                             onPress={onCancel}
                             style={({ pressed }) => ({
                                 backgroundColor: theme.colors.surface,
-                                borderColor: theme.colors.divider,
-                                borderWidth: 1,
                                 borderRadius: 10,
                                 paddingVertical: 12,
                                 alignItems: 'center',
