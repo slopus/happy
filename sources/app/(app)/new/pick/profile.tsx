@@ -13,7 +13,6 @@ import { AIBackendProfile } from '@/sync/settings';
 import { Modal } from '@/modal';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
 import { buildProfileGroups } from '@/sync/profileGrouping';
-import { createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 import { ItemRowActions } from '@/components/ItemRowActions';
 import type { ItemAction } from '@/components/ItemActionsMenuModal';
 
@@ -21,7 +20,7 @@ export default function ProfilePickerScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
     const navigation = useNavigation();
-    const params = useLocalSearchParams<{ selectedId?: string; machineId?: string }>();
+    const params = useLocalSearchParams<{ selectedId?: string; machineId?: string; profileId?: string | string[] }>();
     const useProfiles = useSetting('useProfiles');
     const experimentsEnabled = useSetting('experiments');
     const [profiles, setProfiles] = useSettingMutable('profiles');
@@ -29,6 +28,7 @@ export default function ProfilePickerScreen() {
 
     const selectedId = typeof params.selectedId === 'string' ? params.selectedId : '';
     const machineId = typeof params.machineId === 'string' ? params.machineId : undefined;
+    const profileId = Array.isArray(params.profileId) ? params.profileId[0] : params.profileId;
 
     const renderProfileIcon = React.useCallback((profile: AIBackendProfile) => {
         return <ProfileCompatibilityIcon profile={profile} />;
@@ -62,9 +62,24 @@ export default function ProfilePickerScreen() {
         router.back();
     }, [navigation, router]);
 
-    const openProfileEdit = React.useCallback((profile: AIBackendProfile) => {
-        const profileData = JSON.stringify(profile);
-        const base = `/new/pick/profile-edit?profileData=${encodeURIComponent(profileData)}`;
+    React.useEffect(() => {
+        if (typeof profileId === 'string' && profileId.length > 0) {
+            setProfileParamAndClose(profileId);
+        }
+    }, [profileId, setProfileParamAndClose]);
+
+    const openProfileCreate = React.useCallback(() => {
+        const base = '/new/pick/profile-edit';
+        router.push(machineId ? `${base}?machineId=${encodeURIComponent(machineId)}` as any : base as any);
+    }, [machineId, router]);
+
+    const openProfileEdit = React.useCallback((profileId: string) => {
+        const base = `/new/pick/profile-edit?profileId=${encodeURIComponent(profileId)}`;
+        router.push(machineId ? `${base}&machineId=${encodeURIComponent(machineId)}` as any : base as any);
+    }, [machineId, router]);
+
+    const openProfileDuplicate = React.useCallback((cloneFromProfileId: string) => {
+        const base = `/new/pick/profile-edit?cloneFromProfileId=${encodeURIComponent(cloneFromProfileId)}`;
         router.push(machineId ? `${base}&machineId=${encodeURIComponent(machineId)}` as any : base as any);
     }, [machineId, router]);
 
@@ -86,12 +101,8 @@ export default function ProfilePickerScreen() {
     }, [favoriteProfileIdSet, favoriteProfileIds, setFavoriteProfileIds]);
 
     const handleAddProfile = React.useCallback(() => {
-        openProfileEdit(createEmptyCustomProfile());
-    }, [openProfileEdit]);
-
-    const handleDuplicateProfile = React.useCallback((profile: AIBackendProfile) => {
-        openProfileEdit(duplicateProfileForEdit(profile));
-    }, [openProfileEdit]);
+        openProfileCreate();
+    }, [openProfileCreate]);
 
     const handleDeleteProfile = React.useCallback((profile: AIBackendProfile) => {
         Modal.alert(
@@ -124,19 +135,19 @@ export default function ProfilePickerScreen() {
 	                color: isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary,
 	                onPress: () => toggleFavoriteProfile(profile.id),
 	            },
-	            {
-	                id: 'edit',
-	                title: 'Edit profile',
-	                icon: 'create-outline',
-	                onPress: () => openProfileEdit(profile),
-	            },
-	            {
-	                id: 'copy',
-	                title: 'Duplicate profile',
-	                icon: 'copy-outline',
-	                onPress: () => handleDuplicateProfile(profile),
-	            },
-	        ];
+		            {
+		                id: 'edit',
+		                title: 'Edit profile',
+		                icon: 'create-outline',
+		                onPress: () => openProfileEdit(profile.id),
+		            },
+		            {
+		                id: 'copy',
+		                title: 'Duplicate profile',
+		                icon: 'copy-outline',
+		                onPress: () => openProfileDuplicate(profile.id),
+		            },
+		        ];
 	        if (!profile.isBuiltIn) {
 	            actions.push({
 	                id: 'delete',
@@ -165,15 +176,15 @@ export default function ProfilePickerScreen() {
 	                />
 	            </View>
 	        );
-	    }, [
-	        handleDeleteProfile,
-	        handleDuplicateProfile,
-	        openProfileEdit,
-        theme.colors.button.primary.background,
-        theme.colors.button.secondary.tint,
-        theme.colors.deleteAction,
-        theme.colors.textSecondary,
-        toggleFavoriteProfile,
+		    }, [
+		        handleDeleteProfile,
+		        openProfileEdit,
+		        openProfileDuplicate,
+	        theme.colors.button.primary.background,
+	        theme.colors.button.secondary.tint,
+	        theme.colors.deleteAction,
+	        theme.colors.textSecondary,
+	        toggleFavoriteProfile,
     ]);
 
     return (

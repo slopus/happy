@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
 import { useHeaderHeight } from '@react-navigation/elements';
@@ -10,17 +10,25 @@ import { t } from '@/text';
 import { ProfileEditForm } from '@/components/ProfileEditForm';
 import { AIBackendProfile } from '@/sync/settings';
 import { layout } from '@/components/layout';
-import { callbacks } from '../index';
 import { useSettingMutable } from '@/sync/storage';
 import { DEFAULT_PROFILES, getBuiltInProfile } from '@/sync/profileUtils';
-import { convertBuiltInProfileToCustom } from '@/sync/profileMutations';
+import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 import { Modal } from '@/modal';
 
 export default function ProfileEditScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
     const navigation = useNavigation();
-    const params = useLocalSearchParams<{ profileData?: string; machineId?: string }>();
+    const params = useLocalSearchParams<{
+        profileId?: string | string[];
+        cloneFromProfileId?: string | string[];
+        profileData?: string | string[];
+        machineId?: string | string[];
+    }>();
+    const profileIdParam = Array.isArray(params.profileId) ? params.profileId[0] : params.profileId;
+    const cloneFromProfileIdParam = Array.isArray(params.cloneFromProfileId) ? params.cloneFromProfileId[0] : params.cloneFromProfileId;
+    const profileDataParam = Array.isArray(params.profileData) ? params.profileData[0] : params.profileData;
+    const machineIdParam = Array.isArray(params.machineId) ? params.machineId[0] : params.machineId;
     const screenWidth = useWindowDimensions().width;
     const headerHeight = useHeaderHeight();
     const [profiles, setProfiles] = useSettingMutable('profiles');
@@ -34,32 +42,38 @@ export default function ProfileEditScreen() {
 
     // Deserialize profile from URL params
     const profile: AIBackendProfile = React.useMemo(() => {
-        if (params.profileData) {
+        if (profileDataParam) {
             try {
                 // Params may arrive already decoded (native) or URL-encoded (web / manual encodeURIComponent).
                 // Try raw JSON first, then fall back to decodeURIComponent.
                 try {
-                    return JSON.parse(params.profileData);
+                    return JSON.parse(profileDataParam);
                 } catch {
-                    return JSON.parse(decodeURIComponent(params.profileData));
+                    return JSON.parse(decodeURIComponent(profileDataParam));
                 }
             } catch (error) {
                 console.error('Failed to parse profile data:', error);
             }
         }
+        const resolveById = (id: string) => profiles.find((p) => p.id === id) ?? getBuiltInProfile(id) ?? null;
+
+        if (cloneFromProfileIdParam) {
+            const base = resolveById(cloneFromProfileIdParam);
+            if (base) {
+                return duplicateProfileForEdit(base);
+            }
+        }
+
+        if (profileIdParam) {
+            const existing = resolveById(profileIdParam);
+            if (existing) {
+                return existing;
+            }
+        }
+
         // Return empty profile for new profile creation
-        return {
-            id: '',
-            name: '',
-            anthropicConfig: {},
-            environmentVariables: [],
-            compatibility: { claude: true, codex: true },
-            isBuiltIn: false,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            version: '1.0.0',
-        };
-    }, [params.profileData]);
+        return createEmptyCustomProfile();
+    }, [cloneFromProfileIdParam, profileDataParam, profileIdParam, profiles]);
 
     const confirmDiscard = React.useCallback(async () => {
         return Modal.confirm(
@@ -122,10 +136,20 @@ export default function ProfileEditScreen() {
             : [...profiles, profileToSave];
 
         setProfiles(updatedProfiles);
+
+        // Update last used profile for convenience in other screens.
         if (isNewProfile) {
             setLastUsedProfile(profileToSave.id);
-            // Notify the /new screen only for newly created profiles (Add / Duplicate / Save As).
-            callbacks.onProfileSaved(profileToSave);
+        }
+
+        // Pass selection back to the /new screen via navigation params (unmount-safe).
+        const state = (navigation as any).getState?.();
+        const previousRoute = state?.routes?.[state.index - 1];
+        if (state && state.index > 0 && previousRoute) {
+            (navigation as any).dispatch({
+                ...CommonActions.setParams({ profileId: profileToSave.id }),
+                source: previousRoute.key,
+            } as never);
         }
         // Prevent the unsaved-changes guard from triggering on successful save.
         isDirtyRef.current = false;
@@ -167,7 +191,7 @@ export default function ProfileEditScreen() {
                 ]}>
                     <ProfileEditForm
                         profile={profile}
-                        machineId={params.machineId || null}
+                        machineId={machineIdParam || null}
                         onSave={handleSave}
                         onCancel={handleCancel}
                         onDirtyChange={setIsDirty}
