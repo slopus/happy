@@ -306,7 +306,6 @@ describe('sessionScanner', () => {
     //   expect(lastAssistantMsg.message.id).toBe('msg_01KWeuP88pkzRtXmggJRnQmV')
     // }
   })
-
   it('should notify when transcript file is missing for too long', async () => {
     const missing: { sessionId: string; filePath: string }[] = []
 
