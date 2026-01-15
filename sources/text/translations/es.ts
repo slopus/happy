@@ -769,7 +769,7 @@ export const es: TranslationStructure = {
         permissions: {
             yesAllowAllEdits: 'Sí, permitir todas las ediciones durante esta sesión',
             yesForTool: 'Sí, no volver a preguntar para esta herramienta',
-            noTellClaude: 'No, y decirle a Claude qué hacer diferente',
+            noTellClaude: 'No, proporcionar comentarios',
         }
     },
 

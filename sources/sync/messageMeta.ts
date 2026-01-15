@@ -3,6 +3,8 @@ import type { MessageMeta } from './typesMessageMeta';
 export function buildOutgoingMessageMeta(params: {
     sentFrom: string;
     permissionMode: NonNullable<MessageMeta['permissionMode']>;
+    model?: MessageMeta['model'];
+    fallbackModel?: MessageMeta['fallbackModel'];
     appendSystemPrompt: string;
     displayText?: string;
 }): MessageMeta {
@@ -11,5 +13,7 @@ export function buildOutgoingMessageMeta(params: {
         permissionMode: params.permissionMode,
         appendSystemPrompt: params.appendSystemPrompt,
         ...(params.displayText ? { displayText: params.displayText } : {}),
+        ...(params.model !== undefined ? { model: params.model } : {}),
+        ...(params.fallbackModel !== undefined ? { fallbackModel: params.fallbackModel } : {}),
     };
 }

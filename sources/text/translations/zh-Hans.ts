@@ -771,7 +771,7 @@ export const zhHans: TranslationStructure = {
         permissions: {
             yesAllowAllEdits: '是，允许本次会话的所有编辑',
             yesForTool: '是，不再询问此工具',
-            noTellClaude: '否，并告诉 Claude 该如何不同地操作',
+            noTellClaude: '否，提供反馈',
         }
     },
 

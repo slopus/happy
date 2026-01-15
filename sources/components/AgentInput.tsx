@@ -569,15 +569,15 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             styles.settingsOverlay,
                             { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
                         ]}>
-                            <FloatingOverlay maxHeight={280} keyboardShouldPersistTaps="always">
+                            <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
                                 {/* Permission Mode Section */}
                                 <View style={styles.overlaySection}>
                                     <Text style={styles.overlaySectionTitle}>
                                         {isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title')}
                                     </Text>
-                                    {(isCodex
+                                    {((isCodex || isGemini)
                                         ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
-                                        : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const) // Claude and Gemini share same modes
+                                        : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
                                     ).map((mode) => {
                                         const modeConfig = isCodex ? {
                                             'default': { label: t('agentInput.codexPermissionMode.default') },
@@ -585,10 +585,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             'safe-yolo': { label: t('agentInput.codexPermissionMode.safeYolo') },
                                             'yolo': { label: t('agentInput.codexPermissionMode.yolo') },
                                         } : isGemini ? {
-                                            default: { label: t('agentInput.geminiPermissionMode.default') },
-                                            acceptEdits: { label: t('agentInput.geminiPermissionMode.acceptEdits') },
-                                            plan: { label: t('agentInput.geminiPermissionMode.plan') },
-                                            bypassPermissions: { label: t('agentInput.geminiPermissionMode.bypassPermissions') },
+                                            'default': { label: t('agentInput.geminiPermissionMode.default') },
+                                            'read-only': { label: t('agentInput.geminiPermissionMode.readOnly') },
+                                            'safe-yolo': { label: t('agentInput.geminiPermissionMode.safeYolo') },
+                                            'yolo': { label: t('agentInput.geminiPermissionMode.yolo') },
                                         } : {
                                             default: { label: t('agentInput.permissionMode.default') },
                                             acceptEdits: { label: t('agentInput.permissionMode.acceptEdits') },
@@ -661,15 +661,81 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     }}>
                                         {t('agentInput.model.title')}
                                     </Text>
-                                    <Text style={{
-                                        fontSize: 13,
-                                        color: theme.colors.textSecondary,
-                                        paddingHorizontal: 16,
-                                        paddingVertical: 8,
-                                        ...Typography.default()
-                                    }}>
-                                        {t('agentInput.model.configureInCli')}
-                                    </Text>
+                                    {isGemini ? (
+                                        // Gemini model selector
+                                        (['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const).map((model) => {
+                                            const modelConfig = {
+                                                'gemini-2.5-pro': { label: 'Gemini 2.5 Pro', description: 'Most capable' },
+                                                'gemini-2.5-flash': { label: 'Gemini 2.5 Flash', description: 'Fast & efficient' },
+                                                'gemini-2.5-flash-lite': { label: 'Gemini 2.5 Flash Lite', description: 'Fastest' },
+                                            };
+                                            const config = modelConfig[model];
+                                            const isSelected = props.modelMode === model;
+
+                                            return (
+                                                <Pressable
+                                                    key={model}
+                                                    onPress={() => {
+                                                        hapticsLight();
+                                                        props.onModelModeChange?.(model);
+                                                    }}
+                                                    style={({ pressed }) => ({
+                                                        flexDirection: 'row',
+                                                        alignItems: 'center',
+                                                        paddingHorizontal: 16,
+                                                        paddingVertical: 8,
+                                                        backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                                    })}
+                                                >
+                                                    <View style={{
+                                                        width: 16,
+                                                        height: 16,
+                                                        borderRadius: 8,
+                                                        borderWidth: 2,
+                                                        borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        marginRight: 12
+                                                    }}>
+                                                        {isSelected && (
+                                                            <View style={{
+                                                                width: 6,
+                                                                height: 6,
+                                                                borderRadius: 3,
+                                                                backgroundColor: theme.colors.radio.dot
+                                                            }} />
+                                                        )}
+                                                    </View>
+                                                    <View>
+                                                        <Text style={{
+                                                            fontSize: 14,
+                                                            color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                            ...Typography.default()
+                                                        }}>
+                                                            {config.label}
+                                                        </Text>
+                                                        <Text style={{
+                                                            fontSize: 11,
+                                                            color: theme.colors.textSecondary,
+                                                            ...Typography.default()
+                                                        }}>
+                                                            {config.description}
+                                                        </Text>
+                                                    </View>
+                                                </Pressable>
+                                            );
+                                        })
+                                    ) : (
+                                        <Text style={{
+                                            fontSize: 13,
+                                            color: theme.colors.textSecondary,
+                                            paddingHorizontal: 16,
+                                            paddingVertical: 8,
+                                            ...Typography.default()
+                                        }}>
+                                            {t('agentInput.model.configureInCli')}
+                                        </Text>
+                                    )}
                                 </View>
                             </FloatingOverlay>
                         </View>
@@ -715,6 +781,123 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 </Text>
                             )}
                         </View>
+                        <View style={{
+                            flexDirection: 'column',
+                            alignItems: 'flex-end',
+                            minWidth: 150, // Fixed minimum width to prevent layout shift
+                        }}>
+                            {props.permissionMode && (
+                                <Text style={{
+                                    fontSize: 11,
+                                    color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
+                                        props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
+                                            props.permissionMode === 'plan' ? theme.colors.permission.plan :
+                                                props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
+                                                    props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
+                                                        props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
+                                                            theme.colors.textSecondary, // Use secondary text color for default
+                                    ...Typography.default()
+                                }}>
+                                    {isCodex ? (
+                                        props.permissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
+                                            props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
+                                                props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
+                                                    props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
+                                    ) : isGemini ? (
+                                        props.permissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') :
+                                            props.permissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.badgeReadOnly') :
+                                                props.permissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.badgeSafeYolo') :
+                                                    props.permissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.badgeYolo') : ''
+                                    ) : (
+                                        props.permissionMode === 'default' ? t('agentInput.permissionMode.default') :
+                                            props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
+                                                props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
+                                                    props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
+                                    )}
+                                </Text>
+                            )}
+                        </View>
+                    </View>
+                )}
+
+                {/* Box 1: Context Information (Machine + Path) - Only show if either exists */}
+                {(props.machineName !== undefined || props.currentPath) && (
+                    <View style={{
+                        backgroundColor: theme.colors.surfacePressed,
+                        borderRadius: 12,
+                        padding: 8,
+                        marginBottom: 8,
+                        gap: 4,
+                    }}>
+                        {/* Machine chip */}
+                        {props.machineName !== undefined && props.onMachineClick && (
+                            <Pressable
+                                onPress={() => {
+                                    hapticsLight();
+                                    props.onMachineClick?.();
+                                }}
+                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                style={(p) => ({
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    borderRadius: Platform.select({ default: 16, android: 20 }),
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 6,
+                                    height: 32,
+                                    opacity: p.pressed ? 0.7 : 1,
+                                    gap: 6,
+                                })}
+                            >
+                                <Ionicons
+                                    name="desktop-outline"
+                                    size={14}
+                                    color={theme.colors.textSecondary}
+                                />
+                                <Text style={{
+                                    fontSize: 13,
+                                    color: theme.colors.text,
+                                    fontWeight: '600',
+                                    ...Typography.default('semiBold'),
+                                }}>
+                                    {props.machineName === null ? t('agentInput.noMachinesAvailable') : props.machineName}
+                                </Text>
+                            </Pressable>
+                        )}
+
+                        {/* Path chip */}
+                        {props.currentPath && props.onPathClick && (
+                            <Pressable
+                                onPress={() => {
+                                    hapticsLight();
+                                    props.onPathClick?.();
+                                }}
+                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                style={(p) => ({
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    borderRadius: Platform.select({ default: 16, android: 20 }),
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 6,
+                                    height: 32,
+                                    opacity: p.pressed ? 0.7 : 1,
+                                    gap: 6,
+                                })}
+                            >
+                                <Ionicons
+                                    name="folder-outline"
+                                    size={14}
+                                    color={theme.colors.textSecondary}
+                                />
+                                <Text style={{
+                                    fontSize: 13,
+                                    color: theme.colors.text,
+                                    fontWeight: '600',
+                                    ...Typography.default('semiBold'),
+                                }}>
+                                    {props.currentPath}
+                                </Text>
+                            </Pressable>
+                        )}
                     </View>
                 )}
 

@@ -15,4 +15,16 @@ describe('buildOutgoingMessageMeta', () => {
         expect('model' in meta).toBe(false);
         expect('fallbackModel' in meta).toBe(false);
     });
+
+    it('includes model when explicitly provided', () => {
+        const meta = buildOutgoingMessageMeta({
+            sentFrom: 'web',
+            permissionMode: 'default',
+            model: 'gemini-2.5-pro',
+            appendSystemPrompt: 'PROMPT',
+        });
+
+        expect(meta.model).toBe('gemini-2.5-pro');
+        expect('model' in meta).toBe(true);
+    });
 });

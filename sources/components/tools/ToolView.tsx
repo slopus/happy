@@ -50,6 +50,14 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     let icon = <Ionicons name="construct-outline" size={18} color={theme.colors.textSecondary} />;
     let noStatus = false;
     let hideDefaultError = false;
+    
+    // For Gemini: unknown tools should be rendered as minimal (hidden)
+    // This prevents showing raw INPUT/OUTPUT for internal Gemini tools
+    // that we haven't explicitly added to knownTools
+    const isGemini = props.metadata?.flavor === 'gemini';
+    if (!knownTool && isGemini) {
+        minimal = true;
+    }
 
     // Extract status first to potentially use as title
     if (knownTool && typeof knownTool.extractStatus === 'function') {
