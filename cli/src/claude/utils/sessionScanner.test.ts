@@ -34,9 +34,6 @@ describe('sessionScanner', () => {
     if (existsSync(testDir)) {
       await rm(testDir, { recursive: true, force: true })
     }
-    if (existsSync(projectDir)) {
-      await rm(projectDir, { recursive: true, force: true })
-    }
   })
   
   it('should process initial session and resumed session correctly', async () => {

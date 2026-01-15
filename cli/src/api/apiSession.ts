@@ -53,6 +53,16 @@ export class ApiSessionClient extends EventEmitter {
     private metadataLock = new AsyncLock();
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
+    private disconnectedSendLogged = false;
+
+    private logSendWhileDisconnected(context: string, details?: Record<string, unknown>): void {
+        if (this.socket.connected || this.disconnectedSendLogged) return;
+        this.disconnectedSendLogged = true;
+        logger.debug(
+            `[API] Socket not connected; emitting ${context} anyway (socket.io should buffer until reconnection).`,
+            details
+        );
+    }
 
     constructor(token: string, session: Session) {
         super()
@@ -100,6 +110,7 @@ export class ApiSessionClient extends EventEmitter {
 
         this.socket.on('connect', () => {
             logger.debug('Socket connected successfully');
+            this.disconnectedSendLogged = false;
             this.rpcHandlerManager.onSocketConnect(this.socket);
         })
 
@@ -221,6 +232,8 @@ export class ApiSessionClient extends EventEmitter {
 
         logger.debugLargeJson('[SOCKET] Sending message through socket:', content)
 
+        this.logSendWhileDisconnected('Claude session message', { type: body.type });
+
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.socket.emit('message', {
             sid: this.sessionId,
@@ -259,10 +272,11 @@ export class ApiSessionClient extends EventEmitter {
                 sentFrom: 'cli'
             }
         };
-
+        
         this.logSendWhileDisconnected('Codex message', { type: body?.type });
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
 
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+        
         this.socket.emit('message', {
             sid: this.sessionId,
             message: encrypted
@@ -290,7 +304,6 @@ export class ApiSessionClient extends EventEmitter {
         };
         
         logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, { type: body.type, hasMessage: 'message' in body });
-
         this.logSendWhileDisconnected(`${provider} ACP message`, { type: body.type });
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
 
@@ -309,9 +322,6 @@ export class ApiSessionClient extends EventEmitter {
     } | {
         type: 'ready'
     }, id?: string) {
-        // Check if socket is connected before doing work (encryption/UUID generation)
-        if (!this.canSend('session event', { eventType: event.type })) return;
-
         let content = {
             role: 'agent',
             content: {
@@ -320,6 +330,9 @@ export class ApiSessionClient extends EventEmitter {
                 data: event
             }
         };
+
+        this.logSendWhileDisconnected('session event', { eventType: event.type });
+
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
 
         this.socket.emit('message', {

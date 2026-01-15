@@ -68,9 +68,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
     };
 
     const profileIdEnv = process.env.HAPPY_SESSION_PROFILE_ID;
-    const profileId = profileIdEnv !== undefined
-        ? (profileIdEnv.trim() ? profileIdEnv.trim() : null)
-        : undefined;
+    const profileId = profileIdEnv === undefined ? undefined : (profileIdEnv.trim() || null);
 
     const metadata: Metadata = {
         path: process.cwd(),

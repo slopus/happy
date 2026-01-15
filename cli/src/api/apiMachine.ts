@@ -106,6 +106,8 @@ export class ApiMachineClient {
             const envKeys = environmentVariables && typeof environmentVariables === 'object'
                 ? Object.keys(environmentVariables as Record<string, unknown>)
                 : [];
+            const maxEnvKeysToLog = 20;
+            const envKeySample = envKeys.slice(0, maxEnvKeysToLog);
             logger.debug('[API MACHINE] Spawning session', {
                 directory,
                 sessionId,
@@ -115,7 +117,8 @@ export class ApiMachineClient {
                 profileId,
                 hasToken: !!token,
                 environmentVariableCount: envKeys.length,
-                environmentVariableKeys: envKeys,
+                environmentVariableKeySample: envKeySample,
+                environmentVariableKeysTruncated: envKeys.length > maxEnvKeysToLog,
             });
 
             if (!directory) {

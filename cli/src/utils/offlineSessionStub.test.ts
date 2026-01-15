@@ -1,15 +1,16 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createOfflineSessionStub } from './offlineSessionStub';
+import { describe, expect, it } from 'vitest';
+import { createOfflineSessionStub } from '@/utils/offlineSessionStub';
 
 describe('createOfflineSessionStub', () => {
     it('returns an EventEmitter-compatible ApiSessionClient', () => {
         const session = createOfflineSessionStub('tag');
 
-        const handler = vi.fn();
-        session.on('message', handler);
+        let calls = 0;
+        session.on('message', () => {
+            calls += 1;
+        });
         session.emit('message', { ok: true });
 
-        expect(handler).toHaveBeenCalledTimes(1);
+        expect(calls).toBe(1);
     });
 });
-

@@ -20,6 +20,13 @@ function mergeEnvironmentVariables(
   existing: unknown,
   additions: Record<string, string | undefined>
 ): Array<{ name: string; value: string }> {
+  /**
+   * Merge strategy: preserve explicit `environmentVariables` entries.
+   *
+   * Legacy provider config objects (e.g. `openaiConfig.apiKey`) are treated as
+   * "defaults" and only fill missing keys, so they never override a user-set
+   * env var entry that already exists in `environmentVariables`.
+   */
   const map = new Map<string, string>();
 
   if (Array.isArray(existing)) {
@@ -91,7 +98,6 @@ function normalizeLegacyProfileConfig(profile: unknown): unknown {
 const TmuxConfigSchema = z.object({
     sessionName: z.string().optional(),
     tmpDir: z.string().optional(),
-    updateEnvironment: z.boolean().optional(),
 });
 
 // Environment variables schema with validation (matching GUI exactly)
@@ -165,9 +171,6 @@ export function getProfileEnvironmentVariables(profile: AIBackendProfile): Recor
     if (profile.tmuxConfig.sessionName !== undefined) envVars.TMUX_SESSION_NAME = profile.tmuxConfig.sessionName;
     // Empty string may be valid to use tmux defaults; include if explicitly provided.
     if (profile.tmuxConfig.tmpDir !== undefined) envVars.TMUX_TMPDIR = profile.tmuxConfig.tmpDir;
-    if (profile.tmuxConfig.updateEnvironment !== undefined) {
-      envVars.TMUX_UPDATE_ENVIRONMENT = profile.tmuxConfig.updateEnvironment.toString();
-    }
   }
 
   return envVars;

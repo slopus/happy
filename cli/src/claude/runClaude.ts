@@ -83,6 +83,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         metadata: initialMachineMetadata
     });
 
+    const profileIdEnv = process.env.HAPPY_SESSION_PROFILE_ID;
+    const profileId = profileIdEnv === undefined ? undefined : (profileIdEnv.trim() || null);
+
     let metadata: Metadata = {
         path: workingDirectory,
         host: os.hostname(),

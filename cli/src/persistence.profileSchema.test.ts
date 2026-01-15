@@ -51,7 +51,8 @@ describe('AIBackendProfileSchema legacy provider config migration', () => {
             },
         });
 
-        expect(profile.environmentVariables).toContainEqual({ name: 'OPENAI_API_KEY', value: 'explicit' });
+        const apiKeyEntries = profile.environmentVariables.filter((ev) => ev.name === 'OPENAI_API_KEY');
+        expect(apiKeyEntries).toHaveLength(1);
+        expect(apiKeyEntries[0]?.value).toBe('explicit');
     });
 });
-

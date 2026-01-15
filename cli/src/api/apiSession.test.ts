@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApiSessionClient } from './apiSession';
+import type { RawJSONLines } from '@/claude/types';
 
 // Use vi.hoisted to ensure mock function is available when vi.mock factory runs
 const { mockIo } = vi.hoisted(() => ({
@@ -72,12 +73,15 @@ describe('ApiSessionClient connection handling', () => {
 
         const client = new ApiSessionClient('fake-token', mockSession);
 
-        client.sendClaudeSessionMessage({
+        const payload: RawJSONLines = {
             type: 'user',
+            uuid: 'test-uuid',
             message: {
                 content: 'hello',
             },
-        } as any);
+        } as const;
+
+        client.sendClaudeSessionMessage(payload);
 
         expect(mockSocket.emit).toHaveBeenCalledWith(
             'message',

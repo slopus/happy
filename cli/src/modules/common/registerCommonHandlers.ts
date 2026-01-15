@@ -170,7 +170,7 @@ export interface SpawnSessionOptions {
      * - ANTHROPIC_AUTH_TOKEN / ANTHROPIC_BASE_URL / ANTHROPIC_MODEL
      * - OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL
      * - AZURE_OPENAI_* / TOGETHER_*
-     * - TMUX_SESSION_NAME / TMUX_TMPDIR / TMUX_UPDATE_ENVIRONMENT
+     * - TMUX_SESSION_NAME / TMUX_TMPDIR
      */
     environmentVariables?: Record<string, string>;
 }

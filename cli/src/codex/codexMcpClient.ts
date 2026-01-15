@@ -54,6 +54,16 @@ type CodexPermissionHandlerProvider =
     | null
     | (() => CodexPermissionHandler | null);
 
+const CodexBashElicitationParamsSchema = z
+    .object({
+        codex_call_id: z.string(),
+        codex_command: z.string(),
+        codex_cwd: z.string().optional(),
+    })
+    .passthrough();
+
+type CodexBashElicitationParams = z.infer<typeof CodexBashElicitationParamsSchema>;
+
 export function createCodexElicitationRequestHandler(
     permissionHandlerProvider: CodexPermissionHandlerProvider,
 ): (request: { params: unknown }) => Promise<{ decision: 'denied' | 'approved' | 'approved_for_session' | 'abort'; reason?: string }> {
@@ -64,7 +74,7 @@ export function createCodexElicitationRequestHandler(
 
     return async (request: { params: unknown }) => {
         const permissionHandler = getPermissionHandler();
-        const params = request.params as any;
+        const parsedParams = CodexBashElicitationParamsSchema.safeParse(request.params);
 
         const toolName = 'CodexBash';
 
@@ -74,6 +84,16 @@ export function createCodexElicitationRequestHandler(
                 decision: 'denied' as const,
             };
         }
+
+        if (!parsedParams.success) {
+            logger.debug('[CodexMCP] Invalid elicitation params, denying by default', parsedParams.error.issues);
+            return {
+                decision: 'denied' as const,
+                reason: 'Invalid elicitation params',
+            };
+        }
+
+        const params: CodexBashElicitationParams = parsedParams.data;
 
         try {
             const result = await permissionHandler.handleToolCall(

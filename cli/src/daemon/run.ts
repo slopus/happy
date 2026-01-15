@@ -12,7 +12,7 @@ import { configuration } from '@/configuration';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
-import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
+import { buildHappyCliSubprocessInvocation, spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
@@ -20,7 +20,7 @@ import { startDaemonControlServer } from './controlServer';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
-import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
+import { TmuxUtilities, isTmuxAvailable } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 
 // Prepare initial metadata
@@ -32,6 +32,54 @@ export const initialMachineMetadata: MachineMetadata = {
   happyHomeDir: configuration.happyHomeDir,
   happyLibDir: projectPath()
 };
+
+export function buildTmuxWindowEnv(
+  daemonEnv: NodeJS.ProcessEnv,
+  extraEnv: Record<string, string>,
+): Record<string, string> {
+  const filteredDaemonEnv = Object.fromEntries(
+    Object.entries(daemonEnv).filter(([, value]) => typeof value === 'string'),
+  ) as Record<string, string>;
+
+  return { ...filteredDaemonEnv, ...extraEnv };
+}
+
+export function buildTmuxSpawnConfig(params: {
+  agent: 'claude' | 'codex' | 'gemini';
+  directory: string;
+  extraEnv: Record<string, string>;
+}): {
+  commandTokens: string[];
+  tmuxEnv: Record<string, string>;
+  tmuxCommandEnv: Record<string, string>;
+  directory: string;
+} {
+  const args = [
+    params.agent,
+    '--happy-starting-mode',
+    'remote',
+    '--started-by',
+    'daemon',
+  ];
+
+  const { runtime, argv } = buildHappyCliSubprocessInvocation(args);
+  const commandTokens = [runtime, ...argv];
+
+  const tmuxEnv = buildTmuxWindowEnv(process.env, params.extraEnv);
+
+  const tmuxCommandEnv: Record<string, string> = {};
+  const tmuxTmpDir = params.extraEnv.TMUX_TMPDIR;
+  if (typeof tmuxTmpDir === 'string' && tmuxTmpDir.length > 0) {
+    tmuxCommandEnv.TMUX_TMPDIR = tmuxTmpDir;
+  }
+
+  return {
+    commandTokens,
+    tmuxEnv,
+    tmuxCommandEnv,
+    directory: params.directory,
+  };
+}
 
 export async function startDaemon(): Promise<void> {
   // We don't have cleanup function at the time of server construction
@@ -135,6 +183,7 @@ export async function startDaemon(): Promise<void> {
 
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
+    const codexHomeDirCleanupByPid = new Map<number, () => void>();
 
     // Session spawning awaiter system
     const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
@@ -205,6 +254,9 @@ export async function startDaemon(): Promise<void> {
       const { directory, sessionId, machineId, approvedNewDirectoryCreation = true } = options;
       let directoryCreated = false;
 
+      let codexHomeDirCleanup: (() => void) | null = null;
+      let codexHomeDirCleanupArmed = false;
+
       try {
         await fs.access(directory);
         logger.debug(`[DAEMON RUN] Directory exists: ${directory}`);
@@ -262,9 +314,10 @@ export async function startDaemon(): Promise<void> {
 
             // Create a temporary directory for Codex
             const codexHomeDir = tmp.dirSync();
+            codexHomeDirCleanup = codexHomeDir.removeCallback;
 
             // Write the token to the temporary directory
-            fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
+            await fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
 
             // Set the environment variable for Codex
             authEnv.CODEX_HOME = codexHomeDir.name;
@@ -326,6 +379,10 @@ export async function startDaemon(): Promise<void> {
           const errorMessage = `Authentication will fail - environment variables not found in daemon: ${missingVarDetails.join('; ')}. ` +
             `Ensure these variables are set in the daemon's environment (not just your shell) before starting sessions.`;
           logger.warn(`[DAEMON RUN] ${errorMessage}`);
+          if (codexHomeDirCleanup && !codexHomeDirCleanupArmed) {
+            codexHomeDirCleanup();
+            codexHomeDirCleanup = null;
+          }
           return {
             type: 'error',
             errorMessage
@@ -354,33 +411,19 @@ export async function startDaemon(): Promise<void> {
           const sessionDesc = tmuxSessionName || 'current/most recent session';
           logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
 
-          const tmux = getTmuxUtilities(tmuxSessionName);
-
-          // Construct command for the CLI
-          const cliPath = join(projectPath(), 'dist', 'index.mjs');
           // Determine agent command - support claude, codex, and gemini
           const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+          const { commandTokens, tmuxEnv, tmuxCommandEnv } = buildTmuxSpawnConfig({ agent, directory, extraEnv });
+          const tmux = new TmuxUtilities(tmuxSessionName, tmuxCommandEnv);
 
           // Spawn in tmux with environment variables
-          // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
-          // 1. tmux sessions need daemon's expanded auth variables (e.g., ANTHROPIC_AUTH_TOKEN)
-          // 2. Regular spawn uses env: { ...process.env, ...extraEnv }
-          // 3. tmux needs explicit environment via -e flags to ensure all variables are available
+          // IMPORTANT: `spawnInTmux` uses `-e KEY=VALUE` flags for the window.
+          // Use merged env so tmux mode matches regular process spawn behavior.
+          // Note: this may add many `-e` flags; if it becomes a problem we can optimize
+          // by diffing against `tmux show-environment` in a follow-up.
           const windowName = `happy-${Date.now()}-${agent}`;
-          const tmuxEnv: Record<string, string> = {};
 
-          // Add all daemon environment variables (filtering out undefined)
-          for (const [key, value] of Object.entries(process.env)) {
-            if (value !== undefined) {
-              tmuxEnv[key] = value;
-            }
-          }
-
-          // Add extra environment variables (these should already be filtered)
-          Object.assign(tmuxEnv, extraEnv);
-
-          const tmuxResult = await tmux.spawnInTmux([fullCommand], {
+          const tmuxResult = await tmux.spawnInTmux(commandTokens, {
             sessionName: tmuxSessionName,
             windowName: windowName,
             cwd: directory
@@ -394,6 +437,9 @@ export async function startDaemon(): Promise<void> {
               throw new Error('Tmux window created but no PID returned');
             }
 
+            // Resolve the actual tmux session name used (important when sessionName was empty/undefined)
+            const tmuxSession = tmuxResult.sessionName ?? (tmuxSessionName || 'happy');
+
             // Create a tracked session for tmux windows - now we have the real PID!
             const trackedSession: TrackedSession = {
               startedBy: 'daemon',
@@ -401,12 +447,16 @@ export async function startDaemon(): Promise<void> {
               tmuxSessionId: tmuxResult.sessionId,
               directoryCreated,
               message: directoryCreated
-                ? `The path '${directory}' did not exist. We created a new folder and spawned a new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
-                : `Spawned new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
+                ? `The path '${directory}' did not exist. We created a new folder and spawned a new session in tmux session '${tmuxSession}'. Use 'tmux attach -t ${tmuxSession}' to view the session.`
+                : `Spawned new session in tmux session '${tmuxSession}'. Use 'tmux attach -t ${tmuxSession}' to view the session.`
             };
 
             // Add to tracking map so webhook can find it later
             pidToTrackedSession.set(tmuxResult.pid, trackedSession);
+            if (codexHomeDirCleanup) {
+              codexHomeDirCleanupByPid.set(tmuxResult.pid, codexHomeDirCleanup);
+              codexHomeDirCleanupArmed = true;
+            }
 
             // Wait for webhook to populate session with happySessionId (exact same as regular flow)
             logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${tmuxResult.pid} (tmux)`);
@@ -467,8 +517,7 @@ export async function startDaemon(): Promise<void> {
             '--started-by', 'daemon'
           ];
 
-          // TODO: In future, sessionId could be used with --resume to continue existing sessions
-          // For now, we ignore it - each spawn creates a new session
+          // Note: sessionId is not currently used to resume sessions; each spawn creates a new session.
           const happyProcess = spawnHappyCLI(args, {
             cwd: directory,
             detached: true,  // Sessions stay alive when daemon stops
@@ -491,6 +540,10 @@ export async function startDaemon(): Promise<void> {
 
           if (!happyProcess.pid) {
             logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
+            if (codexHomeDirCleanup && !codexHomeDirCleanupArmed) {
+              codexHomeDirCleanup();
+              codexHomeDirCleanup = null;
+            }
             return {
               type: 'error',
               errorMessage: 'Failed to spawn Happy process - no PID returned'
@@ -508,6 +561,10 @@ export async function startDaemon(): Promise<void> {
           };
 
           pidToTrackedSession.set(happyProcess.pid, trackedSession);
+          if (codexHomeDirCleanup) {
+            codexHomeDirCleanupByPid.set(happyProcess.pid, codexHomeDirCleanup);
+            codexHomeDirCleanupArmed = true;
+          }
 
           happyProcess.on('exit', (code, signal) => {
             logger.debug(`[DAEMON RUN] Child PID ${happyProcess.pid} exited with code ${code}, signal ${signal}`);
@@ -557,6 +614,10 @@ export async function startDaemon(): Promise<void> {
           errorMessage: 'Unexpected error in session spawning'
         };
       } catch (error) {
+        if (codexHomeDirCleanup && !codexHomeDirCleanupArmed) {
+          codexHomeDirCleanup();
+          codexHomeDirCleanup = null;
+        }
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.debug('[DAEMON RUN] Failed to spawn session:', error);
         return {
@@ -605,6 +666,15 @@ export async function startDaemon(): Promise<void> {
     // Handle child process exit
     const onChildExited = (pid: number) => {
       logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
+      const cleanup = codexHomeDirCleanupByPid.get(pid);
+      if (cleanup) {
+        codexHomeDirCleanupByPid.delete(pid);
+        try {
+          cleanup();
+        } catch (error) {
+          logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', error);
+        }
+      }
       pidToTrackedSession.delete(pid);
     };
 
@@ -685,7 +755,31 @@ export async function startDaemon(): Promise<void> {
         } catch (error) {
           // Process is dead, remove from tracking
           logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
+          const cleanup = codexHomeDirCleanupByPid.get(pid);
+          if (cleanup) {
+            codexHomeDirCleanupByPid.delete(pid);
+            try {
+              cleanup();
+            } catch (cleanupError) {
+              logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', cleanupError);
+            }
+          }
           pidToTrackedSession.delete(pid);
+        }
+      }
+
+      // Cleanup any CODEX_HOME temp dirs for sessions no longer tracked (e.g. stopSession removed them).
+      for (const [pid, cleanup] of codexHomeDirCleanupByPid.entries()) {
+        if (pidToTrackedSession.has(pid)) continue;
+        try {
+          process.kill(pid, 0);
+        } catch {
+          codexHomeDirCleanupByPid.delete(pid);
+          try {
+            cleanup();
+          } catch (cleanupError) {
+            logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', cleanupError);
+          }
         }
       }
 
