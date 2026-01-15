@@ -56,35 +56,16 @@ import { logger } from '@/ui/logger';
 import { existsSync } from 'node:fs';
 import { isBun } from './runtime';
 
-/**
- * Spawn the Happy CLI with the given arguments in a cross-platform way.
- * 
- * This function bypasses the wrapper script (bin/happy.mjs) and spawns the 
- * actual CLI entrypoint (dist/index.mjs) directly with Node.js, ensuring
- * compatibility across all platforms including Windows.
- * 
- * @param args - Arguments to pass to the Happy CLI
- * @param options - Spawn options (same as child_process.spawn)
- * @returns ChildProcess instance
- */
-export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): ChildProcess {
+function getSubprocessRuntime(): 'node' | 'bun' {
+  const override = process.env.HAPPY_CLI_SUBPROCESS_RUNTIME;
+  if (override === 'node' || override === 'bun') return override;
+  return isBun() ? 'bun' : 'node';
+}
+
+export function buildHappyCliSubprocessInvocation(args: string[]): { runtime: 'node' | 'bun'; argv: string[] } {
   const projectRoot = projectPath();
   const entrypoint = join(projectRoot, 'dist', 'index.mjs');
 
-  let directory: string | URL | undefined;
-  if ('cwd' in options) {
-    directory = options.cwd
-  } else {
-    directory = process.cwd()
-  }
-  // Note: We're actually executing 'node' with the calculated entrypoint path below,
-  // bypassing the 'happy' wrapper that would normally be found in the shell's PATH.
-  // However, we log it as 'happy' here because other engineers are typically looking
-  // for when "happy" was started and don't care about the underlying node process
-  // details and flags we use to achieve the same result.
-  const fullCommand = `happy ${args.join(' ')}`;
-  logger.debug(`[SPAWN HAPPY CLI] Spawning: ${fullCommand} in ${directory}`);
-  
   // Use the same Node.js flags that the wrapper script uses
   const nodeArgs = [
     '--no-warnings',
@@ -99,7 +80,38 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
     logger.debug(`[SPAWN HAPPY CLI] ${errorMessage}`);
     throw new Error(errorMessage);
   }
+
+  const runtime = getSubprocessRuntime();
+  const argv = runtime === 'node' ? nodeArgs : [entrypoint, ...args];
+  return { runtime, argv };
+}
+
+/**
+ * Spawn the Happy CLI with the given arguments in a cross-platform way.
+ * 
+ * This function bypasses the wrapper script (bin/happy.mjs) and spawns the 
+ * actual CLI entrypoint (dist/index.mjs) directly with Node.js, ensuring
+ * compatibility across all platforms including Windows.
+ * 
+ * @param args - Arguments to pass to the Happy CLI
+ * @param options - Spawn options (same as child_process.spawn)
+ * @returns ChildProcess instance
+ */
+export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): ChildProcess {
+  let directory: string | URL | undefined;
+  if ('cwd' in options) {
+    directory = options.cwd
+  } else {
+    directory = process.cwd()
+  }
+  // Note: We're actually executing 'node' with the calculated entrypoint path below,
+  // bypassing the 'happy' wrapper that would normally be found in the shell's PATH.
+  // However, we log it as 'happy' here because other engineers are typically looking
+  // for when "happy" was started and don't care about the underlying node process
+  // details and flags we use to achieve the same result.
+  const fullCommand = `happy ${args.join(' ')}`;
+  logger.debug(`[SPAWN HAPPY CLI] Spawning: ${fullCommand} in ${directory}`);
   
-  const runtime = isBun() ? 'bun' : 'node';
-  return spawn(runtime, nodeArgs, options);
+  const { runtime, argv } = buildHappyCliSubprocessInvocation(args);
+  return spawn(runtime, argv, options);
 }
