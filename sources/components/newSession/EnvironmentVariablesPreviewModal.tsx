@@ -16,7 +16,7 @@ export interface EnvironmentVariablesPreviewModalProps {
 }
 
 function parseTemplateValue(value: string): { sourceVar: string; fallback: string } | null {
-    const withFallback = value.match(/^\$\{([A-Z_][A-Z0-9_]*):-(.*)\}$/);
+    const withFallback = value.match(/^\$\{([A-Z_][A-Z0-9_]*):[-=](.*)\}$/);
     if (withFallback) {
         return { sourceVar: withFallback[1], fallback: withFallback[2] };
     }

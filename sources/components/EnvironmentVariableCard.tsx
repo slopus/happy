@@ -3,13 +3,14 @@ import { View, Text, TextInput, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
-import { useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
 import { Switch } from '@/components/Switch';
 
 export interface EnvironmentVariableCardProps {
     variable: { name: string; value: string };
     machineId: string | null;
     machineName?: string | null;
+    machineEnv?: Record<string, string | null>;
+    isMachineEnvLoading?: boolean;
     expectedValue?: string;  // From profile documentation
     description?: string;    // Variable description
     isSecret?: boolean;      // Whether this is a secret (never query remote)
@@ -26,8 +27,8 @@ function parseVariableValue(value: string): {
     remoteVariableName: string;
     defaultValue: string;
 } {
-    // Match: ${VARIABLE_NAME:-default_value}
-    const matchWithFallback = value.match(/^\$\{([A-Z_][A-Z0-9_]*):-(.*)\}$/);
+    // Match: ${VARIABLE_NAME:-default_value} or ${VARIABLE_NAME:=default_value}
+    const matchWithFallback = value.match(/^\$\{([A-Z_][A-Z0-9_]*):[-=](.*)\}$/);
     if (matchWithFallback) {
         return {
             useRemoteVariable: true,
@@ -62,6 +63,8 @@ export function EnvironmentVariableCard({
     variable,
     machineId,
     machineName,
+    machineEnv,
+    isMachineEnvLoading = false,
     expectedValue,
     description,
     isSecret = false,
@@ -104,14 +107,7 @@ export function EnvironmentVariableCard({
     const [remoteVariableName, setRemoteVariableName] = React.useState(parsed.remoteVariableName);
     const [defaultValue, setDefaultValue] = React.useState(parsed.defaultValue);
 
-    // Query remote machine for variable value (only if toggle enabled and not secret)
-    const shouldQueryRemote = useRemoteVariable && !isSecret && remoteVariableName.trim() !== '';
-    const { variables: remoteValues } = useEnvironmentVariables(
-        machineId,
-        shouldQueryRemote ? [remoteVariableName] : []
-    );
-
-    const remoteValue = remoteValues[remoteVariableName];
+    const remoteValue = machineEnv?.[remoteVariableName];
     const hasFallback = defaultValue.trim() !== '';
     const machineLabel = machineName?.trim() ? machineName.trim() : 'machine';
 
@@ -139,7 +135,7 @@ export function EnvironmentVariableCard({
         isSecret
             ? (useRemoteVariable && remoteVariableName
                 ? `\${${remoteVariableName}${defaultValue ? `:-***` : ''}} - hidden for security`
-                : (defaultValue ? '***hidden***' : '(empty)'))
+            : (defaultValue ? '***hidden***' : '(empty)'))
             : (useRemoteVariable && machineId && remoteValue !== undefined
                 ? (remoteValue === null || remoteValue === '' ? (hasFallback ? defaultValue : '(empty)') : remoteValue)
                 : (computedTemplateValue || '(empty)'));
@@ -322,7 +318,7 @@ export function EnvironmentVariableCard({
             {/* Machine environment status (only with machine context) */}
             {useRemoteVariable && !isSecret && machineId && remoteVariableName.trim() !== '' && (
                 <View style={{ marginBottom: 8 }}>
-                    {remoteValue === undefined ? (
+                    {isMachineEnvLoading || remoteValue === undefined ? (
                         <Text style={{
                             color: theme.colors.textSecondary,
                             fontStyle: 'italic',

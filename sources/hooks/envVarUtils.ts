@@ -35,7 +35,7 @@ export function resolveEnvVarSubstitution(
     // Match ${VAR} or ${VAR:-default} (bash parameter expansion subset).
     // Group 1: Variable name (required)
     // Group 2: Default value (optional)
-    const match = value.match(/^\$\{([A-Z_][A-Z0-9_]*)(?::-(.*))?\}$/);
+    const match = value.match(/^\$\{([A-Z_][A-Z0-9_]*)(?::[-=](.*))?\}$/);
     if (match) {
         const varName = match[1];
         const defaultValue = match[2]; // :- default
@@ -75,9 +75,9 @@ export function extractEnvVarReferences(
 
     const refs = new Set<string>();
     environmentVariables.forEach(ev => {
-        // Match ${VAR} or ${VAR:-default} (bash parameter expansion subset)
+        // Match ${VAR}, ${VAR:-default}, or ${VAR:=default} (bash parameter expansion subset).
         // Only capture the variable name, not the default value
-        const match = ev.value.match(/^\$\{([A-Z_][A-Z0-9_]*)(:-.*)?\}$/);
+        const match = ev.value.match(/^\$\{([A-Z_][A-Z0-9_]*)(?::[-=].*)?\}$/);
         if (match) {
             // Variable name is already validated by regex pattern [A-Z_][A-Z0-9_]*
             refs.add(match[1]);

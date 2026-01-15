@@ -39,9 +39,9 @@
      so we don't rely on hashed classnames. */
 @media (min-width: 700px) {
     [data-vaul-drawer][data-vaul-drawer-direction="bottom"] [data-presentation="modal"] {
-        height: min(860px, calc(100vh - 48px)) !important;
-        max-height: min(860px, calc(100vh - 48px)) !important;
-        min-height: min(860px, calc(100vh - 48px)) !important;
+        height: min(820px, calc(100vh - 48px)) !important;
+        max-height: min(820px, calc(100vh - 48px)) !important;
+        min-height: min(820px, calc(100vh - 48px)) !important;
     }
 }
 

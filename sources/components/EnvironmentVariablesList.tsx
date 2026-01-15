@@ -8,6 +8,7 @@ import type { ProfileDocumentation } from '@/sync/profileUtils';
 import { Item } from '@/components/Item';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import { useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
 
 export interface EnvironmentVariablesListProps {
     environmentVariables: Array<{ name: string; value: string }>;
@@ -29,6 +30,31 @@ export function EnvironmentVariablesList({
     onChange,
 }: EnvironmentVariablesListProps) {
     const { theme } = useUnistyles();
+
+    // Extract variable name from a template value (for matching documentation / machine env lookup)
+    const extractVarNameFromValue = React.useCallback((value: string): string | null => {
+        const match = value.match(/^\$\{([A-Z_][A-Z0-9_]*)/);
+        return match ? match[1] : null;
+    }, []);
+
+    const SECRET_NAME_REGEX = React.useMemo(() => /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i, []);
+
+    const resolvedEnvVarRefs = React.useMemo(() => {
+        const refs = new Set<string>();
+        environmentVariables.forEach((envVar) => {
+            const ref = extractVarNameFromValue(envVar.value);
+            if (!ref) return;
+            // Don't query secret-like env vars from the machine.
+            if (SECRET_NAME_REGEX.test(ref) || SECRET_NAME_REGEX.test(envVar.name)) return;
+            refs.add(ref);
+        });
+        return Array.from(refs);
+    }, [SECRET_NAME_REGEX, environmentVariables, extractVarNameFromValue]);
+
+    const { variables: machineEnv, isLoading: isMachineEnvLoading } = useEnvironmentVariables(
+        machineId,
+        resolvedEnvVarRefs,
+    );
 
     // Add variable inline form state
     const [showAddForm, setShowAddForm] = React.useState(false);
@@ -59,12 +85,6 @@ export function EnvironmentVariablesList({
             isSecret: doc?.isSecret || false
         };
     }, [profileDocs]);
-
-    // Extract variable name from value (for matching documentation)
-    const extractVarNameFromValue = React.useCallback((value: string): string | null => {
-        const match = value.match(/^\$\{([A-Z_][A-Z0-9_]*)/);
-        return match ? match[1] : null;
-    }, []);
 
     const handleUpdateVariable = React.useCallback((index: number, newValue: string) => {
         const updated = [...environmentVariables];
@@ -151,8 +171,6 @@ export function EnvironmentVariablesList({
                     {environmentVariables.map((envVar, index) => {
                         const varNameFromValue = extractVarNameFromValue(envVar.value);
                         const docs = getDocumentation(varNameFromValue || envVar.name);
-
-                        const SECRET_NAME_REGEX = /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i;
                         const isSecret =
                             docs.isSecret ||
                             SECRET_NAME_REGEX.test(envVar.name) ||
@@ -164,6 +182,8 @@ export function EnvironmentVariablesList({
                                 variable={envVar}
                                 machineId={machineId}
                                 machineName={machineName ?? null}
+                                machineEnv={machineEnv}
+                                isMachineEnvLoading={isMachineEnvLoading}
                                 expectedValue={docs.expectedValue}
                                 description={docs.description}
                                 isSecret={isSecret}
