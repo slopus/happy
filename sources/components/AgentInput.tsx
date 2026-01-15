@@ -76,6 +76,7 @@ interface AgentInputProps {
     onProfileClick?: () => void;
     envVarsCount?: number;
     onEnvVarsClick?: () => void;
+    contentPaddingHorizontal?: number;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -550,7 +551,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     return (
         <View style={[
             styles.container,
-            { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
+            { paddingHorizontal: props.contentPaddingHorizontal ?? (screenWidth > 700 ? 16 : 8) }
         ]}>
             <View style={[
                 styles.innerContainer,

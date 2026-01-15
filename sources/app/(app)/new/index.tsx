@@ -110,12 +110,12 @@ const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 
     scrollContainer: {
         flex: 1,
     },
-	    contentContainer: {
-	        width: '100%',
-	        alignSelf: 'center',
-	        paddingTop: rt.insets.top + 16,
-	        paddingBottom: 16,
-	    },
+		    contentContainer: {
+		        width: '100%',
+		        alignSelf: 'center',
+		        paddingTop: rt.insets.top + 24,
+		        paddingBottom: 16,
+		    },
 	    wizardContainer: {
 	        marginBottom: 16,
 	    },
@@ -253,13 +253,14 @@ const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 
 
 function NewSessionWizard() {
     const { theme, rt } = useUnistyles();
-		    const router = useRouter();
-		    const safeArea = useSafeAreaInsets();
-		    const headerHeight = useHeaderHeight();
-		    const screenWidth = useWindowDimensions().width;
+			    const router = useRouter();
+			    const safeArea = useSafeAreaInsets();
+			    const headerHeight = useHeaderHeight();
+			    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
-	    const newSessionSidePadding = 16;
-	    const newSessionBottomPadding = Math.max(screenWidth < 420 ? 8 : 16, safeArea.bottom);
+		    const newSessionSidePadding = 16;
+		    const newSessionBottomPadding = Math.max(screenWidth < 420 ? 8 : 16, safeArea.bottom);
+		    const webModalHeight = Platform.OS === 'web' ? Math.min(Math.max(520, screenHeight - 48), 860) : undefined;
 		    const { prompt, dataId, machineId: machineIdParam, path: pathParam, profileId: profileIdParam } = useLocalSearchParams<{
 		        prompt?: string;
 		        dataId?: string;
@@ -1386,7 +1387,7 @@ function NewSessionWizard() {
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + safeArea.bottom + 16 : 0}
-                style={styles.container}
+                style={[styles.container, Platform.OS === 'web' ? ({ height: webModalHeight } as any) : null]}
             >
                 {showInlineClose && (
                     <Pressable
@@ -1438,11 +1439,13 @@ function NewSessionWizard() {
 		                            default: {},
 		                        }),
 		                    }}>
-		                            <AgentInput
+		                        <View style={{ paddingHorizontal: newSessionSidePadding }}>
+		                            <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+		                                <AgentInput
 		                                value={sessionPrompt}
 	                                onChangeText={setSessionPrompt}
 	                                onSend={handleCreateSession}
-                                isSendDisabled={!canCreate}
+	                                isSendDisabled={!canCreate}
                                 isSending={isCreating}
                                 placeholder={t('session.inputPlaceholder')}
                                 autocompletePrefixes={[]}
@@ -1453,16 +1456,19 @@ function NewSessionWizard() {
                                 onPermissionModeChange={handlePermissionModeChange}
                                 connectionStatus={connectionStatus}
                                 machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
-                                onMachineClick={handleMachineClick}
-                                currentPath={selectedPath}
-                                onPathClick={handlePathClick}
-                                {...(useProfiles ? {
-                                    profileId: selectedProfileId,
-                                    onProfileClick: handleProfileClick,
+	                                onMachineClick={handleMachineClick}
+	                                currentPath={selectedPath}
+	                                onPathClick={handlePathClick}
+	                                contentPaddingHorizontal={0}
+	                                {...(useProfiles ? {
+	                                    profileId: selectedProfileId,
+	                                    onProfileClick: handleProfileClick,
 	                                    envVarsCount: selectedProfileEnvVarsCount || undefined,
 	                                    onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
 	                                } : {})}
 	                            />
+		                            </View>
+		                        </View>
 		                    </View>
                 </View>
             </KeyboardAvoidingView>
@@ -1477,7 +1483,7 @@ function NewSessionWizard() {
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + safeArea.bottom + 16 : 0}
-            style={styles.container}
+            style={[styles.container, Platform.OS === 'web' ? ({ height: webModalHeight } as any) : null]}
         >
                 {showInlineClose && (
                     <Pressable
@@ -1577,10 +1583,10 @@ function NewSessionWizard() {
                                         <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
                                             Select AI Profile
                                         </Text>
-                                    </View>
-                                    <Text style={styles.sectionDescription}>
-                                        Select a profile to apply environment variables and defaults to your session.
-                                    </Text>
+	                                    </View>
+	                                    <Text style={styles.sectionDescription}>
+	                                        Select an AI profile to apply environment variables and defaults to your session.
+	                                    </Text>
 
                                     {favoriteProfileItems.length > 0 && (
                                         <ItemGroup title="Favorites">
@@ -1613,8 +1619,8 @@ function NewSessionWizard() {
                                         </ItemGroup>
                                     )}
 
-                                    {nonFavoriteCustomProfiles.length > 0 && (
-                                        <ItemGroup title="Your Profiles">
+	                                    {nonFavoriteCustomProfiles.length > 0 && (
+	                                        <ItemGroup title="Your AI Profiles">
                                             {nonFavoriteCustomProfiles.map((profile, index) => {
                                                 const availability = isProfileAvailable(profile);
                                                 const isSelected = selectedProfileId === profile.id;
@@ -1645,7 +1651,7 @@ function NewSessionWizard() {
                                         </ItemGroup>
                                     )}
 
-                                    <ItemGroup title="Built-in Profiles">
+	                                    <ItemGroup title="Built-in AI Profiles">
                                         <Item
                                             title={t('profiles.noProfile')}
                                             subtitle={t('profiles.noProfileDescription')}
@@ -2153,11 +2159,13 @@ function NewSessionWizard() {
 		                        default: {},
 		                    }),
 		                }}>
+		                    <View style={{ paddingHorizontal: newSessionSidePadding }}>
+		                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
 		                            <AgentInput
 		                                value={sessionPrompt}
 	                                onChangeText={setSessionPrompt}
 	                                onSend={handleCreateSession}
-                                isSendDisabled={!canCreate}
+	                                isSendDisabled={!canCreate}
                                 isSending={isCreating}
                                 placeholder={t('session.inputPlaceholder')}
                                 autocompletePrefixes={[]}
@@ -2169,17 +2177,20 @@ function NewSessionWizard() {
                                 modelMode={modelMode}
                                 onModelModeChange={setModelMode}
                                 connectionStatus={connectionStatus}
-                                machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
-                                onMachineClick={handleAgentInputMachineClick}
-                                currentPath={selectedPath}
-                                onPathClick={handleAgentInputPathClick}
-                                {...(useProfiles ? {
-                                    profileId: selectedProfileId,
-                                    onProfileClick: handleAgentInputProfileClick,
+	                                machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
+	                                onMachineClick={handleAgentInputMachineClick}
+	                                currentPath={selectedPath}
+	                                onPathClick={handleAgentInputPathClick}
+	                                contentPaddingHorizontal={0}
+	                                {...(useProfiles ? {
+	                                    profileId: selectedProfileId,
+	                                    onProfileClick: handleAgentInputProfileClick,
 	                                    envVarsCount: selectedProfileEnvVarsCount || undefined,
 	                                    onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
 	                                } : {})}
 	                            />
+		                        </View>
+		                    </View>
 		                </View>
             </View>
         </KeyboardAvoidingView>

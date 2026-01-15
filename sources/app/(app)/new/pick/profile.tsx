@@ -227,7 +227,7 @@ export default function ProfilePickerScreen() {
                         )}
 
                         {nonFavoriteCustomProfiles.length > 0 && (
-                            <ItemGroup title="Your Profiles">
+                            <ItemGroup title="Your AI Profiles">
                                 {nonFavoriteCustomProfiles.map((profile, index) => {
                                     const isSelected = selectedId === profile.id;
                                     const isLast = index === nonFavoriteCustomProfiles.length - 1;
@@ -249,7 +249,7 @@ export default function ProfilePickerScreen() {
                             </ItemGroup>
                         )}
 
-                        <ItemGroup title="Built-in Profiles">
+                        <ItemGroup title="Built-in AI Profiles">
                             <Item
                                 title={t('profiles.noProfile')}
                                 subtitle={t('profiles.noProfileDescription')}
