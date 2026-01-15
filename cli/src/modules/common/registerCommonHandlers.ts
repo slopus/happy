@@ -130,19 +130,17 @@ export interface SpawnSessionOptions {
      * Empty string is allowed and means "no profile".
      */
     profileId?: string;
-    environmentVariables?: {
-        // Anthropic Claude API configuration
-        ANTHROPIC_BASE_URL?: string;        // Custom API endpoint (overrides default)
-        ANTHROPIC_AUTH_TOKEN?: string;      // API authentication token
-        ANTHROPIC_MODEL?: string;           // Model to use (e.g., claude-3-5-sonnet-20241022)
-
-        // Tmux session management environment variables
-        // Based on tmux(1) manual and common tmux usage patterns
-        TMUX_SESSION_NAME?: string;         // Name for tmux session (creates/attaches to named session)
-        TMUX_TMPDIR?: string;               // Temporary directory for tmux server socket files
-        // Note: TMUX_TMPDIR is used by tmux to store socket files when default /tmp is not suitable
-        // Common use case: When /tmp has limited space or different permissions
-    };
+    /**
+     * Arbitrary environment variables for the spawned session.
+     *
+     * The GUI builds these from a profile (env var list + tmux settings) and may include
+     * provider-specific keys like:
+     * - ANTHROPIC_AUTH_TOKEN / ANTHROPIC_BASE_URL / ANTHROPIC_MODEL
+     * - OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL
+     * - AZURE_OPENAI_* / TOGETHER_*
+     * - TMUX_SESSION_NAME / TMUX_TMPDIR / TMUX_UPDATE_ENVIRONMENT
+     */
+    environmentVariables?: Record<string, string>;
 }
 
 export type SpawnSessionResult =
