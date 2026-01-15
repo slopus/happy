@@ -9,6 +9,11 @@ import type { VoiceSession, VoiceSessionConfig } from './types';
 // Static reference to the conversation hook instance
 let conversationInstance: ReturnType<typeof useConversation> | null = null;
 
+function debugLog(...args: unknown[]) {
+    if (!__DEV__) return;
+    console.debug(...args);
+}
+
 // Global voice session implementation
 class RealtimeVoiceSessionImpl implements VoiceSession {
     
@@ -93,18 +98,18 @@ export const RealtimeVoiceSession: React.FC = () => {
     const conversation = useConversation({
         clientTools: realtimeClientTools,
         onConnect: (data) => {
-            console.log('Realtime session connected:', data);
+            debugLog('Realtime session connected');
             storage.getState().setRealtimeStatus('connected');
             storage.getState().setRealtimeMode('idle');
         },
         onDisconnect: () => {
-            console.log('Realtime session disconnected');
+            debugLog('Realtime session disconnected');
             storage.getState().setRealtimeStatus('disconnected');
             storage.getState().setRealtimeMode('idle', true); // immediate mode change
             storage.getState().clearRealtimeModeDebounce();
         },
         onMessage: (data) => {
-            console.log('Realtime message:', data);
+            debugLog('Realtime message received');
         },
         onError: (error) => {
             // Log but don't block app - voice features will be unavailable
@@ -116,10 +121,10 @@ export const RealtimeVoiceSession: React.FC = () => {
             storage.getState().setRealtimeMode('idle', true); // immediate mode change
         },
         onStatusChange: (data) => {
-            console.log('Realtime status change:', data);
+            debugLog('Realtime status change');
         },
         onModeChange: (data) => {
-            console.log('Realtime mode change:', data);
+            debugLog('Realtime mode change');
             
             // Only animate when speaking
             const mode = data.mode as string;
@@ -129,7 +134,7 @@ export const RealtimeVoiceSession: React.FC = () => {
             storage.getState().setRealtimeMode(isSpeaking ? 'speaking' : 'idle');
         },
         onDebug: (message) => {
-            console.debug('Realtime debug:', message);
+            debugLog('Realtime debug:', message);
         }
     });
 
