@@ -71,8 +71,10 @@ export function useEnvironmentVariables(
 
             // Query variables in a single machineBash() call.
             //
-            // IMPORTANT: Run the query inside a login shell so we match the environment a session
-            // would typically start with (e.g. macOS users often configure PATH in zsh startup files).
+            // IMPORTANT: This runs inside the daemon process environment on the machine, because the
+            // RPC handler executes commands using Node's `exec()` without overriding `env`.
+            // That means this matches what `${VAR}` expansion uses when spawning sessions on the daemon
+            // (see happy-cli: expandEnvironmentVariables(..., process.env)).
             // Prefer a JSON protocol (via `node`) to preserve newlines and distinguish unset vs empty.
             // Fallback to bash-only output if node isn't available.
             const nodeScript = [
@@ -97,14 +99,7 @@ export function useEnvironmentVariables(
                 `done`,
             ].join(' ');
 
-            const inShell = `if command -v node >/dev/null 2>&1; then ${jsonCommand}; else ${shellFallback}; fi`;
-            const escapedInShell = inShell.replace(/'/g, "'\\''");
-
-            const command = [
-                `if command -v zsh >/dev/null 2>&1; then zsh -lc '${escapedInShell}';`,
-                `elif command -v bash >/dev/null 2>&1; then bash -lc '${escapedInShell}';`,
-                `else sh -lc '${escapedInShell}'; fi`,
-            ].join(' ');
+            const command = `if command -v node >/dev/null 2>&1; then ${jsonCommand}; else ${shellFallback}; fi`;
 
             try {
                 const result = await machineBash(machineId, command, '/');
@@ -115,9 +110,14 @@ export function useEnvironmentVariables(
                     const stdout = result.stdout;
 
                     // JSON protocol: {"VAR":"value","MISSING":null}
-                    if (stdout.trim().startsWith('{')) {
+                    // Be resilient to any stray output (log lines, warnings) by extracting the last JSON object.
+                    const trimmed = stdout.trim();
+                    const firstBrace = trimmed.indexOf('{');
+                    const lastBrace = trimmed.lastIndexOf('}');
+                    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                        const jsonSlice = trimmed.slice(firstBrace, lastBrace + 1);
                         try {
-                            const parsed = JSON.parse(stdout) as Record<string, string | null>;
+                            const parsed = JSON.parse(jsonSlice) as Record<string, string | null>;
                             validVarNames.forEach((name) => {
                                 results[name] = Object.prototype.hasOwnProperty.call(parsed, name) ? parsed[name] : null;
                             });
@@ -128,9 +128,11 @@ export function useEnvironmentVariables(
 
                     // Fallback line parser: "VAR=value" or "VAR=__HAPPY_UNSET__"
                     if (Object.keys(results).length === 0) {
-                        // Do not trim: it can corrupt values with meaningful whitespace.
+                        // Do not trim each line: it can corrupt values with meaningful whitespace.
                         const lines = stdout.split(/\r?\n/).filter((l) => l.length > 0);
-                        lines.forEach(line => {
+                        lines.forEach((line) => {
+                            // Ignore unrelated output (warnings, prompts, etc).
+                            if (!/^[A-Z_][A-Z0-9_]*=/.test(line)) return;
                             const equalsIndex = line.indexOf('=');
                             if (equalsIndex !== -1) {
                                 const name = line.substring(0, equalsIndex);

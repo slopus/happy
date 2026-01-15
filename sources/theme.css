@@ -33,6 +33,18 @@
     scrollbar-color: var(--colors-divider) var(--colors-surface-high);
 }
 
+/* Expo Router (web) modal sizing
+   - Expo Router uses a Vaul/Radix drawer for `presentation: 'modal'` on web.
+   - Default sizing is a bit short on large screens; override via attribute selectors
+     so we don't rely on hashed classnames. */
+@media (min-width: 700px) {
+    [data-vaul-drawer][data-vaul-drawer-direction="bottom"] [data-presentation="modal"] {
+        height: min(860px, calc(100vh - 48px)) !important;
+        max-height: min(860px, calc(100vh - 48px)) !important;
+        min-height: min(860px, calc(100vh - 48px)) !important;
+    }
+}
+
 /* Ensure scrollbars are visible on hover for macOS */
 ::-webkit-scrollbar:horizontal {
     height: 12px;
