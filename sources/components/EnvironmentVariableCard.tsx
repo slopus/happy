@@ -9,6 +9,7 @@ import { Switch } from '@/components/Switch';
 export interface EnvironmentVariableCardProps {
     variable: { name: string; value: string };
     machineId: string | null;
+    machineName?: string | null;
     expectedValue?: string;  // From profile documentation
     description?: string;    // Variable description
     isSecret?: boolean;      // Whether this is a secret (never query remote)
@@ -60,6 +61,7 @@ function parseVariableValue(value: string): {
 export function EnvironmentVariableCard({
     variable,
     machineId,
+    machineName,
     expectedValue,
     description,
     isSecret = false,
@@ -111,6 +113,7 @@ export function EnvironmentVariableCard({
 
     const remoteValue = remoteValues[remoteVariableName];
     const hasFallback = defaultValue.trim() !== '';
+    const machineLabel = machineName?.trim() ? machineName.trim() : 'machine';
 
     // Update parent when local state changes
     React.useEffect(() => {
@@ -325,7 +328,7 @@ export function EnvironmentVariableCard({
                             fontStyle: 'italic',
                             ...secondaryTextStyle,
                         }}>
-                            Checking machine environment...
+                            Checking {machineLabel}...
                         </Text>
                     ) : (remoteValue === null || remoteValue === '') ? (
                         <Text style={{
@@ -333,9 +336,9 @@ export function EnvironmentVariableCard({
                             ...secondaryTextStyle,
                         }}>
                             {remoteValue === '' ? (
-                                hasFallback ? 'Empty on machine (using fallback)' : 'Empty on machine'
+                                hasFallback ? `Empty on ${machineLabel} (using fallback)` : `Empty on ${machineLabel}`
                             ) : (
-                                hasFallback ? 'Not found on machine (using fallback)' : 'Not found on machine'
+                                hasFallback ? `Not found on ${machineLabel} (using fallback)` : `Not found on ${machineLabel}`
                             )}
                         </Text>
                     ) : (
@@ -344,7 +347,7 @@ export function EnvironmentVariableCard({
                                 color: theme.colors.success,
                                 ...secondaryTextStyle,
                             }}>
-                                Value found
+                                Value found on {machineLabel}
                             </Text>
                             {showRemoteDiffersWarning && (
                                 <Text style={{

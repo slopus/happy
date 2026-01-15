@@ -70,6 +70,9 @@ export function useEnvironmentVariables(
             }
 
             // Query variables in a single machineBash() call.
+            //
+            // IMPORTANT: Run the query inside a login shell so we match the environment a session
+            // would typically start with (e.g. macOS users often configure PATH in zsh startup files).
             // Prefer a JSON protocol (via `node`) to preserve newlines and distinguish unset vs empty.
             // Fallback to bash-only output if node isn't available.
             const nodeScript = [
@@ -82,20 +85,26 @@ export function useEnvironmentVariables(
                 "process.stdout.write(JSON.stringify(out));",
             ].join("");
             const jsonCommand = `node -e '${nodeScript.replace(/'/g, "'\\''")}' ${validVarNames.join(' ')}`;
-            // Bash fallback uses indirect expansion to avoid eval and to distinguish unset vs empty.
-            // IMPORTANT: avoid embedding literal `${...}` inside this TypeScript template string (it would be parsed as JS interpolation).
-            const bashIsSetExpr = '\\$' + '{!name+x}';
-            const bashValueExpr = '\\$' + '{!name}';
-            const bashFallback = [
+            // Shell fallback uses `printenv` to distinguish unset vs empty via exit code.
+            // Note: values containing newlines may not round-trip here; the node/JSON path preserves them.
+            const shellFallback = [
                 `for name in ${validVarNames.join(' ')}; do`,
-                `if [ -n "${bashIsSetExpr}" ]; then`,
-                `printf "%s=%s\\n" "$name" "${bashValueExpr}";`,
+                `if printenv "$name" >/dev/null 2>&1; then`,
+                `printf "%s=%s\\n" "$name" "$(printenv "$name")";`,
                 `else`,
                 `printf "%s=__HAPPY_UNSET__\\n" "$name";`,
                 `fi;`,
                 `done`,
             ].join(' ');
-            const command = `if command -v node >/dev/null 2>&1; then ${jsonCommand}; else ${bashFallback}; fi`;
+
+            const inShell = `if command -v node >/dev/null 2>&1; then ${jsonCommand}; else ${shellFallback}; fi`;
+            const escapedInShell = inShell.replace(/'/g, "'\\''");
+
+            const command = [
+                `if command -v zsh >/dev/null 2>&1; then zsh -lc '${escapedInShell}';`,
+                `elif command -v bash >/dev/null 2>&1; then bash -lc '${escapedInShell}';`,
+                `else sh -lc '${escapedInShell}'; fi`,
+            ].join(' ');
 
             try {
                 const result = await machineBash(machineId, command, '/');

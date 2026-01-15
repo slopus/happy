@@ -132,9 +132,6 @@ export function EnvironmentVariablesList({
                 paddingTop: Platform.select({ ios: 35, default: 16 }),
                 paddingBottom: Platform.select({ ios: 6, default: 8 }),
                 paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
             }}>
                 <Text style={{
                     ...Typography.default('regular'),
@@ -147,21 +144,6 @@ export function EnvironmentVariablesList({
                 }}>
                     Environment Variables
                 </Text>
-
-                {machineId && machineName && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Ionicons name="desktop-outline" size={14} color={theme.colors.status.connected} />
-                        <Text style={{
-                            ...Typography.default('semiBold'),
-                            color: theme.colors.status.connected,
-                            fontSize: Platform.select({ ios: 13, default: 14 }),
-                            lineHeight: Platform.select({ ios: 18, default: 20 }),
-                            letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
-                        }}>
-                            {machineName}
-                        </Text>
-                    </View>
-                )}
             </View>
 
             {environmentVariables.length > 0 && (
@@ -181,6 +163,7 @@ export function EnvironmentVariablesList({
                                 key={index}
                                 variable={envVar}
                                 machineId={machineId}
+                                machineName={machineName ?? null}
                                 expectedValue={docs.expectedValue}
                                 description={docs.description}
                                 isSecret={isSecret}
