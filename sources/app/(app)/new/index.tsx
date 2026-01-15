@@ -19,13 +19,12 @@ import { SessionTypeSelector, SessionTypeSelectorRows } from '@/components/Sessi
 import { createWorktree } from '@/utils/createWorktree';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
-import { PermissionMode, ModelMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
+import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES, getProfilePrimaryCli } from '@/sync/profileUtils';
 import { AgentInput } from '@/components/AgentInput';
 import { StyleSheet } from 'react-native-unistyles';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
-import { useEnvironmentVariables, resolveEnvVarSubstitution, extractEnvVarReferences } from '@/hooks/useEnvironmentVariables';
 
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
@@ -36,22 +35,8 @@ import { SearchHeader } from '@/components/SearchHeader';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
 import { EnvironmentVariablesPreviewModal } from '@/components/newSession/EnvironmentVariablesPreviewModal';
 import { buildProfileGroups } from '@/sync/profileGrouping';
-import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 import { ItemRowActions } from '@/components/ItemRowActions';
 import type { ItemAction } from '@/components/ItemActionsMenuModal';
-
-// Simple temporary state for passing selections back from picker screens
-let onMachineSelected: (machineId: string) => void = () => { };
-let onProfileSaved: (profile: AIBackendProfile) => void = () => { };
-
-export const callbacks = {
-    onMachineSelected: (machineId: string) => {
-        onMachineSelected(machineId);
-    },
-    onProfileSaved: (profile: AIBackendProfile) => {
-        onProfileSaved(profile);
-    }
-}
 
 // Optimized profile lookup utility
 const useProfileMap = (profiles: AIBackendProfile[]) => {
@@ -65,7 +50,7 @@ const useProfileMap = (profiles: AIBackendProfile[]) => {
 // Returns ALL profile environment variables - daemon will use them as-is
 const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' | 'gemini' = 'claude') => {
     // getProfileEnvironmentVariables already returns ALL env vars from profile
-    // including custom environmentVariables array and provider-specific configs
+    // including custom environmentVariables array
     return getProfileEnvironmentVariables(profile);
 };
 
@@ -560,19 +545,6 @@ function NewSessionWizard() {
         }
     }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, agentType, experimentsEnabled]);
 
-    // Extract all ${VAR} references from profiles to query daemon environment
-    const envVarRefs = React.useMemo(() => {
-        const refs = new Set<string>();
-        allProfiles.forEach(profile => {
-            extractEnvVarReferences(profile.environmentVariables || [])
-                .forEach(ref => refs.add(ref));
-        });
-        return Array.from(refs);
-    }, [allProfiles]);
-
-    // Query daemon environment for ${VAR} resolution
-    const { variables: daemonEnv } = useEnvironmentVariables(selectedMachineId, envVarRefs);
-
     // Temporary banner dismissal (X button) - resets when component unmounts or machine changes
     const [hiddenBanners, setHiddenBanners] = React.useState<{ claude: boolean; codex: boolean; gemini: boolean }>({ claude: false, codex: false, gemini: false });
 
@@ -676,7 +648,7 @@ function NewSessionWizard() {
         return machines.find(m => m.id === selectedMachineId);
     }, [selectedMachineId, machines]);
 
-    const openProfileEdit = React.useCallback((profile: AIBackendProfile) => {
+    const openProfileEdit = React.useCallback((params: { profileId?: string; cloneFromProfileId?: string }) => {
         // Persist wizard state before navigating so selection doesn't reset on return.
         saveNewSessionDraft({
             input: sessionPrompt,
@@ -690,17 +662,21 @@ function NewSessionWizard() {
             updatedAt: Date.now(),
         });
 
-        const profileData = JSON.stringify(profile);
-        const base = `/new/pick/profile-edit?profileData=${encodeURIComponent(profileData)}`;
-        router.push(selectedMachineId ? `${base}&machineId=${encodeURIComponent(selectedMachineId)}` as any : base as any);
+        router.push({
+            pathname: '/new/pick/profile-edit',
+            params: {
+                ...params,
+                ...(selectedMachineId ? { machineId: selectedMachineId } : {}),
+            },
+        } as any);
     }, [agentType, modelMode, permissionMode, router, selectedMachineId, selectedPath, selectedProfileId, sessionPrompt, sessionType, useProfiles]);
 
     const handleAddProfile = React.useCallback(() => {
-        openProfileEdit(createEmptyCustomProfile());
+        openProfileEdit({});
     }, [openProfileEdit]);
 
     const handleDuplicateProfile = React.useCallback((profile: AIBackendProfile) => {
-        openProfileEdit(duplicateProfileForEdit(profile));
+        openProfileEdit({ cloneFromProfileId: profile.id });
     }, [openProfileEdit]);
 
     const handleDeleteProfile = React.useCallback((profile: AIBackendProfile) => {
@@ -1008,12 +984,12 @@ function NewSessionWizard() {
 	            color: isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary,
 	            onPress: () => toggleFavoriteProfile(profile.id),
 	        });
-	        actions.push({
-	            id: 'edit',
-	            title: 'Edit profile',
-	            icon: 'create-outline',
-	            onPress: () => openProfileEdit(profile),
-	        });
+		        actions.push({
+		            id: 'edit',
+		            title: 'Edit profile',
+		            icon: 'create-outline',
+		            onPress: () => openProfileEdit({ profileId: profile.id }),
+		        });
 	        actions.push({
 	            id: 'copy',
 	            title: 'Duplicate profile',
@@ -1093,37 +1069,6 @@ function NewSessionWizard() {
 
         return parts.join(' · ');
     }, [isProfileAvailable]);
-
-    // Handle machine and path selection callbacks
-    React.useEffect(() => {
-        let handler = (machineId: string) => {
-            let machine = storage.getState().machines[machineId];
-            if (machine) {
-                setSelectedMachineId(machineId);
-                const bestPath = getRecentPathForMachine(machineId, recentMachinePaths);
-                setSelectedPath(bestPath);
-            }
-        };
-        onMachineSelected = handler;
-        return () => {
-            onMachineSelected = () => { };
-        };
-    }, [recentMachinePaths]);
-
-    React.useEffect(() => {
-        let handler = (savedProfile: AIBackendProfile) => {
-            // Only auto-select newly created profiles (Add / Duplicate / Save As).
-            // Edits to other profiles should not change the current selection.
-            const wasExisting = profiles.some(p => p.id === savedProfile.id);
-            if (!wasExisting) {
-                setSelectedProfileId(savedProfile.id);
-            }
-        };
-        onProfileSaved = handler;
-        return () => {
-            onProfileSaved = () => { };
-        };
-    }, [profiles]);
 
     const handleMachineClick = React.useCallback(() => {
         router.push({

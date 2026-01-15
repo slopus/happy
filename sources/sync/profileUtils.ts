@@ -255,7 +255,6 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
             return {
                 id: 'anthropic',
                 name: 'Anthropic (Default)',
-                anthropicConfig: {},
                 environmentVariables: [],
                 defaultPermissionMode: 'default',
                 compatibility: { claude: true, codex: false, gemini: false },
@@ -269,11 +268,10 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
             // Launch daemon with: DEEPSEEK_AUTH_TOKEN=sk-... DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
             // Uses ${VAR:-default} format for fallback values (bash parameter expansion)
             // Secrets use ${VAR} without fallback for security
-            // NOTE: anthropicConfig left empty so environmentVariables aren't overridden (getProfileEnvironmentVariables priority)
+            // NOTE: Profiles are env-var based; environmentVariables are the single source of truth.
             return {
                 id: 'deepseek',
                 name: 'DeepSeek (Reasoner)',
-                anthropicConfig: {},
                 environmentVariables: [
                     { name: 'ANTHROPIC_BASE_URL', value: '${DEEPSEEK_BASE_URL:-https://api.deepseek.com/anthropic}' },
                     { name: 'ANTHROPIC_AUTH_TOKEN', value: '${DEEPSEEK_AUTH_TOKEN}' }, // Secret - no fallback
@@ -295,11 +293,10 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
             // Model mappings: Z_AI_OPUS_MODEL=GLM-4.6, Z_AI_SONNET_MODEL=GLM-4.6, Z_AI_HAIKU_MODEL=GLM-4.5-Air
             // Uses ${VAR:-default} format for fallback values (bash parameter expansion)
             // Secrets use ${VAR} without fallback for security
-            // NOTE: anthropicConfig left empty so environmentVariables aren't overridden
+            // NOTE: Profiles are env-var based; environmentVariables are the single source of truth.
             return {
                 id: 'zai',
                 name: 'Z.AI (GLM-4.6)',
-                anthropicConfig: {},
                 environmentVariables: [
                     { name: 'ANTHROPIC_BASE_URL', value: '${Z_AI_BASE_URL:-https://api.z.ai/api/anthropic}' },
                     { name: 'ANTHROPIC_AUTH_TOKEN', value: '${Z_AI_AUTH_TOKEN}' }, // Secret - no fallback
@@ -320,7 +317,6 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
             return {
                 id: 'openai',
                 name: 'OpenAI (GPT-5)',
-                openaiConfig: {},
                 environmentVariables: [
                     { name: 'OPENAI_BASE_URL', value: 'https://api.openai.com/v1' },
                     { name: 'OPENAI_MODEL', value: 'gpt-5-codex-high' },
@@ -339,7 +335,6 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
             return {
                 id: 'azure-openai',
                 name: 'Azure OpenAI',
-                azureOpenAIConfig: {},
                 environmentVariables: [
                     { name: 'AZURE_OPENAI_API_VERSION', value: '2024-02-15-preview' },
                     { name: 'AZURE_OPENAI_DEPLOYMENT_NAME', value: 'gpt-5-codex' },

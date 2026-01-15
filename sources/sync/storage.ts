@@ -12,7 +12,7 @@ import { TodoState } from "../-zen/model/ops";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
-import type { PermissionMode } from '@/components/PermissionModeSelector';
+import type { PermissionMode } from '@/sync/permissionTypes';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -367,8 +367,6 @@ export const storage = create<StorageState>()((set, get) => {
                 listData.push(...inactiveSessions);
             }
 
-            // console.log(`📊 Storage: applySessions called with ${sessions.length} sessions, active: ${activeSessions.length}, inactive: ${inactiveSessions.length}`);
-
             // Process AgentState updates for sessions that already have messages loaded
             const updatedSessionMessages = { ...state.sessionMessages };
 
@@ -385,15 +383,6 @@ export const storage = create<StorageState>()((set, get) => {
                     const currentRealtimeSessionId = getCurrentRealtimeSessionId();
                     const voiceSession = getVoiceSession();
 
-                    // console.log('[REALTIME DEBUG] Permission check:', {
-                    //     currentRealtimeSessionId,
-                    //     sessionId: session.id,
-                    //     match: currentRealtimeSessionId === session.id,
-                    //     hasVoiceSession: !!voiceSession,
-                    //     oldRequests: Object.keys(oldSession?.agentState?.requests || {}),
-                    //     newRequests: Object.keys(newSession.agentState?.requests || {})
-                    // });
-
                     if (currentRealtimeSessionId === session.id && voiceSession) {
                         const oldRequests = oldSession?.agentState?.requests || {};
                         const newRequests = newSession.agentState?.requests || {};
@@ -403,7 +392,6 @@ export const storage = create<StorageState>()((set, get) => {
                             if (!oldRequests[requestId]) {
                                 // This is a NEW permission request
                                 const toolName = request.tool;
-                                // console.log('[REALTIME DEBUG] Sending permission notification for:', toolName);
                                 voiceSession.sendTextMessage(
                                     `Claude is requesting permission to use the ${toolName} tool`
                                 );
@@ -880,12 +868,10 @@ export const storage = create<StorageState>()((set, get) => {
         }),
         // Artifact methods
         applyArtifacts: (artifacts: DecryptedArtifact[]) => set((state) => {
-            console.log(`🗂️ Storage.applyArtifacts: Applying ${artifacts.length} artifacts`);
             const mergedArtifacts = { ...state.artifacts };
             artifacts.forEach(artifact => {
                 mergedArtifacts[artifact.id] = artifact;
             });
-            console.log(`🗂️ Storage.applyArtifacts: Total artifacts after merge: ${Object.keys(mergedArtifacts).length}`);
             
             return {
                 ...state,

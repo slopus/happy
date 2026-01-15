@@ -89,6 +89,37 @@ describe('settings', () => {
                 }
             });
         });
+
+        it('should migrate legacy provider config objects into environmentVariables', () => {
+            const settingsWithLegacyProfileConfig: any = {
+                profiles: [
+                    {
+                        id: 'legacy-profile',
+                        name: 'Legacy Profile',
+                        isBuiltIn: false,
+                        compatibility: { claude: true, codex: true, gemini: true },
+                        environmentVariables: [{ name: 'FOO', value: 'bar' }],
+                        openaiConfig: {
+                            apiKey: 'sk-test',
+                            baseUrl: 'https://example.com',
+                            model: 'gpt-test',
+                        },
+                    },
+                ],
+            };
+
+            const parsed = settingsParse(settingsWithLegacyProfileConfig);
+            expect(parsed.profiles).toHaveLength(1);
+
+            const profile = parsed.profiles[0]!;
+            expect(profile.environmentVariables).toEqual(expect.arrayContaining([
+                { name: 'FOO', value: 'bar' },
+                { name: 'OPENAI_API_KEY', value: 'sk-test' },
+                { name: 'OPENAI_BASE_URL', value: 'https://example.com' },
+                { name: 'OPENAI_MODEL', value: 'gpt-test' },
+            ]));
+            expect((profile as any).openaiConfig).toBeUndefined();
+        });
     });
 
     describe('applySettings', () => {
@@ -411,7 +442,7 @@ describe('settings', () => {
                 lastUsedModelMode: null,
                 profiles: [],
                 lastUsedProfile: null,
-                favoriteDirectories: ['~/src', '~/Desktop', '~/Documents'],
+                favoriteDirectories: [],
                 favoriteMachines: [],
                 favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
@@ -595,7 +626,6 @@ describe('settings', () => {
                     {
                         id: 'server-profile',
                         name: 'Server Profile',
-                        anthropicConfig: {},
                         environmentVariables: [],
                         compatibility: { claude: true, codex: true, gemini: true },
                         isBuiltIn: false,
@@ -613,7 +643,6 @@ describe('settings', () => {
                     {
                         id: 'local-profile',
                         name: 'Local Profile',
-                        anthropicConfig: {},
                         environmentVariables: [],
                         compatibility: { claude: true, codex: true, gemini: true },
                         isBuiltIn: false,
@@ -715,7 +744,6 @@ describe('settings', () => {
                 profiles: [{
                     id: 'test-profile',
                     name: 'Test',
-                    anthropicConfig: {},
                     environmentVariables: [],
                     compatibility: { claude: true, codex: true, gemini: true },
                     isBuiltIn: false,
@@ -748,7 +776,6 @@ describe('settings', () => {
                 profiles: [{
                     id: 'device-b-profile',
                     name: 'Device B Profile',
-                    anthropicConfig: {},
                     environmentVariables: [],
                     compatibility: { claude: true, codex: true },
                     isBuiltIn: false,
@@ -860,7 +887,6 @@ describe('settings', () => {
                 profiles: [{
                     id: 'server-profile-1',
                     name: 'Server Profile',
-                    anthropicConfig: {},
                     environmentVariables: [],
                     compatibility: { claude: true, codex: true },
                     isBuiltIn: false,
@@ -879,7 +905,6 @@ describe('settings', () => {
                 profiles: [{
                     id: 'local-profile-1',
                     name: 'Local Profile',
-                    anthropicConfig: {},
                     environmentVariables: [],
                     compatibility: { claude: true, codex: true, gemini: true },
                     isBuiltIn: false,

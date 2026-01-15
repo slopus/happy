@@ -5,7 +5,6 @@ export function createEmptyCustomProfile(): AIBackendProfile {
     return {
         id: randomUUID(),
         name: '',
-        anthropicConfig: {},
         environmentVariables: [],
         compatibility: { claude: true, codex: true, gemini: true },
         isBuiltIn: false,
@@ -35,4 +34,3 @@ export function convertBuiltInProfileToCustom(profile: AIBackendProfile): AIBack
         updatedAt: Date.now(),
     };
 }
-

@@ -3,8 +3,7 @@ import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './set
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
-import type { PermissionMode } from '@/components/PermissionModeSelector';
-import type { ModelMode } from '@/components/PermissionModeSelector';
+import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';

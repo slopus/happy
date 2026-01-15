@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
-import { PermissionMode, ModelMode } from './PermissionModeSelector';
+import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
@@ -372,7 +372,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Handle combined text and selection state changes
     const handleInputStateChange = React.useCallback((newState: TextInputState) => {
-        // console.log('📝 Input state changed:', JSON.stringify(newState));
         setInputState(newState);
     }, []);
 
@@ -381,18 +380,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Using default options: clampSelection=true, autoSelectFirst=true, wrapAround=true
     // To customize: useActiveSuggestions(activeWord, props.autocompleteSuggestions, { clampSelection: false, wrapAround: false })
     const [suggestions, selected, moveUp, moveDown] = useActiveSuggestions(activeWord, props.autocompleteSuggestions, { clampSelection: true, wrapAround: true });
-
-    // Debug logging
-    // React.useEffect(() => {
-    //     console.log('🔍 Autocomplete Debug:', JSON.stringify({
-    //         value: props.value,
-    //         inputState,
-    //         activeWord,
-    //         suggestionsCount: suggestions.length,
-    //         selected,
-    //         prefixes: props.autocompletePrefixes
-    //     }, null, 2));
-    // }, [props.value, inputState, activeWord, suggestions.length, selected]);
 
     // Handle suggestion selection
     const handleSuggestionSelect = React.useCallback((index: number) => {
@@ -414,8 +401,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             start: result.cursorPosition,
             end: result.cursorPosition
         });
-
-        // console.log('Selected suggestion:', suggestion.text);
 
         // Small haptic feedback
         hapticsLight();

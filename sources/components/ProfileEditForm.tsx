@@ -6,7 +6,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { AIBackendProfile } from '@/sync/settings';
-import { PermissionMode } from '@/components/PermissionModeSelector';
+import type { PermissionMode } from '@/sync/permissionTypes';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -256,21 +256,14 @@ export function ProfileEditForm({
         onSave({
             ...profile,
             name: name.trim(),
-            anthropicConfig: {},
-            openaiConfig: {},
-            azureOpenAIConfig: {},
             environmentVariables,
             tmuxConfig: useTmux
                 ? {
+                      ...(profile.tmuxConfig ?? {}),
                       sessionName: tmuxSession.trim() || '',
                       tmpDir: tmuxTmpDir.trim() || undefined,
-                      updateEnvironment: undefined,
                   }
-                : {
-                      sessionName: undefined,
-                      tmpDir: undefined,
-                      updateEnvironment: undefined,
-                  },
+                : undefined,
             defaultSessionType,
             defaultPermissionMode,
             compatibility,
@@ -394,7 +387,7 @@ export function ProfileEditForm({
                             <Text style={styles.fieldLabel}>Tmux Session Name ({t('common.optional')})</Text>
                             <TextInput
                                 style={styles.textInput}
-                                placeholder="Empty = first existing session"
+                                placeholder="Empty = current/most recent session"
                                 placeholderTextColor={theme.colors.input.placeholder}
                                 value={tmuxSession}
                                 onChangeText={setTmuxSession}
