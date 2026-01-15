@@ -110,12 +110,12 @@ const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 
     scrollContainer: {
         flex: 1,
     },
-    contentContainer: {
-        width: '100%',
-        alignSelf: 'center',
-        paddingTop: rt.insets.top,
-        paddingBottom: 16,
-    },
+	    contentContainer: {
+	        width: '100%',
+	        alignSelf: 'center',
+	        paddingTop: rt.insets.top + 16,
+	        paddingBottom: 16,
+	    },
 	    wizardContainer: {
 	        marginBottom: 16,
 	    },
@@ -1421,13 +1421,27 @@ function NewSessionWizard() {
                         </View>
                     )}
 	
-	                    {/* AgentInput with inline chips - sticky at bottom */}
-	                    <View style={{ paddingHorizontal: newSessionSidePadding, paddingBottom: newSessionBottomPadding }}>
-	                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-	                            <AgentInput
-	                                value={sessionPrompt}
-                                onChangeText={setSessionPrompt}
-                                onSend={handleCreateSession}
+		                    {/* AgentInput with inline chips - sticky at bottom */}
+		                    <View style={{
+		                        backgroundColor: theme.colors.surface,
+		                        paddingTop: 12,
+		                        paddingBottom: newSessionBottomPadding,
+		                        ...Platform.select({
+		                            web: { boxShadow: '0 -10px 30px rgba(0,0,0,0.06)' } as any,
+		                            ios: {
+		                                shadowColor: theme.colors.shadow.color,
+		                                shadowOffset: { width: 0, height: -4 },
+		                                shadowOpacity: 0.08,
+		                                shadowRadius: 14,
+		                            },
+		                            android: { borderTopWidth: 1, borderTopColor: theme.colors.divider },
+		                            default: {},
+		                        }),
+		                    }}>
+		                            <AgentInput
+		                                value={sessionPrompt}
+	                                onChangeText={setSessionPrompt}
+	                                onSend={handleCreateSession}
                                 isSendDisabled={!canCreate}
                                 isSending={isCreating}
                                 placeholder={t('session.inputPlaceholder')}
@@ -1445,12 +1459,11 @@ function NewSessionWizard() {
                                 {...(useProfiles ? {
                                     profileId: selectedProfileId,
                                     onProfileClick: handleProfileClick,
-                                    envVarsCount: selectedProfileEnvVarsCount || undefined,
-                                    onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
-                                } : {})}
-                            />
-                        </View>
-                    </View>
+	                                    envVarsCount: selectedProfileEnvVarsCount || undefined,
+	                                    onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
+	                                } : {})}
+	                            />
+		                    </View>
                 </View>
             </KeyboardAvoidingView>
         );
@@ -1498,13 +1511,13 @@ function NewSessionWizard() {
                         { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
                     ]}>
                         <View ref={profileSectionRef} onLayout={registerWizardSectionOffset('profile')} style={styles.wizardContainer}>
-                            {/* CLI Detection Status Banner - shows after detection completes */}
-                            {selectedMachineId && cliAvailability.timestamp > 0 && selectedMachine && connectionStatus && (
-                                <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
-                                    <View style={{
-                                        backgroundColor: theme.colors.surfacePressed,
-                                        borderRadius: 10,
-                                        padding: 10,
+	                            {/* CLI Detection Status Banner - shows after detection completes */}
+	                            {selectedMachineId && cliAvailability.timestamp > 0 && selectedMachine && connectionStatus && (
+	                                <View style={{ paddingHorizontal: 16, marginTop: 0 }}>
+	                                    <View style={{
+	                                        backgroundColor: theme.colors.surfacePressed,
+	                                        borderRadius: 10,
+	                                        padding: 10,
                                         paddingRight: 18,
                                         marginBottom: 12,
                                         flexDirection: 'row',
@@ -2123,13 +2136,27 @@ function NewSessionWizard() {
                 </View>
                 </ScrollView>
 	
-	                {/* AgentInput - Sticky at bottom */}
-	                <View style={{ paddingHorizontal: newSessionSidePadding, paddingBottom: newSessionBottomPadding }}>
-	                    <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-	                            <AgentInput
-	                                value={sessionPrompt}
-                                onChangeText={setSessionPrompt}
-                                onSend={handleCreateSession}
+		                {/* AgentInput - Sticky at bottom */}
+		                <View style={{
+		                    backgroundColor: theme.colors.surface,
+		                    paddingTop: 12,
+		                    paddingBottom: newSessionBottomPadding,
+		                    ...Platform.select({
+		                        web: { boxShadow: '0 -10px 30px rgba(0,0,0,0.06)' } as any,
+		                        ios: {
+		                            shadowColor: theme.colors.shadow.color,
+		                            shadowOffset: { width: 0, height: -4 },
+		                            shadowOpacity: 0.08,
+		                            shadowRadius: 14,
+		                        },
+		                        android: { borderTopWidth: 1, borderTopColor: theme.colors.divider },
+		                        default: {},
+		                    }),
+		                }}>
+		                            <AgentInput
+		                                value={sessionPrompt}
+	                                onChangeText={setSessionPrompt}
+	                                onSend={handleCreateSession}
                                 isSendDisabled={!canCreate}
                                 isSending={isCreating}
                                 placeholder={t('session.inputPlaceholder')}
@@ -2149,12 +2176,11 @@ function NewSessionWizard() {
                                 {...(useProfiles ? {
                                     profileId: selectedProfileId,
                                     onProfileClick: handleAgentInputProfileClick,
-                                    envVarsCount: selectedProfileEnvVarsCount || undefined,
-                                    onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
-                                } : {})}
-                            />
-                    </View>
-                </View>
+	                                    envVarsCount: selectedProfileEnvVarsCount || undefined,
+	                                    onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
+	                                } : {})}
+	                            />
+		                </View>
             </View>
         </KeyboardAvoidingView>
     );
