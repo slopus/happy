@@ -1,4 +1,4 @@
-import type { TranslationStructure } from '../_default';
+import type { TranslationStructure } from '../_types';
 
 /**
  * Spanish plural helper function

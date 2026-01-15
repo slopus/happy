@@ -82,8 +82,8 @@ t('invalid.key')                         // Error: Key doesn't exist
 
 ## Files Structure
 
-### `_default.ts`
-Contains the main translation object with mixed string/function values:
+### `translations/en.ts`
+Contains the canonical English translation object with mixed string/function values:
 
 ```typescript
 export const en = {
@@ -96,6 +96,9 @@ export const en = {
     // ... more categories
 } as const;
 ```
+
+### `_types.ts`
+Contains the TypeScript types derived from the English translation structure.
 
 ### `index.ts`
 Main module with the `t` function and utilities:
@@ -164,7 +167,7 @@ The API stays the same, but you get:
 
 ## Adding New Translations
 
-1. **Add to `_default.ts`**:
+1. **Add to `translations/en.ts`**:
 ```typescript
 // String constant
 newConstant: 'My New Text',

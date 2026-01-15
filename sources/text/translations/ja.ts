@@ -5,7 +5,7 @@
  * - Functions with typed object parameters for dynamic text
  */
 
-import { TranslationStructure } from "../_default";
+import type { TranslationStructure } from '../_types';
 
 /**
  * Japanese plural helper function

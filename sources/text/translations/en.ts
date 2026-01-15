@@ -1,5 +1,3 @@
-import type { TranslationStructure } from '../_default';
-
 /**
  * English plural helper function
  * English has 2 plural forms: singular, plural
@@ -14,10 +12,10 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * ENGLISH TRANSLATIONS - DEDICATED FILE
  *
  * This file represents the new translation architecture where each language
- * has its own dedicated file instead of being embedded in _default.ts.
+ * has its own dedicated file instead of being embedded in _types.ts.
  *
  * STRUCTURE CHANGE:
- * - Previously: All languages in _default.ts as objects
+ * - Previously: All languages in a single default file
  * - Now: Separate files for each language (en.ts, ru.ts, pl.ts, es.ts, etc.)
  * - Benefit: Better maintainability, smaller files, easier language management
  *
@@ -29,7 +27,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * - Type safety enforced by TranslationStructure interface
  * - New translation keys must be added to ALL language files
  */
-export const en: TranslationStructure = {
+export const en = {
     tabs: {
         // Tab navigation labels
         inbox: 'Inbox',
