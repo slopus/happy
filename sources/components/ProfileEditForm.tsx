@@ -26,6 +26,7 @@ export interface ProfileEditFormProps {
     onCancel: () => void;
     onDirtyChange?: (isDirty: boolean) => void;
     containerStyle?: ViewStyle;
+    saveRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 interface MachinePreviewModalProps {
@@ -119,6 +120,7 @@ export function ProfileEditForm({
     onCancel,
     onDirtyChange,
     containerStyle,
+    saveRef,
 }: ProfileEditFormProps) {
     const { theme, rt } = useUnistyles();
     const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
@@ -282,6 +284,16 @@ export function ProfileEditForm({
         tmuxTmpDir,
         useTmux,
     ]);
+
+    React.useEffect(() => {
+        if (!saveRef) {
+            return;
+        }
+        saveRef.current = handleSave;
+        return () => {
+            saveRef.current = null;
+        };
+    }, [handleSave, saveRef]);
 
     return (
         <ItemList style={containerStyle} keyboardShouldPersistTaps="handled">

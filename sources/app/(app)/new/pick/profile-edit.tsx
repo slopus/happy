@@ -13,6 +13,7 @@ import { useSettingMutable } from '@/sync/storage';
 import { DEFAULT_PROFILES, getBuiltInProfile } from '@/sync/profileUtils';
 import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 import { Modal } from '@/modal';
+import { promptUnsavedChangesAlert } from '@/utils/promptUnsavedChangesAlert';
 
 export default React.memo(function ProfileEditScreen() {
     const { theme } = useUnistyles();
@@ -34,6 +35,7 @@ export default React.memo(function ProfileEditScreen() {
     const [, setLastUsedProfile] = useSettingMutable('lastUsedProfile');
     const [isDirty, setIsDirty] = React.useState(false);
     const isDirtyRef = React.useRef(false);
+    const saveRef = React.useRef<(() => void) | null>(null);
 
     React.useEffect(() => {
         isDirtyRef.current = isDirty;
@@ -75,12 +77,18 @@ export default React.memo(function ProfileEditScreen() {
     }, [cloneFromProfileIdParam, profileDataParam, profileIdParam, profiles]);
 
     const confirmDiscard = React.useCallback(async () => {
-        return Modal.confirm(
-            t('common.discardChanges'),
-            t('common.unsavedChangesWarning'),
-            { destructive: true, confirmText: t('common.discard'), cancelText: t('common.keepEditing') },
+        const saveText = profile.isBuiltIn ? t('common.saveAs') : t('common.save');
+        return promptUnsavedChangesAlert(
+            (title, message, buttons) => Modal.alert(title, message, buttons),
+            {
+                title: t('common.discardChanges'),
+                message: t('common.unsavedChangesWarning'),
+                discardText: t('common.discard'),
+                saveText,
+                keepEditingText: t('common.keepEditing'),
+            },
         );
-    }, []);
+    }, [profile.isBuiltIn]);
 
     React.useEffect(() => {
         const subscription = (navigation as any)?.addListener?.('beforeRemove', (e: any) => {
@@ -89,10 +97,12 @@ export default React.memo(function ProfileEditScreen() {
             e.preventDefault();
 
             void (async () => {
-                const discard = await confirmDiscard();
-                if (discard) {
+                const decision = await confirmDiscard();
+                if (decision === 'discard') {
                     isDirtyRef.current = false;
                     (navigation as any).dispatch(e.data.action);
+                } else if (decision === 'save') {
+                    saveRef.current?.();
                 }
             })();
         });
@@ -173,10 +183,12 @@ export default React.memo(function ProfileEditScreen() {
                 router.back();
                 return;
             }
-            const discard = await confirmDiscard();
-            if (discard) {
+            const decision = await confirmDiscard();
+            if (decision === 'discard') {
                 isDirtyRef.current = false;
                 router.back();
+            } else if (decision === 'save') {
+                saveRef.current?.();
             }
         })();
     }, [confirmDiscard, router]);
@@ -205,6 +217,7 @@ export default React.memo(function ProfileEditScreen() {
                         onSave={handleSave}
                         onCancel={handleCancel}
                         onDirtyChange={setIsDirty}
+                        saveRef={saveRef}
                     />
                 </View>
             </View>
