@@ -31,13 +31,39 @@ import type {
   McpServerConfig,
 } from '../core';
 import { logger } from '@/ui/logger';
+import { delay } from '@/utils/time';
 import packageJson from '../../../package.json';
+
+/**
+ * Retry configuration for ACP operations
+ */
+const RETRY_CONFIG = {
+  /** Maximum number of retry attempts for init/newSession */
+  maxAttempts: 3,
+  /** Base delay between retries in ms */
+  baseDelayMs: 1000,
+  /** Maximum delay between retries in ms */
+  maxDelayMs: 5000,
+} as const;
 import {
   type TransportHandler,
   type StderrContext,
   type ToolNameContext,
   DefaultTransport,
 } from '../transport';
+import {
+  type SessionUpdate,
+  type HandlerContext,
+  DEFAULT_IDLE_TIMEOUT_MS,
+  DEFAULT_TOOL_CALL_TIMEOUT_MS,
+  handleAgentMessageChunk,
+  handleAgentThoughtChunk,
+  handleToolCallUpdate,
+  handleToolCall,
+  handleLegacyMessageChunk,
+  handlePlanUpdate,
+  handleThinkingUpdate,
+} from './sessionUpdateHandlers';
 
 /**
  * Extended RequestPermissionRequest with additional fields that may be present
@@ -194,6 +220,45 @@ function nodeToWebStreams(
   });
 
   return { writable, readable };
+}
+
+/**
+ * Helper to run an async operation with retry logic
+ */
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  options: {
+    operationName: string;
+    maxAttempts: number;
+    baseDelayMs: number;
+    maxDelayMs: number;
+    onRetry?: (attempt: number, error: Error) => void;
+  }
+): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (attempt < options.maxAttempts) {
+        // Calculate delay with exponential backoff
+        const delayMs = Math.min(
+          options.baseDelayMs * Math.pow(2, attempt - 1),
+          options.maxDelayMs
+        );
+
+        logger.debug(`[AcpBackend] ${options.operationName} failed (attempt ${attempt}/${options.maxAttempts}): ${lastError.message}. Retrying in ${delayMs}ms...`);
+        options.onRetry?.(attempt, lastError);
+
+        await delay(delayMs);
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 /**
@@ -575,7 +640,7 @@ export class AcpBackend implements AgentBackend {
         stream
       );
 
-      // Initialize the connection with timeout
+      // Initialize the connection with timeout and retry
       const initRequest: InitializeRequest = {
         protocolVersion: 1,
         clientCapabilities: {
@@ -590,34 +655,50 @@ export class AcpBackend implements AgentBackend {
         },
       };
 
-      logger.debug(`[AcpBackend] Initializing connection...`);
-      let initTimeout: NodeJS.Timeout | null = null;
-      const initResponse = await Promise.race([
-        this.connection.initialize(initRequest).then((result) => {
-          // Clear timeout if initialization succeeds
-          if (initTimeout) {
-            clearTimeout(initTimeout);
-            initTimeout = null;
+      const initTimeout = this.transport.getInitTimeout();
+      logger.debug(`[AcpBackend] Initializing connection (timeout: ${initTimeout}ms)...`);
+
+      await withRetry(
+        async () => {
+          let timeoutHandle: NodeJS.Timeout | null = null;
+          try {
+            const result = await Promise.race([
+              this.connection!.initialize(initRequest).then((res) => {
+                if (timeoutHandle) {
+                  clearTimeout(timeoutHandle);
+                  timeoutHandle = null;
+                }
+                return res;
+              }),
+              new Promise<never>((_, reject) => {
+                timeoutHandle = setTimeout(() => {
+                  reject(new Error(`Initialize timeout after ${initTimeout}ms - ${this.transport.agentName} did not respond`));
+                }, initTimeout);
+              }),
+            ]);
+            return result;
+          } finally {
+            if (timeoutHandle) {
+              clearTimeout(timeoutHandle);
+            }
           }
-          return result;
-        }),
-        new Promise<never>((_, reject) => {
-          const timeout = this.transport.getInitTimeout();
-          initTimeout = setTimeout(() => {
-            logger.debug(`[AcpBackend] Initialize timeout after ${timeout}ms`);
-            reject(new Error(`Initialize timeout after ${timeout}ms - ${this.transport.agentName} did not respond`));
-          }, timeout);
-        }),
-      ]);
+        },
+        {
+          operationName: 'Initialize',
+          maxAttempts: RETRY_CONFIG.maxAttempts,
+          baseDelayMs: RETRY_CONFIG.baseDelayMs,
+          maxDelayMs: RETRY_CONFIG.maxDelayMs,
+        }
+      );
       logger.debug(`[AcpBackend] Initialize completed`);
 
-      // Create a new session
-      const mcpServers = this.options.mcpServers 
+      // Create a new session with retry
+      const mcpServers = this.options.mcpServers
         ? Object.entries(this.options.mcpServers).map(([name, config]) => ({
             name,
             command: config.command,
             args: config.args || [],
-            env: config.env 
+            env: config.env
               ? Object.entries(config.env).map(([envName, envValue]) => ({ name: envName, value: envValue }))
               : [],
           }))
@@ -629,24 +710,39 @@ export class AcpBackend implements AgentBackend {
       };
 
       logger.debug(`[AcpBackend] Creating new session...`);
-      let newSessionTimeout: NodeJS.Timeout | null = null;
-      const sessionResponse = await Promise.race([
-        this.connection.newSession(newSessionRequest).then((result) => {
-          // Clear timeout if session creation succeeds
-          if (newSessionTimeout) {
-            clearTimeout(newSessionTimeout);
-            newSessionTimeout = null;
+
+      const sessionResponse = await withRetry(
+        async () => {
+          let timeoutHandle: NodeJS.Timeout | null = null;
+          try {
+            const result = await Promise.race([
+              this.connection!.newSession(newSessionRequest).then((res) => {
+                if (timeoutHandle) {
+                  clearTimeout(timeoutHandle);
+                  timeoutHandle = null;
+                }
+                return res;
+              }),
+              new Promise<never>((_, reject) => {
+                timeoutHandle = setTimeout(() => {
+                  reject(new Error(`New session timeout after ${initTimeout}ms - ${this.transport.agentName} did not respond`));
+                }, initTimeout);
+              }),
+            ]);
+            return result;
+          } finally {
+            if (timeoutHandle) {
+              clearTimeout(timeoutHandle);
+            }
           }
-          return result;
-        }),
-        new Promise<never>((_, reject) => {
-          const timeout = this.transport.getInitTimeout();
-          newSessionTimeout = setTimeout(() => {
-            logger.debug(`[AcpBackend] NewSession timeout after ${timeout}ms`);
-            reject(new Error(`New session timeout after ${timeout}ms - ${this.transport.agentName} did not respond`));
-          }, timeout);
-        }),
-      ]);
+        },
+        {
+          operationName: 'NewSession',
+          maxAttempts: RETRY_CONFIG.maxAttempts,
+          baseDelayMs: RETRY_CONFIG.baseDelayMs,
+          maxDelayMs: RETRY_CONFIG.maxDelayMs,
+        }
+      );
       this.acpSessionId = sessionResponse.sessionId;
       logger.debug(`[AcpBackend] Session created: ${this.acpSessionId}`);
 
@@ -675,18 +771,46 @@ export class AcpBackend implements AgentBackend {
     }
   }
 
+  /**
+   * Create handler context for session update processing
+   */
+  private createHandlerContext(): HandlerContext {
+    return {
+      transport: this.transport,
+      activeToolCalls: this.activeToolCalls,
+      toolCallStartTimes: this.toolCallStartTimes,
+      toolCallTimeouts: this.toolCallTimeouts,
+      toolCallIdToNameMap: this.toolCallIdToNameMap,
+      idleTimeout: this.idleTimeout,
+      toolCallCountSincePrompt: this.toolCallCountSincePrompt,
+      emit: (msg) => this.emit(msg),
+      emitIdleStatus: () => this.emitIdleStatus(),
+      clearIdleTimeout: () => {
+        if (this.idleTimeout) {
+          clearTimeout(this.idleTimeout);
+          this.idleTimeout = null;
+        }
+      },
+      setIdleTimeout: (callback, ms) => {
+        this.idleTimeout = setTimeout(() => {
+          callback();
+          this.idleTimeout = null;
+        }, ms);
+      },
+    };
+  }
+
   private handleSessionUpdate(params: SessionNotification): void {
-    // SessionNotification structure: { sessionId, update: { sessionUpdate, content, ... } }
     const notification = params as ExtendedSessionNotification;
     const update = notification.update;
-    
+
     if (!update) {
       logger.debug('[AcpBackend] Received session update without update field:', params);
       return;
     }
 
     const sessionUpdateType = update.sessionUpdate;
-    
+
     // Log session updates for debugging (but not every chunk to avoid log spam)
     if (sessionUpdateType !== 'agent_message_chunk') {
       logger.debug(`[AcpBackend] Received session update: ${sessionUpdateType}`, JSON.stringify({
@@ -699,447 +823,47 @@ export class AcpBackend implements AgentBackend {
       }, null, 2));
     }
 
-    // Handle agent message chunks (text output from Gemini)
+    const ctx = this.createHandlerContext();
+
+    // Dispatch to appropriate handler based on update type
     if (sessionUpdateType === 'agent_message_chunk') {
-      
-      const content = update.content;
-      if (content && typeof content === 'object' && 'text' in content && typeof content.text === 'string') {
-        const text = content.text;
-        
-        // Filter out "thinking" messages (start with **...**)
-        // These are internal reasoning, not user-facing output
-        const isThinking = /^\*\*[^*]+\*\*\n/.test(text);
-        
-        if (isThinking) {
-          // Emit as thinking event instead of model output
-          this.emit({
-            type: 'event',
-            name: 'thinking',
-            payload: { text },
-          });
-        } else {
-          logger.debug(`[AcpBackend] Received message chunk (length: ${text.length}): ${text.substring(0, 50)}...`);
-          this.emit({
-            type: 'model-output',
-            textDelta: text,
-          });
-          
-          // Reset idle timeout - more chunks are coming
-          if (this.idleTimeout) {
-            clearTimeout(this.idleTimeout);
-            this.idleTimeout = null;
-          }
-          
-          // Set timeout to emit 'idle' after a short delay when no more chunks arrive
-          // This delay ensures all chunks (especially options blocks) are received before marking as idle
-          this.idleTimeout = setTimeout(() => {
-            // Only emit idle if no active tool calls
-            if (this.activeToolCalls.size === 0) {
-              logger.debug('[AcpBackend] No more chunks received, emitting idle status');
-              this.emitIdleStatus();
-            } else {
-              logger.debug(`[AcpBackend] Delaying idle status - ${this.activeToolCalls.size} active tool calls`);
-            }
-            this.idleTimeout = null;
-          }, 500); // 500ms delay to batch chunks (reduced from 500ms, but still enough for options)
-        }
-      }
+      handleAgentMessageChunk(update as SessionUpdate, ctx);
+      return;
     }
 
-    // Handle tool call updates
     if (sessionUpdateType === 'tool_call_update') {
-      const status = update.status;
-      const toolCallId = update.toolCallId;
-      
-      if (!toolCallId) {
-        logger.debug('[AcpBackend] Tool call update without toolCallId:', update);
-        return;
+      const result = handleToolCallUpdate(update as SessionUpdate, ctx);
+      if (result.toolCallCountSincePrompt !== undefined) {
+        this.toolCallCountSincePrompt = result.toolCallCountSincePrompt;
       }
-      
-        if (status === 'in_progress' || status === 'pending') {
-        // Only emit tool-call if we haven't seen this toolCallId before
-        if (!this.activeToolCalls.has(toolCallId)) {
-          const startTime = Date.now();
-          const toolKind = update.kind || 'unknown';
-          const isInvestigation = this.transport.isInvestigationTool?.(toolCallId, typeof toolKind === 'string' ? toolKind : undefined) ?? false;
-          
-          // Determine real tool name from toolCallId (e.g., "change_title-1765385846663" -> "change_title")
-          const extractedName = this.transport.extractToolNameFromId?.(toolCallId);
-          const realToolName = extractedName ?? (typeof toolKind === 'string' ? toolKind : 'unknown');
-          
-          // Store mapping for permission requests
-          this.toolCallIdToNameMap.set(toolCallId, realToolName);
-          
-          this.activeToolCalls.add(toolCallId);
-          this.toolCallStartTimes.set(toolCallId, startTime);
-          logger.debug(`[AcpBackend] ⏱️ Set startTime for ${toolCallId} at ${new Date(startTime).toISOString()} (from tool_call_update)`);
-          
-          // Increment tool call counter for context tracking
-          this.toolCallCountSincePrompt++;
-          
-          logger.debug(`[AcpBackend] 🔧 Tool call START: ${toolCallId} (${toolKind} -> ${realToolName})${isInvestigation ? ' [INVESTIGATION TOOL]' : ''}`);
-          if (isInvestigation) {
-            logger.debug(`[AcpBackend] 🔍 Investigation tool detected (by toolCallId) - extended timeout (10min) will be used`);
-          }
-          
-          // Set timeout for tool call completion (especially important for investigation tools)
-          // This ensures timeout is set even if tool_call event doesn't arrive
-          const timeoutMs = this.transport.getToolCallTimeout?.(toolCallId, typeof toolKind === 'string' ? toolKind : undefined) ?? 120000;
-          
-          // Only set timeout if not already set (from tool_call event)
-          if (!this.toolCallTimeouts.has(toolCallId)) {
-            const timeout = setTimeout(() => {
-              const startTime = this.toolCallStartTimes.get(toolCallId);
-              const duration = startTime ? Date.now() - startTime : null;
-              const durationStr = duration ? `${(duration / 1000).toFixed(2)}s` : 'unknown';
-              
-              logger.debug(`[AcpBackend] ⏱️ Tool call TIMEOUT (from tool_call_update): ${toolCallId} (${toolKind}) after ${(timeoutMs / 1000).toFixed(0)}s - Duration: ${durationStr}, removing from active set`);
-              this.activeToolCalls.delete(toolCallId);
-              this.toolCallStartTimes.delete(toolCallId);
-              this.toolCallTimeouts.delete(toolCallId);
-              
-              // Check if we should emit idle status
-              if (this.activeToolCalls.size === 0) {
-                logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
-                this.emitIdleStatus();
-              }
-            }, timeoutMs);
-            
-            this.toolCallTimeouts.set(toolCallId, timeout);
-            logger.debug(`[AcpBackend] ⏱️ Set timeout for ${toolCallId}: ${(timeoutMs / 1000).toFixed(0)}s${isInvestigation ? ' (investigation tool)' : ''}`);
-          } else {
-            logger.debug(`[AcpBackend] Timeout already set for ${toolCallId}, skipping`);
-          }
-          
-          // Clear idle timeout - tool call is starting, agent is working
-          if (this.idleTimeout) {
-            clearTimeout(this.idleTimeout);
-            this.idleTimeout = null;
-          }
-          
-          // Emit running status when tool call starts
-          this.emit({ type: 'status', status: 'running' });
-          
-          // Parse args from content (can be array or object)
-          let args: Record<string, unknown> = {};
-          if (Array.isArray(update.content)) {
-            // Convert array content to object if needed
-            args = { items: update.content };
-          } else if (update.content && typeof update.content === 'object' && update.content !== null) {
-            args = update.content as Record<string, unknown>;
-          }
-          
-          // Log tool call details for investigation tools
-          if (isInvestigation && args.objective) {
-            logger.debug(`[AcpBackend] 🔍 Investigation tool objective: ${String(args.objective).substring(0, 100)}...`);
-          }
-          
-          this.emit({
-            type: 'tool-call',
-            toolName: typeof toolKind === 'string' ? toolKind : 'unknown',
-            args,
-            callId: toolCallId,
-          });
-        } else {
-          // Tool call already tracked - might be an update
-          logger.debug(`[AcpBackend] Tool call ${toolCallId} already tracked, status: ${status}`);
-        }
-      } else if (status === 'completed') {
-        // Tool call finished - remove from active set and clear timeout
-        const startTime = this.toolCallStartTimes.get(toolCallId);
-        const duration = startTime ? Date.now() - startTime : null;
-        const toolKind = update.kind || 'unknown';
-        
-        this.activeToolCalls.delete(toolCallId);
-        this.toolCallStartTimes.delete(toolCallId);
-        
-        const timeout = this.toolCallTimeouts.get(toolCallId);
-        if (timeout) {
-          clearTimeout(timeout);
-          this.toolCallTimeouts.delete(toolCallId);
-        }
-        
-        const durationStr = duration ? `${(duration / 1000).toFixed(2)}s` : 'unknown';
-        logger.debug(`[AcpBackend] ✅ Tool call COMPLETED: ${toolCallId} (${toolKind}) - Duration: ${durationStr}. Active tool calls: ${this.activeToolCalls.size}`);
-        
-        this.emit({
-          type: 'tool-result',
-          toolName: typeof toolKind === 'string' ? toolKind : 'unknown',
-          result: update.content,
-          callId: toolCallId,
-        });
-        
-        // If no more active tool calls, emit 'idle' immediately (like Codex's task_complete)
-        // No timeout needed - when all tool calls complete, task is done
-        if (this.activeToolCalls.size === 0) {
-          if (this.idleTimeout) {
-            clearTimeout(this.idleTimeout);
-            this.idleTimeout = null;
-          }
-          logger.debug('[AcpBackend] All tool calls completed, emitting idle status');
-          this.emitIdleStatus();
-        }
-      } else if (status === 'failed' || status === 'cancelled') {
-        // Tool call failed or was cancelled - remove from active set and clear timeout
-        // IMPORTANT: Save values BEFORE deleting them for logging
-        const startTime = this.toolCallStartTimes.get(toolCallId);
-        const duration = startTime ? Date.now() - startTime : null;
-        const toolKind = update.kind || 'unknown';
-        const isInvestigation = this.transport.isInvestigationTool?.(toolCallId, typeof toolKind === 'string' ? toolKind : undefined) ?? false;
-        const hadTimeout = this.toolCallTimeouts.has(toolCallId);
-        
-        // Log detailed timing information for investigation tools BEFORE cleanup
-        if (isInvestigation) {
-          const durationStr = duration ? `${(duration / 1000).toFixed(2)}s` : 'unknown';
-          const durationMinutes = duration ? (duration / 1000 / 60).toFixed(2) : 'unknown';
-          logger.debug(`[AcpBackend] 🔍 Investigation tool ${status.toUpperCase()} after ${durationMinutes} minutes (${durationStr})`);
-          
-          // Check if this matches a 3-minute timeout pattern
-          if (duration) {
-            const threeMinutes = 3 * 60 * 1000;
-            const tolerance = 5000; // 5 second tolerance
-            if (Math.abs(duration - threeMinutes) < tolerance) {
-              logger.debug(`[AcpBackend] 🔍 ⚠️ Investigation tool failed at ~3 minutes - likely Gemini CLI timeout, not our timeout`);
-            }
-          }
-          
-          logger.debug(`[AcpBackend] 🔍 Investigation tool FAILED - full update.content:`, JSON.stringify(update.content, null, 2));
-          logger.debug(`[AcpBackend] 🔍 Investigation tool timeout status BEFORE cleanup: ${hadTimeout ? 'timeout was set' : 'no timeout was set'}`);
-          logger.debug(`[AcpBackend] 🔍 Investigation tool startTime status BEFORE cleanup: ${startTime ? `set at ${new Date(startTime).toISOString()}` : 'not set'}`);
-        }
-        
-        // Now cleanup - remove from active set and clear timeout
-        this.activeToolCalls.delete(toolCallId);
-        this.toolCallStartTimes.delete(toolCallId);
-        
-        const timeout = this.toolCallTimeouts.get(toolCallId);
-        if (timeout) {
-          clearTimeout(timeout);
-          this.toolCallTimeouts.delete(toolCallId);
-          logger.debug(`[AcpBackend] Cleared timeout for ${toolCallId} (tool call ${status})`);
-        } else {
-          logger.debug(`[AcpBackend] No timeout found for ${toolCallId} (tool call ${status}) - timeout may not have been set`);
-        }
-        
-        const durationStr = duration ? `${(duration / 1000).toFixed(2)}s` : 'unknown';
-        logger.debug(`[AcpBackend] ❌ Tool call ${status.toUpperCase()}: ${toolCallId} (${toolKind}) - Duration: ${durationStr}. Active tool calls: ${this.activeToolCalls.size}`);
-        
-        // Extract error information from update.content if available
-        let errorDetail: string | undefined;
-        
-        if (update.content) {
-          if (typeof update.content === 'string') {
-            errorDetail = update.content;
-          } else if (typeof update.content === 'object' && update.content !== null && !Array.isArray(update.content)) {
-            const content = update.content as unknown as Record<string, unknown>;
-            if (content.error) {
-              const error = content.error;
-              errorDetail = typeof error === 'string' 
-                ? error 
-                : (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string')
-                  ? error.message
-                  : JSON.stringify(error);
-            } else if (typeof content.message === 'string') {
-              errorDetail = content.message;
-            } else {
-              // Try to extract any error-like fields
-              const status = typeof content.status === 'string' ? content.status : undefined;
-              const reason = typeof content.reason === 'string' ? content.reason : undefined;
-              errorDetail = status || reason || JSON.stringify(content).substring(0, 500);
-            }
-          }
-        }
-        
-        if (errorDetail) {
-          logger.debug(`[AcpBackend] ❌ Tool call error details: ${errorDetail.substring(0, 500)}`);
-        } else {
-          logger.debug(`[AcpBackend] ❌ Tool call ${status} but no error details in update.content`);
-        }
-        
-        // Emit tool-result with error information so user can see what went wrong
-        this.emit({
-          type: 'tool-result',
-          toolName: typeof toolKind === 'string' ? toolKind : 'unknown',
-          result: errorDetail 
-            ? { error: errorDetail, status: status }
-            : { error: `Tool call ${status}`, status: status },
-          callId: toolCallId,
-        });
-        
-        // If no more active tool calls, emit 'idle' immediately (like Codex's task_complete)
-        if (this.activeToolCalls.size === 0) {
-          if (this.idleTimeout) {
-            clearTimeout(this.idleTimeout);
-            this.idleTimeout = null;
-          }
-          logger.debug('[AcpBackend] All tool calls completed/failed, emitting idle status');
-          this.emitIdleStatus();
-        }
-      }
+      return;
     }
 
-    // Legacy format support (in case some agents use old format)
-    if (update.messageChunk) {
-      const chunk = update.messageChunk;
-      if (chunk.textDelta) {
-        this.emit({
-          type: 'model-output',
-          textDelta: chunk.textDelta,
-        });
-      }
-    }
-
-    // Handle plan updates
-    if (update.plan) {
-      this.emit({
-        type: 'event',
-        name: 'plan',
-        payload: update.plan,
-      });
-    }
-
-    // Handle agent_thought_chunk (Gemini's thinking/reasoning chunks)
     if (sessionUpdateType === 'agent_thought_chunk') {
-      
-      const content = update.content;
-      if (content && typeof content === 'object' && 'text' in content && typeof content.text === 'string') {
-        const text = content.text;
-        // Log thinking chunks for investigation tools (they can be long)
-        const hasActiveInvestigation = Array.from(this.activeToolCalls).some(() => {
-          // We can't directly check tool kind here, but we log for correlation
-          return true; // Log all thinking chunks when tool calls are active
-        });
-        
-        if (hasActiveInvestigation && this.activeToolCalls.size > 0) {
-          const activeToolCallsList = Array.from(this.activeToolCalls);
-          logger.debug(`[AcpBackend] 💭 Thinking chunk received (${text.length} chars) during active tool calls: ${activeToolCallsList.join(', ')}`);
-        }
-        
-        // Emit as thinking event - don't show as regular message
-        this.emit({
-          type: 'event',
-          name: 'thinking',
-          payload: { text },
-        });
-      }
+      handleAgentThoughtChunk(update as SessionUpdate, ctx);
+      return;
     }
 
-    // Handle tool_call (direct tool call, not just tool_call_update)
     if (sessionUpdateType === 'tool_call') {
-      const toolCallId = update.toolCallId;
-      const status = update.status;
-      
-      logger.debug(`[AcpBackend] Received tool_call: toolCallId=${toolCallId}, status=${status}, kind=${update.kind}`);
-      
-      // tool_call can come without explicit status, assume 'in_progress' if status is missing
-      const isInProgress = !status || status === 'in_progress' || status === 'pending';
-      
-      if (toolCallId && isInProgress) {
-        
-        // Only emit tool-call if we haven't seen this toolCallId before
-        if (!this.activeToolCalls.has(toolCallId)) {
-          const startTime = Date.now();
-          this.activeToolCalls.add(toolCallId);
-          this.toolCallStartTimes.set(toolCallId, startTime);
-          logger.debug(`[AcpBackend] Added tool call ${toolCallId} to active set. Total active: ${this.activeToolCalls.size}`);
-          logger.debug(`[AcpBackend] ⏱️ Set startTime for ${toolCallId} at ${new Date(startTime).toISOString()}`);
-          
-          // Clear idle timeout - tool call is starting, agent is working
-          if (this.idleTimeout) {
-            clearTimeout(this.idleTimeout);
-            this.idleTimeout = null;
-          }
-          
-          // Set timeout for tool call completion (especially for "think" tools that may not send completion updates)
-          // Think tools typically complete quickly, but we set a longer timeout for other tools
-          // codebase_investigator and similar investigation tools can take 5+ minutes, so we use a much longer timeout
-          // NOTE: update.kind may be "think" even for codebase_investigator, so we check toolCallId instead
-          const toolKindStr = typeof update.kind === 'string' ? update.kind : undefined;
-          const isInvestigation = this.transport.isInvestigationTool?.(toolCallId, toolKindStr) ?? false;
-
-          if (isInvestigation) {
-            logger.debug(`[AcpBackend] 🔍 Investigation tool detected (toolCallId: ${toolCallId}, kind: ${update.kind}) - using extended timeout (10min)`);
-          }
-
-          const timeoutMs = this.transport.getToolCallTimeout?.(toolCallId, toolKindStr) ?? 120000;
-          
-          // Only set timeout if not already set (from tool_call_update)
-          if (!this.toolCallTimeouts.has(toolCallId)) {
-            const timeout = setTimeout(() => {
-              const startTime = this.toolCallStartTimes.get(toolCallId);
-              const duration = startTime ? Date.now() - startTime : null;
-              const durationStr = duration ? `${(duration / 1000).toFixed(2)}s` : 'unknown';
-              
-              logger.debug(`[AcpBackend] ⏱️ Tool call TIMEOUT (from tool_call): ${toolCallId} (${update.kind}) after ${(timeoutMs / 1000).toFixed(0)}s - Duration: ${durationStr}, removing from active set`);
-              this.activeToolCalls.delete(toolCallId);
-              this.toolCallStartTimes.delete(toolCallId);
-              this.toolCallTimeouts.delete(toolCallId);
-              
-              // Check if we should emit idle status
-              if (this.activeToolCalls.size === 0) {
-                logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
-                this.emitIdleStatus();
-              }
-            }, timeoutMs);
-            
-            this.toolCallTimeouts.set(toolCallId, timeout);
-            logger.debug(`[AcpBackend] ⏱️ Set timeout for ${toolCallId}: ${(timeoutMs / 1000).toFixed(0)}s${isInvestigation ? ' (investigation tool)' : ''}`);
-          } else {
-            logger.debug(`[AcpBackend] Timeout already set for ${toolCallId}, skipping`);
-          }
-          
-          // Emit running status when tool call starts
-          this.emit({ type: 'status', status: 'running' });
-          
-          // Parse args from content (can be array or object)
-          let args: Record<string, unknown> = {};
-          if (Array.isArray(update.content)) {
-            args = { items: update.content };
-          } else if (update.content && typeof update.content === 'object') {
-            args = update.content;
-          }
-          
-          // Extract locations if present (for file operations)
-          if (update.locations && Array.isArray(update.locations)) {
-            args.locations = update.locations;
-          }
-          
-          logger.debug(`[AcpBackend] Emitting tool-call event: toolName=${update.kind}, toolCallId=${toolCallId}, args=`, JSON.stringify(args));
-          
-          this.emit({
-            type: 'tool-call',
-            toolName: update.kind || 'unknown',
-            args,
-            callId: toolCallId,
-          });
-        } else {
-          logger.debug(`[AcpBackend] Tool call ${toolCallId} already in active set, skipping`);
-        }
-      } else {
-        logger.debug(`[AcpBackend] Tool call ${toolCallId} not in progress (status: ${status}), skipping`);
-      }
+      handleToolCall(update as SessionUpdate, ctx);
+      return;
     }
 
-    // Handle thinking/reasoning (explicit thinking field)
-    if (update.thinking) {
-      
-      this.emit({
-        type: 'event',
-        name: 'thinking',
-        payload: update.thinking,
-      });
-    }
-    
+    // Handle legacy and auxiliary update types
+    handleLegacyMessageChunk(update as SessionUpdate, ctx);
+    handlePlanUpdate(update as SessionUpdate, ctx);
+    handleThinkingUpdate(update as SessionUpdate, ctx);
+
     // Log unhandled session update types for debugging
-    if (sessionUpdateType && 
-        sessionUpdateType !== 'agent_message_chunk' && 
-        sessionUpdateType !== 'tool_call_update' &&
-        sessionUpdateType !== 'agent_thought_chunk' &&
-        sessionUpdateType !== 'tool_call' &&
+    // Cast to string to avoid TypeScript errors (SDK types don't include all Gemini-specific update types)
+    const updateTypeStr = sessionUpdateType as string;
+    const handledTypes = ['agent_message_chunk', 'tool_call_update', 'agent_thought_chunk', 'tool_call'];
+    if (updateTypeStr &&
+        !handledTypes.includes(updateTypeStr) &&
         !update.messageChunk &&
         !update.plan &&
         !update.thinking) {
-      logger.debug(`[AcpBackend] Unhandled session update type: ${sessionUpdateType}`, JSON.stringify(update, null, 2));
+      logger.debug(`[AcpBackend] Unhandled session update type: ${updateTypeStr}`, JSON.stringify(update, null, 2));
     }
   }
 
@@ -1273,12 +997,24 @@ export class AcpBackend implements AgentBackend {
     }
   }
 
+  /**
+   * Emit permission response event for UI/logging purposes.
+   *
+   * **IMPORTANT:** For ACP backends, this method does NOT send the actual permission
+   * response to the agent. The ACP protocol requires synchronous permission handling,
+   * which is done inside the `requestPermission` RPC handler via `this.options.permissionHandler`.
+   *
+   * This method only emits a `permission-response` event for:
+   * - UI updates (e.g., closing permission dialogs)
+   * - Logging and debugging
+   * - Other parts of the CLI that need to react to permission decisions
+   *
+   * @param requestId - The ID of the permission request
+   * @param approved - Whether the permission was granted
+   */
   async respondToPermission(requestId: string, approved: boolean): Promise<void> {
-    logger.debug(`[AcpBackend] Permission response: ${requestId} = ${approved}`);
+    logger.debug(`[AcpBackend] Permission response event (UI only): ${requestId} = ${approved}`);
     this.emit({ type: 'permission-response', id: requestId, approved });
-    // IMPORTANT: The actual ACP permission response is handled synchronously
-    // within the `requestPermission` method via `this.options.permissionHandler`.
-    // This method only emits an internal event for other parts of the CLI to react to.
   }
 
   async dispose(): Promise<void> {

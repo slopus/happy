@@ -162,4 +162,15 @@ export interface TransportHandler {
     input: Record<string, unknown>,
     context: ToolNameContext
   ): string;
+
+  /**
+   * Get idle detection timeout in milliseconds.
+   *
+   * This timeout is used to detect when the agent has finished producing output
+   * and is ready for the next prompt. After no chunks arrive for this duration,
+   * the backend emits 'idle' status.
+   *
+   * @returns Timeout in milliseconds (default: 500)
+   */
+  getIdleTimeout?(): number;
 }

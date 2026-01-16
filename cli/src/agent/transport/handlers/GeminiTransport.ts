@@ -20,11 +20,12 @@ import type {
   ToolNameContext,
 } from '../TransportHandler';
 import type { AgentMessage } from '../../core';
+import { logger } from '@/ui/logger';
 
 /**
  * Gemini-specific timeout values (in milliseconds)
  */
-const GEMINI_TIMEOUTS = {
+export const GEMINI_TIMEOUTS = {
   /** Gemini CLI can be slow on first start (downloading models, etc.) */
   init: 120_000,
   /** Standard tool call timeout */
@@ -33,24 +34,43 @@ const GEMINI_TIMEOUTS = {
   investigation: 600_000,
   /** Think tools are usually quick */
   think: 30_000,
+  /** Idle detection after last message chunk */
+  idle: 500,
 } as const;
 
 /**
  * Known tool name patterns for Gemini CLI.
  * Used to extract real tool names from toolCallId when Gemini sends "other".
+ *
+ * Each pattern includes:
+ * - name: canonical tool name
+ * - patterns: strings to match in toolCallId (case-insensitive)
+ * - inputFields: optional fields that indicate this tool when present in input
+ * - emptyInputDefault: if true, this tool is the default when input is empty
  */
-const GEMINI_TOOL_PATTERNS: ToolPattern[] = [
+interface ExtendedToolPattern extends ToolPattern {
+  /** Fields in input that indicate this tool */
+  inputFields?: string[];
+  /** If true, this is the default tool when input is empty and toolName is "other" */
+  emptyInputDefault?: boolean;
+}
+
+const GEMINI_TOOL_PATTERNS: ExtendedToolPattern[] = [
   {
     name: 'change_title',
-    patterns: ['change_title', 'change-title', 'happy__change_title'],
+    patterns: ['change_title', 'change-title', 'happy__change_title', 'mcp__happy__change_title'],
+    inputFields: ['title'],
+    emptyInputDefault: true, // change_title often has empty input (title extracted from context)
   },
   {
     name: 'save_memory',
     patterns: ['save_memory', 'save-memory'],
+    inputFields: ['memory', 'content'],
   },
   {
     name: 'think',
     patterns: ['think'],
+    inputFields: ['thought', 'thinking'],
   },
 ];
 
@@ -203,6 +223,13 @@ export class GeminiTransport implements TransportHandler {
   }
 
   /**
+   * Get idle detection timeout
+   */
+  getIdleTimeout(): number {
+    return GEMINI_TIMEOUTS.idle;
+  }
+
+  /**
    * Extract tool name from toolCallId using Gemini patterns.
    *
    * Tool IDs often contain the tool name as a prefix (e.g., "change_title-1765385846663" -> "change_title")
@@ -222,18 +249,31 @@ export class GeminiTransport implements TransportHandler {
   }
 
   /**
+   * Check if input is effectively empty
+   */
+  private isEmptyInput(input: Record<string, unknown> | undefined | null): boolean {
+    if (!input) return true;
+    if (Array.isArray(input)) return input.length === 0;
+    if (typeof input === 'object') return Object.keys(input).length === 0;
+    return false;
+  }
+
+  /**
    * Determine the real tool name from various sources.
    *
    * When Gemini sends "other" or "Unknown tool", tries to determine the real name from:
-   * 1. toolCallId patterns (most reliable)
-   * 2. input parameters
-   * 3. Context (first tool call after change_title instruction)
+   * 1. toolCallId patterns (most reliable - tool name often embedded in ID)
+   * 2. Input field signatures (specific fields indicate specific tools)
+   * 3. Empty input default (some tools like change_title have empty input)
+   *
+   * Context-based heuristics were removed as they were fragile and the above
+   * methods cover all known cases.
    */
   determineToolName(
     toolName: string,
     toolCallId: string,
     input: Record<string, unknown>,
-    context: ToolNameContext
+    _context: ToolNameContext
   ): string {
     // If tool name is already known, return it
     if (toolName !== 'other' && toolName !== 'Unknown tool') {
@@ -241,55 +281,49 @@ export class GeminiTransport implements TransportHandler {
     }
 
     // 1. Check toolCallId for known tool names (most reliable)
+    // Tool IDs often contain the tool name: "change_title-123456" -> "change_title"
     const idToolName = this.extractToolNameFromId(toolCallId);
     if (idToolName) {
       return idToolName;
     }
 
-    // 2. Check input for function names or tool identifiers
-    if (input && typeof input === 'object') {
-      const inputStr = JSON.stringify(input).toLowerCase();
+    // 2. Check input fields for tool-specific signatures
+    if (input && typeof input === 'object' && !Array.isArray(input)) {
+      const inputKeys = Object.keys(input);
+
       for (const toolPattern of GEMINI_TOOL_PATTERNS) {
-        for (const pattern of toolPattern.patterns) {
-          if (inputStr.includes(pattern.toLowerCase())) {
+        if (toolPattern.inputFields) {
+          // Check if any input field matches this tool's signature
+          const hasMatchingField = toolPattern.inputFields.some((field) =>
+            inputKeys.some((key) => key.toLowerCase() === field.toLowerCase())
+          );
+          if (hasMatchingField) {
             return toolPattern.name;
           }
         }
       }
     }
 
-    // 3. Check if input contains 'title' field - likely change_title
-    if (input && typeof input === 'object' && 'title' in input) {
-      return 'change_title';
-    }
-
-    // 4. Context-based heuristic: if prompt had change_title instruction
-    // and tool is "other" with empty input, it's likely change_title
-    if (context.recentPromptHadChangeTitle) {
-      const isEmptyInput =
-        !input ||
-        (Array.isArray(input) && input.length === 0) ||
-        (typeof input === 'object' && Object.keys(input).length === 0);
-
-      if (isEmptyInput && toolName === 'other') {
-        return 'change_title';
+    // 3. For empty input, use the default tool (if configured)
+    // This handles cases like change_title where the title is extracted from context
+    if (this.isEmptyInput(input) && toolName === 'other') {
+      const defaultTool = GEMINI_TOOL_PATTERNS.find((p) => p.emptyInputDefault);
+      if (defaultTool) {
+        return defaultTool.name;
       }
     }
 
-    // 5. Fallback: if toolName is "other" with empty input, it's most likely change_title
-    // This is because change_title is the only MCP tool that:
-    // - Gets reported as "other" by Gemini ACP
-    // - Has empty input (title is extracted from context, not passed as input)
-    const isEmptyInput =
-      !input ||
-      (Array.isArray(input) && input.length === 0) ||
-      (typeof input === 'object' && Object.keys(input).length === 0);
-
-    if (isEmptyInput && toolName === 'other') {
-      return 'change_title';
+    // Return original tool name if we couldn't determine it
+    // Log unknown patterns so developers can add them to GEMINI_TOOL_PATTERNS
+    if (toolName === 'other' || toolName === 'Unknown tool') {
+      const inputKeys = input && typeof input === 'object' ? Object.keys(input) : [];
+      logger.debug(
+        `[GeminiTransport] Unknown tool pattern - toolCallId: "${toolCallId}", ` +
+        `toolName: "${toolName}", inputKeys: [${inputKeys.join(', ')}]. ` +
+        `Consider adding a new pattern to GEMINI_TOOL_PATTERNS if this tool appears frequently.`
+      );
     }
 
-    // Return original tool name if we couldn't determine it
     return toolName;
   }
 }

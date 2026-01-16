@@ -12,6 +12,26 @@
 // Core ACP backend
 export { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from './AcpBackend';
 
+// Session update handlers (for testing and extension)
+export {
+  type SessionUpdate,
+  type HandlerContext,
+  type HandlerResult,
+  DEFAULT_IDLE_TIMEOUT_MS,
+  DEFAULT_TOOL_CALL_TIMEOUT_MS,
+  parseArgsFromContent,
+  extractErrorDetail,
+  formatDuration,
+  formatDurationMinutes,
+  handleAgentMessageChunk,
+  handleAgentThoughtChunk,
+  handleToolCallUpdate,
+  handleToolCall,
+  handleLegacyMessageChunk,
+  handlePlanUpdate,
+  handleThinkingUpdate,
+} from './sessionUpdateHandlers';
+
 // Factory helper for generic ACP backends
 export { createAcpBackend, type CreateAcpBackendOptions } from './createAcpBackend';
 

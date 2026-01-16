@@ -51,16 +51,27 @@ export interface GeminiBackendOptions extends AgentFactoryOptions {
 }
 
 /**
+ * Result of creating a Gemini backend
+ */
+export interface GeminiBackendResult {
+  /** The created AgentBackend instance */
+  backend: AgentBackend;
+  /** The resolved model that will be used (single source of truth) */
+  model: string;
+  /** Source of the model selection for logging */
+  modelSource: 'explicit' | 'env-var' | 'local-config' | 'default';
+}
+
+/**
  * Create a Gemini backend using ACP (official SDK).
- * 
+ *
  * The Gemini CLI must be installed and available in PATH.
  * Uses the --experimental-acp flag to enable ACP mode.
- * 
+ *
  * @param options - Configuration options
- * @returns AgentBackend instance for Gemini
+ * @returns GeminiBackendResult with backend and resolved model (single source of truth)
  */
-
-export function createGeminiBackend(options: GeminiBackendOptions): AgentBackend {
+export function createGeminiBackend(options: GeminiBackendOptions): GeminiBackendResult {
 
   // Resolve API key from multiple sources (in priority order):
   // 1. Happy cloud OAuth token (via 'happy connect gemini') - highest priority
@@ -145,7 +156,7 @@ export function createGeminiBackend(options: GeminiBackendOptions): AgentBackend
 
   // Determine model source for logging
   const modelSource = getGeminiModelSource(options.model, localConfig);
-  
+
   logger.debug('[Gemini] Creating ACP SDK backend with options:', {
     cwd: backendOptions.cwd,
     command: backendOptions.command,
@@ -156,7 +167,11 @@ export function createGeminiBackend(options: GeminiBackendOptions): AgentBackend
     mcpServerCount: options.mcpServers ? Object.keys(options.mcpServers).length : 0,
   });
 
-  return new AcpBackend(backendOptions);
+  return {
+    backend: new AcpBackend(backendOptions),
+    model,
+    modelSource,
+  };
 }
 
 /**
@@ -166,7 +181,7 @@ export function createGeminiBackend(options: GeminiBackendOptions): AgentBackend
  * to make the Gemini agent available for use.
  */
 export function registerGeminiAgent(): void {
-  agentRegistry.register('gemini', (opts) => createGeminiBackend(opts));
+  agentRegistry.register('gemini', (opts) => createGeminiBackend(opts).backend);
   logger.debug('[Gemini] Registered with agent registry');
 }
 

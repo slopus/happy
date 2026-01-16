@@ -141,7 +141,16 @@ export interface AgentBackend {
   
   /**
    * Respond to a permission request.
-   * 
+   *
+   * **Implementation Note for ACP backends:**
+   * For ACP-based agents (Gemini, Codex via ACP), permission handling is done
+   * synchronously within the `requestPermission` RPC handler via `AcpPermissionHandler`.
+   * This method only emits an internal `permission-response` event for UI/logging purposes.
+   * The actual ACP response is already sent by the time this method is called.
+   *
+   * For non-ACP backends, this method should actually send the permission response
+   * to the agent.
+   *
    * @param requestId - The ID of the permission request
    * @param approved - Whether the permission was granted
    */
