@@ -515,6 +515,9 @@ export const ja: TranslationStructure = {
         askUserQuestion: {
             submit: '回答を送信',
             multipleQuestions: ({ count }: { count: number }) => `${count}件の質問`,
+            other: 'その他',
+            otherDescription: '自分の回答を入力',
+            otherPlaceholder: '回答を入力...',
         },
         multiEdit: {
             editNumber: ({ index, total }: { index: number; total: number }) => `編集 ${index}/${total}`,

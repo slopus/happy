@@ -512,6 +512,9 @@ export const it: TranslationStructure = {
         askUserQuestion: {
             submit: 'Invia risposta',
             multipleQuestions: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'domanda', plural: 'domande' })}`,
+            other: 'Altro',
+            otherDescription: 'Scrivi la tua risposta',
+            otherPlaceholder: 'Scrivi la tua risposta...',
         },
         multiEdit: {
             editNumber: ({ index, total }: { index: number; total: number }) => `Modifica ${index} di ${total}`,
