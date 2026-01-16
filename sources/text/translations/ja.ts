@@ -7,16 +7,6 @@
 
 import type { TranslationStructure } from '../_types';
 
-/**
- * Japanese plural helper function
- * Japanese doesn't have grammatical plurals, so this just returns the appropriate form
- * @param options - Object containing count, singular, and plural forms
- * @returns The appropriate form based on count
- */
-function plural({ count, singular, plural }: { count: number; singular: string; plural: string }): string {
-    return count === 1 ? singular : plural;
-}
-
 export const ja: TranslationStructure = {
     tabs: {
         // Tab navigation labels

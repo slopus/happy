@@ -35,13 +35,19 @@ export function MachineSelector({
     showRecent = true,
     showSearch = true,
     searchPlacement = 'header',
-    searchPlaceholder = t('newSession.machinePicker.searchPlaceholder'),
-    recentSectionTitle = t('newSession.machinePicker.recentTitle'),
-    favoritesSectionTitle = t('newSession.machinePicker.favoritesTitle'),
-    allSectionTitle = t('newSession.machinePicker.allTitle'),
-    noItemsMessage = t('newSession.machinePicker.emptyMessage'),
+    searchPlaceholder: searchPlaceholderProp,
+    recentSectionTitle: recentSectionTitleProp,
+    favoritesSectionTitle: favoritesSectionTitleProp,
+    allSectionTitle: allSectionTitleProp,
+    noItemsMessage: noItemsMessageProp,
 }: MachineSelectorProps) {
     const { theme } = useUnistyles();
+
+    const searchPlaceholder = searchPlaceholderProp ?? t('newSession.machinePicker.searchPlaceholder');
+    const recentSectionTitle = recentSectionTitleProp ?? t('newSession.machinePicker.recentTitle');
+    const favoritesSectionTitle = favoritesSectionTitleProp ?? t('newSession.machinePicker.favoritesTitle');
+    const allSectionTitle = allSectionTitleProp ?? t('newSession.machinePicker.allTitle');
+    const noItemsMessage = noItemsMessageProp ?? t('newSession.machinePicker.emptyMessage');
 
     return (
         <SearchableListSelector<Machine>

@@ -164,7 +164,7 @@ export default React.memo(function ProfilePickerScreen() {
 	                            name="checkmark-circle"
 	                            size={24}
 	                            color={theme.colors.text}
-	                            style={{ opacity: isSelected ? 1 : 0 }}
+	                            style={isSelected ? styles.selectedIndicatorVisible : styles.selectedIndicatorHidden}
                         />
 	                    </View>
 	                    <ItemRowActions
@@ -208,7 +208,7 @@ export default React.memo(function ProfilePickerScreen() {
                         name="checkmark-circle"
                         size={24}
                         color={theme.colors.text}
-                        style={{ opacity: isSelected ? 1 : 0 }}
+                        style={isSelected ? styles.selectedIndicatorVisible : styles.selectedIndicatorHidden}
                     />
                 </View>
                 <ItemRowActions
@@ -234,7 +234,7 @@ export default React.memo(function ProfilePickerScreen() {
                 }}
             />
 
-            <ItemList style={{ paddingTop: 0 }}>
+            <ItemList style={styles.itemList}>
                 {!useProfiles ? (
                     <ItemGroup footer={t('settingsFeatures.profilesDisabled')}>
                         <Item
@@ -322,24 +322,24 @@ export default React.memo(function ProfilePickerScreen() {
                                     showDivider={nonFavoriteBuiltInProfiles.length > 0}
                                 />
                             )}
-                            {nonFavoriteBuiltInProfiles.map((profile, index) => {
-                                const isSelected = selectedId === profile.id;
-                                const isLast = index === nonFavoriteBuiltInProfiles.length - 1;
-                                const isFavorite = favoriteProfileIdSet.has(profile.id);
-                                return (
-	                                    <Item
-	                                        key={profile.id}
-	                                        title={profile.name}
-	                                        subtitle={getProfileSubtitle(profile)}
-	                                        icon={renderProfileIcon(profile)}
-	                                        onPress={() => setProfileParamAndClose(profile.id)}
-		                                        showChevron={false}
-		                                        selected={isSelected}
-	                                        rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
-	                                        showDivider={!isLast}
-	                                    />
-                                );
-                            })}
+	                            {nonFavoriteBuiltInProfiles.map((profile, index) => {
+	                                const isSelected = selectedId === profile.id;
+	                                const isLast = index === nonFavoriteBuiltInProfiles.length - 1;
+	                                const isFavorite = favoriteProfileIdSet.has(profile.id);
+	                                return (
+		                                    <Item
+		                                        key={profile.id}
+		                                        title={profile.name}
+		                                        subtitle={getProfileSubtitle(profile)}
+		                                        icon={renderProfileIcon(profile)}
+		                                        onPress={() => handleProfileRowPress(profile.id)}
+			                                        showChevron={false}
+			                                        selected={isSelected}
+		                                        rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
+		                                        showDivider={!isLast}
+		                                    />
+	                                );
+	                            })}
                         </ItemGroup>
 
                         <ItemGroup>
@@ -358,6 +358,9 @@ export default React.memo(function ProfilePickerScreen() {
 });
 
 const stylesheet = StyleSheet.create(() => ({
+    itemList: {
+        paddingTop: 0,
+    },
     rowRightElement: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -367,5 +370,11 @@ const stylesheet = StyleSheet.create(() => ({
         width: 24,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    selectedIndicatorVisible: {
+        opacity: 1,
+    },
+    selectedIndicatorHidden: {
+        opacity: 0,
     },
 }));
