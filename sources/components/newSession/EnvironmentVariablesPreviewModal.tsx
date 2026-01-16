@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, Pressable, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
@@ -21,8 +21,62 @@ function isSecretLike(name: string) {
     return /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i.test(name);
 }
 
+const stylesheet = StyleSheet.create((theme, runtime) => ({
+    container: {
+        width: '92%',
+        maxWidth: 560,
+        backgroundColor: theme.colors.groupped.background,
+        borderRadius: 16,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        flexShrink: 1,
+    },
+    header: {
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
+    },
+    headerTitle: {
+        fontSize: 17,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    scroll: {
+        flex: 1,
+    },
+    scrollContent: {
+        paddingBottom: 16,
+        flexGrow: 1,
+    },
+    section: {
+        paddingHorizontal: 16,
+        paddingTop: 12,
+    },
+    descriptionText: {
+        color: theme.colors.textSecondary,
+        fontSize: Platform.select({ ios: 15, default: 14 }),
+        lineHeight: 20,
+        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
+        ...Typography.default(),
+    },
+    machineNameText: {
+        color: theme.colors.status.connected,
+        ...Typography.default('semiBold'),
+    },
+    detailText: {
+        fontSize: 13,
+        ...Typography.default('semiBold'),
+    },
+}));
+
 export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPreviewModalProps) {
     const { theme } = useUnistyles();
+    const styles = stylesheet;
     const { height: windowHeight } = useWindowDimensions();
     const scrollRef = React.useRef<ScrollView>(null);
     const scrollYRef = React.useRef(0);
@@ -74,34 +128,11 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
 
     return (
         <View
-            style={{
-                width: '92%',
-                maxWidth: 560,
-                height: maxHeight,
-                maxHeight,
-                backgroundColor: theme.colors.groupped.background,
-                borderRadius: 16,
-                overflow: 'hidden',
-                borderWidth: 1,
-                borderColor: theme.colors.divider,
-                flexShrink: 1,
-            }}
+            style={[styles.container, { height: maxHeight, maxHeight }]}
             {...(Platform.OS === 'web' ? ({ onWheel: handleWheel } as any) : {})}
         >
-            <View style={{
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                borderBottomWidth: 1,
-                borderBottomColor: theme.colors.divider,
-            }}>
-                <Text style={{
-                    fontSize: 17,
-                    color: theme.colors.text,
-                    ...Typography.default('semiBold'),
-                }}>
+            <View style={styles.header}>
+                <Text style={styles.headerTitle}>
                     {title}
                 </Text>
 
@@ -116,25 +147,19 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
 
             <ScrollView
                 ref={scrollRef}
-                style={{ flex: 1 }}
-                contentContainerStyle={{ paddingBottom: 16, flexGrow: 1 }}
+                style={styles.scroll}
+                contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator
                 nestedScrollEnabled
                 keyboardShouldPersistTaps="handled"
                 onScroll={handleScroll}
                 scrollEventThrottle={16}
             >
-                <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-                    <Text style={{
-                        color: theme.colors.textSecondary,
-                        fontSize: Platform.select({ ios: 15, default: 14 }),
-                        lineHeight: 20,
-                        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
-                        ...Typography.default(),
-                    }}>
+                <View style={styles.section}>
+                    <Text style={styles.descriptionText}>
                         {t('profiles.environmentVariables.previewModal.descriptionPrefix')}{' '}
                         {props.machineName ? (
-                            <Text style={{ color: theme.colors.status.connected, ...Typography.default('semiBold') }}>
+                            <Text style={styles.machineNameText}>
                                 {props.machineName}
                             </Text>
                         ) : (
@@ -145,14 +170,8 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
                 </View>
 
                 {envVarEntries.length === 0 ? (
-                    <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-                        <Text style={{
-                            color: theme.colors.textSecondary,
-                            fontSize: Platform.select({ ios: 15, default: 14 }),
-                            lineHeight: 20,
-                            letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
-                            ...Typography.default(),
-                        }}>
+                    <View style={styles.section}>
+                        <Text style={styles.descriptionText}>
                             {t('profiles.environmentVariables.previewModal.emptyMessage')}
                         </Text>
                     </View>
@@ -232,9 +251,8 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
                                     copy={secret ? false : displayValue}
                                     detail={detailLabel}
                                     detailStyle={{
-                                        fontSize: 13,
                                         color: detailColor,
-                                        ...Typography.default('semiBold'),
+                                        ...styles.detailText,
                                     }}
                                     rightElement={rightElement}
                                     showChevron={false}

@@ -36,4 +36,11 @@ describe('consumeProfileIdParam', () => {
             shouldClearParam: true,
         });
     });
+
+    it('treats empty array params as missing', () => {
+        expect(consumeProfileIdParam({ profileIdParam: [], selectedProfileId: null })).toEqual({
+            nextSelectedProfileId: undefined,
+            shouldClearParam: false,
+        });
+    });
 });

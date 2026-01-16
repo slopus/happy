@@ -45,6 +45,7 @@ export const en = {
     common: {
         // Simple string constants
         add: 'Add',
+        actions: 'Actions',
         cancel: 'Cancel',
         authenticate: 'Authenticate',
         save: 'Save',
@@ -313,6 +314,19 @@ export const en = {
             allTitle: 'All',
             emptyMessage: 'No machines available',
         },
+        pathPicker: {
+            enterPathTitle: 'Enter Path',
+            enterPathPlaceholder: 'Enter a path...',
+            customPathTitle: 'Custom Path',
+            recentTitle: 'Recent',
+            favoritesTitle: 'Favorites',
+            suggestedTitle: 'Suggested',
+            allTitle: 'All',
+            emptyRecent: 'No recent paths',
+            emptyFavorites: 'No favorite paths',
+            emptySuggested: 'No suggested paths',
+            emptyAll: 'No paths',
+        },
         sessionType: {
             title: 'Session Type',
             simple: 'Simple',
@@ -429,6 +443,10 @@ export const en = {
     },
 
     agentInput: {
+        envVars: {
+            title: 'Env Vars',
+            titleWithCount: ({ count }: { count: number }) => `Env Vars (${count})`,
+        },
         permissionMode: {
             title: 'PERMISSION MODE',
             default: 'Default',
@@ -477,6 +495,21 @@ export const en = {
             badgeReadOnly: 'Read Only',
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'GEMINI MODEL',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: 'Most capable',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: 'Fast & efficient',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: 'Fastest',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% left`,

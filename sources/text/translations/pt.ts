@@ -32,6 +32,7 @@ export const pt: TranslationStructure = {
     common: {
         // Simple string constants
         add: 'Adicionar',
+        actions: 'Ações',
         cancel: 'Cancelar',
         authenticate: 'Autenticar',
         save: 'Salvar',
@@ -300,6 +301,19 @@ export const pt: TranslationStructure = {
             allTitle: 'Todas',
             emptyMessage: 'Nenhuma máquina disponível',
         },
+        pathPicker: {
+            enterPathTitle: 'Inserir caminho',
+            enterPathPlaceholder: 'Insira um caminho...',
+            customPathTitle: 'Caminho personalizado',
+            recentTitle: 'Recentes',
+            favoritesTitle: 'Favoritos',
+            suggestedTitle: 'Sugeridos',
+            allTitle: 'Todas',
+            emptyRecent: 'Nenhum caminho recente',
+            emptyFavorites: 'Nenhum caminho favorito',
+            emptySuggested: 'Nenhum caminho sugerido',
+            emptyAll: 'Nenhum caminho',
+        },
         sessionType: {
             title: 'Tipo de sessão',
             simple: 'Simples',
@@ -416,6 +430,10 @@ export const pt: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: 'Vars env',
+            titleWithCount: ({ count }: { count: number }) => `Vars env (${count})`,
+        },
         permissionMode: {
             title: 'MODO DE PERMISSÃO',
             default: 'Padrão',
@@ -464,6 +482,21 @@ export const pt: TranslationStructure = {
             badgeReadOnly: 'Somente leitura',
             badgeSafeYolo: 'YOLO seguro',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'MODELO GEMINI',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: 'Mais capaz',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: 'Rápido e eficiente',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: 'Mais rápido',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,

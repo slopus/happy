@@ -29,7 +29,7 @@ const stylesheet = StyleSheet.create((theme) => ({
 }));
 
 export function ProfileCompatibilityIcon({ profile, size = 32, style }: Props) {
-    useUnistyles();
+    useUnistyles(); // Subscribe to theme changes for re-render
     const styles = stylesheet;
     const experimentsEnabled = useSetting('experiments');
 

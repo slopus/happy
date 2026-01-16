@@ -7,7 +7,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { useSetting, useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { AIBackendProfile } from '@/sync/settings';
 import { Modal } from '@/modal';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
@@ -19,6 +19,7 @@ import { ignoreNextRowPress } from '@/utils/ignoreNextRowPress';
 
 export default React.memo(function ProfilePickerScreen() {
     const { theme, rt } = useUnistyles();
+    const styles = stylesheet;
     const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const router = useRouter();
     const navigation = useNavigation();
@@ -156,14 +157,14 @@ export default React.memo(function ProfilePickerScreen() {
                 onDelete: () => handleDeleteProfile(profile),
             });
 
-	            return (
-	                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-	                    <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-	                        <Ionicons
-                            name="checkmark-circle"
-                            size={24}
-                            color={theme.colors.text}
-                            style={{ opacity: isSelected ? 1 : 0 }}
+		            return (
+		                <View style={styles.rowRightElement}>
+		                    <View style={styles.indicatorSlot}>
+		                        <Ionicons
+	                            name="checkmark-circle"
+	                            size={24}
+	                            color={theme.colors.text}
+	                            style={{ opacity: isSelected ? 1 : 0 }}
                         />
 	                    </View>
 	                    <ItemRowActions
@@ -201,8 +202,8 @@ export default React.memo(function ProfilePickerScreen() {
         ];
 
         return (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={styles.rowRightElement}>
+                <View style={styles.indicatorSlot}>
                     <Ionicons
                         name="checkmark-circle"
                         size={24}
@@ -355,3 +356,16 @@ export default React.memo(function ProfilePickerScreen() {
         </>
     );
 });
+
+const stylesheet = StyleSheet.create(() => ({
+    rowRightElement: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 16,
+    },
+    indicatorSlot: {
+        width: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+}));

@@ -81,8 +81,9 @@ export function MachineSelector({
                 filterItem: (machine, searchText) => {
                     const displayName = (machine.metadata?.displayName || '').toLowerCase();
                     const host = (machine.metadata?.host || '').toLowerCase();
+                    const id = machine.id.toLowerCase();
                     const search = searchText.toLowerCase();
-                    return displayName.includes(search) || host.includes(search);
+                    return displayName.includes(search) || host.includes(search) || id.includes(search);
                 },
                 searchPlaceholder,
                 recentSectionTitle,

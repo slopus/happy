@@ -32,6 +32,7 @@ export const es: TranslationStructure = {
     common: {
         // Simple string constants
         add: 'Añadir',
+        actions: 'Acciones',
         cancel: 'Cancelar',
         authenticate: 'Autenticar',
         save: 'Guardar',
@@ -300,6 +301,19 @@ export const es: TranslationStructure = {
             allTitle: 'Todas',
             emptyMessage: 'No hay máquinas disponibles',
         },
+        pathPicker: {
+            enterPathTitle: 'Ingresar ruta',
+            enterPathPlaceholder: 'Ingresa una ruta...',
+            customPathTitle: 'Ruta personalizada',
+            recentTitle: 'Recientes',
+            favoritesTitle: 'Favoritos',
+            suggestedTitle: 'Sugeridas',
+            allTitle: 'Todas',
+            emptyRecent: 'No hay rutas recientes',
+            emptyFavorites: 'No hay rutas favoritas',
+            emptySuggested: 'No hay rutas sugeridas',
+            emptyAll: 'No hay rutas',
+        },
         sessionType: {
             title: 'Tipo de sesión',
             simple: 'Simple',
@@ -416,6 +430,10 @@ export const es: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: 'Variables de entorno',
+            titleWithCount: ({ count }: { count: number }) => `Variables de entorno (${count})`,
+        },
         permissionMode: {
             title: 'MODO DE PERMISOS',
             default: 'Por defecto',
@@ -464,6 +482,21 @@ export const es: TranslationStructure = {
             badgeReadOnly: 'Solo lectura',
             badgeSafeYolo: 'YOLO seguro',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'MODELO GEMINI',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: 'Más capaz',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: 'Rápido y eficiente',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: 'Más rápido',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,

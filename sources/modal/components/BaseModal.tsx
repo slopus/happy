@@ -4,10 +4,10 @@ import {
     Modal,
     TouchableWithoutFeedback,
     Animated,
-    StyleSheet,
     KeyboardAvoidingView,
     Platform
 } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 
 // On web, stop events from propagating to expo-router's modal overlay
 // which intercepts clicks when it applies pointer-events: none to body

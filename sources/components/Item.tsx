@@ -113,7 +113,7 @@ export const Item = React.memo<ItemProps>((props) => {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const selectionContext = React.useContext(ItemGroupSelectionContext);
-	    
+
     // Platform-specific measurements
     const isIOS = Platform.OS === 'ios';
     const isAndroid = Platform.OS === 'android';
@@ -198,11 +198,11 @@ export const Item = React.memo<ItemProps>((props) => {
     // If copy is enabled and no onPress is provided, don't set a regular press handler
     // The copy will be handled by long press instead
     const handlePress = onPress;
-    
-	    const isInteractive = handlePress || onLongPress || (copy && !isWeb);
-	    const showAccessory = isInteractive && showChevron && !rightElement;
-	    const chevronSize = (isIOS && !isWeb) ? 17 : 24;
-	    const showSelectedBackground = !!selected && ((selectionContext?.selectableItemCount ?? 2) > 1);
+
+    const isInteractive = handlePress || onLongPress || (copy && !isWeb);
+    const showAccessory = isInteractive && showChevron && !rightElement;
+    const chevronSize = (isIOS && !isWeb) ? 17 : 24;
+    const showSelectedBackground = !!selected && ((selectionContext?.selectableItemCount ?? 2) > 1);
 
     const titleColor = destructive ? styles.titleDestructive : (selected ? styles.titleSelected : styles.titleNormal);
     const containerPadding = subtitle ? styles.containerWithSubtitle : styles.containerWithoutSubtitle;
@@ -288,23 +288,23 @@ export const Item = React.memo<ItemProps>((props) => {
         </>
     );
 
-	    if (isInteractive) {
-	        return (
-	            <Pressable
+    if (isInteractive) {
+        return (
+            <Pressable
                 onPress={handlePress}
                 onLongPress={onLongPress}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
-	                disabled={disabled || loading}
-	                style={({ pressed }) => [
-	                    {
-	                        backgroundColor: pressed && isIOS && !isWeb
-	                            ? theme.colors.surfacePressedOverlay
-	                            : (showSelectedBackground ? theme.colors.surfaceSelected : 'transparent'),
-	                        opacity: disabled ? 0.5 : 1
-	                    },
-	                    pressableStyle
-	                ]}
+                disabled={disabled || loading}
+                style={({ pressed }) => [
+                    {
+                        backgroundColor: pressed && isIOS && !isWeb
+                            ? theme.colors.surfacePressedOverlay
+                            : (showSelectedBackground ? theme.colors.surfaceSelected : 'transparent'),
+                        opacity: disabled ? 0.5 : 1
+                    },
+                    pressableStyle
+                ]}
                 android_ripple={(isAndroid || isWeb) ? {
                     color: theme.colors.surfaceRipple,
                     borderless: false,

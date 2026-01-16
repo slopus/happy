@@ -43,6 +43,7 @@ export const pl: TranslationStructure = {
     common: {
         // Simple string constants
         add: 'Dodaj',
+        actions: 'Akcje',
         cancel: 'Anuluj',
         authenticate: 'Uwierzytelnij',
         save: 'Zapisz',
@@ -311,6 +312,19 @@ export const pl: TranslationStructure = {
             allTitle: 'Wszystkie',
             emptyMessage: 'Brak dostępnych maszyn',
         },
+        pathPicker: {
+            enterPathTitle: 'Wpisz ścieżkę',
+            enterPathPlaceholder: 'Wpisz ścieżkę...',
+            customPathTitle: 'Niestandardowa ścieżka',
+            recentTitle: 'Ostatnie',
+            favoritesTitle: 'Ulubione',
+            suggestedTitle: 'Sugerowane',
+            allTitle: 'Wszystkie',
+            emptyRecent: 'Brak ostatnich ścieżek',
+            emptyFavorites: 'Brak ulubionych ścieżek',
+            emptySuggested: 'Brak sugerowanych ścieżek',
+            emptyAll: 'Brak ścieżek',
+        },
         sessionType: {
             title: 'Typ sesji',
             simple: 'Prosta',
@@ -426,6 +440,10 @@ export const pl: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: 'Zmienne środowiskowe',
+            titleWithCount: ({ count }: { count: number }) => `Zmienne środowiskowe (${count})`,
+        },
         permissionMode: {
             title: 'TRYB UPRAWNIEŃ',
             default: 'Domyślny',
@@ -474,6 +492,21 @@ export const pl: TranslationStructure = {
             badgeReadOnly: 'Tylko do odczytu',
             badgeSafeYolo: 'Bezpieczne YOLO',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'MODEL GEMINI',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: 'Najbardziej zaawansowany',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: 'Szybki i wydajny',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: 'Najszybszy',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `Pozostało ${percent}%`,

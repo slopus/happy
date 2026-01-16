@@ -1,10 +1,11 @@
 import React from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
+import { t } from '@/text';
 
 export type ItemAction = {
     id: string;
@@ -21,38 +22,51 @@ export interface ItemActionsMenuModalProps {
     onClose: () => void;
 }
 
+const stylesheet = StyleSheet.create((theme) => ({
+    container: {
+        width: '92%',
+        maxWidth: 420,
+        backgroundColor: theme.colors.groupped.background,
+        borderRadius: 16,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+    },
+    header: {
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
+    },
+    headerTitle: {
+        fontSize: 17,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    scroll: {
+        flexGrow: 0,
+    },
+    scrollContent: {
+        paddingBottom: 12,
+    },
+}));
+
 export function ItemActionsMenuModal(props: ItemActionsMenuModalProps) {
     const { theme } = useUnistyles();
+    const styles = stylesheet;
 
     const closeThen = React.useCallback((fn: () => void) => {
         props.onClose();
         setTimeout(() => fn(), 0);
-    }, [props]);
+    }, [props.onClose]);
 
     return (
-        <View style={{
-            width: '92%',
-            maxWidth: 420,
-            backgroundColor: theme.colors.groupped.background,
-            borderRadius: 16,
-            overflow: 'hidden',
-            borderWidth: 1,
-            borderColor: theme.colors.divider,
-        }}>
-            <View style={{
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                borderBottomWidth: 1,
-                borderBottomColor: theme.colors.divider,
-            }}>
-                <Text style={{
-                    fontSize: 17,
-                    color: theme.colors.text,
-                    ...Typography.default('semiBold'),
-                }}>
+        <View style={styles.container}>
+            <View style={styles.header}>
+                <Text style={styles.headerTitle}>
                     {props.title}
                 </Text>
 
@@ -65,8 +79,8 @@ export function ItemActionsMenuModal(props: ItemActionsMenuModalProps) {
                 </Pressable>
             </View>
 
-            <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ paddingBottom: 12 }}>
-                <ItemGroup title="Actions">
+            <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+                <ItemGroup title={t('common.actions')}>
                     {props.actions.map((action, idx) => (
                         <Item
                             key={action.id}

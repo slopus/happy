@@ -180,6 +180,7 @@ export function EnvironmentVariablesList({
                             <EnvironmentVariableCard
                                 key={envVar.name}
                                 variable={envVar}
+                                index={index}
                                 machineId={machineId}
                                 machineName={machineName ?? null}
                                 machineEnv={machineEnv}
@@ -187,9 +188,9 @@ export function EnvironmentVariablesList({
                                 expectedValue={docs.expectedValue}
                                 description={docs.description}
                                 isSecret={isSecret}
-                                onUpdate={(newValue) => handleUpdateVariable(index, newValue)}
-                                onDelete={() => handleDeleteVariable(index)}
-                                onDuplicate={() => handleDuplicateVariable(index)}
+                                onUpdate={handleUpdateVariable}
+                                onDelete={handleDeleteVariable}
+                                onDuplicate={handleDuplicateVariable}
                             />
                         );
                     })}

@@ -34,6 +34,7 @@ export const zhHans: TranslationStructure = {
     common: {
         // Simple string constants
         add: '添加',
+        actions: '操作',
         cancel: '取消',
         authenticate: '认证',
         save: '保存',
@@ -302,6 +303,19 @@ export const zhHans: TranslationStructure = {
             allTitle: '全部',
             emptyMessage: '没有可用设备',
         },
+        pathPicker: {
+            enterPathTitle: '输入路径',
+            enterPathPlaceholder: '输入路径...',
+            customPathTitle: '自定义路径',
+            recentTitle: '最近',
+            favoritesTitle: '收藏',
+            suggestedTitle: '推荐',
+            allTitle: '全部',
+            emptyRecent: '没有最近的路径',
+            emptyFavorites: '没有收藏的路径',
+            emptySuggested: '没有推荐的路径',
+            emptyAll: '没有路径',
+        },
         sessionType: {
             title: '会话类型',
             simple: '简单',
@@ -418,6 +432,10 @@ export const zhHans: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: '环境变量',
+            titleWithCount: ({ count }: { count: number }) => `环境变量 (${count})`,
+        },
         permissionMode: {
             title: '权限模式',
             default: '默认',
@@ -466,6 +484,21 @@ export const zhHans: TranslationStructure = {
             badgeReadOnly: '只读',
             badgeSafeYolo: '安全 YOLO',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'GEMINI 模型',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: '最强能力',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: '快速且高效',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: '最快',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,

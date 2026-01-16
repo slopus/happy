@@ -32,6 +32,7 @@ export const it: TranslationStructure = {
     common: {
         // Simple string constants
         add: 'Aggiungi',
+        actions: 'Azioni',
         cancel: 'Annulla',
         authenticate: 'Autentica',
         save: 'Salva',
@@ -433,6 +434,19 @@ export const it: TranslationStructure = {
             allTitle: 'Tutte',
             emptyMessage: 'Nessuna macchina disponibile',
         },
+        pathPicker: {
+            enterPathTitle: 'Inserisci percorso',
+            enterPathPlaceholder: 'Inserisci un percorso...',
+            customPathTitle: 'Percorso personalizzato',
+            recentTitle: 'Recenti',
+            favoritesTitle: 'Preferiti',
+            suggestedTitle: 'Suggeriti',
+            allTitle: 'Tutte',
+            emptyRecent: 'Nessun percorso recente',
+            emptyFavorites: 'Nessun percorso preferito',
+            emptySuggested: 'Nessun percorso suggerito',
+            emptyAll: 'Nessun percorso',
+        },
         sessionType: {
             title: 'Tipo di sessione',
             simple: 'Semplice',
@@ -549,6 +563,10 @@ export const it: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: 'Var env',
+            titleWithCount: ({ count }: { count: number }) => `Var env (${count})`,
+        },
         permissionMode: {
             title: 'MODALITÀ PERMESSI',
             default: 'Predefinito',
@@ -597,6 +615,21 @@ export const it: TranslationStructure = {
             badgeReadOnly: 'Modalità sola lettura',
             badgeSafeYolo: 'YOLO sicuro',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'MODELLO GEMINI',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: 'Il più potente',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: 'Veloce ed efficiente',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: 'Il più veloce',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,

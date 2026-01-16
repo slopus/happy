@@ -35,6 +35,7 @@ export const ja: TranslationStructure = {
     common: {
         // Simple string constants
         add: '追加',
+        actions: '操作',
         cancel: 'キャンセル',
         authenticate: '認証',
         save: '保存',
@@ -436,6 +437,19 @@ export const ja: TranslationStructure = {
             allTitle: 'すべて',
             emptyMessage: '利用可能なマシンがありません',
         },
+        pathPicker: {
+            enterPathTitle: 'パスを入力',
+            enterPathPlaceholder: 'パスを入力...',
+            customPathTitle: 'カスタムパス',
+            recentTitle: '最近',
+            favoritesTitle: 'お気に入り',
+            suggestedTitle: 'おすすめ',
+            allTitle: 'すべて',
+            emptyRecent: '最近のパスはありません',
+            emptyFavorites: 'お気に入りのパスはありません',
+            emptySuggested: 'おすすめのパスはありません',
+            emptyAll: 'パスがありません',
+        },
         sessionType: {
             title: 'セッションタイプ',
             simple: 'シンプル',
@@ -552,6 +566,10 @@ export const ja: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: '環境変数',
+            titleWithCount: ({ count }: { count: number }) => `環境変数 (${count})`,
+        },
         permissionMode: {
             title: '権限モード',
             default: 'デフォルト',
@@ -600,6 +618,21 @@ export const ja: TranslationStructure = {
             badgeReadOnly: '読み取り専用モード',
             badgeSafeYolo: 'セーフYOLO',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'GEMINIモデル',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: '最高性能',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: '高速・効率的',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: '最速',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `残り ${percent}%`,

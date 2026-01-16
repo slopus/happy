@@ -43,6 +43,7 @@ export const ru: TranslationStructure = {
     common: {
         // Simple string constants
         add: 'Добавить',
+        actions: 'Действия',
         cancel: 'Отмена',
         authenticate: 'Авторизация',
         save: 'Сохранить',
@@ -282,6 +283,19 @@ export const ru: TranslationStructure = {
             allTitle: 'Все',
             emptyMessage: 'Нет доступных машин',
         },
+        pathPicker: {
+            enterPathTitle: 'Введите путь',
+            enterPathPlaceholder: 'Введите путь...',
+            customPathTitle: 'Пользовательский путь',
+            recentTitle: 'Недавние',
+            favoritesTitle: 'Избранное',
+            suggestedTitle: 'Рекомендуемые',
+            allTitle: 'Все',
+            emptyRecent: 'Нет недавних путей',
+            emptyFavorites: 'Нет избранных путей',
+            emptySuggested: 'Нет рекомендуемых путей',
+            emptyAll: 'Нет путей',
+        },
         sessionType: {
             title: 'Тип сессии',
             simple: 'Простая',
@@ -426,6 +440,10 @@ export const ru: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: 'Переменные окружения',
+            titleWithCount: ({ count }: { count: number }) => `Переменные окружения (${count})`,
+        },
         permissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ',
             default: 'По умолчанию',
@@ -474,6 +492,21 @@ export const ru: TranslationStructure = {
             badgeReadOnly: 'Только чтение',
             badgeSafeYolo: 'Безопасный YOLO',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'GEMINI MODEL',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: 'Самая мощная',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: 'Быстро и эффективно',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: 'Самая быстрая',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `Осталось ${percent}%`,

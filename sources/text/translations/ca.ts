@@ -32,6 +32,7 @@ export const ca: TranslationStructure = {
     common: {
         // Simple string constants
         add: 'Afegeix',
+        actions: 'Accions',
         cancel: 'Cancel·la',
         authenticate: 'Autentica',
         save: 'Desa',
@@ -300,6 +301,19 @@ export const ca: TranslationStructure = {
             allTitle: 'Totes',
             emptyMessage: 'No hi ha màquines disponibles',
         },
+        pathPicker: {
+            enterPathTitle: 'Introdueix el camí',
+            enterPathPlaceholder: 'Introdueix un camí...',
+            customPathTitle: 'Camí personalitzat',
+            recentTitle: 'Recents',
+            favoritesTitle: 'Preferits',
+            suggestedTitle: 'Suggerits',
+            allTitle: 'Totes',
+            emptyRecent: 'No hi ha camins recents',
+            emptyFavorites: 'No hi ha camins preferits',
+            emptySuggested: 'No hi ha camins suggerits',
+            emptyAll: 'No hi ha camins',
+        },
         sessionType: {
             title: 'Tipus de sessió',
             simple: 'Simple',
@@ -416,6 +430,10 @@ export const ca: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: 'Variables d\'entorn',
+            titleWithCount: ({ count }: { count: number }) => `Variables d'entorn (${count})`,
+        },
         permissionMode: {
             title: 'MODE DE PERMISOS',
             default: 'Per defecte',
@@ -464,6 +482,21 @@ export const ca: TranslationStructure = {
             badgeReadOnly: 'Només lectura',
             badgeSafeYolo: 'YOLO segur',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'MODEL GEMINI',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: 'Més capaç',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: 'Ràpid i eficient',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: 'Més ràpid',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restant`,

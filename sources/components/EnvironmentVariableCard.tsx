@@ -9,6 +9,7 @@ import { t } from '@/text';
 
 export interface EnvironmentVariableCardProps {
     variable: { name: string; value: string };
+    index: number;
     machineId: string | null;
     machineName?: string | null;
     machineEnv?: Record<string, string | null>;
@@ -16,9 +17,9 @@ export interface EnvironmentVariableCardProps {
     expectedValue?: string;  // From profile documentation
     description?: string;    // Variable description
     isSecret?: boolean;      // Whether this is a secret (never query remote)
-    onUpdate: (newValue: string) => void;
-    onDelete: () => void;
-    onDuplicate: () => void;
+    onUpdate: (index: number, newValue: string) => void;
+    onDelete: (index: number) => void;
+    onDuplicate: (index: number) => void;
 }
 
 /**
@@ -55,6 +56,7 @@ function parseVariableValue(value: string): {
  */
 export function EnvironmentVariableCard({
     variable,
+    index,
     machineId,
     machineName,
     machineEnv,
@@ -100,7 +102,7 @@ export function EnvironmentVariableCard({
     const [useRemoteVariable, setUseRemoteVariable] = React.useState(parsed.useRemoteVariable);
     const [remoteVariableName, setRemoteVariableName] = React.useState(parsed.remoteVariableName);
     const [defaultValue, setDefaultValue] = React.useState(parsed.defaultValue);
-    const [fallbackOperator] = React.useState<EnvVarTemplateOperator | null>(parsed.fallbackOperator);
+    const fallbackOperator = parsed.fallbackOperator;
 
     const remoteValue = machineEnv?.[remoteVariableName];
     const hasFallback = defaultValue.trim() !== '';
@@ -115,9 +117,9 @@ export function EnvironmentVariableCard({
             : defaultValue;
 
         if (newValue !== variable.value) {
-            onUpdate(newValue);
+            onUpdate(index, newValue);
         }
-    }, [useRemoteVariable, remoteVariableName, defaultValue, fallbackOperator, variable.value, onUpdate]);
+    }, [defaultValue, fallbackOperator, index, onUpdate, remoteVariableName, useRemoteVariable, variable.value]);
 
     // Determine status
     const showRemoteDiffersWarning = remoteValue !== null && expectedValue && remoteValue !== expectedValue;
@@ -170,13 +172,13 @@ export function EnvironmentVariableCard({
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.margins.md }}>
                     <Pressable
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        onPress={onDelete}
+                        onPress={() => onDelete(index)}
                     >
                         <Ionicons name="trash-outline" size={theme.iconSize.large} color={theme.colors.deleteAction} />
                     </Pressable>
                     <Pressable
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        onPress={onDuplicate}
+                        onPress={() => onDuplicate(index)}
                     >
                         <Ionicons name="copy-outline" size={theme.iconSize.large} color={theme.colors.button.secondary.tint} />
                     </Pressable>

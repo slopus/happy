@@ -8,8 +8,9 @@ import { SearchHeader } from '@/components/SearchHeader';
 import { Typography } from '@/constants/Typography';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { t } from '@/text';
 
-export interface PathSelectorProps {
+type PathSelectorBaseProps = {
     machineHomeDir: string;
     selectedPath: string;
     onChangeSelectedPath: (path: string) => void;
@@ -18,11 +19,25 @@ export interface PathSelectorProps {
     recentPaths: string[];
     usePickerSearch: boolean;
     searchVariant?: 'header' | 'group' | 'none';
-    searchQuery?: string;
-    onChangeSearchQuery?: (text: string) => void;
     favoriteDirectories: string[];
     onChangeFavoriteDirectories: (dirs: string[]) => void;
-}
+};
+
+type PathSelectorControlledSearchProps = {
+    searchQuery: string;
+    onChangeSearchQuery: (text: string) => void;
+};
+
+type PathSelectorUncontrolledSearchProps = {
+    searchQuery?: undefined;
+    onChangeSearchQuery?: undefined;
+};
+
+export type PathSelectorProps =
+    & PathSelectorBaseProps
+    & (PathSelectorControlledSearchProps | PathSelectorUncontrolledSearchProps);
+
+const ITEM_RIGHT_GAP = 16;
 
 const stylesheet = StyleSheet.create((theme) => ({
     pathInputContainer: {
@@ -42,9 +57,21 @@ const stylesheet = StyleSheet.create((theme) => ({
         borderWidth: 0.5,
         borderColor: theme.colors.divider,
     },
+    searchHeaderContainer: {
+        backgroundColor: 'transparent',
+        borderBottomWidth: 0,
+    },
+    rightElementRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: ITEM_RIGHT_GAP,
+    },
+    iconSlot: {
+        width: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
 }));
-
-const ITEM_RIGHT_GAP = 16;
 
 export function PathSelector({
     machineHomeDir,
@@ -68,8 +95,9 @@ export function PathSelector({
     const searchWasFocusedRef = useRef(false);
 
     const [uncontrolledSearchQuery, setUncontrolledSearchQuery] = useState('');
-    const searchQuery = controlledSearchQuery ?? uncontrolledSearchQuery;
-    const setSearchQuery = onChangeSearchQueryProp ?? setUncontrolledSearchQuery;
+    const isSearchQueryControlled = controlledSearchQuery !== undefined && onChangeSearchQueryProp !== undefined;
+    const searchQuery = isSearchQueryControlled ? controlledSearchQuery : uncontrolledSearchQuery;
+    const setSearchQuery = isSearchQueryControlled ? onChangeSearchQueryProp : setUncontrolledSearchQuery;
     const [submittedCustomPath, setSubmittedCustomPath] = useState<string | null>(null);
 
     const suggestedPaths = useMemo(() => {
@@ -227,8 +255,8 @@ export function PathSelector({
 
     const renderRightElement = React.useCallback((absolutePath: string, isSelected: boolean, isFavorite: boolean) => {
         return (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_RIGHT_GAP }}>
-                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={styles.rightElementRow}>
+                <View style={styles.iconSlot}>
                     <Ionicons
                         name="checkmark-circle"
                         size={24}
@@ -256,8 +284,8 @@ export function PathSelector({
     const renderCustomRightElement = React.useCallback((absolutePath: string) => {
         const isFavorite = favoritePaths.includes(absolutePath);
         return (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_RIGHT_GAP }}>
-                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={styles.rightElementRow}>
+                <View style={styles.iconSlot}>
                     <Ionicons
                         name="checkmark-circle"
                         size={24}
@@ -318,32 +346,34 @@ export function PathSelector({
                 <SearchHeader
                     value={searchQuery}
                     onChangeText={setSearchQuery}
-                    placeholder="Search paths..."
+                    placeholder={t('newSession.searchPathsPlaceholder')}
                 />
             )}
 
-            <ItemGroup title="Enter Path">
+            <ItemGroup title={t('newSession.pathPicker.enterPathTitle')}>
                 <View style={styles.pathInputContainer}>
                     <View style={[styles.pathInput, { paddingVertical: 8 }]}>
                         <TextInput
                             ref={inputRef}
                             value={selectedPath}
                             onChangeText={handleChangeSelectedPath}
-                            placeholder="Enter path (e.g. /home/user/projects)"
+                            placeholder={t('newSession.pathPicker.enterPathPlaceholder')}
                             placeholderTextColor={theme.colors.input.placeholder}
-                            style={{
-                                color: theme.colors.input.text,
-                                paddingTop: 8,
-                                paddingBottom: 8,
-                                ...(Platform.OS === 'web'
+                            style={[
+                                {
+                                    color: theme.colors.input.text,
+                                    paddingTop: 8,
+                                    paddingBottom: 8,
+                                },
+                                Typography.default(),
+                                Platform.OS === 'web'
                                     ? ({
                                         outlineStyle: 'none',
                                         outlineWidth: 0,
                                         boxShadow: 'none',
-                                    } as const)
-                                    : null),
-                                ...Typography.default(),
-                            }}
+                                    } as any)
+                                    : undefined,
+                            ]}
                             autoCapitalize="none"
                             autoCorrect={false}
                             autoComplete="off"
@@ -359,7 +389,7 @@ export function PathSelector({
             </ItemGroup>
 
             {showSubmittedCustomPathRow && (
-                <ItemGroup title="Custom Path">
+                <ItemGroup title={t('newSession.pathPicker.customPathTitle')}>
                     <Item
                         key={showSubmittedCustomPathRow}
                         title={showSubmittedCustomPathRow}
@@ -374,25 +404,22 @@ export function PathSelector({
             )}
 
             {usePickerSearch && searchVariant === 'group' && shouldRenderRecentGroup && (
-                <ItemGroup title="Recent Paths">
+                <ItemGroup title={t('newSession.pathPicker.recentTitle')}>
                     {effectiveGroupSearchPlacement === 'recent' && (
                         <SearchHeader
                             value={searchQuery}
                             onChangeText={setSearchQuery}
-                            placeholder="Search paths..."
+                            placeholder={t('newSession.searchPathsPlaceholder')}
                             inputRef={searchInputRef}
                             onFocus={() => { searchWasFocusedRef.current = true; }}
                             onBlur={() => { searchWasFocusedRef.current = false; }}
-                            containerStyle={{
-                                backgroundColor: 'transparent',
-                                borderBottomWidth: 0,
-                            }}
+                            containerStyle={styles.searchHeaderContainer}
                         />
                     )}
                     {filteredRecentPaths.length === 0
                         ? (
                             <Item
-                                title={showNoMatchesRow ? 'No matches' : 'No recent paths'}
+                                title={showNoMatchesRow ? t('common.noMatches') : t('newSession.pathPicker.emptyRecent')}
                                 showChevron={false}
                                 showDivider={false}
                                 disabled={true}
@@ -419,25 +446,22 @@ export function PathSelector({
             )}
 
             {shouldRenderFavoritesGroup && (
-                <ItemGroup title="Favorite Paths">
+                <ItemGroup title={t('newSession.pathPicker.favoritesTitle')}>
                     {usePickerSearch && searchVariant === 'group' && effectiveGroupSearchPlacement === 'favorites' && (
                         <SearchHeader
                             value={searchQuery}
                             onChangeText={setSearchQuery}
-                            placeholder="Search paths..."
+                            placeholder={t('newSession.searchPathsPlaceholder')}
                             inputRef={searchInputRef}
                             onFocus={() => { searchWasFocusedRef.current = true; }}
                             onBlur={() => { searchWasFocusedRef.current = false; }}
-                            containerStyle={{
-                                backgroundColor: 'transparent',
-                                borderBottomWidth: 0,
-                            }}
+                            containerStyle={styles.searchHeaderContainer}
                         />
                     )}
                     {filteredFavoritePaths.length === 0
                         ? (
                             <Item
-                                title={showNoMatchesRow ? 'No matches' : 'No favorite paths'}
+                                title={showNoMatchesRow ? t('common.noMatches') : t('newSession.pathPicker.emptyFavorites')}
                                 showChevron={false}
                                 showDivider={false}
                                 disabled={true}
@@ -463,7 +487,7 @@ export function PathSelector({
             )}
 
             {filteredRecentPaths.length > 0 && searchVariant !== 'group' && (
-                <ItemGroup title="Recent Paths">
+                <ItemGroup title={t('newSession.pathPicker.recentTitle')}>
                     {filteredRecentPaths.map((path, index) => {
                         const isSelected = selectedPath.trim() === path;
                         const isLast = index === filteredRecentPaths.length - 1;
@@ -485,25 +509,22 @@ export function PathSelector({
             )}
 
             {usePickerSearch && searchVariant === 'group' && shouldRenderSuggestedGroup && (
-                <ItemGroup title="Suggested Paths">
+                <ItemGroup title={t('newSession.pathPicker.suggestedTitle')}>
                     {effectiveGroupSearchPlacement === 'suggested' && (
                         <SearchHeader
                             value={searchQuery}
                             onChangeText={setSearchQuery}
-                            placeholder="Search paths..."
+                            placeholder={t('newSession.searchPathsPlaceholder')}
                             inputRef={searchInputRef}
                             onFocus={() => { searchWasFocusedRef.current = true; }}
                             onBlur={() => { searchWasFocusedRef.current = false; }}
-                            containerStyle={{
-                                backgroundColor: 'transparent',
-                                borderBottomWidth: 0,
-                            }}
+                            containerStyle={styles.searchHeaderContainer}
                         />
                     )}
                     {filteredSuggestedPaths.length === 0
                         ? (
                             <Item
-                                title={showNoMatchesRow ? 'No matches' : 'No suggested paths'}
+                                title={showNoMatchesRow ? t('common.noMatches') : t('newSession.pathPicker.emptySuggested')}
                                 showChevron={false}
                                 showDivider={false}
                                 disabled={true}
@@ -530,7 +551,7 @@ export function PathSelector({
             )}
 
             {filteredRecentPaths.length === 0 && filteredSuggestedPaths.length > 0 && searchVariant !== 'group' && (
-                <ItemGroup title="Suggested Paths">
+                <ItemGroup title={t('newSession.pathPicker.suggestedTitle')}>
                     {filteredSuggestedPaths.map((path, index) => {
                         const isSelected = selectedPath.trim() === path;
                         const isLast = index === filteredSuggestedPaths.length - 1;
@@ -552,21 +573,18 @@ export function PathSelector({
             )}
 
             {usePickerSearch && searchVariant === 'group' && shouldRenderFallbackGroup && (
-                <ItemGroup title="Paths">
+                <ItemGroup title={t('newSession.pathPicker.allTitle')}>
                     <SearchHeader
                         value={searchQuery}
                         onChangeText={setSearchQuery}
-                        placeholder="Search paths..."
+                        placeholder={t('newSession.searchPathsPlaceholder')}
                         inputRef={searchInputRef}
                         onFocus={() => { searchWasFocusedRef.current = true; }}
                         onBlur={() => { searchWasFocusedRef.current = false; }}
-                        containerStyle={{
-                            backgroundColor: 'transparent',
-                            borderBottomWidth: 0,
-                        }}
+                        containerStyle={styles.searchHeaderContainer}
                     />
                     <Item
-                        title={showNoMatchesRow ? 'No matches' : 'No paths'}
+                        title={showNoMatchesRow ? t('common.noMatches') : t('newSession.pathPicker.emptyAll')}
                         showChevron={false}
                         showDivider={false}
                         disabled={true}

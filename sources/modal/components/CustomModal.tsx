@@ -38,7 +38,7 @@ function CommandPaletteWithAnimation({ config, onClose }: CustomModalProps) {
     }, [onClose]);
     
     return (
-        <CommandPaletteModal visible={!isClosing} onClose={onClose}>
+        <CommandPaletteModal visible={!isClosing} onClose={handleClose}>
             <CommandPalette {...commandPaletteProps} onClose={handleClose} />
         </CommandPaletteModal>
     );

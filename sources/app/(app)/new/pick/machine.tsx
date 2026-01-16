@@ -8,25 +8,6 @@ import { t } from '@/text';
 import { ItemList } from '@/components/ItemList';
 import { MachineSelector } from '@/components/newSession/MachineSelector';
 
-const stylesheet = StyleSheet.create((theme) => ({
-    container: {
-        flex: 1,
-        backgroundColor: theme.colors.groupped.background,
-    },
-    emptyContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-    },
-    emptyText: {
-        fontSize: 16,
-        color: theme.colors.textSecondary,
-        textAlign: 'center',
-        ...Typography.default(),
-    },
-}));
-
 export default React.memo(function MachinePickerScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
@@ -135,3 +116,22 @@ export default React.memo(function MachinePickerScreen() {
         </>
     );
 });
+
+const stylesheet = StyleSheet.create((theme) => ({
+    container: {
+        flex: 1,
+        backgroundColor: theme.colors.groupped.background,
+    },
+    emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    emptyText: {
+        fontSize: 16,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+        ...Typography.default(),
+    },
+}));

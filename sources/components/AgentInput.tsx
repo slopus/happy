@@ -968,7 +968,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             fontWeight: '600',
                                             ...Typography.default('semiBold'),
                                         }}>
-                                            {props.envVarsCount ? `Env Vars (${props.envVarsCount})` : 'Env Vars'}
+                                            {props.envVarsCount === undefined
+                                                ? t('agentInput.envVars.title')
+                                                : t('agentInput.envVars.titleWithCount', { count: props.envVarsCount })}
                                         </Text>
                                     </Pressable>
                                 )}

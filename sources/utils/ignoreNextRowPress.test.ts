@@ -4,15 +4,16 @@ import { ignoreNextRowPress } from './ignoreNextRowPress';
 describe('ignoreNextRowPress', () => {
     it('resets the ignore flag on the next tick', () => {
         vi.useFakeTimers();
-        const ref = { current: false };
+        try {
+            const ref = { current: false };
 
-        ignoreNextRowPress(ref);
-        expect(ref.current).toBe(true);
+            ignoreNextRowPress(ref);
+            expect(ref.current).toBe(true);
 
-        vi.runAllTimers();
-        expect(ref.current).toBe(false);
-
-        vi.useRealTimers();
+            vi.runAllTimers();
+            expect(ref.current).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
-
