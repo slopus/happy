@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TextInput, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { Switch } from '@/components/Switch';
 import { formatEnvVarTemplate, parseEnvVarTemplate, type EnvVarTemplateOperator } from '@/utils/envVarTemplate';
@@ -69,40 +69,20 @@ export function EnvironmentVariableCard({
     onDuplicate,
 }: EnvironmentVariableCardProps) {
     const { theme } = useUnistyles();
-
-    const webNoOutline = React.useMemo(() => (Platform.select({
-        web: {
-            outline: 'none',
-            outlineStyle: 'none',
-            outlineWidth: 0,
-            outlineColor: 'transparent',
-            boxShadow: 'none',
-            WebkitBoxShadow: 'none',
-            WebkitAppearance: 'none',
-        },
-        default: {},
-    }) as object), []);
-
-    const secondaryTextStyle = React.useMemo(() => ({
-        fontSize: Platform.select({ ios: 15, default: 14 }),
-        lineHeight: 20,
-        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
-        ...Typography.default(),
-    }), []);
-
-    const remoteToggleLabelStyle = React.useMemo(() => ({
-        fontSize: Platform.select({ ios: 17, default: 16 }),
-        lineHeight: 20,
-        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
-        ...Typography.default(),
-    }), []);
+    const styles = stylesheet;
 
     // Parse current value
-    const parsed = parseVariableValue(variable.value);
+    const parsed = React.useMemo(() => parseVariableValue(variable.value), [variable.value]);
     const [useRemoteVariable, setUseRemoteVariable] = React.useState(parsed.useRemoteVariable);
     const [remoteVariableName, setRemoteVariableName] = React.useState(parsed.remoteVariableName);
     const [defaultValue, setDefaultValue] = React.useState(parsed.defaultValue);
     const fallbackOperator = parsed.fallbackOperator;
+
+    React.useEffect(() => {
+        setUseRemoteVariable(parsed.useRemoteVariable);
+        setRemoteVariableName(parsed.remoteVariableName);
+        setDefaultValue(parsed.defaultValue);
+    }, [parsed.defaultValue, parsed.remoteVariableName, parsed.useRemoteVariable]);
 
     const remoteValue = machineEnv?.[remoteVariableName];
     const hasFallback = defaultValue.trim() !== '';
@@ -142,34 +122,22 @@ export function EnvironmentVariableCard({
                 : (computedTemplateValue || emptyValue));
 
     return (
-        <View style={{
-            width: '100%',
-            backgroundColor: theme.colors.surface,
-            borderRadius: 16,
-            padding: 16,
-            marginBottom: 12,
-            shadowColor: theme.colors.shadow.color,
-            shadowOffset: { width: 0, height: 0.33 },
-            shadowOpacity: theme.colors.shadow.opacity,
-            shadowRadius: 0,
-            elevation: 1,
-        }}>
+        <View style={styles.container}>
             {/* Header row with variable name and action buttons */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <Text style={{
-                    fontSize: Platform.select({ ios: 17, default: 16 }),
-                    lineHeight: Platform.select({ ios: 22, default: 24 }),
-                    letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
-                    color: theme.colors.text,
-                    ...Typography.default('semiBold')
-                }}>
+            <View style={styles.headerRow}>
+                <Text style={styles.nameText}>
                     {variable.name}
                     {isSecret && (
-                        <Ionicons name="lock-closed" size={theme.iconSize.small} color={theme.colors.textDestructive} style={{ marginLeft: 4 }} />
+                        <Ionicons
+                            name="lock-closed"
+                            size={theme.iconSize.small}
+                            color={theme.colors.textDestructive}
+                            style={styles.lockIcon}
+                        />
                     )}
                 </Text>
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.margins.md }}>
+                <View style={styles.actionRow}>
                     <Pressable
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         onPress={() => onDelete(index)}
@@ -187,39 +155,19 @@ export function EnvironmentVariableCard({
 
             {/* Description */}
             {description && (
-                <Text style={{
-                    color: theme.colors.textSecondary,
-                    marginBottom: 8,
-                    ...secondaryTextStyle,
-                }}>
+                <Text style={[styles.secondaryText, styles.descriptionText]}>
                     {description}
                 </Text>
             )}
 
             {/* Value label */}
-            <Text style={{
-                color: theme.colors.textSecondary,
-                marginBottom: 4,
-                ...secondaryTextStyle,
-            }}>
+            <Text style={[styles.secondaryText, styles.labelText]}>
                 {useRemoteVariable ? t('profiles.environmentVariables.card.fallbackValueLabel') : t('profiles.environmentVariables.card.valueLabel')}
             </Text>
 
             {/* Value input */}
             <TextInput
-                style={{
-                    ...Typography.default('regular'),
-                    backgroundColor: theme.colors.input.background,
-                    borderRadius: 10,
-                    paddingHorizontal: 12,
-                    paddingVertical: Platform.select({ ios: 10, default: 12 }),
-                    fontSize: Platform.select({ ios: 17, default: 16 }),
-                    lineHeight: Platform.select({ ios: 22, default: 24 }),
-                    letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
-                    color: theme.colors.input.text,
-                    marginBottom: 4,
-                    ...webNoOutline,
-                }}
+                style={styles.valueInput}
                 placeholder={
                     expectedValue ||
                     (useRemoteVariable
@@ -236,40 +184,23 @@ export function EnvironmentVariableCard({
 
             {/* Security message for secrets */}
             {isSecret && (
-                <Text style={{
-                    color: theme.colors.textSecondary,
-                    marginBottom: 8,
-                    fontStyle: 'italic',
-                    ...secondaryTextStyle,
-                }}>
+                <Text style={[styles.secondaryText, styles.secretMessage]}>
                     {t('profiles.environmentVariables.card.secretNotRetrieved')}
                 </Text>
             )}
 
             {/* Default override warning */}
             {showDefaultOverrideWarning && !isSecret && (
-                <Text style={{
-                    color: theme.colors.textSecondary,
-                    marginBottom: 8,
-                    ...secondaryTextStyle,
-                }}>
+                <Text style={[styles.secondaryText, styles.defaultOverrideWarning]}>
                     {t('profiles.environmentVariables.card.overridingDefault', { expectedValue })}
                 </Text>
             )}
 
-            <View style={{
-                height: 1,
-                backgroundColor: theme.colors.divider,
-                marginVertical: 12,
-            }} />
+            <View style={styles.divider} />
 
             {/* Toggle: Use value from machine environment */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <Text style={{
-                    flex: 1,
-                    color: theme.colors.textSecondary,
-                    ...remoteToggleLabelStyle,
-                }}>
+            <View style={styles.toggleRow}>
+                <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
                     {t('profiles.environmentVariables.card.useMachineEnvToggle')}
                 </Text>
                 <Switch
@@ -278,39 +209,25 @@ export function EnvironmentVariableCard({
                 />
             </View>
 
-            <Text style={{
-                color: theme.colors.textSecondary,
-                marginBottom: useRemoteVariable ? 10 : 0,
-                ...secondaryTextStyle,
-            }}>
+            <Text
+                style={[
+                    styles.secondaryText,
+                    styles.resolvedOnStartText,
+                    useRemoteVariable && styles.resolvedOnStartWithRemote,
+                ]}
+            >
                 {t('profiles.environmentVariables.card.resolvedOnSessionStart')}
             </Text>
 
             {/* Source variable name input (only when enabled) */}
             {useRemoteVariable && (
                 <>
-                    <Text style={{
-                        color: theme.colors.textSecondary,
-                        marginBottom: 4,
-                        ...secondaryTextStyle,
-                    }}>
+                    <Text style={[styles.secondaryText, styles.sourceLabel]}>
                         {t('profiles.environmentVariables.card.sourceVariableLabel')}
                     </Text>
 
                     <TextInput
-                        style={{
-                            ...Typography.default('regular'),
-                            backgroundColor: theme.colors.input.background,
-                            borderRadius: 10,
-                            paddingHorizontal: 12,
-                            paddingVertical: Platform.select({ ios: 10, default: 12 }),
-                            fontSize: Platform.select({ ios: 17, default: 16 }),
-                            lineHeight: Platform.select({ ios: 22, default: 24 }),
-                            letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
-                            color: theme.colors.input.text,
-                            marginBottom: 6,
-                            ...webNoOutline,
-                        }}
+                        style={styles.sourceInput}
                         placeholder={t('profiles.environmentVariables.card.sourceVariablePlaceholder')}
                         placeholderTextColor={theme.colors.input.placeholder}
                         value={remoteVariableName}
@@ -323,20 +240,13 @@ export function EnvironmentVariableCard({
 
             {/* Machine environment status (only with machine context) */}
             {useRemoteVariable && !isSecret && machineId && remoteVariableName.trim() !== '' && (
-                <View style={{ marginBottom: 8 }}>
+                <View style={styles.machineStatusContainer}>
                     {isMachineEnvLoading || remoteValue === undefined ? (
-                        <Text style={{
-                            color: theme.colors.textSecondary,
-                            fontStyle: 'italic',
-                            ...secondaryTextStyle,
-                        }}>
+                        <Text style={[styles.secondaryText, styles.machineStatusLoading]}>
                             {t('profiles.environmentVariables.card.checkingMachine', { machine: machineLabel })}
                         </Text>
                     ) : (remoteValue === null || remoteValue === '') ? (
-                        <Text style={{
-                            color: theme.colors.warning,
-                            ...secondaryTextStyle,
-                        }}>
+                        <Text style={[styles.secondaryText, styles.machineStatusWarning]}>
                             {remoteValue === '' ? (
                                 hasFallback
                                     ? t('profiles.environmentVariables.card.emptyOnMachineUsingFallback', { machine: machineLabel })
@@ -349,18 +259,11 @@ export function EnvironmentVariableCard({
                         </Text>
                     ) : (
                         <>
-                            <Text style={{
-                                color: theme.colors.success,
-                                ...secondaryTextStyle,
-                            }}>
+                            <Text style={[styles.secondaryText, styles.machineStatusSuccess]}>
                                 {t('profiles.environmentVariables.card.valueFoundOnMachine', { machine: machineLabel })}
                             </Text>
                             {showRemoteDiffersWarning && (
-                                <Text style={{
-                                    color: theme.colors.textSecondary,
-                                    marginTop: 2,
-                                    ...secondaryTextStyle,
-                                }}>
+                                <Text style={[styles.secondaryText, styles.machineStatusDiffers]}>
                                     {t('profiles.environmentVariables.card.differsFromDocumented', { expectedValue })}
                                 </Text>
                             )}
@@ -370,11 +273,7 @@ export function EnvironmentVariableCard({
             )}
 
             {/* Session preview */}
-            <Text style={{
-                color: theme.colors.textSecondary,
-                marginTop: 4,
-                ...secondaryTextStyle,
-            }}>
+            <Text style={[styles.secondaryText, styles.sessionPreview]}>
                 {t('profiles.environmentVariables.preview.sessionWillReceive', {
                     name: variable.name,
                     value: resolvedSessionValue,
@@ -383,3 +282,163 @@ export function EnvironmentVariableCard({
         </View>
     );
 }
+
+const stylesheet = StyleSheet.create((theme) => ({
+    container: {
+        width: '100%',
+        backgroundColor: theme.colors.surface,
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 12,
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 0.33 },
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 0,
+        elevation: 1,
+    },
+    headerRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+    nameText: {
+        fontSize: Platform.select({ ios: 17, default: 16 }),
+        lineHeight: Platform.select({ ios: 22, default: 24 }),
+        letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    lockIcon: {
+        marginLeft: 4,
+    },
+    actionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: theme.margins.md,
+    },
+    secondaryText: {
+        fontSize: Platform.select({ ios: 15, default: 14 }),
+        lineHeight: 20,
+        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
+        ...Typography.default(),
+    },
+    descriptionText: {
+        color: theme.colors.textSecondary,
+        marginBottom: 8,
+    },
+    labelText: {
+        color: theme.colors.textSecondary,
+        marginBottom: 4,
+    },
+    valueInput: {
+        ...Typography.default('regular'),
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: Platform.select({ ios: 10, default: 12 }),
+        fontSize: Platform.select({ ios: 17, default: 16 }),
+        lineHeight: Platform.select({ ios: 22, default: 24 }),
+        letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+        color: theme.colors.input.text,
+        marginBottom: 4,
+        ...(Platform.select({
+            web: {
+                outline: 'none',
+                outlineStyle: 'none',
+                outlineWidth: 0,
+                outlineColor: 'transparent',
+                boxShadow: 'none',
+                WebkitBoxShadow: 'none',
+                WebkitAppearance: 'none',
+            },
+            default: {},
+        }) as object),
+    },
+    secretMessage: {
+        color: theme.colors.textSecondary,
+        marginBottom: 8,
+        fontStyle: 'italic',
+    },
+    defaultOverrideWarning: {
+        color: theme.colors.textSecondary,
+        marginBottom: 8,
+    },
+    divider: {
+        height: 1,
+        backgroundColor: theme.colors.divider,
+        marginVertical: 12,
+    },
+    toggleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 6,
+    },
+    toggleLabelText: {
+        fontSize: Platform.select({ ios: 17, default: 16 }),
+        lineHeight: 20,
+        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
+        ...Typography.default(),
+    },
+    toggleLabel: {
+        flex: 1,
+        color: theme.colors.textSecondary,
+    },
+    resolvedOnStartText: {
+        color: theme.colors.textSecondary,
+        marginBottom: 0,
+    },
+    resolvedOnStartWithRemote: {
+        marginBottom: 10,
+    },
+    sourceLabel: {
+        color: theme.colors.textSecondary,
+        marginBottom: 4,
+    },
+    sourceInput: {
+        ...Typography.default('regular'),
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: Platform.select({ ios: 10, default: 12 }),
+        fontSize: Platform.select({ ios: 17, default: 16 }),
+        lineHeight: Platform.select({ ios: 22, default: 24 }),
+        letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+        color: theme.colors.input.text,
+        marginBottom: 6,
+        ...(Platform.select({
+            web: {
+                outline: 'none',
+                outlineStyle: 'none',
+                outlineWidth: 0,
+                outlineColor: 'transparent',
+                boxShadow: 'none',
+                WebkitBoxShadow: 'none',
+                WebkitAppearance: 'none',
+            },
+            default: {},
+        }) as object),
+    },
+    machineStatusContainer: {
+        marginBottom: 8,
+    },
+    machineStatusLoading: {
+        color: theme.colors.textSecondary,
+        fontStyle: 'italic',
+    },
+    machineStatusWarning: {
+        color: theme.colors.warning,
+    },
+    machineStatusSuccess: {
+        color: theme.colors.success,
+    },
+    machineStatusDiffers: {
+        color: theme.colors.textSecondary,
+        marginTop: 2,
+    },
+    sessionPreview: {
+        color: theme.colors.textSecondary,
+        marginTop: 4,
+    },
+}));

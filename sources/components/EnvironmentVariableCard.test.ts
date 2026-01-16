@@ -1,0 +1,121 @@
+import { describe, it, expect, vi } from 'vitest';
+import renderer, { act } from 'react-test-renderer';
+import React from 'react';
+
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock('@/text', () => ({
+    t: (key: string) => key,
+}));
+
+vi.mock('react-native', () => ({
+    View: 'View',
+    Text: 'Text',
+    Pressable: 'Pressable',
+    TextInput: 'TextInput',
+    Platform: {
+        OS: 'web',
+        select: (options: { web?: unknown; ios?: unknown; default?: unknown }) => options.web ?? options.ios ?? options.default,
+    },
+}));
+
+vi.mock('@expo/vector-icons', () => {
+    const React = require('react');
+    return {
+        Ionicons: (props: unknown) => React.createElement('Ionicons', props),
+    };
+});
+
+vi.mock('react-native-unistyles', () => ({
+    useUnistyles: () => ({
+        theme: {
+            margins: { md: 8 },
+            iconSize: { small: 12, large: 16 },
+            colors: {
+                surface: '#fff',
+                shadow: { color: '#000', opacity: 0.1 },
+                text: '#000',
+                textSecondary: '#666',
+                textDestructive: '#f00',
+                divider: '#ddd',
+                input: { background: '#fff', text: '#000', placeholder: '#999' },
+                button: {
+                    primary: { background: '#000', tint: '#fff' },
+                    secondary: { tint: '#000' },
+                },
+                deleteAction: '#f00',
+                warning: '#f90',
+                success: '#0a0',
+            },
+        },
+    }),
+    StyleSheet: {
+        create: (factory: (theme: any) => any) => factory({
+            margins: { md: 8 },
+            iconSize: { small: 12, large: 16 },
+            colors: {
+                surface: '#fff',
+                shadow: { color: '#000', opacity: 0.1 },
+                text: '#000',
+                textSecondary: '#666',
+                textDestructive: '#f00',
+                divider: '#ddd',
+                input: { background: '#fff', text: '#000', placeholder: '#999' },
+                button: {
+                    primary: { background: '#000', tint: '#fff' },
+                    secondary: { tint: '#000' },
+                },
+                deleteAction: '#f00',
+                warning: '#f90',
+                success: '#0a0',
+            },
+        }),
+    },
+}));
+
+vi.mock('@/components/Switch', () => {
+    const React = require('react');
+    return {
+        Switch: (props: unknown) => React.createElement('Switch', props),
+    };
+});
+
+import { EnvironmentVariableCard } from './EnvironmentVariableCard';
+
+describe('EnvironmentVariableCard', () => {
+    it('syncs remote-variable state when variable.value changes externally', () => {
+        const onUpdate = vi.fn();
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+
+        act(() => {
+            tree = renderer.create(
+                React.createElement(EnvironmentVariableCard, {
+                    variable: { name: 'FOO', value: '${BAR:-baz}' },
+                    index: 0,
+                    machineId: 'machine-1',
+                    onUpdate,
+                    onDelete: () => {},
+                    onDuplicate: () => {},
+                }),
+            );
+        });
+
+        expect(tree?.root.findByType('Switch').props.value).toBe(true);
+
+        act(() => {
+            tree?.update(
+                React.createElement(EnvironmentVariableCard, {
+                    variable: { name: 'FOO', value: 'literal' },
+                    index: 0,
+                    machineId: 'machine-1',
+                    onUpdate,
+                    onDelete: () => {},
+                    onDuplicate: () => {},
+                }),
+            );
+        });
+
+        expect(tree?.root.findByType('Switch').props.value).toBe(false);
+    });
+});

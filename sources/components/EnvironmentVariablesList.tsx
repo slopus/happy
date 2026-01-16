@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, TextInput, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { EnvironmentVariableCard } from './EnvironmentVariableCard';
 import type { ProfileDocumentation } from '@/sync/profileUtils';
@@ -30,6 +30,7 @@ export function EnvironmentVariablesList({
     onChange,
 }: EnvironmentVariablesListProps) {
     const { theme } = useUnistyles();
+    const styles = stylesheet;
 
     // Extract variable name from a template value (for matching documentation / machine env lookup)
     const extractVarNameFromValue = React.useCallback((value: string): string | null => {
@@ -39,6 +40,16 @@ export function EnvironmentVariablesList({
 
     const SECRET_NAME_REGEX = React.useMemo(() => /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i, []);
 
+    const documentedSecretNames = React.useMemo(() => {
+        if (!profileDocs) return new Set<string>();
+
+        return new Set(
+            profileDocs.environmentVariables
+                .filter((envVar) => envVar.isSecret)
+                .map((envVar) => envVar.name),
+        );
+    }, [profileDocs]);
+
     const resolvedEnvVarRefs = React.useMemo(() => {
         const refs = new Set<string>();
         environmentVariables.forEach((envVar) => {
@@ -46,10 +57,11 @@ export function EnvironmentVariablesList({
             if (!ref) return;
             // Don't query secret-like env vars from the machine.
             if (SECRET_NAME_REGEX.test(ref) || SECRET_NAME_REGEX.test(envVar.name)) return;
+            if (documentedSecretNames.has(ref) || documentedSecretNames.has(envVar.name)) return;
             refs.add(ref);
         });
         return Array.from(refs);
-    }, [SECRET_NAME_REGEX, environmentVariables, extractVarNameFromValue]);
+    }, [SECRET_NAME_REGEX, documentedSecretNames, environmentVariables, extractVarNameFromValue]);
 
     const { variables: machineEnv, isLoading: isMachineEnvLoading } = useEnvironmentVariables(
         machineId,
@@ -60,19 +72,6 @@ export function EnvironmentVariablesList({
     const [showAddForm, setShowAddForm] = React.useState(false);
     const [newVarName, setNewVarName] = React.useState('');
     const [newVarValue, setNewVarValue] = React.useState('');
-
-    const webNoOutline = React.useMemo(() => (Platform.select({
-        web: {
-            outline: 'none',
-            outlineStyle: 'none',
-            outlineWidth: 0,
-            outlineColor: 'transparent',
-            boxShadow: 'none',
-            WebkitBoxShadow: 'none',
-            WebkitAppearance: 'none',
-        },
-        default: {},
-    }) as object), []);
 
     // Helper to get expected value and description from documentation
     const getDocumentation = React.useCallback((varName: string) => {
@@ -147,27 +146,15 @@ export function EnvironmentVariablesList({
     }, [environmentVariables, newVarName, newVarValue, onChange]);
 
     return (
-        <View style={{ marginBottom: 16 }}>
-            <View style={{
-                paddingTop: Platform.select({ ios: 35, default: 16 }),
-                paddingBottom: Platform.select({ ios: 6, default: 8 }),
-                paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
-            }}>
-                <Text style={{
-                    ...Typography.default('regular'),
-                    color: theme.colors.groupped.sectionTitle,
-                    fontSize: Platform.select({ ios: 13, default: 14 }),
-                    lineHeight: Platform.select({ ios: 18, default: 20 }),
-                    letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
-                    textTransform: 'uppercase',
-                    fontWeight: Platform.select({ ios: 'normal', default: '500' } as any),
-                }}>
+        <View style={styles.container}>
+            <View style={styles.titleContainer}>
+                <Text style={styles.titleText}>
                     {t('profiles.environmentVariables.title')}
                 </Text>
             </View>
 
             {environmentVariables.length > 0 && (
-                <View style={{ marginHorizontal: Platform.select({ ios: 16, default: 12 }) }}>
+                <View style={styles.envVarListContainer}>
                     {environmentVariables.map((envVar, index) => {
                         const varNameFromValue = extractVarNameFromValue(envVar.value);
                         const docs = getDocumentation(varNameFromValue || envVar.name);
@@ -197,17 +184,7 @@ export function EnvironmentVariablesList({
                 </View>
             )}
 
-            <View style={{
-                backgroundColor: theme.colors.surface,
-                marginHorizontal: Platform.select({ ios: 16, default: 12 }),
-                borderRadius: Platform.select({ ios: 10, default: 16 }),
-                overflow: 'hidden',
-                shadowColor: theme.colors.shadow.color,
-                shadowOffset: { width: 0, height: 0.33 },
-                shadowOpacity: theme.colors.shadow.opacity,
-                shadowRadius: 0,
-                elevation: 1,
-            }}>
+            <View style={styles.addContainer}>
                 <Item
                     title={showAddForm ? t('common.cancel') : t('profiles.environmentVariables.addVariable')}
                     icon={
@@ -230,18 +207,10 @@ export function EnvironmentVariablesList({
                 />
 
                 {showAddForm && (
-                    <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-                        <View style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            backgroundColor: theme.colors.input.background,
-                            borderRadius: 10,
-                            paddingHorizontal: 12,
-                            paddingVertical: 8,
-                            marginBottom: 8,
-                        }}>
+                    <View style={styles.addFormContainer}>
+                        <View style={styles.addInputRow}>
                             <TextInput
-                                style={{ flex: 1, fontSize: 16, color: theme.colors.input.text, ...Typography.default('regular'), ...webNoOutline }}
+                                style={styles.addTextInput}
                                 placeholder={t('profiles.environmentVariables.namePlaceholder')}
                                 placeholderTextColor={theme.colors.input.placeholder}
                                 value={newVarName}
@@ -251,17 +220,9 @@ export function EnvironmentVariablesList({
                             />
                         </View>
 
-                        <View style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            backgroundColor: theme.colors.input.background,
-                            borderRadius: 10,
-                            paddingHorizontal: 12,
-                            paddingVertical: 8,
-                            marginBottom: 12,
-                        }}>
+                        <View style={[styles.addInputRow, styles.addInputRowLast]}>
                             <TextInput
-                                style={{ flex: 1, fontSize: 16, color: theme.colors.input.text, ...Typography.default('regular'), ...webNoOutline }}
+                                style={styles.addTextInput}
                                 placeholder={t('profiles.environmentVariables.valuePlaceholder')}
                                 placeholderTextColor={theme.colors.input.placeholder}
                                 value={newVarValue}
@@ -274,15 +235,12 @@ export function EnvironmentVariablesList({
                         <Pressable
                             onPress={handleAddVariable}
                             disabled={!newVarName.trim()}
-                            style={({ pressed }) => ({
-                                backgroundColor: theme.colors.button.primary.background,
-                                borderRadius: 10,
-                                paddingVertical: 10,
-                                alignItems: 'center',
-                                opacity: !newVarName.trim() ? 0.5 : pressed ? 0.85 : 1,
-                            })}
+                            style={({ pressed }) => [
+                                styles.addButton,
+                                { opacity: !newVarName.trim() ? 0.5 : pressed ? 0.85 : 1 },
+                            ]}
                         >
-                            <Text style={{ color: theme.colors.button.primary.tint, ...Typography.default('semiBold') }}>
+                            <Text style={styles.addButtonText}>
                                 {t('common.add')}
                             </Text>
                         </Pressable>
@@ -292,3 +250,81 @@ export function EnvironmentVariablesList({
         </View>
     );
 }
+
+const stylesheet = StyleSheet.create((theme) => ({
+    container: {
+        marginBottom: 16,
+    },
+    titleContainer: {
+        paddingTop: Platform.select({ ios: 35, default: 16 }),
+        paddingBottom: Platform.select({ ios: 6, default: 8 }),
+        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+    },
+    titleText: {
+        ...Typography.default('regular'),
+        color: theme.colors.groupped.sectionTitle,
+        fontSize: Platform.select({ ios: 13, default: 14 }),
+        lineHeight: Platform.select({ ios: 18, default: 20 }),
+        letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+        textTransform: 'uppercase',
+        fontWeight: '500',
+    },
+    envVarListContainer: {
+        marginHorizontal: Platform.select({ ios: 16, default: 12 }),
+    },
+    addContainer: {
+        backgroundColor: theme.colors.surface,
+        marginHorizontal: Platform.select({ ios: 16, default: 12 }),
+        borderRadius: Platform.select({ ios: 10, default: 16 }),
+        overflow: 'hidden',
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 0.33 },
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 0,
+        elevation: 1,
+    },
+    addFormContainer: {
+        paddingHorizontal: 16,
+        paddingBottom: 12,
+    },
+    addInputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        marginBottom: 8,
+    },
+    addInputRowLast: {
+        marginBottom: 12,
+    },
+    addTextInput: {
+        flex: 1,
+        fontSize: 16,
+        color: theme.colors.input.text,
+        ...Typography.default('regular'),
+        ...(Platform.select({
+            web: {
+                outline: 'none',
+                outlineStyle: 'none',
+                outlineWidth: 0,
+                outlineColor: 'transparent',
+                boxShadow: 'none',
+                WebkitBoxShadow: 'none',
+                WebkitAppearance: 'none',
+            },
+            default: {},
+        }) as object),
+    },
+    addButton: {
+        backgroundColor: theme.colors.button.primary.background,
+        borderRadius: 10,
+        paddingVertical: 10,
+        alignItems: 'center',
+    },
+    addButtonText: {
+        color: theme.colors.button.primary.tint,
+        ...Typography.default('semiBold'),
+    },
+}));
