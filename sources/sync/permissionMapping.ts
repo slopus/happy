@@ -1,6 +1,5 @@
 import type { PermissionMode } from './permissionTypes';
-
-type AgentType = 'claude' | 'codex' | 'gemini';
+import type { AgentType } from './modelOptions';
 
 function isCodexLike(agent: AgentType) {
     return agent === 'codex' || agent === 'gemini';
@@ -49,4 +48,3 @@ export function mapPermissionModeAcrossAgents(
             return 'default';
     }
 }
-

@@ -37,13 +37,18 @@ export function buildProfileGroups({
     favoriteProfileIds: string[];
 }): ProfileGroups {
     const builtInIds = new Set(DEFAULT_PROFILES.map((profile) => profile.id));
-    const favoriteIds = new Set(favoriteProfileIds);
 
     const customById = new Map(customProfiles.map((profile) => [profile.id, profile] as const));
 
     const favoriteProfiles = favoriteProfileIds
         .map((id) => customById.get(id) ?? getBuiltInProfile(id))
         .filter(isProfile);
+
+    const favoriteIds = new Set<string>(favoriteProfiles.map((profile) => profile.id));
+    // Preserve "default environment" favorite marker (not a real profile object).
+    if (favoriteProfileIds.includes('')) {
+        favoriteIds.add('');
+    }
 
     const nonFavoriteCustomProfiles = customProfiles.filter((profile) => !favoriteIds.has(profile.id));
 
