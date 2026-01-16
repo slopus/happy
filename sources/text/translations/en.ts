@@ -523,6 +523,9 @@ export const en: TranslationStructure = {
         askUserQuestion: {
             submit: 'Submit Answer',
             multipleQuestions: ({ count }: { count: number }) => `${count} questions`,
+            other: 'Other',
+            otherDescription: 'Type your own answer',
+            otherPlaceholder: 'Type your answer...',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
