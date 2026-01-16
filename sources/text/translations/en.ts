@@ -322,7 +322,7 @@ export const en = {
     },
 
     session: {
-        inputPlaceholder: 'Type a message ...',
+        inputPlaceholder: 'What would you like to work on?',
     },
 
     commandPalette: {
