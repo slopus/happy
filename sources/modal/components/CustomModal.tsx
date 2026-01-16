@@ -9,6 +9,8 @@ interface CustomModalProps {
     onClose: () => void;
 }
 
+type CommandPaletteExternalProps = Omit<React.ComponentProps<typeof CommandPalette>, 'onClose'>;
+
 export function CustomModal({ config, onClose }: CustomModalProps) {
     const Component = config.component;
     
@@ -27,6 +29,7 @@ export function CustomModal({ config, onClose }: CustomModalProps) {
 // Helper component to manage CommandPalette animation state
 function CommandPaletteWithAnimation({ config, onClose }: CustomModalProps) {
     const [isClosing, setIsClosing] = React.useState(false);
+    const commandPaletteProps = (config.props as CommandPaletteExternalProps | undefined) ?? { commands: [] };
     
     const handleClose = React.useCallback(() => {
         setIsClosing(true);
@@ -36,7 +39,7 @@ function CommandPaletteWithAnimation({ config, onClose }: CustomModalProps) {
     
     return (
         <CommandPaletteModal visible={!isClosing} onClose={onClose}>
-            <CommandPalette {...config.props} onClose={handleClose} />
+            <CommandPalette {...commandPaletteProps} onClose={handleClose} />
         </CommandPaletteModal>
     );
 }

@@ -131,7 +131,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
             props: {
                 commands,
             }
-        } as any);
+        });
     }, [commands, commandPaletteEnabled]);
 
     // Set up global keyboard handler only if feature is enabled

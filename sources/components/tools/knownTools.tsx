@@ -592,7 +592,7 @@ export const knownTools = {
         }
     },
     'change_title': {
-        title: 'Change Title',
+        title: t('tools.names.changeTitle'),
         icon: ICON_EDIT,
         minimal: true,
         noStatus: true,

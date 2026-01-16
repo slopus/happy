@@ -1,7 +1,6 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { CommonActions, useNavigation } from '@react-navigation/native';
+import { Stack, useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, useSessions, useSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,7 +48,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-export default function PathPickerScreen() {
+export default React.memo(function PathPickerScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const router = useRouter();
@@ -121,7 +120,8 @@ export default function PathPickerScreen() {
         const previousRoute = state?.routes?.[state.index - 1];
         if (state && state.index > 0 && previousRoute) {
             navigation.dispatch({
-                ...CommonActions.setParams({ path: pathToUse }),
+                type: 'SET_PARAMS',
+                payload: { params: { path: pathToUse } },
                 source: previousRoute.key,
             } as never);
         }
@@ -134,7 +134,7 @@ export default function PathPickerScreen() {
                 <Stack.Screen
                     options={{
                         headerShown: true,
-                        headerTitle: 'Select Path',
+                        headerTitle: t('newSession.selectPathTitle'),
                         headerBackTitle: t('common.back'),
                         headerRight: () => (
                             <Pressable
@@ -157,7 +157,7 @@ export default function PathPickerScreen() {
                 />
                 <ItemList>
                     <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>No machine selected</Text>
+                        <Text style={styles.emptyText}>{t('newSession.noMachineSelected')}</Text>
                     </View>
                 </ItemList>
             </>
@@ -169,7 +169,7 @@ export default function PathPickerScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    headerTitle: 'Select Path',
+                    headerTitle: t('newSession.selectPathTitle'),
                     headerBackTitle: t('common.back'),
                     headerRight: () => (
                         <Pressable
@@ -194,7 +194,7 @@ export default function PathPickerScreen() {
                     <SearchHeader
                         value={pathSearchQuery}
                         onChangeText={setPathSearchQuery}
-                        placeholder="Search paths..."
+                        placeholder={t('newSession.searchPathsPlaceholder')}
                     />
                 )}
                 <View style={styles.contentWrapper}>
@@ -214,4 +214,4 @@ export default function PathPickerScreen() {
             </ItemList>
         </>
     );
-}
+});

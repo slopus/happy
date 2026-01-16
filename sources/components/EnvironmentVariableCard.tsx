@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { Switch } from '@/components/Switch';
+import { formatEnvVarTemplate, parseEnvVarTemplate, type EnvVarTemplateOperator } from '@/utils/envVarTemplate';
+import { t } from '@/text';
 
 export interface EnvironmentVariableCardProps {
     variable: { name: string; value: string };
@@ -26,24 +28,15 @@ function parseVariableValue(value: string): {
     useRemoteVariable: boolean;
     remoteVariableName: string;
     defaultValue: string;
+    fallbackOperator: EnvVarTemplateOperator | null;
 } {
-    // Match: ${VARIABLE_NAME:-default_value} or ${VARIABLE_NAME:=default_value}
-    const matchWithFallback = value.match(/^\$\{([A-Z_][A-Z0-9_]*):[-=](.*)\}$/);
-    if (matchWithFallback) {
+    const parsedTemplate = parseEnvVarTemplate(value);
+    if (parsedTemplate) {
         return {
             useRemoteVariable: true,
-            remoteVariableName: matchWithFallback[1],
-            defaultValue: matchWithFallback[2]
-        };
-    }
-
-    // Match: ${VARIABLE_NAME} (no fallback)
-    const matchNoFallback = value.match(/^\$\{([A-Z_][A-Z0-9_]*)\}$/);
-    if (matchNoFallback) {
-        return {
-            useRemoteVariable: true,
-            remoteVariableName: matchNoFallback[1],
-            defaultValue: ''
+            remoteVariableName: parsedTemplate.sourceVar,
+            defaultValue: parsedTemplate.fallback,
+            fallbackOperator: parsedTemplate.operator,
         };
     }
 
@@ -51,7 +44,8 @@ function parseVariableValue(value: string): {
     return {
         useRemoteVariable: false,
         remoteVariableName: '',
-        defaultValue: value
+        defaultValue: value,
+        fallbackOperator: null,
     };
 }
 
@@ -106,21 +100,24 @@ export function EnvironmentVariableCard({
     const [useRemoteVariable, setUseRemoteVariable] = React.useState(parsed.useRemoteVariable);
     const [remoteVariableName, setRemoteVariableName] = React.useState(parsed.remoteVariableName);
     const [defaultValue, setDefaultValue] = React.useState(parsed.defaultValue);
+    const [fallbackOperator] = React.useState<EnvVarTemplateOperator | null>(parsed.fallbackOperator);
 
     const remoteValue = machineEnv?.[remoteVariableName];
     const hasFallback = defaultValue.trim() !== '';
-    const machineLabel = machineName?.trim() ? machineName.trim() : 'machine';
+    const machineLabel = machineName?.trim() ? machineName.trim() : t('common.machine');
+
+    const emptyValue = t('profiles.environmentVariables.preview.emptyValue');
 
     // Update parent when local state changes
     React.useEffect(() => {
         const newValue = useRemoteVariable && remoteVariableName.trim() !== ''
-            ? `\${${remoteVariableName}${defaultValue ? `:-${defaultValue}` : ''}}`
+            ? formatEnvVarTemplate({ sourceVar: remoteVariableName, fallback: defaultValue, operator: fallbackOperator })
             : defaultValue;
 
         if (newValue !== variable.value) {
             onUpdate(newValue);
         }
-    }, [useRemoteVariable, remoteVariableName, defaultValue, variable.value, onUpdate]);
+    }, [useRemoteVariable, remoteVariableName, defaultValue, fallbackOperator, variable.value, onUpdate]);
 
     // Determine status
     const showRemoteDiffersWarning = remoteValue !== null && expectedValue && remoteValue !== expectedValue;
@@ -128,17 +125,19 @@ export function EnvironmentVariableCard({
 
     const computedTemplateValue =
         useRemoteVariable && remoteVariableName.trim() !== ''
-            ? `\${${remoteVariableName}${defaultValue ? `:-${defaultValue}` : ''}}`
+            ? formatEnvVarTemplate({ sourceVar: remoteVariableName, fallback: defaultValue, operator: fallbackOperator })
             : defaultValue;
 
     const resolvedSessionValue =
         isSecret
             ? (useRemoteVariable && remoteVariableName
-                ? `\${${remoteVariableName}${defaultValue ? `:-***` : ''}} - hidden for security`
-            : (defaultValue ? '***hidden***' : '(empty)'))
+                ? t('profiles.environmentVariables.preview.secretValueHidden', {
+                    value: formatEnvVarTemplate({ sourceVar: remoteVariableName, fallback: defaultValue !== '' ? '***' : '', operator: fallbackOperator }),
+                })
+            : (defaultValue ? t('profiles.environmentVariables.preview.hiddenValue') : emptyValue))
             : (useRemoteVariable && machineId && remoteValue !== undefined
-                ? (remoteValue === null || remoteValue === '' ? (hasFallback ? defaultValue : '(empty)') : remoteValue)
-                : (computedTemplateValue || '(empty)'));
+                ? (remoteValue === null || remoteValue === '' ? (hasFallback ? defaultValue : emptyValue) : remoteValue)
+                : (computedTemplateValue || emptyValue));
 
     return (
         <View style={{
@@ -201,7 +200,7 @@ export function EnvironmentVariableCard({
                 marginBottom: 4,
                 ...secondaryTextStyle,
             }}>
-                {useRemoteVariable ? 'Fallback value:' : 'Value:'}
+                {useRemoteVariable ? t('profiles.environmentVariables.card.fallbackValueLabel') : t('profiles.environmentVariables.card.valueLabel')}
             </Text>
 
             {/* Value input */}
@@ -219,7 +218,12 @@ export function EnvironmentVariableCard({
                     marginBottom: 4,
                     ...webNoOutline,
                 }}
-                placeholder={expectedValue || (useRemoteVariable ? 'Default value' : 'Value')}
+                placeholder={
+                    expectedValue ||
+                    (useRemoteVariable
+                        ? t('profiles.environmentVariables.card.defaultValueInputPlaceholder')
+                        : t('profiles.environmentVariables.card.valueInputPlaceholder'))
+                }
                 placeholderTextColor={theme.colors.input.placeholder}
                 value={defaultValue}
                 onChangeText={setDefaultValue}
@@ -236,7 +240,7 @@ export function EnvironmentVariableCard({
                     fontStyle: 'italic',
                     ...secondaryTextStyle,
                 }}>
-                    Secret value - not retrieved for security
+                    {t('profiles.environmentVariables.card.secretNotRetrieved')}
                 </Text>
             )}
 
@@ -247,7 +251,7 @@ export function EnvironmentVariableCard({
                     marginBottom: 8,
                     ...secondaryTextStyle,
                 }}>
-                    Overriding documented default: {expectedValue}
+                    {t('profiles.environmentVariables.card.overridingDefault', { expectedValue })}
                 </Text>
             )}
 
@@ -264,7 +268,7 @@ export function EnvironmentVariableCard({
                     color: theme.colors.textSecondary,
                     ...remoteToggleLabelStyle,
                 }}>
-                    Use value from machine environment
+                    {t('profiles.environmentVariables.card.useMachineEnvToggle')}
                 </Text>
                 <Switch
                     value={useRemoteVariable}
@@ -277,7 +281,7 @@ export function EnvironmentVariableCard({
                 marginBottom: useRemoteVariable ? 10 : 0,
                 ...secondaryTextStyle,
             }}>
-                Resolved when the session starts on the selected machine.
+                {t('profiles.environmentVariables.card.resolvedOnSessionStart')}
             </Text>
 
             {/* Source variable name input (only when enabled) */}
@@ -288,7 +292,7 @@ export function EnvironmentVariableCard({
                         marginBottom: 4,
                         ...secondaryTextStyle,
                     }}>
-                        Source variable
+                        {t('profiles.environmentVariables.card.sourceVariableLabel')}
                     </Text>
 
                     <TextInput
@@ -305,7 +309,7 @@ export function EnvironmentVariableCard({
                             marginBottom: 6,
                             ...webNoOutline,
                         }}
-                        placeholder="Source variable name (e.g., Z_AI_MODEL)"
+                        placeholder={t('profiles.environmentVariables.card.sourceVariablePlaceholder')}
                         placeholderTextColor={theme.colors.input.placeholder}
                         value={remoteVariableName}
                         onChangeText={(text) => setRemoteVariableName(text.toUpperCase())}
@@ -324,7 +328,7 @@ export function EnvironmentVariableCard({
                             fontStyle: 'italic',
                             ...secondaryTextStyle,
                         }}>
-                            Checking {machineLabel}...
+                            {t('profiles.environmentVariables.card.checkingMachine', { machine: machineLabel })}
                         </Text>
                     ) : (remoteValue === null || remoteValue === '') ? (
                         <Text style={{
@@ -332,9 +336,13 @@ export function EnvironmentVariableCard({
                             ...secondaryTextStyle,
                         }}>
                             {remoteValue === '' ? (
-                                hasFallback ? `Empty on ${machineLabel} (using fallback)` : `Empty on ${machineLabel}`
+                                hasFallback
+                                    ? t('profiles.environmentVariables.card.emptyOnMachineUsingFallback', { machine: machineLabel })
+                                    : t('profiles.environmentVariables.card.emptyOnMachine', { machine: machineLabel })
                             ) : (
-                                hasFallback ? `Not found on ${machineLabel} (using fallback)` : `Not found on ${machineLabel}`
+                                hasFallback
+                                    ? t('profiles.environmentVariables.card.notFoundOnMachineUsingFallback', { machine: machineLabel })
+                                    : t('profiles.environmentVariables.card.notFoundOnMachine', { machine: machineLabel })
                             )}
                         </Text>
                     ) : (
@@ -343,7 +351,7 @@ export function EnvironmentVariableCard({
                                 color: theme.colors.success,
                                 ...secondaryTextStyle,
                             }}>
-                                Value found on {machineLabel}
+                                {t('profiles.environmentVariables.card.valueFoundOnMachine', { machine: machineLabel })}
                             </Text>
                             {showRemoteDiffersWarning && (
                                 <Text style={{
@@ -351,7 +359,7 @@ export function EnvironmentVariableCard({
                                     marginTop: 2,
                                     ...secondaryTextStyle,
                                 }}>
-                                    Differs from documented value: {expectedValue}
+                                    {t('profiles.environmentVariables.card.differsFromDocumented', { expectedValue })}
                                 </Text>
                             )}
                         </>
@@ -365,7 +373,10 @@ export function EnvironmentVariableCard({
                 marginTop: 4,
                 ...secondaryTextStyle,
             }}>
-                Session will receive: {variable.name} = {resolvedSessionValue}
+                {t('profiles.environmentVariables.preview.sessionWillReceive', {
+                    name: variable.name,
+                    value: resolvedSessionValue,
+                })}
             </Text>
         </View>
     );

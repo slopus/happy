@@ -44,6 +44,7 @@ export const en = {
 
     common: {
         // Simple string constants
+        add: 'Add',
         cancel: 'Cancel',
         authenticate: 'Authenticate',
         save: 'Save',
@@ -60,6 +61,9 @@ export const en = {
         yes: 'Yes',
         no: 'No',
         discard: 'Discard',
+        discardChanges: 'Discard changes',
+        unsavedChangesWarning: 'You have unsaved changes.',
+        keepEditing: 'Keep editing',
         version: 'Version',
         copy: 'Copy',
         copied: 'Copied',
@@ -73,6 +77,8 @@ export const en = {
         retry: 'Retry',
         delete: 'Delete',
         optional: 'optional',
+        noMatches: 'No matches',
+        machine: 'machine',
     },
 
     profile: {
@@ -282,6 +288,9 @@ export const en = {
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Start New Session',
+        selectMachineTitle: 'Select Machine',
+        selectPathTitle: 'Select Path',
+        searchPathsPlaceholder: 'Search paths...',
         noMachinesFound: 'No machines found. Start a Happy session on your computer first.',
         allMachinesOffline: 'All machines appear offline',
         machineDetails: 'View machine details →',
@@ -297,6 +306,13 @@ export const en = {
         notConnectedToServer: 'Not connected to server. Check your internet connection.',
         noMachineSelected: 'Please select a machine to start the session',
         noPathSelected: 'Please select a directory to start the session in',
+        machinePicker: {
+            searchPlaceholder: 'Search machines...',
+            recentTitle: 'Recent',
+            favoritesTitle: 'Favorites',
+            allTitle: 'All',
+            emptyMessage: 'No machines available',
+        },
         sessionType: {
             title: 'Session Type',
             simple: 'Simple',
@@ -358,6 +374,7 @@ export const en = {
         happySessionId: 'Happy Session ID',
         claudeCodeSessionId: 'Claude Code Session ID',
         claudeCodeSessionIdCopied: 'Claude Code Session ID copied to clipboard',
+        aiProfile: 'AI Profile',
         aiProvider: 'AI Provider',
         failedToCopyClaudeCodeSessionId: 'Failed to copy Claude Code Session ID',
         metadataCopied: 'Metadata copied to clipboard',
@@ -526,6 +543,10 @@ export const en = {
             applyChanges: 'Update file',
             viewDiff: 'Current file changes',
             question: 'Question',
+            changeTitle: 'Change Title',
+        },
+        geminiExecute: {
+            cwd: ({ cwd }: { cwd: string }) => `📁 ${cwd}`,
         },
         askUserQuestion: {
             submit: 'Submit Answer',
@@ -909,8 +930,8 @@ export const en = {
         // Profile management feature
         title: 'Profiles',
         subtitle: 'Manage environment variable profiles for sessions',
-        noProfile: 'No Profile',
-        noProfileDescription: 'Use default environment settings',
+        noProfile: 'Default Environment',
+        noProfileDescription: 'Use the machine environment without profile variables',
         defaultModel: 'Default Model',
         addProfile: 'Add Profile',
         profileName: 'Profile Name',
@@ -928,6 +949,110 @@ export const en = {
         deleteConfirm: ({ name }: { name: string }) => `Are you sure you want to delete the profile "${name}"?`,
         editProfile: 'Edit Profile',
         addProfileTitle: 'Add New Profile',
+        builtIn: 'Built-in',
+        groups: {
+            favorites: 'Favorites',
+            custom: 'Your Profiles',
+            builtIn: 'Built-in Profiles',
+        },
+        actions: {
+            viewEnvironmentVariables: 'Environment Variables',
+            addToFavorites: 'Add to favorites',
+            removeFromFavorites: 'Remove from favorites',
+            editProfile: 'Edit profile',
+            duplicateProfile: 'Duplicate profile',
+            deleteProfile: 'Delete profile',
+        },
+        duplicateName: 'A profile with this name already exists',
+        setupInstructions: {
+            title: 'Setup Instructions',
+            viewOfficialGuide: 'View Official Setup Guide',
+        },
+        defaultSessionType: 'Default Session Type',
+        defaultPermissionMode: {
+            title: 'Default Permission Mode',
+            descriptions: {
+                default: 'Ask for permissions',
+                acceptEdits: 'Auto-approve edits',
+                plan: 'Plan before executing',
+                bypassPermissions: 'Skip all permissions',
+            },
+        },
+        aiBackend: {
+            title: 'AI Backend',
+            selectAtLeastOneError: 'Select at least one AI backend.',
+            claudeSubtitle: 'Claude CLI',
+            codexSubtitle: 'Codex CLI',
+            geminiSubtitleExperimental: 'Gemini CLI (experimental)',
+        },
+        tmux: {
+            title: 'Tmux',
+            spawnSessionsTitle: 'Spawn Sessions in Tmux',
+            spawnSessionsEnabledSubtitle: 'Sessions spawn in new tmux windows.',
+            spawnSessionsDisabledSubtitle: 'Sessions spawn in regular shell (no tmux integration)',
+            sessionNamePlaceholder: 'Empty = current/most recent session',
+            tempDirPlaceholder: '/tmp (optional)',
+        },
+        previewMachine: {
+            title: 'Preview Machine',
+            selectMachine: 'Select machine',
+            resolveSubtitle: 'Resolve machine environment variables for this profile.',
+            selectSubtitle: 'Select a machine to preview resolved values.',
+        },
+        environmentVariables: {
+            title: 'Environment Variables',
+            addVariable: 'Add Variable',
+            namePlaceholder: 'Variable name (e.g., MY_CUSTOM_VAR)',
+            valuePlaceholder: 'Value (e.g., my-value or ${MY_VAR})',
+            validation: {
+                nameRequired: 'Enter a variable name.',
+                invalidNameFormat: 'Variable names must be uppercase letters, numbers, and underscores, and cannot start with a number.',
+                duplicateName: 'That variable already exists.',
+            },
+            card: {
+                valueLabel: 'Value:',
+                fallbackValueLabel: 'Fallback value:',
+                valueInputPlaceholder: 'Value',
+                defaultValueInputPlaceholder: 'Default value',
+                secretNotRetrieved: 'Secret value - not retrieved for security',
+                overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
+                    `Overriding documented default: ${expectedValue}`,
+                useMachineEnvToggle: 'Use value from machine environment',
+                resolvedOnSessionStart: 'Resolved when the session starts on the selected machine.',
+                sourceVariableLabel: 'Source variable',
+                sourceVariablePlaceholder: 'Source variable name (e.g., Z_AI_MODEL)',
+                checkingMachine: ({ machine }: { machine: string }) => `Checking ${machine}...`,
+                emptyOnMachine: ({ machine }: { machine: string }) => `Empty on ${machine}`,
+                emptyOnMachineUsingFallback: ({ machine }: { machine: string }) => `Empty on ${machine} (using fallback)`,
+                notFoundOnMachine: ({ machine }: { machine: string }) => `Not found on ${machine}`,
+                notFoundOnMachineUsingFallback: ({ machine }: { machine: string }) => `Not found on ${machine} (using fallback)`,
+                valueFoundOnMachine: ({ machine }: { machine: string }) => `Value found on ${machine}`,
+                differsFromDocumented: ({ expectedValue }: { expectedValue: string }) =>
+                    `Differs from documented value: ${expectedValue}`,
+            },
+            preview: {
+                secretValueHidden: ({ value }: { value: string }) => `${value} - hidden for security`,
+                hiddenValue: '***hidden***',
+                emptyValue: '(empty)',
+                sessionWillReceive: ({ name, value }: { name: string; value: string }) =>
+                    `Session will receive: ${name} = ${value}`,
+            },
+            previewModal: {
+                titleWithProfile: ({ profileName }: { profileName: string }) => `Env Vars · ${profileName}`,
+                descriptionPrefix: 'These environment variables are sent when starting the session. Values are resolved using the daemon on',
+                descriptionFallbackMachine: 'the selected machine',
+                descriptionSuffix: '.',
+                emptyMessage: 'No environment variables are set for this profile.',
+                checkingSuffix: '(checking…)',
+                detail: {
+                    fixed: 'Fixed',
+                    machine: 'Machine',
+                    checking: 'Checking',
+                    fallback: 'Fallback',
+                    missing: 'Missing',
+                },
+            },
+        },
         delete: {
             title: 'Delete Profile',
             message: ({ name }: { name: string }) => `Are you sure you want to delete "${name}"? This action cannot be undone.`,
@@ -935,6 +1060,6 @@ export const en = {
             cancel: 'Cancel',
         },
     }
-} as const;
+};
 
 export type TranslationsEn = typeof en;

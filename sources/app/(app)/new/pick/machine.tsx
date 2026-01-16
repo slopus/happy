@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { CommonActions, useNavigation } from '@react-navigation/native';
+import { Stack, useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, useSessions, useSetting, useSettingMutable } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -28,7 +27,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-export default function MachinePickerScreen() {
+export default React.memo(function MachinePickerScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const router = useRouter();
@@ -50,7 +49,8 @@ export default function MachinePickerScreen() {
         const previousRoute = state?.routes?.[state.index - 1];
         if (state && state.index > 0 && previousRoute) {
             navigation.dispatch({
-                ...CommonActions.setParams({ machineId }),
+                type: 'SET_PARAMS',
+                payload: { params: { machineId } },
                 source: previousRoute.key,
             } as never);
         }
@@ -90,14 +90,14 @@ export default function MachinePickerScreen() {
                 <Stack.Screen
                     options={{
                         headerShown: true,
-                        headerTitle: 'Select Machine',
+                        headerTitle: t('newSession.selectMachineTitle'),
                         headerBackTitle: t('common.back')
                     }}
                 />
                 <View style={styles.container}>
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyText}>
-                            No machines available
+                            {t('newSession.noMachinesFound')}
                         </Text>
                     </View>
                 </View>
@@ -110,7 +110,7 @@ export default function MachinePickerScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    headerTitle: 'Select Machine',
+                    headerTitle: t('newSession.selectMachineTitle'),
                     headerBackTitle: t('common.back')
                 }}
             />
@@ -134,4 +134,4 @@ export default function MachinePickerScreen() {
             </ItemList>
         </>
     );
-}
+});

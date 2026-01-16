@@ -6,6 +6,8 @@ import { Typography } from '@/constants/Typography';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
+import { t } from '@/text';
+import { formatEnvVarTemplate, parseEnvVarTemplate } from '@/utils/envVarTemplate';
 
 export interface EnvironmentVariablesPreviewModalProps {
     environmentVariables: Record<string, string>;
@@ -13,18 +15,6 @@ export interface EnvironmentVariablesPreviewModalProps {
     machineName?: string | null;
     profileName?: string | null;
     onClose: () => void;
-}
-
-function parseTemplateValue(value: string): { sourceVar: string; fallback: string } | null {
-    const withFallback = value.match(/^\$\{([A-Z_][A-Z0-9_]*):[-=](.*)\}$/);
-    if (withFallback) {
-        return { sourceVar: withFallback[1], fallback: withFallback[2] };
-    }
-    const noFallback = value.match(/^\$\{([A-Z_][A-Z0-9_]*)\}$/);
-    if (noFallback) {
-        return { sourceVar: noFallback[1], fallback: '' };
-    }
-    return null;
 }
 
 function isSecretLike(name: string) {
@@ -64,7 +54,7 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
     const refsToQuery = React.useMemo(() => {
         const refs = new Set<string>();
         envVarEntries.forEach((envVar) => {
-            const parsed = parseTemplateValue(envVar.value);
+            const parsed = parseEnvVarTemplate(envVar.value);
             if (parsed?.sourceVar) {
                 // Never fetch secret-like values into UI memory.
                 if (isSecretLike(envVar.name) || isSecretLike(parsed.sourceVar)) return;
@@ -76,8 +66,11 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
 
     const { variables: machineEnv } = useEnvironmentVariables(props.machineId, refsToQuery);
 
-    const title = props.profileName ? `Env Vars · ${props.profileName}` : 'Environment Variables';
+    const title = props.profileName
+        ? t('profiles.environmentVariables.previewModal.titleWithProfile', { profileName: props.profileName })
+        : t('profiles.environmentVariables.title');
     const maxHeight = Math.min(720, Math.max(360, Math.floor(windowHeight * 0.85)));
+    const emptyValue = t('profiles.environmentVariables.preview.emptyValue');
 
     return (
         <View
@@ -139,15 +132,15 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
                         letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
                         ...Typography.default(),
                     }}>
-                        These environment variables are sent when starting the session. Values are resolved using the daemon on{' '}
+                        {t('profiles.environmentVariables.previewModal.descriptionPrefix')}{' '}
                         {props.machineName ? (
                             <Text style={{ color: theme.colors.status.connected, ...Typography.default('semiBold') }}>
                                 {props.machineName}
                             </Text>
                         ) : (
-                            'the selected machine'
+                            t('profiles.environmentVariables.previewModal.descriptionFallbackMachine')
                         )}
-                        .
+                        {t('profiles.environmentVariables.previewModal.descriptionSuffix')}
                     </Text>
                 </View>
 
@@ -160,13 +153,13 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
                             letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
                             ...Typography.default(),
                         }}>
-                            No environment variables are set for this profile.
+                            {t('profiles.environmentVariables.previewModal.emptyMessage')}
                         </Text>
                     </View>
                 ) : (
-                    <ItemGroup title="Environment Variables">
+                    <ItemGroup title={t('profiles.environmentVariables.title')}>
                         {envVarEntries.map((envVar, idx) => {
-                            const parsed = parseTemplateValue(envVar.value);
+                            const parsed = parseEnvVarTemplate(envVar.value);
                             const secret = isSecretLike(envVar.name) || (parsed?.sourceVar ? isSecretLike(parsed.sourceVar) : false);
 
                             const hasMachineContext = Boolean(props.machineId);
@@ -178,38 +171,53 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
                                 displayValue = '•••';
                             } else if (parsed) {
                                 if (!hasMachineContext) {
-                                    displayValue = `\${${parsed.sourceVar}${parsed.fallback ? `:-${parsed.fallback}` : ''}}`;
+                                    displayValue = formatEnvVarTemplate(parsed);
                                 } else if (resolvedValue === undefined) {
-                                    displayValue = `\${${parsed.sourceVar}${parsed.fallback ? `:-${parsed.fallback}` : ''}} (checking…)`;
+                                    displayValue = `${formatEnvVarTemplate(parsed)} ${t('profiles.environmentVariables.previewModal.checkingSuffix')}`;
                                 } else if (resolvedValue === null || resolvedValue === '') {
-                                    displayValue = parsed.fallback ? parsed.fallback : '(empty)';
+                                    displayValue = parsed.fallback ? parsed.fallback : emptyValue;
                                 } else {
                                     displayValue = resolvedValue;
                                 }
                             } else {
-                                displayValue = envVar.value || '(empty)';
+                                displayValue = envVar.value || emptyValue;
                             }
 
-                            const detailLabel = (() => {
+                            type DetailKind = 'fixed' | 'machine' | 'checking' | 'fallback' | 'missing';
+
+                            const detailKind: DetailKind | undefined = (() => {
                                 if (secret) return undefined;
-                                if (!isMachineBased) return 'Fixed';
-                                if (!hasMachineContext) return 'Machine';
-                                if (resolvedValue === undefined) return 'Checking';
-                                if (resolvedValue === null || resolvedValue === '') return parsed?.fallback ? 'Fallback' : 'Missing';
-                                return 'Machine';
+                                if (!isMachineBased) return 'fixed';
+                                if (!hasMachineContext) return 'machine';
+                                if (resolvedValue === undefined) return 'checking';
+                                if (resolvedValue === null || resolvedValue === '') return parsed?.fallback ? 'fallback' : 'missing';
+                                return 'machine';
                             })();
 
-                            const detailColor = (() => {
-                                if (!detailLabel) return theme.colors.textSecondary;
-                                if (detailLabel === 'Machine') return theme.colors.status.connected;
-                                if (detailLabel === 'Fallback' || detailLabel === 'Missing') return theme.colors.warning;
-                                return theme.colors.textSecondary;
+                            const detailLabel = (() => {
+                                if (!detailKind) return undefined;
+                                return detailKind === 'fixed'
+                                    ? t('profiles.environmentVariables.previewModal.detail.fixed')
+                                    : detailKind === 'machine'
+                                        ? t('profiles.environmentVariables.previewModal.detail.machine')
+                                        : detailKind === 'checking'
+                                            ? t('profiles.environmentVariables.previewModal.detail.checking')
+                                            : detailKind === 'fallback'
+                                                ? t('profiles.environmentVariables.previewModal.detail.fallback')
+                                                : t('profiles.environmentVariables.previewModal.detail.missing');
                             })();
+
+                            const detailColor =
+                                detailKind === 'machine'
+                                    ? theme.colors.status.connected
+                                    : detailKind === 'fallback' || detailKind === 'missing'
+                                        ? theme.colors.warning
+                                        : theme.colors.textSecondary;
 
                             const rightElement = (() => {
                                 if (secret) return undefined;
                                 if (!isMachineBased) return undefined;
-                                if (!hasMachineContext || detailLabel === 'Checking') {
+                                if (!hasMachineContext || detailKind === 'checking') {
                                     return <Ionicons name="time-outline" size={18} color={theme.colors.textSecondary} />;
                                 }
                                 return <Ionicons name="desktop-outline" size={18} color={detailColor} />;

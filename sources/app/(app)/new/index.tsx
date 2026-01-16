@@ -5,7 +5,7 @@ import { useAllMachines, storage, useSetting, useSettingMutable, useSessions } f
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
@@ -35,10 +35,9 @@ import { PathSelector } from '@/components/newSession/PathSelector';
 import { SearchHeader } from '@/components/SearchHeader';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
 import { EnvironmentVariablesPreviewModal } from '@/components/newSession/EnvironmentVariablesPreviewModal';
-import { buildProfileGroups } from '@/sync/profileGrouping';
+import { buildProfileGroups, toggleFavoriteProfileId } from '@/sync/profileGrouping';
 import { ItemRowActions } from '@/components/ItemRowActions';
 import { buildProfileActions } from '@/components/profileActions';
-import { CommonActions, useNavigation } from '@react-navigation/native';
 import { consumeProfileIdParam } from '@/profileRouteParams';
 import { getModelOptionsForAgentType } from '@/sync/modelOptions';
 
@@ -52,7 +51,7 @@ const useProfileMap = (profiles: AIBackendProfile[]) => {
 
 // Environment variable transformation helper
 // Returns ALL profile environment variables - daemon will use them as-is
-const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' | 'gemini' = 'claude') => {
+const transformProfileToEnvironmentVars = (profile: AIBackendProfile) => {
     // getProfileEnvironmentVariables already returns ALL env vars from profile
     // including custom environmentVariables array
     return getProfileEnvironmentVariables(profile);
@@ -316,12 +315,8 @@ function NewSessionWizard() {
     }, [favoriteProfileIds, profiles]);
 
     const toggleFavoriteProfile = React.useCallback((profileId: string) => {
-        if (favoriteProfileIdSet.has(profileId)) {
-            setFavoriteProfileIds(favoriteProfileIds.filter((id) => id !== profileId));
-        } else {
-            setFavoriteProfileIds([profileId, ...favoriteProfileIds]);
-        }
-    }, [favoriteProfileIdSet, favoriteProfileIds, setFavoriteProfileIds]);
+        setFavoriteProfileIds(toggleFavoriteProfileId(favoriteProfileIds, profileId));
+    }, [favoriteProfileIds, setFavoriteProfileIds]);
     const machines = useAllMachines();
     const sessions = useSessions();
 
@@ -855,7 +850,15 @@ function NewSessionWizard() {
         }
 
         if (shouldClearParam) {
-            navigation.dispatch(CommonActions.setParams({ profileId: undefined }) as never);
+            const setParams = (navigation as any)?.setParams;
+            if (typeof setParams === 'function') {
+                setParams({ profileId: undefined });
+            } else {
+                navigation.dispatch({
+                    type: 'SET_PARAMS',
+                    payload: { params: { profileId: undefined } },
+                } as never);
+            }
         }
     }, [navigation, profileIdParam, selectedProfileId, selectProfile, useProfiles]);
 
@@ -978,7 +981,7 @@ function NewSessionWizard() {
                 machineName: selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host,
                 profileName: profile.name,
             },
-        } as any);
+        });
     }, [selectedMachine, selectedMachineId]);
 
 	    const renderProfileLeftElement = React.useCallback((profile: AIBackendProfile) => {
@@ -1010,15 +1013,15 @@ function NewSessionWizard() {
 	                        style={{ opacity: isSelected ? 1 : 0 }}
 	                    />
 	                </View>
-	                <ItemRowActions
-	                    title={profile.name}
-	                    actions={actions}
-	                    compactActionIds={envVarCount > 0 ? ['envVars'] : []}
-	                    iconSize={20}
-	                    onActionPressIn={() => {
-	                        ignoreProfileRowPressRef.current = true;
-	                    }}
-	                />
+		                <ItemRowActions
+		                    title={profile.name}
+		                    actions={actions}
+		                    compactActionIds={['favorite', ...(envVarCount > 0 ? ['envVars'] : [])]}
+		                    iconSize={20}
+		                    onActionPressIn={() => {
+		                        ignoreProfileRowPressRef.current = true;
+		                    }}
+		                />
 	            </View>
 	        );
 	    }, [
@@ -1131,8 +1134,8 @@ function NewSessionWizard() {
 
     const selectedProfileEnvVars = React.useMemo(() => {
         if (!selectedProfileForEnvVars) return {};
-        return transformProfileToEnvironmentVars(selectedProfileForEnvVars, agentType) ?? {};
-    }, [agentType, selectedProfileForEnvVars]);
+        return transformProfileToEnvironmentVars(selectedProfileForEnvVars) ?? {};
+    }, [selectedProfileForEnvVars]);
 
     const selectedProfileEnvVarsCount = React.useMemo(() => {
         return Object.keys(selectedProfileEnvVars).length;
@@ -1148,7 +1151,7 @@ function NewSessionWizard() {
                 machineName: selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host,
                 profileName: selectedProfileForEnvVars.name,
             },
-        } as any);
+        });
     }, [selectedMachine, selectedMachineId, selectedProfileEnvVars, selectedProfileForEnvVars]);
 
     // Session creation
@@ -1205,7 +1208,7 @@ function NewSessionWizard() {
             if (profilesActive && selectedProfileId) {
                 const selectedProfile = profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId);
                 if (selectedProfile) {
-                    environmentVariables = transformProfileToEnvironmentVars(selectedProfile, agentType);
+                    environmentVariables = transformProfileToEnvironmentVars(selectedProfile);
                 }
             }
 

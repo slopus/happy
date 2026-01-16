@@ -80,7 +80,7 @@ function MachinePreviewModal(props: MachinePreviewModalProps) {
                     color: theme.colors.text,
                     ...Typography.default('semiBold'),
                 }}>
-                    Preview Machine
+                    {t('profiles.previewMachine.title')}
                 </Text>
 
                 <Pressable
@@ -155,7 +155,7 @@ export function ProfileEditForm({
                 onSelect: setPreviewMachineId,
                 onToggleFavorite: toggleFavoriteMachineId,
             },
-        } as any);
+        });
     }, [favoriteMachines, machines, previewMachineId, toggleFavoriteMachineId]);
 
     const profileDocs = React.useMemo(() => {
@@ -227,7 +227,7 @@ export function ProfileEditForm({
             const next = { ...prev, [key]: !prev[key] };
             const enabledCount = Object.values(next).filter(Boolean).length;
             if (enabledCount === 0) {
-                Modal.alert(t('common.error'), 'Select at least one AI backend.');
+                Modal.alert(t('common.error'), t('profiles.aiBackend.selectAtLeastOneError'));
                 return prev;
             }
             return next;
@@ -250,7 +250,7 @@ export function ProfileEditForm({
 
     const handleSave = React.useCallback(() => {
         if (!name.trim()) {
-            Modal.alert(t('common.error'), 'Enter a profile name.');
+            Modal.alert(t('common.error'), t('profiles.nameRequired'));
             return;
         }
 
@@ -300,25 +300,45 @@ export function ProfileEditForm({
             </ItemGroup>
 
             {profile.isBuiltIn && profileDocs?.setupGuideUrl && (
-                <ItemGroup title="Setup Instructions" footer={profileDocs.description} style={groupStyle}>
+                <ItemGroup title={t('profiles.setupInstructions.title')} footer={profileDocs.description} style={groupStyle}>
                     <Item
-                        title="View Official Setup Guide"
+                        title={t('profiles.setupInstructions.viewOfficialGuide')}
                         icon={<Ionicons name="book-outline" size={29} color={theme.colors.button.secondary.tint} />}
                         onPress={() => void openSetupGuide()}
                     />
                 </ItemGroup>
             )}
 
-            <ItemGroup title="Default Session Type" style={groupStyle}>
+            <ItemGroup title={t('profiles.defaultSessionType')} style={groupStyle}>
                 <SessionTypeSelector value={defaultSessionType} onChange={setDefaultSessionType} title={null} />
             </ItemGroup>
 
-            <ItemGroup title="Default Permission Mode" style={groupStyle}>
+            <ItemGroup title={t('profiles.defaultPermissionMode.title')} style={groupStyle}>
                 {[
-                    { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                    { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                    { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                    { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
+                    {
+                        value: 'default' as PermissionMode,
+                        label: t('agentInput.permissionMode.default'),
+                        description: t('profiles.defaultPermissionMode.descriptions.default'),
+                        icon: 'shield-outline'
+                    },
+                    {
+                        value: 'acceptEdits' as PermissionMode,
+                        label: t('agentInput.permissionMode.acceptEdits'),
+                        description: t('profiles.defaultPermissionMode.descriptions.acceptEdits'),
+                        icon: 'checkmark-outline'
+                    },
+                    {
+                        value: 'plan' as PermissionMode,
+                        label: t('agentInput.permissionMode.plan'),
+                        description: t('profiles.defaultPermissionMode.descriptions.plan'),
+                        icon: 'list-outline'
+                    },
+                    {
+                        value: 'bypassPermissions' as PermissionMode,
+                        label: t('agentInput.permissionMode.bypassPermissions'),
+                        description: t('profiles.defaultPermissionMode.descriptions.bypassPermissions'),
+                        icon: 'flash-outline'
+                    },
                 ].map((option, index, array) => (
                     <Item
                         key={option.value}
@@ -344,18 +364,18 @@ export function ProfileEditForm({
                 ))}
             </ItemGroup>
 
-            <ItemGroup title="AI Backend" style={groupStyle}>
+            <ItemGroup title={t('profiles.aiBackend.title')} style={groupStyle}>
                 <Item
-                    title="Claude"
-                    subtitle="Claude CLI"
+                    title={t('agentInput.agent.claude')}
+                    subtitle={t('profiles.aiBackend.claudeSubtitle')}
                     leftElement={<Ionicons name="sparkles-outline" size={24} color={theme.colors.textSecondary} />}
                     rightElement={<Switch value={compatibility.claude} onValueChange={() => toggleCompatibility('claude')} />}
                     showChevron={false}
                     onPress={() => toggleCompatibility('claude')}
                 />
                 <Item
-                    title="Codex"
-                    subtitle="Codex CLI"
+                    title={t('agentInput.agent.codex')}
+                    subtitle={t('profiles.aiBackend.codexSubtitle')}
                     leftElement={<Ionicons name="terminal-outline" size={24} color={theme.colors.textSecondary} />}
                     rightElement={<Switch value={compatibility.codex} onValueChange={() => toggleCompatibility('codex')} />}
                     showChevron={false}
@@ -363,8 +383,8 @@ export function ProfileEditForm({
                 />
                 {experimentsEnabled && (
                     <Item
-                        title="Gemini"
-                        subtitle="Gemini CLI (experimental)"
+                        title={t('agentInput.agent.gemini')}
+                        subtitle={t('profiles.aiBackend.geminiSubtitleExperimental')}
                         leftElement={<Ionicons name="planet-outline" size={24} color={theme.colors.textSecondary} />}
                         rightElement={<Switch value={compatibility.gemini} onValueChange={() => toggleCompatibility('gemini')} />}
                         showChevron={false}
@@ -374,10 +394,10 @@ export function ProfileEditForm({
                 )}
             </ItemGroup>
 
-            <ItemGroup title="Tmux" style={groupStyle}>
+            <ItemGroup title={t('profiles.tmux.title')} style={groupStyle}>
                 <Item
-                    title="Spawn Sessions in Tmux"
-                    subtitle={useTmux ? 'Sessions spawn in new tmux windows.' : 'Sessions spawn in regular shell (no tmux integration)'}
+                    title={t('profiles.tmux.spawnSessionsTitle')}
+                    subtitle={useTmux ? t('profiles.tmux.spawnSessionsEnabledSubtitle') : t('profiles.tmux.spawnSessionsDisabledSubtitle')}
                     rightElement={<Switch value={useTmux} onValueChange={setUseTmux} />}
                     showChevron={false}
                     onPress={() => setUseTmux((v) => !v)}
@@ -385,20 +405,20 @@ export function ProfileEditForm({
                 {useTmux && (
                     <React.Fragment>
                         <View style={[styles.inputContainer, { paddingTop: 0 }]}>
-                            <Text style={styles.fieldLabel}>Tmux Session Name ({t('common.optional')})</Text>
+                            <Text style={styles.fieldLabel}>{t('profiles.tmuxSession')} ({t('common.optional')})</Text>
                             <TextInput
                                 style={styles.textInput}
-                                placeholder="Empty = current/most recent session"
+                                placeholder={t('profiles.tmux.sessionNamePlaceholder')}
                                 placeholderTextColor={theme.colors.input.placeholder}
                                 value={tmuxSession}
                                 onChangeText={setTmuxSession}
                             />
                         </View>
                         <View style={[styles.inputContainer, { paddingTop: 0, paddingBottom: 16 }]}>
-                            <Text style={styles.fieldLabel}>Tmux Temp Directory ({t('common.optional')})</Text>
+                            <Text style={styles.fieldLabel}>{t('profiles.tmuxTempDir')} ({t('common.optional')})</Text>
                             <TextInput
                                 style={styles.textInput}
-                                placeholder="/tmp (optional)"
+                                placeholder={t('profiles.tmux.tempDirPlaceholder')}
                                 placeholderTextColor={theme.colors.input.placeholder}
                                 value={tmuxTmpDir}
                                 onChangeText={setTmuxTmpDir}
@@ -411,10 +431,10 @@ export function ProfileEditForm({
             </ItemGroup>
 
             {!routeMachine && (
-                <ItemGroup title="Preview Machine" style={groupStyle}>
+                <ItemGroup title={t('profiles.previewMachine.title')} style={groupStyle}>
                     <Item
-                        title={resolvedMachine ? (resolvedMachine.metadata?.displayName || resolvedMachine.metadata?.host || resolvedMachine.id) : 'Select machine'}
-                        subtitle={resolvedMachine ? 'Resolve machine environment variables for this profile.' : 'Select a machine to preview resolved values.'}
+                        title={resolvedMachine ? (resolvedMachine.metadata?.displayName || resolvedMachine.metadata?.host || resolvedMachine.id) : t('profiles.previewMachine.selectMachine')}
+                        subtitle={resolvedMachine ? t('profiles.previewMachine.resolveSubtitle') : t('profiles.previewMachine.selectSubtitle')}
                         icon={<Ionicons name="desktop-outline" size={29} color={theme.colors.button.secondary.tint} />}
                         onPress={showMachinePreviewPicker}
                     />

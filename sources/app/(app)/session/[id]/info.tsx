@@ -326,9 +326,9 @@ function SessionInfoContent({ session }: { session: Session }) {
 	                            title={t('sessionInfo.aiProvider')}
 	                            subtitle={(() => {
 	                                const flavor = session.metadata.flavor || 'claude';
-	                                if (flavor === 'claude') return 'Claude';
-	                                if (flavor === 'gpt' || flavor === 'openai') return 'Codex';
-	                                if (flavor === 'gemini') return 'Gemini';
+	                                if (flavor === 'claude') return t('agentInput.agent.claude');
+	                                if (flavor === 'gpt' || flavor === 'openai') return t('agentInput.agent.codex');
+	                                if (flavor === 'gemini') return t('agentInput.agent.gemini');
 	                                return flavor;
 	                            })()}
 	                            icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
@@ -336,7 +336,7 @@ function SessionInfoContent({ session }: { session: Session }) {
 	                        />
                             {useProfiles && session.metadata?.profileId !== undefined && (
                                 <Item
-                                    title="AI Profile"
+                                    title={t('sessionInfo.aiProfile')}
                                     detail={profileLabel}
                                     icon={<Ionicons name="person-circle-outline" size={29} color="#5856D6" />}
                                     showChevron={false}

@@ -421,23 +421,38 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         const mode = props.permissionMode ?? 'default';
 
         if (isCodex) {
-            return mode === 'default' ? 'CLI' :
-                mode === 'read-only' ? 'RO' :
-                    mode === 'safe-yolo' ? 'Safe' :
-                        mode === 'yolo' ? 'YOLO' : '';
+            return mode === 'default'
+                ? t('agentInput.codexPermissionMode.default')
+                : mode === 'read-only'
+                    ? t('agentInput.codexPermissionMode.readOnly')
+                    : mode === 'safe-yolo'
+                        ? t('agentInput.codexPermissionMode.safeYolo')
+                        : mode === 'yolo'
+                            ? t('agentInput.codexPermissionMode.yolo')
+                            : '';
         }
 
         if (isGemini) {
-            return mode === 'default' ? t('agentInput.geminiPermissionMode.default') :
-                mode === 'read-only' ? 'RO' :
-                    mode === 'safe-yolo' ? 'Safe' :
-                        mode === 'yolo' ? 'YOLO' : '';
+            return mode === 'default'
+                ? t('agentInput.geminiPermissionMode.default')
+                : mode === 'read-only'
+                    ? t('agentInput.geminiPermissionMode.readOnly')
+                    : mode === 'safe-yolo'
+                        ? t('agentInput.geminiPermissionMode.safeYolo')
+                        : mode === 'yolo'
+                            ? t('agentInput.geminiPermissionMode.yolo')
+                            : '';
         }
 
-        return mode === 'default' ? t('agentInput.permissionMode.default') :
-            mode === 'acceptEdits' ? 'Accept' :
-                mode === 'bypassPermissions' ? 'YOLO' :
-                    mode === 'plan' ? 'Plan' : '';
+        return mode === 'default'
+            ? t('agentInput.permissionMode.default')
+            : mode === 'acceptEdits'
+                ? t('agentInput.permissionMode.acceptEdits')
+                : mode === 'plan'
+                    ? t('agentInput.permissionMode.plan')
+                    : mode === 'bypassPermissions'
+                        ? t('agentInput.permissionMode.bypassPermissions')
+                        : '';
     }, [isCodex, isGemini, props.permissionMode]);
 
     // Handle settings button press
@@ -527,7 +542,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
                 const modeOrder: PermissionMode[] = isCodex
                     ? ['default', 'read-only', 'safe-yolo', 'yolo']
-                    : ['default', 'acceptEdits', 'plan', 'bypassPermissions']; // Claude and Gemini share same modes
+                    : isGemini
+                        ? ['default', 'read-only', 'safe-yolo', 'yolo']
+                        : ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
                 const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
                 const nextIndex = (currentIndex + 1) % modeOrder.length;
                 props.onPermissionModeChange(modeOrder[nextIndex]);

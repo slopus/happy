@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Pressable } from 'react-native';
+import { View, Pressable, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -60,7 +60,7 @@ export function PathSelector({
     const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const styles = stylesheet;
     const inputRef = useRef<MultiTextInputHandle>(null);
-    const searchInputRef = useRef<any>(null);
+    const searchInputRef = useRef<TextInput>(null);
     const searchWasFocusedRef = useRef(false);
 
     const [uncontrolledSearchQuery, setUncontrolledSearchQuery] = useState('');

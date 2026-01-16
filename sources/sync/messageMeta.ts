@@ -12,7 +12,7 @@ export function buildOutgoingMessageMeta(params: {
         sentFrom: params.sentFrom,
         permissionMode: params.permissionMode,
         appendSystemPrompt: params.appendSystemPrompt,
-        ...(params.displayText ? { displayText: params.displayText } : {}),
+        ...(params.displayText !== undefined ? { displayText: params.displayText } : {}),
         ...(params.model !== undefined ? { model: params.model } : {}),
         ...(params.fallbackModel !== undefined ? { fallbackModel: params.fallbackModel } : {}),
     };

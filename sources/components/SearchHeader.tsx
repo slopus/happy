@@ -102,7 +102,7 @@ export function SearchHeader({
                         onBlur={onBlur}
                         style={styles.textInput}
                     />
-                    {value.trim().length > 0 && (
+                    {value.length > 0 && (
                         <Ionicons
                             name="close-circle"
                             size={20}

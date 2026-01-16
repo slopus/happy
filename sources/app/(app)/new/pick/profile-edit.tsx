@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { CommonActions, useNavigation } from '@react-navigation/native';
+import { Stack, useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
 import { useHeaderHeight } from '@react-navigation/elements';
@@ -15,7 +14,7 @@ import { DEFAULT_PROFILES, getBuiltInProfile } from '@/sync/profileUtils';
 import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 import { Modal } from '@/modal';
 
-export default function ProfileEditScreen() {
+export default React.memo(function ProfileEditScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
     const navigation = useNavigation();
@@ -77,9 +76,9 @@ export default function ProfileEditScreen() {
 
     const confirmDiscard = React.useCallback(async () => {
         return Modal.confirm(
-            'Discard changes?',
-            'You have unsaved changes. Discard them?',
-            { destructive: true, confirmText: 'Discard', cancelText: 'Keep editing' },
+            t('common.discardChanges'),
+            t('common.unsavedChangesWarning'),
+            { destructive: true, confirmText: t('common.discard'), cancelText: t('common.keepEditing') },
         );
     }, []);
 
@@ -103,7 +102,7 @@ export default function ProfileEditScreen() {
 
     const handleSave = (savedProfile: AIBackendProfile) => {
         if (!savedProfile.name || savedProfile.name.trim() === '') {
-            Modal.alert(t('common.error'), 'Enter a profile name.');
+            Modal.alert(t('common.error'), t('profiles.nameRequired'));
             return;
         }
 
@@ -125,7 +124,7 @@ export default function ProfileEditScreen() {
             return p.id !== profileToSave.id && p.name.trim() === profileToSave.name.trim();
         });
         if (isDuplicateName) {
-            Modal.alert(t('common.error'), 'A profile with that name already exists.');
+            Modal.alert(t('common.error'), t('profiles.duplicateName'));
             return;
         }
 
@@ -157,7 +156,8 @@ export default function ProfileEditScreen() {
         const previousRoute = state?.routes?.[state.index - 1];
         if (state && state.index > 0 && previousRoute) {
             (navigation as any).dispatch({
-                ...CommonActions.setParams({ profileId: profileToSave.id }),
+                type: 'SET_PARAMS',
+                payload: { params: { profileId: profileToSave.id } },
                 source: previousRoute.key,
             } as never);
         }
@@ -210,7 +210,7 @@ export default function ProfileEditScreen() {
             </View>
         </KeyboardAvoidingView>
     );
-}
+});
 
 const profileEditScreenStyles = StyleSheet.create((theme, rt) => ({
     container: {

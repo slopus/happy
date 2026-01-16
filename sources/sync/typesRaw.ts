@@ -738,7 +738,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     content: [{
                         type: 'tool-result',
                         tool_use_id: raw.content.data.callId,
-                        content: raw.content.data.output,
+                        content: toolResultContentToText(raw.content.data.output),
                         is_error: raw.content.data.isError ?? false,
                         uuid: raw.content.data.id,
                         parentUUID: null
@@ -757,7 +757,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     content: [{
                         type: 'tool-result',
                         tool_use_id: raw.content.data.callId,
-                        content: raw.content.data.output,
+                        content: toolResultContentToText(raw.content.data.output),
                         is_error: false,
                         uuid: raw.content.data.id,
                         parentUUID: null

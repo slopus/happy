@@ -16,7 +16,7 @@ import { ItemRowActions } from '@/components/ItemRowActions';
 import { buildProfileActions } from '@/components/profileActions';
 import { Switch } from '@/components/Switch';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
-import { buildProfileGroups } from '@/sync/profileGrouping';
+import { buildProfileGroups, toggleFavoriteProfileId } from '@/sync/profileGrouping';
 import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 import { useSetting } from '@/sync/storage';
 
@@ -42,30 +42,6 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     React.useEffect(() => {
         isEditingDirtyRef.current = isEditingDirty;
     }, [isEditingDirty]);
-
-    if (!useProfiles) {
-        return (
-            <ItemList style={{ paddingTop: 0 }}>
-                <ItemGroup
-                    title={t('settingsFeatures.profiles')}
-                    footer={t('settingsFeatures.profilesDisabled')}
-                >
-                    <Item
-                        title={t('settingsFeatures.profiles')}
-                        subtitle={t('settingsFeatures.profilesDisabled')}
-                        icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
-                        rightElement={
-                            <Switch
-                                value={useProfiles}
-                                onValueChange={setUseProfiles}
-                            />
-                        }
-                        showChevron={false}
-                    />
-                </ItemGroup>
-            </ItemList>
-        );
-    }
 
     const handleAddProfile = () => {
         setEditingProfile(createEmptyCustomProfile());
@@ -95,9 +71,9 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                 return;
             }
             const discard = await Modal.confirm(
-                'Discard changes?',
-                'You have unsaved changes. Discard them?',
-                { destructive: true, confirmText: 'Discard', cancelText: 'Keep editing' },
+                t('common.discardChanges'),
+                t('common.unsavedChangesWarning'),
+                { destructive: true, confirmText: t('common.discard'), cancelText: t('common.keepEditing') },
             );
             if (discard) {
                 isEditingDirtyRef.current = false;
@@ -158,11 +134,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     }, [favoriteProfileIds, profiles]);
 
     const toggleFavoriteProfile = (profileId: string) => {
-        if (favoriteProfileIdSet.has(profileId)) {
-            setFavoriteProfileIds(favoriteProfileIds.filter((id) => id !== profileId));
-        } else {
-            setFavoriteProfileIds([profileId, ...favoriteProfileIds]);
-        }
+        setFavoriteProfileIds(toggleFavoriteProfileId(favoriteProfileIds, profileId));
     };
 
     const getProfileBackendSubtitle = React.useCallback((profile: Pick<AIBackendProfile, 'compatibility'>) => {
@@ -176,7 +148,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     const handleSaveProfile = (profile: AIBackendProfile) => {
         // Profile validation - ensure name is not empty
         if (!profile.name || profile.name.trim() === '') {
-            Modal.alert(t('common.error'), 'Enter a profile name.');
+            Modal.alert(t('common.error'), t('profiles.nameRequired'));
             return;
         }
 
@@ -192,7 +164,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                 p.name.trim() === newProfile.name.trim()
             );
             if (isDuplicate) {
-                Modal.alert(t('common.error'), 'A profile with that name already exists.');
+                Modal.alert(t('common.error'), t('profiles.duplicateName'));
                 return;
             }
 
@@ -204,7 +176,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                 p.id !== profile.id && p.name.trim() === profile.name.trim()
             );
             if (isDuplicate) {
-                Modal.alert(t('common.error'), 'A profile with that name already exists.');
+                Modal.alert(t('common.error'), t('profiles.duplicateName'));
                 return;
             }
 
@@ -229,11 +201,35 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
         closeEditor();
     };
 
+    if (!useProfiles) {
+        return (
+            <ItemList style={{ paddingTop: 0 }}>
+                <ItemGroup
+                    title={t('settingsFeatures.profiles')}
+                    footer={t('settingsFeatures.profilesDisabled')}
+                >
+                    <Item
+                        title={t('settingsFeatures.profiles')}
+                        subtitle={t('settingsFeatures.profilesDisabled')}
+                        icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
+                        rightElement={
+                            <Switch
+                                value={useProfiles}
+                                onValueChange={setUseProfiles}
+                            />
+                        }
+                        showChevron={false}
+                    />
+                </ItemGroup>
+            </ItemList>
+        );
+    }
+
     return (
         <View style={{ flex: 1 }}>
             <ItemList style={{ paddingTop: 0 }}>
                 {favoriteProfileItems.length > 0 && (
-                    <ItemGroup title="Favorites">
+                    <ItemGroup title={t('profiles.groups.favorites')}>
 	                        {favoriteProfileItems.map((profile) => {
 	                            const isSelected = selectedProfileId === profile.id;
 	                            const isFavorite = favoriteProfileIdSet.has(profile.id);
@@ -281,7 +277,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                 )}
 
                 {nonFavoriteCustomProfiles.length > 0 && (
-                    <ItemGroup title="Your Profiles">
+                    <ItemGroup title={t('profiles.groups.custom')}>
 	                        {nonFavoriteCustomProfiles.map((profile) => {
 	                            const isSelected = selectedProfileId === profile.id;
 	                            const isFavorite = favoriteProfileIdSet.has(profile.id);
@@ -328,7 +324,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                     </ItemGroup>
                 )}
 
-                <ItemGroup title="Built-in Profiles" footer={t('profiles.subtitle')}>
+                <ItemGroup title={t('profiles.groups.builtIn')} footer={t('profiles.subtitle')}>
 	                    {nonFavoriteBuiltInProfiles.map((profile) => {
 	                        const isSelected = selectedProfileId === profile.id;
 	                        const isFavorite = favoriteProfileIdSet.has(profile.id);

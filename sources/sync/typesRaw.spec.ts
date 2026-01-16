@@ -1489,4 +1489,58 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
     });
+
+    describe('ACP tool result normalization', () => {
+        it('normalizes ACP tool-result output to text', () => {
+            const raw = {
+                role: 'agent' as const,
+                content: {
+                    type: 'acp' as const,
+                    provider: 'gemini' as const,
+                    data: {
+                        type: 'tool-result' as const,
+                        callId: 'call_abc123',
+                        output: [{ type: 'text', text: 'hello' }],
+                        id: 'acp-msg-1',
+                    },
+                },
+            };
+
+            const normalized = normalizeRawMessage('msg-1', null, Date.now(), raw);
+            expect(normalized?.role).toBe('agent');
+            if (normalized && normalized.role === 'agent') {
+                const item = normalized.content[0];
+                expect(item.type).toBe('tool-result');
+                if (item.type === 'tool-result') {
+                    expect(item.content).toBe('hello');
+                }
+            }
+        });
+
+        it('normalizes ACP tool-call-result output to text', () => {
+            const raw = {
+                role: 'agent' as const,
+                content: {
+                    type: 'acp' as const,
+                    provider: 'gemini' as const,
+                    data: {
+                        type: 'tool-call-result' as const,
+                        callId: 'call_abc123',
+                        output: [{ type: 'text', text: 'hello' }],
+                        id: 'acp-msg-2',
+                    },
+                },
+            };
+
+            const normalized = normalizeRawMessage('msg-2', null, Date.now(), raw);
+            expect(normalized?.role).toBe('agent');
+            if (normalized && normalized.role === 'agent') {
+                const item = normalized.content[0];
+                expect(item.type).toBe('tool-result');
+                if (item.type === 'tool-result') {
+                    expect(item.content).toBe('hello');
+                }
+            }
+        });
+    });
 });

@@ -8,7 +8,6 @@ import * as z from 'zod';
 const TmuxConfigSchema = z.object({
     sessionName: z.string().optional(),
     tmpDir: z.string().optional(),
-    updateEnvironment: z.boolean().optional(),
 });
 
 // Environment variables schema with validation
@@ -170,9 +169,6 @@ export function getProfileEnvironmentVariables(profile: AIBackendProfile): Recor
         if (profile.tmuxConfig.sessionName !== undefined) envVars.TMUX_SESSION_NAME = profile.tmuxConfig.sessionName;
         // Empty string may be valid for tmpDir to use tmux defaults
         if (profile.tmuxConfig.tmpDir !== undefined) envVars.TMUX_TMPDIR = profile.tmuxConfig.tmpDir;
-        if (profile.tmuxConfig.updateEnvironment !== undefined) {
-            envVars.TMUX_UPDATE_ENVIRONMENT = profile.tmuxConfig.updateEnvironment.toString();
-        }
     }
 
     return envVars;

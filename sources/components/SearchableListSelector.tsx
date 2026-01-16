@@ -315,7 +315,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 <ItemGroup title={config.recentSectionTitle}>
                     {effectiveSearchPlacement === 'recent' && searchNodeEmbedded}
                     {recentItemsToShow.length === 0
-                        ? renderEmptyRow(showNoMatches ? 'No matches' : config.noItemsMessage)
+                        ? renderEmptyRow(showNoMatches ? t('common.noMatches') : config.noItemsMessage)
                         : recentItemsToShow.map((item, index, arr) => {
                             const itemId = config.getItemId(item);
                             const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
@@ -349,7 +349,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 <ItemGroup title={config.favoritesSectionTitle}>
                     {effectiveSearchPlacement === 'favorites' && searchNodeEmbedded}
                     {filteredFavoriteItems.length === 0
-                        ? renderEmptyRow(showNoMatches ? 'No matches' : config.noItemsMessage)
+                        ? renderEmptyRow(showNoMatches ? t('common.noMatches') : config.noItemsMessage)
                         : filteredFavoriteItems.map((item, index) => {
                             const itemId = config.getItemId(item);
                             const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
@@ -364,7 +364,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 <ItemGroup title={config.allSectionTitle ?? config.recentSectionTitle.replace('Recent ', 'All ')}>
                     {effectiveSearchPlacement === 'all' && searchNodeEmbedded}
                     {filteredItems.length === 0
-                        ? renderEmptyRow(showNoMatches ? 'No matches' : config.noItemsMessage)
+                        ? renderEmptyRow(showNoMatches ? t('common.noMatches') : config.noItemsMessage)
                         : filteredItems.map((item, index) => {
                             const itemId = config.getItemId(item);
                             const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
@@ -378,7 +378,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
             {!shouldRenderRecentGroup && !shouldRenderFavoritesGroup && !shouldRenderAllGroup && (
                 <ItemGroup>
                     {effectiveSearchPlacement !== 'header' && searchNodeEmbedded}
-                    {renderEmptyRow(showNoMatches ? 'No matches' : config.noItemsMessage)}
+                    {renderEmptyRow(showNoMatches ? t('common.noMatches') : config.noItemsMessage)}
                 </ItemGroup>
             )}
         </>

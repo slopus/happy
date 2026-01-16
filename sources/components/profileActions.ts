@@ -1,5 +1,6 @@
 import type { ItemAction } from '@/components/ItemActionsMenuModal';
 import type { AIBackendProfile } from '@/sync/settings';
+import { t } from '@/text';
 
 export function buildProfileActions(params: {
     profile: AIBackendProfile;
@@ -17,7 +18,7 @@ export function buildProfileActions(params: {
     if (params.onViewEnvironmentVariables) {
         actions.push({
             id: 'envVars',
-            title: 'View environment variables',
+            title: t('profiles.actions.viewEnvironmentVariables'),
             icon: 'list-outline',
             onPress: params.onViewEnvironmentVariables,
         });
@@ -26,7 +27,7 @@ export function buildProfileActions(params: {
     const favoriteColor = params.isFavorite ? params.favoriteActionColor : params.nonFavoriteActionColor;
     const favoriteAction: ItemAction = {
         id: 'favorite',
-        title: params.isFavorite ? 'Remove from favorites' : 'Add to favorites',
+        title: params.isFavorite ? t('profiles.actions.removeFromFavorites') : t('profiles.actions.addToFavorites'),
         icon: params.isFavorite ? 'star' : 'star-outline',
         onPress: params.onToggleFavorite,
     };
@@ -37,14 +38,14 @@ export function buildProfileActions(params: {
 
     actions.push({
         id: 'edit',
-        title: 'Edit profile',
+        title: t('profiles.actions.editProfile'),
         icon: 'create-outline',
         onPress: params.onEdit,
     });
 
     actions.push({
         id: 'copy',
-        title: 'Duplicate profile',
+        title: t('profiles.actions.duplicateProfile'),
         icon: 'copy-outline',
         onPress: params.onDuplicate,
     });
@@ -52,7 +53,7 @@ export function buildProfileActions(params: {
     if (!params.profile.isBuiltIn && params.onDelete) {
         actions.push({
             id: 'delete',
-            title: 'Delete profile',
+            title: t('profiles.actions.deleteProfile'),
             icon: 'trash-outline',
             destructive: true,
             onPress: params.onDelete,
@@ -61,4 +62,3 @@ export function buildProfileActions(params: {
 
     return actions;
 }
-

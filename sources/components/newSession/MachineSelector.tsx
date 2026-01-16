@@ -4,6 +4,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { SearchableListSelector } from '@/components/SearchableListSelector';
 import type { Machine } from '@/sync/storageTypes';
 import { isMachineOnline } from '@/utils/machineUtils';
+import { t } from '@/text';
 
 export interface MachineSelectorProps {
     machines: Machine[];
@@ -34,11 +35,11 @@ export function MachineSelector({
     showRecent = true,
     showSearch = true,
     searchPlacement = 'header',
-    searchPlaceholder = 'Type to filter machines...',
-    recentSectionTitle = 'Recent Machines',
-    favoritesSectionTitle = 'Favorite Machines',
-    allSectionTitle = 'All Machines',
-    noItemsMessage = 'No machines available',
+    searchPlaceholder = t('newSession.machinePicker.searchPlaceholder'),
+    recentSectionTitle = t('newSession.machinePicker.recentTitle'),
+    favoritesSectionTitle = t('newSession.machinePicker.favoritesTitle'),
+    allSectionTitle = t('newSession.machinePicker.allTitle'),
+    noItemsMessage = t('newSession.machinePicker.emptyMessage'),
 }: MachineSelectorProps) {
     const { theme } = useUnistyles();
 
@@ -65,7 +66,7 @@ export function MachineSelector({
                 getItemStatus: (machine) => {
                     const offline = !isMachineOnline(machine);
                     return {
-                        text: offline ? 'offline' : 'online',
+                        text: offline ? t('status.offline') : t('status.online'),
                         color: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
                         dotColor: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
                         isPulsing: !offline,

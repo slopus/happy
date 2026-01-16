@@ -27,4 +27,16 @@ describe('buildOutgoingMessageMeta', () => {
         expect(meta.model).toBe('gemini-2.5-pro');
         expect('model' in meta).toBe(true);
     });
+
+    it('includes displayText when explicitly provided (including empty string)', () => {
+        const meta = buildOutgoingMessageMeta({
+            sentFrom: 'web',
+            permissionMode: 'default',
+            appendSystemPrompt: 'PROMPT',
+            displayText: '',
+        });
+
+        expect('displayText' in meta).toBe(true);
+        expect(meta.displayText).toBe('');
+    });
 });

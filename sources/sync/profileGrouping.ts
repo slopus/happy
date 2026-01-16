@@ -13,6 +13,27 @@ function isProfile(profile: AIBackendProfile | null | undefined): profile is AIB
     return Boolean(profile);
 }
 
+export function toggleFavoriteProfileId(favoriteProfileIds: string[], profileId: string): string[] {
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+    for (const id of favoriteProfileIds) {
+        if (!id) continue;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        normalized.push(id);
+    }
+
+    if (!profileId) {
+        return normalized;
+    }
+
+    if (seen.has(profileId)) {
+        return normalized.filter((id) => id !== profileId);
+    }
+
+    return [profileId, ...normalized];
+}
+
 export function buildProfileGroups({
     customProfiles,
     favoriteProfileIds,

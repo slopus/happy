@@ -38,7 +38,7 @@ export function ItemRowActions(props: ItemRowActionsProps) {
                 title: props.title,
                 actions: overflowActions,
             },
-        } as any);
+        });
     }, [overflowActions, props.title]);
 
     const iconSize = props.iconSize ?? 20;

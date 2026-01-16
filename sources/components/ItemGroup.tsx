@@ -10,6 +10,9 @@ import {
 import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { withItemGroupDividers } from './ItemGroup.dividers';
+
+export { withItemGroupDividers } from './ItemGroup.dividers';
 
 export const ItemGroupSelectionContext = React.createContext<{ selectableItemCount: number } | null>(null);
 
@@ -138,21 +141,7 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
                 {/* Content Container */}
                 <View style={[styles.contentContainer, containerStyle]}>
                     <ItemGroupSelectionContext.Provider value={{ selectableItemCount }}>
-                        {React.Children.map(children, (child, index) => {
-                            if (React.isValidElement<ItemChildProps>(child)) {
-                                // Don't add props to React.Fragment
-                                if (child.type === React.Fragment) {
-                                    return child;
-                                }
-                                const isLast = index === React.Children.count(children) - 1;
-                                const childProps = child.props as ItemChildProps;
-                                return React.cloneElement(child, {
-                                    ...childProps,
-                                    showDivider: !isLast && childProps.showDivider !== false
-                                });
-                            }
-                            return child;
-                        })}
+                        {withItemGroupDividers(children)}
                     </ItemGroupSelectionContext.Provider>
                 </View>
 

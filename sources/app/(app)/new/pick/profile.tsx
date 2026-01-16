@@ -1,6 +1,5 @@
 import React from 'react';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { CommonActions, useNavigation } from '@react-navigation/native';
+import { Stack, useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
@@ -12,11 +11,11 @@ import { useUnistyles } from 'react-native-unistyles';
 import { AIBackendProfile } from '@/sync/settings';
 import { Modal } from '@/modal';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
-import { buildProfileGroups } from '@/sync/profileGrouping';
+import { buildProfileGroups, toggleFavoriteProfileId } from '@/sync/profileGrouping';
 import { ItemRowActions } from '@/components/ItemRowActions';
 import { buildProfileActions } from '@/components/profileActions';
 
-export default function ProfilePickerScreen() {
+export default React.memo(function ProfilePickerScreen() {
     const { theme, rt } = useUnistyles();
     const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const router = useRouter();
@@ -30,6 +29,7 @@ export default function ProfilePickerScreen() {
     const selectedId = typeof params.selectedId === 'string' ? params.selectedId : '';
     const machineId = typeof params.machineId === 'string' ? params.machineId : undefined;
     const profileId = Array.isArray(params.profileId) ? params.profileId[0] : params.profileId;
+    const ignoreProfileRowPressRef = React.useRef(false);
 
     const renderProfileIcon = React.useCallback((profile: AIBackendProfile) => {
         return <ProfileCompatibilityIcon profile={profile} />;
@@ -46,7 +46,8 @@ export default function ProfilePickerScreen() {
     const getProfileSubtitle = React.useCallback((profile: AIBackendProfile) => {
         const backend = getProfileBackendSubtitle(profile);
         if (profile.isBuiltIn) {
-            return backend ? `Built-in · ${backend}` : 'Built-in';
+            const builtInLabel = t('profiles.builtIn');
+            return backend ? `${builtInLabel} · ${backend}` : builtInLabel;
         }
         return backend;
     }, [getProfileBackendSubtitle]);
@@ -56,12 +57,21 @@ export default function ProfilePickerScreen() {
         const previousRoute = state?.routes?.[state.index - 1];
         if (state && state.index > 0 && previousRoute) {
             navigation.dispatch({
-                ...CommonActions.setParams({ profileId }),
+                type: 'SET_PARAMS',
+                payload: { params: { profileId } },
                 source: previousRoute.key,
             } as never);
         }
         router.back();
     }, [navigation, router]);
+
+    const handleProfileRowPress = React.useCallback((profileId: string) => {
+        if (ignoreProfileRowPressRef.current) {
+            ignoreProfileRowPressRef.current = false;
+            return;
+        }
+        setProfileParamAndClose(profileId);
+    }, [setProfileParamAndClose]);
 
     React.useEffect(() => {
         if (typeof profileId === 'string' && profileId.length > 0) {
@@ -70,18 +80,24 @@ export default function ProfilePickerScreen() {
     }, [profileId, setProfileParamAndClose]);
 
     const openProfileCreate = React.useCallback(() => {
-        const base = '/new/pick/profile-edit';
-        router.push(machineId ? `${base}?machineId=${encodeURIComponent(machineId)}` as any : base as any);
+        router.push({
+            pathname: '/new/pick/profile-edit',
+            params: machineId ? { machineId } : {},
+        });
     }, [machineId, router]);
 
     const openProfileEdit = React.useCallback((profileId: string) => {
-        const base = `/new/pick/profile-edit?profileId=${encodeURIComponent(profileId)}`;
-        router.push(machineId ? `${base}&machineId=${encodeURIComponent(machineId)}` as any : base as any);
+        router.push({
+            pathname: '/new/pick/profile-edit',
+            params: machineId ? { profileId, machineId } : { profileId },
+        });
     }, [machineId, router]);
 
     const openProfileDuplicate = React.useCallback((cloneFromProfileId: string) => {
-        const base = `/new/pick/profile-edit?cloneFromProfileId=${encodeURIComponent(cloneFromProfileId)}`;
-        router.push(machineId ? `${base}&machineId=${encodeURIComponent(machineId)}` as any : base as any);
+        router.push({
+            pathname: '/new/pick/profile-edit',
+            params: machineId ? { cloneFromProfileId, machineId } : { cloneFromProfileId },
+        });
     }, [machineId, router]);
 
     const {
@@ -94,12 +110,8 @@ export default function ProfilePickerScreen() {
     }, [favoriteProfileIds, profiles]);
 
     const toggleFavoriteProfile = React.useCallback((profileId: string) => {
-        if (favoriteProfileIdSet.has(profileId)) {
-            setFavoriteProfileIds(favoriteProfileIds.filter((id) => id !== profileId));
-        } else {
-            setFavoriteProfileIds([profileId, ...favoriteProfileIds]);
-        }
-    }, [favoriteProfileIdSet, favoriteProfileIds, setFavoriteProfileIds]);
+        setFavoriteProfileIds(toggleFavoriteProfileId(favoriteProfileIds, profileId));
+    }, [favoriteProfileIds, setFavoriteProfileIds]);
 
     const handleAddProfile = React.useCallback(() => {
         openProfileCreate();
@@ -127,10 +139,10 @@ export default function ProfilePickerScreen() {
         );
     }, [profiles, selectedId, setProfileParamAndClose, setProfiles]);
 
-    const renderProfileRowRightElement = React.useCallback(
-        (profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
-            const actions = buildProfileActions({
-                profile,
+	    const renderProfileRowRightElement = React.useCallback(
+	        (profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
+	            const actions = buildProfileActions({
+	                profile,
                 isFavorite,
                 favoriteActionColor: theme.colors.text,
                 nonFavoriteActionColor: theme.colors.textSecondary,
@@ -140,25 +152,28 @@ export default function ProfilePickerScreen() {
                 onDelete: () => handleDeleteProfile(profile),
             });
 
-            return (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                    <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                        <Ionicons
+	            return (
+	                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+	                    <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+	                        <Ionicons
                             name="checkmark-circle"
                             size={24}
                             color={theme.colors.text}
                             style={{ opacity: isSelected ? 1 : 0 }}
                         />
-                    </View>
-                    <ItemRowActions
-                        title={profile.name}
-                        actions={actions}
-                        compactActionIds={['edit']}
-                        iconSize={20}
-                    />
-                </View>
-            );
-        },
+	                    </View>
+	                    <ItemRowActions
+	                        title={profile.name}
+	                        actions={actions}
+	                        compactActionIds={['favorite', 'edit']}
+	                        iconSize={20}
+	                        onActionPressIn={() => {
+	                            ignoreProfileRowPressRef.current = true;
+	                        }}
+	                    />
+	                </View>
+	            );
+	        },
         [
             handleDeleteProfile,
             openProfileEdit,
@@ -198,21 +213,21 @@ export default function ProfilePickerScreen() {
                 ) : (
                     <>
                         {favoriteProfileItems.length > 0 && (
-                            <ItemGroup title="Favorites">
+                            <ItemGroup title={t('profiles.groups.favorites')}>
                                 {favoriteProfileItems.map((profile, index) => {
                                     const isSelected = selectedId === profile.id;
                                     const isLast = index === favoriteProfileItems.length - 1;
                                     return (
-		                                        <Item
-		                                            key={profile.id}
-		                                            title={profile.name}
-		                                            subtitle={getProfileSubtitle(profile)}
-		                                            icon={renderProfileIcon(profile)}
-		                                            onPress={() => setProfileParamAndClose(profile.id)}
-		                                            showChevron={false}
-		                                            selected={isSelected}
-	                                            rightElement={renderProfileRowRightElement(profile, isSelected, true)}
-	                                            showDivider={!isLast}
+	                                        <Item
+	                                            key={profile.id}
+	                                            title={profile.name}
+	                                            subtitle={getProfileSubtitle(profile)}
+	                                            icon={renderProfileIcon(profile)}
+	                                            onPress={() => handleProfileRowPress(profile.id)}
+	                                            showChevron={false}
+	                                            selected={isSelected}
+		                                            rightElement={renderProfileRowRightElement(profile, isSelected, true)}
+		                                            showDivider={!isLast}
 	                                        />
                                     );
                                 })}
@@ -220,38 +235,38 @@ export default function ProfilePickerScreen() {
                         )}
 
                         {nonFavoriteCustomProfiles.length > 0 && (
-                            <ItemGroup title="Your AI Profiles">
+                            <ItemGroup title={t('profiles.groups.custom')}>
                                 {nonFavoriteCustomProfiles.map((profile, index) => {
                                     const isSelected = selectedId === profile.id;
                                     const isLast = index === nonFavoriteCustomProfiles.length - 1;
                                     const isFavorite = favoriteProfileIdSet.has(profile.id);
                                     return (
-		                                    <Item
-		                                        key={profile.id}
-		                                        title={profile.name}
-		                                        subtitle={getProfileSubtitle(profile)}
-		                                        icon={renderProfileIcon(profile)}
-		                                        onPress={() => setProfileParamAndClose(profile.id)}
-		                                        showChevron={false}
-		                                            selected={isSelected}
-	                                            rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
-	                                            showDivider={!isLast}
+			                                    <Item
+			                                        key={profile.id}
+			                                        title={profile.name}
+			                                        subtitle={getProfileSubtitle(profile)}
+			                                        icon={renderProfileIcon(profile)}
+			                                        onPress={() => handleProfileRowPress(profile.id)}
+			                                        showChevron={false}
+			                                            selected={isSelected}
+		                                            rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
+		                                            showDivider={!isLast}
 	                                        />
                                     );
                                 })}
                             </ItemGroup>
                         )}
 
-                        <ItemGroup title="Built-in AI Profiles">
-	                            <Item
-	                                title={t('profiles.noProfile')}
-	                                subtitle={t('profiles.noProfileDescription')}
-	                                icon={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
-	                                onPress={() => setProfileParamAndClose('')}
-		                                showChevron={false}
-		                                selected={selectedId === ''}
-		                                rightElement={selectedId === ''
-		                                    ? <Ionicons name="checkmark-circle" size={24} color={selectedIndicatorColor} />
+                        <ItemGroup title={t('profiles.groups.builtIn')}>
+		                            <Item
+		                                title={t('profiles.noProfile')}
+		                                subtitle={t('profiles.noProfileDescription')}
+		                                icon={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
+		                                onPress={() => handleProfileRowPress('')}
+			                                showChevron={false}
+			                                selected={selectedId === ''}
+			                                rightElement={selectedId === ''
+			                                    ? <Ionicons name="checkmark-circle" size={24} color={selectedIndicatorColor} />
 		                                    : null}
 	                                showDivider={nonFavoriteBuiltInProfiles.length > 0}
 	                            />
@@ -288,4 +303,4 @@ export default function ProfilePickerScreen() {
             </ItemList>
         </>
     );
-}
+});

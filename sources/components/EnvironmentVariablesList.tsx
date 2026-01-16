@@ -116,7 +116,7 @@ export function EnvironmentVariablesList({
     const handleAddVariable = React.useCallback(() => {
         const normalizedName = newVarName.trim().toUpperCase();
         if (!normalizedName) {
-            Modal.alert(t('common.error'), 'Enter a variable name.');
+            Modal.alert(t('common.error'), t('profiles.environmentVariables.validation.nameRequired'));
             return;
         }
 
@@ -124,14 +124,14 @@ export function EnvironmentVariablesList({
         if (!/^[A-Z_][A-Z0-9_]*$/.test(normalizedName)) {
             Modal.alert(
                 t('common.error'),
-                'Variable names must be uppercase letters, numbers, and underscores, and cannot start with a number.',
+                t('profiles.environmentVariables.validation.invalidNameFormat'),
             );
             return;
         }
 
         // Check for duplicates
         if (environmentVariables.some(v => v.name === normalizedName)) {
-            Modal.alert(t('common.error'), 'That variable already exists.');
+            Modal.alert(t('common.error'), t('profiles.environmentVariables.validation.duplicateName'));
             return;
         }
 
@@ -162,7 +162,7 @@ export function EnvironmentVariablesList({
                     textTransform: 'uppercase',
                     fontWeight: Platform.select({ ios: 'normal', default: '500' } as any),
                 }}>
-                    Environment Variables
+                    {t('profiles.environmentVariables.title')}
                 </Text>
             </View>
 
@@ -208,7 +208,7 @@ export function EnvironmentVariablesList({
                 elevation: 1,
             }}>
                 <Item
-                    title={showAddForm ? 'Cancel' : 'Add Variable'}
+                    title={showAddForm ? t('common.cancel') : t('profiles.environmentVariables.addVariable')}
                     icon={
                         <Ionicons
                             name={showAddForm ? 'close-circle-outline' : 'add-circle-outline'}
@@ -241,7 +241,7 @@ export function EnvironmentVariablesList({
                         }}>
                             <TextInput
                                 style={{ flex: 1, fontSize: 16, color: theme.colors.input.text, ...Typography.default('regular'), ...webNoOutline }}
-                                placeholder="Variable name (e.g., MY_CUSTOM_VAR)"
+                                placeholder={t('profiles.environmentVariables.namePlaceholder')}
                                 placeholderTextColor={theme.colors.input.placeholder}
                                 value={newVarName}
                                 onChangeText={(text) => setNewVarName(text.toUpperCase())}
@@ -261,7 +261,7 @@ export function EnvironmentVariablesList({
                         }}>
                             <TextInput
                                 style={{ flex: 1, fontSize: 16, color: theme.colors.input.text, ...Typography.default('regular'), ...webNoOutline }}
-                                placeholder="Value (e.g., my-value or ${MY_VAR})"
+                                placeholder={t('profiles.environmentVariables.valuePlaceholder')}
                                 placeholderTextColor={theme.colors.input.placeholder}
                                 value={newVarValue}
                                 onChangeText={setNewVarValue}
@@ -282,7 +282,7 @@ export function EnvironmentVariablesList({
                             })}
                         >
                             <Text style={{ color: theme.colors.button.primary.tint, ...Typography.default('semiBold') }}>
-                                Add
+                                {t('common.add')}
                             </Text>
                         </Pressable>
                     </View>

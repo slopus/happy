@@ -22,6 +22,7 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { formatPathRelativeToHome, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import type { ModelMode } from '@/sync/permissionTypes';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
@@ -197,8 +198,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, [sessionId]);
 
     // Function to update model mode (for Gemini sessions)
-    const updateModelMode = React.useCallback((mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => {
-        storage.getState().updateSessionModelMode(sessionId, mode);
+    const updateModelMode = React.useCallback((mode: ModelMode) => {
+        // Only Gemini model modes are configurable from the UI today.
+        if (mode === 'default' || mode === 'gemini-2.5-pro' || mode === 'gemini-2.5-flash' || mode === 'gemini-2.5-flash-lite') {
+            storage.getState().updateSessionModelMode(sessionId, mode);
+        }
     }, [sessionId]);
 
     // Memoize header-dependent styles to prevent re-renders
@@ -280,8 +284,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             sessionId={sessionId}
             permissionMode={permissionMode}
             onPermissionModeChange={updatePermissionMode}
-            modelMode={modelMode as any}
-            onModelModeChange={updateModelMode as any}
+            modelMode={modelMode}
+            onModelModeChange={updateModelMode}
             metadata={session.metadata}
             connectionStatus={{
                 text: sessionStatus.statusText,
