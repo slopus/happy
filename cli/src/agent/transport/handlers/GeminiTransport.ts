@@ -20,6 +20,7 @@ import type {
   ToolNameContext,
 } from '../TransportHandler';
 import type { AgentMessage } from '../../core';
+import { logger } from '@/ui/logger';
 
 /**
  * Gemini-specific timeout values (in milliseconds)
@@ -313,6 +314,16 @@ export class GeminiTransport implements TransportHandler {
     }
 
     // Return original tool name if we couldn't determine it
+    // Log unknown patterns so developers can add them to GEMINI_TOOL_PATTERNS
+    if (toolName === 'other' || toolName === 'Unknown tool') {
+      const inputKeys = input && typeof input === 'object' ? Object.keys(input) : [];
+      logger.debug(
+        `[GeminiTransport] Unknown tool pattern - toolCallId: "${toolCallId}", ` +
+        `toolName: "${toolName}", inputKeys: [${inputKeys.join(', ')}]. ` +
+        `Consider adding a new pattern to GEMINI_TOOL_PATTERNS if this tool appears frequently.`
+      );
+    }
+
     return toolName;
   }
 }

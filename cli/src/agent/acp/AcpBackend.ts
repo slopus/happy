@@ -997,12 +997,24 @@ export class AcpBackend implements AgentBackend {
     }
   }
 
+  /**
+   * Emit permission response event for UI/logging purposes.
+   *
+   * **IMPORTANT:** For ACP backends, this method does NOT send the actual permission
+   * response to the agent. The ACP protocol requires synchronous permission handling,
+   * which is done inside the `requestPermission` RPC handler via `this.options.permissionHandler`.
+   *
+   * This method only emits a `permission-response` event for:
+   * - UI updates (e.g., closing permission dialogs)
+   * - Logging and debugging
+   * - Other parts of the CLI that need to react to permission decisions
+   *
+   * @param requestId - The ID of the permission request
+   * @param approved - Whether the permission was granted
+   */
   async respondToPermission(requestId: string, approved: boolean): Promise<void> {
-    logger.debug(`[AcpBackend] Permission response: ${requestId} = ${approved}`);
+    logger.debug(`[AcpBackend] Permission response event (UI only): ${requestId} = ${approved}`);
     this.emit({ type: 'permission-response', id: requestId, approved });
-    // IMPORTANT: The actual ACP permission response is handled synchronously
-    // within the `requestPermission` method via `this.options.permissionHandler`.
-    // This method only emits an internal event for other parts of the CLI to react to.
   }
 
   async dispose(): Promise<void> {

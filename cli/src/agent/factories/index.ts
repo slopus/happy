@@ -12,6 +12,7 @@ export {
   createGeminiBackend,
   registerGeminiAgent,
   type GeminiBackendOptions,
+  type GeminiBackendResult,
 } from './gemini';
 
 // Future factories:

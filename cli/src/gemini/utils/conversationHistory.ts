@@ -47,36 +47,75 @@ export class ConversationHistory {
   }
 
   /**
+   * Check if content is a duplicate of the last message with the same role.
+   * Deduplication prevents inflating history when the same message is sent multiple times.
+   */
+  private isDuplicate(role: 'user' | 'assistant', content: string): boolean {
+    if (this.messages.length === 0) return false;
+
+    // Find the last message with the same role
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const msg = this.messages[i];
+      if (msg.role === role) {
+        // Check if content matches (normalize whitespace for comparison)
+        const normalizedNew = content.trim().replace(/\s+/g, ' ');
+        const normalizedExisting = msg.content.replace(/\s+/g, ' ');
+        return normalizedNew === normalizedExisting;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Add a user message to history
+   * Skips duplicate messages to prevent history inflation
    */
   addUserMessage(content: string): void {
     if (!content.trim()) return;
-    
+
+    const trimmedContent = content.trim();
+
+    // Skip duplicate messages
+    if (this.isDuplicate('user', trimmedContent)) {
+      logger.debug(`[ConversationHistory] Skipping duplicate user message (${trimmedContent.length} chars)`);
+      return;
+    }
+
     this.messages.push({
       role: 'user',
-      content: content.trim(),
+      content: trimmedContent,
       timestamp: Date.now(),
     });
-    
+
     this.trimHistory();
-    logger.debug(`[ConversationHistory] Added user message (${content.length} chars), total: ${this.messages.length}`);
+    logger.debug(`[ConversationHistory] Added user message (${trimmedContent.length} chars), total: ${this.messages.length}`);
   }
 
   /**
    * Add an assistant response to history
+   * Skips duplicate messages to prevent history inflation
    */
   addAssistantMessage(content: string): void {
     if (!content.trim()) return;
-    
+
+    const trimmedContent = content.trim();
+
+    // Skip duplicate messages
+    if (this.isDuplicate('assistant', trimmedContent)) {
+      logger.debug(`[ConversationHistory] Skipping duplicate assistant message (${trimmedContent.length} chars)`);
+      return;
+    }
+
     this.messages.push({
       role: 'assistant',
-      content: content.trim(),
+      content: trimmedContent,
       timestamp: Date.now(),
       model: this.currentModel,
     });
-    
+
     this.trimHistory();
-    logger.debug(`[ConversationHistory] Added assistant message (${content.length} chars), total: ${this.messages.length}`);
+    logger.debug(`[ConversationHistory] Added assistant message (${trimmedContent.length} chars), total: ${this.messages.length}`);
   }
 
   /**

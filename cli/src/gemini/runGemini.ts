@@ -40,11 +40,10 @@ import { GeminiDiffProcessor } from '@/gemini/utils/diffProcessor';
 import type { GeminiMode, CodexMessagePayload } from '@/gemini/types';
 import type { PermissionMode } from '@/api/types';
 import { GEMINI_MODEL_ENV, DEFAULT_GEMINI_MODEL, CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
-import { 
-  readGeminiLocalConfig, 
-  determineGeminiModel, 
+import {
+  readGeminiLocalConfig,
   saveGeminiModelToConfig,
-  getInitialGeminiModel 
+  getInitialGeminiModel
 } from '@/gemini/utils/config';
 import {
   parseOptionsFromText,
@@ -137,6 +136,27 @@ export async function runGemini(opts: {
   // Permission handler declared here so it can be updated in onSessionSwap callback
   // (assigned later after Happy server setup)
   let permissionHandler: GeminiPermissionHandler;
+
+  // Session swap synchronization to prevent race conditions during message processing
+  // When a swap is requested during processing, it's queued and applied after the current cycle
+  let isProcessingMessage = false;
+  let pendingSessionSwap: ApiSessionClient | null = null;
+
+  /**
+   * Apply a pending session swap. Called between message processing cycles.
+   * This ensures session swaps happen at safe points, not during message processing.
+   */
+  const applyPendingSessionSwap = () => {
+    if (pendingSessionSwap) {
+      logger.debug('[gemini] Applying pending session swap');
+      session = pendingSessionSwap;
+      if (permissionHandler) {
+        permissionHandler.updateSession(pendingSessionSwap);
+      }
+      pendingSessionSwap = null;
+    }
+  };
+
   const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
     api,
     sessionTag,
@@ -144,10 +164,17 @@ export async function runGemini(opts: {
     state,
     response,
     onSessionSwap: (newSession) => {
-      session = newSession;
-      // Update permission handler with new session to avoid stale reference
-      if (permissionHandler) {
-        permissionHandler.updateSession(newSession);
+      // If we're processing a message, queue the swap for later
+      // This prevents race conditions where session changes mid-processing
+      if (isProcessingMessage) {
+        logger.debug('[gemini] Session swap requested during message processing - queueing');
+        pendingSessionSwap = newSession;
+      } else {
+        // Safe to swap immediately
+        session = newSession;
+        if (permissionHandler) {
+          permissionHandler.updateSession(newSession);
+        }
       }
     }
   });
@@ -911,10 +938,10 @@ export async function runGemini(opts: {
           await geminiBackend.dispose();
           geminiBackend = null;
         }
-        
+
         // Create new backend with new model
         const modelToUse = message.mode?.model === undefined ? undefined : (message.mode.model || null);
-        geminiBackend = createGeminiBackend({
+        const backendResult = createGeminiBackend({
           cwd: process.cwd(),
           mcpServers,
           permissionHandler,
@@ -924,16 +951,14 @@ export async function runGemini(opts: {
           // If explicitly null, will skip local config and use env/default
           model: modelToUse,
         });
-        
+        geminiBackend = backendResult.backend;
+
         // Set up message handler again
         setupGeminiMessageHandler(geminiBackend);
-        
-        // Start new session
-        // Determine actual model that will be used (from backend creation logic)
-        // Replicate backend logic: message model > env var > local config > default
-        const localConfigForModel = readGeminiLocalConfig();
-        const actualModel = determineGeminiModel(modelToUse, localConfigForModel);
-        logger.debug(`[gemini] Model change - modelToUse=${modelToUse}, actualModel=${actualModel}`);
+
+        // Use model from factory result (single source of truth - no duplicate resolution)
+        const actualModel = backendResult.model;
+        logger.debug(`[gemini] Model change - modelToUse=${modelToUse}, actualModel=${actualModel} (from ${backendResult.modelSource})`);
         
         // Update conversation history with new model
         conversationHistory.setCurrentModel(actualModel);
@@ -961,12 +986,15 @@ export async function runGemini(opts: {
       const userMessageToShow = message.mode?.originalUserMessage || message.message;
       messageBuffer.addMessage(userMessageToShow, 'user');
 
+      // Mark that we're processing a message to synchronize session swaps
+      isProcessingMessage = true;
+
       try {
         if (first || !wasSessionCreated) {
           // First message or session not created yet - create backend and start session
           if (!geminiBackend) {
             const modelToUse = message.mode?.model === undefined ? undefined : (message.mode.model || null);
-            geminiBackend = createGeminiBackend({
+            const backendResult = createGeminiBackend({
               cwd: process.cwd(),
               mcpServers,
               permissionHandler,
@@ -976,25 +1004,14 @@ export async function runGemini(opts: {
               // If explicitly null, will skip local config and use env/default
               model: modelToUse,
             });
-            
+            geminiBackend = backendResult.backend;
+
             // Set up message handler
             setupGeminiMessageHandler(geminiBackend);
-            
-            // Determine actual model that will be used
-            // Backend will determine model from: message model > env var > local config > default
-            // We need to replicate this logic here to show correct model in UI
-            const localConfigForModel = readGeminiLocalConfig();
-            const actualModel = determineGeminiModel(modelToUse, localConfigForModel);
-            
-            const modelSource = modelToUse !== undefined 
-              ? 'message' 
-              : process.env[GEMINI_MODEL_ENV] 
-                ? 'env-var' 
-                : localConfigForModel.model 
-                  ? 'local-config' 
-                  : 'default';
-            
-            logger.debug(`[gemini] Backend created, model will be: ${actualModel} (from ${modelSource})`);
+
+            // Use model from factory result (single source of truth - no duplicate resolution)
+            const actualModel = backendResult.model;
+            logger.debug(`[gemini] Backend created, model will be: ${actualModel} (from ${backendResult.modelSource})`);
             logger.debug(`[gemini] Calling updateDisplayedModel with: ${actualModel}`);
             updateDisplayedModel(actualModel, false); // Don't save - this is backend initialization
             
@@ -1258,7 +1275,11 @@ export async function runGemini(opts: {
         
         // Use same logic as Codex - emit ready if idle (no pending operations, no queue)
         emitReadyIfIdle();
-        
+
+        // Message processing complete - safe to apply any pending session swap
+        isProcessingMessage = false;
+        applyPendingSessionSwap();
+
         logger.debug(`[gemini] Main loop: turn completed, continuing to next iteration (queue size: ${messageQueue.size()})`);
       }
     }
