@@ -20,6 +20,7 @@ import { createWorktree } from '@/utils/createWorktree';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
 import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
+import { mapPermissionModeAcrossAgents } from '@/sync/permissionMapping';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES, getProfilePrimaryCli } from '@/sync/profileUtils';
 import { AgentInput } from '@/components/AgentInput';
@@ -36,7 +37,7 @@ import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompati
 import { EnvironmentVariablesPreviewModal } from '@/components/newSession/EnvironmentVariablesPreviewModal';
 import { buildProfileGroups } from '@/sync/profileGrouping';
 import { ItemRowActions } from '@/components/ItemRowActions';
-import type { ItemAction } from '@/components/ItemActionsMenuModal';
+import { buildProfileActions } from '@/components/profileActions';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { consumeProfileIdParam } from '@/profileRouteParams';
 import { getModelOptionsForAgentType } from '@/sync/modelOptions';
@@ -59,7 +60,7 @@ const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType:
 
 // Helper function to get the most recent path for a machine
 // Returns the path from the most recently CREATED session for this machine
-const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ machineId: string; path: string }>): string => {
+const getRecentPathForMachine = (machineId: string | null): string => {
     if (!machineId) return '';
 
     const machine = storage.getState().machines[machineId];
@@ -474,7 +475,7 @@ function NewSessionWizard() {
     //
 
     const [selectedPath, setSelectedPath] = React.useState<string>(() => {
-        return getRecentPathForMachine(selectedMachineId, recentMachinePaths);
+        return getRecentPathForMachine(selectedMachineId);
     });
     const [sessionPrompt, setSessionPrompt] = React.useState(() => {
         return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
@@ -491,7 +492,7 @@ function NewSessionWizard() {
         }
         if (machineIdParam !== selectedMachineId) {
             setSelectedMachineId(machineIdParam);
-            const bestPath = getRecentPathForMachine(machineIdParam, recentMachinePaths);
+            const bestPath = getRecentPathForMachine(machineIdParam);
             setSelectedPath(bestPath);
         }
     }, [machineIdParam, machines, recentMachinePaths, selectedMachineId]);
@@ -519,7 +520,7 @@ function NewSessionWizard() {
         }
 
         setSelectedMachineId(machineIdToUse);
-        setSelectedPath(getRecentPathForMachine(machineIdToUse, recentMachinePaths));
+        setSelectedPath(getRecentPathForMachine(machineIdToUse));
     }, [machines, recentMachinePaths, selectedMachineId]);
 
     // Handle path route param from picker screens (main's navigation pattern)
@@ -881,41 +882,6 @@ function NewSessionWizard() {
 
     const prevAgentTypeRef = React.useRef(agentType);
 
-    const mapPermissionModeAcrossAgents = React.useCallback((mode: PermissionMode, from: 'claude' | 'codex' | 'gemini', to: 'claude' | 'codex' | 'gemini'): PermissionMode => {
-        if (from === to) return mode;
-
-        const toCodex = to === 'codex';
-        if (toCodex) {
-            // Claude/Gemini -> Codex
-            switch (mode) {
-                case 'bypassPermissions':
-                    return 'yolo';
-                case 'plan':
-                    return 'safe-yolo';
-                case 'acceptEdits':
-                    return 'safe-yolo';
-                case 'default':
-                    return 'default';
-                default:
-                    return 'default';
-            }
-        }
-
-        // Codex -> Claude/Gemini
-        switch (mode) {
-            case 'yolo':
-                return 'bypassPermissions';
-            case 'safe-yolo':
-                return 'plan';
-            case 'read-only':
-                return 'default';
-            case 'default':
-                return 'default';
-            default:
-                return 'default';
-        }
-    }, []);
-
     // When agent type changes, keep the "permission level" consistent by mapping modes across backends.
     React.useEffect(() => {
         const prev = prevAgentTypeRef.current;
@@ -938,7 +904,7 @@ function NewSessionWizard() {
 
         const mapped = mapPermissionModeAcrossAgents(current, prev, agentType);
         applyPermissionMode(mapped, 'auto');
-    }, [agentType, applyPermissionMode, mapPermissionModeAcrossAgents]);
+    }, [agentType, applyPermissionMode]);
 
     // Reset model mode when agent type changes to appropriate default
     React.useEffect(() => {
@@ -1022,43 +988,17 @@ function NewSessionWizard() {
 	    const renderProfileRightElement = React.useCallback((profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
 	        const envVarCount = Object.keys(getProfileEnvironmentVariables(profile)).length;
 
-	        const actions: ItemAction[] = [];
-	        if (envVarCount > 0) {
-	            actions.push({
-	                id: 'envVars',
-	                title: 'View environment variables',
-	                icon: 'list-outline',
-	                onPress: () => openProfileEnvVarsPreview(profile),
-	            });
-	        }
-		        actions.push({
-		            id: 'favorite',
-		            title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
-		            icon: isFavorite ? 'star' : 'star-outline',
-		            color: isFavorite ? selectedIndicatorColor : theme.colors.textSecondary,
-		            onPress: () => toggleFavoriteProfile(profile.id),
-		        });
-		        actions.push({
-		            id: 'edit',
-		            title: 'Edit profile',
-		            icon: 'create-outline',
-		            onPress: () => openProfileEdit({ profileId: profile.id }),
-		        });
-	        actions.push({
-	            id: 'copy',
-	            title: 'Duplicate profile',
-	            icon: 'copy-outline',
-	            onPress: () => handleDuplicateProfile(profile),
+	        const actions = buildProfileActions({
+	            profile,
+	            isFavorite,
+	            favoriteActionColor: selectedIndicatorColor,
+	            nonFavoriteActionColor: theme.colors.textSecondary,
+	            onToggleFavorite: () => toggleFavoriteProfile(profile.id),
+	            onEdit: () => openProfileEdit({ profileId: profile.id }),
+	            onDuplicate: () => handleDuplicateProfile(profile),
+	            onDelete: () => handleDeleteProfile(profile),
+	            onViewEnvironmentVariables: envVarCount > 0 ? () => openProfileEnvVarsPreview(profile) : undefined,
 	        });
-	        if (!profile.isBuiltIn) {
-	            actions.push({
-	                id: 'delete',
-	                title: 'Delete profile',
-	                icon: 'trash-outline',
-	                destructive: true,
-	                onPress: () => handleDeleteProfile(profile),
-	            });
-	        }
 
 	        return (
 	            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
@@ -2086,7 +2026,7 @@ function NewSessionWizard() {
                                     searchPlaceholder="Search machines..."
                                     onSelect={(machine) => {
                                         setSelectedMachineId(machine.id);
-                                        const bestPath = getRecentPathForMachine(machine.id, recentMachinePaths);
+                                        const bestPath = getRecentPathForMachine(machine.id);
                                         setSelectedPath(bestPath);
                                     }}
                                     onToggleFavorite={(machine) => {

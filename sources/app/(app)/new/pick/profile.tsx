@@ -14,7 +14,7 @@ import { Modal } from '@/modal';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
 import { buildProfileGroups } from '@/sync/profileGrouping';
 import { ItemRowActions } from '@/components/ItemRowActions';
-import type { ItemAction } from '@/components/ItemActionsMenuModal';
+import { buildProfileActions } from '@/components/profileActions';
 
 export default function ProfilePickerScreen() {
     const { theme, rt } = useUnistyles();
@@ -129,37 +129,16 @@ export default function ProfilePickerScreen() {
 
     const renderProfileRowRightElement = React.useCallback(
         (profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
-            const actions: ItemAction[] = [
-                {
-                    id: 'favorite',
-                    title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
-                    icon: isFavorite ? 'star' : 'star-outline',
-                    color: isFavorite ? theme.colors.text : theme.colors.textSecondary,
-                    onPress: () => toggleFavoriteProfile(profile.id),
-                },
-                {
-                    id: 'edit',
-                    title: 'Edit profile',
-                    icon: 'create-outline',
-                    onPress: () => openProfileEdit(profile.id),
-                },
-                {
-                    id: 'copy',
-                    title: 'Duplicate profile',
-                    icon: 'copy-outline',
-                    onPress: () => openProfileDuplicate(profile.id),
-                },
-            ];
-
-            if (!profile.isBuiltIn) {
-                actions.push({
-                    id: 'delete',
-                    title: 'Delete profile',
-                    icon: 'trash-outline',
-                    destructive: true,
-                    onPress: () => handleDeleteProfile(profile),
-                });
-            }
+            const actions = buildProfileActions({
+                profile,
+                isFavorite,
+                favoriteActionColor: theme.colors.text,
+                nonFavoriteActionColor: theme.colors.textSecondary,
+                onToggleFavorite: () => toggleFavoriteProfile(profile.id),
+                onEdit: () => openProfileEdit(profile.id),
+                onDuplicate: () => openProfileDuplicate(profile.id),
+                onDelete: () => handleDeleteProfile(profile),
+            });
 
             return (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>

@@ -1510,7 +1510,8 @@ class Sync {
                     const dataType = rawContent?.content?.data?.type;
                     
                     // Debug logging to trace lifecycle events
-                    if (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started') {
+                    const isDev = typeof __DEV__ !== 'undefined' && __DEV__;
+                    if (isDev && (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started')) {
                         console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}`);
                     }
                     
@@ -1521,7 +1522,7 @@ class Sync {
                     const isTaskStarted = 
                         ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started');
                     
-                    if (isTaskComplete || isTaskStarted) {
+                    if (isDev && (isTaskComplete || isTaskStarted)) {
                         console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
                     }
 

@@ -13,7 +13,7 @@ import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { ItemRowActions } from '@/components/ItemRowActions';
-import type { ItemAction } from '@/components/ItemActionsMenuModal';
+import { buildProfileActions } from '@/components/profileActions';
 import { Switch } from '@/components/Switch';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
 import { buildProfileGroups } from '@/sync/profileGrouping';
@@ -237,36 +237,16 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
 	                        {favoriteProfileItems.map((profile) => {
 	                            const isSelected = selectedProfileId === profile.id;
 	                            const isFavorite = favoriteProfileIdSet.has(profile.id);
-		                            const actions: ItemAction[] = [
-		                                {
-		                                    id: 'favorite',
-		                                    title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
-		                                    icon: isFavorite ? 'star' : 'star-outline',
-		                                    color: isFavorite ? selectedIndicatorColor : theme.colors.textSecondary,
-		                                    onPress: () => toggleFavoriteProfile(profile.id),
-		                                },
-	                                {
-	                                    id: 'edit',
-	                                    title: 'Edit profile',
-	                                    icon: 'create-outline',
-	                                    onPress: () => handleEditProfile(profile),
-	                                },
-	                                {
-	                                    id: 'copy',
-	                                    title: 'Duplicate profile',
-	                                    icon: 'copy-outline',
-	                                    onPress: () => handleDuplicateProfile(profile),
-	                                },
-	                            ];
-	                            if (!profile.isBuiltIn) {
-	                                actions.push({
-	                                    id: 'delete',
-	                                    title: 'Delete profile',
-	                                    icon: 'trash-outline',
-	                                    destructive: true,
-	                                    onPress: () => { void handleDeleteProfile(profile); },
-	                                });
-	                            }
+		                            const actions = buildProfileActions({
+		                                profile,
+		                                isFavorite,
+		                                favoriteActionColor: selectedIndicatorColor,
+		                                nonFavoriteActionColor: theme.colors.textSecondary,
+		                                onToggleFavorite: () => toggleFavoriteProfile(profile.id),
+		                                onEdit: () => handleEditProfile(profile),
+		                                onDuplicate: () => handleDuplicateProfile(profile),
+		                                onDelete: () => { void handleDeleteProfile(profile); },
+		                            });
 	                            return (
 	                                <Item
                                     key={profile.id}
@@ -305,34 +285,16 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
 	                        {nonFavoriteCustomProfiles.map((profile) => {
 	                            const isSelected = selectedProfileId === profile.id;
 	                            const isFavorite = favoriteProfileIdSet.has(profile.id);
-	                            const actions: ItemAction[] = [
-	                                {
-		                                id: 'favorite',
-		                                title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
-		                                icon: isFavorite ? 'star' : 'star-outline',
-		                                color: isFavorite ? selectedIndicatorColor : theme.colors.textSecondary,
-		                                onPress: () => toggleFavoriteProfile(profile.id),
-		                            },
-	                                {
-	                                    id: 'edit',
-	                                    title: 'Edit profile',
-	                                    icon: 'create-outline',
-	                                    onPress: () => handleEditProfile(profile),
-	                                },
-	                                {
-	                                    id: 'copy',
-	                                    title: 'Duplicate profile',
-	                                    icon: 'copy-outline',
-	                                    onPress: () => handleDuplicateProfile(profile),
-	                                },
-	                                {
-	                                    id: 'delete',
-	                                    title: 'Delete profile',
-	                                    icon: 'trash-outline',
-	                                    destructive: true,
-	                                    onPress: () => { void handleDeleteProfile(profile); },
-	                                },
-	                            ];
+	                            const actions = buildProfileActions({
+	                                profile,
+	                                isFavorite,
+	                                favoriteActionColor: selectedIndicatorColor,
+	                                nonFavoriteActionColor: theme.colors.textSecondary,
+	                                onToggleFavorite: () => toggleFavoriteProfile(profile.id),
+	                                onEdit: () => handleEditProfile(profile),
+	                                onDuplicate: () => handleDuplicateProfile(profile),
+	                                onDelete: () => { void handleDeleteProfile(profile); },
+	                            });
 	                            return (
 	                                <Item
                                     key={profile.id}
@@ -370,27 +332,15 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
 	                    {nonFavoriteBuiltInProfiles.map((profile) => {
 	                        const isSelected = selectedProfileId === profile.id;
 	                        const isFavorite = favoriteProfileIdSet.has(profile.id);
-	                        const actions: ItemAction[] = [
-	                            {
-		                                id: 'favorite',
-		                                title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
-		                                icon: isFavorite ? 'star' : 'star-outline',
-		                                color: isFavorite ? selectedIndicatorColor : theme.colors.textSecondary,
-		                                onPress: () => toggleFavoriteProfile(profile.id),
-		                            },
-	                            {
-	                                id: 'edit',
-	                                title: 'Edit profile',
-	                                icon: 'create-outline',
-	                                onPress: () => handleEditProfile(profile),
-	                            },
-	                            {
-	                                id: 'copy',
-	                                title: 'Duplicate profile',
-	                                icon: 'copy-outline',
-	                                onPress: () => handleDuplicateProfile(profile),
-	                            },
-	                        ];
+	                        const actions = buildProfileActions({
+	                            profile,
+	                            isFavorite,
+	                            favoriteActionColor: selectedIndicatorColor,
+	                            nonFavoriteActionColor: theme.colors.textSecondary,
+	                            onToggleFavorite: () => toggleFavoriteProfile(profile.id),
+	                            onEdit: () => handleEditProfile(profile),
+	                            onDuplicate: () => handleDuplicateProfile(profile),
+	                        });
 	                        return (
 	                            <Item
                                 key={profile.id}
