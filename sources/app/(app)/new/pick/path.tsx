@@ -113,8 +113,9 @@ export default React.memo(function PathPickerScreen() {
     }, [sessions, params.machineId, recentMachinePaths]);
 
 
-    const handleSelectPath = React.useCallback(() => {
-        const pathToUse = customPath.trim() || machine?.metadata?.homeDir || '/home';
+    const handleSelectPath = React.useCallback((pathOverride?: string) => {
+        const rawPath = typeof pathOverride === 'string' ? pathOverride : customPath;
+        const pathToUse = rawPath.trim() || machine?.metadata?.homeDir || '/home';
         // Pass path back via navigation params (main's pattern, received by new/index.tsx)
         const state = navigation.getState();
         const previousRoute = state?.routes?.[state.index - 1];
@@ -138,7 +139,7 @@ export default React.memo(function PathPickerScreen() {
                         headerBackTitle: t('common.back'),
                         headerRight: () => (
                             <Pressable
-                                onPress={handleSelectPath}
+                                onPress={() => handleSelectPath()}
                                 disabled={!customPath.trim()}
                                 style={({ pressed }) => ({
                                     marginRight: 16,
@@ -171,13 +172,13 @@ export default React.memo(function PathPickerScreen() {
                     headerShown: true,
                     headerTitle: t('newSession.selectPathTitle'),
                     headerBackTitle: t('common.back'),
-                    headerRight: () => (
-                        <Pressable
-                            onPress={handleSelectPath}
-                            disabled={!customPath.trim()}
-                            style={({ pressed }) => ({
-                                opacity: pressed ? 0.7 : 1,
-                                padding: 4,
+                        headerRight: () => (
+                            <Pressable
+                                onPress={() => handleSelectPath()}
+                                disabled={!customPath.trim()}
+                                style={({ pressed }) => ({
+                                    opacity: pressed ? 0.7 : 1,
+                                    padding: 4,
                             })}
                         >
                             <Ionicons
@@ -202,6 +203,8 @@ export default React.memo(function PathPickerScreen() {
                         machineHomeDir={machine.metadata?.homeDir || '/home'}
                         selectedPath={customPath}
                         onChangeSelectedPath={setCustomPath}
+                        submitBehavior="confirm"
+                        onSubmitSelectedPath={handleSelectPath}
                         recentPaths={recentPaths}
                         usePickerSearch={usePathPickerSearch}
                         searchVariant="none"

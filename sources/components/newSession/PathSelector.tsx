@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Pressable, TextInput } from 'react-native';
+import { View, Pressable, TextInput, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { SearchHeader } from '@/components/SearchHeader';
-import { MultiTextInput, MultiTextInputHandle } from '@/components/MultiTextInput';
+import { Typography } from '@/constants/Typography';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 
@@ -13,6 +13,8 @@ export interface PathSelectorProps {
     machineHomeDir: string;
     selectedPath: string;
     onChangeSelectedPath: (path: string) => void;
+    onSubmitSelectedPath?: (path: string) => void;
+    submitBehavior?: 'showRow' | 'confirm';
     recentPaths: string[];
     usePickerSearch: boolean;
     searchVariant?: 'header' | 'group' | 'none';
@@ -55,17 +57,20 @@ export function PathSelector({
     onChangeSearchQuery: onChangeSearchQueryProp,
     favoriteDirectories,
     onChangeFavoriteDirectories,
+    onSubmitSelectedPath,
+    submitBehavior = 'showRow',
 }: PathSelectorProps) {
     const { theme, rt } = useUnistyles();
     const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const styles = stylesheet;
-    const inputRef = useRef<MultiTextInputHandle>(null);
+    const inputRef = useRef<TextInput>(null);
     const searchInputRef = useRef<TextInput>(null);
     const searchWasFocusedRef = useRef(false);
 
     const [uncontrolledSearchQuery, setUncontrolledSearchQuery] = useState('');
     const searchQuery = controlledSearchQuery ?? uncontrolledSearchQuery;
     const setSearchQuery = onChangeSearchQueryProp ?? setUncontrolledSearchQuery;
+    const [submittedCustomPath, setSubmittedCustomPath] = useState<string | null>(null);
 
     const suggestedPaths = useMemo(() => {
         const homeDir = machineHomeDir || '/home';
@@ -193,10 +198,32 @@ export function PathSelector({
         );
     }, [favoriteDirectories, machineHomeDir, onChangeFavoriteDirectories]);
 
+    const handleChangeSelectedPath = React.useCallback((text: string) => {
+        onChangeSelectedPath(text);
+        if (submittedCustomPath && text.trim() !== submittedCustomPath) {
+            setSubmittedCustomPath(null);
+        }
+    }, [onChangeSelectedPath, submittedCustomPath]);
+
     const setPathAndFocus = React.useCallback((path: string) => {
         onChangeSelectedPath(path);
+        setSubmittedCustomPath(null);
         setTimeout(() => inputRef.current?.focus(), 50);
     }, [onChangeSelectedPath]);
+
+    const handleSubmitPath = React.useCallback(() => {
+        const trimmed = selectedPath.trim();
+        if (!trimmed) return;
+
+        if (trimmed !== selectedPath) {
+            onChangeSelectedPath(trimmed);
+        }
+
+        onSubmitSelectedPath?.(trimmed);
+        if (submitBehavior !== 'confirm') {
+            setSubmittedCustomPath(trimmed);
+        }
+    }, [onChangeSelectedPath, onSubmitSelectedPath, selectedPath, submitBehavior]);
 
     const renderRightElement = React.useCallback((absolutePath: string, isSelected: boolean, isFavorite: boolean) => {
         return (
@@ -226,6 +253,65 @@ export function PathSelector({
         );
     }, [selectedIndicatorColor, theme.colors.textSecondary, toggleFavorite]);
 
+    const renderCustomRightElement = React.useCallback((absolutePath: string) => {
+        const isFavorite = favoritePaths.includes(absolutePath);
+        return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_RIGHT_GAP }}>
+                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons
+                        name="checkmark-circle"
+                        size={24}
+                        color={selectedIndicatorColor}
+                    />
+                </View>
+                <Pressable
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    onPress={(e) => {
+                        e.stopPropagation();
+                        toggleFavorite(absolutePath);
+                    }}
+                >
+                    <Ionicons
+                        name={isFavorite ? 'star' : 'star-outline'}
+                        size={24}
+                        color={isFavorite ? selectedIndicatorColor : theme.colors.textSecondary}
+                    />
+                </Pressable>
+                <Pressable
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    onPress={(e) => {
+                        e.stopPropagation();
+                        setSubmittedCustomPath(null);
+                        onChangeSelectedPath('');
+                        setTimeout(() => inputRef.current?.focus(), 50);
+                    }}
+                >
+                    <Ionicons
+                        name="close-circle"
+                        size={24}
+                        color={theme.colors.textSecondary}
+                    />
+                </Pressable>
+            </View>
+        );
+    }, [favoritePaths, onChangeSelectedPath, selectedIndicatorColor, theme.colors.textSecondary, toggleFavorite]);
+
+    const showSubmittedCustomPathRow = useMemo(() => {
+        if (!submittedCustomPath) return null;
+        const trimmed = selectedPath.trim();
+        if (!trimmed) return null;
+        if (trimmed !== submittedCustomPath) return null;
+
+        const visiblePaths = new Set<string>([
+            ...filteredFavoritePaths,
+            ...filteredRecentPaths,
+            ...filteredSuggestedPaths,
+        ]);
+        if (visiblePaths.has(trimmed)) return null;
+
+        return trimmed;
+    }, [filteredFavoritePaths, filteredRecentPaths, filteredSuggestedPaths, selectedPath, submittedCustomPath]);
+
     return (
         <>
             {usePickerSearch && searchVariant === 'header' && (
@@ -239,18 +325,53 @@ export function PathSelector({
             <ItemGroup title="Enter Path">
                 <View style={styles.pathInputContainer}>
                     <View style={[styles.pathInput, { paddingVertical: 8 }]}>
-                        <MultiTextInput
+                        <TextInput
                             ref={inputRef}
                             value={selectedPath}
-                            onChangeText={onChangeSelectedPath}
+                            onChangeText={handleChangeSelectedPath}
                             placeholder="Enter path (e.g. /home/user/projects)"
-                            maxHeight={76}
-                            paddingTop={8}
-                            paddingBottom={8}
+                            placeholderTextColor={theme.colors.input.placeholder}
+                            style={{
+                                color: theme.colors.input.text,
+                                paddingTop: 8,
+                                paddingBottom: 8,
+                                ...(Platform.OS === 'web'
+                                    ? ({
+                                        outlineStyle: 'none',
+                                        outlineWidth: 0,
+                                        boxShadow: 'none',
+                                    } as const)
+                                    : null),
+                                ...Typography.default(),
+                            }}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            autoComplete="off"
+                            textContentType="none"
+                            importantForAutofill="no"
+                            returnKeyType="done"
+                            blurOnSubmit={true}
+                            multiline={false}
+                            onSubmitEditing={handleSubmitPath}
                         />
                     </View>
                 </View>
             </ItemGroup>
+
+            {showSubmittedCustomPathRow && (
+                <ItemGroup title="Custom Path">
+                    <Item
+                        key={showSubmittedCustomPathRow}
+                        title={showSubmittedCustomPathRow}
+                        leftElement={<Ionicons name="folder-outline" size={24} color={theme.colors.textSecondary} />}
+                        onPress={() => setTimeout(() => inputRef.current?.focus(), 50)}
+                        selected={true}
+                        showChevron={false}
+                        rightElement={renderCustomRightElement(showSubmittedCustomPathRow)}
+                        showDivider={false}
+                    />
+                </ItemGroup>
+            )}
 
             {usePickerSearch && searchVariant === 'group' && shouldRenderRecentGroup && (
                 <ItemGroup title="Recent Paths">
@@ -287,11 +408,11 @@ export function PathSelector({
 	                                    title={path}
 	                                    leftElement={<Ionicons name="folder-outline" size={24} color={theme.colors.textSecondary} />}
 	                                    onPress={() => setPathAndFocus(path)}
-	                                    selected={isSelected}
-	                                    showChevron={false}
-	                                    rightElement={renderRightElement(path, isSelected, isFavorite)}
-	                                    showDivider={!isLast}
-	                                />
+                                    selected={isSelected}
+                                    showChevron={false}
+                                    rightElement={renderRightElement(path, isSelected, isFavorite)}
+                                    showDivider={!isLast}
+                                />
                             );
                         })}
                 </ItemGroup>
