@@ -32,6 +32,8 @@ export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps
         ]
         : config.buttons || [{ text: 'OK', style: 'default' as const }];
 
+    const buttonLayout = buttons.length === 3 ? 'twoPlusOne' : buttons.length > 3 ? 'column' : 'row';
+
     const styles = StyleSheet.create({
         container: {
             backgroundColor: theme.colors.surface,
@@ -69,6 +71,9 @@ export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps
         buttonContainer: {
             borderTopWidth: 1,
             borderTopColor: theme.colors.divider,
+            flexDirection: buttonLayout === 'row' ? 'row' : 'column'
+        },
+        twoPlusOneRow: {
             flexDirection: 'row'
         },
         button: {
@@ -81,12 +86,24 @@ export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps
             backgroundColor: theme.colors.divider
         },
         buttonSeparator: {
+            width: buttonLayout === 'row' ? 1 : undefined,
+            height: buttonLayout === 'row' ? undefined : 1,
+            backgroundColor: theme.colors.divider
+        },
+        buttonSeparatorVertical: {
             width: 1,
+            backgroundColor: theme.colors.divider
+        },
+        buttonSeparatorHorizontal: {
+            height: 1,
             backgroundColor: theme.colors.divider
         },
         buttonText: {
             fontSize: 17,
             color: theme.colors.textLink
+        },
+        primaryText: {
+            color: theme.colors.text
         },
         cancelText: {
             fontWeight: '400'
@@ -110,29 +127,92 @@ export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps
                     )}
                 </View>
                 
-                <View style={styles.buttonContainer}>
-                    {buttons.map((button, index) => (
-                        <React.Fragment key={index}>
-                            {index > 0 && <View style={styles.buttonSeparator} />}
+                {buttonLayout === 'twoPlusOne' ? (
+                    <View style={styles.buttonContainer}>
+                        <View style={styles.twoPlusOneRow}>
                             <Pressable
                                 style={({ pressed }) => [
                                     styles.button,
                                     pressed && styles.buttonPressed
                                 ]}
-                                onPress={() => handleButtonPress(index)}
+                                onPress={() => handleButtonPress(0)}
                             >
                                 <Text style={[
                                     styles.buttonText,
-                                    button.style === 'cancel' && styles.cancelText,
-                                    button.style === 'destructive' && styles.destructiveText,
-                                    Typography.default(button.style === 'cancel' ? undefined : 'semiBold')
+                                    buttons[0]?.style === 'cancel' && styles.cancelText,
+                                    buttons[0]?.style === 'destructive' && styles.destructiveText,
+                                    Typography.default(buttons[0]?.style === 'cancel' ? undefined : 'semiBold')
                                 ]}>
-                                    {button.text}
+                                    {buttons[0]?.text}
                                 </Text>
                             </Pressable>
-                        </React.Fragment>
-                    ))}
-                </View>
+
+                            <View style={styles.buttonSeparatorVertical} />
+
+                            <Pressable
+                                style={({ pressed }) => [
+                                    styles.button,
+                                    pressed && styles.buttonPressed
+                                ]}
+                                onPress={() => handleButtonPress(2)}
+                            >
+                                <Text style={[
+                                    styles.buttonText,
+                                    buttons[2]?.style === 'cancel' && styles.cancelText,
+                                    buttons[2]?.style === 'destructive' && styles.destructiveText,
+                                    Typography.default(buttons[2]?.style === 'cancel' ? undefined : 'semiBold')
+                                ]}>
+                                    {buttons[2]?.text}
+                                </Text>
+                            </Pressable>
+                        </View>
+
+                        <View style={styles.buttonSeparatorHorizontal} />
+
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.button,
+                                pressed && styles.buttonPressed
+                            ]}
+                            onPress={() => handleButtonPress(1)}
+                        >
+                            <Text style={[
+                                styles.buttonText,
+                                (buttons[1]?.style === 'default' || !buttons[1]?.style) && styles.primaryText,
+                                buttons[1]?.style === 'cancel' && styles.cancelText,
+                                buttons[1]?.style === 'destructive' && styles.destructiveText,
+                                Typography.default(buttons[1]?.style === 'cancel' ? undefined : 'semiBold')
+                            ]}>
+                                {buttons[1]?.text}
+                            </Text>
+                        </Pressable>
+                    </View>
+                ) : (
+                    <View style={styles.buttonContainer}>
+                        {buttons.map((button, index) => (
+                            <React.Fragment key={index}>
+                                {index > 0 && <View style={styles.buttonSeparator} />}
+                                <Pressable
+                                    style={({ pressed }) => [
+                                        styles.button,
+                                        pressed && styles.buttonPressed
+                                    ]}
+                                    onPress={() => handleButtonPress(index)}
+                                >
+                                    <Text style={[
+                                        styles.buttonText,
+                                        buttonLayout === 'column' && (button.style === 'default' || !button.style) && styles.primaryText,
+                                        button.style === 'cancel' && styles.cancelText,
+                                        button.style === 'destructive' && styles.destructiveText,
+                                        Typography.default(button.style === 'cancel' ? undefined : 'semiBold')
+                                    ]}>
+                                        {button.text}
+                                    </Text>
+                                </Pressable>
+                            </React.Fragment>
+                        ))}
+                    </View>
+                )}
             </View>
         </BaseModal>
     );
