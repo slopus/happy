@@ -27,7 +27,8 @@ interface ProfileManagerProps {
 
 // Profile utilities now imported from @/sync/profileUtils
 const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerProps) {
-    const { theme } = useUnistyles();
+    const { theme, rt } = useUnistyles();
+    const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const [useProfiles, setUseProfiles] = useSettingMutable('useProfiles');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const [lastUsedProfile, setLastUsedProfile] = useSettingMutable('lastUsedProfile');
@@ -236,14 +237,14 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
 	                        {favoriteProfileItems.map((profile) => {
 	                            const isSelected = selectedProfileId === profile.id;
 	                            const isFavorite = favoriteProfileIdSet.has(profile.id);
-	                            const actions: ItemAction[] = [
-	                                {
-	                                    id: 'favorite',
-	                                    title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
-	                                    icon: isFavorite ? 'star' : 'star-outline',
-	                                    color: isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary,
-	                                    onPress: () => toggleFavoriteProfile(profile.id),
-	                                },
+		                            const actions: ItemAction[] = [
+		                                {
+		                                    id: 'favorite',
+		                                    title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
+		                                    icon: isFavorite ? 'star' : 'star-outline',
+		                                    color: isFavorite ? selectedIndicatorColor : theme.colors.textSecondary,
+		                                    onPress: () => toggleFavoriteProfile(profile.id),
+		                                },
 	                                {
 	                                    id: 'edit',
 	                                    title: 'Edit profile',
@@ -278,12 +279,12 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
 		                                    rightElement={(
 		                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                                             <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                                <Ionicons
-                                                    name="checkmark-circle"
-                                                    size={24}
-                                                    color={theme.colors.button.primary.background}
-                                                    style={{ opacity: isSelected ? 1 : 0 }}
-                                                />
+	                                            <Ionicons
+	                                                name="checkmark-circle"
+	                                                size={24}
+	                                                color={selectedIndicatorColor}
+	                                                style={{ opacity: isSelected ? 1 : 0 }}
+	                                            />
                                             </View>
 	                                            <ItemRowActions
 	                                                title={profile.name}
@@ -306,12 +307,12 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
 	                            const isFavorite = favoriteProfileIdSet.has(profile.id);
 	                            const actions: ItemAction[] = [
 	                                {
-	                                    id: 'favorite',
-	                                    title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
-	                                    icon: isFavorite ? 'star' : 'star-outline',
-	                                    color: isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary,
-	                                    onPress: () => toggleFavoriteProfile(profile.id),
-	                                },
+		                                id: 'favorite',
+		                                title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
+		                                icon: isFavorite ? 'star' : 'star-outline',
+		                                color: isFavorite ? selectedIndicatorColor : theme.colors.textSecondary,
+		                                onPress: () => toggleFavoriteProfile(profile.id),
+		                            },
 	                                {
 	                                    id: 'edit',
 	                                    title: 'Edit profile',
@@ -344,12 +345,12 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
 		                                rightElement={(
 		                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                                             <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                                <Ionicons
-                                                    name="checkmark-circle"
-                                                    size={24}
-                                                    color={theme.colors.button.primary.background}
-                                                    style={{ opacity: isSelected ? 1 : 0 }}
-                                                />
+	                                            <Ionicons
+	                                                name="checkmark-circle"
+	                                                size={24}
+	                                                color={selectedIndicatorColor}
+	                                                style={{ opacity: isSelected ? 1 : 0 }}
+	                                            />
                                             </View>
 	                                        <ItemRowActions
 	                                            title={profile.name}
@@ -371,12 +372,12 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
 	                        const isFavorite = favoriteProfileIdSet.has(profile.id);
 	                        const actions: ItemAction[] = [
 	                            {
-	                                id: 'favorite',
-	                                title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
-	                                icon: isFavorite ? 'star' : 'star-outline',
-	                                color: isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary,
-	                                onPress: () => toggleFavoriteProfile(profile.id),
-	                            },
+		                                id: 'favorite',
+		                                title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
+		                                icon: isFavorite ? 'star' : 'star-outline',
+		                                color: isFavorite ? selectedIndicatorColor : theme.colors.textSecondary,
+		                                onPress: () => toggleFavoriteProfile(profile.id),
+		                            },
 	                            {
 	                                id: 'edit',
 	                                title: 'Edit profile',
@@ -402,12 +403,12 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
 		                                rightElement={(
 		                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                                         <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                            <Ionicons
-                                                name="checkmark-circle"
-                                                size={24}
-                                                color={theme.colors.button.primary.background}
-                                                style={{ opacity: isSelected ? 1 : 0 }}
-                                            />
+	                                            <Ionicons
+	                                                name="checkmark-circle"
+	                                                size={24}
+	                                                color={selectedIndicatorColor}
+	                                                style={{ opacity: isSelected ? 1 : 0 }}
+	                                            />
                                         </View>
 	                                        <ItemRowActions
 	                                            title={profile.name}

@@ -56,7 +56,8 @@ export function PathSelector({
     favoriteDirectories,
     onChangeFavoriteDirectories,
 }: PathSelectorProps) {
-    const { theme } = useUnistyles();
+    const { theme, rt } = useUnistyles();
+    const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const styles = stylesheet;
     const inputRef = useRef<MultiTextInputHandle>(null);
     const searchInputRef = useRef<any>(null);
@@ -204,7 +205,7 @@ export function PathSelector({
                     <Ionicons
                         name="checkmark-circle"
                         size={24}
-                        color={theme.colors.button.primary.background}
+                        color={selectedIndicatorColor}
                         style={{ opacity: isSelected ? 1 : 0 }}
                     />
                 </View>
@@ -218,12 +219,12 @@ export function PathSelector({
                     <Ionicons
                         name={isFavorite ? 'star' : 'star-outline'}
                         size={24}
-                        color={isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary}
+                        color={isFavorite ? selectedIndicatorColor : theme.colors.textSecondary}
                     />
                 </Pressable>
             </View>
         );
-    }, [theme.colors.button.primary.background, theme.colors.textSecondary, toggleFavorite]);
+    }, [selectedIndicatorColor, theme.colors.textSecondary, toggleFavorite]);
 
     return (
         <>

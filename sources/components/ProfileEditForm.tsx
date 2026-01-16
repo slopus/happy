@@ -120,7 +120,8 @@ export function ProfileEditForm({
     onDirtyChange,
     containerStyle,
 }: ProfileEditFormProps) {
-    const { theme } = useUnistyles();
+    const { theme, rt } = useUnistyles();
+    const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const styles = stylesheet;
     const groupStyle = React.useMemo(() => ({ marginBottom: 12 }), []);
     const experimentsEnabled = useSetting('experiments');
@@ -332,7 +333,7 @@ export function ProfileEditForm({
                         }
                         rightElement={
                             defaultPermissionMode === option.value ? (
-                                <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
+                                <Ionicons name="checkmark-circle" size={24} color={selectedIndicatorColor} />
                             ) : null
                         }
                         onPress={() => setDefaultPermissionMode(option.value)}
