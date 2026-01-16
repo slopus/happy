@@ -94,7 +94,7 @@ const stylesheet = StyleSheet.create((theme) => ({
 }));
 
 export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>) {
-    const { theme } = useUnistyles();
+    const { theme, rt } = useUnistyles();
     const styles = stylesheet;
     const {
         config,
@@ -183,7 +183,8 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
 
         const canRemove = config.canRemoveFavorite?.(item) ?? true;
         const disabled = isFavorite && !canRemove;
-        const color = isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary;
+        const selectedColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
+        const color = isFavorite ? selectedColor : theme.colors.textSecondary;
 
         return (
             <Pressable
@@ -217,6 +218,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 : config.getItemIcon(item);
         const status = config.getItemStatus?.(item, theme);
         const isFavorite = favoriteIds.has(itemId) || forFavorite;
+        const selectedColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
 
         return (
             <Item
@@ -232,7 +234,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                             <Ionicons
                                 name="checkmark-circle"
                                 size={24}
-                                color={theme.colors.button.primary.background}
+                                color={selectedColor}
                                 style={{ opacity: isSelected ? 1 : 0 }}
                             />
                         </View>

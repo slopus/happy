@@ -253,6 +253,7 @@ function NewSessionWizard() {
 			    const safeArea = useSafeAreaInsets();
 			    const headerHeight = useHeaderHeight();
 			    const { width: screenWidth } = useWindowDimensions();
+			    const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
 
 		    const newSessionSidePadding = 16;
 		    const newSessionBottomPadding = Math.max(screenWidth < 420 ? 8 : 16, safeArea.bottom);
@@ -533,11 +534,12 @@ function NewSessionWizard() {
     // Path selection state - initialize with formatted selected path
 
     // Refs for scrolling to sections
-    const scrollViewRef = React.useRef<ScrollView>(null);
-    const profileSectionRef = React.useRef<View>(null);
-    const machineSectionRef = React.useRef<View>(null);
-    const pathSectionRef = React.useRef<View>(null);
-    const permissionSectionRef = React.useRef<View>(null);
+	    const scrollViewRef = React.useRef<ScrollView>(null);
+	    const profileSectionRef = React.useRef<View>(null);
+	    const modelSectionRef = React.useRef<View>(null);
+	    const machineSectionRef = React.useRef<View>(null);
+	    const pathSectionRef = React.useRef<View>(null);
+	    const permissionSectionRef = React.useRef<View>(null);
 
     // CLI Detection - automatic, non-blocking detection of installed CLIs on selected machine
     const cliAvailability = useCLIDetection(selectedMachineId);
@@ -965,7 +967,7 @@ function NewSessionWizard() {
     }, [agentType, modelMode]);
 
     // Scroll to section helpers - for AgentInput button clicks
-    const wizardSectionOffsets = React.useRef<{ profile?: number; agent?: number; machine?: number; path?: number; permission?: number; sessionType?: number }>({});
+	    const wizardSectionOffsets = React.useRef<{ profile?: number; agent?: number; model?: number; machine?: number; path?: number; permission?: number; sessionType?: number }>({});
     const registerWizardSectionOffset = React.useCallback((key: keyof typeof wizardSectionOffsets.current) => {
         return (e: any) => {
             wizardSectionOffsets.current[key] = e?.nativeEvent?.layout?.y ?? 0;
@@ -1027,13 +1029,13 @@ function NewSessionWizard() {
 	                onPress: () => openProfileEnvVarsPreview(profile),
 	            });
 	        }
-	        actions.push({
-	            id: 'favorite',
-	            title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
-	            icon: isFavorite ? 'star' : 'star-outline',
-	            color: isFavorite ? theme.colors.button.primary.background : theme.colors.textSecondary,
-	            onPress: () => toggleFavoriteProfile(profile.id),
-	        });
+		        actions.push({
+		            id: 'favorite',
+		            title: isFavorite ? 'Remove from favorites' : 'Add to favorites',
+		            icon: isFavorite ? 'star' : 'star-outline',
+		            color: isFavorite ? selectedIndicatorColor : theme.colors.textSecondary,
+		            onPress: () => toggleFavoriteProfile(profile.id),
+		        });
 		        actions.push({
 		            id: 'edit',
 		            title: 'Edit profile',
@@ -1062,7 +1064,7 @@ function NewSessionWizard() {
 	                    <Ionicons
                         name="checkmark-circle"
                         size={24}
-	                        color={theme.colors.button.primary.background}
+	                        color={selectedIndicatorColor}
 	                        style={{ opacity: isSelected ? 1 : 0 }}
 	                    />
 	                </View>
@@ -1083,7 +1085,7 @@ function NewSessionWizard() {
 	        openProfileEnvVarsPreview,
 	        openProfileEdit,
 	        screenWidth,
-	        theme.colors.button.primary.background,
+	        selectedIndicatorColor,
 	        theme.colors.button.secondary.tint,
 	        theme.colors.deleteAction,
 	        theme.colors.textSecondary,
@@ -1664,7 +1666,7 @@ function NewSessionWizard() {
                                                         <Ionicons
                                                             name="checkmark-circle"
                                                             size={24}
-                                                            color={theme.colors.button.primary.background}
+                                                            color={selectedIndicatorColor}
                                                         />
                                                     </View>
                                                 )
@@ -2003,7 +2005,7 @@ function NewSessionWizard() {
                                                         <Ionicons
                                                             name="checkmark-circle"
                                                             size={24}
-                                                            color={theme.colors.button.primary.background}
+                                                            color={selectedIndicatorColor}
                                                             style={{ opacity: isSelected ? 1 : 0 }}
                                                         />
                                                     </View>
@@ -2015,6 +2017,47 @@ function NewSessionWizard() {
                                     });
                                 })()}
                             </ItemGroup>
+
+                            {agentType === 'gemini' && (
+                                <View ref={modelSectionRef} style={{ marginTop: 24 }}>
+                                    <View onLayout={registerWizardSectionOffset('model')}>
+                                        <View style={styles.wizardSectionHeaderRow}>
+                                            <Ionicons name="sparkles-outline" size={18} color={theme.colors.text} />
+                                            <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select AI Model</Text>
+                                        </View>
+                                    </View>
+                                    <ItemGroup title="">
+                                        {([
+                                            { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Most capable' },
+                                            { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', description: 'Fast & efficient' },
+                                            { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', description: 'Fastest' },
+                                        ] as const).map((option, index, options) => {
+                                            const isSelected = modelMode === option.value;
+                                            return (
+                                                <Item
+                                                    key={option.value}
+                                                    title={option.label}
+                                                    subtitle={option.description}
+                                                    showChevron={false}
+                                                    selected={isSelected}
+                                                    onPress={() => setModelMode(option.value)}
+                                                    rightElement={(
+                                                        <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                                            <Ionicons
+                                                                name="checkmark-circle"
+                                                                size={24}
+                                                                color={selectedIndicatorColor}
+                                                                style={{ opacity: isSelected ? 1 : 0 }}
+                                                            />
+                                                        </View>
+                                                    )}
+                                                    showDivider={index < options.length - 1}
+                                                />
+                                            );
+                                        })}
+                                    </ItemGroup>
+                                </View>
+                            )}
 
                             <View style={{ height: 24 }} />
 
@@ -2110,7 +2153,7 @@ function NewSessionWizard() {
                                             <Ionicons
                                                 name="checkmark-circle"
                                                 size={24}
-                                                color={theme.colors.button.primary.background}
+                                                color={selectedIndicatorColor}
                                             />
 	                                        ) : null}
 		                                        onPress={() => handlePermissionModeChange(option.value)}

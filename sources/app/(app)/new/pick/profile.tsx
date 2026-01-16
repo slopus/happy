@@ -17,7 +17,8 @@ import { ItemRowActions } from '@/components/ItemRowActions';
 import type { ItemAction } from '@/components/ItemActionsMenuModal';
 
 export default function ProfilePickerScreen() {
-    const { theme } = useUnistyles();
+    const { theme, rt } = useUnistyles();
+    const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const router = useRouter();
     const navigation = useNavigation();
     const params = useLocalSearchParams<{ selectedId?: string; machineId?: string; profileId?: string | string[] }>();
@@ -263,18 +264,18 @@ export default function ProfilePickerScreen() {
                         )}
 
                         <ItemGroup title="Built-in AI Profiles">
-                            <Item
-                                title={t('profiles.noProfile')}
-                                subtitle={t('profiles.noProfileDescription')}
-                                icon={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
-                                onPress={() => setProfileParamAndClose('')}
-	                                showChevron={false}
-	                                selected={selectedId === ''}
-	                                rightElement={selectedId === ''
-	                                    ? <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
-	                                    : null}
-                                showDivider={nonFavoriteBuiltInProfiles.length > 0}
-                            />
+	                            <Item
+	                                title={t('profiles.noProfile')}
+	                                subtitle={t('profiles.noProfileDescription')}
+	                                icon={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
+	                                onPress={() => setProfileParamAndClose('')}
+		                                showChevron={false}
+		                                selected={selectedId === ''}
+		                                rightElement={selectedId === ''
+		                                    ? <Ionicons name="checkmark-circle" size={24} color={selectedIndicatorColor} />
+		                                    : null}
+	                                showDivider={nonFavoriteBuiltInProfiles.length > 0}
+	                            />
                             {nonFavoriteBuiltInProfiles.map((profile, index) => {
                                 const isSelected = selectedId === profile.id;
                                 const isLast = index === nonFavoriteBuiltInProfiles.length - 1;
