@@ -39,6 +39,7 @@ import { ItemRowActions } from '@/components/ItemRowActions';
 import type { ItemAction } from '@/components/ItemActionsMenuModal';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { consumeProfileIdParam } from '@/profileRouteParams';
+import { getModelOptionsForAgentType } from '@/sync/modelOptions';
 
 // Optimized profile lookup utility
 const useProfileMap = (profiles: AIBackendProfile[]) => {
@@ -415,7 +416,7 @@ function NewSessionWizard() {
     // which intelligently resets only when the current mode is invalid for the new agent type.
     // A duplicate unconditional reset here was removed to prevent race conditions.
 
-    const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
+	    const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
         const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
         const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
         // Note: 'default' is NOT valid for Gemini - we want explicit model selection
@@ -431,8 +432,9 @@ function NewSessionWizard() {
                 return draftMode;
             }
         }
-        return agentType === 'codex' ? 'gpt-5-codex-high' : agentType === 'gemini' ? 'gemini-2.5-pro' : 'default';
-    });
+	        return agentType === 'codex' ? 'gpt-5-codex-high' : agentType === 'gemini' ? 'gemini-2.5-pro' : 'default';
+	    });
+	    const modelOptions = React.useMemo(() => getModelOptionsForAgentType(agentType), [agentType]);
 
     // Session details state
     const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(() => {
@@ -2018,31 +2020,31 @@ function NewSessionWizard() {
                                 })()}
                             </ItemGroup>
 
-                            {agentType === 'gemini' && (
-                                <View ref={modelSectionRef} style={{ marginTop: 24 }}>
-                                    <View onLayout={registerWizardSectionOffset('model')}>
-                                        <View style={styles.wizardSectionHeaderRow}>
-                                            <Ionicons name="sparkles-outline" size={18} color={theme.colors.text} />
-                                            <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select AI Model</Text>
-                                        </View>
-                                    </View>
-                                    <ItemGroup title="">
-                                        {([
-                                            { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Most capable' },
-                                            { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', description: 'Fast & efficient' },
-                                            { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', description: 'Fastest' },
-                                        ] as const).map((option, index, options) => {
-                                            const isSelected = modelMode === option.value;
-                                            return (
-                                                <Item
-                                                    key={option.value}
-                                                    title={option.label}
-                                                    subtitle={option.description}
-                                                    showChevron={false}
-                                                    selected={isSelected}
-                                                    onPress={() => setModelMode(option.value)}
-                                                    rightElement={(
-                                                        <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+	                            {modelOptions.length > 0 && (
+	                                <View ref={modelSectionRef} style={{ marginTop: 24 }}>
+	                                    <View onLayout={registerWizardSectionOffset('model')}>
+	                                        <View style={styles.wizardSectionHeaderRow}>
+	                                            <Ionicons name="sparkles-outline" size={18} color={theme.colors.text} />
+	                                            <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select AI Model</Text>
+	                                        </View>
+	                                    </View>
+	                                    <Text style={styles.sectionDescription}>
+	                                        Choose the model used by this session.
+	                                    </Text>
+	                                    <ItemGroup title="">
+	                                        {modelOptions.map((option, index, options) => {
+	                                            const isSelected = modelMode === option.value;
+	                                            return (
+	                                                <Item
+	                                                    key={option.value}
+	                                                    title={option.label}
+	                                                    subtitle={option.description}
+	                                                    leftElement={<Ionicons name="sparkles-outline" size={24} color={theme.colors.textSecondary} />}
+	                                                    showChevron={false}
+	                                                    selected={isSelected}
+	                                                    onPress={() => setModelMode(option.value)}
+	                                                    rightElement={(
+	                                                        <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
                                                             <Ionicons
                                                                 name="checkmark-circle"
                                                                 size={24}
@@ -2061,13 +2063,16 @@ function NewSessionWizard() {
 
                             <View style={{ height: 24 }} />
 
-                            {/* Section 2: Machine Selection */}
-                            <View ref={machineSectionRef} onLayout={registerWizardSectionOffset('machine')}>
-                                <View style={styles.wizardSectionHeaderRow}>
-                                    <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Machine</Text>
-                                </View>
-                            </View>
+	                            {/* Section 2: Machine Selection */}
+	                            <View ref={machineSectionRef} onLayout={registerWizardSectionOffset('machine')}>
+	                                <View style={styles.wizardSectionHeaderRow}>
+	                                    <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
+	                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Machine</Text>
+	                                </View>
+	                            </View>
+	                            <Text style={styles.sectionDescription}>
+	                                Choose where this session runs.
+	                            </Text>
 
                             <View style={{ marginBottom: 24 }}>
                                 <MachineSelector
@@ -2095,13 +2100,16 @@ function NewSessionWizard() {
                                 />
                             </View>
 
-                            {/* Section 3: Working Directory */}
-                            <View ref={pathSectionRef} onLayout={registerWizardSectionOffset('path')}>
-                                <View style={styles.wizardSectionHeaderRow}>
-                                    <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Working Directory</Text>
-                                </View>
-                            </View>
+	                            {/* Section 3: Working Directory */}
+	                            <View ref={pathSectionRef} onLayout={registerWizardSectionOffset('path')}>
+	                                <View style={styles.wizardSectionHeaderRow}>
+	                                    <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
+	                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Working Directory</Text>
+	                                </View>
+	                            </View>
+	                            <Text style={styles.sectionDescription}>
+	                                Pick the folder used for commands and context.
+	                            </Text>
 
                             <View style={{ marginBottom: 24 }}>
                                     <PathSelector
@@ -2116,13 +2124,16 @@ function NewSessionWizard() {
                                     />
                             </View>
 
-                            {/* Section 4: Permission Mode */}
-	                            <View ref={permissionSectionRef} onLayout={registerWizardSectionOffset('permission')}>
-		                                <View style={styles.wizardSectionHeaderRow}>
-		                                    <Ionicons name="shield-outline" size={18} color={theme.colors.text} />
-		                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Permission Mode</Text>
-		                                </View>
-		                            </View>
+	                            {/* Section 4: Permission Mode */}
+		                            <View ref={permissionSectionRef} onLayout={registerWizardSectionOffset('permission')}>
+			                                <View style={styles.wizardSectionHeaderRow}>
+			                                    <Ionicons name="shield-outline" size={18} color={theme.colors.text} />
+			                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Permission Mode</Text>
+			                                </View>
+			                            </View>
+		                            <Text style={styles.sectionDescription}>
+		                                Control how strictly actions require approval.
+		                            </Text>
 		                            <ItemGroup title="">
 		                                {(agentType === 'codex' || agentType === 'gemini'
 		                                    ? [
@@ -2166,13 +2177,16 @@ function NewSessionWizard() {
 
 	                            <View style={{ height: 24 }} />
 
-	                            {/* Section 5: Session Type */}
-	                            <View onLayout={registerWizardSectionOffset('sessionType')}>
-	                                <View style={styles.wizardSectionHeaderRow}>
-	                                    <Ionicons name="layers-outline" size={18} color={theme.colors.text} />
-	                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Session Type</Text>
-	                                </View>
-	                            </View>
+		                            {/* Section 5: Session Type */}
+		                            <View onLayout={registerWizardSectionOffset('sessionType')}>
+		                                <View style={styles.wizardSectionHeaderRow}>
+		                                    <Ionicons name="layers-outline" size={18} color={theme.colors.text} />
+		                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Session Type</Text>
+		                                </View>
+		                            </View>
+		                            <Text style={styles.sectionDescription}>
+		                                Choose a simple session or one tied to a Git worktree.
+		                            </Text>
 
 	                            <View style={{ marginBottom: 0 }}>
 	                                <ItemGroup title={<View />} headerStyle={{ paddingTop: 0, paddingBottom: 0 }}>

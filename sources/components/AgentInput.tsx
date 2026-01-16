@@ -6,6 +6,7 @@ import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
+import { getModelOptionsForAgentType } from '@/sync/modelOptions';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
@@ -316,6 +317,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const effectiveFlavor = props.metadata?.flavor ?? props.agentType;
     const isCodex = effectiveFlavor === 'codex';
     const isGemini = effectiveFlavor === 'gemini';
+    const modelOptions = React.useMemo(() => {
+        if (effectiveFlavor === 'claude' || effectiveFlavor === 'codex' || effectiveFlavor === 'gemini') {
+            return getModelOptionsForAgentType(effectiveFlavor);
+        }
+        return [];
+    }, [effectiveFlavor]);
 
     // Profile data
     const profiles = useSetting('profiles');
@@ -662,23 +669,15 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     }}>
                                         {t('agentInput.model.title')}
                                     </Text>
-                                    {isGemini ? (
-                                        // Gemini model selector
-                                        (['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const).map((model) => {
-                                            const modelConfig = {
-                                                'gemini-2.5-pro': { label: 'Gemini 2.5 Pro', description: 'Most capable' },
-                                                'gemini-2.5-flash': { label: 'Gemini 2.5 Flash', description: 'Fast & efficient' },
-                                                'gemini-2.5-flash-lite': { label: 'Gemini 2.5 Flash Lite', description: 'Fastest' },
-                                            };
-                                            const config = modelConfig[model];
-                                            const isSelected = props.modelMode === model;
-
+                                    {modelOptions.length > 0 ? (
+                                        modelOptions.map((option) => {
+                                            const isSelected = props.modelMode === option.value;
                                             return (
                                                 <Pressable
-                                                    key={model}
+                                                    key={option.value}
                                                     onPress={() => {
                                                         hapticsLight();
-                                                        props.onModelModeChange?.(model);
+                                                        props.onModelModeChange?.(option.value);
                                                     }}
                                                     style={({ pressed }) => ({
                                                         flexDirection: 'row',
@@ -713,14 +712,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                             color: isSelected ? theme.colors.radio.active : theme.colors.text,
                                                             ...Typography.default()
                                                         }}>
-                                                            {config.label}
+                                                            {option.label}
                                                         </Text>
                                                         <Text style={{
                                                             fontSize: 11,
                                                             color: theme.colors.textSecondary,
                                                             ...Typography.default()
                                                         }}>
-                                                            {config.description}
+                                                            {option.description}
                                                         </Text>
                                                     </View>
                                                 </Pressable>
