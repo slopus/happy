@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ToolViewProps } from './_all';
 import { ToolSectionView } from '../ToolSectionView';
-import { sessionDeny } from '@/sync/ops';
+import { sessionAllow } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
@@ -218,6 +218,9 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
 
         setIsSubmitting(true);
 
+        // Update UI immediately - don't wait for async calls
+        setIsSubmitted(true);
+
         // Format answers as readable text
         const responseLines: string[] = [];
         questions.forEach((q, qIndex) => {
@@ -234,14 +237,12 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
         const responseText = responseLines.join('\n');
 
         try {
-            // TODO: The proper fix is to update happy-cli to not require permission for AskUserQuestion,
-            // or to accept answers via the permission RPC. For now, we deny the permission (which cancels
-            // the tool without side effects) and send answers as a regular user message.
+            // 1. Approve the permission (like PermissionFooter.handleApprove does)
             if (tool.permission?.id) {
-                await sessionDeny(sessionId, tool.permission.id);
+                await sessionAllow(sessionId, tool.permission.id);
             }
+            // 2. Send the answer as a message
             await sync.sendMessage(sessionId, responseText);
-            setIsSubmitted(true);
         } catch (error) {
             console.error('Failed to submit answer:', error);
         } finally {
