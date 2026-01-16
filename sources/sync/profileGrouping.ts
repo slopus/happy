@@ -17,14 +17,9 @@ export function toggleFavoriteProfileId(favoriteProfileIds: string[], profileId:
     const normalized: string[] = [];
     const seen = new Set<string>();
     for (const id of favoriteProfileIds) {
-        if (!id) continue;
         if (seen.has(id)) continue;
         seen.add(id);
         normalized.push(id);
-    }
-
-    if (!profileId) {
-        return normalized;
     }
 
     if (seen.has(profileId)) {

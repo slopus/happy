@@ -38,8 +38,10 @@ import { EnvironmentVariablesPreviewModal } from '@/components/newSession/Enviro
 import { buildProfileGroups, toggleFavoriteProfileId } from '@/sync/profileGrouping';
 import { ItemRowActions } from '@/components/ItemRowActions';
 import { buildProfileActions } from '@/components/profileActions';
+import type { ItemAction } from '@/components/ItemActionsMenuModal';
 import { consumeProfileIdParam } from '@/profileRouteParams';
 import { getModelOptionsForAgentType } from '@/sync/modelOptions';
+import { ignoreNextRowPress } from '@/utils/ignoreNextRowPress';
 
 // Optimized profile lookup utility
 const useProfileMap = (profiles: AIBackendProfile[]) => {
@@ -314,6 +316,8 @@ function NewSessionWizard() {
         return buildProfileGroups({ customProfiles: profiles, favoriteProfileIds });
     }, [favoriteProfileIds, profiles]);
 
+    const isDefaultEnvironmentFavorite = favoriteProfileIdSet.has('');
+
     const toggleFavoriteProfile = React.useCallback((profileId: string) => {
         setFavoriteProfileIds(toggleFavoriteProfileId(favoriteProfileIds, profileId));
     }, [favoriteProfileIds, setFavoriteProfileIds]);
@@ -342,20 +346,6 @@ function NewSessionWizard() {
         }
     }, [useProfiles, selectedProfileId]);
 
-    // If a new profile is created while this screen is open (e.g. "Save As" from a built-in profile),
-    // `lastUsedProfile` is updated. Keep the selection in sync so the new profile is immediately active.
-    React.useEffect(() => {
-        if (!useProfiles) {
-            return;
-        }
-        if (!lastUsedProfile || !profileMap.has(lastUsedProfile)) {
-            return;
-        }
-        if (selectedProfileId === lastUsedProfile) {
-            return;
-        }
-        setSelectedProfileId(lastUsedProfile);
-    }, [lastUsedProfile, profileMap, selectedProfileId, useProfiles]);
     const allowGemini = experimentsEnabled;
 
     const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
@@ -988,6 +978,41 @@ function NewSessionWizard() {
 	        return <ProfileCompatibilityIcon profile={profile} />;
 	    }, []);
 
+	    const renderDefaultEnvironmentRightElement = React.useCallback((isSelected: boolean) => {
+	        const isFavorite = isDefaultEnvironmentFavorite;
+	        const actions: ItemAction[] = [
+	            {
+	                id: 'favorite',
+	                title: isFavorite ? t('profiles.actions.removeFromFavorites') : t('profiles.actions.addToFavorites'),
+	                icon: isFavorite ? 'star' : 'star-outline',
+	                onPress: () => toggleFavoriteProfile(''),
+	                color: isFavorite ? selectedIndicatorColor : theme.colors.textSecondary,
+	            },
+	        ];
+
+	        return (
+	            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+	                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+	                    <Ionicons
+	                        name="checkmark-circle"
+	                        size={24}
+	                        color={selectedIndicatorColor}
+	                        style={{ opacity: isSelected ? 1 : 0 }}
+	                    />
+	                </View>
+	                <ItemRowActions
+	                    title={t('profiles.noProfile')}
+	                    actions={actions}
+	                    compactActionIds={['favorite']}
+	                    iconSize={20}
+	                    onActionPressIn={() => {
+	                        ignoreNextRowPress(ignoreProfileRowPressRef);
+	                    }}
+	                />
+	            </View>
+	        );
+	    }, [isDefaultEnvironmentFavorite, selectedIndicatorColor, theme.colors.textSecondary, toggleFavoriteProfile]);
+
 	    const renderProfileRightElement = React.useCallback((profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
 	        const envVarCount = Object.keys(getProfileEnvironmentVariables(profile)).length;
 
@@ -1019,7 +1044,7 @@ function NewSessionWizard() {
 		                    compactActionIds={['favorite', ...(envVarCount > 0 ? ['envVars'] : [])]}
 		                    iconSize={20}
 		                    onActionPressIn={() => {
-		                        ignoreProfileRowPressRef.current = true;
+		                        ignoreNextRowPress(ignoreProfileRowPressRef);
 		                    }}
 		                />
 	            </View>
@@ -1534,8 +1559,26 @@ function NewSessionWizard() {
 	                                        Select an AI profile to apply environment variables and defaults to your session.
 	                                    </Text>
 
-                                    {favoriteProfileItems.length > 0 && (
+                                    {(isDefaultEnvironmentFavorite || favoriteProfileItems.length > 0) && (
                                         <ItemGroup title="Favorites">
+                                            {isDefaultEnvironmentFavorite && (
+                                                <Item
+                                                    title={t('profiles.noProfile')}
+                                                    subtitle={t('profiles.noProfileDescription')}
+                                                    leftElement={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
+                                                    showChevron={false}
+                                                    selected={!selectedProfileId}
+                                                    onPress={() => {
+                                                        if (ignoreProfileRowPressRef.current) {
+                                                            ignoreProfileRowPressRef.current = false;
+                                                            return;
+                                                        }
+                                                        setSelectedProfileId(null);
+                                                    }}
+                                                    rightElement={renderDefaultEnvironmentRightElement(!selectedProfileId)}
+                                                    showDivider={favoriteProfileItems.length > 0}
+                                                />
+                                            )}
                                             {favoriteProfileItems.map((profile, index) => {
                                                 const availability = isProfileAvailable(profile);
                                                 const isSelected = selectedProfileId === profile.id;
@@ -1598,26 +1641,24 @@ function NewSessionWizard() {
                                     )}
 
 	                                    <ItemGroup title="Built-in AI Profiles">
-                                        <Item
-                                            title={t('profiles.noProfile')}
-                                            subtitle={t('profiles.noProfileDescription')}
-                                            leftElement={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
-	                                            showChevron={false}
-	                                            selected={!selectedProfileId}
-	                                            onPress={() => setSelectedProfileId(null)}
-	                                            rightElement={!selectedProfileId
-	                                                ? (
-                                                    <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                                        <Ionicons
-                                                            name="checkmark-circle"
-                                                            size={24}
-                                                            color={selectedIndicatorColor}
-                                                        />
-                                                    </View>
-                                                )
-                                                : null}
-                                            showDivider={nonFavoriteBuiltInProfiles.length > 0}
-                                        />
+	                                        {!isDefaultEnvironmentFavorite && (
+	                                            <Item
+	                                                title={t('profiles.noProfile')}
+	                                                subtitle={t('profiles.noProfileDescription')}
+	                                                leftElement={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
+	                                                showChevron={false}
+	                                                selected={!selectedProfileId}
+	                                                onPress={() => {
+	                                                    if (ignoreProfileRowPressRef.current) {
+	                                                        ignoreProfileRowPressRef.current = false;
+	                                                        return;
+	                                                    }
+	                                                    setSelectedProfileId(null);
+	                                                }}
+	                                                rightElement={renderDefaultEnvironmentRightElement(!selectedProfileId)}
+	                                                showDivider={nonFavoriteBuiltInProfiles.length > 0}
+	                                            />
+	                                        )}
                                         {nonFavoriteBuiltInProfiles.map((profile, index) => {
                                             const availability = isProfileAvailable(profile);
                                             const isSelected = selectedProfileId === profile.id;

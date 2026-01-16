@@ -14,6 +14,8 @@ import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompati
 import { buildProfileGroups, toggleFavoriteProfileId } from '@/sync/profileGrouping';
 import { ItemRowActions } from '@/components/ItemRowActions';
 import { buildProfileActions } from '@/components/profileActions';
+import type { ItemAction } from '@/components/ItemActionsMenuModal';
+import { ignoreNextRowPress } from '@/utils/ignoreNextRowPress';
 
 export default React.memo(function ProfilePickerScreen() {
     const { theme, rt } = useUnistyles();
@@ -109,6 +111,8 @@ export default React.memo(function ProfilePickerScreen() {
         return buildProfileGroups({ customProfiles: profiles, favoriteProfileIds });
     }, [favoriteProfileIds, profiles]);
 
+    const isDefaultEnvironmentFavorite = favoriteProfileIdSet.has('');
+
     const toggleFavoriteProfile = React.useCallback((profileId: string) => {
         setFavoriteProfileIds(toggleFavoriteProfileId(favoriteProfileIds, profileId));
     }, [favoriteProfileIds, setFavoriteProfileIds]);
@@ -168,7 +172,7 @@ export default React.memo(function ProfilePickerScreen() {
 	                        compactActionIds={['favorite', 'edit']}
 	                        iconSize={20}
 	                        onActionPressIn={() => {
-	                            ignoreProfileRowPressRef.current = true;
+	                            ignoreNextRowPress(ignoreProfileRowPressRef);
 	                        }}
 	                    />
 	                </View>
@@ -183,6 +187,41 @@ export default React.memo(function ProfilePickerScreen() {
             toggleFavoriteProfile,
         ],
     );
+
+    const renderDefaultEnvironmentRowRightElement = React.useCallback((isSelected: boolean) => {
+        const isFavorite = isDefaultEnvironmentFavorite;
+        const actions: ItemAction[] = [
+            {
+                id: 'favorite',
+                title: isFavorite ? t('profiles.actions.removeFromFavorites') : t('profiles.actions.addToFavorites'),
+                icon: isFavorite ? 'star' : 'star-outline',
+                onPress: () => toggleFavoriteProfile(''),
+                color: isFavorite ? theme.colors.text : theme.colors.textSecondary,
+            },
+        ];
+
+        return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons
+                        name="checkmark-circle"
+                        size={24}
+                        color={theme.colors.text}
+                        style={{ opacity: isSelected ? 1 : 0 }}
+                    />
+                </View>
+                <ItemRowActions
+                    title={t('profiles.noProfile')}
+                    actions={actions}
+                    compactActionIds={['favorite']}
+                    iconSize={20}
+                    onActionPressIn={() => {
+                        ignoreNextRowPress(ignoreProfileRowPressRef);
+                    }}
+                />
+            </View>
+        );
+    }, [isDefaultEnvironmentFavorite, theme.colors.text, theme.colors.textSecondary, toggleFavoriteProfile]);
 
     return (
         <>
@@ -212,8 +251,20 @@ export default React.memo(function ProfilePickerScreen() {
                     </ItemGroup>
                 ) : (
                     <>
-                        {favoriteProfileItems.length > 0 && (
+                        {(isDefaultEnvironmentFavorite || favoriteProfileItems.length > 0) && (
                             <ItemGroup title={t('profiles.groups.favorites')}>
+                                {isDefaultEnvironmentFavorite && (
+                                    <Item
+                                        title={t('profiles.noProfile')}
+                                        subtitle={t('profiles.noProfileDescription')}
+                                        icon={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
+                                        onPress={() => handleProfileRowPress('')}
+                                        showChevron={false}
+                                        selected={selectedId === ''}
+                                        rightElement={renderDefaultEnvironmentRowRightElement(selectedId === '')}
+                                        showDivider={favoriteProfileItems.length > 0}
+                                    />
+                                )}
                                 {favoriteProfileItems.map((profile, index) => {
                                     const isSelected = selectedId === profile.id;
                                     const isLast = index === favoriteProfileItems.length - 1;
@@ -258,18 +309,18 @@ export default React.memo(function ProfilePickerScreen() {
                         )}
 
                         <ItemGroup title={t('profiles.groups.builtIn')}>
-		                            <Item
-		                                title={t('profiles.noProfile')}
-		                                subtitle={t('profiles.noProfileDescription')}
-		                                icon={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
-		                                onPress={() => handleProfileRowPress('')}
-			                                showChevron={false}
-			                                selected={selectedId === ''}
-			                                rightElement={selectedId === ''
-			                                    ? <Ionicons name="checkmark-circle" size={24} color={selectedIndicatorColor} />
-		                                    : null}
-	                                showDivider={nonFavoriteBuiltInProfiles.length > 0}
-	                            />
+                            {!isDefaultEnvironmentFavorite && (
+                                <Item
+                                    title={t('profiles.noProfile')}
+                                    subtitle={t('profiles.noProfileDescription')}
+                                    icon={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
+                                    onPress={() => handleProfileRowPress('')}
+                                    showChevron={false}
+                                    selected={selectedId === ''}
+                                    rightElement={renderDefaultEnvironmentRowRightElement(selectedId === '')}
+                                    showDivider={nonFavoriteBuiltInProfiles.length > 0}
+                                />
+                            )}
                             {nonFavoriteBuiltInProfiles.map((profile, index) => {
                                 const isSelected = selectedId === profile.id;
                                 const isLast = index === nonFavoriteBuiltInProfiles.length - 1;

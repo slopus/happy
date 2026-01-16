@@ -10,7 +10,8 @@ describe('toggleFavoriteProfileId', () => {
         expect(toggleFavoriteProfileId(['anthropic', 'openai'], 'anthropic')).toEqual(['openai']);
     });
 
-    it('ignores empty ids and does not allow favoriting the empty profile id', () => {
-        expect(toggleFavoriteProfileId(['', 'anthropic', 'anthropic', 'openai'], '')).toEqual(['anthropic', 'openai']);
+    it('supports favoriting the default environment (empty profile id)', () => {
+        expect(toggleFavoriteProfileId(['anthropic'], '')).toEqual(['', 'anthropic']);
+        expect(toggleFavoriteProfileId(['', 'anthropic'], '')).toEqual(['anthropic']);
     });
 });
