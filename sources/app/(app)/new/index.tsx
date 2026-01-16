@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
-import { SessionTypeSelector, SessionTypeSelectorRows } from '@/components/SessionTypeSelector';
+import { SessionTypeSelectorRows } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
@@ -1392,7 +1392,7 @@ function NewSessionWizard() {
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + safeArea.bottom + 16 : 0}
-                style={styles.container}
+                style={[styles.container, { backgroundColor: theme.colors.surface }]}
             >
                 {showInlineClose && (
                     <Pressable
@@ -1414,68 +1414,63 @@ function NewSessionWizard() {
                         <Ionicons name="close" size={24} color={theme.colors.header.tint} />
                     </Pressable>
                 )}
-                <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+	                <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: theme.colors.surface }}>
 	                    {/* Session type selector only if experiments enabled */}
 	                    {experimentsEnabled && (
 	                        <View style={{ paddingHorizontal: newSessionSidePadding, marginBottom: 16 }}>
 	                            <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-	                                <SessionTypeSelector
-	                                    value={sessionType}
-                                    onChange={setSessionType}
-                                />
-                            </View>
-                        </View>
-                    )}
-	
-		                    {/* AgentInput with inline chips - sticky at bottom */}
-		                    <View style={{
-		                        backgroundColor: theme.colors.surface,
-		                        paddingTop: 12,
-		                        paddingBottom: newSessionBottomPadding,
-		                        ...Platform.select({
-		                            web: { boxShadow: '0 -10px 30px rgba(0,0,0,0.06)' } as any,
-		                            ios: {
-		                                shadowColor: theme.colors.shadow.color,
-		                                shadowOffset: { width: 0, height: -4 },
-		                                shadowOpacity: 0.08,
-		                                shadowRadius: 14,
-		                            },
-		                            android: { borderTopWidth: 1, borderTopColor: theme.colors.divider },
-		                            default: {},
-		                        }),
-		                    }}>
-		                        <View style={{ paddingHorizontal: newSessionSidePadding }}>
-		                            <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-		                                <AgentInput
-		                                value={sessionPrompt}
-	                                onChangeText={setSessionPrompt}
-	                                onSend={handleCreateSession}
-	                                isSendDisabled={!canCreate}
-                                isSending={isCreating}
-                                placeholder={t('session.inputPlaceholder')}
-                                autocompletePrefixes={[]}
-                                autocompleteSuggestions={async () => []}
-                                agentType={agentType}
-                                onAgentClick={handleAgentClick}
-                                permissionMode={permissionMode}
-                                onPermissionModeChange={handlePermissionModeChange}
-                                connectionStatus={connectionStatus}
-                                machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
-	                                onMachineClick={handleMachineClick}
-	                                currentPath={selectedPath}
-	                                onPathClick={handlePathClick}
-	                                contentPaddingHorizontal={0}
-	                                {...(useProfiles ? {
-	                                    profileId: selectedProfileId,
-	                                    onProfileClick: handleProfileClick,
-	                                    envVarsCount: selectedProfileEnvVarsCount || undefined,
-	                                    onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
-	                                } : {})}
-	                            />
-		                            </View>
-		                        </View>
-		                    </View>
-                </View>
+	                                <ItemGroup title={t('newSession.sessionType.title')} containerStyle={{ marginHorizontal: 0 }}>
+	                                    <SessionTypeSelectorRows value={sessionType} onChange={setSessionType} />
+	                                </ItemGroup>
+	                            </View>
+	                        </View>
+	                    )}
+
+	                    {/* AgentInput with inline chips - sticky at bottom */}
+	                    <View
+	                        style={{
+	                            backgroundColor: theme.colors.surface,
+	                            paddingTop: 12,
+	                            paddingBottom: newSessionBottomPadding,
+	                        }}
+	                    >
+	                        <View style={{ paddingHorizontal: newSessionSidePadding }}>
+	                            <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+	                                <AgentInput
+	                                    value={sessionPrompt}
+	                                    onChangeText={setSessionPrompt}
+	                                    onSend={handleCreateSession}
+	                                    isSendDisabled={!canCreate}
+	                                    isSending={isCreating}
+	                                    placeholder={t('session.inputPlaceholder')}
+	                                    autocompletePrefixes={[]}
+	                                    autocompleteSuggestions={async () => []}
+	                                    agentType={agentType}
+	                                    onAgentClick={handleAgentClick}
+	                                    permissionMode={permissionMode}
+	                                    onPermissionModeChange={handlePermissionModeChange}
+	                                    modelMode={modelMode}
+	                                    onModelModeChange={setModelMode}
+	                                    connectionStatus={connectionStatus}
+	                                    machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
+	                                    onMachineClick={handleMachineClick}
+	                                    currentPath={selectedPath}
+	                                    onPathClick={handlePathClick}
+	                                    contentPaddingHorizontal={0}
+	                                    panelStyle={{ backgroundColor: theme.colors.surface }}
+	                                    {...(useProfiles
+	                                        ? {
+	                                                profileId: selectedProfileId,
+	                                                onProfileClick: handleProfileClick,
+	                                                envVarsCount: selectedProfileEnvVarsCount || undefined,
+	                                                onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
+	                                            }
+	                                        : {})}
+	                                />
+	                            </View>
+	                        </View>
+	                    </View>
+	                </View>
             </KeyboardAvoidingView>
         );
     }

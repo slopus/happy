@@ -77,6 +77,7 @@ interface AgentInputProps {
     envVarsCount?: number;
     onEnvVarsClick?: () => void;
     contentPaddingHorizontal?: number;
+    panelStyle?: ViewStyle;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -421,9 +422,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         if (isGemini) {
             return mode === 'default' ? t('agentInput.geminiPermissionMode.default') :
-                mode === 'acceptEdits' ? 'Accept' :
-                    mode === 'bypassPermissions' ? 'YOLO' :
-                        mode === 'plan' ? 'Plan' : '';
+                mode === 'read-only' ? 'RO' :
+                    mode === 'safe-yolo' ? 'Safe' :
+                        mode === 'yolo' ? 'YOLO' : '';
         }
 
         return mode === 'default' ? t('agentInput.permissionMode.default') :
@@ -821,7 +822,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
 
                 {/* Box 2: Action Area (Input + Send) */}
-                <View style={styles.unifiedPanel}>
+                <View style={[styles.unifiedPanel, props.panelStyle]}>
                     {/* Input field */}
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
                         <MultiTextInput
