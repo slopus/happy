@@ -11,7 +11,7 @@ import { Purchases, customerInfoToPurchases } from "./purchases";
 import { TodoState } from "../-zen/model/ops";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes } from "./persistence";
 import type { PermissionMode } from '@/sync/permissionTypes';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
@@ -45,6 +45,8 @@ function isSessionActive(session: { active: boolean; activeAt: number }): boolea
 
 // Known entitlement IDs
 export type KnownEntitlements = 'pro';
+
+type SessionModelMode = NonNullable<Session['modelMode']>;
 
 interface SessionMessages {
     messages: Message[];
@@ -251,6 +253,7 @@ export const storage = create<StorageState>()((set, get) => {
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
     let sessionPermissionModes = loadSessionPermissionModes();
+    let sessionModelModes = loadSessionModelModes();
     return {
         settings,
         settingsVersion: version,
@@ -304,6 +307,7 @@ export const storage = create<StorageState>()((set, get) => {
             // Load drafts and permission modes if sessions are empty (initial load)
             const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
             const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
+            const savedModelModes = Object.keys(state.sessions).length === 0 ? sessionModelModes : {};
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -318,11 +322,14 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedDraft = savedDrafts[session.id];
                 const existingPermissionMode = state.sessions[session.id]?.permissionMode;
                 const savedPermissionMode = savedPermissionModes[session.id];
+                const existingModelMode = state.sessions[session.id]?.modelMode;
+                const savedModelMode = savedModelModes[session.id];
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default'
+                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default',
+                    modelMode: existingModelMode || savedModelMode || session.modelMode || 'default',
                 };
             });
 
@@ -818,6 +825,16 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
 
+            // Collect all model modes for persistence (only non-default values to save space)
+            const allModes: Record<string, SessionModelMode> = {};
+            Object.entries(updatedSessions).forEach(([id, sess]) => {
+                if (sess.modelMode && sess.modelMode !== 'default') {
+                    allModes[id] = sess.modelMode;
+                }
+            });
+
+            saveSessionModelModes(allModes);
+
             // No need to rebuild sessionListViewData since model mode doesn't affect the list display
             return {
                 ...state,
@@ -926,6 +943,10 @@ export const storage = create<StorageState>()((set, get) => {
             const modes = loadSessionPermissionModes();
             delete modes[sessionId];
             saveSessionPermissionModes(modes);
+
+            const modelModes = loadSessionModelModes();
+            delete modelModes[sessionId];
+            saveSessionModelModes(modelModes);
             
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(remainingSessions);
