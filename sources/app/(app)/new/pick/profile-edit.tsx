@@ -140,6 +140,16 @@ export default function ProfileEditScreen() {
         // Update last used profile for convenience in other screens.
         if (isNewProfile) {
             setLastUsedProfile(profileToSave.id);
+            // For newly created profiles (including "Save As" from a built-in profile), jump back to /new
+            // and pass the id through route params so it can be selected immediately.
+            // This avoids relying on intermediate picker screens to forward the selection.
+            isDirtyRef.current = false;
+            setIsDirty(false);
+            router.replace({
+                pathname: '/new',
+                params: { profileId: profileToSave.id },
+            } as any);
+            return;
         }
 
         // Pass selection back to the /new screen via navigation params (unmount-safe).

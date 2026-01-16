@@ -37,6 +37,8 @@ import { EnvironmentVariablesPreviewModal } from '@/components/newSession/Enviro
 import { buildProfileGroups } from '@/sync/profileGrouping';
 import { ItemRowActions } from '@/components/ItemRowActions';
 import type { ItemAction } from '@/components/ItemActionsMenuModal';
+import { CommonActions, useNavigation } from '@react-navigation/native';
+import { consumeProfileIdParam } from '@/profileRouteParams';
 
 // Optimized profile lookup utility
 const useProfileMap = (profiles: AIBackendProfile[]) => {
@@ -247,6 +249,7 @@ const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 
 function NewSessionWizard() {
     const { theme, rt } = useUnistyles();
 			    const router = useRouter();
+                const navigation = useNavigation();
 			    const safeArea = useSafeAreaInsets();
 			    const headerHeight = useHeaderHeight();
 			    const { width: screenWidth } = useWindowDimensions();
@@ -340,6 +343,21 @@ function NewSessionWizard() {
             setSelectedProfileId(null);
         }
     }, [useProfiles, selectedProfileId]);
+
+    // If a new profile is created while this screen is open (e.g. "Save As" from a built-in profile),
+    // `lastUsedProfile` is updated. Keep the selection in sync so the new profile is immediately active.
+    React.useEffect(() => {
+        if (!useProfiles) {
+            return;
+        }
+        if (!lastUsedProfile || !profileMap.has(lastUsedProfile)) {
+            return;
+        }
+        if (selectedProfileId === lastUsedProfile) {
+            return;
+        }
+        setSelectedProfileId(lastUsedProfile);
+    }, [lastUsedProfile, profileMap, selectedProfileId, useProfiles]);
     const allowGemini = experimentsEnabled;
 
     const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
@@ -818,20 +836,23 @@ function NewSessionWizard() {
             return;
         }
 
-        const nextProfileIdFromParams = Array.isArray(profileIdParam) ? profileIdParam[0] : profileIdParam;
-        if (typeof nextProfileIdFromParams !== 'string') {
-            return;
-        }
-        if (nextProfileIdFromParams === '') {
+        const { nextSelectedProfileId, shouldClearParam } = consumeProfileIdParam({
+            profileIdParam,
+            selectedProfileId,
+        });
+
+        if (nextSelectedProfileId === null) {
             if (selectedProfileId !== null) {
                 setSelectedProfileId(null);
             }
-            return;
+        } else if (typeof nextSelectedProfileId === 'string') {
+            selectProfile(nextSelectedProfileId);
         }
-        if (nextProfileIdFromParams !== selectedProfileId) {
-            selectProfile(nextProfileIdFromParams);
+
+        if (shouldClearParam) {
+            navigation.dispatch(CommonActions.setParams({ profileId: undefined }) as never);
         }
-    }, [profileIdParam, selectedProfileId, selectProfile, useProfiles]);
+    }, [navigation, profileIdParam, selectedProfileId, selectProfile, useProfiles]);
 
     // Keep agentType compatible with the currently selected profile.
     React.useEffect(() => {
