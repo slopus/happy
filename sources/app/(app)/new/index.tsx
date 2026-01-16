@@ -1457,7 +1457,6 @@ function NewSessionWizard() {
 	                                    currentPath={selectedPath}
 	                                    onPathClick={handlePathClick}
 	                                    contentPaddingHorizontal={0}
-	                                    panelStyle={{ backgroundColor: theme.colors.surface }}
 	                                    {...(useProfiles
 	                                        ? {
 	                                                profileId: selectedProfileId,
