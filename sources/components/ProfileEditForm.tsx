@@ -1,25 +1,99 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, ViewStyle, Linking, Platform } from 'react-native';
+import { View, Text, TextInput, ViewStyle, Linking, Platform, Pressable, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { AIBackendProfile } from '@/sync/settings';
-import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
+import { normalizeProfileDefaultPermissionMode, type PermissionMode } from '@/sync/permissionTypes';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
+import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
+import { Switch } from '@/components/Switch';
 import { getBuiltInProfileDocumentation } from '@/sync/profileUtils';
-import { useEnvironmentVariables, extractEnvVarReferences } from '@/hooks/useEnvironmentVariables';
 import { EnvironmentVariablesList } from '@/components/EnvironmentVariablesList';
+import { useSetting, useAllMachines, useMachine, useSettingMutable } from '@/sync/storage';
+import { Modal } from '@/modal';
+import { MachineSelector } from '@/components/newSession/MachineSelector';
+import type { Machine } from '@/sync/storageTypes';
+import { isMachineOnline } from '@/utils/machineUtils';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
     machineId: string | null;
-    onSave: (profile: AIBackendProfile) => void;
+    /**
+     * Return true when the profile was successfully saved.
+     * Return false when saving failed (e.g. validation error).
+     */
+    onSave: (profile: AIBackendProfile) => boolean;
     onCancel: () => void;
+    onDirtyChange?: (isDirty: boolean) => void;
     containerStyle?: ViewStyle;
+    saveRef?: React.MutableRefObject<(() => boolean) | null>;
+}
+
+interface MachinePreviewModalProps {
+    machines: Machine[];
+    favoriteMachineIds: string[];
+    selectedMachineId: string | null;
+    onSelect: (machineId: string) => void;
+    onToggleFavorite: (machineId: string) => void;
+    onClose: () => void;
+}
+
+function MachinePreviewModal(props: MachinePreviewModalProps) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+    const { height: windowHeight } = useWindowDimensions();
+
+    const selectedMachine = React.useMemo(() => {
+        if (!props.selectedMachineId) return null;
+        return props.machines.find((m) => m.id === props.selectedMachineId) ?? null;
+    }, [props.machines, props.selectedMachineId]);
+
+    const favoriteMachines = React.useMemo(() => {
+        const byId = new Map(props.machines.map((m) => [m.id, m] as const));
+        return props.favoriteMachineIds.map((id) => byId.get(id)).filter(Boolean) as Machine[];
+    }, [props.favoriteMachineIds, props.machines]);
+
+    const maxHeight = Math.min(720, Math.max(420, Math.floor(windowHeight * 0.85)));
+
+    return (
+        <View style={[styles.machinePreviewModalContainer, { height: maxHeight, maxHeight }]}>
+            <View style={styles.machinePreviewModalHeader}>
+                <Text style={styles.machinePreviewModalTitle}>
+                    {t('profiles.previewMachine.title')}
+                </Text>
+
+                <Pressable
+                    onPress={props.onClose}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                >
+                    <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
+                </Pressable>
+            </View>
+
+            <View style={{ flex: 1 }}>
+                <MachineSelector
+                    machines={props.machines}
+                    selectedMachine={selectedMachine}
+                    favoriteMachines={favoriteMachines}
+                    showRecent={false}
+                    showFavorites={favoriteMachines.length > 0}
+                    showSearch
+                    searchPlacement={favoriteMachines.length > 0 ? 'favorites' : 'all'}
+                    onSelect={(machine) => {
+                        props.onSelect(machine.id);
+                        props.onClose();
+                    }}
+                    onToggleFavorite={(machine) => props.onToggleFavorite(machine.id)}
+                />
+            </View>
+        </View>
+    );
 }
 
 export function ProfileEditForm({
@@ -27,554 +101,483 @@ export function ProfileEditForm({
     machineId,
     onSave,
     onCancel,
-    containerStyle
+    onDirtyChange,
+    containerStyle,
+    saveRef,
 }: ProfileEditFormProps) {
-    const { theme } = useUnistyles();
+    const { theme, rt } = useUnistyles();
+    const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
+    const styles = stylesheet;
+    const experimentsEnabled = useSetting('experiments');
+    const machines = useAllMachines();
+    const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
+    const routeMachine = machineId;
+    const [previewMachineId, setPreviewMachineId] = React.useState<string | null>(routeMachine);
 
-    // Get documentation for built-in profiles
+    React.useEffect(() => {
+        setPreviewMachineId(routeMachine);
+    }, [routeMachine]);
+
+    const resolvedMachineId = routeMachine ?? previewMachineId;
+    const resolvedMachine = useMachine(resolvedMachineId ?? '');
+
+    const toggleFavoriteMachineId = React.useCallback((machineIdToToggle: string) => {
+        if (favoriteMachines.includes(machineIdToToggle)) {
+            setFavoriteMachines(favoriteMachines.filter((id) => id !== machineIdToToggle));
+        } else {
+            setFavoriteMachines([machineIdToToggle, ...favoriteMachines]);
+        }
+    }, [favoriteMachines, setFavoriteMachines]);
+
+    const MachinePreviewModalWrapper = React.useCallback(({ onClose }: { onClose: () => void }) => {
+        return (
+            <MachinePreviewModal
+                machines={machines}
+                favoriteMachineIds={favoriteMachines}
+                selectedMachineId={previewMachineId}
+                onSelect={setPreviewMachineId}
+                onToggleFavorite={toggleFavoriteMachineId}
+                onClose={onClose}
+            />
+        );
+    }, [favoriteMachines, machines, previewMachineId, toggleFavoriteMachineId]);
+
+    const showMachinePreviewPicker = React.useCallback(() => {
+        Modal.show({
+            component: MachinePreviewModalWrapper,
+            props: {},
+        });
+    }, [MachinePreviewModalWrapper]);
+
     const profileDocs = React.useMemo(() => {
         if (!profile.isBuiltIn) return null;
         return getBuiltInProfileDocumentation(profile.id);
-    }, [profile.isBuiltIn, profile.id]);
+    }, [profile.id, profile.isBuiltIn]);
 
-    // Local state for environment variables (unified for all config)
-    const [environmentVariables, setEnvironmentVariables] = React.useState<Array<{ name: string; value: string }>>(
-        profile.environmentVariables || []
+    const [environmentVariables, setEnvironmentVariables] = React.useState<Array<{ name: string; value: string; isSecret?: boolean }>>(
+        profile.environmentVariables || [],
     );
-
-    // Extract ${VAR} references from environmentVariables for querying daemon
-    const envVarNames = React.useMemo(() => {
-        return extractEnvVarReferences(environmentVariables);
-    }, [environmentVariables]);
-
-    // Query daemon environment using hook
-    const { variables: actualEnvVars } = useEnvironmentVariables(machineId, envVarNames);
 
     const [name, setName] = React.useState(profile.name || '');
     const [useTmux, setUseTmux] = React.useState(profile.tmuxConfig?.sessionName !== undefined);
     const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxConfig?.sessionName || '');
     const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxConfig?.tmpDir || '');
-    const [useStartupScript, setUseStartupScript] = React.useState(!!profile.startupBashScript);
-    const [startupScript, setStartupScript] = React.useState(profile.startupBashScript || '');
-    const [defaultSessionType, setDefaultSessionType] = React.useState<'simple' | 'worktree'>(profile.defaultSessionType || 'simple');
-    const [defaultPermissionMode, setDefaultPermissionMode] = React.useState<PermissionMode>((profile.defaultPermissionMode as PermissionMode) || 'default');
-    const [agentType, setAgentType] = React.useState<'claude' | 'codex'>(() => {
-        if (profile.compatibility.claude && !profile.compatibility.codex) return 'claude';
-        if (profile.compatibility.codex && !profile.compatibility.claude) return 'codex';
-        return 'claude'; // Default to Claude if both or neither
-    });
+    const [defaultSessionType, setDefaultSessionType] = React.useState<'simple' | 'worktree'>(
+        profile.defaultSessionType || 'simple',
+    );
+    const [defaultPermissionMode, setDefaultPermissionMode] = React.useState<PermissionMode>(
+        normalizeProfileDefaultPermissionMode(profile.defaultPermissionMode as PermissionMode),
+    );
+    const [compatibility, setCompatibility] = React.useState<NonNullable<AIBackendProfile['compatibility']>>(
+        profile.compatibility || { claude: true, codex: true, gemini: true },
+    );
 
-    const handleSave = () => {
+    const initialSnapshotRef = React.useRef<string | null>(null);
+    if (initialSnapshotRef.current === null) {
+        initialSnapshotRef.current = JSON.stringify({
+            name,
+            environmentVariables,
+            useTmux,
+            tmuxSession,
+            tmuxTmpDir,
+            defaultSessionType,
+            defaultPermissionMode,
+            compatibility,
+        });
+    }
+
+    const isDirty = React.useMemo(() => {
+        const currentSnapshot = JSON.stringify({
+            name,
+            environmentVariables,
+            useTmux,
+            tmuxSession,
+            tmuxTmpDir,
+            defaultSessionType,
+            defaultPermissionMode,
+            compatibility,
+        });
+        return currentSnapshot !== initialSnapshotRef.current;
+    }, [
+        compatibility,
+        defaultPermissionMode,
+        defaultSessionType,
+        environmentVariables,
+        name,
+        tmuxSession,
+        tmuxTmpDir,
+        useTmux,
+    ]);
+
+    React.useEffect(() => {
+        onDirtyChange?.(isDirty);
+    }, [isDirty, onDirtyChange]);
+
+    const toggleCompatibility = React.useCallback((key: keyof AIBackendProfile['compatibility']) => {
+        setCompatibility((prev) => {
+            const next = { ...prev, [key]: !prev[key] };
+            const enabledCount = Object.values(next).filter(Boolean).length;
+            if (enabledCount === 0) {
+                Modal.alert(t('common.error'), t('profiles.aiBackend.selectAtLeastOneError'));
+                return prev;
+            }
+            return next;
+        });
+    }, []);
+
+    const openSetupGuide = React.useCallback(async () => {
+        const url = profileDocs?.setupGuideUrl;
+        if (!url) return;
+        try {
+            if (Platform.OS === 'web') {
+                window.open(url, '_blank');
+            } else {
+                await Linking.openURL(url);
+            }
+        } catch (error) {
+            console.error('Failed to open URL:', error);
+        }
+    }, [profileDocs?.setupGuideUrl]);
+
+    const handleSave = React.useCallback((): boolean => {
         if (!name.trim()) {
-            // Profile name validation - prevent saving empty profiles
-            return;
+            Modal.alert(t('common.error'), t('profiles.nameRequired'));
+            return false;
         }
 
-        onSave({
+        return onSave({
             ...profile,
             name: name.trim(),
-            // Clear all config objects - ALL configuration now in environmentVariables
-            anthropicConfig: {},
-            openaiConfig: {},
-            azureOpenAIConfig: {},
-            // Use environment variables from state (managed by EnvironmentVariablesList)
             environmentVariables,
-            // Keep non-env-var configuration
-            tmuxConfig: useTmux ? {
-                sessionName: tmuxSession.trim() || '', // Empty string = use current/most recent tmux session
-                tmpDir: tmuxTmpDir.trim() || undefined,
-                updateEnvironment: undefined, // Preserve schema compatibility, not used by daemon
-            } : {
-                sessionName: undefined,
-                tmpDir: undefined,
-                updateEnvironment: undefined,
-            },
-            startupBashScript: useStartupScript ? (startupScript.trim() || undefined) : undefined,
-            defaultSessionType: defaultSessionType,
-            defaultPermissionMode: defaultPermissionMode,
+            tmuxConfig: useTmux
+                ? {
+                      ...(profile.tmuxConfig ?? {}),
+                      sessionName: tmuxSession.trim() || '',
+                      tmpDir: tmuxTmpDir.trim() || undefined,
+                  }
+                : undefined,
+            defaultSessionType,
+            defaultPermissionMode,
+            compatibility,
             updatedAt: Date.now(),
         });
-    };
+    }, [
+        compatibility,
+        defaultPermissionMode,
+        defaultSessionType,
+        environmentVariables,
+        name,
+        onSave,
+        profile,
+        tmuxSession,
+        tmuxTmpDir,
+        useTmux,
+    ]);
+
+    React.useEffect(() => {
+        if (!saveRef) {
+            return;
+        }
+        saveRef.current = handleSave;
+        return () => {
+            saveRef.current = null;
+        };
+    }, [handleSave, saveRef]);
 
     return (
-        <ScrollView
-            style={[profileEditFormStyles.scrollView, containerStyle]}
-            contentContainerStyle={profileEditFormStyles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-        >
-            <View style={profileEditFormStyles.formContainer}>
-                    {/* Profile Name */}
-                    <Text style={{
-                        fontSize: 14,
-                        fontWeight: '600',
-                        color: theme.colors.text,
-                        marginBottom: 8,
-                        ...Typography.default('semiBold')
-                    }}>
-                        {t('profiles.profileName')}
-                    </Text>
-                    <TextInput
-                        style={{
-                            backgroundColor: theme.colors.input.background,
-                            borderRadius: 10, // Matches new session panel input fields
-                            padding: 12,
-                            fontSize: 16,
-                            color: theme.colors.text,
-                            marginBottom: 16,
-                            borderWidth: 1,
-                            borderColor: theme.colors.textSecondary,
-                        }}
-                        placeholder={t('profiles.enterName')}
-                        value={name}
-                        onChangeText={setName}
-                    />
-
-                    {/* Built-in Profile Documentation - Setup Instructions */}
-                    {profile.isBuiltIn && profileDocs && (
-                        <View style={{
-                            backgroundColor: theme.colors.surface,
-                            borderRadius: 12,
-                            padding: 16,
-                            marginBottom: 20,
-                            borderWidth: 1,
-                            borderColor: theme.colors.button.primary.background,
-                        }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                                <Ionicons name="information-circle" size={20} color={theme.colors.button.primary.tint} style={{ marginRight: 8 }} />
-                                <Text style={{
-                                    fontSize: 15,
-                                    fontWeight: '600',
-                                    color: theme.colors.text,
-                                    ...Typography.default('semiBold')
-                                }}>
-                                    Setup Instructions
-                                </Text>
-                            </View>
-
-                            <Text style={{
-                                fontSize: 13,
-                                color: theme.colors.text,
-                                marginBottom: 12,
-                                lineHeight: 18,
-                                ...Typography.default()
-                            }}>
-                                {profileDocs.description}
-                            </Text>
-
-                            {profileDocs.setupGuideUrl && (
-                                <Pressable
-                                    onPress={async () => {
-                                        try {
-                                            const url = profileDocs.setupGuideUrl!;
-                                            // On web/Tauri desktop, use window.open
-                                            if (Platform.OS === 'web') {
-                                                window.open(url, '_blank');
-                                            } else {
-                                                // On native (iOS/Android), use Linking API
-                                                await Linking.openURL(url);
-                                            }
-                                        } catch (error) {
-                                            console.error('Failed to open URL:', error);
-                                        }
-                                    }}
-                                    style={{
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        backgroundColor: theme.colors.button.primary.background,
-                                        borderRadius: 8,
-                                        padding: 12,
-                                        marginBottom: 16,
-                                    }}
-                                >
-                                    <Ionicons name="book-outline" size={16} color={theme.colors.button.primary.tint} style={{ marginRight: 8 }} />
-                                    <Text style={{
-                                        fontSize: 13,
-                                        color: theme.colors.button.primary.tint,
-                                        fontWeight: '600',
-                                        flex: 1,
-                                        ...Typography.default('semiBold')
-                                    }}>
-                                        View Official Setup Guide
-                                    </Text>
-                                    <Ionicons name="open-outline" size={14} color={theme.colors.button.primary.tint} />
-                                </Pressable>
-                            )}
-                        </View>
-                    )}
-
-                    {/* Session Type */}
-                    <Text style={{
-                        fontSize: 14,
-                        fontWeight: '600',
-                        color: theme.colors.text,
-                        marginBottom: 12,
-                        ...Typography.default('semiBold')
-                    }}>
-                        Default Session Type
-                    </Text>
-                    <View style={{ marginBottom: 16 }}>
-                        <SessionTypeSelector
-                            value={defaultSessionType}
-                            onChange={setDefaultSessionType}
+        <ItemList style={containerStyle} keyboardShouldPersistTaps="handled">
+            <ItemGroup title={t('profiles.profileName')}>
+                <React.Fragment>
+                    <View style={styles.inputContainer}>
+                        <TextInput
+                            style={styles.textInput}
+                            placeholder={t('profiles.enterName')}
+                            placeholderTextColor={theme.colors.input.placeholder}
+                            value={name}
+                            onChangeText={setName}
                         />
                     </View>
+                </React.Fragment>
+            </ItemGroup>
 
-                    {/* Permission Mode */}
-                    <Text style={{
-                        fontSize: 14,
-                        fontWeight: '600',
-                        color: theme.colors.text,
-                        marginBottom: 12,
-                        ...Typography.default('semiBold')
-                    }}>
-                        Default Permission Mode
-                    </Text>
-                    <ItemGroup title="">
-                        {[
-                            { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                            { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                            { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                            { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
-                        ].map((option, index, array) => (
-                            <Item
-                                key={option.value}
-                                title={option.label}
-                                subtitle={option.description}
-                                leftElement={
-                                    <Ionicons
-                                        name={option.icon as any}
-                                        size={24}
-                                        color={defaultPermissionMode === option.value ? theme.colors.button.primary.tint : theme.colors.textSecondary}
-                                    />
-                                }
-                                rightElement={defaultPermissionMode === option.value ? (
-                                    <Ionicons
-                                        name="checkmark-circle"
-                                        size={20}
-                                        color={theme.colors.button.primary.tint}
-                                    />
-                                ) : null}
-                                onPress={() => setDefaultPermissionMode(option.value)}
-                                showChevron={false}
-                                selected={defaultPermissionMode === option.value}
-                                showDivider={index < array.length - 1}
-                                style={defaultPermissionMode === option.value ? {
-                                    borderWidth: 2,
-                                    borderColor: theme.colors.button.primary.tint,
-                                    borderRadius: 8,
-                                } : undefined}
+            {profile.isBuiltIn && profileDocs?.setupGuideUrl && (
+                <ItemGroup title={t('profiles.setupInstructions.title')} footer={profileDocs.description}>
+                    <Item
+                        title={t('profiles.setupInstructions.viewOfficialGuide')}
+                        icon={<Ionicons name="book-outline" size={29} color={theme.colors.button.secondary.tint} />}
+                        onPress={() => void openSetupGuide()}
+                    />
+                </ItemGroup>
+            )}
+
+            <ItemGroup title={t('profiles.defaultSessionType')}>
+                <SessionTypeSelector value={defaultSessionType} onChange={setDefaultSessionType} title={null} />
+            </ItemGroup>
+
+            <ItemGroup title={t('profiles.defaultPermissionMode.title')}>
+                {[
+                    {
+                        value: 'default' as PermissionMode,
+                        label: t('agentInput.permissionMode.default'),
+                        description: t('profiles.defaultPermissionMode.descriptions.default'),
+                        icon: 'shield-outline'
+                    },
+                    {
+                        value: 'acceptEdits' as PermissionMode,
+                        label: t('agentInput.permissionMode.acceptEdits'),
+                        description: t('profiles.defaultPermissionMode.descriptions.acceptEdits'),
+                        icon: 'checkmark-outline'
+                    },
+                    {
+                        value: 'plan' as PermissionMode,
+                        label: t('agentInput.permissionMode.plan'),
+                        description: t('profiles.defaultPermissionMode.descriptions.plan'),
+                        icon: 'list-outline'
+                    },
+                    {
+                        value: 'bypassPermissions' as PermissionMode,
+                        label: t('agentInput.permissionMode.bypassPermissions'),
+                        description: t('profiles.defaultPermissionMode.descriptions.bypassPermissions'),
+                        icon: 'flash-outline'
+                    },
+                ].map((option, index, array) => (
+                    <Item
+                        key={option.value}
+                        title={option.label}
+                        subtitle={option.description}
+                        leftElement={
+                            <Ionicons
+                                name={option.icon as any}
+                                size={24}
+                                color={theme.colors.textSecondary}
                             />
-                        ))}
-                    </ItemGroup>
-                    <View style={{ marginBottom: 16 }} />
-
-                    {/* Tmux Enable/Disable */}
-                    <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        marginBottom: 8,
-                    }}>
-                        <Pressable
-                            style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                marginRight: 8,
-                            }}
-                            onPress={() => setUseTmux(!useTmux)}
-                        >
-                            <View style={{
-                                width: 20,
-                                height: 20,
-                                borderRadius: 4,
-                                borderWidth: 2,
-                                borderColor: useTmux ? theme.colors.button.primary.background : theme.colors.textSecondary,
-                                backgroundColor: useTmux ? theme.colors.button.primary.background : 'transparent',
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                marginRight: 8,
-                            }}>
-                                {useTmux && (
-                                    <Ionicons name="checkmark" size={12} color={theme.colors.button.primary.tint} />
-                                )}
-                            </View>
-                        </Pressable>
-                        <Text style={{
-                            fontSize: 14,
-                            fontWeight: '600',
-                            color: theme.colors.text,
-                            ...Typography.default('semiBold')
-                        }}>
-                            Spawn Sessions in Tmux
-                        </Text>
-                    </View>
-                    <Text style={{
-                        fontSize: 12,
-                        color: theme.colors.textSecondary,
-                        marginBottom: 12,
-                        ...Typography.default()
-                    }}>
-                        {useTmux ? 'Sessions spawn in new tmux windows. Configure session name and temp directory below.' : 'Sessions spawn in regular shell (no tmux integration)'}
-                    </Text>
-
-                    {/* Tmux Session Name */}
-                    <Text style={{
-                        fontSize: 14,
-                        fontWeight: '600',
-                        color: theme.colors.text,
-                        marginBottom: 8,
-                        ...Typography.default('semiBold')
-                    }}>
-                        Tmux Session Name ({t('common.optional')})
-                    </Text>
-                    <Text style={{
-                        fontSize: 12,
-                        color: theme.colors.textSecondary,
-                        marginBottom: 8,
-                        ...Typography.default()
-                    }}>
-                        Leave empty to use first existing tmux session (or create "happy" if none exist). Specify name (e.g., "my-work") for specific session.
-                    </Text>
-                    <TextInput
-                        style={{
-                            backgroundColor: theme.colors.input.background,
-                            borderRadius: 10, // Matches new session panel input fields
-                            padding: 12,
-                            fontSize: 16,
-                            color: useTmux ? theme.colors.text : theme.colors.textSecondary,
-                            marginBottom: 16,
-                            borderWidth: 1,
-                            borderColor: theme.colors.textSecondary,
-                            opacity: useTmux ? 1 : 0.5,
-                        }}
-                        placeholder={useTmux ? 'Empty = first existing session' : "Disabled - tmux not enabled"}
-                        value={tmuxSession}
-                        onChangeText={setTmuxSession}
-                        editable={useTmux}
+                        }
+                        rightElement={
+                            defaultPermissionMode === option.value ? (
+                                <Ionicons name="checkmark-circle" size={24} color={selectedIndicatorColor} />
+                            ) : null
+                        }
+                        onPress={() => setDefaultPermissionMode(option.value)}
+                        showChevron={false}
+                        selected={defaultPermissionMode === option.value}
+                        showDivider={index < array.length - 1}
                     />
+                ))}
+            </ItemGroup>
 
-                    {/* Tmux Temp Directory */}
-                    <Text style={{
-                        fontSize: 14,
-                        fontWeight: '600',
-                        color: theme.colors.text,
-                        marginBottom: 8,
-                        ...Typography.default('semiBold')
-                    }}>
-                        Tmux Temp Directory ({t('common.optional')})
-                    </Text>
-                    <Text style={{
-                        fontSize: 12,
-                        color: theme.colors.textSecondary,
-                        marginBottom: 8,
-                        ...Typography.default()
-                    }}>
-                        Temporary directory for tmux session files. Leave empty for system default.
-                    </Text>
-                    <TextInput
-                        style={{
-                            backgroundColor: theme.colors.input.background,
-                            borderRadius: 10, // Matches new session panel input fields
-                            padding: 12,
-                            fontSize: 16,
-                            color: useTmux ? theme.colors.text : theme.colors.textSecondary,
-                            marginBottom: 16,
-                            borderWidth: 1,
-                            borderColor: theme.colors.textSecondary,
-                            opacity: useTmux ? 1 : 0.5,
-                        }}
-                        placeholder={useTmux ? "/tmp (optional)" : "Disabled - tmux not enabled"}
-                        placeholderTextColor={theme.colors.input.placeholder}
-                        value={tmuxTmpDir}
-                        onChangeText={setTmuxTmpDir}
-                        editable={useTmux}
+            <ItemGroup title={t('profiles.aiBackend.title')}>
+                <Item
+                    title={t('agentInput.agent.claude')}
+                    subtitle={t('profiles.aiBackend.claudeSubtitle')}
+                    leftElement={<Ionicons name="sparkles-outline" size={24} color={theme.colors.textSecondary} />}
+                    rightElement={<Switch value={compatibility.claude} onValueChange={() => toggleCompatibility('claude')} />}
+                    showChevron={false}
+                    onPress={() => toggleCompatibility('claude')}
+                />
+                <Item
+                    title={t('agentInput.agent.codex')}
+                    subtitle={t('profiles.aiBackend.codexSubtitle')}
+                    leftElement={<Ionicons name="terminal-outline" size={24} color={theme.colors.textSecondary} />}
+                    rightElement={<Switch value={compatibility.codex} onValueChange={() => toggleCompatibility('codex')} />}
+                    showChevron={false}
+                    onPress={() => toggleCompatibility('codex')}
+                />
+                {experimentsEnabled && (
+                    <Item
+                        title={t('agentInput.agent.gemini')}
+                        subtitle={t('profiles.aiBackend.geminiSubtitleExperimental')}
+                        leftElement={<Ionicons name="planet-outline" size={24} color={theme.colors.textSecondary} />}
+                        rightElement={<Switch value={compatibility.gemini} onValueChange={() => toggleCompatibility('gemini')} />}
+                        showChevron={false}
+                        onPress={() => toggleCompatibility('gemini')}
+                        showDivider={false}
                     />
+                )}
+            </ItemGroup>
 
-                    {/* Startup Bash Script */}
-                    <View style={{ marginBottom: 24 }}>
-                        <View style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            marginBottom: 8,
-                        }}>
-                            <Pressable
-                                style={{
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    marginRight: 8,
-                                }}
-                                onPress={() => setUseStartupScript(!useStartupScript)}
-                            >
-                                <View style={{
-                                    width: 20,
-                                    height: 20,
-                                    borderRadius: 4,
-                                    borderWidth: 2,
-                                    borderColor: useStartupScript ? theme.colors.button.primary.background : theme.colors.textSecondary,
-                                    backgroundColor: useStartupScript ? theme.colors.button.primary.background : 'transparent',
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    marginRight: 8,
-                                }}>
-                                    {useStartupScript && (
-                                        <Ionicons name="checkmark" size={12} color={theme.colors.button.primary.tint} />
-                                    )}
-                                </View>
-                            </Pressable>
-                            <Text style={{
-                                fontSize: 16,
-                                fontWeight: '600',
-                                color: theme.colors.text,
-                                ...Typography.default('semiBold')
-                            }}>
-                                Startup Bash Script
-                            </Text>
-                        </View>
-                        <Text style={{
-                            fontSize: 12,
-                            color: theme.colors.textSecondary,
-                            marginBottom: 12,
-                            ...Typography.default()
-                        }}>
-                            {useStartupScript
-                                ? 'Executed before spawning each session. Use for dynamic setup, environment checks, or custom initialization.'
-                                : 'No startup script - sessions spawn directly'}
-                        </Text>
-                        <View style={{
-                            flexDirection: 'row',
-                            alignItems: 'flex-start',
-                            gap: 8,
-                            opacity: useStartupScript ? 1 : 0.5,
-                        }}>
+            <ItemGroup title={t('profiles.tmux.title')}>
+                <Item
+                    title={t('profiles.tmux.spawnSessionsTitle')}
+                    subtitle={useTmux ? t('profiles.tmux.spawnSessionsEnabledSubtitle') : t('profiles.tmux.spawnSessionsDisabledSubtitle')}
+                    rightElement={<Switch value={useTmux} onValueChange={setUseTmux} />}
+                    showChevron={false}
+                    onPress={() => setUseTmux((v) => !v)}
+                />
+                {useTmux && (
+                    <React.Fragment>
+                        <View style={[styles.inputContainer, { paddingTop: 0 }]}>
+                            <Text style={styles.fieldLabel}>{t('profiles.tmuxSession')} ({t('common.optional')})</Text>
                             <TextInput
-                                style={{
-                                    flex: 1,
-                                    backgroundColor: useStartupScript ? theme.colors.input.background : theme.colors.surface,
-                                    borderRadius: 10, // Matches new session panel input fields
-                                    padding: 12,
-                                    fontSize: 14,
-                                    color: useStartupScript ? theme.colors.text : theme.colors.textSecondary,
-                                    borderWidth: 1,
-                                    borderColor: theme.colors.textSecondary,
-                                    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-                                    minHeight: 100,
-                                }}
-                                placeholder={useStartupScript ? "#!/bin/bash\necho 'Initializing...'\n# Your script here" : "Disabled"}
-                                value={startupScript}
-                                onChangeText={setStartupScript}
-                                editable={useStartupScript}
-                                multiline
-                                textAlignVertical="top"
+                                style={styles.textInput}
+                                placeholder={t('profiles.tmux.sessionNamePlaceholder')}
+                                placeholderTextColor={theme.colors.input.placeholder}
+                                value={tmuxSession}
+                                onChangeText={setTmuxSession}
                             />
-                            {useStartupScript && startupScript.trim() && (
-                                <Pressable
-                                    style={{
-                                        backgroundColor: theme.colors.button.primary.background,
-                                        borderRadius: 6,
-                                        padding: 10,
-                                        justifyContent: 'center',
-                                        alignItems: 'center',
-                                    }}
-                                    onPress={() => {
-                                        if (Platform.OS === 'web') {
-                                            navigator.clipboard.writeText(startupScript);
-                                        }
-                                    }}
-                                >
-                                    <Ionicons name="copy-outline" size={18} color={theme.colors.button.primary.tint} />
-                                </Pressable>
-                            )}
                         </View>
-                    </View>
+                        <View style={[styles.inputContainer, { paddingTop: 0, paddingBottom: 16 }]}>
+                            <Text style={styles.fieldLabel}>{t('profiles.tmuxTempDir')} ({t('common.optional')})</Text>
+                            <TextInput
+                                style={styles.textInput}
+                                placeholder={t('profiles.tmux.tempDirPlaceholder')}
+                                placeholderTextColor={theme.colors.input.placeholder}
+                                value={tmuxTmpDir}
+                                onChangeText={setTmuxTmpDir}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                            />
+                        </View>
+                    </React.Fragment>
+                )}
+            </ItemGroup>
 
-                    {/* Environment Variables Section - Unified configuration */}
-                    <EnvironmentVariablesList
-                        environmentVariables={environmentVariables}
-                        machineId={machineId}
-                        profileDocs={profileDocs}
-                        onChange={setEnvironmentVariables}
+            {!routeMachine && (
+                <ItemGroup title={t('profiles.previewMachine.title')}>
+                    <Item
+                        title={t('profiles.previewMachine.itemTitle')}
+                        subtitle={resolvedMachine ? t('profiles.previewMachine.resolveSubtitle') : t('profiles.previewMachine.selectSubtitle')}
+                        detail={resolvedMachine ? (resolvedMachine.metadata?.displayName || resolvedMachine.metadata?.host || resolvedMachine.id) : undefined}
+                        detailStyle={resolvedMachine
+                            ? { color: isMachineOnline(resolvedMachine) ? theme.colors.status.connected : theme.colors.status.disconnected }
+                            : undefined}
+                        icon={<Ionicons name="desktop-outline" size={29} color={theme.colors.button.secondary.tint} />}
+                        onPress={showMachinePreviewPicker}
                     />
+                </ItemGroup>
+            )}
 
-                    {/* Action buttons */}
-                    <View style={{ flexDirection: 'row', gap: 12 }}>
+            <EnvironmentVariablesList
+                environmentVariables={environmentVariables}
+                machineId={resolvedMachineId}
+                machineName={resolvedMachine ? (resolvedMachine.metadata?.displayName || resolvedMachine.metadata?.host || resolvedMachine.id) : null}
+                profileDocs={profileDocs}
+                onChange={setEnvironmentVariables}
+            />
+
+            <View style={{ paddingHorizontal: Platform.select({ ios: 16, default: 12 }), paddingTop: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                    <View style={{ flex: 1 }}>
                         <Pressable
-                            style={{
-                                flex: 1,
-                                backgroundColor: theme.colors.surface,
-                                borderRadius: 8,
-                                padding: 12,
-                                alignItems: 'center',
-                            }}
                             onPress={onCancel}
+                            style={({ pressed }) => ({
+                                backgroundColor: theme.colors.surface,
+                                borderRadius: 10,
+                                paddingVertical: 12,
+                                alignItems: 'center',
+                                opacity: pressed ? 0.85 : 1,
+                            })}
                         >
-                            <Text style={{
-                                fontSize: 16,
-                                fontWeight: '600',
-                                color: theme.colors.button.secondary.tint,
-                                ...Typography.default('semiBold')
-                            }}>
+                            <Text style={{ color: theme.colors.text, ...Typography.default('semiBold') }}>
                                 {t('common.cancel')}
                             </Text>
                         </Pressable>
-                        {profile.isBuiltIn ? (
-                            // For built-in profiles, show "Save As" button (creates custom copy)
-                            <Pressable
-                                style={{
-                                    flex: 1,
-                                    backgroundColor: theme.colors.button.primary.background,
-                                    borderRadius: 8,
-                                    padding: 12,
-                                    alignItems: 'center',
-                                }}
-                                onPress={handleSave}
-                            >
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '600',
-                                    color: theme.colors.button.primary.tint,
-                                    ...Typography.default('semiBold')
-                                }}>
-                                    {t('common.saveAs')}
-                                </Text>
-                            </Pressable>
-                        ) : (
-                            // For custom profiles, show regular "Save" button
-                            <Pressable
-                                style={{
-                                    flex: 1,
-                                    backgroundColor: theme.colors.button.primary.background,
-                                    borderRadius: 8,
-                                    padding: 12,
-                                    alignItems: 'center',
-                                }}
-                                onPress={handleSave}
-                            >
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '600',
-                                    color: theme.colors.button.primary.tint,
-                                    ...Typography.default('semiBold')
-                                }}>
-                                    {t('common.save')}
-                                </Text>
-                            </Pressable>
-                        )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <Pressable
+                            onPress={handleSave}
+                            style={({ pressed }) => ({
+                                backgroundColor: theme.colors.button.primary.background,
+                                borderRadius: 10,
+                                paddingVertical: 12,
+                                alignItems: 'center',
+                                opacity: pressed ? 0.85 : 1,
+                            })}
+                        >
+                            <Text style={{ color: theme.colors.button.primary.tint, ...Typography.default('semiBold') }}>
+                                {profile.isBuiltIn ? t('common.saveAs') : t('common.save')}
+                            </Text>
+                        </Pressable>
                     </View>
                 </View>
-        </ScrollView>
+            </View>
+        </ItemList>
     );
 }
 
-const profileEditFormStyles = StyleSheet.create((theme, rt) => ({
-    scrollView: {
-        flex: 1,
+const stylesheet = StyleSheet.create((theme) => ({
+    machinePreviewModalContainer: {
+        width: '92%',
+        maxWidth: 560,
+        backgroundColor: theme.colors.groupped.background,
+        borderRadius: 16,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        flexShrink: 1,
     },
-    scrollContent: {
-        padding: 20,
+    machinePreviewModalHeader: {
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
     },
-    formContainer: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: 16, // Matches new session panel main container
-        padding: 20,
-        width: '100%',
+    machinePreviewModalTitle: {
+        fontSize: 17,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    inputContainer: {
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+    },
+    selectorContainer: {
+        paddingHorizontal: 12,
+        paddingBottom: 4,
+    },
+    fieldLabel: {
+        ...Typography.default('semiBold'),
+        fontSize: 13,
+        color: theme.colors.groupped.sectionTitle,
+        marginBottom: 8,
+    },
+    textInput: {
+        ...Typography.default('regular'),
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: Platform.select({ ios: 10, default: 12 }),
+        fontSize: Platform.select({ ios: 17, default: 16 }),
+        lineHeight: Platform.select({ ios: 22, default: 24 }),
+        letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+        color: theme.colors.input.text,
+        ...(Platform.select({
+            web: {
+                outline: 'none',
+                outlineStyle: 'none',
+                outlineWidth: 0,
+                outlineColor: 'transparent',
+                boxShadow: 'none',
+                WebkitBoxShadow: 'none',
+                WebkitAppearance: 'none',
+            },
+            default: {},
+        }) as object),
+    },
+    multilineInput: {
+        ...Typography.default('regular'),
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        fontSize: 14,
+        lineHeight: 20,
+        color: theme.colors.input.text,
+        fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+        minHeight: 120,
+        ...(Platform.select({
+            web: {
+                outline: 'none',
+                outlineStyle: 'none',
+                outlineWidth: 0,
+                outlineColor: 'transparent',
+                boxShadow: 'none',
+                WebkitBoxShadow: 'none',
+                WebkitAppearance: 'none',
+            },
+            default: {},
+        }) as object),
     },
 }));
