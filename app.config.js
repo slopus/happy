@@ -4,20 +4,21 @@ const variant = process.env.APP_ENV || 'development';
 const nameOverride = (process.env.EXPO_APP_NAME || '').trim();
 const bundleIdOverride = (process.env.EXPO_APP_BUNDLE_ID || '').trim();
 
-const name =
-    nameOverride ||
-    {
-        development: "Happy (dev)",
-        preview: "Happy (preview)",
-        production: "Happy"
-    }[variant];
-const bundleId =
-    bundleIdOverride ||
-    {
-        development: "com.slopus.happy.dev",
-        preview: "com.slopus.happy.preview",
-        production: "com.ex3ndr.happy"
-    }[variant];
+const namesByVariant = {
+    development: "Happy (dev)",
+    preview: "Happy (preview)",
+    production: "Happy"
+};
+const bundleIdsByVariant = {
+    development: "com.slopus.happy.dev",
+    preview: "com.slopus.happy.preview",
+    production: "com.ex3ndr.happy"
+};
+
+// If APP_ENV is unknown, fall back to development-safe defaults to avoid generating
+// an invalid Expo config with undefined name/bundle id.
+const name = nameOverride || namesByVariant[variant] || namesByVariant.development;
+const bundleId = bundleIdOverride || bundleIdsByVariant[variant] || bundleIdsByVariant.development;
 // NOTE:
 // The URL scheme is used for deep linking *and* by the Expo development client launcher flow.
 // Keep the default stable for upstream users, but allow opt-in overrides for local dev variants
