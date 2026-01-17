@@ -158,6 +158,18 @@ describe('expandEnvironmentVariables', () => {
         });
     });
 
+    it('reuses ${VAR:=default} assignments for subsequent references in the same value', () => {
+        const envVars = {
+            TARGET: '${MISSING_VAR:=default-value}-${MISSING_VAR}',
+        };
+        const sourceEnv = {};
+
+        const result = expandEnvironmentVariables(envVars, sourceEnv);
+        expect(result).toEqual({
+            TARGET: 'default-value-default-value',
+        });
+    });
+
     it('treats empty string as missing for ${VAR:-default}', () => {
         const envVars = {
             TARGET: '${EMPTY_VAR:-default-value}',
