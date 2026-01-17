@@ -3,20 +3,42 @@ import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './set
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
-import type { PermissionMode } from '@/components/PermissionModeSelector';
+import type { Session } from './storageTypes';
+import { isModelMode, isPermissionMode, type PermissionMode, type ModelMode } from '@/sync/permissionTypes';
+import { readStorageScopeFromEnv, scopedStorageId } from '@/utils/storageScope';
 
-const mmkv = new MMKV();
+const isWebRuntime = typeof window !== 'undefined' && typeof document !== 'undefined';
+const storageScope = isWebRuntime ? null : readStorageScopeFromEnv();
+const mmkv = storageScope ? new MMKV({ id: scopedStorageId('default', storageScope) }) : new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
 
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini';
 export type NewSessionSessionType = 'simple' | 'worktree';
 
+type SessionModelMode = NonNullable<Session['modelMode']>;
+
+// NOTE:
+// This set must stay in sync with the configurable Session model modes.
+// TypeScript will catch invalid entries here, but it won't force adding new Session modes.
+const SESSION_MODEL_MODES = new Set<SessionModelMode>([
+    'default',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+]);
+
+function isSessionModelMode(value: unknown): value is SessionModelMode {
+    return typeof value === 'string' && SESSION_MODEL_MODES.has(value as SessionModelMode);
+}
+
 export interface NewSessionDraft {
     input: string;
     selectedMachineId: string | null;
     selectedPath: string | null;
+    selectedProfileId: string | null;
     agentType: NewSessionAgentType;
     permissionMode: PermissionMode;
+    modelMode: ModelMode;
     sessionType: NewSessionSessionType;
     updatedAt: number;
 }
@@ -26,7 +48,8 @@ export function loadSettings(): { settings: Settings, version: number | null } {
     if (settings) {
         try {
             const parsed = JSON.parse(settings);
-            return { settings: settingsParse(parsed.settings), version: parsed.version };
+            const version = typeof parsed.version === 'number' ? parsed.version : null;
+            return { settings: settingsParse(parsed.settings), version };
         } catch (e) {
             console.error('Failed to parse settings', e);
             return { settings: { ...settingsDefaults }, version: null };
@@ -139,11 +162,15 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const input = typeof parsed.input === 'string' ? parsed.input : '';
         const selectedMachineId = typeof parsed.selectedMachineId === 'string' ? parsed.selectedMachineId : null;
         const selectedPath = typeof parsed.selectedPath === 'string' ? parsed.selectedPath : null;
+        const selectedProfileId = typeof parsed.selectedProfileId === 'string' ? parsed.selectedProfileId : null;
         const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini'
             ? parsed.agentType
             : 'claude';
-        const permissionMode: PermissionMode = typeof parsed.permissionMode === 'string'
-            ? (parsed.permissionMode as PermissionMode)
+        const permissionMode: PermissionMode = isPermissionMode(parsed.permissionMode)
+            ? parsed.permissionMode
+            : 'default';
+        const modelMode: ModelMode = isModelMode(parsed.modelMode)
+            ? parsed.modelMode
             : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
@@ -152,8 +179,10 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             input,
             selectedMachineId,
             selectedPath,
+            selectedProfileId,
             agentType,
             permissionMode,
+            modelMode,
             sessionType,
             updatedAt,
         };
@@ -186,6 +215,34 @@ export function loadSessionPermissionModes(): Record<string, PermissionMode> {
 
 export function saveSessionPermissionModes(modes: Record<string, PermissionMode>) {
     mmkv.set('session-permission-modes', JSON.stringify(modes));
+}
+
+export function loadSessionModelModes(): Record<string, SessionModelMode> {
+    const modes = mmkv.getString('session-model-modes');
+    if (modes) {
+        try {
+            const parsed: unknown = JSON.parse(modes);
+            if (!parsed || typeof parsed !== 'object') {
+                return {};
+            }
+
+            const result: Record<string, SessionModelMode> = {};
+            Object.entries(parsed as Record<string, unknown>).forEach(([sessionId, mode]) => {
+                if (isSessionModelMode(mode)) {
+                    result[sessionId] = mode;
+                }
+            });
+            return result;
+        } catch (e) {
+            console.error('Failed to parse session model modes', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionModelModes(modes: Record<string, SessionModelMode>) {
+    mmkv.set('session-model-modes', JSON.stringify(modes));
 }
 
 export function loadProfile(): Profile {
