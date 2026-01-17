@@ -22,7 +22,14 @@ export const TokenStorage = {
     async getCredentials(): Promise<AuthCredentials | null> {
         const key = getAuthKey();
         if (Platform.OS === 'web') {
-            return localStorage.getItem(key) ? JSON.parse(localStorage.getItem(key)!) as AuthCredentials : null;
+            try {
+                const raw = localStorage.getItem(key);
+                if (!raw) return null;
+                return JSON.parse(raw) as AuthCredentials;
+            } catch (error) {
+                console.error('Error getting credentials:', error);
+                return null;
+            }
         }
         if (credentialsCache && credentialsCacheKey === key) {
             try {
@@ -46,8 +53,13 @@ export const TokenStorage = {
     async setCredentials(credentials: AuthCredentials): Promise<boolean> {
         const key = getAuthKey();
         if (Platform.OS === 'web') {
-            localStorage.setItem(key, JSON.stringify(credentials));
-            return true;
+            try {
+                localStorage.setItem(key, JSON.stringify(credentials));
+                return true;
+            } catch (error) {
+                console.error('Error setting credentials:', error);
+                return false;
+            }
         }
         try {
             const json = JSON.stringify(credentials);
@@ -64,8 +76,13 @@ export const TokenStorage = {
     async removeCredentials(): Promise<boolean> {
         const key = getAuthKey();
         if (Platform.OS === 'web') {    
-            localStorage.removeItem(key);
-            return true;
+            try {
+                localStorage.removeItem(key);
+                return true;
+            } catch (error) {
+                console.error('Error removing credentials:', error);
+                return false;
+            }
         }
         try {
             await SecureStore.deleteItemAsync(key);
