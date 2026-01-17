@@ -14,6 +14,11 @@ const TmuxConfigSchema = z.object({
 const EnvironmentVariableSchema = z.object({
     name: z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'Invalid environment variable name'),
     value: z.string(),
+    // User override:
+    // - true: force secret handling in UI (and hint daemon)
+    // - false: force non-secret handling in UI (unless daemon enforces)
+    // - undefined: auto classification
+    isSecret: z.boolean().optional(),
 });
 
 // Profile compatibility schema
