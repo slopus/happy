@@ -1,9 +1,10 @@
 import { logger } from '@/ui/logger';
 import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
-import { readFile, writeFile, readdir, stat } from 'fs/promises';
+import { readFile, writeFile, readdir, stat, access } from 'fs/promises';
+import { constants as fsConstants } from 'fs';
 import { createHash } from 'crypto';
-import { join } from 'path';
+import { join, delimiter as PATH_DELIMITER } from 'path';
 import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
@@ -24,6 +25,22 @@ interface BashResponse {
     stderr?: string;
     exitCode?: number;
     error?: string;
+}
+
+type DetectCliName = 'claude' | 'codex' | 'gemini';
+
+interface DetectCliRequest {
+    // no params (reserved for future options)
+}
+
+interface DetectCliEntry {
+    available: boolean;
+    resolvedPath?: string;
+}
+
+interface DetectCliResponse {
+    path: string | null;
+    clis: Record<DetectCliName, DetectCliEntry>;
 }
 
 type EnvPreviewSecretsPolicy = 'none' | 'redacted' | 'full';
@@ -55,6 +72,37 @@ interface PreviewEnvValue {
 interface PreviewEnvResponse {
     policy: EnvPreviewSecretsPolicy;
     values: Record<string, PreviewEnvValue>;
+}
+
+async function resolveCommandOnPath(command: string, pathEnv: string | null): Promise<string | null> {
+    if (!pathEnv) return null;
+
+    const segments = pathEnv
+        .split(PATH_DELIMITER)
+        .map((p) => p.trim())
+        .filter(Boolean);
+
+    const isWindows = process.platform === 'win32';
+    const extensions = isWindows
+        ? (process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM')
+            .split(';')
+            .map((e) => e.trim())
+            .filter(Boolean)
+        : [''];
+
+    for (const dir of segments) {
+        for (const ext of extensions) {
+            const candidate = join(dir, isWindows ? `${command}${ext}` : command);
+            try {
+                await access(candidate, isWindows ? fsConstants.F_OK : fsConstants.X_OK);
+                return candidate;
+            } catch {
+                // continue
+            }
+        }
+    }
+
+    return null;
 }
 
 interface ReadFileRequest {
@@ -309,6 +357,31 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
             });
             return result;
         }
+    });
+
+    /**
+     * CLI status handler - checks whether CLIs are resolvable on daemon PATH.
+     *
+     * This is more reliable than the `bash` RPC for "is CLI installed?" checks because it:
+     * - does not rely on a login shell (no ~/.zshrc, ~/.profile, etc)
+     * - matches how the daemon itself will resolve binaries when spawning
+     */
+    rpcHandlerManager.registerHandler<DetectCliRequest, DetectCliResponse>('detect-cli', async () => {
+        const pathEnv = typeof process.env.PATH === 'string' ? process.env.PATH : null;
+        const names: DetectCliName[] = ['claude', 'codex', 'gemini'];
+
+        const pairs = await Promise.all(
+            names.map(async (name) => {
+                const resolvedPath = await resolveCommandOnPath(name, pathEnv);
+                const entry: DetectCliEntry = resolvedPath ? { available: true, resolvedPath } : { available: false };
+                return [name, entry] as const;
+            }),
+        );
+
+        return {
+            path: pathEnv,
+            clis: Object.fromEntries(pairs) as Record<DetectCliName, DetectCliEntry>,
+        };
     });
 
     // Environment preview handler - returns daemon-effective env values with secret policy applied.
