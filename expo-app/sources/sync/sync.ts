@@ -1131,6 +1131,7 @@ class Sync {
         const API_ENDPOINT = getServerUrl();
         const maxRetries = 3;
         let retryCount = 0;
+        let lastVersionMismatch: { expectedVersion: number; currentVersion: number; pendingKeys: string[] } | null = null;
 
         // Apply pending settings
         if (Object.keys(this.pendingSettings).length > 0) {
@@ -1163,6 +1164,11 @@ class Sync {
                     break;
                 }
                 if (data.error === 'version-mismatch') {
+                    lastVersionMismatch = {
+                        expectedVersion: version ?? 0,
+                        currentVersion: data.currentVersion,
+                        pendingKeys: Object.keys(this.pendingSettings).sort(),
+                    };
                     // Parse server settings
                     const serverSettings = data.currentSettings
                         ? settingsParse(await this.encryption.decryptRaw(data.currentSettings))
@@ -1171,8 +1177,12 @@ class Sync {
                     // Merge: server base + our pending changes (our changes win)
                     const mergedSettings = applySettings(serverSettings, this.pendingSettings);
 
-                    // Update local storage with merged result at server's version
-                    storage.getState().applySettings(mergedSettings, data.currentVersion);
+                    // Update local storage with merged result at server's version.
+                    //
+                    // Important: `data.currentVersion` can be LOWER than our local `settingsVersion`
+                    // (e.g. when switching accounts/servers, or after server-side reset). If we only
+                    // "apply when newer", we'd never converge and would retry forever.
+                    storage.getState().replaceSettings(mergedSettings, data.currentVersion);
 
                     // Sync tracking state with merged settings
                     if (tracking) {
@@ -1190,7 +1200,10 @@ class Sync {
 
         // If exhausted retries, throw to trigger outer backoff delay
         if (retryCount >= maxRetries) {
-            throw new Error(`Settings sync failed after ${maxRetries} retries due to version conflicts`);
+            const mismatchHint = lastVersionMismatch
+                ? ` (expected=${lastVersionMismatch.expectedVersion}, current=${lastVersionMismatch.currentVersion}, pendingKeys=${lastVersionMismatch.pendingKeys.join(',')})`
+                : '';
+            throw new Error(`Settings sync failed after ${maxRetries} retries due to version conflicts${mismatchHint}`);
         }
 
         // Run request
