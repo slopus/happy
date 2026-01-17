@@ -121,7 +121,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         }
 
         return cmds;
-    }, [router, logout, sessions]);
+    }, [router, logout, sessions, navigateToSession]);
 
     const showCommandPalette = useCallback(() => {
         if (Platform.OS !== 'web' || !commandPaletteEnabled) return;
@@ -131,7 +131,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
             props: {
                 commands,
             }
-        } as any);
+        });
     }, [commands, commandPaletteEnabled]);
 
     // Set up global keyboard handler only if feature is enabled
