@@ -39,6 +39,7 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { initializeTodoSync } from '../-zen/model/ops';
+import { buildOutgoingMessageMeta } from './messageMeta';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -251,14 +252,7 @@ class Sync {
             sentFrom = 'web'; // fallback
         }
 
-        // Model settings - for Gemini, we pass the selected model; for others, CLI handles it
-        let model: string | null = null;
-        if (isGemini && modelMode !== 'default') {
-            // For Gemini ACP, pass the selected model to CLI
-            model = modelMode;
-        }
-        const fallbackModel: string | null = null;
-
+        const model = isGemini && modelMode !== 'default' ? modelMode : undefined;
         // Create user message content with metadata
         const content: RawRecord = {
             role: 'user',
@@ -266,14 +260,13 @@ class Sync {
                 type: 'text',
                 text
             },
-            meta: {
+            meta: buildOutgoingMessageMeta({
                 sentFrom,
                 permissionMode: permissionMode || 'default',
                 model,
-                fallbackModel,
                 appendSystemPrompt: systemPrompt,
-                ...(displayText && { displayText }) // Add displayText if provided
-            }
+                displayText,
+            })
         };
         const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
@@ -843,7 +836,6 @@ class Sync {
     private fetchMachines = async () => {
         if (!this.credentials) return;
 
-        console.log('📊 Sync: Fetching machines...');
         const API_ENDPOINT = getServerUrl();
         const response = await fetch(`${API_ENDPOINT}/v1/machines`, {
             headers: {
@@ -858,7 +850,6 @@ class Sync {
         }
 
         const data = await response.json();
-        console.log(`📊 Sync: Fetched ${Array.isArray(data) ? data.length : 0} machines from server`);
         const machines = data as Array<{
             id: string;
             metadata: string;
@@ -1189,11 +1180,6 @@ class Sync {
                     }
 
                     // Log and retry
-                    console.log('settings version-mismatch, retrying', {
-                        serverVersion: data.currentVersion,
-                        retry: retryCount + 1,
-                        pendingKeys: Object.keys(this.pendingSettings)
-                    });
                     retryCount++;
                     continue;
                 } else {
@@ -1230,12 +1216,6 @@ class Sync {
             parsedSettings = { ...settingsDefaults };
         }
 
-        // Log
-        console.log('settings', JSON.stringify({
-            settings: parsedSettings,
-            version: data.settingsVersion
-        }));
-
         // Apply settings to storage
         storage.getState().applySettings(parsedSettings, data.settingsVersion);
 
@@ -1266,16 +1246,6 @@ class Sync {
 
         const data = await response.json();
         const parsedProfile = profileParse(data);
-
-        // Log profile data for debugging
-        console.log('profile', JSON.stringify({
-            id: parsedProfile.id,
-            timestamp: parsedProfile.timestamp,
-            firstName: parsedProfile.firstName,
-            lastName: parsedProfile.lastName,
-            hasAvatar: !!parsedProfile.avatar,
-            hasGitHub: !!parsedProfile.github
-        }));
 
         // Apply profile to storage
         storage.getState().applyProfile(parsedProfile);
@@ -1314,12 +1284,11 @@ class Sync {
             });
 
             if (!response.ok) {
-                console.log(`[fetchNativeUpdate] Request failed: ${response.status}`);
+                log.log(`[fetchNativeUpdate] Request failed: ${response.status}`);
                 return;
             }
 
             const data = await response.json();
-            console.log('[fetchNativeUpdate] Data:', data);
 
             // Apply update status to storage
             if (data.update_required && data.update_url) {
@@ -1333,7 +1302,7 @@ class Sync {
                 });
             }
         } catch (error) {
-            console.log('[fetchNativeUpdate] Error:', error);
+            console.error('[fetchNativeUpdate] Error:', error);
             storage.getState().applyNativeUpdateStatus(null);
         }
     }
@@ -1354,7 +1323,6 @@ class Sync {
                 }
 
                 if (!apiKey) {
-                    console.log(`RevenueCat: No API key found for platform ${Platform.OS}`);
                     return;
                 }
 
@@ -1371,7 +1339,6 @@ class Sync {
                 });
 
                 this.revenueCatInitialized = true;
-                console.log('RevenueCat initialized successfully');
             }
 
             // Sync purchases
@@ -1438,9 +1405,6 @@ class Sync {
                 }
             }
         }
-        console.log('Batch decrypted and normalized messages in', Date.now() - start, 'ms');
-        console.log('normalizedMessages', JSON.stringify(normalizedMessages));
-        // console.log('messages', JSON.stringify(normalizedMessages));
 
         // Apply to storage
         this.applyMessages(sessionId, normalizedMessages);
@@ -1467,7 +1431,7 @@ class Sync {
         log.log('finalStatus: ' + JSON.stringify(finalStatus));
 
         if (finalStatus !== 'granted') {
-            console.log('Failed to get push token for push notification!');
+            log.log('Failed to get push token for push notification!');
             return;
         }
 
@@ -1515,15 +1479,12 @@ class Sync {
     }
 
     private handleUpdate = async (update: unknown) => {
-        console.log('🔄 Sync: handleUpdate called with:', JSON.stringify(update).substring(0, 300));
         const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
         if (!validatedUpdate.success) {
-            console.log('❌ Sync: Invalid update received:', validatedUpdate.error);
             console.error('❌ Sync: Invalid update data:', update);
             return;
         }
         const updateData = validatedUpdate.data;
-        console.log(`🔄 Sync: Validated update type: ${updateData.body.t}`);
 
         if (updateData.body.t === 'new-message') {
 
@@ -1549,7 +1510,8 @@ class Sync {
                     const dataType = rawContent?.content?.data?.type;
                     
                     // Debug logging to trace lifecycle events
-                    if (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started') {
+                    const isDev = typeof __DEV__ !== 'undefined' && __DEV__;
+                    if (isDev && (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started')) {
                         console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}`);
                     }
                     
@@ -1560,7 +1522,7 @@ class Sync {
                     const isTaskStarted = 
                         ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started');
                     
-                    if (isTaskComplete || isTaskStarted) {
+                    if (isDev && (isTaskComplete || isTaskStarted)) {
                         console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
                     }
 
@@ -1582,7 +1544,6 @@ class Sync {
 
                     // Update messages
                     if (lastMessage) {
-                        console.log('🔄 Sync: Applying message:', JSON.stringify(lastMessage));
                         this.applyMessages(updateData.body.sid, [lastMessage]);
                         let hasMutableTool = false;
                         if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
@@ -1968,7 +1929,6 @@ class Sync {
         }
 
         if (sessions.length > 0) {
-            // console.log('flushing activity updates ' + sessions.length);
             this.applySessions(sessions);
             // log.log(`🔄 Activity updates flushed - updated ${sessions.length} sessions`);
         }
@@ -1977,17 +1937,13 @@ class Sync {
     private handleEphemeralUpdate = (update: unknown) => {
         const validatedUpdate = ApiEphemeralUpdateSchema.safeParse(update);
         if (!validatedUpdate.success) {
-            console.log('Invalid ephemeral update received:', validatedUpdate.error);
             console.error('Invalid ephemeral update received:', update);
             return;
-        } else {
-            // console.log('Ephemeral update received:', update);
         }
         const updateData = validatedUpdate.data;
 
         // Process activity updates through smart debounce accumulator
         if (updateData.type === 'activity') {
-            // console.log('adding activity update ' + updateData.id);
             this.activityAccumulator.addUpdate(updateData);
         }
 
