@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
+import { normalizePathForKey } from '@/utils/normalizePathForKey';
 
 export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
 
@@ -93,11 +94,13 @@ export function getSessionName(session: Session): string {
 /**
  * Generates a deterministic avatar ID from machine ID and path.
  * This ensures the same machine + path combination always gets the same avatar.
+ * Uses normalized path to ensure consistent matching regardless of
+ * whether the original path contains underscores, dots, or other special characters.
  */
 export function getSessionAvatarId(session: Session): string {
     if (session.metadata?.machineId && session.metadata?.path) {
-        // Combine machine ID and path for a unique, deterministic avatar
-        return `${session.metadata.machineId}:${session.metadata.path}`;
+        // Combine machine ID and normalized path for a unique, deterministic avatar
+        return `${session.metadata.machineId}:${normalizePathForKey(session.metadata.path)}`;
     }
     // Fallback to session ID if metadata is missing
     return session.id;

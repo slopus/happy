@@ -1,5 +1,12 @@
 # Changelog
 
+## Version 6 - 2026-01-18
+
+This release fixes a synchronization issue affecting projects with special characters in folder names.
+
+- Fixed session sync failures when folder names contain underscores, dots, or other special characters
+- Mobile app now correctly matches Claude Code's project naming convention for reliable cross-device sync
+
 ## Version 5 - 2025-12-22
 
 This release expands AI agent support and refines the voice experience, while improving markdown rendering for a better chat experience.

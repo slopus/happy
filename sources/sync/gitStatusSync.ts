@@ -12,6 +12,7 @@ import { parseStatusSummaryV2, getStatusCountsV2, isDirtyV2, getCurrentBranchV2,
 import { parseCurrentBranch } from './git-parsers/parseBranch';
 import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
 import { projectManager, createProjectKey } from './projectManager';
+import { normalizePathForKey } from '@/utils/normalizePathForKey';
 
 export class GitStatusSync {
     // Map project keys to sync instances
@@ -20,14 +21,16 @@ export class GitStatusSync {
     private sessionToProjectKey = new Map<string, string>();
 
     /**
-     * Get project key string for a session
+     * Get project key string for a session.
+     * Uses normalized path to ensure consistent matching regardless of
+     * whether the original path contains underscores, dots, or other special characters.
      */
     private getProjectKeyForSession(sessionId: string): string | null {
         const session = storage.getState().sessions[sessionId];
         if (!session?.metadata?.machineId || !session?.metadata?.path) {
             return null;
         }
-        return `${session.metadata.machineId}:${session.metadata.path}`;
+        return `${session.metadata.machineId}:${normalizePathForKey(session.metadata.path)}`;
     }
 
     /**
