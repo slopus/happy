@@ -1,14 +1,28 @@
 const variant = process.env.APP_ENV || 'development';
-const name = {
-    development: "Happy (dev)",
-    preview: "Happy (preview)",
-    production: "Happy"
-}[variant];
-const bundleId = {
-    development: "com.slopus.happy.dev",
-    preview: "com.slopus.happy.preview",
-    production: "com.ex3ndr.happy"
-}[variant];
+
+// Allow opt-in overrides for local dev tooling without changing upstream defaults.
+const nameOverride = (process.env.EXPO_APP_NAME || '').trim();
+const bundleIdOverride = (process.env.EXPO_APP_BUNDLE_ID || '').trim();
+
+const name =
+    nameOverride ||
+    {
+        development: "Happy (dev)",
+        preview: "Happy (preview)",
+        production: "Happy"
+    }[variant];
+const bundleId =
+    bundleIdOverride ||
+    {
+        development: "com.slopus.happy.dev",
+        preview: "com.slopus.happy.preview",
+        production: "com.ex3ndr.happy"
+    }[variant];
+// NOTE:
+// The URL scheme is used for deep linking *and* by the Expo development client launcher flow.
+// Keep the default stable for upstream users, but allow opt-in overrides for local dev variants
+// (e.g. to avoid iOS scheme collisions between multiple installs).
+const scheme = (process.env.EXPO_APP_SCHEME || '').trim() || "happy";
 
 export default {
     expo: {
@@ -18,7 +32,7 @@ export default {
         runtimeVersion: "18",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
-        scheme: "happy",
+        scheme,
         userInterfaceStyle: "automatic",
         newArchEnabled: true,
         notification: {
