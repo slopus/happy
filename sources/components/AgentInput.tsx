@@ -201,6 +201,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     statusRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        flexWrap: 'wrap',
     },
     statusText: {
         fontSize: 11,
@@ -321,6 +322,25 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         : null;
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
+
+    const cliStatusText = React.useMemo(() => {
+        const cliStatus = props.connectionStatus?.cliStatus;
+        if (!cliStatus) return null;
+
+        const format = (name: string, value: boolean | null | undefined) => {
+            if (value === true) return `${name}✓`;
+            if (value === false) return `${name}✗`;
+            return `${name}?`;
+        };
+
+        const parts = [
+            format('claude', cliStatus.claude),
+            format('codex', cliStatus.codex),
+            ...(Object.prototype.hasOwnProperty.call(cliStatus, 'gemini') ? [format('gemini', cliStatus.gemini)] : []),
+        ];
+
+        return ` · CLI: ${parts.join(' ')}`;
+    }, [props.connectionStatus?.cliStatus]);
 
 
     // Abort button state
@@ -714,86 +734,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 11 }}>
                             {props.connectionStatus && (
                                 <>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                        <StatusDot
-                                            color={props.connectionStatus.dotColor}
-                                            isPulsing={props.connectionStatus.isPulsing}
-                                            size={6}
-                                        />
-                                        <Text style={{
-                                            fontSize: 11,
-                                            color: props.connectionStatus.color,
-                                            ...Typography.default()
-                                        }}>
-                                            {props.connectionStatus.text}
+                                    <StatusDot
+                                        color={props.connectionStatus.dotColor}
+                                        isPulsing={props.connectionStatus.isPulsing}
+                                        size={6}
+                                        style={styles.statusDot}
+                                    />
+                                    <Text style={[styles.statusText, { color: props.connectionStatus.color }]}>
+                                        {props.connectionStatus.text}
+                                    </Text>
+                                    {cliStatusText && (
+                                        <Text style={[styles.statusText, { color: theme.colors.textSecondary }]}>
+                                            {cliStatusText}
                                         </Text>
-                                    </View>
-                                    {/* CLI Status - only shown when provided (wizard only) */}
-                                    {props.connectionStatus.cliStatus && (
-                                        <>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.claude
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    {props.connectionStatus.cliStatus.claude ? '✓' : '✗'}
-                                                </Text>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.claude
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    claude
-                                                </Text>
-                                            </View>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.codex
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    {props.connectionStatus.cliStatus.codex ? '✓' : '✗'}
-                                                </Text>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.codex
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    codex
-                                                </Text>
-                                            </View>
-                                            {props.connectionStatus.cliStatus.gemini !== undefined && (
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                    <Text style={{
-                                                        fontSize: 11,
-                                                        color: props.connectionStatus.cliStatus.gemini
-                                                            ? theme.colors.success
-                                                            : theme.colors.textDestructive,
-                                                        ...Typography.default()
-                                                    }}>
-                                                        {props.connectionStatus.cliStatus.gemini ? '✓' : '✗'}
-                                                    </Text>
-                                                    <Text style={{
-                                                        fontSize: 11,
-                                                        color: props.connectionStatus.cliStatus.gemini
-                                                            ? theme.colors.success
-                                                            : theme.colors.textDestructive,
-                                                        ...Typography.default()
-                                                    }}>
-                                                        gemini
-                                                    </Text>
-                                                </View>
-                                            )}
-                                        </>
                                     )}
                                 </>
                             )}
@@ -1150,9 +1103,37 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             />
                                         )}
                                     </Pressable>
+	                                </View>
+	                            </View>,
+	
+	                            // Row 2: Path selector (separate line to match pre-PR272 layout)
+	                            props.currentPath && props.onPathClick ? (
+	                                <View key="row2" style={styles.pathRow}>
+	                                    <View style={[styles.actionButtonsLeft, styles.actionButtonsLeftNoFlex]}>
+	                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onPathClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => [
+                                                styles.actionChip,
+                                                p.pressed ? styles.actionChipPressed : null,
+                                            ]}
+                                        >
+                                            <Ionicons
+                                                name="folder-outline"
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={styles.actionChipText}>
+                                                {props.currentPath}
+                                            </Text>
+                                        </Pressable>
+                                    </View>
                                 </View>
-                            </View>
-                        </View>
+                            ) : null,
+                        ]}</View>
                     </View>
                 </View>
             </View>
