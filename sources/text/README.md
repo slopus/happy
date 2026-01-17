@@ -82,8 +82,8 @@ t('invalid.key')                         // Error: Key doesn't exist
 
 ## Files Structure
 
-### `_default.ts`
-Contains the main translation object with mixed string/function values:
+### `translations/en.ts`
+Contains the canonical English translation object with mixed string/function values:
 
 ```typescript
 export const en = {
@@ -96,6 +96,13 @@ export const en = {
     // ... more categories
 } as const;
 ```
+
+### `_types.ts`
+Contains the TypeScript types derived from the English translation structure.
+
+This keeps the canonical translation object (`translations/en.ts`) separate from the type-level API:
+- `Translations` / `TranslationStructure` are derived from `en` and used to type-check other locales.
+- `TranslationKey` / `TranslationParams<K>` are derived from `Translations` (in `index.ts`) to type `t(...)`.
 
 ### `index.ts`
 Main module with the `t` function and utilities:
@@ -164,7 +171,7 @@ The API stays the same, but you get:
 
 ## Adding New Translations
 
-1. **Add to `_default.ts`**:
+1. **Add to `translations/en.ts`**:
 ```typescript
 // String constant
 newConstant: 'My New Text',
@@ -215,7 +222,7 @@ statusMessage: ({ files, online, syncing }: {
 ## Future Expansion
 
 To add more languages:
-1. Create new translation files (e.g., `_spanish.ts`)
+1. Create new translation files (e.g., `translations/es.ts`)
 2. Update types to include new locales
 3. Add locale switching logic
 4. All existing type safety is preserved

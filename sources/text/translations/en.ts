@@ -1,5 +1,3 @@
-import type { TranslationStructure } from '../_default';
-
 /**
  * English plural helper function
  * English has 2 plural forms: singular, plural
@@ -14,10 +12,10 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * ENGLISH TRANSLATIONS - DEDICATED FILE
  *
  * This file represents the new translation architecture where each language
- * has its own dedicated file instead of being embedded in _default.ts.
+ * has its own dedicated file instead of being embedded in _types.ts.
  *
  * STRUCTURE CHANGE:
- * - Previously: All languages in _default.ts as objects
+ * - Previously: All languages in a single default file
  * - Now: Separate files for each language (en.ts, ru.ts, pl.ts, es.ts, etc.)
  * - Benefit: Better maintainability, smaller files, easier language management
  *
@@ -29,7 +27,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * - Type safety enforced by TranslationStructure interface
  * - New translation keys must be added to ALL language files
  */
-export const en: TranslationStructure = {
+export const en = {
     tabs: {
         // Tab navigation labels
         inbox: 'Inbox',
@@ -46,6 +44,8 @@ export const en: TranslationStructure = {
 
     common: {
         // Simple string constants
+        add: 'Add',
+        actions: 'Actions',
         cancel: 'Cancel',
         authenticate: 'Authenticate',
         save: 'Save',
@@ -62,6 +62,9 @@ export const en: TranslationStructure = {
         yes: 'Yes',
         no: 'No',
         discard: 'Discard',
+        discardChanges: 'Discard changes',
+        unsavedChangesWarning: 'You have unsaved changes.',
+        keepEditing: 'Keep editing',
         version: 'Version',
         copy: 'Copy',
         copied: 'Copied',
@@ -75,6 +78,10 @@ export const en: TranslationStructure = {
         retry: 'Retry',
         delete: 'Delete',
         optional: 'optional',
+        noMatches: 'No matches',
+        all: 'All',
+        machine: 'machine',
+        clearSearch: 'Clear search',
     },
 
     profile: {
@@ -211,8 +218,8 @@ export const en: TranslationStructure = {
         webFeatures: 'Web Features',
         webFeaturesDescription: 'Features available only in the web version of the app.',
         enterToSend: 'Enter to Send',
-        enterToSendEnabled: 'Press Enter to send messages',
-        enterToSendDisabled: 'Press ⌘+Enter to send messages',
+        enterToSendEnabled: 'Press Enter to send (Shift+Enter for a new line)',
+        enterToSendDisabled: 'Enter inserts a new line',
         commandPalette: 'Command Palette',
         commandPaletteEnabled: 'Press ⌘K to open',
         commandPaletteDisabled: 'Quick command access disabled',
@@ -223,6 +230,15 @@ export const en: TranslationStructure = {
         enhancedSessionWizard: 'Enhanced Session Wizard',
         enhancedSessionWizardEnabled: 'Profile-first session launcher active',
         enhancedSessionWizardDisabled: 'Using standard session launcher',
+        profiles: 'AI Profiles',
+        profilesEnabled: 'Profile selection enabled',
+        profilesDisabled: 'Profile selection disabled',
+        pickerSearch: 'Picker Search',
+        pickerSearchSubtitle: 'Show a search field in machine and path pickers',
+        machinePickerSearch: 'Machine search',
+        machinePickerSearchSubtitle: 'Show a search field in machine pickers',
+        pathPickerSearch: 'Path search',
+        pathPickerSearchSubtitle: 'Show a search field in path pickers',
     },
 
     errors: {
@@ -275,6 +291,9 @@ export const en: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Start New Session',
+        selectMachineTitle: 'Select Machine',
+        selectPathTitle: 'Select Path',
+        searchPathsPlaceholder: 'Search paths...',
         noMachinesFound: 'No machines found. Start a Happy session on your computer first.',
         allMachinesOffline: 'All machines appear offline',
         machineDetails: 'View machine details →',
@@ -290,6 +309,26 @@ export const en: TranslationStructure = {
         notConnectedToServer: 'Not connected to server. Check your internet connection.',
         noMachineSelected: 'Please select a machine to start the session',
         noPathSelected: 'Please select a directory to start the session in',
+        machinePicker: {
+            searchPlaceholder: 'Search machines...',
+            recentTitle: 'Recent',
+            favoritesTitle: 'Favorites',
+            allTitle: 'All',
+            emptyMessage: 'No machines available',
+        },
+        pathPicker: {
+            enterPathTitle: 'Enter Path',
+            enterPathPlaceholder: 'Enter a path...',
+            customPathTitle: 'Custom Path',
+            recentTitle: 'Recent',
+            favoritesTitle: 'Favorites',
+            suggestedTitle: 'Suggested',
+            allTitle: 'All',
+            emptyRecent: 'No recent paths',
+            emptyFavorites: 'No favorite paths',
+            emptySuggested: 'No suggested paths',
+            emptyAll: 'No paths',
+        },
         sessionType: {
             title: 'Session Type',
             simple: 'Simple',
@@ -315,7 +354,7 @@ export const en: TranslationStructure = {
     },
 
     session: {
-        inputPlaceholder: 'Type a message ...',
+        inputPlaceholder: 'What would you like to work on?',
     },
 
     commandPalette: {
@@ -351,6 +390,7 @@ export const en: TranslationStructure = {
         happySessionId: 'Happy Session ID',
         claudeCodeSessionId: 'Claude Code Session ID',
         claudeCodeSessionIdCopied: 'Claude Code Session ID copied to clipboard',
+        aiProfile: 'AI Profile',
         aiProvider: 'AI Provider',
         failedToCopyClaudeCodeSessionId: 'Failed to copy Claude Code Session ID',
         metadataCopied: 'Metadata copied to clipboard',
@@ -405,12 +445,19 @@ export const en: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: 'Env Vars',
+            titleWithCount: ({ count }: { count: number }) => `Env Vars (${count})`,
+        },
         permissionMode: {
             title: 'PERMISSION MODE',
             default: 'Default',
             acceptEdits: 'Accept Edits',
             plan: 'Plan Mode',
             bypassPermissions: 'Yolo Mode',
+            badgeAccept: 'Accept',
+            badgePlan: 'Plan',
+            badgeYolo: 'YOLO',
             badgeAcceptAllEdits: 'Accept All Edits',
             badgeBypassAllPermissions: 'Bypass All Permissions',
             badgePlanMode: 'Plan Mode',
@@ -430,7 +477,7 @@ export const en: TranslationStructure = {
             readOnly: 'Read Only Mode',
             safeYolo: 'Safe YOLO',
             yolo: 'YOLO',
-            badgeReadOnly: 'Read Only Mode',
+            badgeReadOnly: 'Read Only',
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
@@ -453,6 +500,21 @@ export const en: TranslationStructure = {
             badgeReadOnly: 'Read Only',
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'GEMINI MODEL',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: 'Most capable',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: 'Fast & efficient',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: 'Fastest',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% left`,
@@ -519,6 +581,10 @@ export const en: TranslationStructure = {
             applyChanges: 'Update file',
             viewDiff: 'Current file changes',
             question: 'Question',
+            changeTitle: 'Change Title',
+        },
+        geminiExecute: {
+            cwd: ({ cwd }: { cwd: string }) => `📁 ${cwd}`,
         },
         askUserQuestion: {
             submit: 'Submit Answer',
@@ -902,8 +968,8 @@ export const en: TranslationStructure = {
         // Profile management feature
         title: 'Profiles',
         subtitle: 'Manage environment variable profiles for sessions',
-        noProfile: 'No Profile',
-        noProfileDescription: 'Use default environment settings',
+        noProfile: 'Default Environment',
+        noProfileDescription: 'Use the machine environment without profile variables',
         defaultModel: 'Default Model',
         addProfile: 'Add Profile',
         profileName: 'Profile Name',
@@ -918,9 +984,128 @@ export const en: TranslationStructure = {
         enterTmuxTempDir: 'Enter temp directory path',
         tmuxUpdateEnvironment: 'Update environment automatically',
         nameRequired: 'Profile name is required',
-        deleteConfirm: 'Are you sure you want to delete the profile "{name}"?',
+        deleteConfirm: ({ name }: { name: string }) => `Are you sure you want to delete the profile "${name}"?`,
         editProfile: 'Edit Profile',
         addProfileTitle: 'Add New Profile',
+        builtIn: 'Built-in',
+        custom: 'Custom',
+        builtInSaveAsHint: 'Saving a built-in profile creates a new custom profile.',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
+        groups: {
+            favorites: 'Favorites',
+            custom: 'Your Profiles',
+            builtIn: 'Built-in Profiles',
+        },
+        actions: {
+            viewEnvironmentVariables: 'Environment Variables',
+            addToFavorites: 'Add to favorites',
+            removeFromFavorites: 'Remove from favorites',
+            editProfile: 'Edit profile',
+            duplicateProfile: 'Duplicate profile',
+            deleteProfile: 'Delete profile',
+        },
+        copySuffix: '(Copy)',
+        duplicateName: 'A profile with this name already exists',
+        setupInstructions: {
+            title: 'Setup Instructions',
+            viewOfficialGuide: 'View Official Setup Guide',
+        },
+        defaultSessionType: 'Default Session Type',
+        defaultPermissionMode: {
+            title: 'Default Permission Mode',
+            descriptions: {
+                default: 'Ask for permissions',
+                acceptEdits: 'Auto-approve edits',
+                plan: 'Plan before executing',
+                bypassPermissions: 'Skip all permissions',
+            },
+        },
+        aiBackend: {
+            title: 'AI Backend',
+            selectAtLeastOneError: 'Select at least one AI backend.',
+            claudeSubtitle: 'Claude CLI',
+            codexSubtitle: 'Codex CLI',
+            geminiSubtitleExperimental: 'Gemini CLI (experimental)',
+        },
+        tmux: {
+            title: 'Tmux',
+            spawnSessionsTitle: 'Spawn Sessions in Tmux',
+            spawnSessionsEnabledSubtitle: 'Sessions spawn in new tmux windows.',
+            spawnSessionsDisabledSubtitle: 'Sessions spawn in regular shell (no tmux integration)',
+            sessionNamePlaceholder: 'Empty = current/most recent session',
+            tempDirPlaceholder: '/tmp (optional)',
+        },
+        previewMachine: {
+            title: 'Preview Machine',
+            itemTitle: 'Preview machine for environment variables preview',
+            selectMachine: 'Select machine',
+            resolveSubtitle: 'Used only to preview the resolved values below (does not change what is saved).',
+            selectSubtitle: 'Select a machine to preview the resolved values below.',
+        },
+        environmentVariables: {
+            title: 'Environment Variables',
+            addVariable: 'Add Variable',
+            namePlaceholder: 'Variable name (e.g., MY_CUSTOM_VAR)',
+            valuePlaceholder: 'Value (e.g., my-value or ${MY_VAR})',
+            validation: {
+                nameRequired: 'Enter a variable name.',
+                invalidNameFormat: 'Variable names must be uppercase letters, numbers, and underscores, and cannot start with a number.',
+                duplicateName: 'That variable already exists.',
+            },
+            card: {
+                valueLabel: 'Value:',
+                fallbackValueLabel: 'Fallback value:',
+                valueInputPlaceholder: 'Value',
+                defaultValueInputPlaceholder: 'Default value',
+                secretNotRetrieved: 'Secret value - not retrieved for security',
+                secretToggleLabel: 'Secret',
+                secretToggleSubtitle: 'Hide the value in the UI and avoid fetching it from the machine for preview.',
+                secretToggleEnforcedByDaemon: 'Enforced by daemon',
+                secretToggleResetToAuto: 'Reset to auto',
+                overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
+                    `Overriding documented default: ${expectedValue}`,
+                useMachineEnvToggle: 'Use value from machine environment',
+                resolvedOnSessionStart: 'Resolved when the session starts on the selected machine.',
+                sourceVariableLabel: 'Source variable',
+                sourceVariablePlaceholder: 'Source variable name (e.g., Z_AI_MODEL)',
+                checkingMachine: ({ machine }: { machine: string }) => `Checking ${machine}...`,
+                emptyOnMachine: ({ machine }: { machine: string }) => `Empty on ${machine}`,
+                emptyOnMachineUsingFallback: ({ machine }: { machine: string }) => `Empty on ${machine} (using fallback)`,
+                notFoundOnMachine: ({ machine }: { machine: string }) => `Not found on ${machine}`,
+                notFoundOnMachineUsingFallback: ({ machine }: { machine: string }) => `Not found on ${machine} (using fallback)`,
+                valueFoundOnMachine: ({ machine }: { machine: string }) => `Value found on ${machine}`,
+                differsFromDocumented: ({ expectedValue }: { expectedValue: string }) =>
+                    `Differs from documented value: ${expectedValue}`,
+            },
+            preview: {
+                secretValueHidden: ({ value }: { value: string }) => `${value} - hidden for security`,
+                hiddenValue: '***hidden***',
+                emptyValue: '(empty)',
+                sessionWillReceive: ({ name, value }: { name: string; value: string }) =>
+                    `Session will receive: ${name} = ${value}`,
+            },
+            previewModal: {
+                titleWithProfile: ({ profileName }: { profileName: string }) => `Env Vars · ${profileName}`,
+                descriptionPrefix: 'These environment variables are sent when starting the session. Values are resolved using the daemon on',
+                descriptionFallbackMachine: 'the selected machine',
+                descriptionSuffix: '.',
+                emptyMessage: 'No environment variables are set for this profile.',
+                checkingSuffix: '(checking…)',
+                detail: {
+                    fixed: 'Fixed',
+                    machine: 'Machine',
+                    checking: 'Checking',
+                    fallback: 'Fallback',
+                    missing: 'Missing',
+                },
+            },
+        },
         delete: {
             title: 'Delete Profile',
             message: ({ name }: { name: string }) => `Are you sure you want to delete "${name}"? This action cannot be undone.`,
@@ -928,6 +1113,8 @@ export const en: TranslationStructure = {
             cancel: 'Cancel',
         },
     }
-} as const;
+};
+
+export type TranslationStructure = typeof en;
 
 export type TranslationsEn = typeof en;
