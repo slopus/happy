@@ -237,6 +237,79 @@ export async function machineBash(
     }
 }
 
+export interface DetectCliEntry {
+    available: boolean;
+    resolvedPath?: string;
+}
+
+export interface DetectCliResponse {
+    path: string | null;
+    clis: Record<'claude' | 'codex' | 'gemini', DetectCliEntry>;
+}
+
+export type MachineDetectCliResult =
+    | { supported: true; response: DetectCliResponse }
+    | { supported: false };
+
+/**
+ * Query daemon CLI availability using a dedicated RPC (preferred).
+ *
+ * Falls back to `{ supported: false }` for older daemons that don't implement it.
+ */
+export async function machineDetectCli(machineId: string): Promise<MachineDetectCliResult> {
+    try {
+        const result = await apiSocket.machineRPC<unknown, {}>(
+            machineId,
+            'detect-cli',
+            {}
+        );
+
+        if (isPlainObject(result) && typeof result.error === 'string') {
+            // Older daemons (or errors) return an encrypted `{ error: ... }` payload.
+            if (result.error === 'Method not found') {
+                return { supported: false };
+            }
+            return { supported: false };
+        }
+
+        if (!isPlainObject(result)) {
+            return { supported: false };
+        }
+
+        const clisRaw = result.clis;
+        if (!isPlainObject(clisRaw)) {
+            return { supported: false };
+        }
+
+        const getEntry = (name: 'claude' | 'codex' | 'gemini'): DetectCliEntry | null => {
+            const raw = (clisRaw as Record<string, unknown>)[name];
+            if (!isPlainObject(raw) || typeof raw.available !== 'boolean') return null;
+            const resolvedPath = raw.resolvedPath;
+            return {
+                available: raw.available,
+                ...(typeof resolvedPath === 'string' ? { resolvedPath } : {}),
+            };
+        };
+
+        const claude = getEntry('claude');
+        const codex = getEntry('codex');
+        const gemini = getEntry('gemini');
+        if (!claude || !codex || !gemini) {
+            return { supported: false };
+        }
+
+        const pathValue = result.path;
+        const response: DetectCliResponse = {
+            path: typeof pathValue === 'string' ? pathValue : null,
+            clis: { claude, codex, gemini },
+        };
+
+        return { supported: true, response };
+    } catch {
+        return { supported: false };
+    }
+}
+
 export type EnvPreviewSecretsPolicy = 'none' | 'redacted' | 'full';
 
 export type PreviewEnvSensitivitySource = 'forced' | 'hinted' | 'none';
