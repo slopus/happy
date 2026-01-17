@@ -47,7 +47,9 @@ export type RawToolUseContent = z.infer<typeof rawToolUseContentSchema>;
 const rawToolResultContentSchema = z.object({
     type: z.literal('tool_result'),
     tool_use_id: z.string(),
-    content: z.union([z.array(z.object({ type: z.literal('text'), text: z.string() })), z.string()]),
+    // Tool results can be strings, Claude-style arrays of text blocks, or structured JSON (Codex/Gemini).
+    // We accept any here and normalize later for display.
+    content: z.any(),
     is_error: z.boolean().optional(),
     permissions: z.object({
         date: z.number(),
@@ -246,13 +248,13 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
             oldContent: z.string().optional(),
             newContent: z.string().optional(),
             id: z.string()
-        }),
+        }).passthrough(),
         // Terminal/command output
         z.object({
             type: z.literal('terminal-output'),
             data: z.string(),
             callId: z.string()
-        }),
+        }).passthrough(),
         // Task lifecycle events
         z.object({ type: z.literal('task_started'), id: z.string() }),
         z.object({ type: z.literal('task_complete'), id: z.string() }),
@@ -264,7 +266,7 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
             toolName: z.string(),
             description: z.string(),
             options: z.any().optional()
-        }),
+        }).passthrough(),
         // Usage/metrics
         z.object({ type: z.literal('token_count') }).passthrough()
     ])
@@ -402,13 +404,46 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
     // Zod transform handles normalization during validation
     let parsed = rawRecordSchema.safeParse(raw);
     if (!parsed.success) {
-        console.error('=== VALIDATION ERROR ===');
-        console.error('Zod issues:', JSON.stringify(parsed.error.issues, null, 2));
-        console.error('Raw message:', JSON.stringify(raw, null, 2));
-        console.error('=== END ERROR ===');
+        // Never log full raw messages in production: tool outputs and user text may contain secrets.
+        // Keep enough context for debugging in dev builds only.
+        console.error(`[typesRaw] Message validation failed (id=${id})`);
+        if (__DEV__) {
+            console.error('Zod issues:', JSON.stringify(parsed.error.issues, null, 2));
+            console.error('Raw summary:', {
+                role: raw?.role,
+                contentType: (raw as any)?.content?.type,
+            });
+        }
         return null;
     }
     raw = parsed.data;
+
+    const toolResultContentToText = (content: unknown): string => {
+        if (content === null || content === undefined) return '';
+        if (typeof content === 'string') return content;
+
+        // Claude sometimes sends tool_result.content as [{ type: 'text', text: '...' }]
+        if (Array.isArray(content)) {
+            const maybeTextBlocks = content as Array<{ type?: unknown; text?: unknown }>;
+            const isTextBlocks = maybeTextBlocks.every((b) => b && typeof b === 'object' && b.type === 'text' && typeof b.text === 'string');
+            if (isTextBlocks) {
+                return maybeTextBlocks.map((b) => b.text as string).join('');
+            }
+
+            try {
+                return JSON.stringify(content);
+            } catch {
+                return String(content);
+            }
+        }
+
+        try {
+            return JSON.stringify(content);
+        } catch {
+            return String(content);
+        }
+    };
+
     if (raw.role === 'user') {
         return {
             id,
@@ -525,10 +560,11 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 } else {
                     for (let c of raw.content.data.message.content) {
                         if (c.type === 'tool_result') {
+                            const rawResultContent = raw.content.data.toolUseResult ?? c.content;
                             content.push({
                                 ...c,  // WOLOG: Preserve all fields including unknown ones
                                 type: 'tool-result',
-                                content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content[0].text),
+                                content: toolResultContentToText(rawResultContent),
                                 is_error: c.is_error || false,
                                 uuid: raw.content.data.uuid,
                                 parentUUID: raw.content.data.parentUuid ?? null,
@@ -630,7 +666,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     content: [{
                         type: 'tool-result',
                         tool_use_id: raw.content.data.callId,
-                        content: raw.content.data.output,
+                        content: toolResultContentToText(raw.content.data.output),
                         is_error: false,
                         uuid: raw.content.data.id,
                         parentUUID: null
@@ -702,7 +738,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     content: [{
                         type: 'tool-result',
                         tool_use_id: raw.content.data.callId,
-                        content: raw.content.data.output,
+                        content: toolResultContentToText(raw.content.data.output),
                         is_error: raw.content.data.isError ?? false,
                         uuid: raw.content.data.id,
                         parentUUID: null
@@ -721,7 +757,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     content: [{
                         type: 'tool-result',
                         tool_use_id: raw.content.data.callId,
-                        content: raw.content.data.output,
+                        content: toolResultContentToText(raw.content.data.output),
                         is_error: false,
                         uuid: raw.content.data.id,
                         parentUUID: null

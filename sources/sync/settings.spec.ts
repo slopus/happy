@@ -89,6 +89,37 @@ describe('settings', () => {
                 }
             });
         });
+
+        it('should migrate legacy provider config objects into environmentVariables', () => {
+            const settingsWithLegacyProfileConfig: any = {
+                profiles: [
+                    {
+                        id: 'legacy-profile',
+                        name: 'Legacy Profile',
+                        isBuiltIn: false,
+                        compatibility: { claude: true, codex: true, gemini: true },
+                        environmentVariables: [{ name: 'FOO', value: 'bar' }],
+                        openaiConfig: {
+                            apiKey: 'sk-test',
+                            baseUrl: 'https://example.com',
+                            model: 'gpt-test',
+                        },
+                    },
+                ],
+            };
+
+            const parsed = settingsParse(settingsWithLegacyProfileConfig);
+            expect(parsed.profiles).toHaveLength(1);
+
+            const profile = parsed.profiles[0]!;
+            expect(profile.environmentVariables).toEqual(expect.arrayContaining([
+                { name: 'FOO', value: 'bar' },
+                { name: 'OPENAI_API_KEY', value: 'sk-test' },
+                { name: 'OPENAI_BASE_URL', value: 'https://example.com' },
+                { name: 'OPENAI_MODEL', value: 'gpt-test' },
+            ]));
+            expect((profile as any).openaiConfig).toBeUndefined();
+        });
     });
 
     describe('applySettings', () => {
@@ -103,7 +134,11 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                useProfiles: false,
                 useEnhancedSessionWizard: false,
+                usePickerSearch: false,
+                useMachinePickerSearch: false,
+                usePathPickerSearch: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
                 avatarStyle: 'gradient',
@@ -122,6 +157,7 @@ describe('settings', () => {
                 lastUsedProfile: null,
                 favoriteDirectories: [],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {
@@ -137,7 +173,11 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                useProfiles: false,
                 useEnhancedSessionWizard: false,
+                usePickerSearch: false,
+                useMachinePickerSearch: false,
+                usePathPickerSearch: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
                 avatarStyle: 'gradient', // This should be preserved from currentSettings
@@ -156,6 +196,7 @@ describe('settings', () => {
                 lastUsedProfile: null,
                 favoriteDirectories: [],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             });
         });
@@ -171,7 +212,11 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                useProfiles: false,
                 useEnhancedSessionWizard: false,
+                usePickerSearch: false,
+                useMachinePickerSearch: false,
+                usePathPickerSearch: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
                 avatarStyle: 'gradient',
@@ -190,6 +235,7 @@ describe('settings', () => {
                 lastUsedProfile: null,
                 favoriteDirectories: [],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {};
@@ -207,7 +253,11 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                useProfiles: false,
                 useEnhancedSessionWizard: false,
+                usePickerSearch: false,
+                useMachinePickerSearch: false,
+                usePathPickerSearch: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
                 avatarStyle: 'gradient',
@@ -226,6 +276,7 @@ describe('settings', () => {
                 lastUsedProfile: null,
                 favoriteDirectories: [],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {
@@ -248,7 +299,11 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                useProfiles: false,
                 useEnhancedSessionWizard: false,
+                usePickerSearch: false,
+                useMachinePickerSearch: false,
+                usePathPickerSearch: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
                 avatarStyle: 'gradient',
@@ -267,6 +322,7 @@ describe('settings', () => {
                 lastUsedProfile: null,
                 favoriteDirectories: [],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             expect(applySettings(currentSettings, {})).toEqual(currentSettings);
@@ -298,7 +354,11 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                useProfiles: false,
                 useEnhancedSessionWizard: false,
+                usePickerSearch: false,
+                useMachinePickerSearch: false,
+                usePathPickerSearch: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
                 avatarStyle: 'gradient',
@@ -317,6 +377,7 @@ describe('settings', () => {
                 lastUsedProfile: null,
                 favoriteDirectories: [],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: any = {
@@ -360,8 +421,13 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                useProfiles: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'brutalist',
+	                useEnhancedSessionWizard: false,
+	                usePickerSearch: false,
+	                useMachinePickerSearch: false,
+	                usePathPickerSearch: false,
+	                avatarStyle: 'brutalist',
                 showFlavorIcons: false,
                 compactSessionView: false,
                 agentInputEnterToSend: true,
@@ -376,10 +442,10 @@ describe('settings', () => {
                 lastUsedModelMode: null,
                 profiles: [],
                 lastUsedProfile: null,
-                favoriteDirectories: ['~/src', '~/Desktop', '~/Documents'],
+                favoriteDirectories: [],
                 favoriteMachines: [],
+                favoriteProfiles: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
-                useEnhancedSessionWizard: false,
             });
         });
 
@@ -560,7 +626,6 @@ describe('settings', () => {
                     {
                         id: 'server-profile',
                         name: 'Server Profile',
-                        anthropicConfig: {},
                         environmentVariables: [],
                         compatibility: { claude: true, codex: true, gemini: true },
                         isBuiltIn: false,
@@ -578,7 +643,6 @@ describe('settings', () => {
                     {
                         id: 'local-profile',
                         name: 'Local Profile',
-                        anthropicConfig: {},
                         environmentVariables: [],
                         compatibility: { claude: true, codex: true, gemini: true },
                         isBuiltIn: false,
@@ -680,7 +744,6 @@ describe('settings', () => {
                 profiles: [{
                     id: 'test-profile',
                     name: 'Test',
-                    anthropicConfig: {},
                     environmentVariables: [],
                     compatibility: { claude: true, codex: true, gemini: true },
                     isBuiltIn: false,
@@ -713,7 +776,6 @@ describe('settings', () => {
                 profiles: [{
                     id: 'device-b-profile',
                     name: 'Device B Profile',
-                    anthropicConfig: {},
                     environmentVariables: [],
                     compatibility: { claude: true, codex: true },
                     isBuiltIn: false,
@@ -825,7 +887,6 @@ describe('settings', () => {
                 profiles: [{
                     id: 'server-profile-1',
                     name: 'Server Profile',
-                    anthropicConfig: {},
                     environmentVariables: [],
                     compatibility: { claude: true, codex: true },
                     isBuiltIn: false,
@@ -844,7 +905,6 @@ describe('settings', () => {
                 profiles: [{
                     id: 'local-profile-1',
                     name: 'Local Profile',
-                    anthropicConfig: {},
                     environmentVariables: [],
                     compatibility: { claude: true, codex: true, gemini: true },
                     isBuiltIn: false,

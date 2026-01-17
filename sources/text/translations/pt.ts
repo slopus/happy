@@ -1,4 +1,4 @@
-import type { TranslationStructure } from '../_default';
+import type { TranslationStructure } from '../_types';
 
 /**
  * Portuguese plural helper function
@@ -31,6 +31,8 @@ export const pt: TranslationStructure = {
 
     common: {
         // Simple string constants
+        add: 'Adicionar',
+        actions: 'Ações',
         cancel: 'Cancelar',
         authenticate: 'Autenticar',
         save: 'Salvar',
@@ -47,6 +49,9 @@ export const pt: TranslationStructure = {
         yes: 'Sim',
         no: 'Não',
         discard: 'Descartar',
+        discardChanges: 'Descartar alterações',
+        unsavedChangesWarning: 'Você tem alterações não salvas.',
+        keepEditing: 'Continuar editando',
         version: 'Versão',
         copied: 'Copiado',
         copy: 'Copiar',
@@ -60,6 +65,10 @@ export const pt: TranslationStructure = {
         retry: 'Tentar novamente',
         delete: 'Excluir',
         optional: 'Opcional',
+        noMatches: 'Nenhuma correspondência',
+        all: 'Todos',
+        machine: 'máquina',
+        clearSearch: 'Limpar pesquisa',
     },
 
     profile: {
@@ -208,6 +217,15 @@ export const pt: TranslationStructure = {
         enhancedSessionWizard: 'Assistente de sessão aprimorado',
         enhancedSessionWizardEnabled: 'Lançador de sessão com perfil ativo',
         enhancedSessionWizardDisabled: 'Usando o lançador de sessão padrão',
+        profiles: 'Perfis de IA',
+        profilesEnabled: 'Seleção de perfis ativada',
+        profilesDisabled: 'Seleção de perfis desativada',
+        pickerSearch: 'Busca nos seletores',
+        pickerSearchSubtitle: 'Mostrar um campo de busca nos seletores de máquina e caminho',
+        machinePickerSearch: 'Busca de máquinas',
+        machinePickerSearchSubtitle: 'Mostrar um campo de busca nos seletores de máquinas',
+        pathPickerSearch: 'Busca de caminhos',
+        pathPickerSearchSubtitle: 'Mostrar um campo de busca nos seletores de caminhos',
     },
 
     errors: {
@@ -260,6 +278,9 @@ export const pt: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Iniciar nova sessão',
+        selectMachineTitle: 'Selecionar máquina',
+        selectPathTitle: 'Selecionar caminho',
+        searchPathsPlaceholder: 'Pesquisar caminhos...',
         noMachinesFound: 'Nenhuma máquina encontrada. Inicie uma sessão Happy no seu computador primeiro.',
         allMachinesOffline: 'Todas as máquinas estão offline',
         machineDetails: 'Ver detalhes da máquina →',
@@ -275,6 +296,26 @@ export const pt: TranslationStructure = {
         startNewSessionInFolder: 'Nova sessão aqui',
         noMachineSelected: 'Por favor, selecione uma máquina para iniciar a sessão',
         noPathSelected: 'Por favor, selecione um diretório para iniciar a sessão',
+        machinePicker: {
+            searchPlaceholder: 'Pesquisar máquinas...',
+            recentTitle: 'Recentes',
+            favoritesTitle: 'Favoritos',
+            allTitle: 'Todas',
+            emptyMessage: 'Nenhuma máquina disponível',
+        },
+        pathPicker: {
+            enterPathTitle: 'Inserir caminho',
+            enterPathPlaceholder: 'Insira um caminho...',
+            customPathTitle: 'Caminho personalizado',
+            recentTitle: 'Recentes',
+            favoritesTitle: 'Favoritos',
+            suggestedTitle: 'Sugeridos',
+            allTitle: 'Todas',
+            emptyRecent: 'Nenhum caminho recente',
+            emptyFavorites: 'Nenhum caminho favorito',
+            emptySuggested: 'Nenhum caminho sugerido',
+            emptyAll: 'Nenhum caminho',
+        },
         sessionType: {
             title: 'Tipo de sessão',
             simple: 'Simples',
@@ -336,6 +377,7 @@ export const pt: TranslationStructure = {
         happySessionId: 'ID da sessão Happy',
         claudeCodeSessionId: 'ID da sessão Claude Code',
         claudeCodeSessionIdCopied: 'ID da sessão Claude Code copiado para a área de transferência',
+        aiProfile: 'Perfil de IA',
         aiProvider: 'Provedor de IA',
         failedToCopyClaudeCodeSessionId: 'Falha ao copiar ID da sessão Claude Code',
         metadataCopied: 'Metadados copiados para a área de transferência',
@@ -390,12 +432,19 @@ export const pt: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: 'Vars env',
+            titleWithCount: ({ count }: { count: number }) => `Vars env (${count})`,
+        },
         permissionMode: {
             title: 'MODO DE PERMISSÃO',
             default: 'Padrão',
             acceptEdits: 'Aceitar edições',
             plan: 'Modo de planejamento',
             bypassPermissions: 'Modo Yolo',
+            badgeAccept: 'Aceitar',
+            badgePlan: 'Plano',
+            badgeYolo: 'YOLO',
             badgeAcceptAllEdits: 'Aceitar todas as edições',
             badgeBypassAllPermissions: 'Ignorar todas as permissões',
             badgePlanMode: 'Modo de planejamento',
@@ -430,14 +479,29 @@ export const pt: TranslationStructure = {
             gpt5High: 'GPT-5 High',
         },
         geminiPermissionMode: {
-            title: 'MODO DE PERMISSÃO',
+            title: 'MODO DE PERMISSÃO GEMINI',
             default: 'Padrão',
-            acceptEdits: 'Aceitar edições',
-            plan: 'Modo de planejamento',
-            bypassPermissions: 'Modo Yolo',
-            badgeAcceptAllEdits: 'Aceitar todas as edições',
-            badgeBypassAllPermissions: 'Ignorar todas as permissões',
-            badgePlanMode: 'Modo de planejamento',
+            readOnly: 'Somente leitura',
+            safeYolo: 'YOLO seguro',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Somente leitura',
+            badgeSafeYolo: 'YOLO seguro',
+            badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'MODELO GEMINI',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: 'Mais capaz',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: 'Rápido e eficiente',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: 'Mais rápido',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,
@@ -504,6 +568,10 @@ export const pt: TranslationStructure = {
             applyChanges: 'Atualizar arquivo',
             viewDiff: 'Alterações do arquivo atual',
             question: 'Pergunta',
+            changeTitle: 'Alterar título',
+        },
+        geminiExecute: {
+            cwd: ({ cwd }: { cwd: string }) => `📁 ${cwd}`,
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
@@ -894,8 +962,127 @@ export const pt: TranslationStructure = {
         tmuxTempDir: 'Diretório temporário tmux',
         enterTmuxTempDir: 'Digite o diretório temporário tmux',
         tmuxUpdateEnvironment: 'Atualizar ambiente tmux',
-        deleteConfirm: 'Tem certeza de que deseja excluir este perfil?',
+        deleteConfirm: ({ name }: { name: string }) => `Tem certeza de que deseja excluir o perfil "${name}"?`,
         nameRequired: 'O nome do perfil é obrigatório',
+        builtIn: 'Integrado',
+        custom: 'Personalizado',
+        builtInSaveAsHint: 'Salvar um perfil integrado cria um novo perfil personalizado.',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
+        groups: {
+            favorites: 'Favoritos',
+            custom: 'Seus perfis',
+            builtIn: 'Perfis integrados',
+        },
+        actions: {
+            viewEnvironmentVariables: 'Variáveis de ambiente',
+            addToFavorites: 'Adicionar aos favoritos',
+            removeFromFavorites: 'Remover dos favoritos',
+            editProfile: 'Editar perfil',
+            duplicateProfile: 'Duplicar perfil',
+            deleteProfile: 'Excluir perfil',
+        },
+        copySuffix: '(Cópia)',
+        duplicateName: 'Já existe um perfil com este nome',
+        setupInstructions: {
+            title: 'Instruções de configuração',
+            viewOfficialGuide: 'Ver guia oficial de configuração',
+        },
+        defaultSessionType: 'Tipo de sessão padrão',
+        defaultPermissionMode: {
+            title: 'Modo de permissão padrão',
+            descriptions: {
+                default: 'Solicitar permissões',
+                acceptEdits: 'Aprovar edições automaticamente',
+                plan: 'Planejar antes de executar',
+                bypassPermissions: 'Ignorar todas as permissões',
+            },
+        },
+        aiBackend: {
+            title: 'Backend de IA',
+            selectAtLeastOneError: 'Selecione pelo menos um backend de IA.',
+            claudeSubtitle: 'CLI do Claude',
+            codexSubtitle: 'CLI do Codex',
+            geminiSubtitleExperimental: 'CLI do Gemini (experimental)',
+        },
+        tmux: {
+            title: 'Tmux',
+            spawnSessionsTitle: 'Iniciar sessões no Tmux',
+            spawnSessionsEnabledSubtitle: 'As sessões são iniciadas em novas janelas do tmux.',
+            spawnSessionsDisabledSubtitle: 'As sessões são iniciadas no shell comum (sem integração com tmux)',
+            sessionNamePlaceholder: 'Vazio = sessão atual/mais recente',
+            tempDirPlaceholder: '/tmp (opcional)',
+        },
+        previewMachine: {
+            title: 'Pré-visualizar máquina',
+            itemTitle: 'Máquina de pré-visualização para variáveis de ambiente',
+            selectMachine: 'Selecionar máquina',
+            resolveSubtitle: 'Usada apenas para pré-visualizar os valores resolvidos abaixo (não altera o que é salvo).',
+            selectSubtitle: 'Selecione uma máquina para pré-visualizar os valores resolvidos abaixo.',
+        },
+        environmentVariables: {
+            title: 'Variáveis de ambiente',
+            addVariable: 'Adicionar variável',
+            namePlaceholder: 'Nome da variável (e.g., MY_CUSTOM_VAR)',
+            valuePlaceholder: 'Valor (e.g., my-value ou ${MY_VAR})',
+            validation: {
+                nameRequired: 'Digite um nome de variável.',
+                invalidNameFormat: 'Os nomes das variáveis devem conter letras maiúsculas, números e sublinhados, e não podem começar com um número.',
+                duplicateName: 'Essa variável já existe.',
+            },
+            card: {
+                valueLabel: 'Valor:',
+                fallbackValueLabel: 'Valor de fallback:',
+                valueInputPlaceholder: 'Valor',
+                defaultValueInputPlaceholder: 'Valor padrão',
+                secretNotRetrieved: 'Valor secreto - não é recuperado por segurança',
+                secretToggleLabel: 'Segredo',
+                secretToggleSubtitle: 'Oculta o valor na interface e evita buscá-lo da máquina para pré-visualização.',
+                secretToggleEnforcedByDaemon: 'Imposto pelo daemon',
+                secretToggleResetToAuto: 'Redefinir para automático',
+                overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
+                    `Substituindo o valor padrão documentado: ${expectedValue}`,
+                useMachineEnvToggle: 'Usar valor do ambiente da máquina',
+                resolvedOnSessionStart: 'Resolvido quando a sessão começa na máquina selecionada.',
+                sourceVariableLabel: 'Variável de origem',
+                sourceVariablePlaceholder: 'Nome da variável de origem (e.g., Z_AI_MODEL)',
+                checkingMachine: ({ machine }: { machine: string }) => `Verificando ${machine}...`,
+                emptyOnMachine: ({ machine }: { machine: string }) => `Vazio em ${machine}`,
+                emptyOnMachineUsingFallback: ({ machine }: { machine: string }) => `Vazio em ${machine} (usando fallback)`,
+                notFoundOnMachine: ({ machine }: { machine: string }) => `Não encontrado em ${machine}`,
+                notFoundOnMachineUsingFallback: ({ machine }: { machine: string }) => `Não encontrado em ${machine} (usando fallback)`,
+                valueFoundOnMachine: ({ machine }: { machine: string }) => `Valor encontrado em ${machine}`,
+                differsFromDocumented: ({ expectedValue }: { expectedValue: string }) =>
+                    `Diferente do valor documentado: ${expectedValue}`,
+            },
+            preview: {
+                secretValueHidden: ({ value }: { value: string }) => `${value} - oculto por segurança`,
+                hiddenValue: '***oculto***',
+                emptyValue: '(vazio)',
+                sessionWillReceive: ({ name, value }: { name: string; value: string }) =>
+                    `A sessão receberá: ${name} = ${value}`,
+            },
+            previewModal: {
+                titleWithProfile: ({ profileName }: { profileName: string }) => `Vars de ambiente · ${profileName}`,
+                descriptionPrefix: 'Estas variáveis de ambiente são enviadas ao iniciar a sessão. Os valores são resolvidos usando o daemon em',
+                descriptionFallbackMachine: 'a máquina selecionada',
+                descriptionSuffix: '.',
+                emptyMessage: 'Nenhuma variável de ambiente está definida para este perfil.',
+                checkingSuffix: '(verificando…)',
+                detail: {
+                    fixed: 'Fixo',
+                    machine: 'Máquina',
+                    checking: 'Verificando',
+                    fallback: 'Fallback',
+                    missing: 'Ausente',
+                },
+            },
+        },
         delete: {
             title: 'Excluir Perfil',
             message: ({ name }: { name: string }) => `Tem certeza de que deseja excluir "${name}"? Esta ação não pode ser desfeita.`,

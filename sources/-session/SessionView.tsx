@@ -22,6 +22,7 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { formatPathRelativeToHome, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import type { ModelMode } from '@/sync/permissionTypes';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
@@ -196,10 +197,24 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         storage.getState().updateSessionPermissionMode(sessionId, mode);
     }, [sessionId]);
 
+    const CONFIGURABLE_MODEL_MODES = [
+        'default',
+        'gemini-2.5-pro',
+        'gemini-2.5-flash',
+        'gemini-2.5-flash-lite',
+    ] as const;
+    type ConfigurableModelMode = (typeof CONFIGURABLE_MODEL_MODES)[number];
+    const isConfigurableModelMode = React.useCallback((mode: ModelMode): mode is ConfigurableModelMode => {
+        return (CONFIGURABLE_MODEL_MODES as readonly string[]).includes(mode);
+    }, []);
+
     // Function to update model mode (for Gemini sessions)
-    const updateModelMode = React.useCallback((mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => {
-        storage.getState().updateSessionModelMode(sessionId, mode);
-    }, [sessionId]);
+    const updateModelMode = React.useCallback((mode: ModelMode) => {
+        // Only Gemini model modes are configurable from the UI today.
+        if (isConfigurableModelMode(mode)) {
+            storage.getState().updateSessionModelMode(sessionId, mode);
+        }
+    }, [isConfigurableModelMode, sessionId]);
 
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
@@ -280,8 +295,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             sessionId={sessionId}
             permissionMode={permissionMode}
             onPermissionModeChange={updatePermissionMode}
-            modelMode={modelMode as any}
-            onModelModeChange={updateModelMode as any}
+            modelMode={modelMode}
+            onModelModeChange={updateModelMode}
             metadata={session.metadata}
             connectionStatus={{
                 text: sessionStatus.statusText,

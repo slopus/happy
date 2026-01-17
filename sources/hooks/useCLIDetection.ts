@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react';
-import { machineBash } from '@/sync/ops';
+import { machineBash, machineDetectCli } from '@/sync/ops';
+
+function debugLog(...args: unknown[]) {
+    if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.log(...args);
+    }
+}
 
 interface CLIAvailability {
     claude: boolean | null; // null = unknown/loading, true = installed, false = not installed
@@ -16,8 +23,9 @@ interface CLIAvailability {
  * NON-BLOCKING: Detection runs asynchronously in useEffect. UI shows all profiles
  * while detection is in progress, then updates when results arrive.
  *
- * Detection is automatic when machineId changes. Uses existing machineBash() RPC
- * to run `command -v` checks on the remote machine.
+ * Detection is automatic when machineId changes. Prefers a dedicated `detect-cli`
+ * RPC (daemon PATH resolution; no shell). Falls back to machineBash() probing
+ * for older daemons that don't support `detect-cli`.
  *
  * CONSERVATIVE FALLBACK: If detection fails (network error, timeout, bash error),
  * sets all CLIs to null and timestamp to 0, hiding status from UI.
@@ -52,9 +60,31 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
         const detectCLIs = async () => {
             // Set detecting flag (non-blocking - UI stays responsive)
             setAvailability(prev => ({ ...prev, isDetecting: true }));
-            console.log('[useCLIDetection] Starting detection for machineId:', machineId);
+            debugLog('[useCLIDetection] Starting detection for machineId:', machineId);
 
             try {
+                // Preferred path: ask the daemon directly (no shell).
+                const cliStatus = await Promise.race([
+                    machineDetectCli(machineId),
+                    new Promise<{ supported: false }>((resolve) => {
+                        // If the daemon is older/broken and never responds to unknown RPCs,
+                        // don't hang the UI—fallback to bash probing quickly.
+                        setTimeout(() => resolve({ supported: false }), 2000);
+                    }),
+                ]);
+                if (cancelled) return;
+
+                if (cliStatus.supported) {
+                    setAvailability({
+                        claude: cliStatus.response.clis.claude.available,
+                        codex: cliStatus.response.clis.codex.available,
+                        gemini: cliStatus.response.clis.gemini.available,
+                        isDetecting: false,
+                        timestamp: Date.now(),
+                    });
+                    return;
+                }
+
                 // Use single bash command to check both CLIs efficiently
                 // command -v is POSIX compliant and more reliable than which
                 const result = await machineBash(
@@ -66,7 +96,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                 );
 
                 if (cancelled) return;
-                console.log('[useCLIDetection] Result:', { success: result.success, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr });
+                debugLog('[useCLIDetection] Result:', { success: result.success, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr });
 
                 if (result.success && result.exitCode === 0) {
                     // Parse output: "claude:true\ncodex:false\ngemini:false"
@@ -80,7 +110,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                         }
                     });
 
-                    console.log('[useCLIDetection] Parsed CLI status:', cliStatus);
+                    debugLog('[useCLIDetection] Parsed CLI status:', cliStatus);
                     setAvailability({
                         claude: cliStatus.claude ?? null,
                         codex: cliStatus.codex ?? null,
@@ -90,7 +120,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                     });
                 } else {
                     // Detection command failed - CONSERVATIVE fallback (don't assume availability)
-                    console.log('[useCLIDetection] Detection failed (success=false or exitCode!=0):', result);
+                    debugLog('[useCLIDetection] Detection failed (success=false or exitCode!=0):', result);
                     setAvailability({
                         claude: null,
                         codex: null,
@@ -104,7 +134,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                 if (cancelled) return;
 
                 // Network/RPC error - CONSERVATIVE fallback (don't assume availability)
-                console.log('[useCLIDetection] Network/RPC error:', error);
+                debugLog('[useCLIDetection] Network/RPC error:', error);
                 setAvailability({
                     claude: null,
                     codex: null,

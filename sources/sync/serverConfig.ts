@@ -1,7 +1,10 @@
 import { MMKV } from 'react-native-mmkv';
+import { readStorageScopeFromEnv, scopedStorageId } from '@/utils/storageScope';
 
 // Separate MMKV instance for server config that persists across logouts
-const serverConfigStorage = new MMKV({ id: 'server-config' });
+const isWebRuntime = typeof window !== 'undefined' && typeof document !== 'undefined';
+const serverConfigScope = isWebRuntime ? null : readStorageScopeFromEnv();
+const serverConfigStorage = new MMKV({ id: scopedStorageId('server-config', serverConfigScope) });
 
 const SERVER_KEY = 'custom-server-url';
 const DEFAULT_SERVER_URL = 'https://api.cluster-fluster.com';

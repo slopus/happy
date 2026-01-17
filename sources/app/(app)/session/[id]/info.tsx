@@ -7,7 +7,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
-import { useSession, useIsDataReady } from '@/sync/storage';
+import { useSession, useIsDataReady, useSetting } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
@@ -20,6 +20,7 @@ import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
+import { getBuiltInProfile, getBuiltInProfileNameKey } from '@/sync/profileUtils';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -66,9 +67,26 @@ function SessionInfoContent({ session }: { session: Session }) {
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
-    
+    const useProfiles = useSetting('useProfiles');
+    const profiles = useSetting('profiles');
+	    
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
+
+    const profileLabel = React.useMemo(() => {
+        const profileId = session.metadata?.profileId;
+        if (profileId === null || profileId === '') return t('profiles.noProfile');
+        if (typeof profileId !== 'string') return t('status.unknown');
+
+        const builtIn = getBuiltInProfile(profileId);
+        if (builtIn) {
+            const key = getBuiltInProfileNameKey(profileId);
+            return key ? t(key) : builtIn.name;
+        }
+
+        const custom = profiles.find(p => p.id === profileId);
+        return custom?.name ?? t('status.unknown');
+    }, [profiles, session.metadata?.profileId]);
 
     const handleCopySessionId = useCallback(async () => {
         if (!session) return;
@@ -198,10 +216,10 @@ function SessionInfoContent({ session }: { session: Session }) {
                     </ItemGroup>
                 )}
 
-                {/* Session Details */}
-                <ItemGroup>
-                    <Item
-                        title={t('sessionInfo.happySessionId')}
+	                {/* Session Details */}
+	                <ItemGroup>
+	                    <Item
+	                        title={t('sessionInfo.happySessionId')}
                         subtitle={`${session.id.substring(0, 8)}...${session.id.substring(session.id.length - 8)}`}
                         icon={<Ionicons name="finger-print-outline" size={29} color="#007AFF" />}
                         onPress={handleCopySessionId}
@@ -221,17 +239,17 @@ function SessionInfoContent({ session }: { session: Session }) {
                             }}
                         />
                     )}
-                    <Item
-                        title={t('sessionInfo.connectionStatus')}
-                        detail={sessionStatus.isConnected ? t('status.online') : t('status.offline')}
-                        icon={<Ionicons name="pulse-outline" size={29} color={sessionStatus.isConnected ? "#34C759" : "#8E8E93"} />}
-                        showChevron={false}
-                    />
-                    <Item
-                        title={t('sessionInfo.created')}
-                        subtitle={formatDate(session.createdAt)}
-                        icon={<Ionicons name="calendar-outline" size={29} color="#007AFF" />}
-                        showChevron={false}
+	                    <Item
+	                        title={t('sessionInfo.connectionStatus')}
+	                        detail={sessionStatus.isConnected ? t('status.online') : t('status.offline')}
+	                        icon={<Ionicons name="pulse-outline" size={29} color={sessionStatus.isConnected ? "#34C759" : "#8E8E93"} />}
+	                        showChevron={false}
+	                    />
+	                    <Item
+	                        title={t('sessionInfo.created')}
+	                        subtitle={formatDate(session.createdAt)}
+	                        icon={<Ionicons name="calendar-outline" size={29} color="#007AFF" />}
+	                        showChevron={false}
                     />
                     <Item
                         title={t('sessionInfo.lastUpdated')}
@@ -307,22 +325,30 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 showChevron={false}
                             />
                         )}
-                        <Item
-                            title={t('sessionInfo.aiProvider')}
-                            subtitle={(() => {
-                                const flavor = session.metadata.flavor || 'claude';
-                                if (flavor === 'claude') return 'Claude';
-                                if (flavor === 'gpt' || flavor === 'openai') return 'Codex';
-                                if (flavor === 'gemini') return 'Gemini';
-                                return flavor;
-                            })()}
-                            icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
-                            showChevron={false}
-                        />
-                        {session.metadata.hostPid && (
-                            <Item
-                                title={t('sessionInfo.processId')}
-                                subtitle={session.metadata.hostPid.toString()}
+	                        <Item
+	                            title={t('sessionInfo.aiProvider')}
+	                            subtitle={(() => {
+                                    const flavor = session.metadata.flavor || 'claude';
+                                    if (flavor === 'claude') return t('agentInput.agent.claude');
+                                    if (flavor === 'gpt' || flavor === 'openai' || flavor === 'codex') return t('agentInput.agent.codex');
+                                    if (flavor === 'gemini') return t('agentInput.agent.gemini');
+                                    return flavor;
+                                })()}
+	                            icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
+	                            showChevron={false}
+	                        />
+                            {useProfiles && session.metadata?.profileId !== undefined && (
+                                <Item
+                                    title={t('sessionInfo.aiProfile')}
+                                    detail={profileLabel}
+                                    icon={<Ionicons name="person-circle-outline" size={29} color="#5856D6" />}
+                                    showChevron={false}
+                                />
+                            )}
+	                        {session.metadata.hostPid && (
+	                            <Item
+	                                title={t('sessionInfo.processId')}
+	                                subtitle={session.metadata.hostPid.toString()}
                                 icon={<Ionicons name="terminal-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
                             />
