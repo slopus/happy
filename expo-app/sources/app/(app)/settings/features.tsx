@@ -1,3 +1,4 @@
+import React from 'react';
 import { Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
@@ -7,13 +8,16 @@ import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { Switch } from '@/components/Switch';
 import { t } from '@/text';
 
-export default function FeaturesSettingsScreen() {
+export default React.memo(function FeaturesSettingsScreen() {
     const [experiments, setExperiments] = useSettingMutable('experiments');
+    const [useProfiles, setUseProfiles] = useSettingMutable('useProfiles');
     const [agentInputEnterToSend, setAgentInputEnterToSend] = useSettingMutable('agentInputEnterToSend');
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const [useEnhancedSessionWizard, setUseEnhancedSessionWizard] = useSettingMutable('useEnhancedSessionWizard');
+    const [useMachinePickerSearch, setUseMachinePickerSearch] = useSettingMutable('useMachinePickerSearch');
+    const [usePathPickerSearch, setUsePathPickerSearch] = useSettingMutable('usePathPickerSearch');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -72,6 +76,34 @@ export default function FeaturesSettingsScreen() {
                     }
                     showChevron={false}
                 />
+                <Item
+                    title={t('settingsFeatures.machinePickerSearch')}
+                    subtitle={t('settingsFeatures.machinePickerSearchSubtitle')}
+                    icon={<Ionicons name="search-outline" size={29} color="#007AFF" />}
+                    rightElement={<Switch value={useMachinePickerSearch} onValueChange={setUseMachinePickerSearch} />}
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.pathPickerSearch')}
+                    subtitle={t('settingsFeatures.pathPickerSearchSubtitle')}
+                    icon={<Ionicons name="folder-outline" size={29} color="#007AFF" />}
+                    rightElement={<Switch value={usePathPickerSearch} onValueChange={setUsePathPickerSearch} />}
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.profiles')}
+                    subtitle={useProfiles
+                        ? t('settingsFeatures.profilesEnabled')
+                        : t('settingsFeatures.profilesDisabled')}
+                    icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
+                    rightElement={
+                        <Switch
+                            value={useProfiles}
+                            onValueChange={setUseProfiles}
+                        />
+                    }
+                    showChevron={false}
+                />
             </ItemGroup>
 
             {/* Web-only Features */}
@@ -108,4 +140,4 @@ export default function FeaturesSettingsScreen() {
             )}
         </ItemList>
     );
-}
+});

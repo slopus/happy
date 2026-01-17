@@ -399,7 +399,6 @@ export default function MachineDetailScreen() {
                                         disabled={!isMachineOnline(machine)}
                                         selected={isSelected}
                                         showChevron={false}
-                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
                                         showDivider={!hideDivider}
                                     />
                                 );

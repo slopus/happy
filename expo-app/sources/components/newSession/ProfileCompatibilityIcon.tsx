@@ -36,7 +36,6 @@ export function ProfileCompatibilityIcon({ profile, size = 32, style }: Props) {
     // iOS can render some dingbat glyphs as emoji; force text presentation (U+FE0E).
     const CLAUDE_GLYPH = '\u2733\uFE0E';
     const GEMINI_GLYPH = '\u2726\uFE0E';
-
     const hasClaude = !!profile.compatibility?.claude;
     const hasCodex = !!profile.compatibility?.codex;
     const hasGemini = experimentsEnabled && !!profile.compatibility?.gemini;
