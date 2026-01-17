@@ -972,6 +972,13 @@ export const es: TranslationStructure = {
         editProfile: 'Editar Perfil',
         addProfileTitle: 'Agregar Nuevo Perfil',
         builtIn: 'Integrado',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
         groups: {
             favorites: 'Favoritos',
             custom: 'Tus perfiles',

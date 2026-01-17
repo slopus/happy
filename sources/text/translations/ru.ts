@@ -994,6 +994,13 @@ export const ru: TranslationStructure = {
         editProfile: 'Редактировать Профиль',
         addProfileTitle: 'Добавить Новый Профиль',
         builtIn: 'Встроенный',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
         groups: {
             favorites: 'Избранное',
             custom: 'Ваши профили',

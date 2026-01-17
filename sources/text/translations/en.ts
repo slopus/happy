@@ -985,6 +985,13 @@ export const en = {
         editProfile: 'Edit Profile',
         addProfileTitle: 'Add New Profile',
         builtIn: 'Built-in',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
         groups: {
             favorites: 'Favorites',
             custom: 'Your Profiles',

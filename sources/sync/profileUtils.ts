@@ -2,6 +2,15 @@ import { AIBackendProfile } from './settings';
 
 export type ProfilePrimaryCli = 'claude' | 'codex' | 'gemini' | 'multi' | 'none';
 
+export type BuiltInProfileId = 'anthropic' | 'deepseek' | 'zai' | 'openai' | 'azure-openai';
+
+export type BuiltInProfileNameKey =
+    | 'profiles.builtInNames.anthropic'
+    | 'profiles.builtInNames.deepseek'
+    | 'profiles.builtInNames.zai'
+    | 'profiles.builtInNames.openai'
+    | 'profiles.builtInNames.azureOpenai';
+
 const ALLOWED_PROFILE_CLIS = new Set(['claude', 'codex', 'gemini']);
 
 export function getProfilePrimaryCli(profile: AIBackendProfile | null | undefined): ProfilePrimaryCli {
@@ -14,6 +23,23 @@ export function getProfilePrimaryCli(profile: AIBackendProfile | null | undefine
     if (supported.length === 0) return 'none';
     if (supported.length === 1) return supported[0];
     return 'multi';
+}
+
+export function getBuiltInProfileNameKey(id: string): BuiltInProfileNameKey | null {
+    switch (id as BuiltInProfileId) {
+        case 'anthropic':
+            return 'profiles.builtInNames.anthropic';
+        case 'deepseek':
+            return 'profiles.builtInNames.deepseek';
+        case 'zai':
+            return 'profiles.builtInNames.zai';
+        case 'openai':
+            return 'profiles.builtInNames.openai';
+        case 'azure-openai':
+            return 'profiles.builtInNames.azureOpenai';
+        default:
+            return null;
+    }
 }
 
 /**

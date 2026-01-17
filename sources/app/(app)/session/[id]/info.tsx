@@ -20,7 +20,7 @@ import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
-import { getBuiltInProfile } from '@/sync/profileUtils';
+import { getBuiltInProfile, getBuiltInProfileNameKey } from '@/sync/profileUtils';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -79,7 +79,10 @@ function SessionInfoContent({ session }: { session: Session }) {
         if (typeof profileId !== 'string') return t('status.unknown');
 
         const builtIn = getBuiltInProfile(profileId);
-        if (builtIn) return builtIn.name;
+        if (builtIn) {
+            const key = getBuiltInProfileNameKey(profileId);
+            return key ? t(key) : builtIn.name;
+        }
 
         const custom = profiles.find(p => p.id === profileId);
         return custom?.name ?? t('status.unknown');

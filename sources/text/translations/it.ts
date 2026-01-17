@@ -103,6 +103,13 @@ export const it: TranslationStructure = {
         editProfile: 'Modifica profilo',
         addProfileTitle: 'Aggiungi nuovo profilo',
         builtIn: 'Integrato',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
         groups: {
             favorites: 'Preferiti',
             custom: 'I tuoi profili',

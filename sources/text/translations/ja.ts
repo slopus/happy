@@ -96,6 +96,13 @@ export const ja: TranslationStructure = {
         editProfile: 'プロファイルを編集',
         addProfileTitle: '新しいプロファイルを追加',
         builtIn: '組み込み',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
         groups: {
             favorites: 'お気に入り',
             custom: 'あなたのプロファイル',

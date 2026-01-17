@@ -964,6 +964,13 @@ export const zhHans: TranslationStructure = {
         deleteConfirm: ({ name }: { name: string }) => `确定要删除配置文件“${name}”吗？`,
         nameRequired: '配置文件名称为必填项',
         builtIn: '内置',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
         groups: {
             favorites: '收藏',
             custom: '你的配置文件',

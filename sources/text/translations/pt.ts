@@ -962,6 +962,13 @@ export const pt: TranslationStructure = {
         deleteConfirm: ({ name }: { name: string }) => `Tem certeza de que deseja excluir o perfil "${name}"?`,
         nameRequired: 'O nome do perfil é obrigatório',
         builtIn: 'Integrado',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
         groups: {
             favorites: 'Favoritos',
             custom: 'Seus perfis',
