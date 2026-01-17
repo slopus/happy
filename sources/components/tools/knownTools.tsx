@@ -181,9 +181,12 @@ export const knownTools = {
                 return path;
             }
             // Gemini uses 'locations' array with 'path' field
-            if (opts.tool.input.locations && Array.isArray(opts.tool.input.locations) && opts.tool.input.locations[0]?.path) {
-                const path = resolvePath(opts.tool.input.locations[0].path, opts.metadata);
-                return path;
+            if (Array.isArray(opts.tool.input.locations)) {
+                const maybePath = opts.tool.input.locations[0]?.path;
+                if (typeof maybePath === 'string' && maybePath.length > 0) {
+                    const path = resolvePath(maybePath, opts.metadata);
+                    return path;
+                }
             }
             return t('tools.names.readFile');
         },
@@ -211,9 +214,12 @@ export const knownTools = {
     'read': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Gemini uses 'locations' array with 'path' field
-            if (opts.tool.input.locations && Array.isArray(opts.tool.input.locations) && opts.tool.input.locations[0]?.path) {
-                const path = resolvePath(opts.tool.input.locations[0].path, opts.metadata);
-                return path;
+            if (Array.isArray(opts.tool.input.locations)) {
+                const maybePath = opts.tool.input.locations[0]?.path;
+                if (typeof maybePath === 'string' && maybePath.length > 0) {
+                    const path = resolvePath(maybePath, opts.metadata);
+                    return path;
+                }
             }
             if (typeof opts.tool.input.file_path === 'string') {
                 const path = resolvePath(opts.tool.input.file_path, opts.metadata);
@@ -592,7 +598,7 @@ export const knownTools = {
         }
     },
     'change_title': {
-        title: 'Change Title',
+        title: t('tools.names.changeTitle'),
         icon: ICON_EDIT,
         minimal: true,
         noStatus: true,
@@ -617,15 +623,15 @@ export const knownTools = {
             let filePath: string | undefined;
             
             // 1. Check toolCall.content[0].path
-            if (opts.tool.input?.toolCall?.content?.[0]?.path) {
+            if (typeof opts.tool.input?.toolCall?.content?.[0]?.path === 'string') {
                 filePath = opts.tool.input.toolCall.content[0].path;
             }
             // 2. Check toolCall.title (has nice "Writing to ..." format)
-            else if (opts.tool.input?.toolCall?.title) {
+            else if (typeof opts.tool.input?.toolCall?.title === 'string') {
                 return opts.tool.input.toolCall.title;
             }
             // 3. Check input[0].path (array format)
-            else if (Array.isArray(opts.tool.input?.input) && opts.tool.input.input[0]?.path) {
+            else if (Array.isArray(opts.tool.input?.input) && typeof opts.tool.input.input[0]?.path === 'string') {
                 filePath = opts.tool.input.input[0].path;
             }
             // 4. Check direct path field
@@ -633,7 +639,7 @@ export const knownTools = {
                 filePath = opts.tool.input.path;
             }
             
-            if (filePath) {
+            if (typeof filePath === 'string' && filePath.length > 0) {
                 return resolvePath(filePath, opts.metadata);
             }
             return t('tools.names.editFile');
@@ -657,7 +663,7 @@ export const knownTools = {
     'execute': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Gemini sends nice title in toolCall.title
-            if (opts.tool.input?.toolCall?.title) {
+            if (typeof opts.tool.input?.toolCall?.title === 'string') {
                 // Title is like "rm file.txt [cwd /path] (description)"
                 // Extract just the command part before [
                 const fullTitle = opts.tool.input.toolCall.title;
@@ -674,7 +680,7 @@ export const knownTools = {
         input: z.object({}).partial().loose(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Extract description from parentheses at the end
-            if (opts.tool.input?.toolCall?.title) {
+            if (typeof opts.tool.input?.toolCall?.title === 'string') {
                 const title = opts.tool.input.toolCall.title;
                 const parenMatch = title.match(/\(([^)]+)\)$/);
                 if (parenMatch) {
