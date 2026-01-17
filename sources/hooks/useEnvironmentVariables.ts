@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { machineBash } from '@/sync/ops';
+import { machineBash, machinePreviewEnv, type EnvPreviewSecretsPolicy, type PreviewEnvValue } from '@/sync/ops';
 
 // Re-export pure utility functions from envVarUtils for backwards compatibility
 export { resolveEnvVarSubstitution, extractEnvVarReferences } from './envVarUtils';
@@ -10,7 +10,24 @@ interface EnvironmentVariables {
 
 interface UseEnvironmentVariablesResult {
     variables: EnvironmentVariables;
+    meta: Record<string, PreviewEnvValue>;
+    policy: EnvPreviewSecretsPolicy | null;
+    isPreviewEnvSupported: boolean;
     isLoading: boolean;
+}
+
+interface UseEnvironmentVariablesOptions {
+    /**
+     * When provided, the daemon will compute an effective spawn environment:
+     * effective = { ...daemon.process.env, ...expand(extraEnv) }
+     * This makes previews exactly match what sessions will receive.
+     */
+    extraEnv?: Record<string, string>;
+    /**
+     * Marks variables as sensitive (at minimum). The daemon may also treat vars as sensitive
+     * based on name heuristics (TOKEN/KEY/etc).
+     */
+    sensitiveHints?: Record<string, boolean>;
 }
 
 /**
@@ -36,18 +53,33 @@ interface UseEnvironmentVariablesResult {
  */
 export function useEnvironmentVariables(
     machineId: string | null,
-    varNames: string[]
+    varNames: string[],
+    options?: UseEnvironmentVariablesOptions
 ): UseEnvironmentVariablesResult {
     const [variables, setVariables] = useState<EnvironmentVariables>({});
+    const [meta, setMeta] = useState<Record<string, PreviewEnvValue>>({});
+    const [policy, setPolicy] = useState<EnvPreviewSecretsPolicy | null>(null);
+    const [isPreviewEnvSupported, setIsPreviewEnvSupported] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
     // Memoize sorted var names for stable dependency (avoid unnecessary re-queries)
     const sortedVarNames = useMemo(() => [...varNames].sort().join(','), [varNames]);
+    const extraEnvKey = useMemo(() => {
+        const entries = Object.entries(options?.extraEnv ?? {}).sort(([a], [b]) => a.localeCompare(b));
+        return JSON.stringify(entries);
+    }, [options?.extraEnv]);
+    const sensitiveHintsKey = useMemo(() => {
+        const entries = Object.entries(options?.sensitiveHints ?? {}).sort(([a], [b]) => a.localeCompare(b));
+        return JSON.stringify(entries);
+    }, [options?.sensitiveHints]);
 
     useEffect(() => {
         // Early exit conditions
         if (!machineId || varNames.length === 0) {
             setVariables({});
+            setMeta({});
+            setPolicy(null);
+            setIsPreviewEnvSupported(false);
             setIsLoading(false);
             return;
         }
@@ -57,6 +89,7 @@ export function useEnvironmentVariables(
 
         const fetchVars = async () => {
             const results: EnvironmentVariables = {};
+            const metaResults: Record<string, PreviewEnvValue> = {};
 
             // SECURITY: Validate all variable names to prevent bash injection
             // Only accept valid environment variable names: [A-Z_][A-Z0-9_]*
@@ -65,9 +98,58 @@ export function useEnvironmentVariables(
             if (validVarNames.length === 0) {
                 // No valid variables to query
                 setVariables({});
+                setMeta({});
+                setPolicy(null);
+                setIsPreviewEnvSupported(false);
                 setIsLoading(false);
                 return;
             }
+
+            // Prefer daemon-native env preview if supported (more accurate + supports secret policy).
+            const preview = await machinePreviewEnv(machineId, {
+                keys: validVarNames,
+                extraEnv: options?.extraEnv,
+                sensitiveHints: options?.sensitiveHints,
+            });
+
+            if (cancelled) return;
+
+            if (preview.supported) {
+                const response = preview.response;
+                validVarNames.forEach((name) => {
+                    const entry = response.values[name];
+                    if (entry) {
+                        metaResults[name] = entry;
+                        results[name] = entry.value;
+                    } else {
+                        // Defensive fallback: treat as unset.
+                        metaResults[name] = { value: null, isSet: false, isSensitive: false, display: 'unset' };
+                        results[name] = null;
+                    }
+                });
+
+                if (!cancelled) {
+                    setVariables(results);
+                    setMeta(metaResults);
+                    setPolicy(response.policy);
+                    setIsPreviewEnvSupported(true);
+                    setIsLoading(false);
+                }
+                return;
+            }
+
+            // Fallback (older daemon): use bash probing for non-sensitive variables only.
+            // Never fetch secret-like values into UI memory via bash.
+            const SECRET_NAME_REGEX = /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i;
+            const sensitiveHints = options?.sensitiveHints ?? {};
+            const safeVarNames = validVarNames.filter((name) => !SECRET_NAME_REGEX.test(name) && sensitiveHints[name] !== true);
+
+            // Mark excluded keys as hidden (conservative).
+            validVarNames.forEach((name) => {
+                if (safeVarNames.includes(name)) return;
+                metaResults[name] = { value: null, isSet: true, isSensitive: true, display: 'hidden' };
+                results[name] = null;
+            });
 
             // Query variables in a single machineBash() call.
             //
@@ -86,11 +168,11 @@ export function useEnvironmentVariables(
                 "}",
                 "process.stdout.write(JSON.stringify(out));",
             ].join("");
-            const jsonCommand = `node -e '${nodeScript.replace(/'/g, "'\\''")}' ${validVarNames.join(' ')}`;
+            const jsonCommand = `node -e '${nodeScript.replace(/'/g, "'\\''")}' ${safeVarNames.join(' ')}`;
             // Shell fallback uses `printenv` to distinguish unset vs empty via exit code.
             // Note: values containing newlines may not round-trip here; the node/JSON path preserves them.
             const shellFallback = [
-                `for name in ${validVarNames.join(' ')}; do`,
+                `for name in ${safeVarNames.join(' ')}; do`,
                 `if printenv "$name" >/dev/null 2>&1; then`,
                 `printf "%s=%s\\n" "$name" "$(printenv "$name")";`,
                 `else`,
@@ -102,6 +184,17 @@ export function useEnvironmentVariables(
             const command = `if command -v node >/dev/null 2>&1; then ${jsonCommand}; else ${shellFallback}; fi`;
 
             try {
+                if (safeVarNames.length === 0) {
+                    if (!cancelled) {
+                        setVariables(results);
+                        setMeta(metaResults);
+                        setPolicy(null);
+                        setIsPreviewEnvSupported(false);
+                        setIsLoading(false);
+                    }
+                    return;
+                }
+
                 const result = await machineBash(machineId, command, '/');
 
                 if (cancelled) return;
@@ -118,7 +211,7 @@ export function useEnvironmentVariables(
                         const jsonSlice = trimmed.slice(firstBrace, lastBrace + 1);
                         try {
                             const parsed = JSON.parse(jsonSlice) as Record<string, string | null>;
-                            validVarNames.forEach((name) => {
+                            safeVarNames.forEach((name) => {
                                 results[name] = Object.prototype.hasOwnProperty.call(parsed, name) ? parsed[name] : null;
                             });
                         } catch {
@@ -143,14 +236,14 @@ export function useEnvironmentVariables(
                     }
 
                     // Ensure all requested variables have entries (even if missing from output)
-                    validVarNames.forEach(name => {
+                    safeVarNames.forEach(name => {
                         if (!(name in results)) {
                             results[name] = null;
                         }
                     });
                 } else {
                     // Bash command failed - mark all variables as not set
-                    validVarNames.forEach(name => {
+                    safeVarNames.forEach(name => {
                         results[name] = null;
                     });
                 }
@@ -158,13 +251,25 @@ export function useEnvironmentVariables(
                 if (cancelled) return;
 
                 // RPC error (network, encryption, etc.) - mark all as not set
-                validVarNames.forEach(name => {
+                safeVarNames.forEach(name => {
                     results[name] = null;
                 });
             }
 
             if (!cancelled) {
+                safeVarNames.forEach((name) => {
+                    const value = results[name];
+                    metaResults[name] = {
+                        value,
+                        isSet: value !== null,
+                        isSensitive: false,
+                        display: value === null ? 'unset' : 'full',
+                    };
+                });
                 setVariables(results);
+                setMeta(metaResults);
+                setPolicy(null);
+                setIsPreviewEnvSupported(false);
                 setIsLoading(false);
             }
         };
@@ -175,7 +280,7 @@ export function useEnvironmentVariables(
         return () => {
             cancelled = true;
         };
-    }, [machineId, sortedVarNames]);
+    }, [extraEnvKey, machineId, sensitiveHintsKey, sortedVarNames]);
 
-    return { variables, isLoading };
+    return { variables, meta, policy, isPreviewEnvSupported, isLoading };
 }

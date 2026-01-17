@@ -237,6 +237,83 @@ export async function machineBash(
     }
 }
 
+export type EnvPreviewSecretsPolicy = 'none' | 'redacted' | 'full';
+
+export interface PreviewEnvValue {
+    value: string | null;
+    isSet: boolean;
+    isSensitive: boolean;
+    display: 'full' | 'redacted' | 'hidden' | 'unset';
+}
+
+export interface PreviewEnvResponse {
+    policy: EnvPreviewSecretsPolicy;
+    values: Record<string, PreviewEnvValue>;
+}
+
+interface PreviewEnvRequest {
+    keys: string[];
+    extraEnv?: Record<string, string>;
+    sensitiveHints?: Record<string, boolean>;
+}
+
+export type MachinePreviewEnvResult =
+    | { supported: true; response: PreviewEnvResponse }
+    | { supported: false };
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Preview environment variables exactly as the daemon will spawn them.
+ *
+ * This calls the daemon's `preview-env` RPC (if supported). The daemon computes:
+ * - effective env = { ...daemon.process.env, ...expand(extraEnv) }
+ * - applies `HAPPY_ENV_PREVIEW_SECRETS` policy for sensitive variables
+ *
+ * If the daemon is old and doesn't support `preview-env`, returns `{ supported: false }`.
+ */
+export async function machinePreviewEnv(
+    machineId: string,
+    params: PreviewEnvRequest
+): Promise<MachinePreviewEnvResult> {
+    try {
+        const result = await apiSocket.machineRPC<unknown, PreviewEnvRequest>(
+            machineId,
+            'preview-env',
+            params
+        );
+
+        if (isPlainObject(result) && typeof result.error === 'string') {
+            // Older daemons (or errors) return an encrypted `{ error: ... }` payload.
+            // Treat method-not-found as “unsupported” and fallback to bash-based probing.
+            if (result.error === 'Method not found') {
+                return { supported: false };
+            }
+            // For any other error, degrade gracefully in UI by using fallback behavior.
+            return { supported: false };
+        }
+
+        // Basic shape validation (be defensive for mixed daemon versions).
+        if (
+            !isPlainObject(result) ||
+            (result.policy !== 'none' && result.policy !== 'redacted' && result.policy !== 'full') ||
+            !isPlainObject(result.values)
+        ) {
+            return { supported: false };
+        }
+
+        const response: PreviewEnvResponse = {
+            policy: result.policy as EnvPreviewSecretsPolicy,
+            values: result.values as unknown as Record<string, PreviewEnvValue>,
+        };
+        return { supported: true, response };
+    } catch {
+        return { supported: false };
+    }
+}
+
 /**
  * Update machine metadata with optimistic concurrency control and automatic retry
  */
