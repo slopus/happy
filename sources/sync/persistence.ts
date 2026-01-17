@@ -4,7 +4,7 @@ import { LocalSettings, localSettingsDefaults, localSettingsParse } from './loca
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
 import type { Session } from './storageTypes';
-import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
+import { isModelMode, isPermissionMode, type PermissionMode, type ModelMode } from '@/sync/permissionTypes';
 import { readStorageScopeFromEnv, scopedStorageId } from '@/utils/storageScope';
 
 const isWebRuntime = typeof window !== 'undefined' && typeof document !== 'undefined';
@@ -17,6 +17,9 @@ export type NewSessionSessionType = 'simple' | 'worktree';
 
 type SessionModelMode = NonNullable<Session['modelMode']>;
 
+// NOTE:
+// This set must stay in sync with the configurable Session model modes.
+// TypeScript will catch invalid entries here, but it won't force adding new Session modes.
 const SESSION_MODEL_MODES = new Set<SessionModelMode>([
     'default',
     'gemini-2.5-pro',
@@ -163,10 +166,10 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini'
             ? parsed.agentType
             : 'claude';
-        const permissionMode: PermissionMode = typeof parsed.permissionMode === 'string'
-            ? (parsed.permissionMode as PermissionMode)
+        const permissionMode: PermissionMode = isPermissionMode(parsed.permissionMode)
+            ? parsed.permissionMode
             : 'default';
-        const modelMode: ModelMode = isSessionModelMode(parsed.modelMode)
+        const modelMode: ModelMode = isModelMode(parsed.modelMode)
             ? parsed.modelMode
             : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';

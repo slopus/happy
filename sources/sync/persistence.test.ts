@@ -51,6 +51,46 @@ describe('persistence', () => {
     });
 
     describe('new session draft', () => {
+        it('preserves valid non-session modelMode values', () => {
+            store.set(
+                'new-session-draft-v1',
+                JSON.stringify({
+                    input: '',
+                    selectedMachineId: null,
+                    selectedPath: null,
+                    selectedProfileId: null,
+                    agentType: 'claude',
+                    permissionMode: 'default',
+                    modelMode: 'adaptiveUsage',
+                    sessionType: 'simple',
+                    updatedAt: Date.now(),
+                }),
+            );
+
+            const draft = loadNewSessionDraft();
+            expect(draft?.modelMode).toBe('adaptiveUsage');
+        });
+
+        it('clamps invalid permissionMode to default', () => {
+            store.set(
+                'new-session-draft-v1',
+                JSON.stringify({
+                    input: '',
+                    selectedMachineId: null,
+                    selectedPath: null,
+                    selectedProfileId: null,
+                    agentType: 'gemini',
+                    permissionMode: 'bogus',
+                    modelMode: 'default',
+                    sessionType: 'simple',
+                    updatedAt: Date.now(),
+                }),
+            );
+
+            const draft = loadNewSessionDraft();
+            expect(draft?.permissionMode).toBe('default');
+        });
+
         it('clamps invalid modelMode to default', () => {
             store.set(
                 'new-session-draft-v1',
