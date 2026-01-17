@@ -5,8 +5,11 @@ import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
 import type { Session } from './storageTypes';
 import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
+import { readStorageScopeFromEnv, scopedStorageId } from '@/utils/storageScope';
 
-const mmkv = new MMKV();
+const isWebRuntime = typeof window !== 'undefined' && typeof document !== 'undefined';
+const storageScope = isWebRuntime ? null : readStorageScopeFromEnv();
+const mmkv = storageScope ? new MMKV({ id: scopedStorageId('default', storageScope) }) : new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
 
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini';
