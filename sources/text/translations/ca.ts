@@ -1,4 +1,4 @@
-import type { TranslationStructure } from '../_default';
+import type { TranslationStructure } from '../_types';
 
 /**
  * Catalan plural helper function
@@ -31,6 +31,8 @@ export const ca: TranslationStructure = {
 
     common: {
         // Simple string constants
+        add: 'Afegeix',
+        actions: 'Accions',
         cancel: 'Cancel·la',
         authenticate: 'Autentica',
         save: 'Desa',
@@ -47,6 +49,9 @@ export const ca: TranslationStructure = {
         yes: 'Sí',
         no: 'No',
         discard: 'Descarta',
+        discardChanges: 'Descarta els canvis',
+        unsavedChangesWarning: 'Tens canvis sense desar.',
+        keepEditing: 'Continua editant',
         version: 'Versió',
         copied: 'Copiat',
         copy: 'Copiar',
@@ -60,6 +65,10 @@ export const ca: TranslationStructure = {
         retry: 'Torna-ho a provar',
         delete: 'Elimina',
         optional: 'Opcional',
+        noMatches: 'Sense coincidències',
+        all: 'Tots',
+        machine: 'màquina',
+        clearSearch: 'Neteja la cerca',
     },
 
     profile: {
@@ -208,6 +217,15 @@ export const ca: TranslationStructure = {
         enhancedSessionWizard: 'Assistent de sessió millorat',
         enhancedSessionWizardEnabled: 'Llançador de sessió amb perfil actiu',
         enhancedSessionWizardDisabled: 'Usant el llançador de sessió estàndard',
+        profiles: 'Perfils d\'IA',
+        profilesEnabled: 'Selecció de perfils activada',
+        profilesDisabled: 'Selecció de perfils desactivada',
+        pickerSearch: 'Cerca als selectors',
+        pickerSearchSubtitle: 'Mostra un camp de cerca als selectors de màquina i camí',
+        machinePickerSearch: 'Cerca de màquines',
+        machinePickerSearchSubtitle: 'Mostra un camp de cerca als selectors de màquines',
+        pathPickerSearch: 'Cerca de camins',
+        pathPickerSearchSubtitle: 'Mostra un camp de cerca als selectors de camins',
     },
 
     errors: {
@@ -260,6 +278,9 @@ export const ca: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Inicia una nova sessió',
+        selectMachineTitle: 'Selecciona màquina',
+        selectPathTitle: 'Selecciona camí',
+        searchPathsPlaceholder: 'Cerca camins...',
         noMachinesFound: 'No s\'han trobat màquines. Inicia una sessió de Happy al teu ordinador primer.',
         allMachinesOffline: 'Totes les màquines estan fora de línia',
         machineDetails: 'Veure detalls de la màquina →',
@@ -275,6 +296,26 @@ export const ca: TranslationStructure = {
         startNewSessionInFolder: 'Nova sessió aquí',
         noMachineSelected: 'Si us plau, selecciona una màquina per iniciar la sessió',
         noPathSelected: 'Si us plau, selecciona un directori per iniciar la sessió',
+        machinePicker: {
+            searchPlaceholder: 'Cerca màquines...',
+            recentTitle: 'Recents',
+            favoritesTitle: 'Preferits',
+            allTitle: 'Totes',
+            emptyMessage: 'No hi ha màquines disponibles',
+        },
+        pathPicker: {
+            enterPathTitle: 'Introdueix el camí',
+            enterPathPlaceholder: 'Introdueix un camí...',
+            customPathTitle: 'Camí personalitzat',
+            recentTitle: 'Recents',
+            favoritesTitle: 'Preferits',
+            suggestedTitle: 'Suggerits',
+            allTitle: 'Totes',
+            emptyRecent: 'No hi ha camins recents',
+            emptyFavorites: 'No hi ha camins preferits',
+            emptySuggested: 'No hi ha camins suggerits',
+            emptyAll: 'No hi ha camins',
+        },
         sessionType: {
             title: 'Tipus de sessió',
             simple: 'Simple',
@@ -336,6 +377,7 @@ export const ca: TranslationStructure = {
         happySessionId: 'ID de la sessió de Happy',
         claudeCodeSessionId: 'ID de la sessió de Claude Code',
         claudeCodeSessionIdCopied: 'ID de la sessió de Claude Code copiat al porta-retalls',
+        aiProfile: 'Perfil d\'IA',
         aiProvider: 'Proveïdor d\'IA',
         failedToCopyClaudeCodeSessionId: 'Ha fallat copiar l\'ID de la sessió de Claude Code',
         metadataCopied: 'Metadades copiades al porta-retalls',
@@ -390,12 +432,19 @@ export const ca: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: 'Variables d\'entorn',
+            titleWithCount: ({ count }: { count: number }) => `Variables d'entorn (${count})`,
+        },
         permissionMode: {
             title: 'MODE DE PERMISOS',
             default: 'Per defecte',
             acceptEdits: 'Accepta edicions',
             plan: 'Mode de planificació',
             bypassPermissions: 'Mode Yolo',
+            badgeAccept: 'Accepta',
+            badgePlan: 'Pla',
+            badgeYolo: 'YOLO',
             badgeAcceptAllEdits: 'Accepta totes les edicions',
             badgeBypassAllPermissions: 'Omet tots els permisos',
             badgePlanMode: 'Mode de planificació',
@@ -415,7 +464,7 @@ export const ca: TranslationStructure = {
             readOnly: 'Read Only Mode',
             safeYolo: 'Safe YOLO',
             yolo: 'YOLO',
-            badgeReadOnly: 'Read Only Mode',
+            badgeReadOnly: 'Només lectura',
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
@@ -430,14 +479,29 @@ export const ca: TranslationStructure = {
             gpt5High: 'GPT-5 High',
         },
         geminiPermissionMode: {
-            title: 'MODE DE PERMISOS',
+            title: 'MODE DE PERMISOS GEMINI',
             default: 'Per defecte',
-            acceptEdits: 'Accepta edicions',
-            plan: 'Mode de planificació',
-            bypassPermissions: 'Mode Yolo',
-            badgeAcceptAllEdits: 'Accepta totes les edicions',
-            badgeBypassAllPermissions: 'Omet tots els permisos',
-            badgePlanMode: 'Mode de planificació',
+            readOnly: 'Només lectura',
+            safeYolo: 'YOLO segur',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Només lectura',
+            badgeSafeYolo: 'YOLO segur',
+            badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'MODEL GEMINI',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: 'Més capaç',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: 'Ràpid i eficient',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: 'Més ràpid',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restant`,
@@ -504,6 +568,10 @@ export const ca: TranslationStructure = {
             applyChanges: 'Actualitza fitxer',
             viewDiff: 'Canvis del fitxer actual',
             question: 'Pregunta',
+            changeTitle: 'Canvia el títol',
+        },
+        geminiExecute: {
+            cwd: ({ cwd }: { cwd: string }) => `📁 ${cwd}`,
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
@@ -894,8 +962,127 @@ export const ca: TranslationStructure = {
         tmuxTempDir: 'Directori temporal tmux',
         enterTmuxTempDir: 'Introdueix el directori temporal tmux',
         tmuxUpdateEnvironment: 'Actualitza l\'entorn tmux',
-        deleteConfirm: 'Segur que vols eliminar aquest perfil?',
+        deleteConfirm: ({ name }: { name: string }) => `Segur que vols eliminar el perfil "${name}"?`,
         nameRequired: 'El nom del perfil és obligatori',
+        builtIn: 'Integrat',
+        custom: 'Personalitzat',
+        builtInSaveAsHint: 'Desar un perfil integrat crea un nou perfil personalitzat.',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
+        groups: {
+            favorites: 'Preferits',
+            custom: 'Els teus perfils',
+            builtIn: 'Perfils integrats',
+        },
+        actions: {
+            viewEnvironmentVariables: 'Variables d\'entorn',
+            addToFavorites: 'Afegeix als preferits',
+            removeFromFavorites: 'Treu dels preferits',
+            editProfile: 'Edita el perfil',
+            duplicateProfile: 'Duplica el perfil',
+            deleteProfile: 'Elimina el perfil',
+        },
+        copySuffix: '(Còpia)',
+        duplicateName: 'Ja existeix un perfil amb aquest nom',
+        setupInstructions: {
+            title: 'Instruccions de configuració',
+            viewOfficialGuide: 'Veure la guia oficial de configuració',
+        },
+        defaultSessionType: 'Tipus de sessió predeterminat',
+        defaultPermissionMode: {
+            title: 'Mode de permisos predeterminat',
+            descriptions: {
+                default: 'Demana permisos',
+                acceptEdits: 'Aprova edicions automàticament',
+                plan: 'Planifica abans d\'executar',
+                bypassPermissions: 'Salta tots els permisos',
+            },
+        },
+        aiBackend: {
+            title: 'Backend d\'IA',
+            selectAtLeastOneError: 'Selecciona com a mínim un backend d\'IA.',
+            claudeSubtitle: 'CLI de Claude',
+            codexSubtitle: 'CLI de Codex',
+            geminiSubtitleExperimental: 'CLI de Gemini (experimental)',
+        },
+        tmux: {
+            title: 'Tmux',
+            spawnSessionsTitle: 'Inicia sessions a Tmux',
+            spawnSessionsEnabledSubtitle: 'Les sessions s\'inicien en noves finestres de tmux.',
+            spawnSessionsDisabledSubtitle: 'Les sessions s\'inicien en un shell normal (sense integració amb tmux)',
+            sessionNamePlaceholder: 'Buit = sessió actual/més recent',
+            tempDirPlaceholder: '/tmp (opcional)',
+        },
+        previewMachine: {
+            title: 'Previsualitza màquina',
+            itemTitle: 'Màquina de previsualització per a variables d\'entorn',
+            selectMachine: 'Selecciona màquina',
+            resolveSubtitle: 'S\'usa només per previsualitzar els valors resolts a continuació (no canvia el que es desa).',
+            selectSubtitle: 'Selecciona una màquina per previsualitzar els valors resolts a continuació.',
+        },
+        environmentVariables: {
+            title: 'Variables d\'entorn',
+            addVariable: 'Afegeix variable',
+            namePlaceholder: 'Nom de variable (p. ex., MY_CUSTOM_VAR)',
+            valuePlaceholder: 'Valor (p. ex., my-value o ${MY_VAR})',
+            validation: {
+                nameRequired: 'Introdueix un nom de variable.',
+                invalidNameFormat: 'Els noms de variable han de ser lletres majúscules, números i guions baixos, i no poden començar amb un número.',
+                duplicateName: 'Aquesta variable ja existeix.',
+            },
+            card: {
+                valueLabel: 'Valor:',
+                fallbackValueLabel: 'Valor de reserva:',
+                valueInputPlaceholder: 'Valor',
+                defaultValueInputPlaceholder: 'Valor per defecte',
+                secretNotRetrieved: 'Valor secret - no es recupera per seguretat',
+                secretToggleLabel: 'Secret',
+                secretToggleSubtitle: 'Amaga el valor a la UI i evita obtenir-lo de la màquina per a la previsualització.',
+                secretToggleEnforcedByDaemon: 'Imposat pel dimoni',
+                secretToggleResetToAuto: 'Restablir a automàtic',
+                overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
+                    `S'està substituint el valor predeterminat documentat: ${expectedValue}`,
+                useMachineEnvToggle: 'Utilitza el valor de l\'entorn de la màquina',
+                resolvedOnSessionStart: 'Es resol quan la sessió s\'inicia a la màquina seleccionada.',
+                sourceVariableLabel: 'Variable d\'origen',
+                sourceVariablePlaceholder: 'Nom de variable d\'origen (p. ex., Z_AI_MODEL)',
+                checkingMachine: ({ machine }: { machine: string }) => `Comprovant ${machine}...`,
+                emptyOnMachine: ({ machine }: { machine: string }) => `Buit a ${machine}`,
+                emptyOnMachineUsingFallback: ({ machine }: { machine: string }) => `Buit a ${machine} (utilitzant reserva)`,
+                notFoundOnMachine: ({ machine }: { machine: string }) => `No trobat a ${machine}`,
+                notFoundOnMachineUsingFallback: ({ machine }: { machine: string }) => `No trobat a ${machine} (utilitzant reserva)`,
+                valueFoundOnMachine: ({ machine }: { machine: string }) => `Valor trobat a ${machine}`,
+                differsFromDocumented: ({ expectedValue }: { expectedValue: string }) =>
+                    `Difiereix del valor documentat: ${expectedValue}`,
+            },
+            preview: {
+                secretValueHidden: ({ value }: { value: string }) => `${value} - ocult per seguretat`,
+                hiddenValue: '***ocult***',
+                emptyValue: '(buit)',
+                sessionWillReceive: ({ name, value }: { name: string; value: string }) =>
+                    `La sessió rebrà: ${name} = ${value}`,
+            },
+            previewModal: {
+                titleWithProfile: ({ profileName }: { profileName: string }) => `Variables d'entorn · ${profileName}`,
+                descriptionPrefix: 'Aquestes variables d\'entorn s\'envien en iniciar la sessió. Els valors es resolen usant el dimoni a',
+                descriptionFallbackMachine: 'la màquina seleccionada',
+                descriptionSuffix: '.',
+                emptyMessage: 'No hi ha variables d\'entorn configurades per a aquest perfil.',
+                checkingSuffix: '(comprovant…)',
+                detail: {
+                    fixed: 'Fix',
+                    machine: 'Màquina',
+                    checking: 'Comprovant',
+                    fallback: 'Reserva',
+                    missing: 'Falta',
+                },
+            },
+        },
         delete: {
             title: 'Eliminar Perfil',
             message: ({ name }: { name: string }) => `Estàs segur que vols eliminar "${name}"? Aquesta acció no es pot desfer.`,
