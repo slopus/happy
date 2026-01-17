@@ -546,37 +546,40 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     const permissionChipLabel = React.useMemo(() => {
         if (isCodex) {
+            // Hide default (use icon-only for the common case).
             return normalizedPermissionMode === 'default'
-                ? t('agentInput.codexPermissionMode.default')
+                ? ''
                 : normalizedPermissionMode === 'read-only'
-                    ? t('agentInput.codexPermissionMode.readOnly')
+                    ? t('agentInput.codexPermissionMode.badgeReadOnly')
                     : normalizedPermissionMode === 'safe-yolo'
-                        ? t('agentInput.codexPermissionMode.safeYolo')
+                        ? t('agentInput.codexPermissionMode.badgeSafeYolo')
                         : normalizedPermissionMode === 'yolo'
-                            ? t('agentInput.codexPermissionMode.yolo')
+                            ? t('agentInput.codexPermissionMode.badgeYolo')
                             : '';
         }
 
         if (isGemini) {
+            // Hide default (use icon-only for the common case).
             return normalizedPermissionMode === 'default'
-                ? t('agentInput.geminiPermissionMode.default')
+                ? ''
                 : normalizedPermissionMode === 'read-only'
-                    ? t('agentInput.geminiPermissionMode.readOnly')
+                    ? t('agentInput.geminiPermissionMode.badgeReadOnly')
                     : normalizedPermissionMode === 'safe-yolo'
-                        ? t('agentInput.geminiPermissionMode.safeYolo')
+                        ? t('agentInput.geminiPermissionMode.badgeSafeYolo')
                         : normalizedPermissionMode === 'yolo'
-                            ? t('agentInput.geminiPermissionMode.yolo')
+                            ? t('agentInput.geminiPermissionMode.badgeYolo')
                             : '';
         }
 
+        // Hide default (use icon-only for the common case).
         return normalizedPermissionMode === 'default'
-            ? t('agentInput.permissionMode.default')
+            ? ''
             : normalizedPermissionMode === 'acceptEdits'
-                ? t('agentInput.permissionMode.acceptEdits')
-                : normalizedPermissionMode === 'plan'
-                    ? t('agentInput.permissionMode.plan')
-                    : normalizedPermissionMode === 'bypassPermissions'
-                        ? t('agentInput.permissionMode.bypassPermissions')
+                ? t('agentInput.permissionMode.badgeAccept')
+            : normalizedPermissionMode === 'plan'
+                ? t('agentInput.permissionMode.badgePlan')
+                : normalizedPermissionMode === 'bypassPermissions'
+                        ? t('agentInput.permissionMode.badgeYolo')
                         : '';
     }, [isCodex, isGemini, normalizedPermissionMode]);
 
@@ -966,9 +969,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 size={16}
                                                 color={theme.colors.button.secondary.tint}
                                             />
-                                            <Text style={styles.actionChipText}>
-                                                {permissionChipLabel}
-                                            </Text>
+                                            {permissionChipLabel ? (
+                                                <Text style={styles.actionChipText}>
+                                                    {permissionChipLabel}
+                                                </Text>
+                                            ) : null}
                                         </Pressable>
                                     )}
 
