@@ -5,10 +5,9 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { MultiTextInput } from '@/components/MultiTextInput';
-import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StatusDot } from '@/components/StatusDot';
+import { SearchHeader } from '@/components/SearchHeader';
 
 /**
  * Configuration object for customizing the SearchableListSelector component.
@@ -40,12 +39,14 @@ export interface SelectorConfig<T> {
     searchPlaceholder: string;
     recentSectionTitle: string;
     favoritesSectionTitle: string;
+    allSectionTitle?: string;
     noItemsMessage: string;
 
     // Optional features
     showFavorites?: boolean;
     showRecent?: boolean;
     showSearch?: boolean;
+    showAll?: boolean;
     allowCustomInput?: boolean;
 
     // Item subtitle override (for recent items, e.g., "Recently used")
@@ -59,9 +60,6 @@ export interface SelectorConfig<T> {
 
     // Check if a favorite item can be removed (e.g., home directory can't be removed)
     canRemoveFavorite?: (item: T) => boolean;
-
-    // Visual customization
-    compactItems?: boolean; // Use reduced padding for more compact lists (default: false)
 }
 
 /**
@@ -75,142 +73,28 @@ export interface SearchableListSelectorProps<T> {
     selectedItem: T | null;
     onSelect: (item: T) => void;
     onToggleFavorite?: (item: T) => void;
-    context?: any;  // Additional context (e.g., homeDir for paths)
+    context?: any; // Additional context (e.g., homeDir for paths)
 
     // Optional overrides
     showFavorites?: boolean;
     showRecent?: boolean;
     showSearch?: boolean;
-
-    // Controlled collapse states (optional - defaults to uncontrolled internal state)
-    collapsedSections?: {
-        recent?: boolean;
-        favorites?: boolean;
-        all?: boolean;
-    };
-    onCollapsedSectionsChange?: (collapsed: { recent?: boolean; favorites?: boolean; all?: boolean }) => void;
+    searchPlacement?: 'header' | 'recent' | 'favorites' | 'all';
 }
 
 const RECENT_ITEMS_DEFAULT_VISIBLE = 5;
-// Spacing constants (match existing codebase patterns)
-const STATUS_DOT_TEXT_GAP = 4; // Gap between StatusDot and text (used throughout app for status indicators)
-const ITEM_SPACING_GAP = 4; // Gap between elements and spacing between items (compact)
-const COMPACT_ITEM_PADDING = 4; // Vertical padding for compact lists
-// Border radius constants (consistent rounding)
-const INPUT_BORDER_RADIUS = 10; // Input field and containers
-const BUTTON_BORDER_RADIUS = 8; // Buttons and actionable elements
-// ITEM_BORDER_RADIUS must match ItemGroup's contentContainer borderRadius to prevent clipping
-// ItemGroup uses Platform.select({ ios: 10, default: 16 })
-const ITEM_BORDER_RADIUS = Platform.select({ ios: 10, default: 16 }); // Match ItemGroup container radius
+const STATUS_DOT_TEXT_GAP = 4;
+const ITEM_SPACING_GAP = 16;
 
 const stylesheet = StyleSheet.create((theme) => ({
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 16,
-        paddingBottom: 8,
-    },
-    inputWrapper: {
-        flex: 1,
-        backgroundColor: theme.colors.input.background,
-        borderRadius: INPUT_BORDER_RADIUS,
-        borderWidth: 0.5,
-        borderColor: theme.colors.divider,
-    },
-    inputInner: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 12,
-    },
-    inputField: {
-        flex: 1,
-    },
-    clearButton: {
-        width: 20,
-        height: 20,
-        borderRadius: INPUT_BORDER_RADIUS,
-        backgroundColor: theme.colors.textSecondary,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginLeft: 8,
-    },
-    favoriteButton: {
-        borderRadius: BUTTON_BORDER_RADIUS,
-        padding: 8,
-    },
-    sectionHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-    },
-    sectionHeaderText: {
-        fontSize: 13,
-        fontWeight: '500',
-        color: theme.colors.text,
-        ...Typography.default(),
-    },
-    selectedItemStyle: {
-        borderWidth: 2,
-        borderColor: theme.colors.button.primary.tint,
-        borderRadius: ITEM_BORDER_RADIUS,
-    },
-    compactItemStyle: {
-        paddingVertical: COMPACT_ITEM_PADDING,
-        minHeight: 0, // Override Item's default minHeight (44-56px) for compact mode
-    },
-    itemBackground: {
-        backgroundColor: theme.colors.input.background,
-        borderRadius: ITEM_BORDER_RADIUS,
-        marginBottom: ITEM_SPACING_GAP,
-    },
     showMoreTitle: {
         textAlign: 'center',
-        color: theme.colors.button.primary.tint,
+        color: theme.colors.textLink,
     },
 }));
 
-/**
- * Generic searchable list selector component with recent items, favorites, and filtering.
- *
- * Pattern extracted from Working Directory section in new session wizard.
- * Supports any data type through TypeScript generics and configuration object.
- *
- * Features:
- * - Search/filter with smart skip (doesn't filter when input matches selection)
- * - Recent items with "Show More" toggle
- * - Favorites with add/remove
- * - Collapsible sections
- * - Custom input support (optional)
- *
- * @example
- * // For machines:
- * <SearchableListSelector<Machine>
- *   config={machineConfig}
- *   items={machines}
- *   recentItems={recentMachines}
- *   favoriteItems={favoriteMachines}
- *   selectedItem={selectedMachine}
- *   onSelect={(machine) => setSelectedMachine(machine)}
- *   onToggleFavorite={(machine) => toggleFavorite(machine.id)}
- * />
- *
- * // For paths:
- * <SearchableListSelector<string>
- *   config={pathConfig}
- *   items={allPaths}
- *   recentItems={recentPaths}
- *   favoriteItems={favoritePaths}
- *   selectedItem={selectedPath}
- *   onSelect={(path) => setSelectedPath(path)}
- *   onToggleFavorite={(path) => toggleFavorite(path)}
- *   context={{ homeDir }}
- * />
- */
 export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>) {
-    const { theme } = useUnistyles();
+    const { theme, rt } = useUnistyles();
     const styles = stylesheet;
     const {
         config,
@@ -224,167 +108,51 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         showFavorites = config.showFavorites !== false,
         showRecent = config.showRecent !== false,
         showSearch = config.showSearch !== false,
-        collapsedSections,
-        onCollapsedSectionsChange,
+        searchPlacement = 'header',
     } = props;
+    const showAll = config.showAll !== false;
 
-    // Use controlled state if provided, otherwise use internal state
-    const isControlled = collapsedSections !== undefined && onCollapsedSectionsChange !== undefined;
-
-    // State management (matches Working Directory pattern)
-    const [inputText, setInputText] = React.useState(() => {
-        if (selectedItem) {
-            return config.formatForDisplay(selectedItem, context);
-        }
-        return '';
-    });
+    // Search query is intentionally decoupled from the selected value so pickers don't start pre-filtered.
+    const [inputText, setInputText] = React.useState('');
     const [showAllRecent, setShowAllRecent] = React.useState(false);
 
-    // Internal uncontrolled state (used when not controlled from parent)
-    const [internalShowRecentSection, setInternalShowRecentSection] = React.useState(false);
-    const [internalShowFavoritesSection, setInternalShowFavoritesSection] = React.useState(false);
-    const [internalShowAllItemsSection, setInternalShowAllItemsSection] = React.useState(true);
+    const favoriteIds = React.useMemo(() => {
+        return new Set(favoriteItems.map((item) => config.getItemId(item)));
+    }, [favoriteItems, config]);
 
-    // Use controlled or uncontrolled state
-    const showRecentSection = isControlled ? !collapsedSections?.recent : internalShowRecentSection;
-    const showFavoritesSection = isControlled ? !collapsedSections?.favorites : internalShowFavoritesSection;
-    const showAllItemsSection = isControlled ? !collapsedSections?.all : internalShowAllItemsSection;
+    const baseRecentItems = React.useMemo(() => {
+        return recentItems.filter((item) => !favoriteIds.has(config.getItemId(item)));
+    }, [recentItems, favoriteIds, config]);
 
-    // Toggle handlers that work for both controlled and uncontrolled
-    const toggleRecentSection = () => {
-        if (isControlled) {
-            onCollapsedSectionsChange?.({ ...collapsedSections, recent: !collapsedSections?.recent });
-        } else {
-            setInternalShowRecentSection(!internalShowRecentSection);
-        }
-    };
-
-    const toggleFavoritesSection = () => {
-        if (isControlled) {
-            onCollapsedSectionsChange?.({ ...collapsedSections, favorites: !collapsedSections?.favorites });
-        } else {
-            setInternalShowFavoritesSection(!internalShowFavoritesSection);
-        }
-    };
-
-    const toggleAllItemsSection = () => {
-        if (isControlled) {
-            onCollapsedSectionsChange?.({ ...collapsedSections, all: !collapsedSections?.all });
-        } else {
-            setInternalShowAllItemsSection(!internalShowAllItemsSection);
-        }
-    };
-
-    // Track if user is actively typing (vs clicking from list) to control expansion behavior
-    const isUserTyping = React.useRef(false);
-
-    // Update input text when selected item changes externally
-    React.useEffect(() => {
-        if (selectedItem && !isUserTyping.current) {
-            setInputText(config.formatForDisplay(selectedItem, context));
-        }
-    }, [selectedItem, config, context]);
-
-    // Filtering logic with smart skip (matches Working Directory pattern)
-    const filteredRecentItems = React.useMemo(() => {
-        if (!inputText.trim()) return recentItems;
-
-        // Don't filter if text matches the currently selected item (user clicked from list)
-        const selectedDisplayText = selectedItem ? config.formatForDisplay(selectedItem, context) : null;
-        if (selectedDisplayText && inputText === selectedDisplayText) {
-            return recentItems; // Show all items, don't filter
-        }
-
-        // User is typing - filter the list
-        return recentItems.filter(item => config.filterItem(item, inputText, context));
-    }, [recentItems, inputText, selectedItem, config, context]);
+    const baseAllItems = React.useMemo(() => {
+        const recentIds = new Set(baseRecentItems.map((item) => config.getItemId(item)));
+        return items.filter((item) => !favoriteIds.has(config.getItemId(item)) && !recentIds.has(config.getItemId(item)));
+    }, [items, baseRecentItems, favoriteIds, config]);
 
     const filteredFavoriteItems = React.useMemo(() => {
         if (!inputText.trim()) return favoriteItems;
+        return favoriteItems.filter((item) => config.filterItem(item, inputText, context));
+    }, [favoriteItems, inputText, config, context]);
 
-        const selectedDisplayText = selectedItem ? config.formatForDisplay(selectedItem, context) : null;
-        if (selectedDisplayText && inputText === selectedDisplayText) {
-            return favoriteItems; // Show all favorites, don't filter
-        }
+    const filteredRecentItems = React.useMemo(() => {
+        if (!inputText.trim()) return baseRecentItems;
+        return baseRecentItems.filter((item) => config.filterItem(item, inputText, context));
+    }, [baseRecentItems, inputText, config, context]);
 
-        // Don't filter if text matches a favorite (user clicked from list)
-        if (favoriteItems.some(item => config.formatForDisplay(item, context) === inputText)) {
-            return favoriteItems; // Show all favorites, don't filter
-        }
+    const filteredItems = React.useMemo(() => {
+        if (!inputText.trim()) return baseAllItems;
+        return baseAllItems.filter((item) => config.filterItem(item, inputText, context));
+    }, [baseAllItems, inputText, config, context]);
 
-        return favoriteItems.filter(item => config.filterItem(item, inputText, context));
-    }, [favoriteItems, inputText, selectedItem, config, context]);
-
-    // Check if current input can be added to favorites
-    const canAddToFavorites = React.useMemo(() => {
-        if (!onToggleFavorite || !inputText.trim()) return false;
-
-        // Parse input to see if it's a valid item
-        const parsedItem = config.parseFromDisplay(inputText.trim(), context);
-        if (!parsedItem) return false;
-
-        // Check if already in favorites
-        const parsedId = config.getItemId(parsedItem);
-        return !favoriteItems.some(fav => config.getItemId(fav) === parsedId);
-    }, [inputText, favoriteItems, config, context, onToggleFavorite]);
-
-    // Handle input text change
     const handleInputChange = (text: string) => {
-        isUserTyping.current = true; // User is actively typing
         setInputText(text);
 
-        // If allowCustomInput, try to parse and select
         if (config.allowCustomInput && text.trim()) {
             const parsedItem = config.parseFromDisplay(text.trim(), context);
-            if (parsedItem) {
-                onSelect(parsedItem);
-            }
+            if (parsedItem) onSelect(parsedItem);
         }
     };
 
-    // Handle item selection from list
-    const handleSelectItem = (item: T) => {
-        isUserTyping.current = false; // User clicked from list
-        setInputText(config.formatForDisplay(item, context));
-        onSelect(item);
-    };
-
-    // Handle clear button
-    const handleClear = () => {
-        isUserTyping.current = false;
-        setInputText('');
-        // Don't clear selection - just clear input
-    };
-
-    // Handle add to favorites
-    const handleAddToFavorites = () => {
-        if (!canAddToFavorites || !onToggleFavorite) return;
-
-        const parsedItem = config.parseFromDisplay(inputText.trim(), context);
-        if (parsedItem) {
-            onToggleFavorite(parsedItem);
-        }
-    };
-
-    // Handle remove from favorites
-    const handleRemoveFavorite = (item: T) => {
-        if (!onToggleFavorite) return;
-
-        Modal.alert(
-            'Remove Favorite',
-            `Remove "${config.getItemTitle(item)}" from ${config.favoritesSectionTitle.toLowerCase()}?`,
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: 'Remove',
-                    style: 'destructive',
-                    onPress: () => onToggleFavorite(item)
-                }
-            ]
-        );
-    };
-
-    // Render status with StatusDot (DRY helper - matches Item.tsx detail style)
     const renderStatus = (status: { text: string; color: string; dotColor: string; isPulsing?: boolean } | null | undefined) => {
         if (!status) return null;
         return (
@@ -394,22 +162,50 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                     isPulsing={status.isPulsing}
                     size={6}
                 />
-                <Text style={[
-                    Typography.default('regular'),
-                    {
-                        fontSize: Platform.select({ ios: 17, default: 16 }),
-                        letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
-                        color: status.color
-                    }
-                ]}>
+                <Text
+                    style={[
+                        Typography.default('regular'),
+                        {
+                            fontSize: Platform.select({ ios: 17, default: 16 }),
+                            letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+                            color: status.color,
+                        },
+                    ]}
+                >
                     {status.text}
                 </Text>
             </View>
         );
     };
 
-    // Render individual item (for recent items)
-    const renderItem = (item: T, isSelected: boolean, isLast: boolean, showDividerOverride?: boolean, forRecent = false) => {
+    const renderFavoriteToggle = (item: T, isFavorite: boolean) => {
+        if (!showFavorites || !onToggleFavorite) return null;
+
+        const canRemove = config.canRemoveFavorite?.(item) ?? true;
+        const disabled = isFavorite && !canRemove;
+        const selectedColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
+        const color = isFavorite ? selectedColor : theme.colors.textSecondary;
+
+        return (
+            <Pressable
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                disabled={disabled}
+                onPress={(e) => {
+                    e.stopPropagation();
+                    if (disabled) return;
+                    onToggleFavorite(item);
+                }}
+            >
+                <Ionicons
+                    name={isFavorite ? 'star' : 'star-outline'}
+                    size={24}
+                    color={disabled ? theme.colors.textSecondary : color}
+                />
+            </Pressable>
+        );
+    };
+
+    const renderItem = (item: T, isSelected: boolean, isLast: boolean, showDividerOverride?: boolean, forRecent = false, forFavorite = false) => {
         const itemId = config.getItemId(item);
         const title = config.getItemTitle(item);
         const subtitle = forRecent && config.getRecentItemSubtitle
@@ -417,8 +213,12 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
             : config.getItemSubtitle?.(item);
         const icon = forRecent && config.getRecentItemIcon
             ? config.getRecentItemIcon(item)
-            : config.getItemIcon(item);
+            : forFavorite && config.getFavoriteItemIcon
+                ? config.getFavoriteItemIcon(item)
+                : config.getItemIcon(item);
         const status = config.getItemStatus?.(item, theme);
+        const isFavorite = favoriteIds.has(itemId) || forFavorite;
+        const selectedColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
 
         return (
             <Item
@@ -427,248 +227,159 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 subtitle={subtitle}
                 subtitleLines={0}
                 leftElement={icon}
-                rightElement={
+                rightElement={(
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_SPACING_GAP }}>
                         {renderStatus(status)}
-                        {isSelected && (
+                        <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
                             <Ionicons
                                 name="checkmark-circle"
-                                size={20}
-                                color={theme.colors.button.primary.tint}
+                                size={24}
+                                color={selectedColor}
+                                style={{ opacity: isSelected ? 1 : 0 }}
                             />
-                        )}
+                        </View>
+                        {renderFavoriteToggle(item, isFavorite)}
                     </View>
-                }
-                onPress={() => handleSelectItem(item)}
+                )}
+                onPress={() => onSelect(item)}
                 showChevron={false}
                 selected={isSelected}
                 showDivider={showDividerOverride !== undefined ? showDividerOverride : !isLast}
-                style={[
-                    styles.itemBackground,
-                    config.compactItems ? styles.compactItemStyle : undefined,
-                    isSelected ? styles.selectedItemStyle : undefined
-                ]}
             />
         );
     };
 
-    // "Show More" logic (matches Working Directory pattern)
-    const itemsToShow = (inputText.trim() && isUserTyping.current) || showAllRecent
+    const showAllRecentItems = showAllRecent || inputText.trim().length > 0;
+    const recentItemsToShow = showAllRecentItems
         ? filteredRecentItems
         : filteredRecentItems.slice(0, RECENT_ITEMS_DEFAULT_VISIBLE);
 
+    const hasRecentGroupBase = showRecent && baseRecentItems.length > 0;
+    const hasFavoritesGroupBase = showFavorites && favoriteItems.length > 0;
+    const hasAllGroupBase = showAll && baseAllItems.length > 0;
+
+    const effectiveSearchPlacement = React.useMemo(() => {
+        if (!showSearch) return 'header' as const;
+        if (searchPlacement === 'header') return 'header' as const;
+
+        if (searchPlacement === 'favorites' && hasFavoritesGroupBase) return 'favorites' as const;
+        if (searchPlacement === 'recent' && hasRecentGroupBase) return 'recent' as const;
+        if (searchPlacement === 'all' && hasAllGroupBase) return 'all' as const;
+
+        // Fall back to the first visible group so the search never disappears.
+        if (hasFavoritesGroupBase) return 'favorites' as const;
+        if (hasRecentGroupBase) return 'recent' as const;
+        if (hasAllGroupBase) return 'all' as const;
+        return 'header' as const;
+    }, [hasAllGroupBase, hasFavoritesGroupBase, hasRecentGroupBase, searchPlacement, showSearch]);
+
+    const showNoMatches = inputText.trim().length > 0;
+    const shouldRenderRecentGroup = showRecent && (filteredRecentItems.length > 0 || (effectiveSearchPlacement === 'recent' && showSearch && hasRecentGroupBase));
+    const shouldRenderFavoritesGroup = showFavorites && (filteredFavoriteItems.length > 0 || (effectiveSearchPlacement === 'favorites' && showSearch && hasFavoritesGroupBase));
+    const shouldRenderAllGroup = showAll && (filteredItems.length > 0 || (effectiveSearchPlacement === 'all' && showSearch && hasAllGroupBase));
+
+    const searchNodeHeader = showSearch ? (
+        <SearchHeader
+            value={inputText}
+            onChangeText={handleInputChange}
+            placeholder={config.searchPlaceholder}
+        />
+    ) : null;
+
+    const searchNodeEmbedded = showSearch ? (
+        <SearchHeader
+            value={inputText}
+            onChangeText={handleInputChange}
+            placeholder={config.searchPlaceholder}
+            containerStyle={{
+                backgroundColor: 'transparent',
+                borderBottomWidth: 0,
+            }}
+        />
+    ) : null;
+
+    const renderEmptyRow = (title: string) => (
+        <Item
+            title={title}
+            showChevron={false}
+            showDivider={false}
+            disabled={true}
+        />
+    );
+
     return (
         <>
-            {/* Search Input */}
-            {showSearch && (
-                <View style={styles.inputContainer}>
-                    <View style={styles.inputWrapper}>
-                        <View style={styles.inputInner}>
-                            <View style={styles.inputField}>
-                                <MultiTextInput
-                                    value={inputText}
-                                    onChangeText={handleInputChange}
-                                    placeholder={config.searchPlaceholder}
-                                    maxHeight={40}
-                                    paddingTop={8}
-                                    paddingBottom={8}
-                                />
-                            </View>
-                            {inputText.trim() && (
-                                <Pressable
-                                    onPress={handleClear}
-                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                    style={({ pressed }) => ([
-                                        styles.clearButton,
-                                        { opacity: pressed ? 0.6 : 0.8 }
-                                    ])}
-                                >
-                                    <Ionicons name="close" size={14} color={theme.colors.input.background} />
-                                </Pressable>
-                            )}
-                        </View>
-                    </View>
-                    {showFavorites && onToggleFavorite && (
-                        <Pressable
-                            onPress={handleAddToFavorites}
-                            disabled={!canAddToFavorites}
-                            style={({ pressed }) => ([
-                                styles.favoriteButton,
-                                {
-                                    backgroundColor: canAddToFavorites
-                                        ? theme.colors.button.primary.background
-                                        : theme.colors.divider,
-                                    opacity: pressed ? 0.7 : 1,
-                                }
-                            ])}
-                        >
-                            <Ionicons
-                                name="star"
-                                size={20}
-                                color={canAddToFavorites ? theme.colors.button.primary.tint : theme.colors.textSecondary}
-                            />
-                        </Pressable>
+            {effectiveSearchPlacement === 'header' && searchNodeHeader}
+
+            {shouldRenderRecentGroup && (
+                <ItemGroup title={config.recentSectionTitle}>
+                    {effectiveSearchPlacement === 'recent' && searchNodeEmbedded}
+                    {recentItemsToShow.length === 0
+                        ? renderEmptyRow(showNoMatches ? t('common.noMatches') : config.noItemsMessage)
+                        : recentItemsToShow.map((item, index, arr) => {
+                            const itemId = config.getItemId(item);
+                            const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
+                            const isSelected = itemId === selectedId;
+                            const isLast = index === arr.length - 1;
+
+                            const showDivider = !isLast ||
+                                (!inputText.trim() &&
+                                    !showAllRecent &&
+                                    filteredRecentItems.length > RECENT_ITEMS_DEFAULT_VISIBLE);
+
+                            return renderItem(item, isSelected, isLast, showDivider, true, false);
+                        })}
+
+                    {!inputText.trim() && filteredRecentItems.length > RECENT_ITEMS_DEFAULT_VISIBLE && recentItemsToShow.length > 0 && (
+                        <Item
+                            title={showAllRecent
+                                ? t('machineLauncher.showLess')
+                                : t('machineLauncher.showAll', { count: filteredRecentItems.length })
+                            }
+                            onPress={() => setShowAllRecent(!showAllRecent)}
+                            showChevron={false}
+                            showDivider={false}
+                            titleStyle={styles.showMoreTitle}
+                        />
                     )}
-                </View>
+                </ItemGroup>
             )}
 
-            {/* Recent Items Section */}
-            {showRecent && filteredRecentItems.length > 0 && (
-                <>
-                    <Pressable
-                        style={styles.sectionHeader}
-                        onPress={toggleRecentSection}
-                    >
-                        <Text style={styles.sectionHeaderText}>{config.recentSectionTitle}</Text>
-                        <Ionicons
-                            name={showRecentSection ? "chevron-up" : "chevron-down"}
-                            size={20}
-                            color={theme.colors.text}
-                        />
-                    </Pressable>
-
-                    {showRecentSection && (
-                        <ItemGroup title="">
-                            {itemsToShow.map((item, index, arr) => {
-                                const itemId = config.getItemId(item);
-                                const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
-                                const isSelected = itemId === selectedId;
-                                const isLast = index === arr.length - 1;
-
-                                // Override divider logic for "Show More" button
-                                const showDivider = !isLast ||
-                                    (!(inputText.trim() && isUserTyping.current) &&
-                                     !showAllRecent &&
-                                     filteredRecentItems.length > RECENT_ITEMS_DEFAULT_VISIBLE);
-
-                                return renderItem(item, isSelected, isLast, showDivider, true);
-                            })}
-
-                            {/* Show More Button */}
-                            {!(inputText.trim() && isUserTyping.current) &&
-                             filteredRecentItems.length > RECENT_ITEMS_DEFAULT_VISIBLE && (
-                                <Item
-                                    title={showAllRecent
-                                        ? t('machineLauncher.showLess')
-                                        : t('machineLauncher.showAll', { count: filteredRecentItems.length })
-                                    }
-                                    onPress={() => setShowAllRecent(!showAllRecent)}
-                                    showChevron={false}
-                                    showDivider={false}
-                                    titleStyle={styles.showMoreTitle}
-                                />
-                            )}
-                        </ItemGroup>
-                    )}
-                </>
+            {shouldRenderFavoritesGroup && (
+                <ItemGroup title={config.favoritesSectionTitle}>
+                    {effectiveSearchPlacement === 'favorites' && searchNodeEmbedded}
+                    {filteredFavoriteItems.length === 0
+                        ? renderEmptyRow(showNoMatches ? t('common.noMatches') : config.noItemsMessage)
+                        : filteredFavoriteItems.map((item, index) => {
+                            const itemId = config.getItemId(item);
+                            const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
+                            const isSelected = itemId === selectedId;
+                            const isLast = index === filteredFavoriteItems.length - 1;
+                            return renderItem(item, isSelected, isLast, !isLast, false, true);
+                        })}
+                </ItemGroup>
             )}
 
-            {/* Favorites Section */}
-            {showFavorites && filteredFavoriteItems.length > 0 && (
-                <>
-                    <Pressable
-                        style={styles.sectionHeader}
-                        onPress={toggleFavoritesSection}
-                    >
-                        <Text style={styles.sectionHeaderText}>{config.favoritesSectionTitle}</Text>
-                        <Ionicons
-                            name={showFavoritesSection ? "chevron-up" : "chevron-down"}
-                            size={20}
-                            color={theme.colors.text}
-                        />
-                    </Pressable>
-
-                    {showFavoritesSection && (
-                        <ItemGroup title="">
-                            {filteredFavoriteItems.map((item, index) => {
-                                const itemId = config.getItemId(item);
-                                const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
-                                const isSelected = itemId === selectedId;
-                                const isLast = index === filteredFavoriteItems.length - 1;
-
-                                const title = config.getItemTitle(item);
-                                const subtitle = config.getItemSubtitle?.(item);
-                                const icon = config.getFavoriteItemIcon?.(item) || config.getItemIcon(item);
-                                const status = config.getItemStatus?.(item, theme);
-                                const canRemove = config.canRemoveFavorite?.(item) ?? true;
-
-                                return (
-                                    <Item
-                                        key={itemId}
-                                        title={title}
-                                        subtitle={subtitle}
-                                        subtitleLines={0}
-                                        leftElement={icon}
-                                        rightElement={
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_SPACING_GAP }}>
-                                                {renderStatus(status)}
-                                                {isSelected && (
-                                                    <Ionicons
-                                                        name="checkmark-circle"
-                                                        size={20}
-                                                        color={theme.colors.button.primary.tint}
-                                                    />
-                                                )}
-                                                {onToggleFavorite && canRemove && (
-                                                    <Pressable
-                                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                        onPress={(e) => {
-                                                            e.stopPropagation();
-                                                            handleRemoveFavorite(item);
-                                                        }}
-                                                    >
-                                                        <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
-                                                    </Pressable>
-                                                )}
-                                            </View>
-                                        }
-                                        onPress={() => handleSelectItem(item)}
-                                        showChevron={false}
-                                        selected={isSelected}
-                                        showDivider={!isLast}
-                                        style={[
-                                            styles.itemBackground,
-                                            config.compactItems ? styles.compactItemStyle : undefined,
-                                            isSelected ? styles.selectedItemStyle : undefined
-                                        ]}
-                                    />
-                                );
-                            })}
-                        </ItemGroup>
-                    )}
-                </>
+            {shouldRenderAllGroup && (
+                <ItemGroup title={config.allSectionTitle ?? t('common.all')}>
+                    {effectiveSearchPlacement === 'all' && searchNodeEmbedded}
+                    {filteredItems.length === 0
+                        ? renderEmptyRow(showNoMatches ? t('common.noMatches') : config.noItemsMessage)
+                        : filteredItems.map((item, index) => {
+                            const itemId = config.getItemId(item);
+                            const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
+                            const isSelected = itemId === selectedId;
+                            const isLast = index === filteredItems.length - 1;
+                            return renderItem(item, isSelected, isLast, !isLast, false, false);
+                        })}
+                </ItemGroup>
             )}
 
-            {/* All Items Section - always shown when items provided */}
-            {items.length > 0 && (
-                <>
-                    <Pressable
-                        style={styles.sectionHeader}
-                        onPress={toggleAllItemsSection}
-                    >
-                        <Text style={styles.sectionHeaderText}>
-                            {config.recentSectionTitle.replace('Recent ', 'All ')}
-                        </Text>
-                        <Ionicons
-                            name={showAllItemsSection ? "chevron-up" : "chevron-down"}
-                            size={20}
-                            color={theme.colors.text}
-                        />
-                    </Pressable>
-
-                    {showAllItemsSection && (
-                        <ItemGroup title="">
-                            {items.map((item, index) => {
-                                const itemId = config.getItemId(item);
-                                const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
-                                const isSelected = itemId === selectedId;
-                                const isLast = index === items.length - 1;
-
-                                return renderItem(item, isSelected, isLast, !isLast, false);
-                            })}
-                        </ItemGroup>
-                    )}
-                </>
+            {!shouldRenderRecentGroup && !shouldRenderFavoritesGroup && !shouldRenderAllGroup && (
+                <ItemGroup>
+                    {effectiveSearchPlacement !== 'header' && searchNodeEmbedded}
+                    {renderEmptyRow(showNoMatches ? t('common.noMatches') : config.noItemsMessage)}
+                </ItemGroup>
             )}
         </>
     );
