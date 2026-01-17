@@ -325,12 +325,12 @@ function SessionInfoContent({ session }: { session: Session }) {
 	                        <Item
 	                            title={t('sessionInfo.aiProvider')}
 	                            subtitle={(() => {
-	                                const flavor = session.metadata.flavor || 'claude';
-	                                if (flavor === 'claude') return t('agentInput.agent.claude');
-	                                if (flavor === 'gpt' || flavor === 'openai') return t('agentInput.agent.codex');
-	                                if (flavor === 'gemini') return t('agentInput.agent.gemini');
-	                                return flavor;
-	                            })()}
+                                    const flavor = session.metadata.flavor || 'claude';
+                                    if (flavor === 'claude') return t('agentInput.agent.claude');
+                                    if (flavor === 'gpt' || flavor === 'openai' || flavor === 'codex') return t('agentInput.agent.codex');
+                                    if (flavor === 'gemini') return t('agentInput.agent.gemini');
+                                    return flavor;
+                                })()}
 	                            icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
 	                            showChevron={false}
 	                        />

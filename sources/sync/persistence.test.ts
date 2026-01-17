@@ -24,7 +24,7 @@ vi.mock('react-native-mmkv', () => {
     return { MMKV };
 });
 
-import { clearPersistence, loadSessionModelModes, saveSessionModelModes } from './persistence';
+import { clearPersistence, loadNewSessionDraft, loadSessionModelModes, saveSessionModelModes } from './persistence';
 
 describe('persistence', () => {
     beforeEach(() => {
@@ -47,6 +47,28 @@ describe('persistence', () => {
                 JSON.stringify({ abc: 'gemini-2.5-pro', bad: 'adaptiveUsage' }),
             );
             expect(loadSessionModelModes()).toEqual({ abc: 'gemini-2.5-pro' });
+        });
+    });
+
+    describe('new session draft', () => {
+        it('clamps invalid modelMode to default', () => {
+            store.set(
+                'new-session-draft-v1',
+                JSON.stringify({
+                    input: '',
+                    selectedMachineId: null,
+                    selectedPath: null,
+                    selectedProfileId: null,
+                    agentType: 'gemini',
+                    permissionMode: 'default',
+                    modelMode: 'not-a-real-model',
+                    sessionType: 'simple',
+                    updatedAt: Date.now(),
+                }),
+            );
+
+            const draft = loadNewSessionDraft();
+            expect(draft?.modelMode).toBe('default');
         });
     });
 });

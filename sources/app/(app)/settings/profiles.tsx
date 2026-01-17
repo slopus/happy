@@ -54,7 +54,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     };
 
     const handleDuplicateProfile = (profile: AIBackendProfile) => {
-        setEditingProfile(duplicateProfileForEdit(profile));
+        setEditingProfile(duplicateProfileForEdit(profile, { copySuffix: t('profiles.copySuffix') }));
         setShowAddForm(true);
     };
 

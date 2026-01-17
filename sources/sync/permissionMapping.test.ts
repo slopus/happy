@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { mapPermissionModeAcrossAgents } from './permissionMapping';
 
 describe('mapPermissionModeAcrossAgents', () => {
+    it('returns the same mode when from and to are the same', () => {
+        expect(mapPermissionModeAcrossAgents('plan', 'claude', 'claude')).toBe('plan');
+    });
+
     it('maps Claude plan to Gemini safe-yolo', () => {
         expect(mapPermissionModeAcrossAgents('plan', 'claude', 'gemini')).toBe('safe-yolo');
     });
@@ -22,9 +26,14 @@ describe('mapPermissionModeAcrossAgents', () => {
         expect(mapPermissionModeAcrossAgents('safe-yolo', 'gemini', 'claude')).toBe('plan');
     });
 
+    it('preserves read-only across agents', () => {
+        expect(mapPermissionModeAcrossAgents('read-only', 'claude', 'codex')).toBe('read-only');
+        expect(mapPermissionModeAcrossAgents('read-only', 'codex', 'claude')).toBe('read-only');
+        expect(mapPermissionModeAcrossAgents('read-only', 'gemini', 'claude')).toBe('read-only');
+    });
+
     it('keeps Codex/Gemini modes unchanged when switching between them', () => {
         expect(mapPermissionModeAcrossAgents('read-only', 'gemini', 'codex')).toBe('read-only');
         expect(mapPermissionModeAcrossAgents('safe-yolo', 'codex', 'gemini')).toBe('safe-yolo');
     });
 });
-

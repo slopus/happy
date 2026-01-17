@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
-import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
+import { normalizePermissionModeForAgentFlavor, type PermissionMode, type ModelMode } from '@/sync/permissionTypes';
 import { getModelOptionsForAgentType } from '@/sync/modelOptions';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
@@ -217,6 +217,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontSize: 11,
         ...Typography.default(),
     },
+    statusDot: {
+        marginRight: 6,
+    },
     permissionModeContainer: {
         flexDirection: 'column',
         alignItems: 'flex-end',
@@ -253,6 +256,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         justifyContent: 'space-between',
     },
+    pathRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
     actionButtonsLeft: {
         flexDirection: 'row',
         columnGap: 6,
@@ -263,6 +270,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     actionButtonsLeftNarrow: {
         columnGap: 4,
+    },
+    actionButtonsLeftNoFlex: {
+        flex: 0,
     },
     actionChip: {
         flexDirection: 'row',
@@ -378,6 +388,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     sendButtonIcon: {
         color: theme.colors.button.primary.tint,
+    },
+    micIcon: {
+        width: 24,
+        height: 24,
     },
 }));
 
@@ -507,43 +521,48 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Settings modal state
     const [showSettings, setShowSettings] = React.useState(false);
 
-    const permissionChipLabel = React.useMemo(() => {
-        const mode = props.permissionMode ?? 'default';
+    const normalizedPermissionMode = React.useMemo(() => {
+        return normalizePermissionModeForAgentFlavor(
+            props.permissionMode ?? 'default',
+            isCodex ? 'codex' : isGemini ? 'gemini' : 'claude',
+        );
+    }, [isCodex, isGemini, props.permissionMode]);
 
+    const permissionChipLabel = React.useMemo(() => {
         if (isCodex) {
-            return mode === 'default'
+            return normalizedPermissionMode === 'default'
                 ? t('agentInput.codexPermissionMode.default')
-                : mode === 'read-only'
+                : normalizedPermissionMode === 'read-only'
                     ? t('agentInput.codexPermissionMode.readOnly')
-                    : mode === 'safe-yolo'
+                    : normalizedPermissionMode === 'safe-yolo'
                         ? t('agentInput.codexPermissionMode.safeYolo')
-                        : mode === 'yolo'
+                        : normalizedPermissionMode === 'yolo'
                             ? t('agentInput.codexPermissionMode.yolo')
                             : '';
         }
 
         if (isGemini) {
-            return mode === 'default'
+            return normalizedPermissionMode === 'default'
                 ? t('agentInput.geminiPermissionMode.default')
-                : mode === 'read-only'
+                : normalizedPermissionMode === 'read-only'
                     ? t('agentInput.geminiPermissionMode.readOnly')
-                    : mode === 'safe-yolo'
+                    : normalizedPermissionMode === 'safe-yolo'
                         ? t('agentInput.geminiPermissionMode.safeYolo')
-                        : mode === 'yolo'
+                        : normalizedPermissionMode === 'yolo'
                             ? t('agentInput.geminiPermissionMode.yolo')
                             : '';
         }
 
-        return mode === 'default'
+        return normalizedPermissionMode === 'default'
             ? t('agentInput.permissionMode.default')
-            : mode === 'acceptEdits'
+            : normalizedPermissionMode === 'acceptEdits'
                 ? t('agentInput.permissionMode.acceptEdits')
-                : mode === 'plan'
+                : normalizedPermissionMode === 'plan'
                     ? t('agentInput.permissionMode.plan')
-                    : mode === 'bypassPermissions'
+                    : normalizedPermissionMode === 'bypassPermissions'
                         ? t('agentInput.permissionMode.bypassPermissions')
                         : '';
-    }, [isCodex, isGemini, props.permissionMode]);
+    }, [isCodex, isGemini, normalizedPermissionMode]);
 
     // Handle settings button press
     const handleSettingsPress = React.useCallback(() => {
@@ -712,7 +731,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         };
                                         const config = modeConfig[mode as keyof typeof modeConfig];
                                         if (!config) return null;
-                                        const isSelected = props.permissionMode === mode;
+                                        const isSelected = normalizedPermissionMode === mode;
 
                                         return (
                                             <Pressable
@@ -814,75 +833,66 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                 {/* Connection status, context warning, and permission mode */}
                 {(props.connectionStatus || contextWarning) && (
-                    <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'flex-start',
-                        paddingHorizontal: 16,
-                        paddingBottom: 4,
-                        minHeight: 20, // Fixed minimum height to prevent jumping
-                    }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <View style={styles.statusContainer}>
+                        <View style={styles.statusRow}>
                             {props.connectionStatus && (
                                 <>
-                                        <StatusDot
-                                            color={props.connectionStatus.dotColor}
-                                            isPulsing={props.connectionStatus.isPulsing}
-                                            size={6}
-                                        style={{ marginRight: 6 }}
-                                        />
-                                        <Text style={{
-                                            fontSize: 11,
-                                            color: props.connectionStatus.color,
-                                            ...Typography.default()
-                                        }}>
-                                            {props.connectionStatus.text}
-                                        </Text>
+                                    <StatusDot
+                                        color={props.connectionStatus.dotColor}
+                                        isPulsing={props.connectionStatus.isPulsing}
+                                        size={6}
+                                        style={styles.statusDot}
+                                    />
+                                    <Text style={[styles.statusText, { color: props.connectionStatus.color }]}>
+                                        {props.connectionStatus.text}
+                                    </Text>
                                 </>
                             )}
                             {contextWarning && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: contextWarning.color,
-                                    marginLeft: props.connectionStatus ? 8 : 0,
-                                    ...Typography.default()
-                                }}>
+                                <Text
+                                    style={[
+                                        styles.statusText,
+                                        {
+                                            color: contextWarning.color,
+                                            marginLeft: props.connectionStatus ? 8 : 0,
+                                        },
+                                    ]}
+                                >
                                     {props.connectionStatus ? '• ' : ''}{contextWarning.text}
                                 </Text>
                             )}
                         </View>
-                        <View style={{
-                            flexDirection: 'column',
-                            alignItems: 'flex-end',
-                            minWidth: 150, // Fixed minimum width to prevent layout shift
-                        }}>
+                        <View style={styles.permissionModeContainer}>
                             {props.permissionMode && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
-                                        props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
-                                            props.permissionMode === 'plan' ? theme.colors.permission.plan :
-                                                props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
-                                                    props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
-                                                        props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
-                                                            theme.colors.textSecondary, // Use secondary text color for default
-                                    ...Typography.default()
-                                }}>
+                                <Text
+                                    style={[
+                                        styles.permissionModeText,
+                                        {
+                                            color: normalizedPermissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
+                                                normalizedPermissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
+                                                    normalizedPermissionMode === 'plan' ? theme.colors.permission.plan :
+                                                        normalizedPermissionMode === 'read-only' ? theme.colors.permission.readOnly :
+                                                            normalizedPermissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
+                                                                normalizedPermissionMode === 'yolo' ? theme.colors.permission.yolo :
+                                                                    theme.colors.textSecondary, // Use secondary text color for default
+                                        },
+                                    ]}
+                                >
                                     {isCodex ? (
-                                        props.permissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
-                                            props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
-                                                props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
-                                                    props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
+                                        normalizedPermissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
+                                            normalizedPermissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
+                                                normalizedPermissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
+                                                    normalizedPermissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
                                     ) : isGemini ? (
-                                        props.permissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') :
-                                            props.permissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.badgeReadOnly') :
-                                                props.permissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.badgeSafeYolo') :
-                                                    props.permissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.badgeYolo') : ''
+                                        normalizedPermissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') :
+                                            normalizedPermissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.badgeReadOnly') :
+                                                normalizedPermissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.badgeSafeYolo') :
+                                                    normalizedPermissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.badgeYolo') : ''
                                     ) : (
-                                        props.permissionMode === 'default' ? t('agentInput.permissionMode.default') :
-                                            props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
-                                                props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
-                                                    props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
+                                        normalizedPermissionMode === 'default' ? t('agentInput.permissionMode.default') :
+                                            normalizedPermissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
+                                        normalizedPermissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
+                                            normalizedPermissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
                                     )}
                                 </Text>
                             )}
@@ -1120,10 +1130,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         ) : props.onMicPress && !props.isMicActive ? (
                                             <Image
                                                 source={require('@/assets/images/icon-voice-white.png')}
-                                                style={{
-                                                    width: 24,
-                                                    height: 24,
-                                                }}
+                                                style={styles.micIcon}
                                                 tintColor={theme.colors.button.primary.tint}
                                             />
                                         ) : (
@@ -1143,8 +1150,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                             {/* Row 2: Path selector (separate line to match pre-PR272 layout) */}
                             {props.currentPath && props.onPathClick && (
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <View style={[styles.actionButtonsLeft, { flex: 0 }]}>
+                                <View style={styles.pathRow}>
+                                    <View style={[styles.actionButtonsLeft, styles.actionButtonsLeftNoFlex]}>
                                         <Pressable
                                             onPress={() => {
                                                 hapticsLight();

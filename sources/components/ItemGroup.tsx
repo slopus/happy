@@ -11,15 +11,11 @@ import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { withItemGroupDividers } from './ItemGroup.dividers';
+import { countSelectableItems } from './ItemGroup.selectableCount';
 
 export { withItemGroupDividers } from './ItemGroup.dividers';
 
 export const ItemGroupSelectionContext = React.createContext<{ selectableItemCount: number } | null>(null);
-
-interface ItemChildProps {
-    showDivider?: boolean;
-    [key: string]: any;
-}
 
 export interface ItemGroupProps {
     title?: string | React.ReactNode;
@@ -101,22 +97,7 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
     } = props;
 
     const selectableItemCount = React.useMemo(() => {
-        const countSelectable = (node: React.ReactNode): number => {
-            return React.Children.toArray(node).reduce<number>((count, child) => {
-                if (!React.isValidElement<ItemChildProps>(child)) {
-                    return count;
-                }
-                if (child.type === React.Fragment) {
-                    return count + countSelectable(child.props.children);
-                }
-                const propsAny = child.props as any;
-                const hasTitle = typeof propsAny?.title === 'string';
-                const isSelectable = typeof propsAny?.onPress === 'function' || typeof propsAny?.onLongPress === 'function';
-                return count + (hasTitle && isSelectable ? 1 : 0);
-            }, 0);
-        };
-
-        return countSelectable(children);
+        return countSelectableItems(children);
     }, [children]);
 
     return (

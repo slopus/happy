@@ -39,4 +39,16 @@ describe('buildOutgoingMessageMeta', () => {
         expect('displayText' in meta).toBe(true);
         expect(meta.displayText).toBe('');
     });
+
+    it('includes fallbackModel when explicitly provided', () => {
+        const meta = buildOutgoingMessageMeta({
+            sentFrom: 'web',
+            permissionMode: 'default',
+            appendSystemPrompt: 'PROMPT',
+            fallbackModel: 'gemini-2.5-flash',
+        });
+
+        expect('fallbackModel' in meta).toBe(true);
+        expect(meta.fallbackModel).toBe('gemini-2.5-flash');
+    });
 });

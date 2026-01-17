@@ -18,6 +18,8 @@ export interface EnvironmentVariablesListProps {
     onChange: (newVariables: Array<{ name: string; value: string }>) => void;
 }
 
+const SECRET_NAME_REGEX = /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i;
+
 /**
  * Complete environment variables section with title, add button, and editable cards
  * Matches profile list pattern from index.tsx:1159-1308
@@ -37,8 +39,6 @@ export function EnvironmentVariablesList({
         const match = value.match(/^\$\{([A-Z_][A-Z0-9_]*)/);
         return match ? match[1] : null;
     }, []);
-
-    const SECRET_NAME_REGEX = React.useMemo(() => /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i, []);
 
     const documentedSecretNames = React.useMemo(() => {
         if (!profileDocs) return new Set<string>();
@@ -61,7 +61,7 @@ export function EnvironmentVariablesList({
             refs.add(ref);
         });
         return Array.from(refs);
-    }, [SECRET_NAME_REGEX, documentedSecretNames, environmentVariables, extractVarNameFromValue]);
+    }, [documentedSecretNames, environmentVariables, extractVarNameFromValue]);
 
     const { variables: machineEnv, isLoading: isMachineEnvLoading } = useEnvironmentVariables(
         machineId,

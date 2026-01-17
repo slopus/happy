@@ -27,6 +27,8 @@ export function mapPermissionModeAcrossAgents(
                 return 'safe-yolo';
             case 'acceptEdits':
                 return 'safe-yolo';
+            case 'read-only':
+                return 'read-only';
             case 'default':
                 return 'default';
             default:
@@ -41,7 +43,7 @@ export function mapPermissionModeAcrossAgents(
         case 'safe-yolo':
             return 'plan';
         case 'read-only':
-            return 'default';
+            return 'read-only';
         case 'default':
             return 'default';
         default:

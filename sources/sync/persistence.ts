@@ -163,8 +163,8 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const permissionMode: PermissionMode = typeof parsed.permissionMode === 'string'
             ? (parsed.permissionMode as PermissionMode)
             : 'default';
-        const modelMode: ModelMode = typeof parsed.modelMode === 'string'
-            ? (parsed.modelMode as ModelMode)
+        const modelMode: ModelMode = isSessionModelMode(parsed.modelMode)
+            ? parsed.modelMode
             : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();

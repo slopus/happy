@@ -996,6 +996,7 @@ export const en = {
             duplicateProfile: 'Duplicate profile',
             deleteProfile: 'Delete profile',
         },
+        copySuffix: '(Copy)',
         duplicateName: 'A profile with this name already exists',
         setupInstructions: {
             title: 'Setup Instructions',
@@ -1094,5 +1095,7 @@ export const en = {
         },
     }
 };
+
+export type TranslationStructure = typeof en;
 
 export type TranslationsEn = typeof en;

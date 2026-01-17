@@ -61,7 +61,7 @@ export default React.memo(function ProfileEditScreen() {
         if (cloneFromProfileIdParam) {
             const base = resolveById(cloneFromProfileIdParam);
             if (base) {
-                return duplicateProfileForEdit(base);
+                return duplicateProfileForEdit(base, { copySuffix: t('profiles.copySuffix') });
             }
         }
 
@@ -91,7 +91,12 @@ export default React.memo(function ProfileEditScreen() {
     }, [profile.isBuiltIn]);
 
     React.useEffect(() => {
-        const subscription = (navigation as any)?.addListener?.('beforeRemove', (e: any) => {
+        const addListener = (navigation as any)?.addListener;
+        if (typeof addListener !== 'function') {
+            return;
+        }
+
+        const subscription = addListener.call(navigation, 'beforeRemove', (e: any) => {
             if (!isDirtyRef.current) return;
 
             e.preventDefault();
@@ -107,7 +112,7 @@ export default React.memo(function ProfileEditScreen() {
             })();
         });
 
-        return subscription;
+        return () => subscription?.remove?.();
     }, [confirmDiscard, navigation]);
 
     const handleSave = (savedProfile: AIBackendProfile) => {

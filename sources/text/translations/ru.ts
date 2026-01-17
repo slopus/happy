@@ -1005,6 +1005,7 @@ export const ru: TranslationStructure = {
             duplicateProfile: 'Дублировать профиль',
             deleteProfile: 'Удалить профиль',
         },
+        copySuffix: '(Copy)',
         duplicateName: 'Профиль с таким названием уже существует',
         setupInstructions: {
             title: 'Инструкции по настройке',

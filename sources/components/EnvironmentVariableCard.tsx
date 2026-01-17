@@ -86,6 +86,7 @@ export function EnvironmentVariableCard({
 
     const remoteValue = machineEnv?.[remoteVariableName];
     const hasFallback = defaultValue.trim() !== '';
+    const computedOperator: EnvVarTemplateOperator | null = hasFallback ? (fallbackOperator ?? ':-') : null;
     const machineLabel = machineName?.trim() ? machineName.trim() : t('common.machine');
 
     const emptyValue = t('profiles.environmentVariables.preview.emptyValue');
@@ -93,13 +94,13 @@ export function EnvironmentVariableCard({
     // Update parent when local state changes
     React.useEffect(() => {
         const newValue = useRemoteVariable && remoteVariableName.trim() !== ''
-            ? formatEnvVarTemplate({ sourceVar: remoteVariableName, fallback: defaultValue, operator: fallbackOperator })
+            ? formatEnvVarTemplate({ sourceVar: remoteVariableName, fallback: defaultValue, operator: computedOperator })
             : defaultValue;
 
         if (newValue !== variable.value) {
             onUpdate(index, newValue);
         }
-    }, [defaultValue, fallbackOperator, index, onUpdate, remoteVariableName, useRemoteVariable, variable.value]);
+    }, [computedOperator, defaultValue, index, onUpdate, remoteVariableName, useRemoteVariable, variable.value]);
 
     // Determine status
     const showRemoteDiffersWarning = remoteValue !== null && expectedValue && remoteValue !== expectedValue;
@@ -107,14 +108,14 @@ export function EnvironmentVariableCard({
 
     const computedTemplateValue =
         useRemoteVariable && remoteVariableName.trim() !== ''
-            ? formatEnvVarTemplate({ sourceVar: remoteVariableName, fallback: defaultValue, operator: fallbackOperator })
+            ? formatEnvVarTemplate({ sourceVar: remoteVariableName, fallback: defaultValue, operator: computedOperator })
             : defaultValue;
 
     const resolvedSessionValue =
         isSecret
             ? (useRemoteVariable && remoteVariableName
                 ? t('profiles.environmentVariables.preview.secretValueHidden', {
-                    value: formatEnvVarTemplate({ sourceVar: remoteVariableName, fallback: defaultValue !== '' ? '***' : '', operator: fallbackOperator }),
+                    value: formatEnvVarTemplate({ sourceVar: remoteVariableName, fallback: defaultValue !== '' ? '***' : '', operator: computedOperator }),
                 })
             : (defaultValue ? t('profiles.environmentVariables.preview.hiddenValue') : emptyValue))
             : (useRemoteVariable && machineId && remoteValue !== undefined

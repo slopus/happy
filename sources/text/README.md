@@ -218,7 +218,7 @@ statusMessage: ({ files, online, syncing }: {
 ## Future Expansion
 
 To add more languages:
-1. Create new translation files (e.g., `_spanish.ts`)
+1. Create new translation files (e.g., `translations/es.ts`)
 2. Update types to include new locales
 3. Add locale switching logic
 4. All existing type safety is preserved

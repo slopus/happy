@@ -983,6 +983,7 @@ export const es: TranslationStructure = {
             duplicateProfile: 'Duplicar perfil',
             deleteProfile: 'Eliminar perfil',
         },
+        copySuffix: '(Copy)',
         duplicateName: 'Ya existe un perfil con este nombre',
         setupInstructions: {
             title: 'Instrucciones de configuración',

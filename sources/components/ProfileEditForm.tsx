@@ -40,6 +40,7 @@ interface MachinePreviewModalProps {
 
 function MachinePreviewModal(props: MachinePreviewModalProps) {
     const { theme } = useUnistyles();
+    const styles = stylesheet;
     const { height: windowHeight } = useWindowDimensions();
 
     const selectedMachine = React.useMemo(() => {
@@ -55,32 +56,9 @@ function MachinePreviewModal(props: MachinePreviewModalProps) {
     const maxHeight = Math.min(720, Math.max(420, Math.floor(windowHeight * 0.85)));
 
     return (
-        <View style={{
-            width: '92%',
-            maxWidth: 560,
-            height: maxHeight,
-            maxHeight,
-            backgroundColor: theme.colors.groupped.background,
-            borderRadius: 16,
-            overflow: 'hidden',
-            borderWidth: 1,
-            borderColor: theme.colors.divider,
-            flexShrink: 1,
-        }}>
-            <View style={{
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                borderBottomWidth: 1,
-                borderBottomColor: theme.colors.divider,
-            }}>
-                <Text style={{
-                    fontSize: 17,
-                    color: theme.colors.text,
-                    ...Typography.default('semiBold'),
-                }}>
+        <View style={[styles.machinePreviewModalContainer, { height: maxHeight, maxHeight }]}>
+            <View style={styles.machinePreviewModalHeader}>
+                <Text style={styles.machinePreviewModalTitle}>
                     {t('profiles.previewMachine.title')}
                 </Text>
 
@@ -504,6 +482,30 @@ export function ProfileEditForm({
 }
 
 const stylesheet = StyleSheet.create((theme) => ({
+    machinePreviewModalContainer: {
+        width: '92%',
+        maxWidth: 560,
+        backgroundColor: theme.colors.groupped.background,
+        borderRadius: 16,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        flexShrink: 1,
+    },
+    machinePreviewModalHeader: {
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
+    },
+    machinePreviewModalTitle: {
+        fontSize: 17,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
     inputContainer: {
         paddingHorizontal: 16,
         paddingVertical: 12,

@@ -2,11 +2,14 @@ import { AIBackendProfile } from './settings';
 
 export type ProfilePrimaryCli = 'claude' | 'codex' | 'gemini' | 'multi' | 'none';
 
+const ALLOWED_PROFILE_CLIS = new Set(['claude', 'codex', 'gemini']);
+
 export function getProfilePrimaryCli(profile: AIBackendProfile | null | undefined): ProfilePrimaryCli {
     if (!profile) return 'none';
     const supported = Object.entries(profile.compatibility ?? {})
         .filter(([, isSupported]) => isSupported)
-        .map(([cli]) => cli as 'claude' | 'codex' | 'gemini');
+        .map(([cli]) => cli)
+        .filter((cli): cli is 'claude' | 'codex' | 'gemini' => ALLOWED_PROFILE_CLIS.has(cli));
 
     if (supported.length === 0) return 'none';
     if (supported.length === 1) return supported[0];

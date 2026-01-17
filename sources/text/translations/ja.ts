@@ -107,6 +107,7 @@ export const ja: TranslationStructure = {
             duplicateProfile: 'プロファイルを複製',
             deleteProfile: 'プロファイルを削除',
         },
+        copySuffix: '(Copy)',
         duplicateName: '同じ名前のプロファイルが既に存在します',
         setupInstructions: {
             title: 'セットアップ手順',

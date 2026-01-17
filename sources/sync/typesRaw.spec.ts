@@ -1542,5 +1542,83 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 }
             }
         });
+
+        it('normalizes ACP tool-result string output to text', () => {
+            const raw = {
+                role: 'agent' as const,
+                content: {
+                    type: 'acp' as const,
+                    provider: 'gemini' as const,
+                    data: {
+                        type: 'tool-result' as const,
+                        callId: 'call_abc123',
+                        output: 'direct string',
+                        id: 'acp-msg-3',
+                    },
+                },
+            };
+
+            const normalized = normalizeRawMessage('msg-3', null, Date.now(), raw);
+            expect(normalized?.role).toBe('agent');
+            if (normalized && normalized.role === 'agent') {
+                const item = normalized.content[0];
+                expect(item.type).toBe('tool-result');
+                if (item.type === 'tool-result') {
+                    expect(item.content).toBe('direct string');
+                }
+            }
+        });
+
+        it('normalizes ACP tool-result object output to JSON text', () => {
+            const raw = {
+                role: 'agent' as const,
+                content: {
+                    type: 'acp' as const,
+                    provider: 'gemini' as const,
+                    data: {
+                        type: 'tool-result' as const,
+                        callId: 'call_abc123',
+                        output: { key: 'value' },
+                        id: 'acp-msg-4',
+                    },
+                },
+            };
+
+            const normalized = normalizeRawMessage('msg-4', null, Date.now(), raw);
+            expect(normalized?.role).toBe('agent');
+            if (normalized && normalized.role === 'agent') {
+                const item = normalized.content[0];
+                expect(item.type).toBe('tool-result');
+                if (item.type === 'tool-result') {
+                    expect(item.content).toBe(JSON.stringify({ key: 'value' }));
+                }
+            }
+        });
+
+        it('normalizes ACP tool-result null output to empty text', () => {
+            const raw = {
+                role: 'agent' as const,
+                content: {
+                    type: 'acp' as const,
+                    provider: 'gemini' as const,
+                    data: {
+                        type: 'tool-result' as const,
+                        callId: 'call_abc123',
+                        output: null,
+                        id: 'acp-msg-5',
+                    },
+                },
+            };
+
+            const normalized = normalizeRawMessage('msg-5', null, Date.now(), raw);
+            expect(normalized?.role).toBe('agent');
+            if (normalized && normalized.role === 'agent') {
+                const item = normalized.content[0];
+                expect(item.type).toBe('tool-result');
+                if (item.type === 'tool-result') {
+                    expect(item.content).toBe('');
+                }
+            }
+        });
     });
 });

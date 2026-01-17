@@ -114,6 +114,7 @@ export const it: TranslationStructure = {
             duplicateProfile: 'Duplica profilo',
             deleteProfile: 'Elimina profilo',
         },
+        copySuffix: '(Copy)',
         duplicateName: 'Esiste già un profilo con questo nome',
         setupInstructions: {
             title: 'Istruzioni di configurazione',

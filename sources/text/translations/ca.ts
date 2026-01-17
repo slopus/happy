@@ -973,6 +973,7 @@ export const ca: TranslationStructure = {
             duplicateProfile: 'Duplica el perfil',
             deleteProfile: 'Elimina el perfil',
         },
+        copySuffix: '(Copy)',
         duplicateName: 'Ja existeix un perfil amb aquest nom',
         setupInstructions: {
             title: 'Instruccions de configuració',

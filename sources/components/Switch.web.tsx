@@ -23,7 +23,7 @@ const stylesheet = StyleSheet.create(() => ({
     },
 }));
 
-export const Switch = ({ value, disabled, onValueChange }: SwitchProps) => {
+export const Switch = ({ value, disabled, onValueChange, style, ...rest }: SwitchProps) => {
     const { theme } = useUnistyles();
     const styles = stylesheet;
 
@@ -31,13 +31,15 @@ export const Switch = ({ value, disabled, onValueChange }: SwitchProps) => {
 
     return (
         <Pressable
+            {...rest}
             accessibilityRole="switch"
             accessibilityState={{ checked: !!value, disabled: !!disabled }}
             disabled={disabled}
             onPress={() => onValueChange?.(!value)}
-            style={({ pressed }) => ({
-                opacity: disabled ? 0.6 : pressed ? 0.85 : 1,
-            })}
+            style={({ pressed }) => [
+                style as any,
+                { opacity: disabled ? 0.6 : pressed ? 0.85 : 1 },
+            ]}
         >
             <View
                 style={[
@@ -60,4 +62,3 @@ export const Switch = ({ value, disabled, onValueChange }: SwitchProps) => {
         </Pressable>
     );
 };
-

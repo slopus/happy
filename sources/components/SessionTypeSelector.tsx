@@ -35,7 +35,6 @@ const stylesheet = StyleSheet.create((theme) => ({
 }));
 
 export function SessionTypeSelectorRows({ value, onChange }: Pick<SessionTypeSelectorProps, 'value' | 'onChange'>) {
-    const { theme } = useUnistyles();
     const styles = stylesheet;
 
     return (

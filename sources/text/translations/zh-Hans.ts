@@ -975,6 +975,7 @@ export const zhHans: TranslationStructure = {
             duplicateProfile: '复制配置文件',
             deleteProfile: '删除配置文件',
         },
+        copySuffix: '(Copy)',
         duplicateName: '已存在同名配置文件',
         setupInstructions: {
             title: '设置说明',

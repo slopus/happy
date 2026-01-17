@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, TextInput, Platform, StyleProp, ViewStyle } from 'react-native';
+import { View, TextInput, Platform, Pressable, StyleProp, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
@@ -103,13 +103,19 @@ export function SearchHeader({
                         style={styles.textInput}
                     />
                     {value.length > 0 && (
-                        <Ionicons
-                            name="close-circle"
-                            size={20}
-                            color={theme.colors.textSecondary}
+                        <Pressable
                             onPress={() => onChangeText('')}
-                            style={styles.clearIcon}
-                        />
+                            hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityLabel="Clear search"
+                        >
+                            <Ionicons
+                                name="close-circle"
+                                size={20}
+                                color={theme.colors.textSecondary}
+                                style={styles.clearIcon}
+                            />
+                        </Pressable>
                     )}
                 </View>
             </View>

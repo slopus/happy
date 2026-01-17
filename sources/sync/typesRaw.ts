@@ -248,13 +248,13 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
             oldContent: z.string().optional(),
             newContent: z.string().optional(),
             id: z.string()
-        }),
+        }).passthrough(),
         // Terminal/command output
         z.object({
             type: z.literal('terminal-output'),
             data: z.string(),
             callId: z.string()
-        }),
+        }).passthrough(),
         // Task lifecycle events
         z.object({ type: z.literal('task_started'), id: z.string() }),
         z.object({ type: z.literal('task_complete'), id: z.string() }),
@@ -266,7 +266,7 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
             toolName: z.string(),
             description: z.string(),
             options: z.any().optional()
-        }),
+        }).passthrough(),
         // Usage/metrics
         z.object({ type: z.literal('token_count') }).passthrough()
     ])

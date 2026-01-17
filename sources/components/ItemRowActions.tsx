@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Pressable, useWindowDimensions } from 'react-native';
+import { View, Pressable, useWindowDimensions, type GestureResponderEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Modal } from '@/modal';
 import { ItemActionsMenuModal, type ItemAction } from '@/components/ItemActionsMenuModal';
 
@@ -17,6 +17,7 @@ export interface ItemRowActionsProps {
 
 export function ItemRowActions(props: ItemRowActionsProps) {
     const { theme } = useUnistyles();
+    const styles = stylesheet;
     const { width } = useWindowDimensions();
     const compact = width < (props.compactThreshold ?? 420);
 
@@ -45,16 +46,18 @@ export function ItemRowActions(props: ItemRowActionsProps) {
     const gap = props.gap ?? 16;
 
     return (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap }}>
+        <View style={[styles.container, { gap }]}>
             {inlineActions.map((action) => (
                 <Pressable
                     key={action.id}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     onPressIn={() => props.onActionPressIn?.()}
-                    onPress={(e: any) => {
+                    onPress={(e: GestureResponderEvent) => {
                         e?.stopPropagation?.();
                         action.onPress();
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={action.title}
                 >
                     <Ionicons
                         name={action.icon}
@@ -68,10 +71,13 @@ export function ItemRowActions(props: ItemRowActionsProps) {
                 <Pressable
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     onPressIn={() => props.onActionPressIn?.()}
-                    onPress={(e: any) => {
+                    onPress={(e: GestureResponderEvent) => {
                         e?.stopPropagation?.();
                         openMenu();
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel="More actions"
+                    accessibilityHint="Opens a menu with more actions"
                 >
                     <Ionicons
                         name="ellipsis-vertical"
@@ -83,3 +89,10 @@ export function ItemRowActions(props: ItemRowActionsProps) {
         </View>
     );
 }
+
+const stylesheet = StyleSheet.create(() => ({
+    container: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+}));

@@ -149,4 +149,35 @@ describe('EnvironmentVariableCard', () => {
         expect(lastCall[0]).toBe(0);
         expect(lastCall[1]).toBe('${BAR:-baz}');
     });
+
+    it('removes the operator when user clears the fallback value', () => {
+        const onUpdate = vi.fn();
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+
+        act(() => {
+            tree = renderer.create(
+                React.createElement(EnvironmentVariableCard, {
+                    variable: { name: 'FOO', value: '${BAR:=baz}' },
+                    index: 0,
+                    machineId: 'machine-1',
+                    onUpdate,
+                    onDelete: () => {},
+                    onDuplicate: () => {},
+                }),
+            );
+        });
+
+        const inputs = tree?.root.findAllByType('TextInput' as any);
+        expect(inputs?.length).toBeGreaterThan(0);
+
+        act(() => {
+            inputs?.[0]?.props.onChangeText?.('');
+        });
+
+        expect(onUpdate).toHaveBeenCalled();
+        const lastCall = onUpdate.mock.calls.at(-1) as unknown as [number, string];
+        expect(lastCall[0]).toBe(0);
+        expect(lastCall[1]).toBe('${BAR}');
+    });
 });

@@ -1,4 +1,3 @@
-import { en } from './translations/en';
+export type { TranslationStructure } from './translations/en';
 
-export type Translations = typeof en;
-export type TranslationStructure = Translations;
+export type Translations = import('./translations/en').TranslationStructure;

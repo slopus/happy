@@ -10,7 +10,7 @@ import { useSettingMutable } from '@/sync/storage';
 import { LANGUAGES, getLanguageDisplayName, type Language } from '@/constants/Languages';
 import { t } from '@/text';
 
-export default function LanguageSelectionScreen() {
+export default React.memo(function LanguageSelectionScreen() {
     const router = useRouter();
     const [voiceAssistantLanguage, setVoiceAssistantLanguage] = useSettingMutable('voiceAssistantLanguage');
     const [searchQuery, setSearchQuery] = useState('');
@@ -69,4 +69,4 @@ export default function LanguageSelectionScreen() {
             </ItemGroup>
         </ItemList>
     );
-}
+});

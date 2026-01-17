@@ -14,11 +14,13 @@ export function createEmptyCustomProfile(): AIBackendProfile {
     };
 }
 
-export function duplicateProfileForEdit(profile: AIBackendProfile): AIBackendProfile {
+export function duplicateProfileForEdit(profile: AIBackendProfile, opts?: { copySuffix?: string }): AIBackendProfile {
+    const suffix = opts?.copySuffix ?? '(Copy)';
+    const separator = profile.name.trim().length > 0 ? ' ' : '';
     return {
         ...profile,
         id: randomUUID(),
-        name: `${profile.name} (Copy)`,
+        name: `${profile.name}${separator}${suffix}`,
         isBuiltIn: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),

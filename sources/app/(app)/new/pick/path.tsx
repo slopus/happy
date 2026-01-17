@@ -11,43 +11,6 @@ import { layout } from '@/components/layout';
 import { PathSelector } from '@/components/newSession/PathSelector';
 import { SearchHeader } from '@/components/SearchHeader';
 
-const stylesheet = StyleSheet.create((theme) => ({
-    emptyContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-    },
-    emptyText: {
-        fontSize: 16,
-        color: theme.colors.textSecondary,
-        textAlign: 'center',
-        ...Typography.default(),
-    },
-    contentWrapper: {
-        width: '100%',
-        maxWidth: layout.maxWidth,
-        alignSelf: 'center',
-    },
-    pathInputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 16,
-        paddingVertical: 16,
-    },
-    pathInput: {
-        flex: 1,
-        backgroundColor: theme.colors.input.background,
-        borderRadius: 10,
-        paddingHorizontal: 12,
-        minHeight: 36,
-        position: 'relative',
-        borderWidth: 0.5,
-        borderColor: theme.colors.divider,
-    },
-}));
-
 export default React.memo(function PathPickerScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
@@ -218,3 +181,40 @@ export default React.memo(function PathPickerScreen() {
         </>
     );
 });
+
+const stylesheet = StyleSheet.create((theme) => ({
+    emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    emptyText: {
+        fontSize: 16,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+        ...Typography.default(),
+    },
+    contentWrapper: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+    },
+    pathInputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+    },
+    pathInput: {
+        flex: 1,
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        minHeight: 36,
+        position: 'relative',
+        borderWidth: 0.5,
+        borderColor: theme.colors.divider,
+    },
+}));
