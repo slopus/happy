@@ -79,7 +79,9 @@ export const en = {
         delete: 'Delete',
         optional: 'optional',
         noMatches: 'No matches',
+        all: 'All',
         machine: 'machine',
+        clearSearch: 'Clear search',
     },
 
     profile: {

@@ -361,7 +361,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
             )}
 
             {shouldRenderAllGroup && (
-                <ItemGroup title={config.allSectionTitle ?? 'All'}>
+                <ItemGroup title={config.allSectionTitle ?? t('common.all')}>
                     {effectiveSearchPlacement === 'all' && searchNodeEmbedded}
                     {filteredItems.length === 0
                         ? renderEmptyRow(showNoMatches ? t('common.noMatches') : config.noItemsMessage)

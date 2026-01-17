@@ -58,7 +58,9 @@ export const ja: TranslationStructure = {
         delete: '削除',
         optional: '任意',
         noMatches: '一致するものがありません',
+        all: 'All',
         machine: 'マシン',
+        clearSearch: 'Clear search',
         saveAs: '名前を付けて保存',
     },
 

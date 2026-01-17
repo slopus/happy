@@ -100,6 +100,10 @@ export const en = {
 ### `_types.ts`
 Contains the TypeScript types derived from the English translation structure.
 
+This keeps the canonical translation object (`translations/en.ts`) separate from the type-level API:
+- `Translations` / `TranslationStructure` are derived from `en` and used to type-check other locales.
+- `TranslationKey` / `TranslationParams<K>` are derived from `Translations` (in `index.ts`) to type `t(...)`.
+
 ### `index.ts`
 Main module with the `t` function and utilities:
 - `t()` - Main translation function with strict typing

@@ -66,7 +66,9 @@ export const es: TranslationStructure = {
         delete: 'Eliminar',
         optional: 'opcional',
         noMatches: 'Sin coincidencias',
+        all: 'All',
         machine: 'máquina',
+        clearSearch: 'Clear search',
     },
 
     profile: {

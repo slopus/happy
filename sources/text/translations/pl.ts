@@ -77,7 +77,9 @@ export const pl: TranslationStructure = {
         delete: 'Usuń',
         optional: 'opcjonalnie',
         noMatches: 'Brak dopasowań',
+        all: 'All',
         machine: 'maszyna',
+        clearSearch: 'Clear search',
     },
 
     profile: {

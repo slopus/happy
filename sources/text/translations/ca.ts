@@ -66,7 +66,9 @@ export const ca: TranslationStructure = {
         delete: 'Elimina',
         optional: 'Opcional',
         noMatches: 'Sense coincidències',
+        all: 'All',
         machine: 'màquina',
+        clearSearch: 'Clear search',
     },
 
     profile: {

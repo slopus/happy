@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
+import { t } from '@/text';
 
 export interface SearchHeaderProps {
     value: string;
@@ -107,7 +108,7 @@ export function SearchHeader({
                             onPress={() => onChangeText('')}
                             hitSlop={8}
                             accessibilityRole="button"
-                            accessibilityLabel="Clear search"
+                            accessibilityLabel={t('common.clearSearch')}
                         >
                             <Ionicons
                                 name="close-circle"

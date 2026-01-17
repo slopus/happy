@@ -77,7 +77,9 @@ export const ru: TranslationStructure = {
         delete: 'Удалить',
         optional: 'необязательно',
         noMatches: 'Нет совпадений',
+        all: 'All',
         machine: 'машина',
+        clearSearch: 'Clear search',
     },
 
     connect: {

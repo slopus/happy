@@ -68,7 +68,9 @@ export const zhHans: TranslationStructure = {
         delete: '删除',
         optional: '可选的',
         noMatches: '无匹配结果',
+        all: 'All',
         machine: '机器',
+        clearSearch: 'Clear search',
     },
 
     profile: {
