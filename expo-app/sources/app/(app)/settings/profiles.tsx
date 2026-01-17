@@ -1,25 +1,26 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from 'expo-router';
 import { useSettingMutable } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
-import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { Modal as HappyModal } from '@/modal/ModalManager';
-import { layout } from '@/components/layout';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useWindowDimensions } from 'react-native';
+import { Modal } from '@/modal';
+import { promptUnsavedChangesAlert } from '@/utils/promptUnsavedChangesAlert';
 import { AIBackendProfile } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
 import { ProfileEditForm } from '@/components/ProfileEditForm';
-import { randomUUID } from 'expo-crypto';
-
-interface ProfileDisplay {
-    id: string;
-    name: string;
-    isBuiltIn: boolean;
-}
+import { ItemList } from '@/components/ItemList';
+import { ItemGroup } from '@/components/ItemGroup';
+import { Item } from '@/components/Item';
+import { ItemRowActions } from '@/components/ItemRowActions';
+import { buildProfileActions } from '@/components/profileActions';
+import { Switch } from '@/components/Switch';
+import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
+import { buildProfileGroups, toggleFavoriteProfileId } from '@/sync/profileGrouping';
+import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
+import { useSetting } from '@/sync/storage';
 
 interface ProfileManagerProps {
     onProfileSelect?: (profile: AIBackendProfile | null) => void;
@@ -27,28 +28,27 @@ interface ProfileManagerProps {
 }
 
 // Profile utilities now imported from @/sync/profileUtils
-
-function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerProps) {
-    const { theme } = useUnistyles();
+const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerProps) {
+    const { theme, rt } = useUnistyles();
+    const navigation = useNavigation();
+    const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
+    const [useProfiles, setUseProfiles] = useSettingMutable('useProfiles');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const [lastUsedProfile, setLastUsedProfile] = useSettingMutable('lastUsedProfile');
+    const [favoriteProfileIds, setFavoriteProfileIds] = useSettingMutable('favoriteProfiles');
     const [editingProfile, setEditingProfile] = React.useState<AIBackendProfile | null>(null);
     const [showAddForm, setShowAddForm] = React.useState(false);
-    const safeArea = useSafeAreaInsets();
-    const screenWidth = useWindowDimensions().width;
+    const [isEditingDirty, setIsEditingDirty] = React.useState(false);
+    const isEditingDirtyRef = React.useRef(false);
+    const saveRef = React.useRef<(() => boolean) | null>(null);
+    const experimentsEnabled = useSetting('experiments');
+
+    React.useEffect(() => {
+        isEditingDirtyRef.current = isEditingDirty;
+    }, [isEditingDirty]);
 
     const handleAddProfile = () => {
-        setEditingProfile({
-            id: randomUUID(),
-            name: '',
-            anthropicConfig: {},
-            environmentVariables: [],
-            compatibility: { claude: true, codex: true, gemini: true },
-            isBuiltIn: false,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            version: '1.0.0',
-        });
+        setEditingProfile(createEmptyCustomProfile());
         setShowAddForm(true);
     };
 
@@ -57,37 +57,116 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
         setShowAddForm(true);
     };
 
-    const handleDeleteProfile = (profile: AIBackendProfile) => {
-        // Show confirmation dialog before deleting
-        Alert.alert(
+    const handleDuplicateProfile = (profile: AIBackendProfile) => {
+        setEditingProfile(duplicateProfileForEdit(profile, { copySuffix: t('profiles.copySuffix') }));
+        setShowAddForm(true);
+    };
+
+    const closeEditor = React.useCallback(() => {
+        setShowAddForm(false);
+        setEditingProfile(null);
+        setIsEditingDirty(false);
+    }, []);
+
+    const requestCloseEditor = React.useCallback(() => {
+        void (async () => {
+            if (!isEditingDirtyRef.current) {
+                closeEditor();
+                return;
+            }
+            const isBuiltIn = !!editingProfile && DEFAULT_PROFILES.some((bp) => bp.id === editingProfile.id);
+            const saveText = isBuiltIn ? t('common.saveAs') : t('common.save');
+            const message = isBuiltIn
+                ? `${t('common.unsavedChangesWarning')}\n\n${t('profiles.builtInSaveAsHint')}`
+                : t('common.unsavedChangesWarning');
+            const decision = await promptUnsavedChangesAlert(
+                (title, message, buttons) => Modal.alert(title, message, buttons),
+                {
+                    title: t('common.discardChanges'),
+                    message,
+                    discardText: t('common.discard'),
+                    saveText,
+                    keepEditingText: t('common.keepEditing'),
+                },
+            );
+
+            if (decision === 'discard') {
+                isEditingDirtyRef.current = false;
+                closeEditor();
+            } else if (decision === 'save') {
+                // Save the form state (not the initial profile snapshot).
+                saveRef.current?.();
+            }
+        })();
+    }, [closeEditor, editingProfile]);
+
+    React.useEffect(() => {
+        const addListener = (navigation as any)?.addListener;
+        if (typeof addListener !== 'function') {
+            return;
+        }
+
+        const subscription = addListener.call(navigation, 'beforeRemove', (e: any) => {
+            if (!showAddForm || !isEditingDirtyRef.current) return;
+
+            e.preventDefault();
+
+            void (async () => {
+                const isBuiltIn = !!editingProfile && DEFAULT_PROFILES.some((bp) => bp.id === editingProfile.id);
+                const saveText = isBuiltIn ? t('common.saveAs') : t('common.save');
+                const message = isBuiltIn
+                    ? `${t('common.unsavedChangesWarning')}\n\n${t('profiles.builtInSaveAsHint')}`
+                    : t('common.unsavedChangesWarning');
+
+                const decision = await promptUnsavedChangesAlert(
+                    (title, message, buttons) => Modal.alert(title, message, buttons),
+                    {
+                        title: t('common.discardChanges'),
+                        message,
+                        discardText: t('common.discard'),
+                        saveText,
+                        keepEditingText: t('common.keepEditing'),
+                    },
+                );
+
+                if (decision === 'discard') {
+                    isEditingDirtyRef.current = false;
+                    closeEditor();
+                    (navigation as any).dispatch(e.data.action);
+                } else if (decision === 'save') {
+                    // Save form state; only continue navigation if save succeeded.
+                    const didSave = saveRef.current?.() ?? false;
+                    if (didSave) {
+                        isEditingDirtyRef.current = false;
+                        (navigation as any).dispatch(e.data.action);
+                    }
+                }
+            })();
+        });
+
+        return () => subscription?.remove?.();
+    }, [closeEditor, editingProfile, navigation, showAddForm]);
+
+    const handleDeleteProfile = async (profile: AIBackendProfile) => {
+        const confirmed = await Modal.confirm(
             t('profiles.delete.title'),
             t('profiles.delete.message', { name: profile.name }),
-            [
-                {
-                    text: t('profiles.delete.cancel'),
-                    style: 'cancel',
-                },
-                {
-                    text: t('profiles.delete.confirm'),
-                    style: 'destructive',
-                    onPress: () => {
-                        const updatedProfiles = profiles.filter(p => p.id !== profile.id);
-                        setProfiles(updatedProfiles);
-
-                        // Clear last used profile if it was deleted
-                        if (lastUsedProfile === profile.id) {
-                            setLastUsedProfile(null);
-                        }
-
-                        // Notify parent if this was the selected profile
-                        if (selectedProfileId === profile.id && onProfileSelect) {
-                            onProfileSelect(null);
-                        }
-                    },
-                },
-            ],
-            { cancelable: true }
+            { cancelText: t('profiles.delete.cancel'), confirmText: t('profiles.delete.confirm'), destructive: true }
         );
+        if (!confirmed) return;
+
+        const updatedProfiles = profiles.filter(p => p.id !== profile.id);
+        setProfiles(updatedProfiles);
+
+        // Clear last used profile if it was deleted
+        if (lastUsedProfile === profile.id) {
+            setLastUsedProfile(null);
+        }
+
+        // Notify parent if this was the selected profile
+        if (selectedProfileId === profile.id && onProfileSelect) {
+            onProfileSelect(null);
+        }
     };
 
     const handleSelectProfile = (profileId: string | null) => {
@@ -110,28 +189,63 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
         setLastUsedProfile(profileId);
     };
 
-    const handleSaveProfile = (profile: AIBackendProfile) => {
+    const {
+        favoriteProfiles: favoriteProfileItems,
+        customProfiles: nonFavoriteCustomProfiles,
+        builtInProfiles: nonFavoriteBuiltInProfiles,
+        favoriteIds: favoriteProfileIdSet,
+    } = React.useMemo(() => {
+        return buildProfileGroups({ customProfiles: profiles, favoriteProfileIds });
+    }, [favoriteProfileIds, profiles]);
+
+    const toggleFavoriteProfile = (profileId: string) => {
+        setFavoriteProfileIds(toggleFavoriteProfileId(favoriteProfileIds, profileId));
+    };
+
+    const getProfileBackendSubtitle = React.useCallback((profile: Pick<AIBackendProfile, 'compatibility'>) => {
+        const parts: string[] = [];
+        if (profile.compatibility?.claude) parts.push(t('agentInput.agent.claude'));
+        if (profile.compatibility?.codex) parts.push(t('agentInput.agent.codex'));
+        if (experimentsEnabled && profile.compatibility?.gemini) parts.push(t('agentInput.agent.gemini'));
+        return parts.length > 0 ? parts.join(' • ') : '';
+    }, [experimentsEnabled]);
+
+    const getProfileSubtitle = React.useCallback((profile: AIBackendProfile) => {
+        const backend = getProfileBackendSubtitle(profile);
+        if (profile.isBuiltIn) {
+            const builtInLabel = t('profiles.builtIn');
+            return backend ? `${builtInLabel} · ${backend}` : builtInLabel;
+        }
+        const customLabel = t('profiles.custom');
+        return backend ? `${customLabel} · ${backend}` : customLabel;
+    }, [getProfileBackendSubtitle]);
+
+    function handleSaveProfile(profile: AIBackendProfile): boolean {
         // Profile validation - ensure name is not empty
         if (!profile.name || profile.name.trim() === '') {
-            return;
+            Modal.alert(t('common.error'), t('profiles.nameRequired'));
+            return false;
         }
 
         // Check if this is a built-in profile being edited
         const isBuiltIn = DEFAULT_PROFILES.some(bp => bp.id === profile.id);
+        const builtInNames = DEFAULT_PROFILES
+            .map((bp) => getBuiltInProfile(bp.id))
+            .filter((p): p is AIBackendProfile => !!p)
+            .map((p) => p.name.trim());
 
         // For built-in profiles, create a new custom profile instead of modifying the built-in
         if (isBuiltIn) {
-            const newProfile: AIBackendProfile = {
-                ...profile,
-                id: randomUUID(), // Generate new UUID for custom profile
-            };
+            const newProfile = convertBuiltInProfileToCustom(profile);
+            const hasBuiltInNameConflict = builtInNames.includes(newProfile.name.trim());
 
             // Check for duplicate names (excluding the new profile)
             const isDuplicate = profiles.some(p =>
                 p.name.trim() === newProfile.name.trim()
             );
-            if (isDuplicate) {
-                return;
+            if (isDuplicate || hasBuiltInNameConflict) {
+                Modal.alert(t('common.error'), t('profiles.duplicateName'));
+                return false;
             }
 
             setProfiles([...profiles, newProfile]);
@@ -141,8 +255,10 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
             const isDuplicate = profiles.some(p =>
                 p.id !== profile.id && p.name.trim() === profile.name.trim()
             );
-            if (isDuplicate) {
-                return;
+            const hasBuiltInNameConflict = builtInNames.includes(profile.name.trim());
+            if (isDuplicate || hasBuiltInNameConflict) {
+                Modal.alert(t('common.error'), t('profiles.duplicateName'));
+                return false;
             }
 
             const existingIndex = profiles.findIndex(p => p.id === profile.id);
@@ -151,7 +267,10 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
             if (existingIndex >= 0) {
                 // Update existing profile
                 updatedProfiles = [...profiles];
-                updatedProfiles[existingIndex] = profile;
+                updatedProfiles[existingIndex] = {
+                    ...profile,
+                    updatedAt: Date.now(),
+                };
             } else {
                 // Add new profile
                 updatedProfiles = [...profiles, profile];
@@ -160,257 +279,209 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
             setProfiles(updatedProfiles);
         }
 
-        setShowAddForm(false);
-        setEditingProfile(null);
-    };
+        closeEditor();
+        return true;
+    }
+
+    if (!useProfiles) {
+        return (
+            <ItemList style={{ paddingTop: 0 }}>
+                <ItemGroup
+                    title={t('settingsFeatures.profiles')}
+                    footer={t('settingsFeatures.profilesDisabled')}
+                >
+                    <Item
+                        title={t('settingsFeatures.profiles')}
+                        subtitle={t('settingsFeatures.profilesDisabled')}
+                        icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
+                        rightElement={
+                            <Switch
+                                value={useProfiles}
+                                onValueChange={setUseProfiles}
+                            />
+                        }
+                        showChevron={false}
+                    />
+                </ItemGroup>
+            </ItemList>
+        );
+    }
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
-            <ScrollView
-                style={{ flex: 1 }}
-                contentContainerStyle={{
-                    paddingHorizontal: screenWidth > 700 ? 16 : 8,
-                    paddingBottom: safeArea.bottom + 100,
-                }}
-            >
-                <View style={[{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }]}>
-                    <Text style={{
-                        fontSize: 24,
-                        fontWeight: 'bold',
-                        color: theme.colors.text,
-                        marginVertical: 16,
-                        ...Typography.default('semiBold')
-                    }}>
-                        {t('profiles.title')}
-                    </Text>
-
-                    {/* None option - no profile */}
-                    <Pressable
-                        style={{
-                            backgroundColor: theme.colors.input.background,
-                            borderRadius: 12,
-                            padding: 16,
-                            marginBottom: 12,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            borderWidth: selectedProfileId === null ? 2 : 0,
-                            borderColor: theme.colors.text,
-                        }}
-                        onPress={() => handleSelectProfile(null)}
-                    >
-                        <View style={{
-                            width: 24,
-                            height: 24,
-                            borderRadius: 12,
-                            backgroundColor: theme.colors.button.secondary.tint,
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            marginRight: 12,
-                        }}>
-                            <Ionicons name="remove" size={16} color="white" />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={{
-                                fontSize: 16,
-                                fontWeight: '600',
-                                color: theme.colors.text,
-                                ...Typography.default('semiBold')
-                            }}>
-                                {t('profiles.noProfile')}
-                            </Text>
-                            <Text style={{
-                                fontSize: 14,
-                                color: theme.colors.textSecondary,
-                                marginTop: 2,
-                                ...Typography.default()
-                            }}>
-                                {t('profiles.noProfileDescription')}
-                            </Text>
-                        </View>
-                        {selectedProfileId === null && (
-                            <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
-                        )}
-                    </Pressable>
-
-                    {/* Built-in profiles */}
-                    {DEFAULT_PROFILES.map((profileDisplay) => {
-                        const profile = getBuiltInProfile(profileDisplay.id);
-                        if (!profile) return null;
-
-                        return (
-                            <Pressable
-                                key={profile.id}
-                                style={{
-                                    backgroundColor: theme.colors.input.background,
-                                    borderRadius: 12,
-                                    padding: 16,
-                                    marginBottom: 12,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    borderWidth: selectedProfileId === profile.id ? 2 : 0,
-                                    borderColor: theme.colors.text,
-                                }}
-                                onPress={() => handleSelectProfile(profile.id)}
-                            >
-                                <View style={{
-                                    width: 24,
-                                    height: 24,
-                                    borderRadius: 12,
-                                    backgroundColor: theme.colors.button.primary.background,
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    marginRight: 12,
-                                }}>
-                                    <Ionicons name="star" size={16} color="white" />
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={{
-                                        fontSize: 16,
-                                        fontWeight: '600',
-                                        color: theme.colors.text,
-                                        ...Typography.default('semiBold')
-                                    }}>
-                                        {profile.name}
-                                    </Text>
-                                    <Text style={{
-                                        fontSize: 14,
-                                        color: theme.colors.textSecondary,
-                                        marginTop: 2,
-                                        ...Typography.default()
-                                    }}>
-                                        {profile.anthropicConfig?.model || 'Default model'}
-                                        {profile.anthropicConfig?.baseUrl && ` • ${profile.anthropicConfig.baseUrl}`}
-                                    </Text>
-                                </View>
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    {selectedProfileId === profile.id && (
-                                        <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} style={{ marginRight: 12 }} />
+        <View style={{ flex: 1 }}>
+            <ItemList style={{ paddingTop: 0 }}>
+                {favoriteProfileItems.length > 0 && (
+                    <ItemGroup title={t('profiles.groups.favorites')}>
+                        {favoriteProfileItems.map((profile) => {
+                            const isSelected = selectedProfileId === profile.id;
+                            const isFavorite = favoriteProfileIdSet.has(profile.id);
+                            const actions = buildProfileActions({
+                                profile,
+                                isFavorite,
+                                favoriteActionColor: selectedIndicatorColor,
+                                nonFavoriteActionColor: theme.colors.textSecondary,
+                                onToggleFavorite: () => toggleFavoriteProfile(profile.id),
+                                onEdit: () => handleEditProfile(profile),
+                                onDuplicate: () => handleDuplicateProfile(profile),
+                                onDelete: () => { void handleDeleteProfile(profile); },
+                            });
+                            return (
+                                <Item
+                                    key={profile.id}
+                                    title={profile.name}
+                                    subtitle={getProfileSubtitle(profile)}
+                                    leftElement={<ProfileCompatibilityIcon profile={profile} />}
+                                    onPress={() => handleEditProfile(profile)}
+                                    showChevron={false}
+                                    selected={isSelected}
+                                    rightElement={(
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                                            <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                                <Ionicons
+                                                    name="checkmark-circle"
+                                                    size={24}
+                                                    color={selectedIndicatorColor}
+                                                    style={{ opacity: isSelected ? 1 : 0 }}
+                                                />
+                                            </View>
+                                            <ItemRowActions
+                                                title={profile.name}
+                                                actions={actions}
+                                                compactActionIds={['edit']}
+                                                iconSize={20}
+                                            />
+                                        </View>
                                     )}
-                                    <Pressable
-                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                        onPress={() => handleEditProfile(profile)}
-                                    >
-                                        <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                    </Pressable>
-                                </View>
-                            </Pressable>
+                                />
+                            );
+                        })}
+                    </ItemGroup>
+                )}
+
+                {nonFavoriteCustomProfiles.length > 0 && (
+                    <ItemGroup title={t('profiles.groups.custom')}>
+                        {nonFavoriteCustomProfiles.map((profile) => {
+                            const isSelected = selectedProfileId === profile.id;
+                            const isFavorite = favoriteProfileIdSet.has(profile.id);
+                            const actions = buildProfileActions({
+                                profile,
+                                isFavorite,
+                                favoriteActionColor: selectedIndicatorColor,
+                                nonFavoriteActionColor: theme.colors.textSecondary,
+                                onToggleFavorite: () => toggleFavoriteProfile(profile.id),
+                                onEdit: () => handleEditProfile(profile),
+                                onDuplicate: () => handleDuplicateProfile(profile),
+                                onDelete: () => { void handleDeleteProfile(profile); },
+                            });
+                            return (
+                                <Item
+                                    key={profile.id}
+                                    title={profile.name}
+                                    subtitle={getProfileSubtitle(profile)}
+                                    leftElement={<ProfileCompatibilityIcon profile={profile} />}
+                                    onPress={() => handleEditProfile(profile)}
+                                    showChevron={false}
+                                    selected={isSelected}
+                                    rightElement={(
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                                            <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                                <Ionicons
+                                                    name="checkmark-circle"
+                                                    size={24}
+                                                    color={selectedIndicatorColor}
+                                                    style={{ opacity: isSelected ? 1 : 0 }}
+                                                />
+                                            </View>
+                                            <ItemRowActions
+                                                title={profile.name}
+                                                actions={actions}
+                                                compactActionIds={['edit']}
+                                                iconSize={20}
+                                            />
+                                        </View>
+                                    )}
+                                />
+                            );
+                        })}
+                    </ItemGroup>
+                )}
+
+                <ItemGroup title={t('profiles.groups.builtIn')} footer={t('profiles.subtitle')}>
+                    {nonFavoriteBuiltInProfiles.map((profile) => {
+                        const isSelected = selectedProfileId === profile.id;
+                        const isFavorite = favoriteProfileIdSet.has(profile.id);
+                        const actions = buildProfileActions({
+                            profile,
+                            isFavorite,
+                            favoriteActionColor: selectedIndicatorColor,
+                            nonFavoriteActionColor: theme.colors.textSecondary,
+                            onToggleFavorite: () => toggleFavoriteProfile(profile.id),
+                            onEdit: () => handleEditProfile(profile),
+                            onDuplicate: () => handleDuplicateProfile(profile),
+                        });
+                        return (
+                            <Item
+                                key={profile.id}
+                                title={profile.name}
+                                subtitle={getProfileSubtitle(profile)}
+                                leftElement={<ProfileCompatibilityIcon profile={profile} />}
+                                onPress={() => handleEditProfile(profile)}
+                                showChevron={false}
+                                selected={isSelected}
+                                rightElement={(
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                                        <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                            <Ionicons
+                                                name="checkmark-circle"
+                                                size={24}
+                                                color={selectedIndicatorColor}
+                                                style={{ opacity: isSelected ? 1 : 0 }}
+                                            />
+                                        </View>
+                                        <ItemRowActions
+                                            title={profile.name}
+                                            actions={actions}
+                                            compactActionIds={['edit']}
+                                            iconSize={20}
+                                        />
+                                    </View>
+                                )}
+                            />
                         );
                     })}
+                </ItemGroup>
 
-                    {/* Custom profiles */}
-                    {profiles.map((profile) => (
-                        <Pressable
-                            key={profile.id}
-                            style={{
-                                backgroundColor: theme.colors.input.background,
-                                borderRadius: 12,
-                                padding: 16,
-                                marginBottom: 12,
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                borderWidth: selectedProfileId === profile.id ? 2 : 0,
-                                borderColor: theme.colors.text,
-                            }}
-                            onPress={() => handleSelectProfile(profile.id)}
-                        >
-                            <View style={{
-                                width: 24,
-                                height: 24,
-                                borderRadius: 12,
-                                backgroundColor: theme.colors.button.secondary.tint,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                marginRight: 12,
-                            }}>
-                                <Ionicons name="person" size={16} color="white" />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '600',
-                                    color: theme.colors.text,
-                                    ...Typography.default('semiBold')
-                                }}>
-                                    {profile.name}
-                                </Text>
-                                <Text style={{
-                                    fontSize: 14,
-                                    color: theme.colors.textSecondary,
-                                    marginTop: 2,
-                                    ...Typography.default()
-                                }}>
-                                    {profile.anthropicConfig?.model || t('profiles.defaultModel')}
-                                    {profile.tmuxConfig?.sessionName && ` • tmux: ${profile.tmuxConfig.sessionName}`}
-                                    {profile.tmuxConfig?.tmpDir && ` • dir: ${profile.tmuxConfig.tmpDir}`}
-                                </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                {selectedProfileId === profile.id && (
-                                    <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} style={{ marginRight: 12 }} />
-                                )}
-                                <Pressable
-                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                    onPress={() => handleEditProfile(profile)}
-                                >
-                                    <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                </Pressable>
-                                <Pressable
-                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                    onPress={() => handleDeleteProfile(profile)}
-                                    style={{ marginLeft: 16 }}
-                                >
-                                    <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
-                                </Pressable>
-                            </View>
-                        </Pressable>
-                    ))}
-
-                    {/* Add profile button */}
-                    <Pressable
-                        style={{
-                            backgroundColor: theme.colors.surface,
-                            borderRadius: 12,
-                            padding: 16,
-                            marginBottom: 12,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}
+                <ItemGroup>
+                    <Item
+                        title={t('profiles.addProfile')}
+                        icon={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}
                         onPress={handleAddProfile}
-                    >
-                        <Ionicons name="add-circle-outline" size={20} color={theme.colors.button.secondary.tint} />
-                        <Text style={{
-                            fontSize: 16,
-                            fontWeight: '600',
-                            color: theme.colors.button.secondary.tint,
-                            marginLeft: 8,
-                            ...Typography.default('semiBold')
-                        }}>
-                            {t('profiles.addProfile')}
-                        </Text>
-                    </Pressable>
-                </View>
-            </ScrollView>
+                        showChevron={false}
+                    />
+                </ItemGroup>
+            </ItemList>
 
             {/* Profile Add/Edit Modal */}
             {showAddForm && editingProfile && (
-                <View style={profileManagerStyles.modalOverlay}>
-                    <View style={profileManagerStyles.modalContent}>
+                <Pressable
+                    style={profileManagerStyles.modalOverlay}
+                    onPress={requestCloseEditor}
+                >
+                    <Pressable style={profileManagerStyles.modalContent} onPress={() => { }}>
                         <ProfileEditForm
                             profile={editingProfile}
                             machineId={null}
                             onSave={handleSaveProfile}
-                            onCancel={() => {
-                                setShowAddForm(false);
-                                setEditingProfile(null);
-                            }}
+                            onCancel={requestCloseEditor}
+                            onDirtyChange={setIsEditingDirty}
+                            saveRef={saveRef}
                         />
-                    </View>
-                </View>
+                    </Pressable>
+                </Pressable>
             )}
         </View>
     );
-}
+});
 
 // ProfileEditForm now imported from @/components/ProfileEditForm
 
@@ -428,8 +499,11 @@ const profileManagerStyles = StyleSheet.create((theme) => ({
     },
     modalContent: {
         width: '100%',
-        maxWidth: Math.min(layout.maxWidth, 600),
+        maxWidth: 600,
         maxHeight: '90%',
+        borderRadius: 16,
+        overflow: 'hidden',
+        backgroundColor: theme.colors.groupped.background,
     },
 }));
 
