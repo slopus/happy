@@ -24,13 +24,16 @@ vi.mock('react-native', () => ({
     },
 }));
 
-const useEnvironmentVariablesMock = vi.fn((_machineId: any, _refs: any) => ({
+const useEnvironmentVariablesMock = vi.fn((_machineId: any, _refs: any, _options?: any) => ({
     variables: {},
+    meta: {},
+    policy: null,
+    isPreviewEnvSupported: false,
     isLoading: false,
 }));
 
 vi.mock('@/hooks/useEnvironmentVariables', () => ({
-    useEnvironmentVariables: (machineId: any, refs: any) => useEnvironmentVariablesMock(machineId, refs),
+    useEnvironmentVariables: (machineId: any, refs: any, options?: any) => useEnvironmentVariablesMock(machineId, refs, options),
 }));
 
 vi.mock('@expo/vector-icons', () => {
@@ -92,7 +95,7 @@ describe('EnvironmentVariablesList', () => {
         useEnvironmentVariablesMock.mockClear();
     });
 
-    it('does not query machine env for documented secret refs', () => {
+    it('marks documented secret refs as sensitive hints (daemon-controlled disclosure)', () => {
         const profileDocs: ProfileDocumentation = {
             description: 'test',
             environmentVariables: [
@@ -121,9 +124,12 @@ describe('EnvironmentVariablesList', () => {
         });
 
         expect(useEnvironmentVariablesMock).toHaveBeenCalledTimes(1);
-        const [_machineId, refs] = useEnvironmentVariablesMock.mock.calls[0] as unknown as [string, string[]];
-        expect(refs).toContain('HOME');
-        expect(refs).not.toContain('MAGIC');
+        const [_machineId, keys, options] = useEnvironmentVariablesMock.mock.calls[0] as unknown as [string, string[], any];
+        expect(keys).toContain('FOO');
+        expect(keys).toContain('BAR');
+        expect(keys).toContain('MAGIC');
+        expect(keys).toContain('HOME');
+        expect(options?.sensitiveHints?.MAGIC).toBe(true);
     });
 
     it('treats a documented-secret variable name as secret even when its value references another var', () => {
@@ -153,8 +159,11 @@ describe('EnvironmentVariablesList', () => {
         });
 
         expect(useEnvironmentVariablesMock).toHaveBeenCalledTimes(1);
-        const [_machineId, refs] = useEnvironmentVariablesMock.mock.calls[0] as unknown as [string, string[]];
-        expect(refs).toEqual([]);
+        const [_machineId, keys, options] = useEnvironmentVariablesMock.mock.calls[0] as unknown as [string, string[], any];
+        expect(keys).toContain('MAGIC');
+        expect(keys).toContain('HOME');
+        expect(options?.sensitiveHints?.MAGIC).toBe(true);
+        expect(options?.sensitiveHints?.HOME).toBe(true);
 
         const cards = tree?.root.findAllByType('EnvironmentVariableCard' as any);
         expect(cards?.length).toBe(1);

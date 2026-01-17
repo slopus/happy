@@ -21,6 +21,20 @@ function isSecretLike(name: string) {
     return /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i.test(name);
 }
 
+const ENV_VAR_TEMPLATE_REF_REGEX = /\$\{([A-Z_][A-Z0-9_]*)(?::[-=][^}]*)?\}/g;
+
+function extractVarRefsFromValue(value: string): string[] {
+    const refs: string[] = [];
+    if (!value) return refs;
+    ENV_VAR_TEMPLATE_REF_REGEX.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = ENV_VAR_TEMPLATE_REF_REGEX.exec(value)) !== null) {
+        const name = match[1];
+        if (name) refs.push(name);
+    }
+    return refs;
+}
+
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         width: '92%',
@@ -108,17 +122,31 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
     const refsToQuery = React.useMemo(() => {
         const refs = new Set<string>();
         envVarEntries.forEach((envVar) => {
-            const parsed = parseEnvVarTemplate(envVar.value);
-            if (parsed?.sourceVar) {
-                // Never fetch secret-like values into UI memory.
-                if (isSecretLike(envVar.name) || isSecretLike(parsed.sourceVar)) return;
-                refs.add(parsed.sourceVar);
-            }
+            // Query both target keys and any referenced keys so preview can show the effective spawned value.
+            refs.add(envVar.name);
+            extractVarRefsFromValue(envVar.value).forEach((ref) => refs.add(ref));
         });
         return Array.from(refs);
     }, [envVarEntries]);
 
-    const { variables: machineEnv } = useEnvironmentVariables(props.machineId, refsToQuery);
+    const sensitiveHints = React.useMemo(() => {
+        const hints: Record<string, boolean> = {};
+        envVarEntries.forEach((envVar) => {
+            const refs = extractVarRefsFromValue(envVar.value);
+            const isSensitive = isSecretLike(envVar.name) || refs.some(isSecretLike);
+            if (isSensitive) {
+                hints[envVar.name] = true;
+                refs.forEach((ref) => { hints[ref] = true; });
+            }
+        });
+        return hints;
+    }, [envVarEntries]);
+
+    const { meta: machineEnv, policy: machineEnvPolicy } = useEnvironmentVariables(
+        props.machineId,
+        refsToQuery,
+        { extraEnv: props.environmentVariables, sensitiveHints },
+    );
 
     const title = props.profileName
         ? t('profiles.environmentVariables.previewModal.titleWithProfile', { profileName: props.profileName })
@@ -179,24 +207,38 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
                     <ItemGroup title={t('profiles.environmentVariables.title')}>
                         {envVarEntries.map((envVar, idx) => {
                             const parsed = parseEnvVarTemplate(envVar.value);
-                            const secret = isSecretLike(envVar.name) || (parsed?.sourceVar ? isSecretLike(parsed.sourceVar) : false);
+                            const refs = extractVarRefsFromValue(envVar.value);
+                            const primaryRef = refs[0];
+                            const secret = isSecretLike(envVar.name) || (primaryRef ? isSecretLike(primaryRef) : false);
 
                             const hasMachineContext = Boolean(props.machineId);
-                            const resolvedValue = parsed?.sourceVar ? machineEnv[parsed.sourceVar] : undefined;
-                            const isMachineBased = Boolean(parsed?.sourceVar);
+                            const targetEntry = machineEnv?.[envVar.name];
+                            const resolvedValue = parsed?.sourceVar ? machineEnv?.[parsed.sourceVar] : undefined;
+                            const isMachineBased = Boolean(refs.length > 0);
 
                             let displayValue: string;
-                            if (secret) {
-                                displayValue = '•••';
+                            if (hasMachineContext && targetEntry) {
+                                if (targetEntry.display === 'full' || targetEntry.display === 'redacted') {
+                                    displayValue = targetEntry.value ?? emptyValue;
+                                } else if (targetEntry.display === 'hidden') {
+                                    displayValue = '•••';
+                                } else {
+                                    displayValue = emptyValue;
+                                }
+                            } else if (secret) {
+                                // If daemon policy is known and allows showing secrets, we would have used targetEntry above.
+                                displayValue = machineEnvPolicy === 'full' || machineEnvPolicy === 'redacted' ? (envVar.value || emptyValue) : '•••';
                             } else if (parsed) {
                                 if (!hasMachineContext) {
                                     displayValue = formatEnvVarTemplate(parsed);
                                 } else if (resolvedValue === undefined) {
                                     displayValue = `${formatEnvVarTemplate(parsed)} ${t('profiles.environmentVariables.previewModal.checkingSuffix')}`;
-                                } else if (resolvedValue === null || resolvedValue === '') {
+                                } else if (resolvedValue.display === 'hidden') {
+                                    displayValue = '•••';
+                                } else if (resolvedValue.display === 'unset' || resolvedValue.value === null || resolvedValue.value === '') {
                                     displayValue = parsed.fallback ? parsed.fallback : emptyValue;
                                 } else {
-                                    displayValue = resolvedValue;
+                                    displayValue = resolvedValue.value ?? emptyValue;
                                 }
                             } else {
                                 displayValue = envVar.value || emptyValue;
@@ -208,8 +250,10 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
                                 if (secret) return undefined;
                                 if (!isMachineBased) return 'fixed';
                                 if (!hasMachineContext) return 'machine';
-                                if (resolvedValue === undefined) return 'checking';
-                                if (resolvedValue === null || resolvedValue === '') return parsed?.fallback ? 'fallback' : 'missing';
+                                if (parsed?.sourceVar && resolvedValue === undefined) return 'checking';
+                                if (parsed?.sourceVar && resolvedValue && (resolvedValue.display === 'unset' || resolvedValue.value === null || resolvedValue.value === '')) {
+                                    return parsed?.fallback ? 'fallback' : 'missing';
+                                }
                                 return 'machine';
                             })();
 
@@ -242,13 +286,18 @@ export function EnvironmentVariablesPreviewModal(props: EnvironmentVariablesPrev
                                 return <Ionicons name="desktop-outline" size={18} color={detailColor} />;
                             })();
 
+                            const canCopy = (() => {
+                                if (secret) return false;
+                                return Boolean(displayValue);
+                            })();
+
                             return (
                                 <Item
                                     key={`${envVar.name}-${idx}`}
                                     title={envVar.name}
                                     subtitle={displayValue}
                                     subtitleLines={0}
-                                    copy={secret ? false : displayValue}
+                                    copy={canCopy ? displayValue : false}
                                     detail={detailLabel}
                                     detailStyle={{
                                         color: detailColor,

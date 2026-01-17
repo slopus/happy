@@ -19,6 +19,7 @@ export interface EnvironmentVariablesListProps {
 }
 
 const SECRET_NAME_REGEX = /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i;
+const ENV_VAR_TEMPLATE_REF_REGEX = /\$\{([A-Z_][A-Z0-9_]*)(?::[-=][^}]*)?\}/g;
 
 /**
  * Complete environment variables section with title, add button, and editable cards
@@ -34,10 +35,17 @@ export function EnvironmentVariablesList({
     const { theme } = useUnistyles();
     const styles = stylesheet;
 
-    // Extract variable name from a template value (for matching documentation / machine env lookup)
-    const extractVarNameFromValue = React.useCallback((value: string): string | null => {
-        const match = value.match(/^\$\{([A-Z_][A-Z0-9_]*)/);
-        return match ? match[1] : null;
+    const extractVarRefsFromValue = React.useCallback((value: string): string[] => {
+        const refs: string[] = [];
+        if (!value) return refs;
+        let match: RegExpExecArray | null;
+        // Reset regex state defensively (global regex).
+        ENV_VAR_TEMPLATE_REF_REGEX.lastIndex = 0;
+        while ((match = ENV_VAR_TEMPLATE_REF_REGEX.exec(value)) !== null) {
+            const name = match[1];
+            if (name) refs.push(name);
+        }
+        return refs;
     }, []);
 
     const documentedSecretNames = React.useMemo(() => {
@@ -50,22 +58,46 @@ export function EnvironmentVariablesList({
         );
     }, [profileDocs]);
 
-    const resolvedEnvVarRefs = React.useMemo(() => {
-        const refs = new Set<string>();
-        environmentVariables.forEach((envVar) => {
-            const ref = extractVarNameFromValue(envVar.value);
-            if (!ref) return;
-            // Don't query secret-like env vars from the machine.
-            if (SECRET_NAME_REGEX.test(ref) || SECRET_NAME_REGEX.test(envVar.name)) return;
-            if (documentedSecretNames.has(ref) || documentedSecretNames.has(envVar.name)) return;
-            refs.add(ref);
-        });
-        return Array.from(refs);
-    }, [documentedSecretNames, environmentVariables, extractVarNameFromValue]);
+    const { keysToQuery, extraEnv, sensitiveHints } = React.useMemo(() => {
+        const keys = new Set<string>();
+        const env: Record<string, string> = {};
+        const hints: Record<string, boolean> = {};
 
-    const { variables: machineEnv, isLoading: isMachineEnvLoading } = useEnvironmentVariables(
+        const isSecretName = (name: string) =>
+            documentedSecretNames.has(name) || SECRET_NAME_REGEX.test(name);
+
+        environmentVariables.forEach((envVar) => {
+            keys.add(envVar.name);
+            env[envVar.name] = envVar.value;
+
+            const valueRefs = extractVarRefsFromValue(envVar.value);
+            valueRefs.forEach((ref) => keys.add(ref));
+
+            // Mark sensitivity for both the target var and any referenced vars.
+            const isSensitive = isSecretName(envVar.name) || valueRefs.some(isSecretName);
+            if (isSensitive) {
+                hints[envVar.name] = true;
+                valueRefs.forEach((ref) => { hints[ref] = true; });
+            } else {
+                // Still mark direct secret-like names as sensitive, even without docs.
+                if (SECRET_NAME_REGEX.test(envVar.name)) hints[envVar.name] = true;
+                valueRefs.forEach((ref) => {
+                    if (SECRET_NAME_REGEX.test(ref)) hints[ref] = true;
+                });
+            }
+        });
+
+        return {
+            keysToQuery: Array.from(keys),
+            extraEnv: env,
+            sensitiveHints: hints,
+        };
+    }, [documentedSecretNames, environmentVariables, extractVarRefsFromValue]);
+
+    const { meta: machineEnv, isLoading: isMachineEnvLoading, policy: machineEnvPolicy } = useEnvironmentVariables(
         machineId,
-        resolvedEnvVarRefs,
+        keysToQuery,
+        { extraEnv, sensitiveHints },
     );
 
     // Add variable inline form state
@@ -156,14 +188,15 @@ export function EnvironmentVariablesList({
             {environmentVariables.length > 0 && (
                 <View style={styles.envVarListContainer}>
                     {environmentVariables.map((envVar, index) => {
-                        const varNameFromValue = extractVarNameFromValue(envVar.value);
+                        const refs = extractVarRefsFromValue(envVar.value);
+                        const primaryRef = refs[0] ?? null;
                         const primaryDocs = getDocumentation(envVar.name);
-                        const refDocs = varNameFromValue ? getDocumentation(varNameFromValue) : undefined;
+                        const refDocs = primaryRef ? getDocumentation(primaryRef) : undefined;
                         const isSecret =
                             primaryDocs.isSecret ||
                             refDocs?.isSecret ||
                             SECRET_NAME_REGEX.test(envVar.name) ||
-                            SECRET_NAME_REGEX.test(varNameFromValue || '');
+                            refs.some((ref) => SECRET_NAME_REGEX.test(ref));
                         const expectedValue = primaryDocs.expectedValue ?? refDocs?.expectedValue;
                         const description = primaryDocs.description ?? refDocs?.description;
 
@@ -175,6 +208,7 @@ export function EnvironmentVariablesList({
                                 machineId={machineId}
                                 machineName={machineName ?? null}
                                 machineEnv={machineEnv}
+                                machineEnvPolicy={machineEnvPolicy}
                                 isMachineEnvLoading={isMachineEnvLoading}
                                 expectedValue={expectedValue}
                                 description={description}

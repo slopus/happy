@@ -6,13 +6,15 @@ import { Typography } from '@/constants/Typography';
 import { Switch } from '@/components/Switch';
 import { formatEnvVarTemplate, parseEnvVarTemplate, type EnvVarTemplateOperator } from '@/utils/envVarTemplate';
 import { t } from '@/text';
+import type { EnvPreviewSecretsPolicy, PreviewEnvValue } from '@/sync/ops';
 
 export interface EnvironmentVariableCardProps {
     variable: { name: string; value: string };
     index: number;
     machineId: string | null;
     machineName?: string | null;
-    machineEnv?: Record<string, string | null>;
+    machineEnv?: Record<string, PreviewEnvValue>;
+    machineEnvPolicy?: EnvPreviewSecretsPolicy | null;
     isMachineEnvLoading?: boolean;
     expectedValue?: string;  // From profile documentation
     description?: string;    // Variable description
@@ -60,6 +62,7 @@ export function EnvironmentVariableCard({
     machineId,
     machineName,
     machineEnv,
+    machineEnvPolicy = null,
     isMachineEnvLoading = false,
     expectedValue,
     description,
@@ -84,7 +87,8 @@ export function EnvironmentVariableCard({
         setDefaultValue(parsed.defaultValue);
     }, [parsed.defaultValue, parsed.remoteVariableName, parsed.useRemoteVariable]);
 
-    const remoteValue = machineEnv?.[remoteVariableName];
+    const remoteEntry = remoteVariableName ? machineEnv?.[remoteVariableName] : undefined;
+    const remoteValue = remoteEntry?.value;
     const hasFallback = defaultValue.trim() !== '';
     const computedOperator: EnvVarTemplateOperator | null = hasFallback ? (fallbackOperator ?? ':-') : null;
     const machineLabel = machineName?.trim() ? machineName.trim() : t('common.machine');
@@ -111,16 +115,46 @@ export function EnvironmentVariableCard({
             ? formatEnvVarTemplate({ sourceVar: remoteVariableName, fallback: defaultValue, operator: computedOperator })
             : defaultValue;
 
-    const resolvedSessionValue =
-        isSecret
-            ? (useRemoteVariable && remoteVariableName
-                ? t('profiles.environmentVariables.preview.secretValueHidden', {
-                    value: formatEnvVarTemplate({ sourceVar: remoteVariableName, fallback: defaultValue !== '' ? '***' : '', operator: computedOperator }),
-                })
-            : (defaultValue ? t('profiles.environmentVariables.preview.hiddenValue') : emptyValue))
-            : (useRemoteVariable && machineId && remoteValue !== undefined
-                ? (remoteValue === null || remoteValue === '' ? (hasFallback ? defaultValue : emptyValue) : remoteValue)
-                : (computedTemplateValue || emptyValue));
+    const targetEntry = machineEnv?.[variable.name];
+    const resolvedSessionValue = (() => {
+        // Prefer daemon-computed effective value for the target env var (matches spawn exactly).
+        if (machineId && targetEntry) {
+            if (targetEntry.display === 'full' || targetEntry.display === 'redacted') {
+                return targetEntry.value ?? emptyValue;
+            }
+            if (targetEntry.display === 'hidden') {
+                return t('profiles.environmentVariables.preview.hiddenValue');
+            }
+            return emptyValue; // unset
+        }
+
+        // Fallback (no machine context / older daemon): best-effort preview.
+        if (isSecret) {
+            // If daemon policy is known and allows showing secrets, targetEntry would have handled it above.
+            // Otherwise, keep secrets hidden in UI.
+            if (useRemoteVariable && remoteVariableName) {
+                return t('profiles.environmentVariables.preview.secretValueHidden', {
+                    value: formatEnvVarTemplate({
+                        sourceVar: remoteVariableName,
+                        fallback: defaultValue !== '' ? '***' : '',
+                        operator: computedOperator,
+                    }),
+                });
+            }
+            return defaultValue ? t('profiles.environmentVariables.preview.hiddenValue') : emptyValue;
+        }
+
+        if (useRemoteVariable && machineId && remoteEntry !== undefined) {
+            // Note: remoteEntry may be hidden/redacted by daemon policy. We do NOT treat hidden as missing.
+            if (remoteEntry.display === 'hidden') return t('profiles.environmentVariables.preview.hiddenValue');
+            if (remoteEntry.display === 'unset' || remoteValue === null || remoteValue === '') {
+                return hasFallback ? defaultValue : emptyValue;
+            }
+            return remoteValue;
+        }
+
+        return computedTemplateValue || emptyValue;
+    })();
 
     return (
         <View style={styles.container}>
@@ -184,7 +218,7 @@ export function EnvironmentVariableCard({
             />
 
             {/* Security message for secrets */}
-            {isSecret && (
+            {isSecret && (machineEnvPolicy === null || machineEnvPolicy === 'none') && (
                 <Text style={[styles.secondaryText, styles.secretMessage]}>
                     {t('profiles.environmentVariables.card.secretNotRetrieved')}
                 </Text>
@@ -242,11 +276,11 @@ export function EnvironmentVariableCard({
             {/* Machine environment status (only with machine context) */}
             {useRemoteVariable && !isSecret && machineId && remoteVariableName.trim() !== '' && (
                 <View style={styles.machineStatusContainer}>
-                    {isMachineEnvLoading || remoteValue === undefined ? (
+                    {isMachineEnvLoading || remoteEntry === undefined ? (
                         <Text style={[styles.secondaryText, styles.machineStatusLoading]}>
                             {t('profiles.environmentVariables.card.checkingMachine', { machine: machineLabel })}
                         </Text>
-                    ) : (remoteValue === null || remoteValue === '') ? (
+                    ) : (remoteEntry.display === 'unset' || remoteValue === null || remoteValue === '') ? (
                         <Text style={[styles.secondaryText, styles.machineStatusWarning]}>
                             {remoteValue === '' ? (
                                 hasFallback
@@ -277,7 +311,7 @@ export function EnvironmentVariableCard({
             <Text style={[styles.secondaryText, styles.sessionPreview]}>
                 {t('profiles.environmentVariables.preview.sessionWillReceive', {
                     name: variable.name,
-                    value: resolvedSessionValue,
+                    value: resolvedSessionValue ?? emptyValue,
                 })}
             </Text>
         </View>
