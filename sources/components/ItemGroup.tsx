@@ -100,6 +100,10 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
         return countSelectableItems(children);
     }, [children]);
 
+    const selectionContextValue = React.useMemo(() => {
+        return { selectableItemCount };
+    }, [selectableItemCount]);
+
     return (
         <View style={[styles.wrapper, style]}>
             <View style={styles.container}>
@@ -121,7 +125,7 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
 
                 {/* Content Container */}
                 <View style={[styles.contentContainer, containerStyle]}>
-                    <ItemGroupSelectionContext.Provider value={{ selectableItemCount }}>
+                    <ItemGroupSelectionContext.Provider value={selectionContextValue}>
                         {withItemGroupDividers(children)}
                     </ItemGroupSelectionContext.Provider>
                 </View>

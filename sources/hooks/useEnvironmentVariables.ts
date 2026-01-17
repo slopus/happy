@@ -4,6 +4,8 @@ import { machineBash, machinePreviewEnv, type EnvPreviewSecretsPolicy, type Prev
 // Re-export pure utility functions from envVarUtils for backwards compatibility
 export { resolveEnvVarSubstitution, extractEnvVarReferences } from './envVarUtils';
 
+const SECRET_NAME_REGEX = /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i;
+
 interface EnvironmentVariables {
     [varName: string]: string | null; // null = variable not set in daemon environment
 }
@@ -140,7 +142,6 @@ export function useEnvironmentVariables(
 
             // Fallback (older daemon): use bash probing for non-sensitive variables only.
             // Never fetch secret-like values into UI memory via bash.
-            const SECRET_NAME_REGEX = /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i;
             const sensitiveHints = options?.sensitiveHints ?? {};
             const safeVarNames = validVarNames.filter((name) => !SECRET_NAME_REGEX.test(name) && sensitiveHints[name] !== true);
 

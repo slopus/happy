@@ -389,10 +389,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sendButtonIcon: {
         color: theme.colors.button.primary.tint,
     },
-    micIcon: {
-        width: 24,
-        height: 24,
-    },
 }));
 
 const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
@@ -1130,7 +1126,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         ) : props.onMicPress && !props.isMicActive ? (
                                             <Image
                                                 source={require('@/assets/images/icon-voice-white.png')}
-                                                style={styles.micIcon}
+                                                style={{ width: 24, height: 24 }}
                                                 tintColor={theme.colors.button.primary.tint}
                                             />
                                         ) : (

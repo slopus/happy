@@ -21,7 +21,8 @@ export default React.memo(function PathPickerScreen() {
     const sessions = useSessions();
     const recentMachinePaths = useSetting('recentMachinePaths');
     const usePathPickerSearch = useSetting('usePathPickerSearch');
-    const [favoriteDirectories, setFavoriteDirectories] = useSettingMutable('favoriteDirectories');
+    const [favoriteDirectoriesRaw, setFavoriteDirectories] = useSettingMutable('favoriteDirectories');
+    const favoriteDirectories = favoriteDirectoriesRaw ?? [];
 
     const [customPath, setCustomPath] = useState(params.selectedPath || '');
     const [pathSearchQuery, setPathSearchQuery] = useState('');

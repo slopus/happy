@@ -6,7 +6,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { AIBackendProfile } from '@/sync/settings';
-import type { PermissionMode } from '@/sync/permissionTypes';
+import { normalizeProfileDefaultPermissionMode, type PermissionMode } from '@/sync/permissionTypes';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -125,18 +125,25 @@ export function ProfileEditForm({
         }
     }, [favoriteMachines, setFavoriteMachines]);
 
+    const MachinePreviewModalWrapper = React.useCallback(({ onClose }: { onClose: () => void }) => {
+        return (
+            <MachinePreviewModal
+                machines={machines}
+                favoriteMachineIds={favoriteMachines}
+                selectedMachineId={previewMachineId}
+                onSelect={setPreviewMachineId}
+                onToggleFavorite={toggleFavoriteMachineId}
+                onClose={onClose}
+            />
+        );
+    }, [favoriteMachines, machines, previewMachineId, toggleFavoriteMachineId]);
+
     const showMachinePreviewPicker = React.useCallback(() => {
         Modal.show({
-            component: MachinePreviewModal,
-            props: {
-                machines,
-                favoriteMachineIds: favoriteMachines,
-                selectedMachineId: previewMachineId,
-                onSelect: setPreviewMachineId,
-                onToggleFavorite: toggleFavoriteMachineId,
-            },
+            component: MachinePreviewModalWrapper,
+            props: {},
         });
-    }, [favoriteMachines, machines, previewMachineId, toggleFavoriteMachineId]);
+    }, [MachinePreviewModalWrapper]);
 
     const profileDocs = React.useMemo(() => {
         if (!profile.isBuiltIn) return null;
@@ -155,7 +162,7 @@ export function ProfileEditForm({
         profile.defaultSessionType || 'simple',
     );
     const [defaultPermissionMode, setDefaultPermissionMode] = React.useState<PermissionMode>(
-        (profile.defaultPermissionMode as PermissionMode) || 'default',
+        normalizeProfileDefaultPermissionMode(profile.defaultPermissionMode as PermissionMode),
     );
     const [compatibility, setCompatibility] = React.useState<NonNullable<AIBackendProfile['compatibility']>>(
         profile.compatibility || { claude: true, codex: true, gemini: true },

@@ -230,143 +230,143 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
             <ItemList style={{ paddingTop: 0 }}>
                 {favoriteProfileItems.length > 0 && (
                     <ItemGroup title={t('profiles.groups.favorites')}>
-	                        {favoriteProfileItems.map((profile) => {
-	                            const isSelected = selectedProfileId === profile.id;
-	                            const isFavorite = favoriteProfileIdSet.has(profile.id);
-		                            const actions = buildProfileActions({
-		                                profile,
-		                                isFavorite,
-		                                favoriteActionColor: selectedIndicatorColor,
-		                                nonFavoriteActionColor: theme.colors.textSecondary,
-		                                onToggleFavorite: () => toggleFavoriteProfile(profile.id),
-		                                onEdit: () => handleEditProfile(profile),
-		                                onDuplicate: () => handleDuplicateProfile(profile),
-		                                onDelete: () => { void handleDeleteProfile(profile); },
-		                            });
-	                            return (
-	                                <Item
+                        {favoriteProfileItems.map((profile) => {
+                            const isSelected = selectedProfileId === profile.id;
+                            const isFavorite = favoriteProfileIdSet.has(profile.id);
+                            const actions = buildProfileActions({
+                                profile,
+                                isFavorite,
+                                favoriteActionColor: selectedIndicatorColor,
+                                nonFavoriteActionColor: theme.colors.textSecondary,
+                                onToggleFavorite: () => toggleFavoriteProfile(profile.id),
+                                onEdit: () => handleEditProfile(profile),
+                                onDuplicate: () => handleDuplicateProfile(profile),
+                                onDelete: () => { void handleDeleteProfile(profile); },
+                            });
+                            return (
+                                <Item
                                     key={profile.id}
                                     title={profile.name}
                                     subtitle={getProfileBackendSubtitle(profile)}
                                     leftElement={<ProfileCompatibilityIcon profile={profile} />}
-	                                    onPress={() => handleSelectProfile(profile.id)}
-	                                    showChevron={false}
-		                                    selected={isSelected}
-		                                    rightElement={(
-		                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                                    onPress={() => handleSelectProfile(profile.id)}
+                                    showChevron={false}
+                                    selected={isSelected}
+                                    rightElement={(
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                                             <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-	                                            <Ionicons
-	                                                name="checkmark-circle"
-	                                                size={24}
-	                                                color={selectedIndicatorColor}
-	                                                style={{ opacity: isSelected ? 1 : 0 }}
-	                                            />
+                                                <Ionicons
+                                                    name="checkmark-circle"
+                                                    size={24}
+                                                    color={selectedIndicatorColor}
+                                                    style={{ opacity: isSelected ? 1 : 0 }}
+                                                />
                                             </View>
-	                                            <ItemRowActions
-	                                                title={profile.name}
-	                                                actions={actions}
-	                                                compactActionIds={['edit']}
-	                                                iconSize={20}
-	                                            />
-	                                        </View>
-	                                    )}
-	                                />
-	                            );
-	                        })}
+                                            <ItemRowActions
+                                                title={profile.name}
+                                                actions={actions}
+                                                compactActionIds={['edit']}
+                                                iconSize={20}
+                                            />
+                                        </View>
+                                    )}
+                                />
+                            );
+                        })}
                     </ItemGroup>
                 )}
 
                 {nonFavoriteCustomProfiles.length > 0 && (
                     <ItemGroup title={t('profiles.groups.custom')}>
-	                        {nonFavoriteCustomProfiles.map((profile) => {
-	                            const isSelected = selectedProfileId === profile.id;
-	                            const isFavorite = favoriteProfileIdSet.has(profile.id);
-	                            const actions = buildProfileActions({
-	                                profile,
-	                                isFavorite,
-	                                favoriteActionColor: selectedIndicatorColor,
-	                                nonFavoriteActionColor: theme.colors.textSecondary,
-	                                onToggleFavorite: () => toggleFavoriteProfile(profile.id),
-	                                onEdit: () => handleEditProfile(profile),
-	                                onDuplicate: () => handleDuplicateProfile(profile),
-	                                onDelete: () => { void handleDeleteProfile(profile); },
-	                            });
-	                            return (
-	                                <Item
+                        {nonFavoriteCustomProfiles.map((profile) => {
+                            const isSelected = selectedProfileId === profile.id;
+                            const isFavorite = favoriteProfileIdSet.has(profile.id);
+                            const actions = buildProfileActions({
+                                profile,
+                                isFavorite,
+                                favoriteActionColor: selectedIndicatorColor,
+                                nonFavoriteActionColor: theme.colors.textSecondary,
+                                onToggleFavorite: () => toggleFavoriteProfile(profile.id),
+                                onEdit: () => handleEditProfile(profile),
+                                onDuplicate: () => handleDuplicateProfile(profile),
+                                onDelete: () => { void handleDeleteProfile(profile); },
+                            });
+                            return (
+                                <Item
                                     key={profile.id}
                                     title={profile.name}
                                     subtitle={getProfileBackendSubtitle(profile)}
                                     leftElement={<ProfileCompatibilityIcon profile={profile} />}
-	                                onPress={() => handleSelectProfile(profile.id)}
-	                                showChevron={false}
-		                                selected={isSelected}
-		                                rightElement={(
-		                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                                    onPress={() => handleSelectProfile(profile.id)}
+                                    showChevron={false}
+                                    selected={isSelected}
+                                    rightElement={(
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                                             <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-	                                            <Ionicons
-	                                                name="checkmark-circle"
-	                                                size={24}
-	                                                color={selectedIndicatorColor}
-	                                                style={{ opacity: isSelected ? 1 : 0 }}
-	                                            />
+                                                <Ionicons
+                                                    name="checkmark-circle"
+                                                    size={24}
+                                                    color={selectedIndicatorColor}
+                                                    style={{ opacity: isSelected ? 1 : 0 }}
+                                                />
                                             </View>
-	                                        <ItemRowActions
-	                                            title={profile.name}
-	                                            actions={actions}
-	                                            compactActionIds={['edit']}
-	                                            iconSize={20}
-	                                        />
-	                                        </View>
-	                                    )}
-	                                />
+                                            <ItemRowActions
+                                                title={profile.name}
+                                                actions={actions}
+                                                compactActionIds={['edit']}
+                                                iconSize={20}
+                                            />
+                                        </View>
+                                    )}
+                                />
                             );
                         })}
                     </ItemGroup>
                 )}
 
                 <ItemGroup title={t('profiles.groups.builtIn')} footer={t('profiles.subtitle')}>
-	                    {nonFavoriteBuiltInProfiles.map((profile) => {
-	                        const isSelected = selectedProfileId === profile.id;
-	                        const isFavorite = favoriteProfileIdSet.has(profile.id);
-	                        const actions = buildProfileActions({
-	                            profile,
-	                            isFavorite,
-	                            favoriteActionColor: selectedIndicatorColor,
-	                            nonFavoriteActionColor: theme.colors.textSecondary,
-	                            onToggleFavorite: () => toggleFavoriteProfile(profile.id),
-	                            onEdit: () => handleEditProfile(profile),
-	                            onDuplicate: () => handleDuplicateProfile(profile),
-	                        });
-	                        return (
-	                            <Item
+                    {nonFavoriteBuiltInProfiles.map((profile) => {
+                        const isSelected = selectedProfileId === profile.id;
+                        const isFavorite = favoriteProfileIdSet.has(profile.id);
+                        const actions = buildProfileActions({
+                            profile,
+                            isFavorite,
+                            favoriteActionColor: selectedIndicatorColor,
+                            nonFavoriteActionColor: theme.colors.textSecondary,
+                            onToggleFavorite: () => toggleFavoriteProfile(profile.id),
+                            onEdit: () => handleEditProfile(profile),
+                            onDuplicate: () => handleDuplicateProfile(profile),
+                        });
+                        return (
+                            <Item
                                 key={profile.id}
                                 title={profile.name}
                                 subtitle={getProfileBackendSubtitle(profile)}
                                 leftElement={<ProfileCompatibilityIcon profile={profile} />}
-	                                onPress={() => handleSelectProfile(profile.id)}
-	                                showChevron={false}
-		                                selected={isSelected}
-		                                rightElement={(
-		                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                                onPress={() => handleSelectProfile(profile.id)}
+                                showChevron={false}
+                                selected={isSelected}
+                                rightElement={(
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                                         <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-	                                            <Ionicons
-	                                                name="checkmark-circle"
-	                                                size={24}
-	                                                color={selectedIndicatorColor}
-	                                                style={{ opacity: isSelected ? 1 : 0 }}
-	                                            />
+                                            <Ionicons
+                                                name="checkmark-circle"
+                                                size={24}
+                                                color={selectedIndicatorColor}
+                                                style={{ opacity: isSelected ? 1 : 0 }}
+                                            />
                                         </View>
-	                                        <ItemRowActions
-	                                            title={profile.name}
-	                                            actions={actions}
-	                                            compactActionIds={['edit']}
-	                                            iconSize={20}
-	                                        />
-	                                    </View>
-	                                )}
-	                            />
-	                        );
-	                    })}
+                                        <ItemRowActions
+                                            title={profile.name}
+                                            actions={actions}
+                                            compactActionIds={['edit']}
+                                            iconSize={20}
+                                        />
+                                    </View>
+                                )}
+                            />
+                        );
+                    })}
                 </ItemGroup>
 
                 <ItemGroup>

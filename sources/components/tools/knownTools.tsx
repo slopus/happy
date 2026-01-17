@@ -663,7 +663,7 @@ export const knownTools = {
     'execute': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Gemini sends nice title in toolCall.title
-            if (opts.tool.input?.toolCall?.title) {
+            if (typeof opts.tool.input?.toolCall?.title === 'string') {
                 // Title is like "rm file.txt [cwd /path] (description)"
                 // Extract just the command part before [
                 const fullTitle = opts.tool.input.toolCall.title;
@@ -680,7 +680,7 @@ export const knownTools = {
         input: z.object({}).partial().loose(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Extract description from parentheses at the end
-            if (opts.tool.input?.toolCall?.title) {
+            if (typeof opts.tool.input?.toolCall?.title === 'string') {
                 const title = opts.tool.input.toolCall.title;
                 const parenMatch = title.match(/\(([^)]+)\)$/);
                 if (parenMatch) {
