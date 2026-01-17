@@ -1,4 +1,4 @@
-import type { TranslationStructure } from '../_default';
+import type { TranslationStructure } from '../_types';
 
 /**
  * Russian plural helper function
@@ -42,6 +42,8 @@ export const ru: TranslationStructure = {
 
     common: {
         // Simple string constants
+        add: 'Добавить',
+        actions: 'Действия',
         cancel: 'Отмена',
         authenticate: 'Авторизация',
         save: 'Сохранить',
@@ -58,6 +60,9 @@ export const ru: TranslationStructure = {
         yes: 'Да',
         no: 'Нет',
         discard: 'Отменить',
+        discardChanges: 'Отменить изменения',
+        unsavedChangesWarning: 'У вас есть несохранённые изменения.',
+        keepEditing: 'Продолжить редактирование',
         version: 'Версия',
         copied: 'Скопировано',
         copy: 'Копировать',
@@ -71,6 +76,10 @@ export const ru: TranslationStructure = {
         retry: 'Повторить',
         delete: 'Удалить',
         optional: 'необязательно',
+        noMatches: 'Нет совпадений',
+        all: 'Все',
+        machine: 'машина',
+        clearSearch: 'Очистить поиск',
     },
 
     connect: {
@@ -190,6 +199,15 @@ export const ru: TranslationStructure = {
         enhancedSessionWizard: 'Улучшенный мастер сессий',
         enhancedSessionWizardEnabled: 'Лаунчер с профилем активен',
         enhancedSessionWizardDisabled: 'Используется стандартный лаунчер',
+        profiles: 'Профили ИИ',
+        profilesEnabled: 'Выбор профилей включён',
+        profilesDisabled: 'Выбор профилей отключён',
+        pickerSearch: 'Поиск в выборе',
+        pickerSearchSubtitle: 'Показывать поле поиска в выборе машины и пути',
+        machinePickerSearch: 'Поиск машин',
+        machinePickerSearchSubtitle: 'Показывать поле поиска при выборе машины',
+        pathPickerSearch: 'Поиск путей',
+        pathPickerSearchSubtitle: 'Показывать поле поиска при выборе пути',
     },
 
     errors: {
@@ -242,6 +260,9 @@ export const ru: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Начать новую сессию',
+        selectMachineTitle: 'Выбрать машину',
+        selectPathTitle: 'Выбрать путь',
+        searchPathsPlaceholder: 'Поиск путей...',
         noMachinesFound: 'Машины не найдены. Сначала запустите сессию Happy на вашем компьютере.',
         allMachinesOffline: 'Все машины находятся offline',
         machineDetails: 'Посмотреть детали машины →',
@@ -257,6 +278,26 @@ export const ru: TranslationStructure = {
         startNewSessionInFolder: 'Новая сессия здесь',
         noMachineSelected: 'Пожалуйста, выберите машину для запуска сессии',
         noPathSelected: 'Пожалуйста, выберите директорию для запуска сессии',
+        machinePicker: {
+            searchPlaceholder: 'Поиск машин...',
+            recentTitle: 'Недавние',
+            favoritesTitle: 'Избранное',
+            allTitle: 'Все',
+            emptyMessage: 'Нет доступных машин',
+        },
+        pathPicker: {
+            enterPathTitle: 'Введите путь',
+            enterPathPlaceholder: 'Введите путь...',
+            customPathTitle: 'Пользовательский путь',
+            recentTitle: 'Недавние',
+            favoritesTitle: 'Избранное',
+            suggestedTitle: 'Рекомендуемые',
+            allTitle: 'Все',
+            emptyRecent: 'Нет недавних путей',
+            emptyFavorites: 'Нет избранных путей',
+            emptySuggested: 'Нет рекомендуемых путей',
+            emptyAll: 'Нет путей',
+        },
         sessionType: {
             title: 'Тип сессии',
             simple: 'Простая',
@@ -310,6 +351,7 @@ export const ru: TranslationStructure = {
         happySessionId: 'ID сессии Happy',
         claudeCodeSessionId: 'ID сессии Claude Code',
         claudeCodeSessionIdCopied: 'ID сессии Claude Code скопирован в буфер обмена',
+        aiProfile: 'Профиль ИИ',
         aiProvider: 'Поставщик ИИ',
         failedToCopyClaudeCodeSessionId: 'Не удалось скопировать ID сессии Claude Code',
         metadataCopied: 'Метаданные скопированы в буфер обмена',
@@ -400,12 +442,19 @@ export const ru: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: 'Переменные окружения',
+            titleWithCount: ({ count }: { count: number }) => `Переменные окружения (${count})`,
+        },
         permissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ',
             default: 'По умолчанию',
             acceptEdits: 'Принимать правки',
             plan: 'Режим планирования',
             bypassPermissions: 'YOLO режим',
+            badgeAccept: 'Принять',
+            badgePlan: 'План',
+            badgeYolo: 'YOLO',
             badgeAcceptAllEdits: 'Принимать все правки',
             badgeBypassAllPermissions: 'Обход всех разрешений',
             badgePlanMode: 'Режим планирования',
@@ -448,6 +497,21 @@ export const ru: TranslationStructure = {
             badgeReadOnly: 'Только чтение',
             badgeSafeYolo: 'Безопасный YOLO',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'GEMINI MODEL',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: 'Самая мощная',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: 'Быстро и эффективно',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: 'Самая быстрая',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `Осталось ${percent}%`,
@@ -514,6 +578,10 @@ export const ru: TranslationStructure = {
             applyChanges: 'Обновить файл',
             viewDiff: 'Текущие изменения файла',
             question: 'Вопрос',
+            changeTitle: 'Изменить заголовок',
+        },
+        geminiExecute: {
+            cwd: ({ cwd }: { cwd: string }) => `📁 ${cwd}`,
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Терминал(команда: ${cmd})`,
@@ -925,9 +993,130 @@ export const ru: TranslationStructure = {
         enterTmuxTempDir: 'Введите путь к временному каталогу',
         tmuxUpdateEnvironment: 'Обновлять окружение автоматически',
         nameRequired: 'Имя профиля обязательно',
-        deleteConfirm: 'Вы уверены, что хотите удалить профиль "{name}"?',
+        deleteConfirm: ({ name }: { name: string }) => `Вы уверены, что хотите удалить профиль "${name}"?`,
         editProfile: 'Редактировать Профиль',
         addProfileTitle: 'Добавить Новый Профиль',
+        builtIn: 'Встроенный',
+        custom: 'Пользовательский',
+        builtInSaveAsHint: 'Сохранение встроенного профиля создаёт новый пользовательский профиль.',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
+        groups: {
+            favorites: 'Избранное',
+            custom: 'Ваши профили',
+            builtIn: 'Встроенные профили',
+        },
+        actions: {
+            viewEnvironmentVariables: 'Переменные окружения',
+            addToFavorites: 'Добавить в избранное',
+            removeFromFavorites: 'Убрать из избранного',
+            editProfile: 'Редактировать профиль',
+            duplicateProfile: 'Дублировать профиль',
+            deleteProfile: 'Удалить профиль',
+        },
+        copySuffix: '(Копия)',
+        duplicateName: 'Профиль с таким названием уже существует',
+        setupInstructions: {
+            title: 'Инструкции по настройке',
+            viewOfficialGuide: 'Открыть официальное руководство',
+        },
+        defaultSessionType: 'Тип сессии по умолчанию',
+        defaultPermissionMode: {
+            title: 'Режим разрешений по умолчанию',
+            descriptions: {
+                default: 'Запрашивать разрешения',
+                acceptEdits: 'Авто-одобрять правки',
+                plan: 'Планировать перед выполнением',
+                bypassPermissions: 'Пропускать все разрешения',
+            },
+        },
+        aiBackend: {
+            title: 'Бекенд ИИ',
+            selectAtLeastOneError: 'Выберите хотя бы один бекенд ИИ.',
+            claudeSubtitle: 'Claude CLI',
+            codexSubtitle: 'Codex CLI',
+            geminiSubtitleExperimental: 'Gemini CLI (экспериментально)',
+        },
+        tmux: {
+            title: 'Tmux',
+            spawnSessionsTitle: 'Запускать сессии в Tmux',
+            spawnSessionsEnabledSubtitle: 'Сессии запускаются в новых окнах tmux.',
+            spawnSessionsDisabledSubtitle: 'Сессии запускаются в обычной оболочке (без интеграции с tmux)',
+            sessionNamePlaceholder: 'Пусто = текущая/последняя сессия',
+            tempDirPlaceholder: '/tmp (необязательно)',
+        },
+        previewMachine: {
+            title: 'Предпросмотр машины',
+            itemTitle: 'Машина предпросмотра для переменных окружения',
+            selectMachine: 'Выбрать машину',
+            resolveSubtitle: 'Используется только для предпросмотра вычисленных значений ниже (не меняет то, что сохраняется).',
+            selectSubtitle: 'Выберите машину, чтобы просмотреть вычисленные значения ниже.',
+        },
+        environmentVariables: {
+            title: 'Переменные окружения',
+            addVariable: 'Добавить переменную',
+            namePlaceholder: 'Имя переменной (например, MY_CUSTOM_VAR)',
+            valuePlaceholder: 'Значение (например, my-value или ${MY_VAR})',
+            validation: {
+                nameRequired: 'Введите имя переменной.',
+                invalidNameFormat: 'Имена переменных должны содержать заглавные буквы, цифры и подчёркивания и не могут начинаться с цифры.',
+                duplicateName: 'Такая переменная уже существует.',
+            },
+            card: {
+                valueLabel: 'Значение:',
+                fallbackValueLabel: 'Значение по умолчанию:',
+                valueInputPlaceholder: 'Значение',
+                defaultValueInputPlaceholder: 'Значение по умолчанию',
+                secretNotRetrieved: 'Секретное значение — не извлекается из соображений безопасности',
+                secretToggleLabel: 'Секрет',
+                secretToggleSubtitle: 'Скрывает значение в UI и не извлекает его с машины для предварительного просмотра.',
+                secretToggleEnforcedByDaemon: 'Принудительно демоном',
+                secretToggleResetToAuto: 'Сбросить на авто',
+                overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
+                    `Переопределение документированного значения: ${expectedValue}`,
+                useMachineEnvToggle: 'Использовать значение из окружения машины',
+                resolvedOnSessionStart: 'Разрешается при запуске сессии на выбранной машине.',
+                sourceVariableLabel: 'Переменная-источник',
+                sourceVariablePlaceholder: 'Имя переменной-источника (например, Z_AI_MODEL)',
+                checkingMachine: ({ machine }: { machine: string }) => `Проверка ${machine}...`,
+                emptyOnMachine: ({ machine }: { machine: string }) => `Пусто на ${machine}`,
+                emptyOnMachineUsingFallback: ({ machine }: { machine: string }) =>
+                    `Пусто на ${machine} (используется значение по умолчанию)`,
+                notFoundOnMachine: ({ machine }: { machine: string }) => `Не найдено на ${machine}`,
+                notFoundOnMachineUsingFallback: ({ machine }: { machine: string }) =>
+                    `Не найдено на ${machine} (используется значение по умолчанию)`,
+                valueFoundOnMachine: ({ machine }: { machine: string }) => `Значение найдено на ${machine}`,
+                differsFromDocumented: ({ expectedValue }: { expectedValue: string }) =>
+                    `Отличается от документированного значения: ${expectedValue}`,
+            },
+            preview: {
+                secretValueHidden: ({ value }: { value: string }) => `${value} — скрыто из соображений безопасности`,
+                hiddenValue: '***скрыто***',
+                emptyValue: '(пусто)',
+                sessionWillReceive: ({ name, value }: { name: string; value: string }) =>
+                    `Сессия получит: ${name} = ${value}`,
+            },
+            previewModal: {
+                titleWithProfile: ({ profileName }: { profileName: string }) => `Переменные окружения · ${profileName}`,
+                descriptionPrefix: 'Эти переменные окружения отправляются при запуске сессии. Значения разрешаются демоном на',
+                descriptionFallbackMachine: 'выбранной машине',
+                descriptionSuffix: '.',
+                emptyMessage: 'Для этого профиля не заданы переменные окружения.',
+                checkingSuffix: '(проверка…)',
+                detail: {
+                    fixed: 'Фиксированное',
+                    machine: 'Машина',
+                    checking: 'Проверка',
+                    fallback: 'По умолчанию',
+                    missing: 'Отсутствует',
+                },
+            },
+        },
         delete: {
             title: 'Удалить Профиль',
             message: ({ name }: { name: string }) => `Вы уверены, что хотите удалить "${name}"? Это действие нельзя отменить.`,

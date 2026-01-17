@@ -1,4 +1,4 @@
-import type { TranslationStructure } from '../_default';
+import type { TranslationStructure } from '../_types';
 
 /**
  * Italian plural helper function
@@ -31,6 +31,8 @@ export const it: TranslationStructure = {
 
     common: {
         // Simple string constants
+        add: 'Aggiungi',
+        actions: 'Azioni',
         cancel: 'Annulla',
         authenticate: 'Autentica',
         save: 'Salva',
@@ -46,6 +48,9 @@ export const it: TranslationStructure = {
         yes: 'Sì',
         no: 'No',
         discard: 'Scarta',
+        discardChanges: 'Scarta modifiche',
+        unsavedChangesWarning: 'Hai modifiche non salvate.',
+        keepEditing: 'Continua a modificare',
         version: 'Versione',
         copied: 'Copiato',
         copy: 'Copia',
@@ -59,6 +64,10 @@ export const it: TranslationStructure = {
         retry: 'Riprova',
         delete: 'Elimina',
         optional: 'opzionale',
+        noMatches: 'Nessuna corrispondenza',
+        all: 'All',
+        machine: 'macchina',
+        clearSearch: 'Clear search',
         saveAs: 'Salva con nome',
     },
 
@@ -90,9 +99,128 @@ export const it: TranslationStructure = {
         enterTmuxTempDir: 'Inserisci percorso directory temporanea',
         tmuxUpdateEnvironment: 'Aggiorna ambiente automaticamente',
         nameRequired: 'Il nome del profilo è obbligatorio',
-        deleteConfirm: 'Sei sicuro di voler eliminare il profilo "{name}"?',
+        deleteConfirm: ({ name }: { name: string }) => `Sei sicuro di voler eliminare il profilo "${name}"?`,
         editProfile: 'Modifica profilo',
         addProfileTitle: 'Aggiungi nuovo profilo',
+        builtIn: 'Integrato',
+        custom: 'Personalizzato',
+        builtInSaveAsHint: 'Salvare un profilo integrato crea un nuovo profilo personalizzato.',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
+        groups: {
+            favorites: 'Preferiti',
+            custom: 'I tuoi profili',
+            builtIn: 'Profili integrati',
+        },
+        actions: {
+            viewEnvironmentVariables: 'Variabili ambiente',
+            addToFavorites: 'Aggiungi ai preferiti',
+            removeFromFavorites: 'Rimuovi dai preferiti',
+            editProfile: 'Modifica profilo',
+            duplicateProfile: 'Duplica profilo',
+            deleteProfile: 'Elimina profilo',
+        },
+        copySuffix: '(Copy)',
+        duplicateName: 'Esiste già un profilo con questo nome',
+        setupInstructions: {
+            title: 'Istruzioni di configurazione',
+            viewOfficialGuide: 'Visualizza la guida ufficiale di configurazione',
+        },
+        defaultSessionType: 'Tipo di sessione predefinito',
+        defaultPermissionMode: {
+            title: 'Modalità di permesso predefinita',
+            descriptions: {
+                default: 'Chiedi permessi',
+                acceptEdits: 'Approva automaticamente le modifiche',
+                plan: 'Pianifica prima di eseguire',
+                bypassPermissions: 'Salta tutti i permessi',
+            },
+        },
+        aiBackend: {
+            title: 'Backend IA',
+            selectAtLeastOneError: 'Seleziona almeno un backend IA.',
+            claudeSubtitle: 'Claude CLI',
+            codexSubtitle: 'Codex CLI',
+            geminiSubtitleExperimental: 'Gemini CLI (sperimentale)',
+        },
+        tmux: {
+            title: 'Tmux',
+            spawnSessionsTitle: 'Avvia sessioni in Tmux',
+            spawnSessionsEnabledSubtitle: 'Le sessioni vengono avviate in nuove finestre di tmux.',
+            spawnSessionsDisabledSubtitle: 'Le sessioni vengono avviate in una shell normale (senza integrazione tmux)',
+            sessionNamePlaceholder: 'Vuoto = sessione corrente/più recente',
+            tempDirPlaceholder: '/tmp (opzionale)',
+        },
+        previewMachine: {
+            title: 'Anteprima macchina',
+            itemTitle: 'Macchina di anteprima per variabili d\'ambiente',
+            selectMachine: 'Seleziona macchina',
+            resolveSubtitle: 'Usata solo per l\'anteprima dei valori risolti sotto (non cambia ciò che viene salvato).',
+            selectSubtitle: 'Seleziona una macchina per l\'anteprima dei valori risolti sotto.',
+        },
+        environmentVariables: {
+            title: 'Variabili ambiente',
+            addVariable: 'Aggiungi variabile',
+            namePlaceholder: 'Nome variabile (es., MY_CUSTOM_VAR)',
+            valuePlaceholder: 'Valore (es., my-value o ${MY_VAR})',
+            validation: {
+                nameRequired: 'Inserisci un nome variabile.',
+                invalidNameFormat: 'I nomi delle variabili devono usare lettere maiuscole, numeri e underscore e non possono iniziare con un numero.',
+                duplicateName: 'Questa variabile esiste già.',
+            },
+            card: {
+                valueLabel: 'Valore:',
+                fallbackValueLabel: 'Valore di fallback:',
+                valueInputPlaceholder: 'Valore',
+                defaultValueInputPlaceholder: 'Valore predefinito',
+                secretNotRetrieved: 'Valore segreto - non recuperato per sicurezza',
+                secretToggleLabel: 'Segreto',
+                secretToggleSubtitle: 'Nasconde il valore nella UI ed evita di recuperarlo dalla macchina per l\'anteprima.',
+                secretToggleEnforcedByDaemon: 'Imposto dal daemon',
+                secretToggleResetToAuto: 'Ripristina su automatico',
+                overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
+                    `Sostituzione del valore predefinito documentato: ${expectedValue}`,
+                useMachineEnvToggle: 'Usa valore dall\'ambiente della macchina',
+                resolvedOnSessionStart: 'Risolto quando la sessione viene avviata sulla macchina selezionata.',
+                sourceVariableLabel: 'Variabile sorgente',
+                sourceVariablePlaceholder: 'Nome variabile sorgente (es., Z_AI_MODEL)',
+                checkingMachine: ({ machine }: { machine: string }) => `Verifica ${machine}...`,
+                emptyOnMachine: ({ machine }: { machine: string }) => `Vuoto su ${machine}`,
+                emptyOnMachineUsingFallback: ({ machine }: { machine: string }) => `Vuoto su ${machine} (uso fallback)`,
+                notFoundOnMachine: ({ machine }: { machine: string }) => `Non trovato su ${machine}`,
+                notFoundOnMachineUsingFallback: ({ machine }: { machine: string }) => `Non trovato su ${machine} (uso fallback)`,
+                valueFoundOnMachine: ({ machine }: { machine: string }) => `Valore trovato su ${machine}`,
+                differsFromDocumented: ({ expectedValue }: { expectedValue: string }) =>
+                    `Diverso dal valore documentato: ${expectedValue}`,
+            },
+            preview: {
+                secretValueHidden: ({ value }: { value: string }) => `${value} - nascosto per sicurezza`,
+                hiddenValue: '***nascosto***',
+                emptyValue: '(vuoto)',
+                sessionWillReceive: ({ name, value }: { name: string; value: string }) =>
+                    `La sessione riceverà: ${name} = ${value}`,
+            },
+            previewModal: {
+                titleWithProfile: ({ profileName }: { profileName: string }) => `Variabili ambiente · ${profileName}`,
+                descriptionPrefix: 'Queste variabili ambiente vengono inviate all\'avvio della sessione. I valori vengono risolti dal daemon su',
+                descriptionFallbackMachine: 'la macchina selezionata',
+                descriptionSuffix: '.',
+                emptyMessage: 'Nessuna variabile ambiente è impostata per questo profilo.',
+                checkingSuffix: '(verifica…)',
+                detail: {
+                    fixed: 'Fisso',
+                    machine: 'Macchina',
+                    checking: 'Verifica',
+                    fallback: 'Fallback',
+                    missing: 'Mancante',
+                },
+            },
+        },
         delete: {
             title: 'Elimina profilo',
             message: ({ name }: { name: string }) => `Sei sicuro di voler eliminare "${name}"? Questa azione non può essere annullata.`,
@@ -237,6 +365,15 @@ export const it: TranslationStructure = {
         enhancedSessionWizard: 'Wizard sessione avanzato',
         enhancedSessionWizardEnabled: 'Avvio sessioni con profili attivo',
         enhancedSessionWizardDisabled: 'Usando avvio sessioni standard',
+        profiles: 'Profili IA',
+        profilesEnabled: 'Selezione profili abilitata',
+        profilesDisabled: 'Selezione profili disabilitata',
+        pickerSearch: 'Ricerca nei selettori',
+        pickerSearchSubtitle: 'Mostra un campo di ricerca nei selettori di macchina e percorso',
+        machinePickerSearch: 'Ricerca macchine',
+        machinePickerSearchSubtitle: 'Mostra un campo di ricerca nei selettori di macchine',
+        pathPickerSearch: 'Ricerca percorsi',
+        pathPickerSearchSubtitle: 'Mostra un campo di ricerca nei selettori di percorsi',
     },
 
     errors: {
@@ -289,6 +426,9 @@ export const it: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Avvia nuova sessione',
+        selectMachineTitle: 'Seleziona macchina',
+        selectPathTitle: 'Seleziona percorso',
+        searchPathsPlaceholder: 'Cerca percorsi...',
         noMachinesFound: 'Nessuna macchina trovata. Avvia prima una sessione Happy sul tuo computer.',
         allMachinesOffline: 'Tutte le macchine sembrano offline',
         machineDetails: 'Visualizza dettagli macchina →',
@@ -304,6 +444,26 @@ export const it: TranslationStructure = {
         notConnectedToServer: 'Non connesso al server. Controlla la tua connessione Internet.',
         noMachineSelected: 'Seleziona una macchina per avviare la sessione',
         noPathSelected: 'Seleziona una directory in cui avviare la sessione',
+        machinePicker: {
+            searchPlaceholder: 'Cerca macchine...',
+            recentTitle: 'Recenti',
+            favoritesTitle: 'Preferiti',
+            allTitle: 'Tutte',
+            emptyMessage: 'Nessuna macchina disponibile',
+        },
+        pathPicker: {
+            enterPathTitle: 'Inserisci percorso',
+            enterPathPlaceholder: 'Inserisci un percorso...',
+            customPathTitle: 'Percorso personalizzato',
+            recentTitle: 'Recenti',
+            favoritesTitle: 'Preferiti',
+            suggestedTitle: 'Suggeriti',
+            allTitle: 'Tutte',
+            emptyRecent: 'Nessun percorso recente',
+            emptyFavorites: 'Nessun percorso preferito',
+            emptySuggested: 'Nessun percorso suggerito',
+            emptyAll: 'Nessun percorso',
+        },
         sessionType: {
             title: 'Tipo di sessione',
             simple: 'Semplice',
@@ -365,6 +525,7 @@ export const it: TranslationStructure = {
         happySessionId: 'ID sessione Happy',
         claudeCodeSessionId: 'ID sessione Claude Code',
         claudeCodeSessionIdCopied: 'ID sessione Claude Code copiato negli appunti',
+        aiProfile: 'Profilo IA',
         aiProvider: 'Provider IA',
         failedToCopyClaudeCodeSessionId: 'Impossibile copiare l\'ID sessione Claude Code',
         metadataCopied: 'Metadati copiati negli appunti',
@@ -419,12 +580,19 @@ export const it: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: 'Var env',
+            titleWithCount: ({ count }: { count: number }) => `Var env (${count})`,
+        },
         permissionMode: {
             title: 'MODALITÀ PERMESSI',
             default: 'Predefinito',
             acceptEdits: 'Accetta modifiche',
             plan: 'Modalità piano',
             bypassPermissions: 'Modalità YOLO',
+            badgeAccept: 'Accetta',
+            badgePlan: 'Piano',
+            badgeYolo: 'YOLO',
             badgeAcceptAllEdits: 'Accetta tutte le modifiche',
             badgeBypassAllPermissions: 'Bypassa tutti i permessi',
             badgePlanMode: 'Modalità piano',
@@ -461,12 +629,27 @@ export const it: TranslationStructure = {
         geminiPermissionMode: {
             title: 'MODALITÀ PERMESSI GEMINI',
             default: 'Predefinito',
-            readOnly: 'Solo lettura',
+            readOnly: 'Modalità sola lettura',
             safeYolo: 'YOLO sicuro',
             yolo: 'YOLO',
-            badgeReadOnly: 'Solo lettura',
+            badgeReadOnly: 'Modalità sola lettura',
             badgeSafeYolo: 'YOLO sicuro',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'MODELLO GEMINI',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: 'Il più potente',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: 'Veloce ed efficiente',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: 'Il più veloce',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,
@@ -537,6 +720,10 @@ export const it: TranslationStructure = {
             applyChanges: 'Aggiorna file',
             viewDiff: 'Modifiche file attuali',
             question: 'Domanda',
+            changeTitle: 'Cambia titolo',
+        },
+        geminiExecute: {
+            cwd: ({ cwd }: { cwd: string }) => `📁 ${cwd}`,
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminale(cmd: ${cmd})`,

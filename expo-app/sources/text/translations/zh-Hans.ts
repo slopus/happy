@@ -5,7 +5,7 @@
  * - Functions with typed object parameters for dynamic text
  */
 
-import { TranslationStructure } from "../_default";
+import type { TranslationStructure } from '../_types';
 
 /**
  * Chinese plural helper function
@@ -33,6 +33,8 @@ export const zhHans: TranslationStructure = {
 
     common: {
         // Simple string constants
+        add: '添加',
+        actions: '操作',
         cancel: '取消',
         authenticate: '认证',
         save: '保存',
@@ -49,6 +51,9 @@ export const zhHans: TranslationStructure = {
         yes: '是',
         no: '否',
         discard: '放弃',
+        discardChanges: '放弃更改',
+        unsavedChangesWarning: '你有未保存的更改。',
+        keepEditing: '继续编辑',
         version: '版本',
         copied: '已复制',
         copy: '复制',
@@ -62,6 +67,10 @@ export const zhHans: TranslationStructure = {
         retry: '重试',
         delete: '删除',
         optional: '可选的',
+        noMatches: '无匹配结果',
+        all: 'All',
+        machine: '机器',
+        clearSearch: 'Clear search',
     },
 
     profile: {
@@ -210,6 +219,15 @@ export const zhHans: TranslationStructure = {
         enhancedSessionWizard: '增强会话向导',
         enhancedSessionWizardEnabled: '配置文件优先启动器已激活',
         enhancedSessionWizardDisabled: '使用标准会话启动器',
+        profiles: 'AI 配置文件',
+        profilesEnabled: '已启用配置文件选择',
+        profilesDisabled: '已禁用配置文件选择',
+        pickerSearch: '选择器搜索',
+        pickerSearchSubtitle: '在设备和路径选择器中显示搜索框',
+        machinePickerSearch: '设备搜索',
+        machinePickerSearchSubtitle: '在设备选择器中显示搜索框',
+        pathPickerSearch: '路径搜索',
+        pathPickerSearchSubtitle: '在路径选择器中显示搜索框',
     },
 
     errors: {
@@ -262,6 +280,9 @@ export const zhHans: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: '启动新会话',
+        selectMachineTitle: '选择设备',
+        selectPathTitle: '选择路径',
+        searchPathsPlaceholder: '搜索路径...',
         noMachinesFound: '未找到设备。请先在您的计算机上启动 Happy 会话。',
         allMachinesOffline: '所有设备似乎都已离线',
         machineDetails: '查看设备详情 →',
@@ -277,6 +298,26 @@ export const zhHans: TranslationStructure = {
         notConnectedToServer: '未连接到服务器。请检查您的网络连接。',
         noMachineSelected: '请选择一台设备以启动会话',
         noPathSelected: '请选择一个目录以启动会话',
+        machinePicker: {
+            searchPlaceholder: '搜索设备...',
+            recentTitle: '最近',
+            favoritesTitle: '收藏',
+            allTitle: '全部',
+            emptyMessage: '没有可用设备',
+        },
+        pathPicker: {
+            enterPathTitle: '输入路径',
+            enterPathPlaceholder: '输入路径...',
+            customPathTitle: '自定义路径',
+            recentTitle: '最近',
+            favoritesTitle: '收藏',
+            suggestedTitle: '推荐',
+            allTitle: '全部',
+            emptyRecent: '没有最近的路径',
+            emptyFavorites: '没有收藏的路径',
+            emptySuggested: '没有推荐的路径',
+            emptyAll: '没有路径',
+        },
         sessionType: {
             title: '会话类型',
             simple: '简单',
@@ -338,6 +379,7 @@ export const zhHans: TranslationStructure = {
         happySessionId: 'Happy 会话 ID',
         claudeCodeSessionId: 'Claude Code 会话 ID',
         claudeCodeSessionIdCopied: 'Claude Code 会话 ID 已复制到剪贴板',
+        aiProfile: 'AI 配置文件',
         aiProvider: 'AI 提供商',
         failedToCopyClaudeCodeSessionId: '复制 Claude Code 会话 ID 失败',
         metadataCopied: '元数据已复制到剪贴板',
@@ -392,12 +434,19 @@ export const zhHans: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: '环境变量',
+            titleWithCount: ({ count }: { count: number }) => `环境变量 (${count})`,
+        },
         permissionMode: {
             title: '权限模式',
             default: '默认',
             acceptEdits: '接受编辑',
             plan: '计划模式',
             bypassPermissions: 'Yolo 模式',
+            badgeAccept: '接受',
+            badgePlan: '计划',
+            badgeYolo: 'YOLO',
             badgeAcceptAllEdits: '接受所有编辑',
             badgeBypassAllPermissions: '绕过所有权限',
             badgePlanMode: '计划模式',
@@ -440,6 +489,21 @@ export const zhHans: TranslationStructure = {
             badgeReadOnly: '只读',
             badgeSafeYolo: '安全 YOLO',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'GEMINI 模型',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: '最强能力',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: '快速且高效',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: '最快',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
@@ -506,6 +570,10 @@ export const zhHans: TranslationStructure = {
             applyChanges: '更新文件',
             viewDiff: '当前文件更改',
             question: '问题',
+            changeTitle: '更改标题',
+        },
+        geminiExecute: {
+            cwd: ({ cwd }: { cwd: string }) => `📁 ${cwd}`,
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `终端(命令: ${cmd})`,
@@ -896,8 +964,127 @@ export const zhHans: TranslationStructure = {
         tmuxTempDir: 'tmux 临时目录',
         enterTmuxTempDir: '输入 tmux 临时目录',
         tmuxUpdateEnvironment: '更新 tmux 环境',
-        deleteConfirm: '确定要删除此配置文件吗？',
+        deleteConfirm: ({ name }: { name: string }) => `确定要删除配置文件“${name}”吗？`,
         nameRequired: '配置文件名称为必填项',
+        builtIn: '内置',
+        custom: '自定义',
+        builtInSaveAsHint: '保存内置配置文件会创建一个新的自定义配置文件。',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
+        groups: {
+            favorites: '收藏',
+            custom: '你的配置文件',
+            builtIn: '内置配置文件',
+        },
+        actions: {
+            viewEnvironmentVariables: '环境变量',
+            addToFavorites: '添加到收藏',
+            removeFromFavorites: '从收藏中移除',
+            editProfile: '编辑配置文件',
+            duplicateProfile: '复制配置文件',
+            deleteProfile: '删除配置文件',
+        },
+        copySuffix: '(Copy)',
+        duplicateName: '已存在同名配置文件',
+        setupInstructions: {
+            title: '设置说明',
+            viewOfficialGuide: '查看官方设置指南',
+        },
+        defaultSessionType: '默认会话类型',
+        defaultPermissionMode: {
+            title: '默认权限模式',
+            descriptions: {
+                default: '询问权限',
+                acceptEdits: '自动批准编辑',
+                plan: '执行前先规划',
+                bypassPermissions: '跳过所有权限',
+            },
+        },
+        aiBackend: {
+            title: 'AI 后端',
+            selectAtLeastOneError: '至少选择一个 AI 后端。',
+            claudeSubtitle: 'Claude CLI',
+            codexSubtitle: 'Codex CLI',
+            geminiSubtitleExperimental: 'Gemini CLI（实验）',
+        },
+        tmux: {
+            title: 'tmux',
+            spawnSessionsTitle: '在 tmux 中启动会话',
+            spawnSessionsEnabledSubtitle: '会话将在新的 tmux 窗口中启动。',
+            spawnSessionsDisabledSubtitle: '会话将在普通 shell 中启动（无 tmux 集成）',
+            sessionNamePlaceholder: '留空 = 当前/最近会话',
+            tempDirPlaceholder: '/tmp（可选）',
+        },
+        previewMachine: {
+            title: '预览设备',
+            itemTitle: '用于环境变量预览的设备',
+            selectMachine: '选择设备',
+            resolveSubtitle: '仅用于预览下面解析后的值（不会改变已保存的内容）。',
+            selectSubtitle: '选择设备以预览下面解析后的值。',
+        },
+        environmentVariables: {
+            title: '环境变量',
+            addVariable: '添加变量',
+            namePlaceholder: '变量名（例如 MY_CUSTOM_VAR）',
+            valuePlaceholder: '值（例如 my-value 或 ${MY_VAR}）',
+            validation: {
+                nameRequired: '请输入变量名。',
+                invalidNameFormat: '变量名必须由大写字母、数字和下划线组成，且不能以数字开头。',
+                duplicateName: '该变量已存在。',
+            },
+            card: {
+                valueLabel: '值：',
+                fallbackValueLabel: '备用值：',
+                valueInputPlaceholder: '值',
+                defaultValueInputPlaceholder: '默认值',
+                secretNotRetrieved: '秘密值——出于安全原因不会读取',
+                secretToggleLabel: '秘密',
+                secretToggleSubtitle: '在 UI 中隐藏该值，并避免为预览从机器获取它。',
+                secretToggleEnforcedByDaemon: '由守护进程强制',
+                secretToggleResetToAuto: '重置为自动',
+                overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
+                    `正在覆盖文档默认值：${expectedValue}`,
+                useMachineEnvToggle: '使用设备环境中的值',
+                resolvedOnSessionStart: '会话在所选设备上启动时解析。',
+                sourceVariableLabel: '来源变量',
+                sourceVariablePlaceholder: '来源变量名（例如 Z_AI_MODEL）',
+                checkingMachine: ({ machine }: { machine: string }) => `正在检查 ${machine}...`,
+                emptyOnMachine: ({ machine }: { machine: string }) => `${machine} 上为空`,
+                emptyOnMachineUsingFallback: ({ machine }: { machine: string }) => `${machine} 上为空（使用备用值）`,
+                notFoundOnMachine: ({ machine }: { machine: string }) => `在 ${machine} 上未找到`,
+                notFoundOnMachineUsingFallback: ({ machine }: { machine: string }) => `在 ${machine} 上未找到（使用备用值）`,
+                valueFoundOnMachine: ({ machine }: { machine: string }) => `在 ${machine} 上找到值`,
+                differsFromDocumented: ({ expectedValue }: { expectedValue: string }) =>
+                    `与文档值不同：${expectedValue}`,
+            },
+            preview: {
+                secretValueHidden: ({ value }: { value: string }) => `${value} - 出于安全已隐藏`,
+                hiddenValue: '***已隐藏***',
+                emptyValue: '(空)',
+                sessionWillReceive: ({ name, value }: { name: string; value: string }) =>
+                    `会话将收到：${name} = ${value}`,
+            },
+            previewModal: {
+                titleWithProfile: ({ profileName }: { profileName: string }) => `环境变量 · ${profileName}`,
+                descriptionPrefix: '这些环境变量会在启动会话时发送。值会通过守护进程解析于',
+                descriptionFallbackMachine: '所选设备',
+                descriptionSuffix: '。',
+                emptyMessage: '该配置文件未设置环境变量。',
+                checkingSuffix: '（检查中…）',
+                detail: {
+                    fixed: '固定',
+                    machine: '设备',
+                    checking: '检查中',
+                    fallback: '备用',
+                    missing: '缺失',
+                },
+            },
+        },
         delete: {
             title: '删除配置',
             message: ({ name }: { name: string }) => `确定要删除"${name}"吗？此操作无法撤销。`,

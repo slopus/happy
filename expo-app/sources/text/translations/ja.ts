@@ -5,17 +5,7 @@
  * - Functions with typed object parameters for dynamic text
  */
 
-import { TranslationStructure } from "../_default";
-
-/**
- * Japanese plural helper function
- * Japanese doesn't have grammatical plurals, so this just returns the appropriate form
- * @param options - Object containing count, singular, and plural forms
- * @returns The appropriate form based on count
- */
-function plural({ count, singular, plural }: { count: number; singular: string; plural: string }): string {
-    return count === 1 ? singular : plural;
-}
+import type { TranslationStructure } from '../_types';
 
 export const ja: TranslationStructure = {
     tabs: {
@@ -34,6 +24,8 @@ export const ja: TranslationStructure = {
 
     common: {
         // Simple string constants
+        add: '追加',
+        actions: '操作',
         cancel: 'キャンセル',
         authenticate: '認証',
         save: '保存',
@@ -49,6 +41,9 @@ export const ja: TranslationStructure = {
         yes: 'はい',
         no: 'いいえ',
         discard: '破棄',
+        discardChanges: '変更を破棄',
+        unsavedChangesWarning: '未保存の変更があります。',
+        keepEditing: '編集を続ける',
         version: 'バージョン',
         copied: 'コピーしました',
         copy: 'コピー',
@@ -62,6 +57,10 @@ export const ja: TranslationStructure = {
         retry: '再試行',
         delete: '削除',
         optional: '任意',
+        noMatches: '一致するものがありません',
+        all: 'すべて',
+        machine: 'マシン',
+        clearSearch: '検索をクリア',
         saveAs: '名前を付けて保存',
     },
 
@@ -93,9 +92,128 @@ export const ja: TranslationStructure = {
         enterTmuxTempDir: '一時ディレクトリのパスを入力',
         tmuxUpdateEnvironment: '環境を自動更新',
         nameRequired: 'プロファイル名は必須です',
-        deleteConfirm: 'プロファイル「{name}」を削除してもよろしいですか？',
+        deleteConfirm: ({ name }: { name: string }) => `プロファイル「${name}」を削除してもよろしいですか？`,
         editProfile: 'プロファイルを編集',
         addProfileTitle: '新しいプロファイルを追加',
+        builtIn: '組み込み',
+        custom: 'カスタム',
+        builtInSaveAsHint: '組み込みプロファイルを保存すると、新しいカスタムプロファイルが作成されます。',
+        builtInNames: {
+            anthropic: 'Anthropic (Default)',
+            deepseek: 'DeepSeek (Reasoner)',
+            zai: 'Z.AI (GLM-4.6)',
+            openai: 'OpenAI (GPT-5)',
+            azureOpenai: 'Azure OpenAI',
+        },
+        groups: {
+            favorites: 'お気に入り',
+            custom: 'あなたのプロファイル',
+            builtIn: '組み込みプロファイル',
+        },
+        actions: {
+            viewEnvironmentVariables: '環境変数',
+            addToFavorites: 'お気に入りに追加',
+            removeFromFavorites: 'お気に入りから削除',
+            editProfile: 'プロファイルを編集',
+            duplicateProfile: 'プロファイルを複製',
+            deleteProfile: 'プロファイルを削除',
+        },
+        copySuffix: '(コピー)',
+        duplicateName: '同じ名前のプロファイルが既に存在します',
+        setupInstructions: {
+            title: 'セットアップ手順',
+            viewOfficialGuide: '公式セットアップガイドを表示',
+        },
+        defaultSessionType: 'デフォルトのセッションタイプ',
+        defaultPermissionMode: {
+            title: 'デフォルトの権限モード',
+            descriptions: {
+                default: '権限を要求する',
+                acceptEdits: '編集を自動承認',
+                plan: '実行前に計画',
+                bypassPermissions: 'すべての権限をスキップ',
+            },
+        },
+        aiBackend: {
+            title: 'AIバックエンド',
+            selectAtLeastOneError: '少なくとも1つのAIバックエンドを選択してください。',
+            claudeSubtitle: 'Claude CLI',
+            codexSubtitle: 'Codex CLI',
+            geminiSubtitleExperimental: 'Gemini CLI（実験）',
+        },
+        tmux: {
+            title: 'Tmux',
+            spawnSessionsTitle: 'Tmuxでセッションを起動',
+            spawnSessionsEnabledSubtitle: 'セッションは新しいtmuxウィンドウで起動します。',
+            spawnSessionsDisabledSubtitle: 'セッションは通常のシェルで起動します（tmux連携なし）',
+            sessionNamePlaceholder: '空 = 現在/最近のセッション',
+            tempDirPlaceholder: '/tmp（任意）',
+        },
+        previewMachine: {
+            title: 'マシンをプレビュー',
+            itemTitle: '環境変数のプレビュー用マシン',
+            selectMachine: 'マシンを選択',
+            resolveSubtitle: '下の解決後の値をプレビューするためだけに使用します（保存内容は変わりません）。',
+            selectSubtitle: '下の解決後の値をプレビューするマシンを選択してください。',
+        },
+        environmentVariables: {
+            title: '環境変数',
+            addVariable: '変数を追加',
+            namePlaceholder: '変数名（例: MY_CUSTOM_VAR）',
+            valuePlaceholder: '値（例: my-value または ${MY_VAR}）',
+            validation: {
+                nameRequired: '変数名を入力してください。',
+                invalidNameFormat: '変数名は大文字、数字、アンダースコアのみで、数字から始めることはできません。',
+                duplicateName: 'その変数は既に存在します。',
+            },
+            card: {
+                valueLabel: '値:',
+                fallbackValueLabel: 'フォールバック値:',
+                valueInputPlaceholder: '値',
+                defaultValueInputPlaceholder: 'デフォルト値',
+                secretNotRetrieved: 'シークレット値 — セキュリティのため取得しません',
+                secretToggleLabel: 'シークレット',
+                secretToggleSubtitle: 'UIで値を非表示にし、プレビューのためにマシンから取得しません。',
+                secretToggleEnforcedByDaemon: 'デーモンで強制',
+                secretToggleResetToAuto: '自動に戻す',
+                overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
+                    `ドキュメントのデフォルト値を上書き: ${expectedValue}`,
+                useMachineEnvToggle: 'マシン環境から値を使用',
+                resolvedOnSessionStart: '選択したマシンでセッション開始時に解決されます。',
+                sourceVariableLabel: '参照元変数',
+                sourceVariablePlaceholder: '参照元変数名（例: Z_AI_MODEL）',
+                checkingMachine: ({ machine }: { machine: string }) => `${machine} を確認中...`,
+                emptyOnMachine: ({ machine }: { machine: string }) => `${machine} では空です`,
+                emptyOnMachineUsingFallback: ({ machine }: { machine: string }) => `${machine} では空です（フォールバック使用）`,
+                notFoundOnMachine: ({ machine }: { machine: string }) => `${machine} で見つかりません`,
+                notFoundOnMachineUsingFallback: ({ machine }: { machine: string }) => `${machine} で見つかりません（フォールバック使用）`,
+                valueFoundOnMachine: ({ machine }: { machine: string }) => `${machine} で値を確認`,
+                differsFromDocumented: ({ expectedValue }: { expectedValue: string }) =>
+                    `ドキュメント値と異なります: ${expectedValue}`,
+            },
+            preview: {
+                secretValueHidden: ({ value }: { value: string }) => `${value} - セキュリティのため非表示`,
+                hiddenValue: '***非表示***',
+                emptyValue: '(空)',
+                sessionWillReceive: ({ name, value }: { name: string; value: string }) =>
+                    `セッションに渡される値: ${name} = ${value}`,
+            },
+            previewModal: {
+                titleWithProfile: ({ profileName }: { profileName: string }) => `環境変数 · ${profileName}`,
+                descriptionPrefix: 'これらの環境変数はセッション開始時に送信されます。値はデーモンが',
+                descriptionFallbackMachine: '選択したマシン',
+                descriptionSuffix: 'で解決します。',
+                emptyMessage: 'このプロファイルには環境変数が設定されていません。',
+                checkingSuffix: '(確認中…)',
+                detail: {
+                    fixed: '固定',
+                    machine: 'マシン',
+                    checking: '確認中',
+                    fallback: 'フォールバック',
+                    missing: '未設定',
+                },
+            },
+        },
         delete: {
             title: 'プロファイルを削除',
             message: ({ name }: { name: string }) => `「${name}」を削除してもよろしいですか？この操作は元に戻せません。`,
@@ -240,6 +358,15 @@ export const ja: TranslationStructure = {
         enhancedSessionWizard: '拡張セッションウィザード',
         enhancedSessionWizardEnabled: 'プロファイル優先セッションランチャーが有効',
         enhancedSessionWizardDisabled: '標準セッションランチャーを使用',
+        profiles: 'AIプロファイル',
+        profilesEnabled: 'プロファイル選択を有効化',
+        profilesDisabled: 'プロファイル選択を無効化',
+        pickerSearch: 'ピッカー検索',
+        pickerSearchSubtitle: 'マシンとパスのピッカーに検索欄を表示',
+        machinePickerSearch: 'マシン検索',
+        machinePickerSearchSubtitle: 'マシンピッカーに検索欄を表示',
+        pathPickerSearch: 'パス検索',
+        pathPickerSearchSubtitle: 'パスピッカーに検索欄を表示',
     },
 
     errors: {
@@ -292,6 +419,9 @@ export const ja: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: '新しいセッションを開始',
+        selectMachineTitle: 'マシンを選択',
+        selectPathTitle: 'パスを選択',
+        searchPathsPlaceholder: 'パスを検索...',
         noMachinesFound: 'マシンが見つかりません。まずコンピューターでHappyセッションを起動してください。',
         allMachinesOffline: 'すべてのマシンがオフラインです',
         machineDetails: 'マシンの詳細を表示 →',
@@ -307,6 +437,26 @@ export const ja: TranslationStructure = {
         notConnectedToServer: 'サーバーに接続されていません。インターネット接続を確認してください。',
         noMachineSelected: 'セッションを開始するマシンを選択してください',
         noPathSelected: 'セッションを開始するディレクトリを選択してください',
+        machinePicker: {
+            searchPlaceholder: 'マシンを検索...',
+            recentTitle: '最近',
+            favoritesTitle: 'お気に入り',
+            allTitle: 'すべて',
+            emptyMessage: '利用可能なマシンがありません',
+        },
+        pathPicker: {
+            enterPathTitle: 'パスを入力',
+            enterPathPlaceholder: 'パスを入力...',
+            customPathTitle: 'カスタムパス',
+            recentTitle: '最近',
+            favoritesTitle: 'お気に入り',
+            suggestedTitle: 'おすすめ',
+            allTitle: 'すべて',
+            emptyRecent: '最近のパスはありません',
+            emptyFavorites: 'お気に入りのパスはありません',
+            emptySuggested: 'おすすめのパスはありません',
+            emptyAll: 'パスがありません',
+        },
         sessionType: {
             title: 'セッションタイプ',
             simple: 'シンプル',
@@ -368,6 +518,7 @@ export const ja: TranslationStructure = {
         happySessionId: 'Happy Session ID',
         claudeCodeSessionId: 'Claude Code Session ID',
         claudeCodeSessionIdCopied: 'Claude Code Session IDがクリップボードにコピーされました',
+        aiProfile: 'AIプロファイル',
         aiProvider: 'AIプロバイダー',
         failedToCopyClaudeCodeSessionId: 'Claude Code Session IDのコピーに失敗しました',
         metadataCopied: 'メタデータがクリップボードにコピーされました',
@@ -422,12 +573,19 @@ export const ja: TranslationStructure = {
     },
 
     agentInput: {
+        envVars: {
+            title: '環境変数',
+            titleWithCount: ({ count }: { count: number }) => `環境変数 (${count})`,
+        },
         permissionMode: {
             title: '権限モード',
             default: 'デフォルト',
             acceptEdits: '編集を許可',
             plan: 'プランモード',
             bypassPermissions: 'Yoloモード',
+            badgeAccept: '許可',
+            badgePlan: 'プラン',
+            badgeYolo: 'YOLO',
             badgeAcceptAllEdits: 'すべての編集を許可',
             badgeBypassAllPermissions: 'すべての権限をバイパス',
             badgePlanMode: 'プランモード',
@@ -464,12 +622,27 @@ export const ja: TranslationStructure = {
         geminiPermissionMode: {
             title: 'GEMINI権限モード',
             default: 'デフォルト',
-            readOnly: '読み取り専用',
-            safeYolo: '安全YOLO',
+            readOnly: '読み取り専用モード',
+            safeYolo: 'セーフYOLO',
             yolo: 'YOLO',
-            badgeReadOnly: '読み取り専用',
-            badgeSafeYolo: '安全YOLO',
+            badgeReadOnly: '読み取り専用モード',
+            badgeSafeYolo: 'セーフYOLO',
             badgeYolo: 'YOLO',
+        },
+        geminiModel: {
+            title: 'GEMINIモデル',
+            gemini25Pro: {
+                label: 'Gemini 2.5 Pro',
+                description: '最高性能',
+            },
+            gemini25Flash: {
+                label: 'Gemini 2.5 Flash',
+                description: '高速・効率的',
+            },
+            gemini25FlashLite: {
+                label: 'Gemini 2.5 Flash Lite',
+                description: '最速',
+            },
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `残り ${percent}%`,
@@ -540,6 +713,10 @@ export const ja: TranslationStructure = {
             applyChanges: 'ファイルを更新',
             viewDiff: '現在のファイル変更',
             question: '質問',
+            changeTitle: 'タイトルを変更',
+        },
+        geminiExecute: {
+            cwd: ({ cwd }: { cwd: string }) => `📁 ${cwd}`,
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `ターミナル(cmd: ${cmd})`,
