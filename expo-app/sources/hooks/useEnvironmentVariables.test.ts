@@ -89,6 +89,10 @@ describe('resolveEnvVarSubstitution', () => {
         expect(resolveEnvVarSubstitution('${VAR:-fallback}', envWithNull)).toBe('fallback');
     });
 
+    it('returns default when VAR is empty string in ${VAR:-default}', () => {
+        expect(resolveEnvVarSubstitution('${EMPTY:-fallback}', daemonEnv)).toBe('fallback');
+    });
+
     it('returns literal for non-substitution values', () => {
         expect(resolveEnvVarSubstitution('literal-value', daemonEnv)).toBe('literal-value');
     });
