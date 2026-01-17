@@ -40,13 +40,17 @@ export interface PromptModalConfig extends BaseModalConfig {
     inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
 }
 
-export interface CustomModalConfig extends BaseModalConfig {
+export type CustomModalInjectedProps = Readonly<{
+    onClose: () => void;
+}>;
+
+export interface CustomModalConfig<P extends CustomModalInjectedProps = any> extends BaseModalConfig {
     type: 'custom';
-    component: ComponentType<any>;
-    props?: any;
+    component: ComponentType<P>;
+    props?: Omit<P, keyof CustomModalInjectedProps>;
 }
 
-export type ModalConfig = AlertModalConfig | ConfirmModalConfig | PromptModalConfig | CustomModalConfig;
+export type ModalConfig = AlertModalConfig | ConfirmModalConfig | PromptModalConfig | CustomModalConfig<any>;
 
 export interface ModalState {
     modals: ModalConfig[];
@@ -73,7 +77,10 @@ export interface IModal {
         confirmText?: string;
         inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
     }): Promise<string | null>;
-    show(config: Omit<CustomModalConfig, 'id' | 'type'>): string;
+    show<P extends CustomModalInjectedProps>(config: {
+        component: ComponentType<P>;
+        props?: Omit<P, keyof CustomModalInjectedProps>;
+    }): string;
     hide(id: string): void;
     hideAll(): void;
 }

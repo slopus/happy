@@ -4,10 +4,17 @@ import {
     Modal,
     TouchableWithoutFeedback,
     Animated,
-    StyleSheet,
     KeyboardAvoidingView,
     Platform
 } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
+
+// On web, stop events from propagating to expo-router's modal overlay
+// which intercepts clicks when it applies pointer-events: none to body
+const stopPropagation = (e: { stopPropagation: () => void }) => e.stopPropagation();
+const webEventHandlers = Platform.OS === 'web'
+    ? { onClick: stopPropagation, onPointerDown: stopPropagation, onTouchStart: stopPropagation }
+    : {};
 
 interface BaseModalProps {
     visible: boolean;
@@ -57,9 +64,10 @@ export function BaseModal({
             animationType={animationType}
             onRequestClose={onClose}
         >
-            <KeyboardAvoidingView 
+            <KeyboardAvoidingView
                 style={styles.container}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                {...webEventHandlers}
             >
                 <TouchableWithoutFeedback onPress={handleBackdropPress}>
                     <Animated.View 
@@ -76,6 +84,7 @@ export function BaseModal({
                 </TouchableWithoutFeedback>
                 
                 <Animated.View
+                    pointerEvents="box-none"
                     style={[
                         styles.content,
                         {
@@ -100,13 +109,18 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         justifyContent: 'center',
-        alignItems: 'center'
+        alignItems: 'center',
+        // On web, ensure modal can receive pointer events when body has pointer-events: none
+        ...Platform.select({ web: { pointerEvents: 'auto' as const } })
     },
     backdrop: {
         ...StyleSheet.absoluteFillObject,
         backgroundColor: 'black'
     },
     content: {
-        zIndex: 1
+        zIndex: 1,
+        // On web, some modal children use percentage widths; ensure they center reliably.
+        width: '100%',
+        alignItems: 'center',
     }
 });

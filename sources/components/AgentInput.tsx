@@ -1,11 +1,12 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable } from 'react-native';
+import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, Image as RNImage, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
-import { PermissionMode, ModelMode } from './PermissionModeSelector';
+import { normalizePermissionModeForAgentFlavor, type PermissionMode, type ModelMode } from '@/sync/permissionTypes';
+import { getModelOptionsForAgentType } from '@/sync/modelOptions';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
@@ -35,6 +36,7 @@ interface AgentInputProps {
     isMicActive?: boolean;
     permissionMode?: PermissionMode;
     onPermissionModeChange?: (mode: PermissionMode) => void;
+    onPermissionClick?: () => void;
     modelMode?: ModelMode;
     onModelModeChange?: (mode: ModelMode) => void;
     metadata?: Metadata | null;
@@ -73,9 +75,18 @@ interface AgentInputProps {
     minHeight?: number;
     profileId?: string | null;
     onProfileClick?: () => void;
+    envVarsCount?: number;
+    onEnvVarsClick?: () => void;
+    contentPaddingHorizontal?: number;
+    panelStyle?: ViewStyle;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
+
+function truncateWithEllipsis(value: string, maxChars: number) {
+    if (value.length <= maxChars) return value;
+    return `${value.slice(0, maxChars)}…`;
+}
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -207,6 +218,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontSize: 11,
         ...Typography.default(),
     },
+    statusDot: {
+        marginRight: 6,
+    },
     permissionModeContainer: {
         flexDirection: 'column',
         alignItems: 'flex-end',
@@ -224,15 +238,114 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     // Button styles
     actionButtonsContainer: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-end',
         justifyContent: 'space-between',
         paddingHorizontal: 0,
     },
+    actionButtonsColumn: {
+        flexDirection: 'column',
+        flex: 1,
+        gap: 3,
+    },
+    actionButtonsColumnNarrow: {
+        flexDirection: 'column',
+        flex: 1,
+        gap: 2,
+    },
+    actionButtonsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    pathRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
     actionButtonsLeft: {
         flexDirection: 'row',
-        gap: 8,
+        columnGap: 6,
+        rowGap: 3,
         flex: 1,
-        overflow: 'hidden',
+        flexWrap: 'wrap',
+        overflow: 'visible',
+    },
+    actionButtonsLeftNarrow: {
+        columnGap: 4,
+    },
+    actionButtonsLeftNoFlex: {
+        flex: 0,
+    },
+    actionChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: Platform.select({ default: 16, android: 20 }),
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        justifyContent: 'center',
+        height: 32,
+        gap: 6,
+    },
+    actionChipPressed: {
+        opacity: 0.7,
+    },
+    actionChipText: {
+        fontSize: 13,
+        color: theme.colors.button.secondary.tint,
+        fontWeight: '600',
+        ...Typography.default('semiBold'),
+    },
+    overlayOptionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+    },
+    overlayOptionRowPressed: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    overlayRadioOuter: {
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        borderWidth: 2,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    overlayRadioOuterSelected: {
+        borderColor: theme.colors.radio.active,
+    },
+    overlayRadioOuterUnselected: {
+        borderColor: theme.colors.radio.inactive,
+    },
+    overlayRadioInner: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: theme.colors.radio.dot,
+    },
+    overlayOptionLabel: {
+        fontSize: 14,
+        color: theme.colors.text,
+        ...Typography.default(),
+    },
+    overlayOptionLabelSelected: {
+        color: theme.colors.radio.active,
+    },
+    overlayOptionLabelUnselected: {
+        color: theme.colors.text,
+    },
+    overlayOptionDescription: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+    },
+    overlayEmptyText: {
+        fontSize: 13,
+        color: theme.colors.textSecondary,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        ...Typography.default(),
     },
     actionButton: {
         flexDirection: 'row',
@@ -257,6 +370,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         flexShrink: 0,
         marginLeft: 8,
+        marginRight: 8,
     },
     sendButtonActive: {
         backgroundColor: theme.colors.button.primary.background,
@@ -301,20 +415,47 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const hasText = props.value.trim().length > 0;
 
     // Check if this is a Codex or Gemini session
-    // Use metadata.flavor for existing sessions, agentType prop for new sessions
-    const isCodex = props.metadata?.flavor === 'codex' || props.agentType === 'codex';
-    const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
+    const effectiveFlavor = props.metadata?.flavor ?? props.agentType;
+    const isCodex = effectiveFlavor === 'codex';
+    const isGemini = effectiveFlavor === 'gemini';
+    const modelOptions = React.useMemo(() => {
+        if (effectiveFlavor === 'claude' || effectiveFlavor === 'codex' || effectiveFlavor === 'gemini') {
+            return getModelOptionsForAgentType(effectiveFlavor);
+        }
+        return [];
+    }, [effectiveFlavor]);
 
     // Profile data
     const profiles = useSetting('profiles');
     const currentProfile = React.useMemo(() => {
-        if (!props.profileId) return null;
+        if (props.profileId === undefined || props.profileId === null || props.profileId.trim() === '') {
+            return null;
+        }
         // Check custom profiles first
         const customProfile = profiles.find(p => p.id === props.profileId);
         if (customProfile) return customProfile;
         // Check built-in profiles
         return getBuiltInProfile(props.profileId);
     }, [profiles, props.profileId]);
+
+	    const profileLabel = React.useMemo(() => {
+	        if (props.profileId === undefined) {
+	            return null;
+	        }
+	        if (props.profileId === null || props.profileId.trim() === '') {
+	            return t('profiles.noProfile');
+	        }
+        if (currentProfile) {
+            return currentProfile.name;
+        }
+        const shortId = props.profileId.length > 8 ? `${props.profileId.slice(0, 8)}…` : props.profileId;
+        return `${t('status.unknown')} (${shortId})`;
+	    }, [props.profileId, currentProfile]);
+
+		    const profileIcon = React.useMemo(() => {
+		        // Always show a stable "profile" icon so the chip reads as Profile selection (not "current provider").
+		        return 'person-circle-outline';
+		    }, []);
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
@@ -359,7 +500,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Handle combined text and selection state changes
     const handleInputStateChange = React.useCallback((newState: TextInputState) => {
-        // console.log('📝 Input state changed:', JSON.stringify(newState));
         setInputState(newState);
     }, []);
 
@@ -368,18 +508,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Using default options: clampSelection=true, autoSelectFirst=true, wrapAround=true
     // To customize: useActiveSuggestions(activeWord, props.autocompleteSuggestions, { clampSelection: false, wrapAround: false })
     const [suggestions, selected, moveUp, moveDown] = useActiveSuggestions(activeWord, props.autocompleteSuggestions, { clampSelection: true, wrapAround: true });
-
-    // Debug logging
-    // React.useEffect(() => {
-    //     console.log('🔍 Autocomplete Debug:', JSON.stringify({
-    //         value: props.value,
-    //         inputState,
-    //         activeWord,
-    //         suggestionsCount: suggestions.length,
-    //         selected,
-    //         prefixes: props.autocompletePrefixes
-    //     }, null, 2));
-    // }, [props.value, inputState, activeWord, suggestions.length, selected]);
 
     // Handle suggestion selection
     const handleSuggestionSelect = React.useCallback((index: number) => {
@@ -402,8 +530,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             end: result.cursorPosition
         });
 
-        // console.log('Selected suggestion:', suggestion.text);
-
         // Small haptic feedback
         hapticsLight();
     }, [suggestions, inputState, props.autocompletePrefixes]);
@@ -411,11 +537,56 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Settings modal state
     const [showSettings, setShowSettings] = React.useState(false);
 
+    const normalizedPermissionMode = React.useMemo(() => {
+        return normalizePermissionModeForAgentFlavor(
+            props.permissionMode ?? 'default',
+            isCodex ? 'codex' : isGemini ? 'gemini' : 'claude',
+        );
+    }, [isCodex, isGemini, props.permissionMode]);
+
+    const permissionChipLabel = React.useMemo(() => {
+        if (isCodex) {
+            return normalizedPermissionMode === 'default'
+                ? t('agentInput.codexPermissionMode.default')
+                : normalizedPermissionMode === 'read-only'
+                    ? t('agentInput.codexPermissionMode.readOnly')
+                    : normalizedPermissionMode === 'safe-yolo'
+                        ? t('agentInput.codexPermissionMode.safeYolo')
+                        : normalizedPermissionMode === 'yolo'
+                            ? t('agentInput.codexPermissionMode.yolo')
+                            : '';
+        }
+
+        if (isGemini) {
+            return normalizedPermissionMode === 'default'
+                ? t('agentInput.geminiPermissionMode.default')
+                : normalizedPermissionMode === 'read-only'
+                    ? t('agentInput.geminiPermissionMode.readOnly')
+                    : normalizedPermissionMode === 'safe-yolo'
+                        ? t('agentInput.geminiPermissionMode.safeYolo')
+                        : normalizedPermissionMode === 'yolo'
+                            ? t('agentInput.geminiPermissionMode.yolo')
+                            : '';
+        }
+
+        return normalizedPermissionMode === 'default'
+            ? t('agentInput.permissionMode.default')
+            : normalizedPermissionMode === 'acceptEdits'
+                ? t('agentInput.permissionMode.acceptEdits')
+                : normalizedPermissionMode === 'plan'
+                    ? t('agentInput.permissionMode.plan')
+                    : normalizedPermissionMode === 'bypassPermissions'
+                        ? t('agentInput.permissionMode.bypassPermissions')
+                        : '';
+    }, [isCodex, isGemini, normalizedPermissionMode]);
+
     // Handle settings button press
     const handleSettingsPress = React.useCallback(() => {
         hapticsLight();
         setShowSettings(prev => !prev);
     }, []);
+
+    const showPermissionChip = Boolean(props.onPermissionModeChange || props.onPermissionClick);
 
     // Handle settings selection
     const handleSettingsSelect = React.useCallback((mode: PermissionMode) => {
@@ -496,7 +667,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
                 const modeOrder: PermissionMode[] = isCodex
                     ? ['default', 'read-only', 'safe-yolo', 'yolo']
-                    : ['default', 'acceptEdits', 'plan', 'bypassPermissions']; // Claude and Gemini share same modes
+                    : isGemini
+                        ? ['default', 'read-only', 'safe-yolo', 'yolo']
+                        : ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
                 const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
                 const nextIndex = (currentIndex + 1) % modeOrder.length;
                 props.onPermissionModeChange(modeOrder[nextIndex]);
@@ -506,7 +679,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange, isCodex, isGemini]);
 
 
 
@@ -514,7 +687,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     return (
         <View style={[
             styles.container,
-            { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
+            { paddingHorizontal: props.contentPaddingHorizontal ?? (screenWidth > 700 ? 16 : 8) }
         ]}>
             <View style={[
                 styles.innerContainer,
@@ -541,9 +714,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 {/* Settings overlay */}
                 {showSettings && (
                     <>
-                        <TouchableWithoutFeedback onPress={() => setShowSettings(false)}>
-                            <View style={styles.overlayBackdrop} />
-                        </TouchableWithoutFeedback>
+                        <Pressable onPress={() => setShowSettings(false)} style={styles.overlayBackdrop} />
                         <View style={[
                             styles.settingsOverlay,
                             { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
@@ -576,44 +747,35 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         };
                                         const config = modeConfig[mode as keyof typeof modeConfig];
                                         if (!config) return null;
-                                        const isSelected = props.permissionMode === mode;
+                                        const isSelected = normalizedPermissionMode === mode;
 
                                         return (
                                             <Pressable
                                                 key={mode}
                                                 onPress={() => handleSettingsSelect(mode)}
-                                                style={({ pressed }) => ({
-                                                    flexDirection: 'row',
-                                                    alignItems: 'center',
-                                                    paddingHorizontal: 16,
-                                                    paddingVertical: 8,
-                                                    backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
-                                                })}
+                                                style={({ pressed }) => [
+                                                    styles.overlayOptionRow,
+                                                    pressed ? styles.overlayOptionRowPressed : null,
+                                                ]}
                                             >
-                                                <View style={{
-                                                    width: 16,
-                                                    height: 16,
-                                                    borderRadius: 8,
-                                                    borderWidth: 2,
-                                                    borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    marginRight: 12
-                                                }}>
+                                                <View
+                                                    style={[
+                                                        styles.overlayRadioOuter,
+                                                        isSelected
+                                                            ? styles.overlayRadioOuterSelected
+                                                            : styles.overlayRadioOuterUnselected,
+                                                    ]}
+                                                >
                                                     {isSelected && (
-                                                        <View style={{
-                                                            width: 6,
-                                                            height: 6,
-                                                            borderRadius: 3,
-                                                            backgroundColor: theme.colors.radio.dot
-                                                        }} />
+                                                        <View style={styles.overlayRadioInner} />
                                                     )}
                                                 </View>
-                                                <Text style={{
-                                                    fontSize: 14,
-                                                    color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                    ...Typography.default()
-                                                }}>
+                                                <Text
+                                                    style={[
+                                                        styles.overlayOptionLabel,
+                                                        isSelected ? styles.overlayOptionLabelSelected : styles.overlayOptionLabelUnselected,
+                                                    ]}
+                                                >
                                                     {config.label}
                                                 </Text>
                                             </Pressable>
@@ -622,96 +784,60 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 </View>
 
                                 {/* Divider */}
-                                <View style={{
-                                    height: 1,
-                                    backgroundColor: theme.colors.divider,
-                                    marginHorizontal: 16
-                                }} />
+                                <View style={styles.overlayDivider} />
 
                                 {/* Model Section */}
-                                <View style={{ paddingVertical: 8 }}>
-                                    <Text style={{
-                                        fontSize: 12,
-                                        fontWeight: '600',
-                                        color: theme.colors.textSecondary,
-                                        paddingHorizontal: 16,
-                                        paddingBottom: 4,
-                                        ...Typography.default('semiBold')
-                                    }}>
+                                <View style={styles.overlaySection}>
+                                    <Text style={styles.overlaySectionTitle}>
                                         {t('agentInput.model.title')}
                                     </Text>
-                                    {isGemini ? (
-                                        // Gemini model selector
-                                        (['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const).map((model) => {
-                                            const modelConfig = {
-                                                'gemini-2.5-pro': { label: 'Gemini 2.5 Pro', description: 'Most capable' },
-                                                'gemini-2.5-flash': { label: 'Gemini 2.5 Flash', description: 'Fast & efficient' },
-                                                'gemini-2.5-flash-lite': { label: 'Gemini 2.5 Flash Lite', description: 'Fastest' },
-                                            };
-                                            const config = modelConfig[model];
-                                            const isSelected = props.modelMode === model;
-
+                                    {modelOptions.length > 0 ? (
+                                        modelOptions.map((option) => {
+                                            const isSelected = props.modelMode === option.value;
                                             return (
                                                 <Pressable
-                                                    key={model}
+                                                    key={option.value}
                                                     onPress={() => {
                                                         hapticsLight();
-                                                        props.onModelModeChange?.(model);
+                                                        props.onModelModeChange?.(option.value);
                                                     }}
-                                                    style={({ pressed }) => ({
-                                                        flexDirection: 'row',
-                                                        alignItems: 'center',
-                                                        paddingHorizontal: 16,
-                                                        paddingVertical: 8,
-                                                        backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
-                                                    })}
+                                                    style={({ pressed }) => [
+                                                        styles.overlayOptionRow,
+                                                        pressed ? styles.overlayOptionRowPressed : null,
+                                                    ]}
                                                 >
-                                                    <View style={{
-                                                        width: 16,
-                                                        height: 16,
-                                                        borderRadius: 8,
-                                                        borderWidth: 2,
-                                                        borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        marginRight: 12
-                                                    }}>
+                                                    <View
+                                                        style={[
+                                                            styles.overlayRadioOuter,
+                                                            isSelected
+                                                                ? styles.overlayRadioOuterSelected
+                                                                : styles.overlayRadioOuterUnselected,
+                                                        ]}
+                                                    >
                                                         {isSelected && (
-                                                            <View style={{
-                                                                width: 6,
-                                                                height: 6,
-                                                                borderRadius: 3,
-                                                                backgroundColor: theme.colors.radio.dot
-                                                            }} />
+                                                            <View style={styles.overlayRadioInner} />
                                                         )}
                                                     </View>
                                                     <View>
-                                                        <Text style={{
-                                                            fontSize: 14,
-                                                            color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                            ...Typography.default()
-                                                        }}>
-                                                            {config.label}
+                                                        <Text
+                                                            style={[
+                                                                styles.overlayOptionLabel,
+                                                                isSelected
+                                                                    ? styles.overlayOptionLabelSelected
+                                                                    : styles.overlayOptionLabelUnselected,
+                                                            ]}
+                                                        >
+                                                            {option.label}
                                                         </Text>
-                                                        <Text style={{
-                                                            fontSize: 11,
-                                                            color: theme.colors.textSecondary,
-                                                            ...Typography.default()
-                                                        }}>
-                                                            {config.description}
+                                                        <Text style={styles.overlayOptionDescription}>
+                                                            {option.description}
                                                         </Text>
                                                     </View>
                                                 </Pressable>
                                             );
                                         })
                                     ) : (
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.textSecondary,
-                                            paddingHorizontal: 16,
-                                            paddingVertical: 8,
-                                            ...Typography.default()
-                                        }}>
+                                        <Text style={styles.overlayEmptyText}>
                                             {t('agentInput.model.configureInCli')}
                                         </Text>
                                     )}
@@ -722,16 +848,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
 
                 {/* Connection status, context warning, and permission mode */}
-                {(props.connectionStatus || contextWarning || props.permissionMode) && (
-                    <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        paddingHorizontal: 16,
-                        paddingBottom: 4,
-                        minHeight: 20, // Fixed minimum height to prevent jumping
-                    }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 11 }}>
+                {(props.connectionStatus || contextWarning) && (
+                    <View style={styles.statusContainer}>
+                        <View style={styles.statusRow}>
                             {props.connectionStatus && (
                                 <>
                                     <StatusDot
@@ -751,48 +870,50 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 </>
                             )}
                             {contextWarning && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: contextWarning.color,
-                                    marginLeft: props.connectionStatus ? 8 : 0,
-                                    ...Typography.default()
-                                }}>
+                                <Text
+                                    style={[
+                                        styles.statusText,
+                                        {
+                                            color: contextWarning.color,
+                                            marginLeft: props.connectionStatus ? 8 : 0,
+                                        },
+                                    ]}
+                                >
                                     {props.connectionStatus ? '• ' : ''}{contextWarning.text}
                                 </Text>
                             )}
                         </View>
-                        <View style={{
-                            flexDirection: 'column',
-                            alignItems: 'flex-end',
-                            minWidth: 150, // Fixed minimum width to prevent layout shift
-                        }}>
+                        <View style={styles.permissionModeContainer}>
                             {props.permissionMode && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
-                                        props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
-                                            props.permissionMode === 'plan' ? theme.colors.permission.plan :
-                                                props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
-                                                    props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
-                                                        props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
-                                                            theme.colors.textSecondary, // Use secondary text color for default
-                                    ...Typography.default()
-                                }}>
+                                <Text
+                                    style={[
+                                        styles.permissionModeText,
+                                        {
+                                            color: normalizedPermissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
+                                                normalizedPermissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
+                                                    normalizedPermissionMode === 'plan' ? theme.colors.permission.plan :
+                                                        normalizedPermissionMode === 'read-only' ? theme.colors.permission.readOnly :
+                                                            normalizedPermissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
+                                                                normalizedPermissionMode === 'yolo' ? theme.colors.permission.yolo :
+                                                                    theme.colors.textSecondary, // Use secondary text color for default
+                                        },
+                                    ]}
+                                >
                                     {isCodex ? (
-                                        props.permissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
-                                            props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
-                                                props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
-                                                    props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
+                                        normalizedPermissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
+                                            normalizedPermissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
+                                                normalizedPermissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
+                                                    normalizedPermissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
                                     ) : isGemini ? (
-                                        props.permissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') :
-                                            props.permissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.badgeReadOnly') :
-                                                props.permissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.badgeSafeYolo') :
-                                                    props.permissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.badgeYolo') : ''
+                                        normalizedPermissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') :
+                                            normalizedPermissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.badgeReadOnly') :
+                                                normalizedPermissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.badgeSafeYolo') :
+                                                    normalizedPermissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.badgeYolo') : ''
                                     ) : (
-                                        props.permissionMode === 'default' ? t('agentInput.permissionMode.default') :
-                                            props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
-                                                props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
-                                                    props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
+                                        normalizedPermissionMode === 'default' ? t('agentInput.permissionMode.default') :
+                                            normalizedPermissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
+                                        normalizedPermissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
+                                            normalizedPermissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
                                     )}
                                 </Text>
                             )}
@@ -800,89 +921,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     </View>
                 )}
 
-                {/* Box 1: Context Information (Machine + Path) - Only show if either exists */}
-                {(props.machineName !== undefined || props.currentPath) && (
-                    <View style={{
-                        backgroundColor: theme.colors.surfacePressed,
-                        borderRadius: 12,
-                        padding: 8,
-                        marginBottom: 8,
-                        gap: 4,
-                    }}>
-                        {/* Machine chip */}
-                        {props.machineName !== undefined && props.onMachineClick && (
-                            <Pressable
-                                onPress={() => {
-                                    hapticsLight();
-                                    props.onMachineClick?.();
-                                }}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                style={(p) => ({
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 6,
-                                    height: 32,
-                                    opacity: p.pressed ? 0.7 : 1,
-                                    gap: 6,
-                                })}
-                            >
-                                <Ionicons
-                                    name="desktop-outline"
-                                    size={14}
-                                    color={theme.colors.textSecondary}
-                                />
-                                <Text style={{
-                                    fontSize: 13,
-                                    color: theme.colors.text,
-                                    fontWeight: '600',
-                                    ...Typography.default('semiBold'),
-                                }}>
-                                    {props.machineName === null ? t('agentInput.noMachinesAvailable') : props.machineName}
-                                </Text>
-                            </Pressable>
-                        )}
-
-                        {/* Path chip */}
-                        {props.currentPath && props.onPathClick && (
-                            <Pressable
-                                onPress={() => {
-                                    hapticsLight();
-                                    props.onPathClick?.();
-                                }}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                style={(p) => ({
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 6,
-                                    height: 32,
-                                    opacity: p.pressed ? 0.7 : 1,
-                                    gap: 6,
-                                })}
-                            >
-                                <Ionicons
-                                    name="folder-outline"
-                                    size={14}
-                                    color={theme.colors.textSecondary}
-                                />
-                                <Text style={{
-                                    fontSize: 13,
-                                    color: theme.colors.text,
-                                    fontWeight: '600',
-                                    ...Typography.default('semiBold'),
-                                }}>
-                                    {props.currentPath}
-                                </Text>
-                            </Pressable>
-                        )}
-                    </View>
-                )}
-
                 {/* Box 2: Action Area (Input + Send) */}
-                <View style={styles.unifiedPanel}>
+                <View style={[styles.unifiedPanel, props.panelStyle]}>
                     {/* Input field */}
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
                         <MultiTextInput
@@ -900,143 +940,172 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                     {/* Action buttons below input */}
                     <View style={styles.actionButtonsContainer}>
-                        <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
-                            {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
-                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <View style={styles.actionButtonsLeft}>
-
-                                {/* Settings button */}
-                                {props.onPermissionModeChange && (
-                                    <Pressable
-                                        onPress={handleSettingsPress}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 8,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                        })}
-                                    >
-                                        <Octicons
-                                            name={'gear'}
-                                            size={16}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                    </Pressable>
-                                )}
-
-                                {/* Profile selector button - FIRST */}
-                                {props.profileId && props.onProfileClick && (
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onProfileClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-                                        <Ionicons
-                                            name="person-outline"
-                                            size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {currentProfile?.name || 'Select Profile'}
-                                        </Text>
-                                    </Pressable>
-                                )}
-
-                                {/* Agent selector button */}
-                                {props.agentType && props.onAgentClick && (
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onAgentClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-                                        <Octicons
-                                            name="cpu"
-                                            size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : t('agentInput.agent.gemini')}
-                                        </Text>
-                                    </Pressable>
-                                )}
-
-                                {/* Abort button */}
-                                {props.onAbort && (
-                                    <Shaker ref={shakerRef}>
+                        <View style={screenWidth < 420 ? styles.actionButtonsColumnNarrow : styles.actionButtonsColumn}>{[
+                            // Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status
+                            <View key="row1" style={styles.actionButtonsRow}>
+                                <View style={[styles.actionButtonsLeft, screenWidth < 420 ? styles.actionButtonsLeftNarrow : null]}>
+                                    {/* Permission chip (popover in standard flow, scroll in wizard) */}
+                                    {showPermissionChip && (
                                         <Pressable
-                                            style={(p) => ({
-                                                flexDirection: 'row',
-                                                alignItems: 'center',
-                                                borderRadius: Platform.select({ default: 16, android: 20 }),
-                                                paddingHorizontal: 8,
-                                                paddingVertical: 6,
-                                                justifyContent: 'center',
-                                                height: 32,
-                                                opacity: p.pressed ? 0.7 : 1,
-                                            })}
+                                            onPress={() => {
+                                                hapticsLight();
+                                                if (props.onPermissionClick) {
+                                                    props.onPermissionClick();
+                                                    return;
+                                                }
+                                                handleSettingsPress();
+                                            }}
                                             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                            onPress={handleAbortPress}
-                                            disabled={isAborting}
+                                            style={(p) => [
+                                                styles.actionChip,
+                                                p.pressed ? styles.actionChipPressed : null,
+                                            ]}
                                         >
-                                            {isAborting ? (
-                                                <ActivityIndicator
-                                                    size="small"
-                                                    color={theme.colors.button.secondary.tint}
-                                                />
-                                            ) : (
-                                                <Octicons
-                                                    name={"stop"}
-                                                    size={16}
-                                                    color={theme.colors.button.secondary.tint}
-                                                />
-                                            )}
+                                            <Ionicons
+                                                name="settings-outline"
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={styles.actionChipText}>
+                                                {permissionChipLabel}
+                                            </Text>
                                         </Pressable>
-                                    </Shaker>
-                                )}
+                                    )}
 
-                                {/* Git Status Badge */}
-                                <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+                                    {/* Profile selector button - FIRST */}
+                                    {props.onProfileClick && (
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onProfileClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => [
+                                                styles.actionChip,
+                                                p.pressed ? styles.actionChipPressed : null,
+                                            ]}
+                                        >
+                                            <Ionicons
+                                                name={profileIcon as any}
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={styles.actionChipText}>
+                                                {profileLabel ?? t('profiles.noProfile')}
+                                            </Text>
+                                        </Pressable>
+                                    )}
+
+                                    {/* Env vars preview (standard flow) */}
+                                    {props.onEnvVarsClick && (
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onEnvVarsClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => [
+                                                styles.actionChip,
+                                                p.pressed ? styles.actionChipPressed : null,
+                                            ]}
+                                        >
+                                            <Ionicons
+                                                name="list-outline"
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={styles.actionChipText}>
+                                                {props.envVarsCount === undefined
+                                                    ? t('agentInput.envVars.title')
+                                                    : t('agentInput.envVars.titleWithCount', { count: props.envVarsCount })}
+                                            </Text>
+                                        </Pressable>
+                                    )}
+
+                                    {/* Agent selector button */}
+                                    {props.agentType && props.onAgentClick && (
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onAgentClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => [
+                                                styles.actionChip,
+                                                p.pressed ? styles.actionChipPressed : null,
+                                            ]}
+                                        >
+                                            <Octicons
+                                                name="cpu"
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={styles.actionChipText}>
+                                                {props.agentType === 'claude'
+                                                    ? t('agentInput.agent.claude')
+                                                    : props.agentType === 'codex'
+                                                        ? t('agentInput.agent.codex')
+                                                        : t('agentInput.agent.gemini')}
+                                            </Text>
+                                        </Pressable>
+                                    )}
+
+                                    {/* Machine selector button */}
+                                    {(props.machineName !== undefined) && props.onMachineClick && (
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onMachineClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => [
+                                                styles.actionChip,
+                                                p.pressed ? styles.actionChipPressed : null,
+                                            ]}
+                                        >
+                                            <Ionicons
+                                                name="desktop-outline"
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={styles.actionChipText}>
+                                                {props.machineName === null
+                                                    ? t('agentInput.noMachinesAvailable')
+                                                    : truncateWithEllipsis(props.machineName, 12)}
+                                            </Text>
+                                        </Pressable>
+                                    )}
+
+                                    {/* Abort button */}
+                                    {props.onAbort && (
+                                        <Shaker ref={shakerRef}>
+                                            <Pressable
+                                                style={(p) => [
+                                                    styles.actionButton,
+                                                    p.pressed ? styles.actionButtonPressed : null,
+                                                ]}
+                                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                                onPress={handleAbortPress}
+                                                disabled={isAborting}
+                                            >
+                                                {isAborting ? (
+                                                    <ActivityIndicator
+                                                        size="small"
+                                                        color={theme.colors.button.secondary.tint}
+                                                    />
+                                                ) : (
+                                                    <Octicons
+                                                        name={"stop"}
+                                                        size={16}
+                                                        color={theme.colors.button.secondary.tint}
+                                                    />
+                                                )}
+                                            </Pressable>
+                                        </Shaker>
+                                    )}
+
+                                    {/* Git Status Badge */}
+                                    <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
                                 </View>
 
                                 {/* Send/Voice button - aligned with first row */}
@@ -1049,13 +1118,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     ]}
                                 >
                                     <Pressable
-                                        style={(p) => ({
-                                            width: '100%',
-                                            height: '100%',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            opacity: p.pressed ? 0.7 : 1,
-                                        })}
+                                        style={(p) => [
+                                            styles.sendButtonInner,
+                                            p.pressed ? styles.sendButtonInnerPressed : null,
+                                        ]}
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                         onPress={() => {
                                             hapticsLight();
@@ -1085,10 +1151,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         ) : props.onMicPress && !props.isMicActive ? (
                                             <Image
                                                 source={require('@/assets/images/icon-voice-white.png')}
-                                                style={{
-                                                    width: 24,
-                                                    height: 24,
-                                                }}
+                                                style={{ width: 24, height: 24 }}
                                                 tintColor={theme.colors.button.primary.tint}
                                             />
                                         ) : (
