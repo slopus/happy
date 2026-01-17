@@ -32,22 +32,26 @@ export function resolveEnvVarSubstitution(
     value: string,
     daemonEnv: EnvironmentVariables
 ): string | null {
-    // Match ${VAR} or ${VAR:-default} or ${VAR:=default} (bash parameter expansion)
+    // Match ${VAR} or ${VAR:-default} (bash parameter expansion subset).
     // Group 1: Variable name (required)
-    // Group 2: Default value (optional) - includes the :- or := prefix
-    // Group 3: The actual default value without prefix (optional)
-    const match = value.match(/^\$\{([A-Z_][A-Z0-9_]*)(:-(.*))?(:=(.*))?}$/);
+    // Group 2: Default value (optional)
+    const match = value.match(/^\$\{([A-Z_][A-Z0-9_]*)(?::[-=](.*))?\}$/);
     if (match) {
         const varName = match[1];
-        const defaultValue = match[3] ?? match[5]; // :- default or := default
+        const defaultValue = match[2]; // :- default
 
         const daemonValue = daemonEnv[varName];
-        if (daemonValue !== undefined && daemonValue !== null) {
+        // For ${VAR:-default} and ${VAR:=default}, treat empty string as "missing" (bash semantics).
+        // For plain ${VAR}, preserve empty string (it is an explicit value).
+        if (daemonValue !== undefined && daemonValue !== null && daemonValue !== '') {
             return daemonValue;
         }
         // Variable not set - use default if provided
         if (defaultValue !== undefined) {
             return defaultValue;
+        }
+        if (daemonValue === '') {
+            return '';
         }
         return null;
     }
@@ -76,9 +80,9 @@ export function extractEnvVarReferences(
 
     const refs = new Set<string>();
     environmentVariables.forEach(ev => {
-        // Match ${VAR} or ${VAR:-default} or ${VAR:=default} (bash parameter expansion)
+        // Match ${VAR}, ${VAR:-default}, or ${VAR:=default} (bash parameter expansion subset).
         // Only capture the variable name, not the default value
-        const match = ev.value.match(/^\$\{([A-Z_][A-Z0-9_]*)(:-.*|:=.*)?\}$/);
+        const match = ev.value.match(/^\$\{([A-Z_][A-Z0-9_]*)(?::[-=].*)?\}$/);
         if (match) {
             // Variable name is already validated by regex pattern [A-Z_][A-Z0-9_]*
             refs.add(match[1]);
