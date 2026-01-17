@@ -49,7 +49,7 @@ export const lightTheme = {
         surface: '#ffffff',
         surfaceRipple: 'rgba(0, 0, 0, 0.08)',
         surfacePressed: '#f0f0f2',
-        surfaceSelected: Platform.select({ ios: '#C6C6C8', default: '#eaeaea' }),
+        surfaceSelected: Platform.select({ ios: '#eaeaea', default: '#eaeaea' }),
         surfacePressedOverlay: Platform.select({ ios: '#D1D1D6', default: 'transparent' }),
         surfaceHigh: '#F8F8F8',
         surfaceHighest: '#f0f0f0',

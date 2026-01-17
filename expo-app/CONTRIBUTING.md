@@ -23,42 +23,42 @@ This allows you to test production-like builds with real users before releasing 
 
 ```bash
 # Development variant (default)
-npm run ios:dev
+yarn ios:dev
 
 # Preview variant
-npm run ios:preview
+yarn ios:preview
 
 # Production variant
-npm run ios:production
+yarn ios:production
 ```
 
 ### Android Development
 
 ```bash
 # Development variant
-npm run android:dev
+yarn android:dev
 
 # Preview variant
-npm run android:preview
+yarn android:preview
 
 # Production variant
-npm run android:production
+yarn android:production
 ```
 
 ### macOS Desktop (Tauri)
 
 ```bash
 # Development variant - run with hot reload
-npm run tauri:dev
+yarn tauri:dev
 
 # Build development variant
-npm run tauri:build:dev
+yarn tauri:build:dev
 
 # Build preview variant
-npm run tauri:build:preview
+yarn tauri:build:preview
 
 # Build production variant
-npm run tauri:build:production
+yarn tauri:build:production
 ```
 
 **How Tauri Variants Work:**
@@ -71,13 +71,13 @@ npm run tauri:build:production
 
 ```bash
 # Start dev server for development variant
-npm run start:dev
+yarn start:dev
 
 # Start dev server for preview variant
-npm run start:preview
+yarn start:preview
 
 # Start dev server for production variant
-npm run start:production
+yarn start:production
 ```
 
 ## Visual Differences
@@ -95,7 +95,7 @@ This makes it easy to distinguish which version you're testing!
 
 1. **Build development variant:**
    ```bash
-   npm run ios:dev
+   yarn ios:dev
    ```
 
 2. **Make your changes** to the code
@@ -104,19 +104,19 @@ This makes it easy to distinguish which version you're testing!
 
 4. **Rebuild if needed** for native changes:
    ```bash
-   npm run ios:dev
+   yarn ios:dev
    ```
 
 ### Testing Preview (Pre-Release)
 
 1. **Build preview variant:**
    ```bash
-   npm run ios:preview
+   yarn ios:preview
    ```
 
 2. **Test OTA updates:**
    ```bash
-   npm run ota  # Publishes to preview branch
+   yarn ota  # Publishes to preview branch
    ```
 
 3. **Verify** the preview build works as expected
@@ -125,17 +125,17 @@ This makes it easy to distinguish which version you're testing!
 
 1. **Build production variant:**
    ```bash
-   npm run ios:production
+   yarn ios:production
    ```
 
 2. **Submit to App Store:**
    ```bash
-   npm run submit
+   yarn submit
    ```
 
 3. **Deploy OTA updates:**
    ```bash
-   npm run ota:production
+   yarn ota:production
    ```
 
 ## All Variants Simultaneously
@@ -144,9 +144,9 @@ You can install all three variants on the same device:
 
 ```bash
 # Build all three variants
-npm run ios:dev
-npm run ios:preview
-npm run ios:production
+yarn ios:dev
+yarn ios:preview
+yarn ios:production
 ```
 
 All three apps appear on your device with different icons and names!
@@ -195,12 +195,12 @@ You can connect different variants to different Happy CLI instances:
 
 ```bash
 # Development app → Dev CLI daemon
-npm run android:dev
-# Connect to CLI running: npm run dev:daemon:start
+yarn android:dev
+# Connect to CLI running: yarn dev:daemon:start
 
 # Production app → Stable CLI daemon
-npm run android:production
-# Connect to CLI running: npm run stable:daemon:start
+yarn android:production
+# Connect to CLI running: yarn stable:daemon:start
 ```
 
 Each app maintains separate authentication and sessions!
@@ -210,7 +210,7 @@ Each app maintains separate authentication and sessions!
 To test with a local Happy server:
 
 ```bash
-npm run start:local-server
+yarn start:local-server
 ```
 
 This sets:
@@ -227,8 +227,8 @@ This shouldn't happen - each variant has a unique bundle ID. If it does:
 1. Check `app.config.js` - verify `bundleId` is set correctly for the variant
 2. Clean build:
    ```bash
-   npm run prebuild
-   npm run ios:dev  # or whichever variant
+   yarn prebuild
+   yarn ios:dev  # or whichever variant
    ```
 
 ### App not updating after changes
@@ -236,12 +236,12 @@ This shouldn't happen - each variant has a unique bundle ID. If it does:
 1. **For JS changes**: Hot reload should work automatically
 2. **For native changes**: Rebuild the variant:
    ```bash
-   npm run ios:dev  # Force rebuild
+   yarn ios:dev  # Force rebuild
    ```
 3. **For config changes**: Clean and prebuild:
    ```bash
-   npm run prebuild
-   npm run ios:dev
+   yarn prebuild
+   yarn ios:dev
    ```
 
 ### All three apps look the same
@@ -258,7 +258,7 @@ If they're all the same name, the variant might not be set correctly. Verify:
 echo $APP_ENV
 
 # Or look at the build output
-npm run ios:dev  # Should show "Happy (dev)" as the name
+yarn ios:dev  # Should show "Happy (dev)" as the name
 ```
 
 ### Connected device not found
@@ -270,7 +270,7 @@ For iOS connected device testing:
 xcrun devicectl list devices
 
 # Run on specific connected device
-npm run ios:connected-device
+yarn ios:connected-device
 ```
 
 ## Tips
