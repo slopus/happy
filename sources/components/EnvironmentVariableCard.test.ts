@@ -101,7 +101,7 @@ describe('EnvironmentVariableCard', () => {
             );
         });
 
-        expect(tree?.root.findByType('Switch').props.value).toBe(true);
+        expect(tree?.root.findByType('Switch' as any).props.value).toBe(true);
 
         act(() => {
             tree?.update(
@@ -116,6 +116,37 @@ describe('EnvironmentVariableCard', () => {
             );
         });
 
-        expect(tree?.root.findByType('Switch').props.value).toBe(false);
+        expect(tree?.root.findByType('Switch' as any).props.value).toBe(false);
+    });
+
+    it('adds a fallback operator when user enters a fallback for a template without one', () => {
+        const onUpdate = vi.fn();
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+
+        act(() => {
+            tree = renderer.create(
+                React.createElement(EnvironmentVariableCard, {
+                    variable: { name: 'FOO', value: '${BAR}' },
+                    index: 0,
+                    machineId: 'machine-1',
+                    onUpdate,
+                    onDelete: () => {},
+                    onDuplicate: () => {},
+                }),
+            );
+        });
+
+        const inputs = tree?.root.findAllByType('TextInput' as any);
+        expect(inputs?.length).toBeGreaterThan(0);
+
+        act(() => {
+            inputs?.[0]?.props.onChangeText?.('baz');
+        });
+
+        expect(onUpdate).toHaveBeenCalled();
+        const lastCall = onUpdate.mock.calls.at(-1) as unknown as [number, string];
+        expect(lastCall[0]).toBe(0);
+        expect(lastCall[1]).toBe('${BAR:-baz}');
     });
 });

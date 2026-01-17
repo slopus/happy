@@ -157,11 +157,15 @@ export function EnvironmentVariablesList({
                 <View style={styles.envVarListContainer}>
                     {environmentVariables.map((envVar, index) => {
                         const varNameFromValue = extractVarNameFromValue(envVar.value);
-                        const docs = getDocumentation(varNameFromValue || envVar.name);
+                        const primaryDocs = getDocumentation(envVar.name);
+                        const refDocs = varNameFromValue ? getDocumentation(varNameFromValue) : undefined;
                         const isSecret =
-                            docs.isSecret ||
+                            primaryDocs.isSecret ||
+                            refDocs?.isSecret ||
                             SECRET_NAME_REGEX.test(envVar.name) ||
                             SECRET_NAME_REGEX.test(varNameFromValue || '');
+                        const expectedValue = primaryDocs.expectedValue ?? refDocs?.expectedValue;
+                        const description = primaryDocs.description ?? refDocs?.description;
 
                         return (
                             <EnvironmentVariableCard
@@ -172,8 +176,8 @@ export function EnvironmentVariablesList({
                                 machineName={machineName ?? null}
                                 machineEnv={machineEnv}
                                 isMachineEnvLoading={isMachineEnvLoading}
-                                expectedValue={docs.expectedValue}
-                                description={docs.description}
+                                expectedValue={expectedValue}
+                                description={description}
                                 isSecret={isSecret}
                                 onUpdate={handleUpdateVariable}
                                 onDelete={handleDeleteVariable}

@@ -125,4 +125,40 @@ describe('EnvironmentVariablesList', () => {
         expect(refs).toContain('HOME');
         expect(refs).not.toContain('MAGIC');
     });
+
+    it('treats a documented-secret variable name as secret even when its value references another var', () => {
+        const profileDocs: ProfileDocumentation = {
+            description: 'test',
+            environmentVariables: [
+                {
+                    name: 'MAGIC',
+                    expectedValue: '***',
+                    description: 'secret',
+                    isSecret: true,
+                },
+            ],
+            shellConfigExample: '',
+        };
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        act(() => {
+            tree = renderer.create(
+                React.createElement(EnvironmentVariablesList, {
+                    environmentVariables: [{ name: 'MAGIC', value: '${HOME}' }],
+                    machineId: 'machine-1',
+                    profileDocs,
+                    onChange: () => {},
+                }),
+            );
+        });
+
+        expect(useEnvironmentVariablesMock).toHaveBeenCalledTimes(1);
+        const [_machineId, refs] = useEnvironmentVariablesMock.mock.calls[0] as unknown as [string, string[]];
+        expect(refs).toEqual([]);
+
+        const cards = tree?.root.findAllByType('EnvironmentVariableCard' as any);
+        expect(cards?.length).toBe(1);
+        expect(cards?.[0]?.props.isSecret).toBe(true);
+        expect(cards?.[0]?.props.expectedValue).toBe('***');
+    });
 });

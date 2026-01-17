@@ -1,6 +1,6 @@
 import React from 'react';
 import { Stack, useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -18,9 +18,8 @@ import type { ItemAction } from '@/components/ItemActionsMenuModal';
 import { ignoreNextRowPress } from '@/utils/ignoreNextRowPress';
 
 export default React.memo(function ProfilePickerScreen() {
-    const { theme, rt } = useUnistyles();
+    const { theme } = useUnistyles();
     const styles = stylesheet;
-    const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const router = useRouter();
     const navigation = useNavigation();
     const params = useLocalSearchParams<{ selectedId?: string; machineId?: string; profileId?: string | string[] }>();
@@ -144,10 +143,10 @@ export default React.memo(function ProfilePickerScreen() {
         );
     }, [profiles, selectedId, setProfileParamAndClose, setProfiles]);
 
-	    const renderProfileRowRightElement = React.useCallback(
-	        (profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
-	            const actions = buildProfileActions({
-	                profile,
+    const renderProfileRowRightElement = React.useCallback(
+        (profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
+            const actions = buildProfileActions({
+                profile,
                 isFavorite,
                 favoriteActionColor: theme.colors.text,
                 nonFavoriteActionColor: theme.colors.textSecondary,
@@ -157,28 +156,28 @@ export default React.memo(function ProfilePickerScreen() {
                 onDelete: () => handleDeleteProfile(profile),
             });
 
-		            return (
-		                <View style={styles.rowRightElement}>
-		                    <View style={styles.indicatorSlot}>
-		                        <Ionicons
-	                            name="checkmark-circle"
-	                            size={24}
-	                            color={theme.colors.text}
-	                            style={isSelected ? styles.selectedIndicatorVisible : styles.selectedIndicatorHidden}
+            return (
+                <View style={styles.rowRightElement}>
+                    <View style={styles.indicatorSlot}>
+                        <Ionicons
+                            name="checkmark-circle"
+                            size={24}
+                            color={theme.colors.text}
+                            style={isSelected ? styles.selectedIndicatorVisible : styles.selectedIndicatorHidden}
                         />
-	                    </View>
-	                    <ItemRowActions
-	                        title={profile.name}
-	                        actions={actions}
-	                        compactActionIds={['favorite', 'edit']}
-	                        iconSize={20}
-	                        onActionPressIn={() => {
-	                            ignoreNextRowPress(ignoreProfileRowPressRef);
-	                        }}
-	                    />
-	                </View>
-	            );
-	        },
+                    </View>
+                    <ItemRowActions
+                        title={profile.name}
+                        actions={actions}
+                        compactActionIds={['favorite', 'edit']}
+                        iconSize={20}
+                        onActionPressIn={() => {
+                            ignoreNextRowPress(ignoreProfileRowPressRef);
+                        }}
+                    />
+                </View>
+            );
+        },
         [
             handleDeleteProfile,
             openProfileEdit,
@@ -270,17 +269,17 @@ export default React.memo(function ProfilePickerScreen() {
                                     const isSelected = selectedId === profile.id;
                                     const isLast = index === favoriteProfileItems.length - 1;
                                     return (
-	                                        <Item
-	                                            key={profile.id}
-	                                            title={profile.name}
-	                                            subtitle={getProfileSubtitle(profile)}
-	                                            icon={renderProfileIcon(profile)}
-	                                            onPress={() => handleProfileRowPress(profile.id)}
-	                                            showChevron={false}
-	                                            selected={isSelected}
-		                                            rightElement={renderProfileRowRightElement(profile, isSelected, true)}
-		                                            showDivider={!isLast}
-	                                        />
+                                        <Item
+                                            key={profile.id}
+                                            title={profile.name}
+                                            subtitle={getProfileSubtitle(profile)}
+                                            icon={renderProfileIcon(profile)}
+                                            onPress={() => handleProfileRowPress(profile.id)}
+                                            showChevron={false}
+                                            selected={isSelected}
+                                            rightElement={renderProfileRowRightElement(profile, isSelected, true)}
+                                            showDivider={!isLast}
+                                        />
                                     );
                                 })}
                             </ItemGroup>
@@ -293,17 +292,17 @@ export default React.memo(function ProfilePickerScreen() {
                                     const isLast = index === nonFavoriteCustomProfiles.length - 1;
                                     const isFavorite = favoriteProfileIdSet.has(profile.id);
                                     return (
-			                                    <Item
-			                                        key={profile.id}
-			                                        title={profile.name}
-			                                        subtitle={getProfileSubtitle(profile)}
-			                                        icon={renderProfileIcon(profile)}
-			                                        onPress={() => handleProfileRowPress(profile.id)}
-			                                        showChevron={false}
-			                                            selected={isSelected}
-		                                            rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
-		                                            showDivider={!isLast}
-	                                        />
+                                        <Item
+                                            key={profile.id}
+                                            title={profile.name}
+                                            subtitle={getProfileSubtitle(profile)}
+                                            icon={renderProfileIcon(profile)}
+                                            onPress={() => handleProfileRowPress(profile.id)}
+                                            showChevron={false}
+                                            selected={isSelected}
+                                            rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
+                                            showDivider={!isLast}
+                                        />
                                     );
                                 })}
                             </ItemGroup>
@@ -322,24 +321,24 @@ export default React.memo(function ProfilePickerScreen() {
                                     showDivider={nonFavoriteBuiltInProfiles.length > 0}
                                 />
                             )}
-	                            {nonFavoriteBuiltInProfiles.map((profile, index) => {
-	                                const isSelected = selectedId === profile.id;
-	                                const isLast = index === nonFavoriteBuiltInProfiles.length - 1;
-	                                const isFavorite = favoriteProfileIdSet.has(profile.id);
-	                                return (
-		                                    <Item
-		                                        key={profile.id}
-		                                        title={profile.name}
-		                                        subtitle={getProfileSubtitle(profile)}
-		                                        icon={renderProfileIcon(profile)}
-		                                        onPress={() => handleProfileRowPress(profile.id)}
-			                                        showChevron={false}
-			                                        selected={isSelected}
-		                                        rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
-		                                        showDivider={!isLast}
-		                                    />
-	                                );
-	                            })}
+                            {nonFavoriteBuiltInProfiles.map((profile, index) => {
+                                const isSelected = selectedId === profile.id;
+                                const isLast = index === nonFavoriteBuiltInProfiles.length - 1;
+                                const isFavorite = favoriteProfileIdSet.has(profile.id);
+                                return (
+                                    <Item
+                                        key={profile.id}
+                                        title={profile.name}
+                                        subtitle={getProfileSubtitle(profile)}
+                                        icon={renderProfileIcon(profile)}
+                                        onPress={() => handleProfileRowPress(profile.id)}
+                                        showChevron={false}
+                                        selected={isSelected}
+                                        rightElement={renderProfileRowRightElement(profile, isSelected, isFavorite)}
+                                        showDivider={!isLast}
+                                    />
+                                );
+                            })}
                         </ItemGroup>
 
                         <ItemGroup>

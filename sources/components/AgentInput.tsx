@@ -238,14 +238,104 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         justifyContent: 'space-between',
         paddingHorizontal: 0,
     },
-	    actionButtonsLeft: {
-	        flexDirection: 'row',
-	        columnGap: 6,
-	        rowGap: 3,
-	        flex: 1,
-	        flexWrap: 'wrap',
-	        overflow: 'visible',
-	    },
+    actionButtonsColumn: {
+        flexDirection: 'column',
+        flex: 1,
+        gap: 3,
+    },
+    actionButtonsColumnNarrow: {
+        flexDirection: 'column',
+        flex: 1,
+        gap: 2,
+    },
+    actionButtonsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    actionButtonsLeft: {
+        flexDirection: 'row',
+        columnGap: 6,
+        rowGap: 3,
+        flex: 1,
+        flexWrap: 'wrap',
+        overflow: 'visible',
+    },
+    actionButtonsLeftNarrow: {
+        columnGap: 4,
+    },
+    actionChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: Platform.select({ default: 16, android: 20 }),
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        justifyContent: 'center',
+        height: 32,
+        gap: 6,
+    },
+    actionChipPressed: {
+        opacity: 0.7,
+    },
+    actionChipText: {
+        fontSize: 13,
+        color: theme.colors.button.secondary.tint,
+        fontWeight: '600',
+        ...Typography.default('semiBold'),
+    },
+    overlayOptionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+    },
+    overlayOptionRowPressed: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    overlayRadioOuter: {
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        borderWidth: 2,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    overlayRadioOuterSelected: {
+        borderColor: theme.colors.radio.active,
+    },
+    overlayRadioOuterUnselected: {
+        borderColor: theme.colors.radio.inactive,
+    },
+    overlayRadioInner: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: theme.colors.radio.dot,
+    },
+    overlayOptionLabel: {
+        fontSize: 14,
+        color: theme.colors.text,
+        ...Typography.default(),
+    },
+    overlayOptionLabelSelected: {
+        color: theme.colors.radio.active,
+    },
+    overlayOptionLabelUnselected: {
+        color: theme.colors.text,
+    },
+    overlayOptionDescription: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+    },
+    overlayEmptyText: {
+        fontSize: 13,
+        color: theme.colors.textSecondary,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        ...Typography.default(),
+    },
     actionButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -628,38 +718,29 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             <Pressable
                                                 key={mode}
                                                 onPress={() => handleSettingsSelect(mode)}
-                                                style={({ pressed }) => ({
-                                                    flexDirection: 'row',
-                                                    alignItems: 'center',
-                                                    paddingHorizontal: 16,
-                                                    paddingVertical: 8,
-                                                    backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
-                                                })}
+                                                style={({ pressed }) => [
+                                                    styles.overlayOptionRow,
+                                                    pressed ? styles.overlayOptionRowPressed : null,
+                                                ]}
                                             >
-                                                <View style={{
-                                                    width: 16,
-                                                    height: 16,
-                                                    borderRadius: 8,
-                                                    borderWidth: 2,
-                                                    borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    marginRight: 12
-                                                }}>
+                                                <View
+                                                    style={[
+                                                        styles.overlayRadioOuter,
+                                                        isSelected
+                                                            ? styles.overlayRadioOuterSelected
+                                                            : styles.overlayRadioOuterUnselected,
+                                                    ]}
+                                                >
                                                     {isSelected && (
-                                                        <View style={{
-                                                            width: 6,
-                                                            height: 6,
-                                                            borderRadius: 3,
-                                                            backgroundColor: theme.colors.radio.dot
-                                                        }} />
+                                                        <View style={styles.overlayRadioInner} />
                                                     )}
                                                 </View>
-                                                <Text style={{
-                                                    fontSize: 14,
-                                                    color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                    ...Typography.default()
-                                                }}>
+                                                <Text
+                                                    style={[
+                                                        styles.overlayOptionLabel,
+                                                        isSelected ? styles.overlayOptionLabelSelected : styles.overlayOptionLabelUnselected,
+                                                    ]}
+                                                >
                                                     {config.label}
                                                 </Text>
                                             </Pressable>
@@ -668,22 +749,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 </View>
 
                                 {/* Divider */}
-                                <View style={{
-                                    height: 1,
-                                    backgroundColor: theme.colors.divider,
-                                    marginHorizontal: 16
-                                }} />
+                                <View style={styles.overlayDivider} />
 
                                 {/* Model Section */}
-                                <View style={{ paddingVertical: 8 }}>
-                                    <Text style={{
-                                        fontSize: 12,
-                                        fontWeight: '600',
-                                        color: theme.colors.textSecondary,
-                                        paddingHorizontal: 16,
-                                        paddingBottom: 4,
-                                        ...Typography.default('semiBold')
-                                    }}>
+                                <View style={styles.overlaySection}>
+                                    <Text style={styles.overlaySectionTitle}>
                                         {t('agentInput.model.title')}
                                     </Text>
                                     {modelOptions.length > 0 ? (
@@ -696,46 +766,35 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                         hapticsLight();
                                                         props.onModelModeChange?.(option.value);
                                                     }}
-                                                    style={({ pressed }) => ({
-                                                        flexDirection: 'row',
-                                                        alignItems: 'center',
-                                                        paddingHorizontal: 16,
-                                                        paddingVertical: 8,
-                                                        backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
-                                                    })}
+                                                    style={({ pressed }) => [
+                                                        styles.overlayOptionRow,
+                                                        pressed ? styles.overlayOptionRowPressed : null,
+                                                    ]}
                                                 >
-                                                    <View style={{
-                                                        width: 16,
-                                                        height: 16,
-                                                        borderRadius: 8,
-                                                        borderWidth: 2,
-                                                        borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        marginRight: 12
-                                                    }}>
+                                                    <View
+                                                        style={[
+                                                            styles.overlayRadioOuter,
+                                                            isSelected
+                                                                ? styles.overlayRadioOuterSelected
+                                                                : styles.overlayRadioOuterUnselected,
+                                                        ]}
+                                                    >
                                                         {isSelected && (
-                                                            <View style={{
-                                                                width: 6,
-                                                                height: 6,
-                                                                borderRadius: 3,
-                                                                backgroundColor: theme.colors.radio.dot
-                                                            }} />
+                                                            <View style={styles.overlayRadioInner} />
                                                         )}
                                                     </View>
                                                     <View>
-                                                        <Text style={{
-                                                            fontSize: 14,
-                                                            color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                            ...Typography.default()
-                                                        }}>
+                                                        <Text
+                                                            style={[
+                                                                styles.overlayOptionLabel,
+                                                                isSelected
+                                                                    ? styles.overlayOptionLabelSelected
+                                                                    : styles.overlayOptionLabelUnselected,
+                                                            ]}
+                                                        >
                                                             {option.label}
                                                         </Text>
-                                                        <Text style={{
-                                                            fontSize: 11,
-                                                            color: theme.colors.textSecondary,
-                                                            ...Typography.default()
-                                                        }}>
+                                                        <Text style={styles.overlayOptionDescription}>
                                                             {option.description}
                                                         </Text>
                                                     </View>
@@ -743,13 +802,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             );
                                         })
                                     ) : (
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.textSecondary,
-                                            paddingHorizontal: 16,
-                                            paddingVertical: 8,
-                                            ...Typography.default()
-                                        }}>
+                                        <Text style={styles.overlayEmptyText}>
                                             {t('agentInput.model.configureInCli')}
                                         </Text>
                                     )}
@@ -853,238 +906,175 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             maxHeight={120}
                         />
                     </View>
-	
-	                    {/* Action buttons below input */}
-	                    <View style={styles.actionButtonsContainer}>
-	                        <View style={{ flexDirection: 'column', flex: 1, gap: screenWidth < 420 ? 2 : 3 }}>
-	                            {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
-	                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-		                                <View style={[styles.actionButtonsLeft, screenWidth < 420 ? { rowGap: 3, columnGap: 4 } : null]}>
 
-                                {/* Permission chip (popover in standard flow, scroll in wizard) */}
-                                {showPermissionChip && (
-	                            <Pressable
-	                                        onPress={() => {
-                                            hapticsLight();
-                                            if (props.onPermissionClick) {
-                                                props.onPermissionClick();
-                                                return;
-                                            }
-                                            handleSettingsPress();
-                                        }}
-	                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-	                                style={(p) => ({
-	                                    flexDirection: 'row',
-	                                    alignItems: 'center',
-                                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                    paddingVertical: 6,
-                                            justifyContent: 'center',
-                                    height: 32,
-                                    opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-	                                })}
-	                            >
-		                                        <Ionicons
-		                                            name="settings-outline"
-		                                            size={16}
-		                                            color={theme.colors.button.secondary.tint}
-			                                />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {permissionChipLabel}
-                                        </Text>
-	                            </Pressable>
-	                        )}
-
-                                {/* Profile selector button - FIRST */}
-                                {props.onProfileClick && (
-                            <Pressable
-                                onPress={() => {
-                                    hapticsLight();
-                                            props.onProfileClick?.();
-                                }}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                style={(p) => ({
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 6,
-                                            justifyContent: 'center',
-                                    height: 32,
-                                    opacity: p.pressed ? 0.7 : 1,
-                                    gap: 6,
-                                })}
-                            >
-		                                <Ionicons
-		                                            name={profileIcon as any}
-		                                    size={16}
-		                                            color={theme.colors.button.secondary.tint}
-		                                />
-                                <Text style={{
-                                    fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                    fontWeight: '600',
-                                    ...Typography.default('semiBold'),
-                                }}>
-                                            {profileLabel ?? t('profiles.noProfile')}
-                                </Text>
-                                    </Pressable>
-                        )}
-
-                                {/* Env vars preview (standard flow) */}
-                                {props.onEnvVarsClick && (
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onEnvVarsClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-	                                        <Ionicons
-	                                            name="list-outline"
-	                                            size={16}
-	                                            color={theme.colors.button.secondary.tint}
-	                                        />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {props.envVarsCount === undefined
-                                                ? t('agentInput.envVars.title')
-                                                : t('agentInput.envVars.titleWithCount', { count: props.envVarsCount })}
-                                        </Text>
-                                    </Pressable>
-                                )}
-
-                                {/* Agent selector button */}
-                                {props.agentType && props.onAgentClick && (
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onAgentClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-	                                        <Octicons
-	                                            name="cpu"
-	                                            size={16}
-	                                            color={theme.colors.button.secondary.tint}
-	                                        />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : t('agentInput.agent.gemini')}
-                                        </Text>
-                                    </Pressable>
-                                )}
-
-                                {/* Machine selector button */}
-                                {(props.machineName !== undefined) && props.onMachineClick && (
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onMachineClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-	                                        <Ionicons
-	                                            name="desktop-outline"
-	                                            size={16}
-	                                            color={theme.colors.button.secondary.tint}
-	                                        />
-	                                        <Text style={{
-	                                            fontSize: 13,
-	                                            color: theme.colors.button.secondary.tint,
-	                                            fontWeight: '600',
-	                                            ...Typography.default('semiBold'),
-	                                        }}>
-	                                            {props.machineName === null
-	                                                ? t('agentInput.noMachinesAvailable')
-	                                                : truncateWithEllipsis(props.machineName, 12)}
-	                                        </Text>
-	                                    </Pressable>
-	                                )}
-
-                                {/* Abort button */}
-                                {props.onAbort && (
-                                    <Shaker ref={shakerRef}>
+                    {/* Action buttons below input */}
+                    <View style={styles.actionButtonsContainer}>
+                        <View style={screenWidth < 420 ? styles.actionButtonsColumnNarrow : styles.actionButtonsColumn}>
+                            {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
+                            <View style={styles.actionButtonsRow}>
+                                <View style={[styles.actionButtonsLeft, screenWidth < 420 ? styles.actionButtonsLeftNarrow : null]}>
+                                    {/* Permission chip (popover in standard flow, scroll in wizard) */}
+                                    {showPermissionChip && (
                                         <Pressable
-                                            style={(p) => ({
-                                                flexDirection: 'row',
-                                                alignItems: 'center',
-                                                borderRadius: Platform.select({ default: 16, android: 20 }),
-                                                paddingHorizontal: 8,
-                                                paddingVertical: 6,
-                                                justifyContent: 'center',
-                                                height: 32,
-                                                opacity: p.pressed ? 0.7 : 1,
-                                            })}
+                                            onPress={() => {
+                                                hapticsLight();
+                                                if (props.onPermissionClick) {
+                                                    props.onPermissionClick();
+                                                    return;
+                                                }
+                                                handleSettingsPress();
+                                            }}
                                             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                            onPress={handleAbortPress}
-                                            disabled={isAborting}
+                                            style={(p) => [
+                                                styles.actionChip,
+                                                p.pressed ? styles.actionChipPressed : null,
+                                            ]}
                                         >
-                                            {isAborting ? (
-                                                <ActivityIndicator
-                                                    size="small"
-                                                    color={theme.colors.button.secondary.tint}
-                                                />
-                                            ) : (
-                                                <Octicons
-                                                    name={"stop"}
-                                                    size={16}
-                                                    color={theme.colors.button.secondary.tint}
-                                                />
-                                            )}
+                                            <Ionicons
+                                                name="settings-outline"
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={styles.actionChipText}>
+                                                {permissionChipLabel}
+                                            </Text>
                                         </Pressable>
-                                    </Shaker>
-                                )}
+                                    )}
 
-                                {/* Git Status Badge */}
-                                <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+                                    {/* Profile selector button - FIRST */}
+                                    {props.onProfileClick && (
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onProfileClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => [
+                                                styles.actionChip,
+                                                p.pressed ? styles.actionChipPressed : null,
+                                            ]}
+                                        >
+                                            <Ionicons
+                                                name={profileIcon as any}
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={styles.actionChipText}>
+                                                {profileLabel ?? t('profiles.noProfile')}
+                                            </Text>
+                                        </Pressable>
+                                    )}
+
+                                    {/* Env vars preview (standard flow) */}
+                                    {props.onEnvVarsClick && (
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onEnvVarsClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => [
+                                                styles.actionChip,
+                                                p.pressed ? styles.actionChipPressed : null,
+                                            ]}
+                                        >
+                                            <Ionicons
+                                                name="list-outline"
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={styles.actionChipText}>
+                                                {props.envVarsCount === undefined
+                                                    ? t('agentInput.envVars.title')
+                                                    : t('agentInput.envVars.titleWithCount', { count: props.envVarsCount })}
+                                            </Text>
+                                        </Pressable>
+                                    )}
+
+                                    {/* Agent selector button */}
+                                    {props.agentType && props.onAgentClick && (
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onAgentClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => [
+                                                styles.actionChip,
+                                                p.pressed ? styles.actionChipPressed : null,
+                                            ]}
+                                        >
+                                            <Octicons
+                                                name="cpu"
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={styles.actionChipText}>
+                                                {props.agentType === 'claude'
+                                                    ? t('agentInput.agent.claude')
+                                                    : props.agentType === 'codex'
+                                                        ? t('agentInput.agent.codex')
+                                                        : t('agentInput.agent.gemini')}
+                                            </Text>
+                                        </Pressable>
+                                    )}
+
+                                    {/* Machine selector button */}
+                                    {(props.machineName !== undefined) && props.onMachineClick && (
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onMachineClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => [
+                                                styles.actionChip,
+                                                p.pressed ? styles.actionChipPressed : null,
+                                            ]}
+                                        >
+                                            <Ionicons
+                                                name="desktop-outline"
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={styles.actionChipText}>
+                                                {props.machineName === null
+                                                    ? t('agentInput.noMachinesAvailable')
+                                                    : truncateWithEllipsis(props.machineName, 12)}
+                                            </Text>
+                                        </Pressable>
+                                    )}
+
+                                    {/* Abort button */}
+                                    {props.onAbort && (
+                                        <Shaker ref={shakerRef}>
+                                            <Pressable
+                                                style={(p) => [
+                                                    styles.actionButton,
+                                                    p.pressed ? styles.actionButtonPressed : null,
+                                                ]}
+                                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                                onPress={handleAbortPress}
+                                                disabled={isAborting}
+                                            >
+                                                {isAborting ? (
+                                                    <ActivityIndicator
+                                                        size="small"
+                                                        color={theme.colors.button.secondary.tint}
+                                                    />
+                                                ) : (
+                                                    <Octicons
+                                                        name={"stop"}
+                                                        size={16}
+                                                        color={theme.colors.button.secondary.tint}
+                                                    />
+                                                )}
+                                            </Pressable>
+                                        </Shaker>
+                                    )}
+
+                                    {/* Git Status Badge */}
+                                    <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
                                 </View>
 
                                 {/* Send/Voice button - aligned with first row */}
@@ -1097,13 +1087,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     ]}
                                 >
                                     <Pressable
-                                        style={(p) => ({
-                                            width: '100%',
-                                            height: '100%',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            opacity: p.pressed ? 0.7 : 1,
-                                        })}
+                                        style={(p) => [
+                                            styles.sendButtonInner,
+                                            p.pressed ? styles.sendButtonInnerPressed : null,
+                                        ]}
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                         onPress={() => {
                                             hapticsLight();
@@ -1164,29 +1151,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 props.onPathClick?.();
                                             }}
                                             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                            style={(p) => ({
-                                                flexDirection: 'row',
-                                                alignItems: 'center',
-                                                borderRadius: Platform.select({ default: 16, android: 20 }),
-                                                paddingHorizontal: 10,
-                                                paddingVertical: 6,
-                                                justifyContent: 'center',
-                                                height: 32,
-                                                opacity: p.pressed ? 0.7 : 1,
-                                                gap: 6,
-                                            })}
+                                            style={(p) => [
+                                                styles.actionChip,
+                                                p.pressed ? styles.actionChipPressed : null,
+                                            ]}
                                         >
-	                                            <Ionicons
-	                                                name="folder-outline"
-	                                                size={16}
-	                                                color={theme.colors.button.secondary.tint}
-	                                            />
-                                            <Text style={{
-                                                fontSize: 13,
-                                                color: theme.colors.button.secondary.tint,
-                                                fontWeight: '600',
-                                                ...Typography.default('semiBold'),
-                                            }}>
+                                            <Ionicons
+                                                name="folder-outline"
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={styles.actionChipText}>
                                                 {props.currentPath}
                                             </Text>
                                         </Pressable>
