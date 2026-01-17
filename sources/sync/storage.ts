@@ -11,8 +11,8 @@ import { Purchases, customerInfoToPurchases } from "./purchases";
 import { TodoState } from "../-zen/model/ops";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
-import type { PermissionMode } from '@/components/PermissionModeSelector';
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes } from "./persistence";
+import type { PermissionMode } from '@/sync/permissionTypes';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -45,6 +45,8 @@ function isSessionActive(session: { active: boolean; activeAt: number }): boolea
 
 // Known entitlement IDs
 export type KnownEntitlements = 'pro';
+
+type SessionModelMode = NonNullable<Session['modelMode']>;
 
 interface SessionMessages {
     messages: Message[];
@@ -102,6 +104,7 @@ interface StorageState {
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
     applyMessagesLoaded: (sessionId: string) => void;
     applySettings: (settings: Settings, version: number) => void;
+    replaceSettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
     applyPurchases: (customerInfo: CustomerInfo) => void;
@@ -250,6 +253,7 @@ export const storage = create<StorageState>()((set, get) => {
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
     let sessionPermissionModes = loadSessionPermissionModes();
+    let sessionModelModes = loadSessionModelModes();
     return {
         settings,
         settingsVersion: version,
@@ -303,6 +307,7 @@ export const storage = create<StorageState>()((set, get) => {
             // Load drafts and permission modes if sessions are empty (initial load)
             const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
             const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
+            const savedModelModes = Object.keys(state.sessions).length === 0 ? sessionModelModes : {};
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -317,11 +322,14 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedDraft = savedDrafts[session.id];
                 const existingPermissionMode = state.sessions[session.id]?.permissionMode;
                 const savedPermissionMode = savedPermissionModes[session.id];
+                const existingModelMode = state.sessions[session.id]?.modelMode;
+                const savedModelMode = savedModelModes[session.id];
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default'
+                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default',
+                    modelMode: existingModelMode || savedModelMode || session.modelMode || 'default',
                 };
             });
 
@@ -366,8 +374,6 @@ export const storage = create<StorageState>()((set, get) => {
                 listData.push(...inactiveSessions);
             }
 
-            // console.log(`📊 Storage: applySessions called with ${sessions.length} sessions, active: ${activeSessions.length}, inactive: ${inactiveSessions.length}`);
-
             // Process AgentState updates for sessions that already have messages loaded
             const updatedSessionMessages = { ...state.sessionMessages };
 
@@ -384,15 +390,6 @@ export const storage = create<StorageState>()((set, get) => {
                     const currentRealtimeSessionId = getCurrentRealtimeSessionId();
                     const voiceSession = getVoiceSession();
 
-                    // console.log('[REALTIME DEBUG] Permission check:', {
-                    //     currentRealtimeSessionId,
-                    //     sessionId: session.id,
-                    //     match: currentRealtimeSessionId === session.id,
-                    //     hasVoiceSession: !!voiceSession,
-                    //     oldRequests: Object.keys(oldSession?.agentState?.requests || {}),
-                    //     newRequests: Object.keys(newSession.agentState?.requests || {})
-                    // });
-
                     if (currentRealtimeSessionId === session.id && voiceSession) {
                         const oldRequests = oldSession?.agentState?.requests || {};
                         const newRequests = newSession.agentState?.requests || {};
@@ -402,7 +399,6 @@ export const storage = create<StorageState>()((set, get) => {
                             if (!oldRequests[requestId]) {
                                 // This is a NEW permission request
                                 const toolName = request.tool;
-                                // console.log('[REALTIME DEBUG] Sending permission notification for:', toolName);
                                 voiceSession.sendTextMessage(
                                     `Claude is requesting permission to use the ${toolName} tool`
                                 );
@@ -629,7 +625,7 @@ export const storage = create<StorageState>()((set, get) => {
             };
         }),
         applySettings: (settings: Settings, version: number) => set((state) => {
-            if (state.settingsVersion === null || state.settingsVersion < version) {
+            if (state.settingsVersion == null || state.settingsVersion < version) {
                 saveSettings(settings, version);
                 return {
                     ...state,
@@ -639,6 +635,14 @@ export const storage = create<StorageState>()((set, get) => {
             } else {
                 return state;
             }
+        }),
+        replaceSettings: (settings: Settings, version: number) => set((state) => {
+            saveSettings(settings, version);
+            return {
+                ...state,
+                settings,
+                settingsVersion: version
+            };
         }),
         applyLocalSettings: (delta: Partial<LocalSettings>) => set((state) => {
             const updatedLocalSettings = applyLocalSettings(state.localSettings, delta);
@@ -821,6 +825,16 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
 
+            // Collect all model modes for persistence (only non-default values to save space)
+            const allModes: Record<string, SessionModelMode> = {};
+            Object.entries(updatedSessions).forEach(([id, sess]) => {
+                if (sess.modelMode && sess.modelMode !== 'default') {
+                    allModes[id] = sess.modelMode;
+                }
+            });
+
+            saveSessionModelModes(allModes);
+
             // No need to rebuild sessionListViewData since model mode doesn't affect the list display
             return {
                 ...state,
@@ -871,12 +885,10 @@ export const storage = create<StorageState>()((set, get) => {
         }),
         // Artifact methods
         applyArtifacts: (artifacts: DecryptedArtifact[]) => set((state) => {
-            console.log(`🗂️ Storage.applyArtifacts: Applying ${artifacts.length} artifacts`);
             const mergedArtifacts = { ...state.artifacts };
             artifacts.forEach(artifact => {
                 mergedArtifacts[artifact.id] = artifact;
             });
-            console.log(`🗂️ Storage.applyArtifacts: Total artifacts after merge: ${Object.keys(mergedArtifacts).length}`);
             
             return {
                 ...state,
@@ -931,6 +943,10 @@ export const storage = create<StorageState>()((set, get) => {
             const modes = loadSessionPermissionModes();
             delete modes[sessionId];
             saveSessionPermissionModes(modes);
+
+            const modelModes = loadSessionModelModes();
+            delete modelModes[sessionId];
+            saveSessionModelModes(modelModes);
             
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(remainingSessions);

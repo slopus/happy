@@ -10,6 +10,7 @@ export const MetadataSchema = z.object({
     version: z.string().optional(),
     name: z.string().optional(),
     os: z.string().optional(),
+    profileId: z.string().nullable().optional(), // Session-scoped profile identity (non-secret)
     summary: z.object({
         text: z.string(),
         updatedAt: z.number()
@@ -69,8 +70,8 @@ export interface Session {
         id: string;
     }>;
     draft?: string | null; // Local draft message, not synced to server
-    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | null; // Local permission mode, not synced to server
-    modelMode?: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | null; // Local model mode, not synced to server
+    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo'; // Local permission mode, not synced to server
+    modelMode?: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite'; // Local model mode, not synced to server
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.
     // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.

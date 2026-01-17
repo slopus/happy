@@ -93,12 +93,6 @@ describe('Phase 0 permission skipping issue', () => {
         // Process messages and AgentState together (simulates opening chat)
         const result = reducer(state, toolMessages, agentState);
         
-        // Log what happened (for debugging)
-        console.log('Result messages:', result.messages.length);
-        console.log('Permission mappings:', {
-            toolIdToMessageId: Array.from(state.toolIdToMessageId.entries())
-        });
-        
         // Find the tool messages in the result
         const webFetchTool = result.messages.find(m => m.kind === 'tool-call' && m.tool?.name === 'WebFetch');
         const writeTool = result.messages.find(m => m.kind === 'tool-call' && m.tool?.name === 'Write');

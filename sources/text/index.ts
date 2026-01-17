@@ -1,4 +1,5 @@
-import { en, type Translations, type TranslationStructure } from './_default';
+import { en } from './translations/en';
+import type { Translations, TranslationStructure } from './_types';
 import { ru } from './translations/ru';
 import { pl } from './translations/pl';
 import { es } from './translations/es';
@@ -98,13 +99,11 @@ let found = false;
 if (settings.settings.preferredLanguage && settings.settings.preferredLanguage in translations) {
     currentLanguage = settings.settings.preferredLanguage as SupportedLanguage;
     found = true;
-    console.log(`[i18n] Using preferred language: ${currentLanguage}`);
 }
 
 // Read from device
 if (!found) {
     let locales = Localization.getLocales();
-    console.log(`[i18n] Device locales:`, locales.map(l => l.languageCode));
     for (let l of locales) {
         if (l.languageCode) {
             // Expo added special handling for Chinese variants using script code https://github.com/expo/expo/pull/34984
@@ -114,34 +113,25 @@ if (!found) {
                 // We only have translations for simplified Chinese right now, but looking for help with traditional Chinese.
                 if (l.languageScriptCode === 'Hans') {
                     chineseVariant = 'zh-Hans';
-                // } else if (l.languageScriptCode === 'Hant') {
-                //     chineseVariant = 'zh-Hant';
                 }
-                
-                console.log(`[i18n] Chinese script code: ${l.languageScriptCode} -> ${chineseVariant}`);
                 
                 if (chineseVariant && chineseVariant in translations) {
                     currentLanguage = chineseVariant as SupportedLanguage;
-                    console.log(`[i18n] Using Chinese variant: ${currentLanguage}`);
                     break;
                 }
                 
                 currentLanguage = 'zh-Hans';
-                console.log(`[i18n] Falling back to simplified Chinese: zh-Hans`);
                 break;
             }
             
             // Direct match for non-Chinese languages
             if (l.languageCode in translations) {
                 currentLanguage = l.languageCode as SupportedLanguage;
-                console.log(`[i18n] Using device locale: ${currentLanguage}`);
                 break;
             }
         }
     }
 }
-
-console.log(`[i18n] Final language: ${currentLanguage}`);
 
 /**
  * Main translation function with strict typing

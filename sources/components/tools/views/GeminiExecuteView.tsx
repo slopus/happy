@@ -4,6 +4,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { ToolSectionView } from '../../tools/ToolSectionView';
 import { ToolViewProps } from './_all';
 import { CodeView } from '@/components/CodeView';
+import { t } from '@/text';
 
 /**
  * Extract execute command info from Gemini's nested input format.
@@ -62,7 +63,7 @@ export const GeminiExecuteView = React.memo<ToolViewProps>(({ tool }) => {
             {(description || cwd) && (
                 <View style={styles.infoContainer}>
                     {cwd && (
-                        <Text style={styles.cwdText}>📁 {cwd}</Text>
+                        <Text style={styles.cwdText}>{t('tools.geminiExecute.cwd', { cwd })}</Text>
                     )}
                     {description && (
                         <Text style={styles.descriptionText}>{description}</Text>
@@ -89,4 +90,3 @@ const styles = StyleSheet.create((theme) => ({
         fontStyle: 'italic',
     },
 }));
-

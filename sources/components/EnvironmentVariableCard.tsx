@@ -1,19 +1,27 @@
 import React from 'react';
-import { View, Text, TextInput, Pressable } from 'react-native';
+import { View, Text, TextInput, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
-import { useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
+import { Switch } from '@/components/Switch';
+import { formatEnvVarTemplate, parseEnvVarTemplate, type EnvVarTemplateOperator } from '@/utils/envVarTemplate';
+import { t } from '@/text';
+import type { EnvPreviewSecretsPolicy, PreviewEnvValue } from '@/sync/ops';
 
 export interface EnvironmentVariableCardProps {
     variable: { name: string; value: string };
+    index: number;
     machineId: string | null;
+    machineName?: string | null;
+    machineEnv?: Record<string, PreviewEnvValue>;
+    machineEnvPolicy?: EnvPreviewSecretsPolicy | null;
+    isMachineEnvLoading?: boolean;
     expectedValue?: string;  // From profile documentation
     description?: string;    // Variable description
     isSecret?: boolean;      // Whether this is a secret (never query remote)
-    onUpdate: (newValue: string) => void;
-    onDelete: () => void;
-    onDuplicate: () => void;
+    onUpdate: (index: number, newValue: string) => void;
+    onDelete: (index: number) => void;
+    onDuplicate: (index: number) => void;
 }
 
 /**
@@ -23,24 +31,15 @@ function parseVariableValue(value: string): {
     useRemoteVariable: boolean;
     remoteVariableName: string;
     defaultValue: string;
+    fallbackOperator: EnvVarTemplateOperator | null;
 } {
-    // Match: ${VARIABLE_NAME:-default_value}
-    const matchWithFallback = value.match(/^\$\{([A-Z_][A-Z0-9_]*):-(.*)\}$/);
-    if (matchWithFallback) {
+    const parsedTemplate = parseEnvVarTemplate(value);
+    if (parsedTemplate) {
         return {
             useRemoteVariable: true,
-            remoteVariableName: matchWithFallback[1],
-            defaultValue: matchWithFallback[2]
-        };
-    }
-
-    // Match: ${VARIABLE_NAME} (no fallback)
-    const matchNoFallback = value.match(/^\$\{([A-Z_][A-Z0-9_]*)\}$/);
-    if (matchNoFallback) {
-        return {
-            useRemoteVariable: true,
-            remoteVariableName: matchNoFallback[1],
-            defaultValue: ''
+            remoteVariableName: parsedTemplate.sourceVar,
+            defaultValue: parsedTemplate.fallback,
+            fallbackOperator: parsedTemplate.operator,
         };
     }
 
@@ -48,7 +47,8 @@ function parseVariableValue(value: string): {
     return {
         useRemoteVariable: false,
         remoteVariableName: '',
-        defaultValue: value
+        defaultValue: value,
+        fallbackOperator: null,
     };
 }
 
@@ -58,7 +58,12 @@ function parseVariableValue(value: string): {
  */
 export function EnvironmentVariableCard({
     variable,
+    index,
     machineId,
+    machineName,
+    machineEnv,
+    machineEnvPolicy = null,
+    isMachineEnvLoading = false,
     expectedValue,
     description,
     isSecret = false,
@@ -67,68 +72,116 @@ export function EnvironmentVariableCard({
     onDuplicate,
 }: EnvironmentVariableCardProps) {
     const { theme } = useUnistyles();
+    const styles = stylesheet;
 
     // Parse current value
-    const parsed = parseVariableValue(variable.value);
+    const parsed = React.useMemo(() => parseVariableValue(variable.value), [variable.value]);
     const [useRemoteVariable, setUseRemoteVariable] = React.useState(parsed.useRemoteVariable);
     const [remoteVariableName, setRemoteVariableName] = React.useState(parsed.remoteVariableName);
     const [defaultValue, setDefaultValue] = React.useState(parsed.defaultValue);
+    const fallbackOperator = parsed.fallbackOperator;
 
-    // Query remote machine for variable value (only if checkbox enabled and not secret)
-    const shouldQueryRemote = useRemoteVariable && !isSecret && remoteVariableName.trim() !== '';
-    const { variables: remoteValues } = useEnvironmentVariables(
-        machineId,
-        shouldQueryRemote ? [remoteVariableName] : []
-    );
+    React.useEffect(() => {
+        setUseRemoteVariable(parsed.useRemoteVariable);
+        setRemoteVariableName(parsed.remoteVariableName);
+        setDefaultValue(parsed.defaultValue);
+    }, [parsed.defaultValue, parsed.remoteVariableName, parsed.useRemoteVariable]);
 
-    const remoteValue = remoteValues[remoteVariableName];
+    const remoteEntry = remoteVariableName ? machineEnv?.[remoteVariableName] : undefined;
+    const remoteValue = remoteEntry?.value;
+    const hasFallback = defaultValue.trim() !== '';
+    const computedOperator: EnvVarTemplateOperator | null = hasFallback ? (fallbackOperator ?? ':-') : null;
+    const machineLabel = machineName?.trim() ? machineName.trim() : t('common.machine');
+
+    const emptyValue = t('profiles.environmentVariables.preview.emptyValue');
 
     // Update parent when local state changes
     React.useEffect(() => {
         const newValue = useRemoteVariable && remoteVariableName.trim() !== ''
-            ? `\${${remoteVariableName}${defaultValue ? `:-${defaultValue}` : ''}}`
+            ? formatEnvVarTemplate({ sourceVar: remoteVariableName, fallback: defaultValue, operator: computedOperator })
             : defaultValue;
 
         if (newValue !== variable.value) {
-            onUpdate(newValue);
+            onUpdate(index, newValue);
         }
-    }, [useRemoteVariable, remoteVariableName, defaultValue, variable.value, onUpdate]);
+    }, [computedOperator, defaultValue, index, onUpdate, remoteVariableName, useRemoteVariable, variable.value]);
 
     // Determine status
     const showRemoteDiffersWarning = remoteValue !== null && expectedValue && remoteValue !== expectedValue;
     const showDefaultOverrideWarning = expectedValue && defaultValue !== expectedValue;
 
+    const computedTemplateValue =
+        useRemoteVariable && remoteVariableName.trim() !== ''
+            ? formatEnvVarTemplate({ sourceVar: remoteVariableName, fallback: defaultValue, operator: computedOperator })
+            : defaultValue;
+
+    const targetEntry = machineEnv?.[variable.name];
+    const resolvedSessionValue = (() => {
+        // Prefer daemon-computed effective value for the target env var (matches spawn exactly).
+        if (machineId && targetEntry) {
+            if (targetEntry.display === 'full' || targetEntry.display === 'redacted') {
+                return targetEntry.value ?? emptyValue;
+            }
+            if (targetEntry.display === 'hidden') {
+                return t('profiles.environmentVariables.preview.hiddenValue');
+            }
+            return emptyValue; // unset
+        }
+
+        // Fallback (no machine context / older daemon): best-effort preview.
+        if (isSecret) {
+            // If daemon policy is known and allows showing secrets, targetEntry would have handled it above.
+            // Otherwise, keep secrets hidden in UI.
+            if (useRemoteVariable && remoteVariableName) {
+                return t('profiles.environmentVariables.preview.secretValueHidden', {
+                    value: formatEnvVarTemplate({
+                        sourceVar: remoteVariableName,
+                        fallback: defaultValue !== '' ? '***' : '',
+                        operator: computedOperator,
+                    }),
+                });
+            }
+            return defaultValue ? t('profiles.environmentVariables.preview.hiddenValue') : emptyValue;
+        }
+
+        if (useRemoteVariable && machineId && remoteEntry !== undefined) {
+            // Note: remoteEntry may be hidden/redacted by daemon policy. We do NOT treat hidden as missing.
+            if (remoteEntry.display === 'hidden') return t('profiles.environmentVariables.preview.hiddenValue');
+            if (remoteEntry.display === 'unset' || remoteValue === null || remoteValue === '') {
+                return hasFallback ? defaultValue : emptyValue;
+            }
+            return remoteValue;
+        }
+
+        return computedTemplateValue || emptyValue;
+    })();
+
     return (
-        <View style={{
-            backgroundColor: theme.colors.input.background,
-            borderRadius: theme.borderRadius.xl,
-            padding: theme.margins.lg,
-            marginBottom: theme.margins.md
-        }}>
+        <View style={styles.container}>
             {/* Header row with variable name and action buttons */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <Text style={{
-                    fontSize: 12,
-                    fontWeight: '600',
-                    color: theme.colors.text,
-                    ...Typography.default('semiBold')
-                }}>
+            <View style={styles.headerRow}>
+                <Text style={styles.nameText}>
                     {variable.name}
                     {isSecret && (
-                        <Ionicons name="lock-closed" size={theme.iconSize.small} color={theme.colors.textDestructive} style={{ marginLeft: 4 }} />
+                        <Ionicons
+                            name="lock-closed"
+                            size={theme.iconSize.small}
+                            color={theme.colors.textDestructive}
+                            style={styles.lockIcon}
+                        />
                     )}
                 </Text>
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.margins.md }}>
+                <View style={styles.actionRow}>
                     <Pressable
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        onPress={onDelete}
+                        onPress={() => onDelete(index)}
                     >
                         <Ionicons name="trash-outline" size={theme.iconSize.large} color={theme.colors.deleteAction} />
                     </Pressable>
                     <Pressable
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        onPress={onDuplicate}
+                        onPress={() => onDuplicate(index)}
                     >
                         <Ionicons name="copy-outline" size={theme.iconSize.large} color={theme.colors.button.secondary.tint} />
                     </Pressable>
@@ -137,163 +190,25 @@ export function EnvironmentVariableCard({
 
             {/* Description */}
             {description && (
-                <Text style={{
-                    fontSize: 11,
-                    color: theme.colors.textSecondary,
-                    marginBottom: 8,
-                    ...Typography.default()
-                }}>
+                <Text style={[styles.secondaryText, styles.descriptionText]}>
                     {description}
                 </Text>
             )}
 
-            {/* Checkbox: First try copying variable from remote machine */}
-            <Pressable
-                style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    marginBottom: 8,
-                }}
-                onPress={() => setUseRemoteVariable(!useRemoteVariable)}
-            >
-                <View style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: theme.borderRadius.sm,
-                    borderWidth: 2,
-                    borderColor: useRemoteVariable ? theme.colors.button.primary.background : theme.colors.textSecondary,
-                    backgroundColor: useRemoteVariable ? theme.colors.button.primary.background : 'transparent',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    marginRight: theme.margins.sm,
-                }}>
-                    {useRemoteVariable && (
-                        <Ionicons name="checkmark" size={theme.iconSize.small} color={theme.colors.button.primary.tint} />
-                    )}
-                </View>
-                <Text style={{
-                    fontSize: 11,
-                    color: theme.colors.textSecondary,
-                    ...Typography.default()
-                }}>
-                    First try copying variable from remote machine:
-                </Text>
-            </Pressable>
-
-            {/* Remote variable name input */}
-            <TextInput
-                style={{
-                    backgroundColor: theme.colors.surface,
-                    borderRadius: theme.borderRadius.lg,
-                    padding: theme.margins.sm,
-                    fontSize: 14,
-                    color: theme.colors.text,
-                    marginBottom: 4,
-                    borderWidth: 1,
-                    borderColor: theme.colors.textSecondary,
-                    opacity: useRemoteVariable ? 1 : 0.5,
-                }}
-                placeholder="Variable name (e.g., Z_AI_MODEL)"
-                placeholderTextColor={theme.colors.input.placeholder}
-                value={remoteVariableName}
-                onChangeText={setRemoteVariableName}
-                editable={useRemoteVariable}
-                autoCapitalize="none"
-                autoCorrect={false}
-            />
-
-            {/* Remote variable status */}
-            {useRemoteVariable && !isSecret && machineId && remoteVariableName.trim() !== '' && (
-                <View style={{ marginBottom: 8 }}>
-                    {remoteValue === undefined ? (
-                        <Text style={{
-                            fontSize: 11,
-                            color: theme.colors.textSecondary,
-                            fontStyle: 'italic',
-                            ...Typography.default()
-                        }}>
-                            ⏳ Checking remote machine...
-                        </Text>
-                    ) : remoteValue === null ? (
-                        <Text style={{
-                            fontSize: 11,
-                            color: theme.colors.warning,
-                            ...Typography.default()
-                        }}>
-                            ✗ Value not found
-                        </Text>
-                    ) : (
-                        <>
-                            <Text style={{
-                                fontSize: 11,
-                                color: theme.colors.success,
-                                ...Typography.default()
-                            }}>
-                                ✓ Value found: {remoteValue}
-                            </Text>
-                            {showRemoteDiffersWarning && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: theme.colors.textSecondary,
-                                    marginTop: 2,
-                                    ...Typography.default()
-                                }}>
-                                    ⚠️ Differs from documented value: {expectedValue}
-                                </Text>
-                            )}
-                        </>
-                    )}
-                </View>
-            )}
-
-            {useRemoteVariable && !isSecret && !machineId && (
-                <Text style={{
-                    fontSize: 11,
-                    color: theme.colors.textSecondary,
-                    marginBottom: 8,
-                    fontStyle: 'italic',
-                    ...Typography.default()
-                }}>
-                    ℹ️ Select a machine to check if variable exists
-                </Text>
-            )}
-
-            {/* Security message for secrets */}
-            {isSecret && (
-                <Text style={{
-                    fontSize: 11,
-                    color: theme.colors.textSecondary,
-                    marginBottom: 8,
-                    fontStyle: 'italic',
-                    ...Typography.default()
-                }}>
-                    🔒 Secret value - not retrieved for security
-                </Text>
-            )}
-
-            {/* Default value label */}
-            <Text style={{
-                fontSize: 11,
-                color: theme.colors.textSecondary,
-                marginBottom: 4,
-                ...Typography.default()
-            }}>
-                Default value:
+            {/* Value label */}
+            <Text style={[styles.secondaryText, styles.labelText]}>
+                {useRemoteVariable ? t('profiles.environmentVariables.card.fallbackValueLabel') : t('profiles.environmentVariables.card.valueLabel')}
             </Text>
 
-            {/* Default value input */}
+            {/* Value input */}
             <TextInput
-                style={{
-                    backgroundColor: theme.colors.surface,
-                    borderRadius: theme.borderRadius.lg,
-                    padding: theme.margins.sm,
-                    fontSize: 14,
-                    color: theme.colors.text,
-                    marginBottom: 4,
-                    borderWidth: 1,
-                    borderColor: theme.colors.textSecondary,
-                }}
-                placeholder={expectedValue || "Value"}
+                style={styles.valueInput}
+                placeholder={
+                    expectedValue ||
+                    (useRemoteVariable
+                        ? t('profiles.environmentVariables.card.defaultValueInputPlaceholder')
+                        : t('profiles.environmentVariables.card.valueInputPlaceholder'))
+                }
                 placeholderTextColor={theme.colors.input.placeholder}
                 value={defaultValue}
                 onChangeText={setDefaultValue}
@@ -302,35 +217,263 @@ export function EnvironmentVariableCard({
                 secureTextEntry={isSecret}
             />
 
-            {/* Default override warning */}
-            {showDefaultOverrideWarning && !isSecret && (
-                <Text style={{
-                    fontSize: 11,
-                    color: theme.colors.textSecondary,
-                    marginBottom: 8,
-                    ...Typography.default()
-                }}>
-                    ⚠️ Overriding documented default: {expectedValue}
+            {/* Security message for secrets */}
+            {isSecret && (machineEnvPolicy === null || machineEnvPolicy === 'none') && (
+                <Text style={[styles.secondaryText, styles.secretMessage]}>
+                    {t('profiles.environmentVariables.card.secretNotRetrieved')}
                 </Text>
             )}
 
+            {/* Default override warning */}
+            {showDefaultOverrideWarning && !isSecret && (
+                <Text style={[styles.secondaryText, styles.defaultOverrideWarning]}>
+                    {t('profiles.environmentVariables.card.overridingDefault', { expectedValue })}
+                </Text>
+            )}
+
+            <View style={styles.divider} />
+
+            {/* Toggle: Use value from machine environment */}
+            <View style={styles.toggleRow}>
+                <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
+                    {t('profiles.environmentVariables.card.useMachineEnvToggle')}
+                </Text>
+                <Switch
+                    value={useRemoteVariable}
+                    onValueChange={setUseRemoteVariable}
+                />
+            </View>
+
+            <Text
+                style={[
+                    styles.secondaryText,
+                    styles.resolvedOnStartText,
+                    useRemoteVariable && styles.resolvedOnStartWithRemote,
+                ]}
+            >
+                {t('profiles.environmentVariables.card.resolvedOnSessionStart')}
+            </Text>
+
+            {/* Source variable name input (only when enabled) */}
+            {useRemoteVariable && (
+                <>
+                    <Text style={[styles.secondaryText, styles.sourceLabel]}>
+                        {t('profiles.environmentVariables.card.sourceVariableLabel')}
+                    </Text>
+
+                    <TextInput
+                        style={styles.sourceInput}
+                        placeholder={t('profiles.environmentVariables.card.sourceVariablePlaceholder')}
+                        placeholderTextColor={theme.colors.input.placeholder}
+                        value={remoteVariableName}
+                        onChangeText={(text) => setRemoteVariableName(text.toUpperCase())}
+                        autoCapitalize="characters"
+                        autoCorrect={false}
+                    />
+                </>
+            )}
+
+            {/* Machine environment status (only with machine context) */}
+            {useRemoteVariable && !isSecret && machineId && remoteVariableName.trim() !== '' && (
+                <View style={styles.machineStatusContainer}>
+                    {isMachineEnvLoading || remoteEntry === undefined ? (
+                        <Text style={[styles.secondaryText, styles.machineStatusLoading]}>
+                            {t('profiles.environmentVariables.card.checkingMachine', { machine: machineLabel })}
+                        </Text>
+                    ) : (remoteEntry.display === 'unset' || remoteValue === null || remoteValue === '') ? (
+                        <Text style={[styles.secondaryText, styles.machineStatusWarning]}>
+                            {remoteValue === '' ? (
+                                hasFallback
+                                    ? t('profiles.environmentVariables.card.emptyOnMachineUsingFallback', { machine: machineLabel })
+                                    : t('profiles.environmentVariables.card.emptyOnMachine', { machine: machineLabel })
+                            ) : (
+                                hasFallback
+                                    ? t('profiles.environmentVariables.card.notFoundOnMachineUsingFallback', { machine: machineLabel })
+                                    : t('profiles.environmentVariables.card.notFoundOnMachine', { machine: machineLabel })
+                            )}
+                        </Text>
+                    ) : (
+                        <>
+                            <Text style={[styles.secondaryText, styles.machineStatusSuccess]}>
+                                {t('profiles.environmentVariables.card.valueFoundOnMachine', { machine: machineLabel })}
+                            </Text>
+                            {showRemoteDiffersWarning && (
+                                <Text style={[styles.secondaryText, styles.machineStatusDiffers]}>
+                                    {t('profiles.environmentVariables.card.differsFromDocumented', { expectedValue })}
+                                </Text>
+                            )}
+                        </>
+                    )}
+                </View>
+            )}
+
             {/* Session preview */}
-            <Text style={{
-                fontSize: 11,
-                color: theme.colors.textSecondary,
-                marginTop: 4,
-                ...Typography.default()
-            }}>
-                Session will receive: {variable.name} = {
-                    isSecret
-                        ? (useRemoteVariable && remoteVariableName
-                            ? `\${${remoteVariableName}${defaultValue ? `:-***` : ''}} - hidden for security`
-                            : (defaultValue ? '***hidden***' : '(empty)'))
-                        : (useRemoteVariable && remoteValue !== undefined && remoteValue !== null
-                            ? remoteValue
-                            : defaultValue || '(empty)')
-                }
+            <Text style={[styles.secondaryText, styles.sessionPreview]}>
+                {t('profiles.environmentVariables.preview.sessionWillReceive', {
+                    name: variable.name,
+                    value: resolvedSessionValue ?? emptyValue,
+                })}
             </Text>
         </View>
     );
 }
+
+const stylesheet = StyleSheet.create((theme) => ({
+    container: {
+        width: '100%',
+        backgroundColor: theme.colors.surface,
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 12,
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 0.33 },
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 0,
+        elevation: 1,
+    },
+    headerRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+    nameText: {
+        fontSize: Platform.select({ ios: 17, default: 16 }),
+        lineHeight: Platform.select({ ios: 22, default: 24 }),
+        letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    lockIcon: {
+        marginLeft: 4,
+    },
+    actionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: theme.margins.md,
+    },
+    secondaryText: {
+        fontSize: Platform.select({ ios: 15, default: 14 }),
+        lineHeight: 20,
+        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
+        ...Typography.default(),
+    },
+    descriptionText: {
+        color: theme.colors.textSecondary,
+        marginBottom: 8,
+    },
+    labelText: {
+        color: theme.colors.textSecondary,
+        marginBottom: 4,
+    },
+    valueInput: {
+        ...Typography.default('regular'),
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: Platform.select({ ios: 10, default: 12 }),
+        fontSize: Platform.select({ ios: 17, default: 16 }),
+        lineHeight: Platform.select({ ios: 22, default: 24 }),
+        letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+        color: theme.colors.input.text,
+        marginBottom: 4,
+        ...(Platform.select({
+            web: {
+                outline: 'none',
+                outlineStyle: 'none',
+                outlineWidth: 0,
+                outlineColor: 'transparent',
+                boxShadow: 'none',
+                WebkitBoxShadow: 'none',
+                WebkitAppearance: 'none',
+            },
+            default: {},
+        }) as object),
+    },
+    secretMessage: {
+        color: theme.colors.textSecondary,
+        marginBottom: 8,
+        fontStyle: 'italic',
+    },
+    defaultOverrideWarning: {
+        color: theme.colors.textSecondary,
+        marginBottom: 8,
+    },
+    divider: {
+        height: 1,
+        backgroundColor: theme.colors.divider,
+        marginVertical: 12,
+    },
+    toggleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 6,
+    },
+    toggleLabelText: {
+        fontSize: Platform.select({ ios: 17, default: 16 }),
+        lineHeight: 20,
+        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
+        ...Typography.default(),
+    },
+    toggleLabel: {
+        flex: 1,
+        color: theme.colors.textSecondary,
+    },
+    resolvedOnStartText: {
+        color: theme.colors.textSecondary,
+        marginBottom: 0,
+    },
+    resolvedOnStartWithRemote: {
+        marginBottom: 10,
+    },
+    sourceLabel: {
+        color: theme.colors.textSecondary,
+        marginBottom: 4,
+    },
+    sourceInput: {
+        ...Typography.default('regular'),
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: Platform.select({ ios: 10, default: 12 }),
+        fontSize: Platform.select({ ios: 17, default: 16 }),
+        lineHeight: Platform.select({ ios: 22, default: 24 }),
+        letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+        color: theme.colors.input.text,
+        marginBottom: 6,
+        ...(Platform.select({
+            web: {
+                outline: 'none',
+                outlineStyle: 'none',
+                outlineWidth: 0,
+                outlineColor: 'transparent',
+                boxShadow: 'none',
+                WebkitBoxShadow: 'none',
+                WebkitAppearance: 'none',
+            },
+            default: {},
+        }) as object),
+    },
+    machineStatusContainer: {
+        marginBottom: 8,
+    },
+    machineStatusLoading: {
+        color: theme.colors.textSecondary,
+        fontStyle: 'italic',
+    },
+    machineStatusWarning: {
+        color: theme.colors.warning,
+    },
+    machineStatusSuccess: {
+        color: theme.colors.success,
+    },
+    machineStatusDiffers: {
+        color: theme.colors.textSecondary,
+        marginTop: 2,
+    },
+    sessionPreview: {
+        color: theme.colors.textSecondary,
+        marginTop: 4,
+    },
+}));

@@ -1,6 +1,6 @@
 import { Platform, Alert } from 'react-native';
 import { t } from '@/text';
-import { AlertButton, ModalConfig, CustomModalConfig, IModal } from './types';
+import { AlertButton, ModalConfig, CustomModalConfig, IModal, type CustomModalInjectedProps } from './types';
 
 class ModalManagerClass implements IModal {
     private showModalFn: ((config: Omit<ModalConfig, 'id'>) => string) | null = null;
@@ -95,16 +95,22 @@ class ModalManagerClass implements IModal {
         }
     }
 
-    show(config: Omit<CustomModalConfig, 'id' | 'type'>): string {
+    show<P extends CustomModalInjectedProps>(config: {
+        component: CustomModalConfig<P>['component'];
+        props?: CustomModalConfig<P>['props'];
+    }): string {
         if (!this.showModalFn) {
             console.error('ModalManager not initialized. Make sure ModalProvider is mounted.');
             return '';
         }
 
-        return this.showModalFn({
-            ...config,
-            type: 'custom'
-        });
+        const modalConfig: Omit<CustomModalConfig, 'id'> = {
+            type: 'custom',
+            component: config.component as unknown as CustomModalConfig['component'],
+            props: config.props as unknown as CustomModalConfig['props'],
+        };
+
+        return this.showModalFn(modalConfig);
     }
 
     hide(id: string): void {

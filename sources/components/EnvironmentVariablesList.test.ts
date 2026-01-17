@@ -1,0 +1,173 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import renderer, { act } from 'react-test-renderer';
+import React from 'react';
+import type { ProfileDocumentation } from '@/sync/profileUtils';
+
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock('@/text', () => ({
+    t: (key: string) => key,
+}));
+
+vi.mock('@/modal', () => ({
+    Modal: { alert: vi.fn() },
+}));
+
+vi.mock('react-native', () => ({
+    View: 'View',
+    Text: 'Text',
+    Pressable: 'Pressable',
+    TextInput: 'TextInput',
+    Platform: {
+        OS: 'web',
+        select: (options: { web?: unknown; default?: unknown }) => options.web ?? options.default,
+    },
+}));
+
+const useEnvironmentVariablesMock = vi.fn((_machineId: any, _refs: any, _options?: any) => ({
+    variables: {},
+    meta: {},
+    policy: null,
+    isPreviewEnvSupported: false,
+    isLoading: false,
+}));
+
+vi.mock('@/hooks/useEnvironmentVariables', () => ({
+    useEnvironmentVariables: (machineId: any, refs: any, options?: any) => useEnvironmentVariablesMock(machineId, refs, options),
+}));
+
+vi.mock('@expo/vector-icons', () => {
+    const React = require('react');
+    return {
+        Ionicons: (props: unknown) => React.createElement('Ionicons', props),
+    };
+});
+
+vi.mock('react-native-unistyles', () => ({
+    useUnistyles: () => ({
+        theme: {
+            colors: {
+                groupped: { sectionTitle: '#000' },
+                input: { background: '#fff', text: '#000', placeholder: '#999' },
+                button: {
+                    primary: { background: '#000', tint: '#fff' },
+                    secondary: { tint: '#000' },
+                },
+                surface: '#fff',
+                shadow: { color: '#000', opacity: 0.1 },
+            },
+        },
+    }),
+    StyleSheet: {
+        create: (factory: (theme: any) => any) => factory({
+            colors: {
+                groupped: { sectionTitle: '#000' },
+                input: { background: '#fff', text: '#000', placeholder: '#999' },
+                button: {
+                    primary: { background: '#000', tint: '#fff' },
+                    secondary: { tint: '#000' },
+                },
+                surface: '#fff',
+                shadow: { color: '#000', opacity: 0.1 },
+            },
+        }),
+    },
+}));
+
+vi.mock('@/components/Item', () => {
+    const React = require('react');
+    return {
+        Item: (props: unknown) => React.createElement('Item', props),
+    };
+});
+
+vi.mock('./EnvironmentVariableCard', () => {
+    const React = require('react');
+    return {
+        EnvironmentVariableCard: (props: unknown) => React.createElement('EnvironmentVariableCard', props),
+    };
+});
+
+import { EnvironmentVariablesList } from './EnvironmentVariablesList';
+
+describe('EnvironmentVariablesList', () => {
+    beforeEach(() => {
+        useEnvironmentVariablesMock.mockClear();
+    });
+
+    it('marks documented secret refs as sensitive hints (daemon-controlled disclosure)', () => {
+        const profileDocs: ProfileDocumentation = {
+            description: 'test',
+            environmentVariables: [
+                {
+                    name: 'MAGIC',
+                    expectedValue: '***',
+                    description: 'secret but name is not secret-like',
+                    isSecret: true,
+                },
+            ],
+            shellConfigExample: '',
+        };
+
+        act(() => {
+            renderer.create(
+                React.createElement(EnvironmentVariablesList, {
+                    environmentVariables: [
+                        { name: 'FOO', value: '${MAGIC}' },
+                        { name: 'BAR', value: '${HOME}' },
+                    ],
+                    machineId: 'machine-1',
+                    profileDocs,
+                    onChange: () => {},
+                }),
+            );
+        });
+
+        expect(useEnvironmentVariablesMock).toHaveBeenCalledTimes(1);
+        const [_machineId, keys, options] = useEnvironmentVariablesMock.mock.calls[0] as unknown as [string, string[], any];
+        expect(keys).toContain('FOO');
+        expect(keys).toContain('BAR');
+        expect(keys).toContain('MAGIC');
+        expect(keys).toContain('HOME');
+        expect(options?.sensitiveHints?.MAGIC).toBe(true);
+    });
+
+    it('treats a documented-secret variable name as secret even when its value references another var', () => {
+        const profileDocs: ProfileDocumentation = {
+            description: 'test',
+            environmentVariables: [
+                {
+                    name: 'MAGIC',
+                    expectedValue: '***',
+                    description: 'secret',
+                    isSecret: true,
+                },
+            ],
+            shellConfigExample: '',
+        };
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        act(() => {
+            tree = renderer.create(
+                React.createElement(EnvironmentVariablesList, {
+                    environmentVariables: [{ name: 'MAGIC', value: '${HOME}' }],
+                    machineId: 'machine-1',
+                    profileDocs,
+                    onChange: () => {},
+                }),
+            );
+        });
+
+        expect(useEnvironmentVariablesMock).toHaveBeenCalledTimes(1);
+        const [_machineId, keys, options] = useEnvironmentVariablesMock.mock.calls[0] as unknown as [string, string[], any];
+        expect(keys).toContain('MAGIC');
+        expect(keys).toContain('HOME');
+        expect(options?.sensitiveHints?.MAGIC).toBe(true);
+        expect(options?.sensitiveHints?.HOME).toBe(true);
+
+        const cards = tree?.root.findAllByType('EnvironmentVariableCard' as any);
+        expect(cards?.length).toBe(1);
+        expect(cards?.[0]?.props.isSecret).toBe(true);
+        expect(cards?.[0]?.props.expectedValue).toBe('***');
+    });
+});

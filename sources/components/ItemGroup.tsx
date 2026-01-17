@@ -10,11 +10,12 @@ import {
 import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { withItemGroupDividers } from './ItemGroup.dividers';
+import { countSelectableItems } from './ItemGroup.selectableCount';
 
-interface ItemChildProps {
-    showDivider?: boolean;
-    [key: string]: any;
-}
+export { withItemGroupDividers } from './ItemGroup.dividers';
+
+export const ItemGroupSelectionContext = React.createContext<{ selectableItemCount: number } | null>(null);
 
 export interface ItemGroupProps {
     title?: string | React.ReactNode;
@@ -95,6 +96,14 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
         containerStyle
     } = props;
 
+    const selectableItemCount = React.useMemo(() => {
+        return countSelectableItems(children);
+    }, [children]);
+
+    const selectionContextValue = React.useMemo(() => {
+        return { selectableItemCount };
+    }, [selectableItemCount]);
+
     return (
         <View style={[styles.wrapper, style]}>
             <View style={styles.container}>
@@ -116,21 +125,9 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
 
                 {/* Content Container */}
                 <View style={[styles.contentContainer, containerStyle]}>
-                    {React.Children.map(children, (child, index) => {
-                        if (React.isValidElement<ItemChildProps>(child)) {
-                            // Don't add props to React.Fragment
-                            if (child.type === React.Fragment) {
-                                return child;
-                            }
-                            const isLast = index === React.Children.count(children) - 1;
-                            const childProps = child.props as ItemChildProps;
-                            return React.cloneElement(child, {
-                                ...childProps,
-                                showDivider: !isLast && childProps.showDivider !== false
-                            });
-                        }
-                        return child;
-                    })}
+                    <ItemGroupSelectionContext.Provider value={selectionContextValue}>
+                        {withItemGroupDividers(children)}
+                    </ItemGroupSelectionContext.Provider>
                 </View>
 
                 {/* Footer */}
