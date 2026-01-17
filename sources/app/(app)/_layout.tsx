@@ -118,6 +118,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="settings/profiles"
+                options={{
+                    headerTitle: t('settingsFeatures.profiles'),
+                }}
+            />
+            <Stack.Screen
                 name="terminal/connect"
                 options={{
                     headerTitle: t('navigation.connectTerminal'),
@@ -312,6 +318,13 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="new/pick/profile"
+                options={{
+                    headerTitle: '',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="new/pick/profile-edit"
                 options={{
                     headerTitle: '',
@@ -322,7 +335,9 @@ export default function RootLayout() {
                 name="new/index"
                 options={{
                     headerTitle: t('newSession.title'),
-                    headerBackTitle: t('common.back'),
+                    headerShown: true,
+                    headerBackTitle: t('common.cancel'),
+                    presentation: 'modal',
                 }}
             />
             <Stack.Screen
