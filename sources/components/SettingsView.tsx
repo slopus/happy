@@ -1,9 +1,10 @@
-import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
+import { View, ScrollView, Pressable, Platform, Linking, Text as RNText, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import * as React from 'react';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import { useAuth } from '@/auth/AuthContext';
 import { Typography } from "@/constants/Typography";
@@ -28,6 +29,7 @@ import { useProfile } from '@/sync/storage';
 import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
 import { Avatar } from '@/components/Avatar';
 import { t } from '@/text';
+import { MachineCliGlyphs } from '@/components/newSession/MachineCliGlyphs';
 
 export const SettingsView = React.memo(function SettingsView() {
     const { theme } = useUnistyles();
@@ -37,6 +39,7 @@ export const SettingsView = React.memo(function SettingsView() {
     const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
     const isPro = __DEV__ || useEntitlement('pro');
     const experiments = useSetting('experiments');
+    const expUsageReporting = useSetting('expUsageReporting');
     const useProfiles = useSetting('useProfiles');
     const isCustomServer = isUsingCustomServer();
     const allMachines = useAllMachines();
@@ -46,6 +49,47 @@ export const SettingsView = React.memo(function SettingsView() {
     const bio = getBio(profile);
 
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
+    const [refreshingMachines, refreshMachines] = useHappyAction(async () => {
+        await sync.refreshMachinesThrottled({ force: true });
+    });
+
+    useFocusEffect(
+        React.useCallback(() => {
+            void sync.refreshMachinesThrottled({ staleMs: 30_000 });
+        }, [])
+    );
+
+    const machinesTitle = React.useMemo(() => {
+        const headerTextStyle = [
+            Typography.default('regular'),
+            {
+                color: theme.colors.groupped.sectionTitle,
+                fontSize: Platform.select({ ios: 13, default: 14 }),
+                lineHeight: Platform.select({ ios: 18, default: 20 }),
+                letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+                textTransform: 'uppercase' as const,
+                fontWeight: Platform.select({ ios: 'normal', default: '500' }) as any,
+            },
+        ];
+
+        return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <RNText style={headerTextStyle as any}>{t('settings.machines')}</RNText>
+                <Pressable
+                    onPress={refreshMachines}
+                    hitSlop={10}
+                    style={{ padding: 2 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Refresh"
+                    disabled={refreshingMachines}
+                >
+                    {refreshingMachines
+                        ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                        : <Ionicons name="refresh" size={18} color={theme.colors.textSecondary} />}
+                </Pressable>
+            </View>
+        );
+    }, [refreshMachines, refreshingMachines, theme.colors.groupped.sectionTitle, theme.colors.textSecondary]);
 
     const handleGitHub = async () => {
         const url = 'https://github.com/slopus/happy';
@@ -211,7 +255,7 @@ export const SettingsView = React.memo(function SettingsView() {
 
             <ItemGroup title={t('settings.connectedAccounts')}>
                 <Item
-                    title="Claude Code"
+                    title={t('profiles.machineLogin.claudeCode.title')}
                     subtitle={isAnthropicConnected
                         ? t('settingsAccount.statusActive')
                         : t('settings.connectAccount')
@@ -258,7 +302,7 @@ export const SettingsView = React.memo(function SettingsView() {
 
             {/* Machines (sorted: online first, then last seen desc) */}
             {allMachines.length > 0 && (
-                <ItemGroup title={t('settings.machines')}>
+                <ItemGroup title={machinesTitle}>
                     {[...allMachines].map((machine) => {
                         const isOnline = isMachineOnline(machine);
                         const host = machine.metadata?.host || 'Unknown';
@@ -269,14 +313,37 @@ export const SettingsView = React.memo(function SettingsView() {
                         const title = displayName || host;
 
                         // Build subtitle: show hostname if different from title, plus platform and status
-                        let subtitle = '';
+                        let subtitleTop = '';
                         if (displayName && displayName !== host) {
-                            subtitle = host;
+                            subtitleTop = host;
                         }
-                        if (platform) {
-                            subtitle = subtitle ? `${subtitle} • ${platform}` : platform;
-                        }
-                        subtitle = subtitle ? `${subtitle} • ${isOnline ? t('status.online') : t('status.offline')}` : (isOnline ? t('status.online') : t('status.offline'));
+                        const statusText = isOnline ? t('status.online') : t('status.offline');
+                        const statusLineText = platform ? `${platform} • ${statusText}` : statusText;
+
+                        const subtitle = (
+                            <View style={{ gap: 2 }}>
+                                {subtitleTop ? (
+                                    <RNText style={[Typography.default(), { fontSize: 14, color: theme.colors.textSecondary, lineHeight: 20 }]}>
+                                        {subtitleTop}
+                                    </RNText>
+                                ) : null}
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <RNText
+                                        style={[
+                                            Typography.default(),
+                                            { fontSize: 14, color: theme.colors.textSecondary, lineHeight: 20, flexShrink: 1 }
+                                        ]}
+                                        numberOfLines={1}
+                                    >
+                                        {statusLineText}
+                                    </RNText>
+                                    <RNText style={[Typography.default(), { fontSize: 14, color: theme.colors.textSecondary, lineHeight: 20, opacity: 0.8 }]}>
+                                        {' • '}
+                                    </RNText>
+                                    <MachineCliGlyphs machineId={machine.id} isOnline={isOnline} />
+                                </View>
+                            </View>
+                        );
 
                         return (
                             <Item
@@ -331,7 +398,15 @@ export const SettingsView = React.memo(function SettingsView() {
                         onPress={() => router.push('/(app)/settings/profiles')}
                     />
                 )}
-                {experiments && (
+                {useProfiles && (
+                    <Item
+                        title={t('settings.apiKeys')}
+                        subtitle={t('settings.apiKeysSubtitle')}
+                        icon={<Ionicons name="key-outline" size={29} color="#AF52DE" />}
+                        onPress={() => router.push('/(app)/settings/api-keys')}
+                    />
+                )}
+                {experiments && expUsageReporting && (
                     <Item
                         title={t('settings.usage')}
                         subtitle={t('settings.usageSubtitle')}
