@@ -57,6 +57,57 @@ export function BaseModal({
         }
     };
 
+    // IMPORTANT:
+    // On iOS, stacking native modals (expo-router / react-navigation modal screens + RN <Modal>)
+    // can lead to the RN modal rendering behind the navigation modal, while still blocking touches.
+    // To avoid this, we render "portal style" overlays on native (no RN <Modal>) and keep RN <Modal>
+    // for web where we need to escape expo-router's body pointer-events behavior.
+    if (Platform.OS !== 'web') {
+        if (!visible) return null;
+        return (
+            <View style={styles.portalRoot} pointerEvents="auto">
+                <KeyboardAvoidingView
+                    style={styles.container}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                >
+                    <TouchableWithoutFeedback onPress={handleBackdropPress}>
+                        <Animated.View
+                            style={[
+                                styles.backdrop,
+                                {
+                                    opacity: fadeAnim.interpolate({
+                                        inputRange: [0, 1],
+                                        outputRange: [0, 0.5]
+                                    })
+                                }
+                            ]}
+                        />
+                    </TouchableWithoutFeedback>
+
+                    <Animated.View
+                        pointerEvents="box-none"
+                        style={[
+                            styles.content,
+                            {
+                                opacity: fadeAnim,
+                                transform: [{
+                                    scale: fadeAnim.interpolate({
+                                        inputRange: [0, 1],
+                                        outputRange: [0.9, 1]
+                                    })
+                                }]
+                            }
+                        ]}
+                    >
+                        <View pointerEvents="auto" style={{ width: '100%', alignItems: 'center' }}>
+                            {children}
+                        </View>
+                    </Animated.View>
+                </KeyboardAvoidingView>
+            </View>
+        );
+    }
+
     return (
         <Modal
             visible={visible}
@@ -66,11 +117,11 @@ export function BaseModal({
         >
             <KeyboardAvoidingView
                 style={styles.container}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                behavior={Platform.OS === 'web' ? undefined : ((Platform as any).OS === 'ios' ? 'padding' : 'height')}
                 {...webEventHandlers}
             >
                 <TouchableWithoutFeedback onPress={handleBackdropPress}>
-                    <Animated.View 
+                    <Animated.View
                         style={[
                             styles.backdrop,
                             {
@@ -82,7 +133,7 @@ export function BaseModal({
                         ]}
                     />
                 </TouchableWithoutFeedback>
-                
+
                 <Animated.View
                     pointerEvents="box-none"
                     style={[
@@ -98,7 +149,10 @@ export function BaseModal({
                         }
                     ]}
                 >
-                    {children}
+                    {/* See comment above: keep web interactive */}
+                    <View pointerEvents="auto" style={{ width: '100%', alignItems: 'center' }}>
+                        {children}
+                    </View>
                 </Animated.View>
             </KeyboardAvoidingView>
         </Modal>
@@ -106,6 +160,11 @@ export function BaseModal({
 }
 
 const styles = StyleSheet.create({
+    portalRoot: {
+        ...StyleSheet.absoluteFillObject,
+        zIndex: 100000,
+        elevation: 100000,
+    },
     container: {
         flex: 1,
         justifyContent: 'center',

@@ -1,9 +1,10 @@
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import 'react-native-reanimated';
 import * as React from 'react';
 import { Typography } from '@/constants/Typography';
 import { createHeader } from '@/components/navigation/Header';
 import { Platform, TouchableOpacity, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -337,7 +338,27 @@ export default function RootLayout() {
                     headerTitle: t('newSession.title'),
                     headerShown: true,
                     headerBackTitle: t('common.cancel'),
-                    presentation: 'modal',
+                    // On iOS, presenting this as a native "modal" can cause React Native <Modal>
+                    // (used by our in-app modal system) to appear behind it and block touches.
+                    // `containedModal` keeps presentation within the stack so overlays work reliably.
+                    presentation: Platform.OS === 'ios' ? 'containedModal' : 'modal',
+                    gestureEnabled: true,
+                    fullScreenGestureEnabled: true,
+                    // `containedModal` is reliable for stacking in-app modals above this screen on iOS,
+                    // but swipe-to-dismiss is not consistently available. Always provide a close button.
+                    headerBackVisible: false,
+                    headerLeft: () => null,
+                    headerRight: () => (
+                        <TouchableOpacity
+                            onPress={() => router.back()}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                            style={{ paddingHorizontal: 12, paddingVertical: 6 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('common.cancel')}
+                        >
+                            <Ionicons name="close" size={22} color={theme.colors.header.tint} />
+                        </TouchableOpacity>
+                    ),
                 }}
             />
             <Stack.Screen
