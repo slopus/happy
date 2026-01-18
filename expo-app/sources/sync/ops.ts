@@ -240,6 +240,8 @@ export async function machineBash(
 export interface DetectCliEntry {
     available: boolean;
     resolvedPath?: string;
+    version?: string;
+    isLoggedIn?: boolean | null;
 }
 
 export interface DetectCliResponse {
@@ -249,45 +251,49 @@ export interface DetectCliResponse {
 
 export type MachineDetectCliResult =
     | { supported: true; response: DetectCliResponse }
-    | { supported: false };
+    | { supported: false; reason: 'not-supported' | 'error' };
 
 /**
  * Query daemon CLI availability using a dedicated RPC (preferred).
  *
  * Falls back to `{ supported: false }` for older daemons that don't implement it.
  */
-export async function machineDetectCli(machineId: string): Promise<MachineDetectCliResult> {
+export async function machineDetectCli(machineId: string, params?: { includeLoginStatus?: boolean }): Promise<MachineDetectCliResult> {
     try {
         const result = await apiSocket.machineRPC<unknown, {}>(
             machineId,
             'detect-cli',
-            {}
+            { ...(params?.includeLoginStatus ? { includeLoginStatus: true } : {}) }
         );
 
         if (isPlainObject(result) && typeof result.error === 'string') {
             // Older daemons (or errors) return an encrypted `{ error: ... }` payload.
             if (result.error === 'Method not found') {
-                return { supported: false };
+                return { supported: false, reason: 'not-supported' };
             }
-            return { supported: false };
+            return { supported: false, reason: 'error' };
         }
 
         if (!isPlainObject(result)) {
-            return { supported: false };
+            return { supported: false, reason: 'error' };
         }
 
         const clisRaw = result.clis;
         if (!isPlainObject(clisRaw)) {
-            return { supported: false };
+            return { supported: false, reason: 'error' };
         }
 
         const getEntry = (name: 'claude' | 'codex' | 'gemini'): DetectCliEntry | null => {
             const raw = (clisRaw as Record<string, unknown>)[name];
             if (!isPlainObject(raw) || typeof raw.available !== 'boolean') return null;
             const resolvedPath = raw.resolvedPath;
+            const version = raw.version;
+            const isLoggedInRaw = (raw as any).isLoggedIn;
             return {
                 available: raw.available,
                 ...(typeof resolvedPath === 'string' ? { resolvedPath } : {}),
+                ...(typeof version === 'string' ? { version } : {}),
+                ...((typeof isLoggedInRaw === 'boolean' || isLoggedInRaw === null) ? { isLoggedIn: isLoggedInRaw } : {}),
             };
         };
 
@@ -295,7 +301,7 @@ export async function machineDetectCli(machineId: string): Promise<MachineDetect
         const codex = getEntry('codex');
         const gemini = getEntry('gemini');
         if (!claude || !codex || !gemini) {
-            return { supported: false };
+            return { supported: false, reason: 'error' };
         }
 
         const pathValue = result.path;
@@ -306,7 +312,7 @@ export async function machineDetectCli(machineId: string): Promise<MachineDetect
 
         return { supported: true, response };
     } catch {
-        return { supported: false };
+        return { supported: false, reason: 'error' };
     }
 }
 
