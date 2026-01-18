@@ -27,6 +27,8 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
     }
 
     const experimentsEnabled = storage.getState().settings.experiments;
+    const expVoiceAuthFlow = storage.getState().settings.expVoiceAuthFlow;
+    const useAuthFlow = experimentsEnabled && expVoiceAuthFlow;
     const agentId = __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;
     
     if (!agentId) {
@@ -36,7 +38,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
     
     try {
         // Simple path: No experiments = no auth needed
-        if (!experimentsEnabled) {
+        if (!useAuthFlow) {
             currentSessionId = sessionId;
             voiceSessionStarted = true;
             await voiceSession.startSession({

@@ -33,7 +33,7 @@ function HeaderTitleTablet() {
             fontWeight: '600',
             ...Typography.default('semiBold'),
         }}>
-            Zen
+            {t('zen.title')}
         </Text>
     );
 }
@@ -93,7 +93,7 @@ function HeaderTitle() {
                 fontWeight: '600',
                 ...Typography.default('semiBold'),
             }}>
-                Zen
+                {t('zen.title')}
             </Text>
             {connectionStatus.text && (
                 <View style={{
