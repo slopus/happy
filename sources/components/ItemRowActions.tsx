@@ -19,7 +19,7 @@ export function ItemRowActions(props: ItemRowActionsProps) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const { width } = useWindowDimensions();
-    const compact = width < (props.compactThreshold ?? 420);
+    const compact = width < (props.compactThreshold ?? 450);
 
     const compactIds = React.useMemo(() => new Set(props.compactActionIds ?? []), [props.compactActionIds]);
     const inlineActions = React.useMemo(() => {

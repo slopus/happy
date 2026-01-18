@@ -204,7 +204,6 @@ export function SessionsList() {
     const compactSessionView = useSetting('compactSessionView');
     const router = useRouter();
     const selectable = isTablet;
-    const experiments = useSetting('experiments');
     const dataWithSelected = selectable ? React.useMemo(() => {
         return data?.map(item => ({
             ...item,

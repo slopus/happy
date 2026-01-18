@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView, Pressable, InteractionManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
@@ -60,7 +60,11 @@ export function ItemActionsMenuModal(props: ItemActionsMenuModalProps) {
 
     const closeThen = React.useCallback((fn: () => void) => {
         props.onClose();
-        setTimeout(() => fn(), 0);
+        // On iOS, navigation actions fired immediately after closing an overlay modal
+        // can be dropped or feel flaky. Run after interactions/animations settle.
+        InteractionManager.runAfterInteractions(() => {
+            fn();
+        });
     }, [props.onClose]);
 
     return (

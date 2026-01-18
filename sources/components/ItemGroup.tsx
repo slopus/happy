@@ -27,6 +27,11 @@ export interface ItemGroupProps {
     titleStyle?: StyleProp<TextStyle>;
     footerTextStyle?: StyleProp<TextStyle>;
     containerStyle?: StyleProp<ViewStyle>;
+    /**
+     * Performance: when you already know how many selectable rows are inside the group,
+     * pass this to avoid walking the full React children tree on every render.
+     */
+    selectableItemCountOverride?: number;
 }
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
@@ -93,12 +98,16 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
         footerStyle,
         titleStyle,
         footerTextStyle,
-        containerStyle
+        containerStyle,
+        selectableItemCountOverride
     } = props;
 
     const selectableItemCount = React.useMemo(() => {
+        if (typeof selectableItemCountOverride === 'number') {
+            return selectableItemCountOverride;
+        }
         return countSelectableItems(children);
-    }, [children]);
+    }, [children, selectableItemCountOverride]);
 
     const selectionContextValue = React.useMemo(() => {
         return { selectableItemCount };
