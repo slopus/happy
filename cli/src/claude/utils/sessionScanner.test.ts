@@ -3,8 +3,9 @@ import { createSessionScanner } from './sessionScanner'
 import { RawJSONLines } from '../types'
 import { mkdir, writeFile, appendFile, rm, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { tmpdir, homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
+import { getProjectPath } from './path'
 
 describe('sessionScanner', () => {
   let testDir: string
@@ -15,11 +16,11 @@ describe('sessionScanner', () => {
   beforeEach(async () => {
     testDir = join(tmpdir(), `scanner-test-${Date.now()}`)
     await mkdir(testDir, { recursive: true })
-    
-    const projectName = testDir.replace(/\//g, '-')
-    projectDir = join(homedir(), '.claude', 'projects', projectName)
+
+    // Use the same path calculation as the scanner to ensure paths match
+    projectDir = getProjectPath(testDir)
     await mkdir(projectDir, { recursive: true })
-    
+
     collectedMessages = []
   })
   
