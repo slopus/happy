@@ -21,6 +21,16 @@ const EnvironmentVariableSchema = z.object({
     isSecret: z.boolean().optional(),
 });
 
+const RequiredEnvVarKindSchema = z.enum(['secret', 'config']);
+
+const RequiredEnvVarSchema = z.object({
+    name: z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'Invalid environment variable name'),
+    // Defaults to secret so older serialized forms (missing kind) remain safe/strict.
+    kind: RequiredEnvVarKindSchema.default('secret'),
+});
+
+const RequiresMachineLoginSchema = z.enum(['codex', 'claude-code', 'gemini-cli']);
+
 // Profile compatibility schema
 const ProfileCompatibilitySchema = z.object({
     claude: z.boolean().default(true),
@@ -53,6 +63,19 @@ export const AIBackendProfileSchema = z.object({
     // Compatibility metadata
     compatibility: ProfileCompatibilitySchema.default({ claude: true, codex: true, gemini: true }),
 
+    // Authentication / requirements metadata (used by UI gating)
+    // - apiKeyEnv: profile expects required env vars to be present (optionally injected at spawn)
+    // - machineLogin: profile relies on a machine-local CLI login cache (no API key injection)
+    authMode: z.enum(['apiKeyEnv', 'machineLogin']).optional(),
+
+    // For machine-login profiles, specify which CLI must be logged in on the target machine.
+    // This is used for UX copy and for optional login-status detection.
+    requiresMachineLogin: RequiresMachineLoginSchema.optional(),
+
+    // Explicit environment variable requirements for this profile at runtime.
+    // V1 constraint: at most one required secret per profile (avoids ambiguous precedence/billing behavior).
+    requiredEnvVars: z.array(RequiredEnvVarSchema).optional(),
+
     // Built-in profile indicator
     isBuiltIn: z.boolean().default(false),
 
@@ -60,9 +83,47 @@ export const AIBackendProfileSchema = z.object({
     createdAt: z.number().default(() => Date.now()),
     updatedAt: z.number().default(() => Date.now()),
     version: z.string().default('1.0.0'),
+}).superRefine((profile, ctx) => {
+    const requiredEnvVars = profile.requiredEnvVars ?? [];
+    const secretCount = requiredEnvVars.filter(v => (v?.kind ?? 'secret') === 'secret').length;
+
+    if (secretCount > 1) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['requiredEnvVars'],
+            message: 'V1 constraint: profiles may declare at most one required secret environment variable',
+        });
+    }
+
+    if (profile.authMode === 'machineLogin' && secretCount > 0) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['requiredEnvVars'],
+            message: 'Profiles with authMode=machineLogin must not declare required secret environment variables',
+        });
+    }
+
+    if (profile.requiresMachineLogin && profile.authMode !== 'machineLogin') {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['requiresMachineLogin'],
+            message: 'requiresMachineLogin may only be set when authMode=machineLogin',
+        });
+    }
 });
 
 export type AIBackendProfile = z.infer<typeof AIBackendProfileSchema>;
+
+export const SavedApiKeySchema = z.object({
+    id: z.string().min(1),
+    name: z.string().min(1).max(100),
+    // Secret. The UI must never re-display this after entry.
+    value: z.string().min(1),
+    createdAt: z.number().default(() => Date.now()),
+    updatedAt: z.number().default(() => Date.now()),
+});
+
+export type SavedApiKey = z.infer<typeof SavedApiKeySchema>;
 
 // Helper functions for profile validation and compatibility
 export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex' | 'gemini'): boolean {
@@ -218,6 +279,14 @@ export const SettingsSchema = z.object({
     wrapLinesInDiffs: z.boolean().describe('Whether to wrap long lines in diff views'),
     analyticsOptOut: z.boolean().describe('Whether to opt out of anonymous analytics'),
     experiments: z.boolean().describe('Whether to enable experimental features'),
+    // Per-experiment toggles (gated by `experiments` master switch in UI/usage)
+    expGemini: z.boolean().describe('Experimental: enable Gemini backend + Gemini-related UX'),
+    expUsageReporting: z.boolean().describe('Experimental: enable usage reporting UI'),
+    expFileViewer: z.boolean().describe('Experimental: enable session file viewer'),
+    expShowThinkingMessages: z.boolean().describe('Experimental: show assistant thinking messages'),
+    expSessionType: z.boolean().describe('Experimental: show session type selector (simple vs worktree)'),
+    expZen: z.boolean().describe('Experimental: enable Zen navigation/experience'),
+    expVoiceAuthFlow: z.boolean().describe('Experimental: enable authenticated voice token flow'),
     useProfiles: z.boolean().describe('Whether to enable AI backend profiles feature'),
     useEnhancedSessionWizard: z.boolean().describe('A/B test flag: Use enhanced profile-based session wizard UI'),
     // Legacy combined toggle (kept for backward compatibility; see settingsParse migration)
@@ -226,6 +295,8 @@ export const SettingsSchema = z.object({
     usePathPickerSearch: z.boolean().describe('Whether to show search in path picker UIs'),
     alwaysShowContextSize: z.boolean().describe('Always show context size in agent input'),
     agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
+    agentInputActionBarLayout: z.enum(['auto', 'wrap', 'scroll', 'collapsed']).describe('Agent input action bar layout'),
+    agentInputChipDensity: z.enum(['auto', 'labels', 'icons']).describe('Agent input action chip density'),
     avatarStyle: z.string().describe('Avatar display style'),
     showFlavorIcons: z.boolean().describe('Whether to show AI provider icons in avatars'),
     compactSessionView: z.boolean().describe('Whether to use compact view for active sessions'),
@@ -244,6 +315,8 @@ export const SettingsSchema = z.object({
     // Profile management settings
     profiles: z.array(AIBackendProfileSchema).describe('User-defined profiles for AI backend and environment variables'),
     lastUsedProfile: z.string().nullable().describe('Last selected profile for new sessions'),
+    apiKeys: z.array(SavedApiKeySchema).default([]).describe('Saved API keys (encrypted settings). Value is never re-displayed in UI.'),
+    defaultApiKeyByProfileId: z.record(z.string(), z.string()).default({}).describe('Default saved API key ID to use per profile'),
     // Favorite directories for quick path selection
     favoriteDirectories: z.array(z.string()).describe('User-defined favorite directories for quick access in path selection'),
     // Favorite machines for quick machine selection
@@ -294,6 +367,13 @@ export const settingsDefaults: Settings = {
     wrapLinesInDiffs: false,
     analyticsOptOut: false,
     experiments: false,
+    expGemini: false,
+    expUsageReporting: false,
+    expFileViewer: false,
+    expShowThinkingMessages: false,
+    expSessionType: false,
+    expZen: false,
+    expVoiceAuthFlow: false,
     useProfiles: false,
     useEnhancedSessionWizard: false,
     usePickerSearch: false,
@@ -301,6 +381,8 @@ export const settingsDefaults: Settings = {
     usePathPickerSearch: false,
     alwaysShowContextSize: false,
     agentInputEnterToSend: true,
+    agentInputActionBarLayout: 'auto',
+    agentInputChipDensity: 'auto',
     avatarStyle: 'brutalist',
     showFlavorIcons: false,
     compactSessionView: false,
@@ -316,6 +398,8 @@ export const settingsDefaults: Settings = {
     // Profile management defaults
     profiles: [],
     lastUsedProfile: null,
+    apiKeys: [],
+    defaultApiKeyByProfileId: {},
     // Favorite directories (empty by default)
     favoriteDirectories: [],
     // Favorite machines (empty by default)
@@ -389,6 +473,26 @@ export function settingsParse(settings: unknown): Settings {
         if (legacy.success && legacy.data === true) {
             result.useMachinePickerSearch = true;
             result.usePathPickerSearch = true;
+        }
+    }
+
+    // Migration: Introduce per-experiment toggles.
+    // If persisted settings only had `experiments` (older clients), default ALL experiment toggles
+    // to match the master switch so existing users keep the same behavior.
+    const experimentKeys = [
+        'expGemini',
+        'expUsageReporting',
+        'expFileViewer',
+        'expShowThinkingMessages',
+        'expSessionType',
+        'expZen',
+        'expVoiceAuthFlow',
+    ] as const;
+    const hasAnyExperimentKey = experimentKeys.some((k) => k in input);
+    if (!hasAnyExperimentKey) {
+        const enableAll = result.experiments === true;
+        for (const key of experimentKeys) {
+            result[key] = enableAll;
         }
     }
 

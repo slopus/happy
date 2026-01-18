@@ -36,6 +36,7 @@ export interface NewSessionDraft {
     selectedMachineId: string | null;
     selectedPath: string | null;
     selectedProfileId: string | null;
+    selectedApiKeyId: string | null;
     agentType: NewSessionAgentType;
     permissionMode: PermissionMode;
     modelMode: ModelMode;
@@ -163,6 +164,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const selectedMachineId = typeof parsed.selectedMachineId === 'string' ? parsed.selectedMachineId : null;
         const selectedPath = typeof parsed.selectedPath === 'string' ? parsed.selectedPath : null;
         const selectedProfileId = typeof parsed.selectedProfileId === 'string' ? parsed.selectedProfileId : null;
+        const selectedApiKeyId = typeof parsed.selectedApiKeyId === 'string' ? parsed.selectedApiKeyId : null;
         const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini'
             ? parsed.agentType
             : 'claude';
@@ -180,6 +182,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             selectedMachineId,
             selectedPath,
             selectedProfileId,
+            selectedApiKeyId,
             agentType,
             permissionMode,
             modelMode,
