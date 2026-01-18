@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react';
-import { machineBash, machineDetectCli } from '@/sync/ops';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { machineBash } from '@/sync/ops';
+import { useMachine } from '@/sync/storage';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { useMachineDetectCliCache } from '@/hooks/useMachineDetectCliCache';
 
 function debugLog(...args: unknown[]) {
     if (__DEV__) {
@@ -12,9 +15,26 @@ interface CLIAvailability {
     claude: boolean | null; // null = unknown/loading, true = installed, false = not installed
     codex: boolean | null;
     gemini: boolean | null;
+    login: {
+        claude: boolean | null; // null = unknown/unsupported
+        codex: boolean | null;
+        gemini: boolean | null;
+    };
     isDetecting: boolean; // Explicit loading state
     timestamp: number; // When detection completed
     error?: string; // Detection error message (for debugging)
+}
+
+export interface UseCLIDetectionOptions {
+    /**
+     * When false, the hook will be cache-only (no automatic detect-cli fetches,
+     * and no bash fallback probing). Intended for cache-first UIs.
+     */
+    autoDetect?: boolean;
+    /**
+     * When true, requests login status detection (can be heavier than basic detection).
+     */
+    includeLoginStatus?: boolean;
 }
 
 /**
@@ -40,53 +60,47 @@ interface CLIAvailability {
  *     // Show "Claude CLI not detected" warning
  * }
  */
-export function useCLIDetection(machineId: string | null): CLIAvailability {
-    const [availability, setAvailability] = useState<CLIAvailability>({
-        claude: null,
-        codex: null,
-        gemini: null,
-        isDetecting: false,
-        timestamp: 0,
+export function useCLIDetection(machineId: string | null, options?: UseCLIDetectionOptions): CLIAvailability {
+    const machine = useMachine(machineId ?? '');
+    const isOnline = useMemo(() => {
+        if (!machineId || !machine) return false;
+        return isMachineOnline(machine);
+    }, [machine, machineId]);
+
+    const autoDetect = options?.autoDetect !== false;
+
+    const { state: cached } = useMachineDetectCliCache({
+        machineId,
+        enabled: isOnline && autoDetect,
+        includeLoginStatus: Boolean(options?.includeLoginStatus),
     });
 
-    useEffect(() => {
-        if (!machineId) {
-            setAvailability({ claude: null, codex: null, gemini: null, isDetecting: false, timestamp: 0 });
+    const lastSuccessfulDetectAtRef = useRef<number>(0);
+    const bashInFlightRef = useRef<Promise<void> | null>(null);
+    const bashLastRanAtRef = useRef<number>(0);
+
+    const [bashAvailability, setBashAvailability] = useState<{
+        machineId: string;
+        claude: boolean | null;
+        codex: boolean | null;
+        gemini: boolean | null;
+        timestamp: number;
+        error?: string;
+    } | null>(null);
+
+    const runBashFallback = useCallback(async () => {
+        if (!machineId) return;
+        if (bashInFlightRef.current) return bashInFlightRef.current;
+
+        const now = Date.now();
+        // Avoid hammering bash probing if something is wrong.
+        if ((now - bashLastRanAtRef.current) < 15_000) {
             return;
         }
+        bashLastRanAtRef.current = now;
 
-        let cancelled = false;
-
-        const detectCLIs = async () => {
-            // Set detecting flag (non-blocking - UI stays responsive)
-            setAvailability(prev => ({ ...prev, isDetecting: true }));
-            debugLog('[useCLIDetection] Starting detection for machineId:', machineId);
-
+        bashInFlightRef.current = (async () => {
             try {
-                // Preferred path: ask the daemon directly (no shell).
-                const cliStatus = await Promise.race([
-                    machineDetectCli(machineId),
-                    new Promise<{ supported: false }>((resolve) => {
-                        // If the daemon is older/broken and never responds to unknown RPCs,
-                        // don't hang the UI—fallback to bash probing quickly.
-                        setTimeout(() => resolve({ supported: false }), 2000);
-                    }),
-                ]);
-                if (cancelled) return;
-
-                if (cliStatus.supported) {
-                    setAvailability({
-                        claude: cliStatus.response.clis.claude.available,
-                        codex: cliStatus.response.clis.codex.available,
-                        gemini: cliStatus.response.clis.gemini.available,
-                        isDetecting: false,
-                        timestamp: Date.now(),
-                    });
-                    return;
-                }
-
-                // Use single bash command to check both CLIs efficiently
-                // command -v is POSIX compliant and more reliable than which
                 const result = await machineBash(
                     machineId,
                     '(command -v claude >/dev/null 2>&1 && echo "claude:true" || echo "claude:false") && ' +
@@ -95,11 +109,9 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                     '/'
                 );
 
-                if (cancelled) return;
-                debugLog('[useCLIDetection] Result:', { success: result.success, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr });
+                debugLog('[useCLIDetection] bash fallback result:', { success: result.success, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr });
 
                 if (result.success && result.exitCode === 0) {
-                    // Parse output: "claude:true\ncodex:false\ngemini:false"
                     const lines = result.stdout.trim().split('\n');
                     const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean } = {};
 
@@ -110,49 +122,112 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                         }
                     });
 
-                    debugLog('[useCLIDetection] Parsed CLI status:', cliStatus);
-                    setAvailability({
+                    setBashAvailability({
+                        machineId,
                         claude: cliStatus.claude ?? null,
                         codex: cliStatus.codex ?? null,
                         gemini: cliStatus.gemini ?? null,
-                        isDetecting: false,
                         timestamp: Date.now(),
                     });
-                } else {
-                    // Detection command failed - CONSERVATIVE fallback (don't assume availability)
-                    debugLog('[useCLIDetection] Detection failed (success=false or exitCode!=0):', result);
-                    setAvailability({
-                        claude: null,
-                        codex: null,
-                        gemini: null,
-                        isDetecting: false,
-                        timestamp: 0,
-                        error: `Detection failed: ${result.stderr || 'Unknown error'}`,
-                    });
+                    return;
                 }
-            } catch (error) {
-                if (cancelled) return;
 
-                // Network/RPC error - CONSERVATIVE fallback (don't assume availability)
-                debugLog('[useCLIDetection] Network/RPC error:', error);
-                setAvailability({
+                setBashAvailability({
+                    machineId,
                     claude: null,
                     codex: null,
                     gemini: null,
-                    isDetecting: false,
+                    timestamp: 0,
+                    error: `Detection failed: ${result.stderr || 'Unknown error'}`,
+                });
+            } catch (error) {
+                setBashAvailability({
+                    machineId,
+                    claude: null,
+                    codex: null,
+                    gemini: null,
                     timestamp: 0,
                     error: error instanceof Error ? error.message : 'Detection error',
                 });
+            } finally {
+                bashInFlightRef.current = null;
             }
-        };
+        })();
 
-        detectCLIs();
-
-        // Cleanup: Cancel detection if component unmounts or machineId changes
-        return () => {
-            cancelled = true;
-        };
+        return bashInFlightRef.current;
     }, [machineId]);
 
-    return availability;
+    useEffect(() => {
+        if (!machineId || !isOnline) {
+            setBashAvailability(null);
+            return;
+        }
+
+        // If detect-cli isn't supported or errored, fall back to bash probing (once).
+        if (autoDetect && (cached.status === 'not-supported' || cached.status === 'error')) {
+            void runBashFallback();
+        }
+    }, [autoDetect, cached.status, isOnline, machineId, runBashFallback]);
+
+    return useMemo((): CLIAvailability => {
+        if (!machineId || !isOnline) {
+            return {
+                claude: null,
+                codex: null,
+                gemini: null,
+                login: { claude: null, codex: null, gemini: null },
+                isDetecting: false,
+                timestamp: 0
+            };
+        }
+
+        const cachedResponse =
+            cached.status === 'loaded'
+                ? cached.response
+                : cached.status === 'loading'
+                    ? cached.response
+                    : null;
+
+        if (cachedResponse) {
+            const now = Date.now();
+            if (cached.status === 'loaded') {
+                lastSuccessfulDetectAtRef.current = now;
+            }
+            return {
+                claude: cachedResponse.clis.claude.available,
+                codex: cachedResponse.clis.codex.available,
+                gemini: cachedResponse.clis.gemini.available,
+                login: {
+                    claude: options?.includeLoginStatus ? (cachedResponse.clis.claude.isLoggedIn ?? null) : null,
+                    codex: options?.includeLoginStatus ? (cachedResponse.clis.codex.isLoggedIn ?? null) : null,
+                    gemini: options?.includeLoginStatus ? (cachedResponse.clis.gemini.isLoggedIn ?? null) : null,
+                },
+                isDetecting: cached.status === 'loading',
+                timestamp: lastSuccessfulDetectAtRef.current || now,
+            };
+        }
+
+        // No cached response yet. If bash fallback has data for this machine, use it.
+        if (bashAvailability?.machineId === machineId) {
+            return {
+                claude: bashAvailability.claude,
+                codex: bashAvailability.codex,
+                gemini: bashAvailability.gemini,
+                login: { claude: null, codex: null, gemini: null },
+                isDetecting: cached.status === 'loading' || bashInFlightRef.current !== null,
+                timestamp: bashAvailability.timestamp,
+                ...(bashAvailability.error ? { error: bashAvailability.error } : {}),
+            };
+        }
+
+        return {
+            claude: null,
+            codex: null,
+            gemini: null,
+            login: { claude: null, codex: null, gemini: null },
+            isDetecting: cached.status === 'loading',
+            timestamp: 0,
+            ...(cached.status === 'error' ? { error: 'Detection error' } : {}),
+        };
+    }, [bashAvailability, cached, isOnline, machineId, options?.includeLoginStatus]);
 }

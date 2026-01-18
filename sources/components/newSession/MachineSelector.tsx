@@ -5,6 +5,7 @@ import { SearchableListSelector } from '@/components/SearchableListSelector';
 import type { Machine } from '@/sync/storageTypes';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { t } from '@/text';
+import { MachineCliGlyphs } from '@/components/newSession/MachineCliGlyphs';
 
 export interface MachineSelectorProps {
     machines: Machine[];
@@ -16,6 +17,18 @@ export interface MachineSelectorProps {
     showFavorites?: boolean;
     showRecent?: boolean;
     showSearch?: boolean;
+    /**
+     * When true, show small CLI glyphs per machine row.
+     *
+     * NOTE: This can be expensive on iOS because each glyph can trigger CLI detection
+     * work; keep this off in high-interaction contexts like the new session wizard.
+     */
+    showCliGlyphs?: boolean;
+    /**
+     * When false, glyphs will render from cache only and will not auto-trigger detection.
+     * You can still refresh from the Detected CLIs modal by tapping the glyphs.
+     */
+    autoDetectCliGlyphs?: boolean;
     searchPlacement?: 'header' | 'recent' | 'favorites' | 'all';
     searchPlaceholder?: string;
     recentSectionTitle?: string;
@@ -34,6 +47,8 @@ export function MachineSelector({
     showFavorites = true,
     showRecent = true,
     showSearch = true,
+    showCliGlyphs = true,
+    autoDetectCliGlyphs = true,
     searchPlacement = 'header',
     searchPlaceholder: searchPlaceholderProp,
     recentSectionTitle: recentSectionTitleProp,
@@ -78,6 +93,15 @@ export function MachineSelector({
                         isPulsing: !offline,
                     };
                 },
+                ...(showCliGlyphs ? {
+                    getItemStatusExtra: (machine: Machine) => (
+                        <MachineCliGlyphs
+                            machineId={machine.id}
+                            isOnline={isMachineOnline(machine)}
+                            autoDetect={autoDetectCliGlyphs}
+                        />
+                    ),
+                } : {}),
                 formatForDisplay: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,
                 parseFromDisplay: (text) => {
                     return machines.find(m =>

@@ -8,7 +8,7 @@ import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
+import { machineDetectCli, type DetectCliResponse, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -19,6 +19,8 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
+import { DetectedClisList } from '@/components/machine/DetectedClisList';
+import type { MachineDetectCliCacheState } from '@/hooks/useMachineDetectCliCache';
 
 const styles = StyleSheet.create((theme) => ({
     pathInputContainer: {
@@ -76,6 +78,13 @@ export default function MachineDetailScreen() {
     const [isSpawning, setIsSpawning] = useState(false);
     const inputRef = useRef<MultiTextInputHandle>(null);
     const [showAllPaths, setShowAllPaths] = useState(false);
+    const [detectedClis, setDetectedClis] = useState<
+        | { status: 'loading'; response?: DetectCliResponse }
+        | { status: 'loaded'; response: DetectCliResponse }
+        | { status: 'not-supported' }
+        | { status: 'error' }
+        | null
+    >(null);
     // Variant D only
 
     const machineSessions = useMemo(() => {
@@ -126,25 +135,25 @@ export default function MachineDetailScreen() {
     const handleStopDaemon = async () => {
         // Show confirmation modal using alert with buttons
         Modal.alert(
-            'Stop Daemon?',
-            'You will not be able to spawn new sessions on this machine until you restart the daemon on your computer again. Your current sessions will stay alive.',
+            t('machine.stopDaemonConfirmTitle'),
+            t('machine.stopDaemonConfirmBody'),
             [
                 {
-                    text: 'Cancel',
+                    text: t('common.cancel'),
                     style: 'cancel'
                 },
                 {
-                    text: 'Stop Daemon',
+                    text: t('machine.stopDaemon'),
                     style: 'destructive',
                     onPress: async () => {
                         setIsStoppingDaemon(true);
                         try {
                             const result = await machineStopDaemon(machineId!);
-                            Modal.alert('Daemon Stopped', result.message);
+                            Modal.alert(t('machine.daemonStoppedTitle'), result.message);
                             // Refresh to get updated metadata
                             await sync.refreshMachines();
                         } catch (error) {
-                            Modal.alert(t('common.error'), 'Failed to stop daemon. It may not be running.');
+                            Modal.alert(t('common.error'), t('machine.stopDaemonFailed'));
                         } finally {
                             setIsStoppingDaemon(false);
                         }
@@ -159,18 +168,104 @@ export default function MachineDetailScreen() {
     const handleRefresh = async () => {
         setIsRefreshing(true);
         await sync.refreshMachines();
+        if (machineId) {
+            try {
+                setDetectedClis((prev) => ({ status: 'loading', ...(prev && 'response' in prev ? { response: prev.response } : {}) }));
+                const result = await machineDetectCli(machineId);
+                if (result.supported) {
+                    setDetectedClis({ status: 'loaded', response: result.response });
+                } else {
+                    setDetectedClis(result.reason === 'not-supported' ? { status: 'not-supported' } : { status: 'error' });
+                }
+            } catch {
+                setDetectedClis({ status: 'error' });
+            }
+        }
         setIsRefreshing(false);
     };
+
+    const refreshDetectedClis = useCallback(async () => {
+        if (!machineId) return;
+        try {
+            setDetectedClis((prev) => ({ status: 'loading', ...(prev && 'response' in prev ? { response: prev.response } : {}) }));
+            // On direct loads/refreshes, machine encryption/socket may not be ready yet.
+            // Refreshing machines first makes this much more reliable and avoids misclassifying
+            // transient failures as “not supported / update CLI”.
+            await sync.refreshMachines();
+            const result = await machineDetectCli(machineId);
+            if (result.supported) {
+                setDetectedClis({ status: 'loaded', response: result.response });
+                return;
+            }
+            setDetectedClis(result.reason === 'not-supported' ? { status: 'not-supported' } : { status: 'error' });
+        } catch {
+            setDetectedClis({ status: 'error' });
+        }
+    }, [machineId]);
+
+    React.useEffect(() => {
+        void refreshDetectedClis();
+    }, [refreshDetectedClis]);
+
+    const detectedClisState: MachineDetectCliCacheState = useMemo(() => {
+        if (!detectedClis) return { status: 'idle' };
+        if (detectedClis.status === 'loaded') return { status: 'loaded', response: detectedClis.response };
+        if (detectedClis.status === 'loading') return { status: 'loading' };
+        if (detectedClis.status === 'not-supported') return { status: 'not-supported' };
+        return { status: 'error' };
+    }, [detectedClis]);
+
+    const detectedClisTitle = useMemo(() => {
+        const headerTextStyle = [
+            Typography.default('regular'),
+            {
+                color: theme.colors.groupped.sectionTitle,
+                fontSize: Platform.select({ ios: 13, default: 14 }),
+                lineHeight: Platform.select({ ios: 18, default: 20 }),
+                letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+                textTransform: 'uppercase' as const,
+                fontWeight: Platform.select({ ios: 'normal', default: '500' }) as any,
+            },
+        ];
+
+        const isOnline = !!machine && isMachineOnline(machine);
+        const canRefresh = isOnline && detectedClisState.status !== 'loading';
+
+        return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={headerTextStyle as any}>{t('machine.detectedClis')}</Text>
+                <Pressable
+                    onPress={() => refreshDetectedClis()}
+                    hitSlop={10}
+                    style={{ padding: 2 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('common.refresh')}
+                    disabled={!canRefresh}
+                >
+                    {detectedClisState.status === 'loading'
+                        ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                        : <Ionicons name="refresh" size={18} color={isOnline ? theme.colors.textSecondary : theme.colors.divider} />}
+                </Pressable>
+            </View>
+        );
+    }, [
+        detectedClisState.status,
+        machine,
+        refreshDetectedClis,
+        theme.colors.divider,
+        theme.colors.groupped.sectionTitle,
+        theme.colors.textSecondary,
+    ]);
 
     const handleRenameMachine = async () => {
         if (!machine || !machineId) return;
 
         const newDisplayName = await Modal.prompt(
-            'Rename Machine',
-            'Give this machine a custom name. Leave empty to use the default hostname.',
+            t('machine.renameTitle'),
+            t('machine.renameDescription'),
             {
                 defaultValue: machine.metadata?.displayName || '',
-                placeholder: machine.metadata?.host || 'Enter machine name',
+                placeholder: machine.metadata?.host || t('machine.renamePlaceholder'),
                 cancelText: t('common.cancel'),
                 confirmText: t('common.rename')
             }
@@ -190,11 +285,11 @@ export default function MachineDetailScreen() {
                     machine.metadataVersion
                 );
                 
-                Modal.alert(t('common.success'), 'Machine renamed successfully');
+                Modal.alert(t('common.success'), t('machine.renamedSuccess'));
             } catch (error) {
                 Modal.alert(
-                    'Error',
-                    error instanceof Error ? error.message : 'Failed to rename machine'
+                    t('common.error'),
+                    error instanceof Error ? error.message : t('machine.renameFailed')
                 );
                 // Refresh to get latest state
                 await sync.refreshMachines();
@@ -224,7 +319,11 @@ export default function MachineDetailScreen() {
                     navigateToSession(result.sessionId);
                     break;
                 case 'requestToApproveDirectoryCreation': {
-                    const approved = await Modal.confirm('Create Directory?', `The directory '${result.directory}' does not exist. Would you like to create it?`, { cancelText: t('common.cancel'), confirmText: t('common.create') });
+                    const approved = await Modal.confirm(
+                        t('newSession.directoryDoesNotExist'),
+                        t('newSession.createDirectoryConfirm', { directory: result.directory }),
+                        { cancelText: t('common.cancel'), confirmText: t('common.create') }
+                    );
                     if (approved) {
                         await handleStartSession(true);
                     }
@@ -235,7 +334,7 @@ export default function MachineDetailScreen() {
                     break;
             }
         } catch (error) {
-            let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
+            let errorMessage = t('newSession.failedToStart');
             if (error instanceof Error && !error.message.includes('Failed to spawn session')) {
                 errorMessage = error.message;
             }
@@ -246,7 +345,7 @@ export default function MachineDetailScreen() {
     };
 
     const pastUsedRelativePath = useCallback((session: Session) => {
-        if (!session.metadata) return 'unknown path';
+        if (!session.metadata) return t('machine.unknownPath');
         return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
     }, []);
 
@@ -262,7 +361,7 @@ export default function MachineDetailScreen() {
                 />
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                     <Text style={[Typography.default(), { fontSize: 16, color: '#666' }]}>
-                        Machine not found
+                        {t('machine.notFound')}
                     </Text>
                 </View>
             </>
@@ -270,7 +369,7 @@ export default function MachineDetailScreen() {
     }
 
     const metadata = machine.metadata;
-    const machineName = metadata?.displayName || metadata?.host || 'unknown machine';
+    const machineName = metadata?.displayName || metadata?.host || t('machine.unknownMachine');
 
     const spawnButtonDisabled = !customPath.trim() || isSpawning || !isMachineOnline(machine!);
 
@@ -280,7 +379,7 @@ export default function MachineDetailScreen() {
                 options={{
                     headerShown: true,
                     headerTitle: () => (
-                        <View style={{ alignItems: 'center' }}>
+                        <View>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                 <Ionicons
                                     name="desktop-outline"
@@ -320,7 +419,7 @@ export default function MachineDetailScreen() {
                         >
                             <Octicons
                                 name="pencil"
-                                size={24}
+                                size={20}
                                 color={theme.colors.text}
                             />
                         </Pressable>
@@ -419,6 +518,11 @@ export default function MachineDetailScreen() {
                         </ItemGroup>
                     </>
                 )}
+
+                {/* Detected CLIs */}
+                <ItemGroup title={detectedClisTitle}>
+                    <DetectedClisList state={detectedClisState} />
+                </ItemGroup>
 
                 {/* Daemon */}
                 <ItemGroup title={t('machine.daemon')}>

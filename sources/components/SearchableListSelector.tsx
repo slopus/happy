@@ -28,6 +28,12 @@ export interface SelectorConfig<T> {
         isPulsing?: boolean;
     } | null;
 
+    /**
+     * Optional extra element rendered next to the status (e.g. small CLI glyphs).
+     * Kept separate from status.text so it can be interactive (tap/hover).
+     */
+    getItemStatusExtra?: (item: T) => React.ReactNode;
+
     // Display formatting (e.g., formatPathRelativeToHome for paths, displayName for machines)
     formatForDisplay: (item: T, context?: any) => string;
     parseFromDisplay: (text: string, context?: any) => T | null;
@@ -217,6 +223,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 ? config.getFavoriteItemIcon(item)
                 : config.getItemIcon(item);
         const status = config.getItemStatus?.(item, theme);
+        const statusExtra = config.getItemStatusExtra?.(item);
         const isFavorite = favoriteIds.has(itemId) || forFavorite;
         const selectedColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
 
@@ -229,7 +236,10 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 leftElement={icon}
                 rightElement={(
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_SPACING_GAP }}>
-                        {renderStatus(status)}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            {renderStatus(status)}
+                            {statusExtra}
+                        </View>
                         <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
                             <Ionicons
                                 name="checkmark-circle"
