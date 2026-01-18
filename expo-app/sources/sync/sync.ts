@@ -12,7 +12,7 @@ import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
-import { Platform, AppState } from 'react-native';
+import { Platform, AppState, InteractionManager } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
@@ -69,11 +69,15 @@ class Sync {
     private todosSync: InvalidateSync;
     private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
+    private pendingSettingsFlushTimer: ReturnType<typeof setTimeout> | null = null;
+    private pendingSettingsDirty = false;
     revenueCatInitialized = false;
 
     // Generic locking mechanism
     private recalculationLockCount = 0;
     private lastRecalculationTime = 0;
+    private machinesRefreshInFlight: Promise<void> | null = null;
+    private lastMachinesRefreshAt = 0;
 
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
@@ -115,9 +119,47 @@ class Sync {
                 this.todosSync.invalidate();
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
+                // Reliability: ensure we persist any pending settings immediately when backgrounding.
+                // This avoids losing last-second settings changes if the OS suspends the app.
+                try {
+                    if (this.pendingSettingsFlushTimer) {
+                        clearTimeout(this.pendingSettingsFlushTimer);
+                        this.pendingSettingsFlushTimer = null;
+                    }
+                    savePendingSettings(this.pendingSettings);
+                } catch {
+                    // ignore
+                }
             }
         });
     }
+
+    private schedulePendingSettingsFlush = () => {
+        if (this.pendingSettingsFlushTimer) {
+            clearTimeout(this.pendingSettingsFlushTimer);
+        }
+        this.pendingSettingsDirty = true;
+        // Debounce disk write + network sync to keep UI interactions snappy.
+        // IMPORTANT: JSON.stringify + MMKV.set are synchronous and can stall taps on iOS if run too often.
+        this.pendingSettingsFlushTimer = setTimeout(() => {
+            if (!this.pendingSettingsDirty) {
+                return;
+            }
+            this.pendingSettingsDirty = false;
+
+            const flush = () => {
+                // Persist pending settings for crash/restart safety.
+                savePendingSettings(this.pendingSettings);
+                // Trigger server sync (can be retried later).
+                this.settingsSync.invalidate();
+            };
+            if (Platform.OS === 'web') {
+                flush();
+            } else {
+                InteractionManager.runAfterInteractions(flush);
+            }
+        }, 900);
+    };
 
     async create(credentials: AuthCredentials, encryption: Encryption) {
         this.credentials = credentials;
@@ -297,7 +339,6 @@ class Sync {
 
         // Save pending settings
         this.pendingSettings = { ...this.pendingSettings, ...delta };
-        savePendingSettings(this.pendingSettings);
 
         // Sync PostHog opt-out state if it was changed
         if (tracking && 'analyticsOptOut' in delta) {
@@ -309,8 +350,7 @@ class Sync {
             }
         }
 
-        // Invalidate settings sync
-        this.settingsSync.invalidate();
+        this.schedulePendingSettingsFlush();
     }
 
     refreshPurchases = () => {
@@ -543,6 +583,31 @@ class Sync {
 
     public refreshMachines = async () => {
         return this.fetchMachines();
+    }
+
+    public refreshMachinesThrottled = async (params?: { staleMs?: number; force?: boolean }) => {
+        if (!this.credentials) return;
+        const staleMs = params?.staleMs ?? 30_000;
+        const force = params?.force ?? false;
+        const now = Date.now();
+
+        if (!force && (now - this.lastMachinesRefreshAt) < staleMs) {
+            return;
+        }
+
+        if (this.machinesRefreshInFlight) {
+            return this.machinesRefreshInFlight;
+        }
+
+        this.machinesRefreshInFlight = this.fetchMachines()
+            .then(() => {
+                this.lastMachinesRefreshAt = Date.now();
+            })
+            .finally(() => {
+                this.machinesRefreshInFlight = null;
+            });
+
+        return this.machinesRefreshInFlight;
     }
 
     public refreshSessions = async () => {
