@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Text, View, StyleSheet, Platform } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
 
 interface CommandViewProps {
     command: string;
@@ -120,7 +121,7 @@ export const CommandView = React.memo<CommandViewProps>(({
 
                     {/* Empty output indicator */}
                     {!stdout && !stderr && !error && !hideEmptyOutput && (
-                        <Text style={styles.emptyOutput}>[Command completed with no output]</Text>
+                        <Text style={styles.emptyOutput}>{t('commandView.completedWithNoOutput')}</Text>
                     )}
                 </>
             ) : (
@@ -132,4 +133,3 @@ export const CommandView = React.memo<CommandViewProps>(({
         </View>
     );
 });
-

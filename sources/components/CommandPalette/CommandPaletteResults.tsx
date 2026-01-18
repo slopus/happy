@@ -3,6 +3,7 @@ import { View, ScrollView, Text, StyleSheet, Platform } from 'react-native';
 import { Command, CommandCategory } from './types';
 import { CommandPaletteItem } from './CommandPaletteItem';
 import { Typography } from '@/constants/Typography';
+import { t } from '@/text';
 
 interface CommandPaletteResultsProps {
     categories: CommandCategory[];
@@ -43,7 +44,7 @@ export function CommandPaletteResults({
         return (
             <View style={styles.emptyContainer}>
                 <Text style={[styles.emptyText, Typography.default()]}>
-                    No commands found
+                    {t('commandPalette.noCommandsFound')}
                 </Text>
             </View>
         );

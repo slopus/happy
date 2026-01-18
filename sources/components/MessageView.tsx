@@ -90,12 +90,14 @@ function AgentTextBlock(props: {
   sessionId: string;
 }) {
   const experiments = useSetting('experiments');
+  const expShowThinkingMessages = useSetting('expShowThinkingMessages');
+  const showThinkingMessages = experiments && expShowThinkingMessages;
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title);
   }, [props.sessionId]);
 
   // Hide thinking messages unless experiments is enabled
-  if (props.message.isThinking && !experiments) {
+  if (props.message.isThinking && !showThinkingMessages) {
     return null;
   }
 
