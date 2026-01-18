@@ -409,11 +409,11 @@ function SessionInfoContent({ session }: { session: Session }) {
 
                 {/* Raw JSON (Dev Mode Only) */}
                 {devModeEnabled && (
-                    <ItemGroup title="Raw JSON (Dev Mode)">
+                    <ItemGroup title={t('sessionInfo.rawJsonDevMode')}>
                         {session.agentState && (
                             <>
                                 <Item
-                                    title="Agent State"
+                                    title={t('sessionInfo.agentState')}
                                     icon={<Ionicons name="code-working-outline" size={29} color="#FF9500" />}
                                     showChevron={false}
                                 />
@@ -428,7 +428,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         {session.metadata && (
                             <>
                                 <Item
-                                    title="Metadata"
+                                    title={t('sessionInfo.metadata')}
                                     icon={<Ionicons name="information-circle-outline" size={29} color="#5856D6" />}
                                     showChevron={false}
                                 />
@@ -443,7 +443,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         {sessionStatus && (
                             <>
                                 <Item
-                                    title="Session Status"
+                                    title={t('sessionInfo.sessionStatus')}
                                     icon={<Ionicons name="analytics-outline" size={29} color="#007AFF" />}
                                     showChevron={false}
                                 />
@@ -463,7 +463,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         )}
                         {/* Full Session Object */}
                         <Item
-                            title="Full Session Object"
+                            title={t('sessionInfo.fullSessionObject')}
                             icon={<Ionicons name="document-text-outline" size={29} color="#34C759" />}
                             showChevron={false}
                         />

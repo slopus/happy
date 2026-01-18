@@ -137,10 +137,7 @@ export default function Restore() {
 
                 <View style={{justifyContent: 'flex-end' }}>
                     <Text style={styles.secondInstructionText}>
-                        1. Open Happy on your mobile device{'\n'}
-                        2. Go to Settings → Account{'\n'}
-                        3. Tap "Link New Device"{'\n'}
-                        4. Scan this QR code
+                        {t('connect.restoreQrInstructions')}
                     </Text>
                 </View>
                 {!authReady && (
@@ -157,7 +154,7 @@ export default function Restore() {
                     />
                 )}
                 <View style={{ flexGrow: 4, paddingTop: 30 }}>
-                    <RoundButton title="Restore with Secret Key Instead" display='inverted' onPress={() => {
+                    <RoundButton title={t('connect.restoreWithSecretKeyInstead')} display='inverted' onPress={() => {
                         router.push('/restore/manual');
                     }} />
                 </View>

@@ -88,7 +88,7 @@ export const ConnectButton = React.memo(() => {
                             }}
                             value={manualUrl}
                             onChangeText={setManualUrl}
-                            placeholder="happy://terminal?..."
+                            placeholder={t('connect.terminalUrlPlaceholder')}
                             placeholderTextColor="#999"
                             autoCapitalize="none"
                             autoCorrect={false}

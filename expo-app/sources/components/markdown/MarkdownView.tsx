@@ -41,7 +41,7 @@ export const MarkdownView = React.memo((props: {
             router.push(`/text-selection?textId=${textId}`);
         } catch (error) {
             console.error('Error storing text for selection:', error);
-            Modal.alert('Error', 'Failed to open text selection. Please try again.');
+            Modal.alert(t('common.error'), t('textSelection.failedToOpen'));
         }
     }, [props.markdown, router]);
     const renderContent = () => {

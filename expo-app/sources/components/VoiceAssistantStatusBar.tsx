@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { useUnistyles } from 'react-native-unistyles';
 import { VoiceBars } from './VoiceBars';
+import { t } from '@/text';
 
 interface VoiceAssistantStatusBarProps {
     variant?: 'full' | 'sidebar';
@@ -34,7 +35,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                     color: theme.colors.status.connecting,
                     backgroundColor: theme.colors.surfaceHighest,
                     isPulsing: true,
-                    text: 'Connecting...',
+                    text: t('voiceAssistant.connecting'),
                     textColor: theme.colors.text
                 };
             case 'connected':
@@ -42,7 +43,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                     color: theme.colors.status.connected,
                     backgroundColor: theme.colors.surfaceHighest,
                     isPulsing: false,
-                    text: 'Voice Assistant Active',
+                    text: t('voiceAssistant.active'),
                     textColor: theme.colors.text
                 };
             case 'error':
@@ -50,7 +51,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                     color: theme.colors.status.error,
                     backgroundColor: theme.colors.surfaceHighest,
                     isPulsing: false,
-                    text: 'Connection Error',
+                    text: t('voiceAssistant.connectionError'),
                     textColor: theme.colors.text
                 };
             default:
@@ -58,7 +59,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                     color: theme.colors.status.default,
                     backgroundColor: theme.colors.surfaceHighest,
                     isPulsing: false,
-                    text: 'Voice Assistant',
+                    text: t('voiceAssistant.label'),
                     textColor: theme.colors.text
                 };
         }
@@ -128,7 +129,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                                 />
                             )}
                             <Text style={[styles.tapToEndText, { color: statusInfo.textColor, marginLeft: isVoiceSpeaking ? 8 : 0 }]}>
-                                Tap to end
+                                {t('voiceAssistant.tapToEnd')}
                             </Text>
                         </View>
                     </View>
