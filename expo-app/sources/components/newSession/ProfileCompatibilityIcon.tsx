@@ -32,13 +32,15 @@ export function ProfileCompatibilityIcon({ profile, size = 32, style }: Props) {
     useUnistyles(); // Subscribe to theme changes for re-render
     const styles = stylesheet;
     const experimentsEnabled = useSetting('experiments');
+    const expGemini = useSetting('expGemini');
+    const allowGemini = experimentsEnabled && expGemini;
 
     // iOS can render some dingbat glyphs as emoji; force text presentation (U+FE0E).
     const CLAUDE_GLYPH = '\u2733\uFE0E';
     const GEMINI_GLYPH = '\u2726\uFE0E';
     const hasClaude = !!profile.compatibility?.claude;
     const hasCodex = !!profile.compatibility?.codex;
-    const hasGemini = experimentsEnabled && !!profile.compatibility?.gemini;
+    const hasGemini = allowGemini && !!profile.compatibility?.gemini;
 
     const glyphs = React.useMemo(() => {
         const items: Array<{ key: string; glyph: string; factor: number }> = [];

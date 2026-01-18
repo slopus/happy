@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView } from 'react-native';
 import { Typography } from '@/constants/Typography';
-import { useAllMachines, storage, useSetting, useSettingMutable, useSessions } from '@/sync/storage';
+import { useAllMachines, storage, useSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
@@ -26,6 +26,8 @@ import { getBuiltInProfile, DEFAULT_PROFILES, getProfilePrimaryCli } from '@/syn
 import { AgentInput } from '@/components/AgentInput';
 import { StyleSheet } from 'react-native-unistyles';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
+import { useProfileEnvRequirements } from '@/hooks/useProfileEnvRequirements';
+import { getRequiredSecretEnvVarName } from '@/sync/profileSecrets';
 
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
@@ -37,11 +39,18 @@ import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompati
 import { EnvironmentVariablesPreviewModal } from '@/components/newSession/EnvironmentVariablesPreviewModal';
 import { buildProfileGroups, toggleFavoriteProfileId } from '@/sync/profileGrouping';
 import { ItemRowActions } from '@/components/ItemRowActions';
+import { ProfileRequirementsBadge } from '@/components/ProfileRequirementsBadge';
 import { buildProfileActions } from '@/components/profileActions';
 import type { ItemAction } from '@/components/ItemActionsMenuModal';
-import { consumeProfileIdParam } from '@/profileRouteParams';
+import { consumeApiKeyIdParam, consumeProfileIdParam } from '@/profileRouteParams';
 import { getModelOptionsForAgentType } from '@/sync/modelOptions';
 import { ignoreNextRowPress } from '@/utils/ignoreNextRowPress';
+import { ApiKeyRequirementModal, type ApiKeyRequirementModalResult } from '@/components/ApiKeyRequirementModal';
+import { useFocusEffect } from '@react-navigation/native';
+import { getRecentPathsForMachine } from '@/utils/recentPaths';
+import { InteractionManager } from 'react-native';
+import { NewSessionWizard } from './NewSessionWizard';
+import { prefetchMachineDetectCliIfStale } from '@/hooks/useMachineDetectCliCache';
 
 // Optimized profile lookup utility
 const useProfileMap = (profiles: AIBackendProfile[]) => {
@@ -57,34 +66,6 @@ const transformProfileToEnvironmentVars = (profile: AIBackendProfile) => {
     // getProfileEnvironmentVariables already returns ALL env vars from profile
     // including custom environmentVariables array
     return getProfileEnvironmentVariables(profile);
-};
-
-// Helper function to get the most recent path for a machine
-// Returns the path from the most recently CREATED session for this machine
-const getRecentPathForMachine = (machineId: string | null): string => {
-    if (!machineId) return '';
-
-    const machine = storage.getState().machines[machineId];
-    const defaultPath = machine?.metadata?.homeDir || '';
-
-    // Get all sessions for this machine, sorted by creation time (most recent first)
-    const sessions = Object.values(storage.getState().sessions);
-    const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
-
-    sessions.forEach(session => {
-        if (session.metadata?.machineId === machineId && session.metadata?.path) {
-            pathsWithTimestamps.push({
-                path: session.metadata.path,
-                timestamp: session.createdAt // Use createdAt, not updatedAt
-            });
-        }
-    });
-
-    // Sort by creation time (most recently created first)
-    pathsWithTimestamps.sort((a, b) => b.timestamp - a.timestamp);
-
-    // Return the most recently created session's path, or default
-    return pathsWithTimestamps[0]?.path || defaultPath;
 };
 
 // Configuration constants
@@ -247,7 +228,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     },
 }));
 
-function NewSessionWizard() {
+function NewSessionScreen() {
     const { theme, rt } = useUnistyles();
     const router = useRouter();
     const navigation = useNavigation();
@@ -256,14 +237,23 @@ function NewSessionWizard() {
     const { width: screenWidth } = useWindowDimensions();
     const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
 
+    const openApiKeys = React.useCallback(() => {
+        router.push({
+            pathname: '/new/pick/api-key',
+            params: { selectedId: '' },
+        });
+    }, [router]);
+
     const newSessionSidePadding = 16;
     const newSessionBottomPadding = Math.max(screenWidth < 420 ? 8 : 16, safeArea.bottom);
-    const { prompt, dataId, machineId: machineIdParam, path: pathParam, profileId: profileIdParam } = useLocalSearchParams<{
+    const { prompt, dataId, machineId: machineIdParam, path: pathParam, profileId: profileIdParam, apiKeyId: apiKeyIdParam, apiKeySessionOnlyId } = useLocalSearchParams<{
         prompt?: string;
         dataId?: string;
         machineId?: string;
         path?: string;
         profileId?: string;
+        apiKeyId?: string;
+        apiKeySessionOnlyId?: string;
     }>();
 
     // Try to get data from temporary store first
@@ -286,8 +276,12 @@ function NewSessionWizard() {
     // Variant B (true): Enhanced profile-first wizard with sections
     const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
     const useProfiles = useSetting('useProfiles');
+    const [apiKeys, setApiKeys] = useSettingMutable('apiKeys');
+    const [defaultApiKeyByProfileId, setDefaultApiKeyByProfileId] = useSettingMutable('defaultApiKeyByProfileId');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const experimentsEnabled = useSetting('experiments');
+    const expGemini = useSetting('expGemini');
+    const expSessionType = useSetting('expSessionType');
     const useMachinePickerSearch = useSetting('useMachinePickerSearch');
     const usePathPickerSearch = useSetting('usePathPickerSearch');
     const [profiles, setProfiles] = useSettingMutable('profiles');
@@ -296,6 +290,19 @@ function NewSessionWizard() {
     const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
     const [favoriteProfileIds, setFavoriteProfileIds] = useSettingMutable('favoriteProfiles');
     const [dismissedCLIWarnings, setDismissedCLIWarnings] = useSettingMutable('dismissedCLIWarnings');
+
+    useFocusEffect(
+        React.useCallback(() => {
+            // Ensure newly-registered machines show up without requiring an app restart.
+            // Throttled to avoid spamming the server when navigating back/forth.
+            // Defer until after interactions so the screen feels instant on iOS.
+            InteractionManager.runAfterInteractions(() => {
+                void sync.refreshMachinesThrottled({ staleMs: 15_000 });
+            });
+        }, [])
+    );
+
+    // (prefetch effect moved below, after machines/recent/favorites are defined)
 
     // Combined profiles (built-in + custom)
     const allProfiles = React.useMemo(() => {
@@ -320,7 +327,6 @@ function NewSessionWizard() {
         setFavoriteProfileIds(toggleFavoriteProfileId(favoriteProfileIds, profileId));
     }, [favoriteProfileIds, setFavoriteProfileIds]);
     const machines = useAllMachines();
-    const sessions = useSessions();
 
     // Wizard state
     const [selectedProfileId, setSelectedProfileId] = React.useState<string | null>(() => {
@@ -338,13 +344,30 @@ function NewSessionWizard() {
         return null;
     });
 
+    const [selectedApiKeyId, setSelectedApiKeyId] = React.useState<string | null>(() => {
+        return persistedDraft?.selectedApiKeyId ?? null;
+    });
+
+    // Session-only secret (NOT persisted). Highest-precedence override for this session.
+    const [sessionOnlyApiKeyValue, setSessionOnlyApiKeyValue] = React.useState<string | null>(null);
+
+    const prevProfileIdBeforeApiKeyPromptRef = React.useRef<string | null>(null);
+    const lastApiKeyPromptKeyRef = React.useRef<string | null>(null);
+    const suppressNextApiKeyAutoPromptKeyRef = React.useRef<string | null>(null);
+
     React.useEffect(() => {
         if (!useProfiles && selectedProfileId !== null) {
             setSelectedProfileId(null);
         }
     }, [useProfiles, selectedProfileId]);
 
-    const allowGemini = experimentsEnabled;
+    const allowGemini = experimentsEnabled && expGemini;
+
+    // AgentInput autocomplete is unused on this screen today, but passing a new
+    // function/array each render forces autocomplete hooks to re-sync.
+    // Keep these stable to avoid unnecessary work during taps/selection changes.
+    const emptyAutocompletePrefixes = React.useMemo(() => [], []);
+    const emptyAutocompleteSuggestions = React.useCallback(async () => [], []);
 
     const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
         // Check if agent type was provided in temp data
@@ -435,6 +458,77 @@ function NewSessionWizard() {
         return null;
     });
 
+    const getBestPathForMachine = React.useCallback((machineId: string | null): string => {
+        if (!machineId) return '';
+        const recent = getRecentPathsForMachine({
+            machineId,
+            recentMachinePaths,
+            sessions: null,
+        });
+        if (recent.length > 0) return recent[0]!;
+        const machine = machines.find((m) => m.id === machineId);
+        return machine?.metadata?.homeDir ?? '';
+    }, [machines, recentMachinePaths]);
+
+    const openApiKeyRequirementModal = React.useCallback((profile: AIBackendProfile, options: { revertOnCancel: boolean }) => {
+        const handleResolve = (result: ApiKeyRequirementModalResult) => {
+            if (result.action === 'cancel') {
+                // Always allow future prompts for this profile.
+                lastApiKeyPromptKeyRef.current = null;
+                suppressNextApiKeyAutoPromptKeyRef.current = null;
+                if (options.revertOnCancel) {
+                    const prev = prevProfileIdBeforeApiKeyPromptRef.current;
+                    setSelectedProfileId(prev);
+                }
+                return;
+            }
+
+            if (result.action === 'useMachine') {
+                // Explicit choice: do not auto-apply default key.
+                setSelectedApiKeyId('');
+                setSessionOnlyApiKeyValue(null);
+                return;
+            }
+
+            if (result.action === 'enterOnce') {
+                // Explicit choice: do not auto-apply default key.
+                setSelectedApiKeyId('');
+                setSessionOnlyApiKeyValue(result.value);
+                return;
+            }
+
+            if (result.action === 'selectSaved') {
+                setSessionOnlyApiKeyValue(null);
+                setSelectedApiKeyId(result.apiKeyId);
+                if (result.setDefault) {
+                    setDefaultApiKeyByProfileId({
+                        ...defaultApiKeyByProfileId,
+                        [profile.id]: result.apiKeyId,
+                    });
+                }
+            }
+        };
+
+        Modal.show({
+            component: ApiKeyRequirementModal,
+            props: {
+                profile,
+                machineId: selectedMachineId ?? null,
+                apiKeys,
+                defaultApiKeyId: defaultApiKeyByProfileId[profile.id] ?? null,
+                onChangeApiKeys: setApiKeys,
+                allowSessionOnly: true,
+                onResolve: handleResolve,
+                onRequestClose: () => handleResolve({ action: 'cancel' }),
+            },
+        });
+    }, [
+        apiKeys,
+        defaultApiKeyByProfileId,
+        selectedMachineId,
+        setDefaultApiKeyByProfileId,
+    ]);
+
     const hasUserSelectedPermissionModeRef = React.useRef(false);
     const permissionModeRef = React.useRef(permissionMode);
     React.useEffect(() => {
@@ -458,7 +552,7 @@ function NewSessionWizard() {
     //
 
     const [selectedPath, setSelectedPath] = React.useState<string>(() => {
-        return getRecentPathForMachine(selectedMachineId);
+        return getBestPathForMachine(selectedMachineId);
     });
     const [sessionPrompt, setSessionPrompt] = React.useState(() => {
         return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
@@ -475,7 +569,7 @@ function NewSessionWizard() {
         }
         if (machineIdParam !== selectedMachineId) {
             setSelectedMachineId(machineIdParam);
-            const bestPath = getRecentPathForMachine(machineIdParam);
+            const bestPath = getBestPathForMachine(machineIdParam);
             setSelectedPath(bestPath);
         }
     }, [machineIdParam, machines, recentMachinePaths, selectedMachineId]);
@@ -503,7 +597,7 @@ function NewSessionWizard() {
         }
 
         setSelectedMachineId(machineIdToUse);
-        setSelectedPath(getRecentPathForMachine(machineIdToUse));
+        setSelectedPath(getBestPathForMachine(machineIdToUse));
     }, [machines, recentMachinePaths, selectedMachineId]);
 
     // Handle path route param from picker screens (main's navigation pattern)
@@ -528,7 +622,7 @@ function NewSessionWizard() {
     const permissionSectionRef = React.useRef<View>(null);
 
     // CLI Detection - automatic, non-blocking detection of installed CLIs on selected machine
-    const cliAvailability = useCLIDetection(selectedMachineId);
+    const cliAvailability = useCLIDetection(selectedMachineId, { autoDetect: false });
 
     // Auto-correct invalid agent selection after CLI detection completes
     // This handles the case where lastUsedAgent was 'codex' but codex is not installed
@@ -633,6 +727,14 @@ function NewSessionWizard() {
         return { available: true };
     }, [cliAvailability, experimentsEnabled]);
 
+    const profileAvailabilityById = React.useMemo(() => {
+        const map = new Map<string, { available: boolean; reason?: string }>();
+        for (const profile of allProfiles) {
+            map.set(profile.id, isProfileAvailable(profile));
+        }
+        return map;
+    }, [allProfiles, isProfileAvailable]);
+
     // Computed values
     const compatibleProfiles = React.useMemo(() => {
         return allProfiles.filter(profile => validateProfileForAgent(profile, agentType));
@@ -650,24 +752,66 @@ function NewSessionWizard() {
         return getBuiltInProfile(selectedProfileId);
     }, [selectedProfileId, profileMap]);
 
+    React.useEffect(() => {
+        // Session-only secrets are only for the current launch attempt; clear when profile changes.
+        setSessionOnlyApiKeyValue(null);
+    }, [selectedProfileId]);
+
     const selectedMachine = React.useMemo(() => {
         if (!selectedMachineId) return null;
         return machines.find(m => m.id === selectedMachineId);
     }, [selectedMachineId, machines]);
 
+    const requiredSecretEnvVarName = React.useMemo(() => {
+        return getRequiredSecretEnvVarName(selectedProfile);
+    }, [selectedProfile]);
+
+    const shouldShowApiKeySection = Boolean(
+        selectedProfile &&
+        selectedProfile.authMode === 'apiKeyEnv' &&
+        requiredSecretEnvVarName,
+    );
+
+    const apiKeyPreflight = useProfileEnvRequirements(
+        shouldShowApiKeySection ? selectedMachineId : null,
+        shouldShowApiKeySection ? selectedProfile : null,
+    );
+
+    const selectedSavedApiKey = React.useMemo(() => {
+        if (!selectedApiKeyId) return null;
+        return apiKeys.find((k) => k.id === selectedApiKeyId) ?? null;
+    }, [apiKeys, selectedApiKeyId]);
+
+    React.useEffect(() => {
+        if (!selectedProfileId) return;
+        if (selectedApiKeyId !== null) return;
+        const nextDefault = defaultApiKeyByProfileId[selectedProfileId];
+        if (typeof nextDefault === 'string' && nextDefault.length > 0) {
+            setSelectedApiKeyId(nextDefault);
+        }
+    }, [defaultApiKeyByProfileId, selectedApiKeyId, selectedProfileId]);
+
+    const activeApiKeySource = sessionOnlyApiKeyValue
+        ? 'sessionOnly'
+        : selectedApiKeyId
+            ? 'saved'
+            : 'machineEnv';
+
     const openProfileEdit = React.useCallback((params: { profileId?: string; cloneFromProfileId?: string }) => {
-        // Persist wizard state before navigating so selection doesn't reset on return.
-        saveNewSessionDraft({
+        // Persisting can block the JS thread on iOS (MMKV). Navigation should be instant,
+        // so we persist after the navigation transition.
+        const draft = {
             input: sessionPrompt,
             selectedMachineId,
             selectedPath,
             selectedProfileId: useProfiles ? selectedProfileId : null,
+            selectedApiKeyId,
             agentType,
             permissionMode,
             modelMode,
             sessionType,
             updatedAt: Date.now(),
-        });
+        };
 
         router.push({
             pathname: '/new/pick/profile-edit',
@@ -676,6 +820,10 @@ function NewSessionWizard() {
                 ...(selectedMachineId ? { machineId: selectedMachineId } : {}),
             },
         } as any);
+
+        InteractionManager.runAfterInteractions(() => {
+            saveNewSessionDraft(draft);
+        });
     }, [agentType, modelMode, permissionMode, router, selectedMachineId, selectedPath, selectedProfileId, sessionPrompt, sessionType, useProfiles]);
 
     const handleAddProfile = React.useCallback(() => {
@@ -708,89 +856,126 @@ function NewSessionWizard() {
     }, [profiles, selectedProfileId, setProfiles]);
 
     // Get recent paths for the selected machine
-    // Recent machines computed from sessions (for inline machine selection)
+    // Recent machines computed from recentMachinePaths (lightweight; avoids subscribing to sessions updates)
     const recentMachines = React.useMemo(() => {
-        const machineIds = new Set<string>();
-        const machinesWithTimestamp: Array<{ machine: typeof machines[0]; timestamp: number }> = [];
+        if (machines.length === 0) return [];
+        if (!recentMachinePaths || recentMachinePaths.length === 0) return [];
 
-        sessions?.forEach(item => {
-            if (typeof item === 'string') return; // Skip section headers
-            const session = item as any;
-            if (session.metadata?.machineId && !machineIds.has(session.metadata.machineId)) {
-                const machine = machines.find(m => m.id === session.metadata.machineId);
-                if (machine) {
-                    machineIds.add(machine.id);
-                    machinesWithTimestamp.push({
-                        machine,
-                        timestamp: session.updatedAt || session.createdAt
-                    });
-                }
-            }
-        });
-
-        return machinesWithTimestamp
-            .sort((a, b) => b.timestamp - a.timestamp)
-            .map(item => item.machine);
-    }, [sessions, machines]);
+        const byId = new Map(machines.map((m) => [m.id, m] as const));
+        const seen = new Set<string>();
+        const result: typeof machines = [];
+        for (const entry of recentMachinePaths) {
+            if (seen.has(entry.machineId)) continue;
+            const m = byId.get(entry.machineId);
+            if (!m) continue;
+            seen.add(entry.machineId);
+            result.push(m);
+        }
+        return result;
+    }, [machines, recentMachinePaths]);
 
     const favoriteMachineItems = React.useMemo(() => {
         return machines.filter(m => favoriteMachines.includes(m.id));
     }, [machines, favoriteMachines]);
 
-    const recentPaths = React.useMemo(() => {
-        if (!selectedMachineId) return [];
+    // Background refresh on open: pick up newly-installed CLIs without fetching on taps.
+    // Keep this fairly conservative to avoid impacting iOS responsiveness.
+    const CLI_DETECT_REVALIDATE_STALE_MS = 2 * 60 * 1000; // 2 minutes
 
-        const paths: string[] = [];
-        const pathSet = new Set<string>();
+    // One-time prefetch of detect-cli results for the wizard machine list.
+    // This keeps machine glyphs responsive (cache-only in the list) without
+    // triggering per-row auto-detect work during taps.
+    const didPrefetchWizardMachineGlyphsRef = React.useRef(false);
+    React.useEffect(() => {
+        if (!useEnhancedSessionWizard) return;
+        if (didPrefetchWizardMachineGlyphsRef.current) return;
+        didPrefetchWizardMachineGlyphsRef.current = true;
 
-        // First, add paths from recentMachinePaths (these are the most recent)
-        recentMachinePaths.forEach(entry => {
-            if (entry.machineId === selectedMachineId && !pathSet.has(entry.path)) {
-                paths.push(entry.path);
-                pathSet.add(entry.path);
+        InteractionManager.runAfterInteractions(() => {
+            try {
+                const candidates: string[] = [];
+                for (const m of favoriteMachineItems) candidates.push(m.id);
+                for (const m of recentMachines) candidates.push(m.id);
+                for (const m of machines.slice(0, 8)) candidates.push(m.id);
+
+                const seen = new Set<string>();
+                const unique = candidates.filter((id) => {
+                    if (seen.has(id)) return false;
+                    seen.add(id);
+                    return true;
+                });
+
+                // Limit to avoid a thundering herd on iOS.
+                const toPrefetch = unique.slice(0, 12);
+                for (const machineId of toPrefetch) {
+                    const machine = machines.find((m) => m.id === machineId);
+                    if (!machine) continue;
+                    if (!isMachineOnline(machine)) continue;
+                    void prefetchMachineDetectCliIfStale({ machineId, staleMs: CLI_DETECT_REVALIDATE_STALE_MS });
+                }
+            } catch {
+                // best-effort prefetch only
             }
         });
+    }, [favoriteMachineItems, machines, recentMachines, useEnhancedSessionWizard]);
 
-        // Then add paths from sessions if we need more
-        if (sessions) {
-            const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
+    // Cache-first + background refresh: for the actively selected machine, prefetch detect-cli
+    // if missing or stale. This updates the banners/agent availability on screen open, but avoids
+    // any fetches on tap handlers.
+    React.useEffect(() => {
+        if (!selectedMachineId) return;
+        const machine = machines.find((m) => m.id === selectedMachineId);
+        if (!machine) return;
+        if (!isMachineOnline(machine)) return;
 
-            sessions.forEach(item => {
-                if (typeof item === 'string') return; // Skip section headers
-
-                const session = item as any;
-                if (session.metadata?.machineId === selectedMachineId && session.metadata?.path) {
-                    const path = session.metadata.path;
-                    if (!pathSet.has(path)) {
-                        pathSet.add(path);
-                        pathsWithTimestamps.push({
-                            path,
-                            timestamp: session.updatedAt || session.createdAt
-                        });
-                    }
-                }
+        InteractionManager.runAfterInteractions(() => {
+            void prefetchMachineDetectCliIfStale({
+                machineId: selectedMachineId,
+                staleMs: CLI_DETECT_REVALIDATE_STALE_MS,
             });
+        });
+    }, [machines, selectedMachineId]);
 
-            // Sort session paths by most recent first and add them
-            pathsWithTimestamps
-                .sort((a, b) => b.timestamp - a.timestamp)
-                .forEach(item => paths.push(item.path));
-        }
-
-        return paths;
-    }, [sessions, selectedMachineId, recentMachinePaths]);
+    const recentPaths = React.useMemo(() => {
+        if (!selectedMachineId) return [];
+        return getRecentPathsForMachine({
+            machineId: selectedMachineId,
+            recentMachinePaths,
+            sessions: null,
+        });
+    }, [recentMachinePaths, selectedMachineId]);
 
     // Validation
     const canCreate = React.useMemo(() => {
         return selectedMachineId !== null && selectedPath.trim() !== '';
     }, [selectedMachineId, selectedPath]);
 
+    // On iOS, keep tap handlers extremely light so selection state can commit instantly.
+    // We defer any follow-up adjustments (agent/session-type/permission defaults) until after interactions.
+    const pendingProfileSelectionRef = React.useRef<{ profileId: string; prevProfileId: string | null } | null>(null);
+
     const selectProfile = React.useCallback((profileId: string) => {
         const prevSelectedProfileId = selectedProfileId;
+        prevProfileIdBeforeApiKeyPromptRef.current = prevSelectedProfileId;
+        // Ensure selecting a profile can re-prompt if needed.
+        lastApiKeyPromptKeyRef.current = null;
+        pendingProfileSelectionRef.current = { profileId, prevProfileId: prevSelectedProfileId };
         setSelectedProfileId(profileId);
-        // Check both custom profiles and built-in profiles
-        const profile = profileMap.get(profileId) || getBuiltInProfile(profileId);
-        if (profile) {
+    }, [selectedProfileId]);
+
+    React.useEffect(() => {
+        if (!selectedProfileId) return;
+        const pending = pendingProfileSelectionRef.current;
+        if (!pending || pending.profileId !== selectedProfileId) return;
+        pendingProfileSelectionRef.current = null;
+
+        InteractionManager.runAfterInteractions(() => {
+            // Ensure nothing changed while we waited.
+            if (selectedProfileId !== pending.profileId) return;
+
+            const profile = profileMap.get(pending.profileId) || getBuiltInProfile(pending.profileId);
+            if (!profile) return;
+
             const supportedAgents = (Object.entries(profile.compatibility) as Array<[string, boolean]>)
                 .filter(([, supported]) => supported)
                 .map(([agent]) => agent as 'claude' | 'codex' | 'gemini')
@@ -800,23 +985,117 @@ function NewSessionWizard() {
                 setAgentType(supportedAgents[0] ?? 'claude');
             }
 
-            // Set session type from profile's default
             if (profile.defaultSessionType) {
                 setSessionType(profile.defaultSessionType);
             }
 
-            // Apply permission defaults only on first selection (or if the user hasn't explicitly chosen one).
-            // Switching between profiles should not reset permissions when the backend stays the same.
             if (!hasUserSelectedPermissionModeRef.current && profile.defaultPermissionMode) {
                 const nextMode = profile.defaultPermissionMode as PermissionMode;
-                // If the user is switching profiles (not initial selection), keep their current permissionMode.
-                const isInitialProfileSelection = prevSelectedProfileId === null;
+                const isInitialProfileSelection = pending.prevProfileId === null;
                 if (isInitialProfileSelection) {
                     applyPermissionMode(nextMode, 'auto');
                 }
             }
-        }
+        });
     }, [agentType, allowGemini, applyPermissionMode, profileMap, selectedProfileId]);
+
+    // Keep ProfilesList props stable to avoid rerendering the whole list on
+    // unrelated state updates (iOS perf).
+    const profilesGroupTitles = React.useMemo(() => {
+        return {
+            favorites: t('profiles.groups.favorites'),
+            custom: t('profiles.groups.custom'),
+            builtIn: t('profiles.groups.builtIn'),
+        };
+    }, []);
+
+    const getProfileDisabled = React.useCallback((profile: { id: string }) => {
+        return !(profileAvailabilityById.get(profile.id) ?? { available: true }).available;
+    }, [profileAvailabilityById]);
+
+    const getProfileSubtitleExtra = React.useCallback((profile: { id: string }) => {
+        const availability = profileAvailabilityById.get(profile.id) ?? { available: true };
+        if (availability.available || !availability.reason) return null;
+        if (availability.reason.startsWith('requires-agent:')) {
+            const required = availability.reason.split(':')[1];
+            const agentLabel = required === 'claude'
+                ? t('agentInput.agent.claude')
+                : required === 'codex'
+                    ? t('agentInput.agent.codex')
+                    : required === 'gemini'
+                        ? t('agentInput.agent.gemini')
+                        : required;
+            return t('newSession.profileAvailability.requiresAgent', { agent: agentLabel });
+        }
+        if (availability.reason.startsWith('cli-not-detected:')) {
+            const cli = availability.reason.split(':')[1];
+            const cliLabel = cli === 'claude'
+                ? t('agentInput.agent.claude')
+                : cli === 'codex'
+                    ? t('agentInput.agent.codex')
+                    : cli === 'gemini'
+                        ? t('agentInput.agent.gemini')
+                        : cli;
+            return t('newSession.profileAvailability.cliNotDetected', { cli: cliLabel });
+        }
+        return availability.reason;
+    }, [profileAvailabilityById]);
+
+    const onPressProfile = React.useCallback((profile: { id: string }) => {
+        const availability = profileAvailabilityById.get(profile.id) ?? { available: true };
+        if (!availability.available) return;
+        selectProfile(profile.id);
+    }, [profileAvailabilityById, selectProfile]);
+
+    const onPressDefaultEnvironment = React.useCallback(() => {
+        setSelectedProfileId(null);
+    }, []);
+
+    // If a selected profile requires an API key and the key isn't available on the selected machine,
+    // prompt immediately and revert selection on cancel (so the profile isn't "selected" without a key).
+    React.useEffect(() => {
+        if (!useProfiles) return;
+        if (!selectedMachineId) return;
+        if (!shouldShowApiKeySection) return;
+        if (!selectedProfileId) return;
+
+        const hasInjected = Boolean(sessionOnlyApiKeyValue || selectedSavedApiKey?.value);
+        const hasMachineEnv = apiKeyPreflight.isReady;
+        if (hasInjected || hasMachineEnv) {
+            // Reset prompt key when requirements are satisfied so future selections can prompt again if needed.
+            lastApiKeyPromptKeyRef.current = null;
+            return;
+        }
+
+        const promptKey = `${selectedMachineId}:${selectedProfileId}`;
+        if (suppressNextApiKeyAutoPromptKeyRef.current === promptKey) {
+            // One-shot suppression (used when the user explicitly opened the modal via the badge).
+            suppressNextApiKeyAutoPromptKeyRef.current = null;
+            return;
+        }
+        if (lastApiKeyPromptKeyRef.current === promptKey) {
+            return;
+        }
+        lastApiKeyPromptKeyRef.current = promptKey;
+        if (!selectedProfile) {
+            return;
+        }
+        openApiKeyRequirementModal(selectedProfile, { revertOnCancel: true });
+    }, [
+        apiKeyPreflight.isReady,
+        defaultApiKeyByProfileId,
+        openApiKeyRequirementModal,
+        requiredSecretEnvVarName,
+        selectedApiKeyId,
+        selectedMachineId,
+        selectedProfileId,
+        selectedProfile,
+        selectedSavedApiKey?.value,
+        sessionOnlyApiKeyValue,
+        shouldShowApiKeySection,
+        suppressNextApiKeyAutoPromptKeyRef,
+        useProfiles,
+    ]);
 
     // Handle profile route param from picker screens
     React.useEffect(() => {
@@ -849,6 +1128,58 @@ function NewSessionWizard() {
             }
         }
     }, [navigation, profileIdParam, selectedProfileId, selectProfile, useProfiles]);
+
+    // Handle apiKey route param from picker screens
+    React.useEffect(() => {
+        const { nextSelectedApiKeyId, shouldClearParam } = consumeApiKeyIdParam({
+            apiKeyIdParam,
+            selectedApiKeyId,
+        });
+
+        if (nextSelectedApiKeyId === null) {
+            if (selectedApiKeyId !== null) {
+                setSelectedApiKeyId(null);
+            }
+        } else if (typeof nextSelectedApiKeyId === 'string') {
+            setSelectedApiKeyId(nextSelectedApiKeyId);
+        }
+
+        if (shouldClearParam) {
+            const setParams = (navigation as any)?.setParams;
+            if (typeof setParams === 'function') {
+                setParams({ apiKeyId: undefined });
+            } else {
+                navigation.dispatch({
+                    type: 'SET_PARAMS',
+                    payload: { params: { apiKeyId: undefined } },
+                } as never);
+            }
+        }
+    }, [apiKeyIdParam, navigation, selectedApiKeyId]);
+
+    // Handle session-only API key temp id from picker screens (value is stored in-memory only).
+    React.useEffect(() => {
+        if (typeof apiKeySessionOnlyId !== 'string' || apiKeySessionOnlyId.length === 0) {
+            return;
+        }
+
+        const entry = getTempData<{ apiKey?: string }>(apiKeySessionOnlyId);
+        const value = entry?.apiKey;
+        if (typeof value === 'string' && value.length > 0) {
+            setSessionOnlyApiKeyValue(value);
+            setSelectedApiKeyId(null);
+        }
+
+        const setParams = (navigation as any)?.setParams;
+        if (typeof setParams === 'function') {
+            setParams({ apiKeySessionOnlyId: undefined });
+        } else {
+            navigation.dispatch({
+                type: 'SET_PARAMS',
+                payload: { params: { apiKeySessionOnlyId: undefined } },
+            } as never);
+        }
+    }, [apiKeySessionOnlyId, navigation]);
 
     // Keep agentType compatible with the currently selected profile.
     React.useEffect(() => {
@@ -1028,6 +1359,11 @@ function NewSessionWizard() {
 
 	        return (
 	            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                    <ProfileRequirementsBadge
+                        profile={profile}
+                        machineId={selectedMachineId ?? null}
+                        onPress={openApiKeys}
+                    />
 	                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
 	                    <Ionicons
                         name="checkmark-circle"
@@ -1050,9 +1386,11 @@ function NewSessionWizard() {
 	    }, [
 	        handleDeleteProfile,
 	        handleDuplicateProfile,
+            openApiKeys,
 	        openProfileEnvVarsPreview,
 	        openProfileEdit,
 	        screenWidth,
+            selectedMachineId,
 	        selectedIndicatorColor,
 	        theme.colors.button.secondary.tint,
 	        theme.colors.deleteAction,
@@ -1119,11 +1457,11 @@ function NewSessionWizard() {
 
             if (supportedAgents.length <= 1) {
                 Modal.alert(
-                    'AI Backend',
-                    'AI backend is selected by your profile. To change it, select a different profile.',
+                    t('profiles.aiBackend.title'),
+                    t('newSession.aiBackendSelectedByProfile'),
                     [
                         { text: t('common.ok'), style: 'cancel' },
-                        { text: 'Change Profile', onPress: handleProfileClick },
+                        { text: t('newSession.changeProfile'), onPress: handleProfileClick },
                     ],
                 );
                 return;
@@ -1232,6 +1570,39 @@ function NewSessionWizard() {
                 const selectedProfile = profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId);
                 if (selectedProfile) {
                     environmentVariables = transformProfileToEnvironmentVars(selectedProfile);
+
+                    // Spawn-time secret injection overlay (saved key / session-only key)
+                    const requiredSecretName = requiredSecretEnvVarName;
+                    const injectedSecretValue =
+                        sessionOnlyApiKeyValue
+                            ?? selectedSavedApiKey?.value
+                            ?? null;
+
+                    const needsSecret =
+                        selectedProfile.authMode === 'apiKeyEnv' &&
+                        typeof requiredSecretName === 'string' &&
+                        requiredSecretName.length > 0;
+
+                    if (needsSecret) {
+                        const hasMachineEnv = apiKeyPreflight.isReady;
+                        const hasInjected = typeof injectedSecretValue === 'string' && injectedSecretValue.length > 0;
+
+                        if (!hasInjected && !hasMachineEnv) {
+                            Modal.alert(
+                                t('common.error'),
+                                `Missing API key (${requiredSecretName}). Configure it on the machine or select/enter a key.`,
+                            );
+                            setIsCreating(false);
+                            return;
+                        }
+
+                        if (hasInjected) {
+                            environmentVariables = {
+                                ...environmentVariables,
+                                [requiredSecretName]: injectedSecretValue!,
+                            };
+                        }
+                    }
                 }
             }
 
@@ -1282,7 +1653,26 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router, useEnhancedSessionWizard]);
+    }, [
+        agentType,
+        apiKeyPreflight.isReady,
+        experimentsEnabled,
+        modelMode,
+        permissionMode,
+        profileMap,
+        recentMachinePaths,
+        requiredSecretEnvVarName,
+        router,
+        selectedMachineId,
+        selectedPath,
+        selectedProfileId,
+        selectedSavedApiKey?.value,
+        sessionOnlyApiKeyValue,
+        sessionPrompt,
+        sessionType,
+        useEnhancedSessionWizard,
+        useProfiles,
+    ]);
 
     const handleCloseModal = React.useCallback(() => {
         // On web (especially mobile), `router.back()` can be a no-op if the modal is the first history entry.
@@ -1304,22 +1694,13 @@ function NewSessionWizard() {
         if (!selectedMachine) return undefined;
         const isOnline = isMachineOnline(selectedMachine);
 
-        // Always include CLI status when a machine is selected.
-        // Values may be `null` while detection is still in flight / failed; the UI renders them as informational.
-        const includeCLI = Boolean(selectedMachineId);
-
         return {
             text: isOnline ? 'online' : 'offline',
             color: isOnline ? theme.colors.success : theme.colors.textDestructive,
             dotColor: isOnline ? theme.colors.success : theme.colors.textDestructive,
             isPulsing: isOnline,
-            cliStatus: includeCLI ? {
-                claude: cliAvailability.claude,
-                codex: cliAvailability.codex,
-                ...(experimentsEnabled && { gemini: cliAvailability.gemini }),
-            } : undefined,
         };
-    }, [selectedMachine, selectedMachineId, cliAvailability, experimentsEnabled, theme]);
+    }, [selectedMachine, theme]);
 
     const persistDraftNow = React.useCallback(() => {
         saveNewSessionDraft({
@@ -1327,13 +1708,14 @@ function NewSessionWizard() {
             selectedMachineId,
             selectedPath,
             selectedProfileId: useProfiles ? selectedProfileId : null,
+            selectedApiKeyId,
             agentType,
             permissionMode,
             modelMode,
             sessionType,
             updatedAt: Date.now(),
         });
-    }, [agentType, modelMode, permissionMode, selectedMachineId, selectedPath, selectedProfileId, sessionPrompt, sessionType, useProfiles]);
+    }, [agentType, modelMode, permissionMode, selectedApiKeyId, selectedMachineId, selectedPath, selectedProfileId, sessionPrompt, sessionType, useProfiles]);
 
     // Persist the current wizard state so it survives remounts and screen navigation
     // Uses debouncing to avoid excessive writes
@@ -1342,9 +1724,18 @@ function NewSessionWizard() {
         if (draftSaveTimerRef.current) {
             clearTimeout(draftSaveTimerRef.current);
         }
+        const delayMs = Platform.OS === 'web' ? 250 : 900;
         draftSaveTimerRef.current = setTimeout(() => {
-            persistDraftNow();
-        }, 250);
+            // Persisting uses synchronous storage under the hood (MMKV), which can block the JS thread on iOS.
+            // Run after interactions so taps/animations stay responsive.
+            if (Platform.OS === 'web') {
+                persistDraftNow();
+            } else {
+                InteractionManager.runAfterInteractions(() => {
+                    persistDraftNow();
+                });
+            }
+        }, delayMs);
         return () => {
             if (draftSaveTimerRef.current) {
                 clearTimeout(draftSaveTimerRef.current);
@@ -1384,8 +1775,8 @@ function NewSessionWizard() {
                     paddingTop: safeArea.top,
                     paddingBottom: safeArea.bottom,
                 }}>
-                    {/* Session type selector only if experiments enabled */}
-                    {experimentsEnabled && (
+                    {/* Session type selector only if enabled via experiments */}
+                    {experimentsEnabled && expSessionType && (
                         <View style={{ paddingHorizontal: newSessionSidePadding, marginBottom: 16 }}>
                             <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
                                 <ItemGroup title={t('newSession.sessionType.title')} containerStyle={{ marginHorizontal: 0 }}>
@@ -1411,8 +1802,8 @@ function NewSessionWizard() {
                                     isSendDisabled={!canCreate}
                                     isSending={isCreating}
                                     placeholder={t('session.inputPlaceholder')}
-                                    autocompletePrefixes={[]}
-                                    autocompleteSuggestions={async () => []}
+                                    autocompletePrefixes={emptyAutocompletePrefixes}
+                                    autocompleteSuggestions={emptyAutocompleteSuggestions}
                                     agentType={agentType}
                                     onAgentClick={handleAgentClick}
                                     permissionMode={permissionMode}
@@ -1446,712 +1837,196 @@ function NewSessionWizard() {
     // VARIANT B: Enhanced profile-first wizard (flag ON)
     // Full wizard with numbered sections, profile management, CLI detection
     // ========================================================================
+
+    const wizardLayoutProps = React.useMemo(() => {
+        return {
+            theme,
+            styles,
+            safeAreaBottom: safeArea.bottom,
+            headerHeight,
+            newSessionSidePadding,
+            newSessionBottomPadding,
+            scrollViewRef,
+            profileSectionRef,
+            modelSectionRef,
+            machineSectionRef,
+            pathSectionRef,
+            permissionSectionRef,
+            registerWizardSectionOffset,
+        };
+    }, [headerHeight, newSessionBottomPadding, newSessionSidePadding, registerWizardSectionOffset, safeArea.bottom, theme]);
+
+    const wizardProfilesProps = React.useMemo(() => {
+        return {
+            useProfiles,
+            profiles,
+            favoriteProfileIds,
+            setFavoriteProfileIds,
+            experimentsEnabled,
+            selectedProfileId,
+            onPressDefaultEnvironment,
+            onPressProfile,
+            selectedMachineId,
+            getProfileDisabled,
+            getProfileSubtitleExtra,
+            handleAddProfile,
+            openProfileEdit,
+            handleDuplicateProfile,
+            handleDeleteProfile,
+            openProfileEnvVarsPreview,
+            suppressNextApiKeyAutoPromptKeyRef,
+            sessionOnlyApiKeyValue,
+            selectedSavedApiKeyValue: selectedSavedApiKey?.value,
+            apiKeyPreflightIsReady: apiKeyPreflight.isReady,
+            openApiKeyRequirementModal,
+            profilesGroupTitles,
+        };
+    }, [
+        apiKeyPreflight.isReady,
+        experimentsEnabled,
+        favoriteProfileIds,
+        getProfileDisabled,
+        getProfileSubtitleExtra,
+        handleAddProfile,
+        handleDeleteProfile,
+        handleDuplicateProfile,
+        onPressDefaultEnvironment,
+        onPressProfile,
+        openApiKeyRequirementModal,
+        openProfileEdit,
+        openProfileEnvVarsPreview,
+        profiles,
+        profilesGroupTitles,
+        selectedMachineId,
+        selectedProfileId,
+        selectedSavedApiKey?.value,
+        sessionOnlyApiKeyValue,
+        setFavoriteProfileIds,
+        suppressNextApiKeyAutoPromptKeyRef,
+        useProfiles,
+    ]);
+
+    const wizardAgentProps = React.useMemo(() => {
+        return {
+            cliAvailability,
+            allowGemini,
+            isWarningDismissed,
+            hiddenBanners,
+            handleCLIBannerDismiss,
+            agentType,
+            setAgentType,
+            modelOptions,
+            modelMode,
+            setModelMode,
+            selectedIndicatorColor,
+            profileMap,
+            handleAgentInputProfileClick,
+            permissionMode,
+            handlePermissionModeChange,
+            sessionType,
+            setSessionType,
+        };
+    }, [
+        agentType,
+        allowGemini,
+        cliAvailability,
+        handleAgentInputProfileClick,
+        handleCLIBannerDismiss,
+        hiddenBanners,
+        isWarningDismissed,
+        modelMode,
+        modelOptions,
+        permissionMode,
+        profileMap,
+        selectedIndicatorColor,
+        sessionType,
+        setAgentType,
+        setModelMode,
+        setSessionType,
+        handlePermissionModeChange,
+    ]);
+
+    const wizardMachineProps = React.useMemo(() => {
+        return {
+            machines,
+            selectedMachine: selectedMachine || null,
+            recentMachines,
+            favoriteMachineItems,
+            useMachinePickerSearch,
+            setSelectedMachineId,
+            getBestPathForMachine,
+            setSelectedPath,
+            favoriteMachines,
+            setFavoriteMachines,
+            selectedPath,
+            recentPaths,
+            usePathPickerSearch,
+            favoriteDirectories,
+            setFavoriteDirectories,
+        };
+    }, [
+        favoriteDirectories,
+        favoriteMachineItems,
+        favoriteMachines,
+        getBestPathForMachine,
+        machines,
+        recentMachines,
+        recentPaths,
+        selectedMachine,
+        selectedPath,
+        setFavoriteDirectories,
+        setFavoriteMachines,
+        setSelectedMachineId,
+        setSelectedPath,
+        useMachinePickerSearch,
+        usePathPickerSearch,
+    ]);
+
+    const wizardFooterProps = React.useMemo(() => {
+        return {
+            sessionPrompt,
+            setSessionPrompt,
+            handleCreateSession,
+            canCreate,
+            isCreating,
+            emptyAutocompletePrefixes,
+            emptyAutocompleteSuggestions,
+            handleAgentInputAgentClick,
+            handleAgentInputPermissionClick,
+            connectionStatus,
+            handleAgentInputMachineClick,
+            handleAgentInputPathClick,
+            handleAgentInputProfileClick: handleAgentInputProfileClick,
+            selectedProfileEnvVarsCount,
+            handleEnvVarsClick,
+        };
+    }, [
+        canCreate,
+        connectionStatus,
+        emptyAutocompletePrefixes,
+        emptyAutocompleteSuggestions,
+        handleAgentInputAgentClick,
+        handleAgentInputMachineClick,
+        handleAgentInputPathClick,
+        handleAgentInputPermissionClick,
+        handleCreateSession,
+        handleEnvVarsClick,
+        isCreating,
+        selectedProfileEnvVarsCount,
+        sessionPrompt,
+        setSessionPrompt,
+        handleAgentInputProfileClick,
+    ]);
+
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + safeArea.bottom + 16 : 0}
-            style={[styles.container, { backgroundColor: theme.colors.groupped.background }]}
-        >
-            <View style={{ flex: 1 }}>
-                <ScrollView
-                    ref={scrollViewRef}
-                    style={styles.scrollContainer}
-                    contentContainerStyle={styles.contentContainer}
-                    keyboardShouldPersistTaps="handled"
-                >
-	                <View style={{ paddingHorizontal: 0 }}>
-                        <View style={[
-                            { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
-                        ]}>
-                            <View ref={profileSectionRef} onLayout={registerWizardSectionOffset('profile')} style={styles.wizardContainer}>
-                                {useProfiles && (
-                                    <>
-                                        <View style={styles.wizardSectionHeaderRow}>
-                                            <Ionicons name="person-outline" size={18} color={theme.colors.text} />
-                                            <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
-                                                Select AI Profile
-                                            </Text>
-                                        </View>
-                                        <Text style={styles.sectionDescription}>
-                                            Select an AI profile to apply environment variables and defaults to your session.
-                                        </Text>
-
-                                        {(isDefaultEnvironmentFavorite || favoriteProfileItems.length > 0) && (
-                                            <ItemGroup title="Favorites">
-                                                {isDefaultEnvironmentFavorite && (
-                                                    <Item
-                                                        title={t('profiles.noProfile')}
-                                                        subtitle={t('profiles.noProfileDescription')}
-                                                        leftElement={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
-                                                        showChevron={false}
-                                                        selected={!selectedProfileId}
-                                                        onPress={() => {
-                                                            if (ignoreProfileRowPressRef.current) {
-                                                                ignoreProfileRowPressRef.current = false;
-                                                                return;
-                                                            }
-                                                            setSelectedProfileId(null);
-                                                        }}
-                                                        rightElement={renderDefaultEnvironmentRightElement(!selectedProfileId)}
-                                                        showDivider={favoriteProfileItems.length > 0}
-                                                    />
-                                                )}
-                                                {favoriteProfileItems.map((profile, index) => {
-                                                    const availability = isProfileAvailable(profile);
-                                                    const isSelected = selectedProfileId === profile.id;
-                                                    const isLast = index === favoriteProfileItems.length - 1;
-                                                    return (
-                                                        <Item
-                                                            key={profile.id}
-                                                            title={profile.name}
-                                                            subtitle={getProfileSubtitle(profile)}
-                                                            leftElement={renderProfileLeftElement(profile)}
-                                                            showChevron={false}
-                                                            selected={isSelected}
-                                                            disabled={!availability.available}
-                                                            onPress={() => {
-                                                                if (!availability.available) return;
-                                                                if (ignoreProfileRowPressRef.current) {
-                                                                    ignoreProfileRowPressRef.current = false;
-                                                                    return;
-                                                                }
-                                                                selectProfile(profile.id);
-                                                            }}
-                                                            rightElement={renderProfileRightElement(profile, isSelected, true)}
-                                                            showDivider={!isLast}
-                                                        />
-                                                    );
-                                                })}
-                                            </ItemGroup>
-                                        )}
-
-                                            {nonFavoriteCustomProfiles.length > 0 && (
-                                                <ItemGroup title="Your AI Profiles">
-                                                {nonFavoriteCustomProfiles.map((profile, index) => {
-                                                    const availability = isProfileAvailable(profile);
-                                                    const isSelected = selectedProfileId === profile.id;
-                                                    const isLast = index === nonFavoriteCustomProfiles.length - 1;
-                                                    const isFavorite = favoriteProfileIdSet.has(profile.id);
-                                                    return (
-                                                        <Item
-                                                            key={profile.id}
-                                                            title={profile.name}
-                                                            subtitle={getProfileSubtitle(profile)}
-                                                            leftElement={renderProfileLeftElement(profile)}
-                                                                showChevron={false}
-                                                                selected={isSelected}
-                                                                disabled={!availability.available}
-                                                                onPress={() => {
-                                                                if (!availability.available) return;
-                                                                if (ignoreProfileRowPressRef.current) {
-                                                                    ignoreProfileRowPressRef.current = false;
-                                                                    return;
-                                                                }
-                                                                selectProfile(profile.id);
-                                                            }}
-                                                            rightElement={renderProfileRightElement(profile, isSelected, isFavorite)}
-                                                            showDivider={!isLast}
-                                                        />
-                                                    );
-                                                })}
-                                            </ItemGroup>
-                                        )}
-
-                                            <ItemGroup title="Built-in AI Profiles">
-                                                {!isDefaultEnvironmentFavorite && (
-                                                    <Item
-                                                        title={t('profiles.noProfile')}
-                                                        subtitle={t('profiles.noProfileDescription')}
-                                                        leftElement={<Ionicons name="home-outline" size={29} color={theme.colors.textSecondary} />}
-                                                        showChevron={false}
-                                                        selected={!selectedProfileId}
-                                                        onPress={() => {
-                                                            if (ignoreProfileRowPressRef.current) {
-                                                                ignoreProfileRowPressRef.current = false;
-                                                                return;
-                                                            }
-                                                            setSelectedProfileId(null);
-                                                        }}
-                                                        rightElement={renderDefaultEnvironmentRightElement(!selectedProfileId)}
-                                                        showDivider={nonFavoriteBuiltInProfiles.length > 0}
-                                                    />
-                                                )}
-                                            {nonFavoriteBuiltInProfiles.map((profile, index) => {
-                                                const availability = isProfileAvailable(profile);
-                                                const isSelected = selectedProfileId === profile.id;
-                                                const isLast = index === nonFavoriteBuiltInProfiles.length - 1;
-                                                const isFavorite = favoriteProfileIdSet.has(profile.id);
-                                                return (
-                                                    <Item
-                                                        key={profile.id}
-                                                        title={profile.name}
-                                                        subtitle={getProfileSubtitle(profile)}
-                                                        leftElement={renderProfileLeftElement(profile)}
-                                                            showChevron={false}
-                                                            selected={isSelected}
-                                                            disabled={!availability.available}
-                                                            onPress={() => {
-                                                            if (!availability.available) return;
-                                                            if (ignoreProfileRowPressRef.current) {
-                                                                ignoreProfileRowPressRef.current = false;
-                                                                return;
-                                                            }
-                                                            selectProfile(profile.id);
-                                                        }}
-                                                        rightElement={renderProfileRightElement(profile, isSelected, isFavorite)}
-                                                        showDivider={!isLast}
-                                                    />
-                                                );
-                                            })}
-                                        </ItemGroup>
-                                        <ItemGroup title="">
-                                            <Item
-                                                title={t('profiles.addProfile')}
-                                                subtitle={t('profiles.subtitle')}
-                                                leftElement={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}
-                                                onPress={handleAddProfile}
-                                                showChevron={false}
-                                                showDivider={false}
-                                            />
-                                        </ItemGroup>
-
-                                        <View style={{ height: 24 }} />
-                                    </>
-                                )}
-
-                                {/* Section: AI Backend */}
-                                <View onLayout={registerWizardSectionOffset('agent')}>
-                                    <View style={styles.wizardSectionHeaderRow}>
-                                        <Ionicons name="hardware-chip-outline" size={18} color={theme.colors.text} />
-                                        <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
-                                            Select AI Backend
-                                        </Text>
-                                    </View>
-                                </View>
-                                <Text style={styles.sectionDescription}>
-                                    {useProfiles && selectedProfileId
-                                        ? 'Limited by your selected profile and available CLIs on this machine.'
-                                        : 'Select which AI runs your session.'}
-                                </Text>
-
-                                {/* Missing CLI Installation Banners */}
-                                {selectedMachineId && cliAvailability.claude === false && !isWarningDismissed('claude') && !hiddenBanners.claude && (
-                                    <View style={{
-                                        backgroundColor: theme.colors.box.warning.background,
-                                        borderRadius: 10,
-                                        padding: 12,
-                                        marginBottom: 12,
-                                        borderWidth: 1,
-                                        borderColor: theme.colors.box.warning.border,
-                                    }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-                                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
-                                                <Ionicons name="warning" size={16} color={theme.colors.warning} />
-                                                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                    Claude CLI Not Detected
-                                                </Text>
-                                                <View style={{ flex: 1, minWidth: 20 }} />
-                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    Don't show this popup for
-                                                </Text>
-                                                <Pressable
-                                                    onPress={() => handleCLIBannerDismiss('claude', 'machine')}
-                                                    style={{
-                                                        borderRadius: 4,
-                                                        borderWidth: 1,
-                                                        borderColor: theme.colors.textSecondary,
-                                                        paddingHorizontal: 8,
-                                                        paddingVertical: 3,
-                                                    }}
-                                                >
-                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                        this machine
-                                                    </Text>
-                                                </Pressable>
-                                                <Pressable
-                                                    onPress={() => handleCLIBannerDismiss('claude', 'global')}
-                                                    style={{
-                                                        borderRadius: 4,
-                                                        borderWidth: 1,
-                                                        borderColor: theme.colors.textSecondary,
-                                                        paddingHorizontal: 8,
-                                                        paddingVertical: 3,
-                                                    }}
-                                                >
-                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                        any machine
-                                                    </Text>
-                                                </Pressable>
-                                            </View>
-                                            <Pressable
-                                                onPress={() => handleCLIBannerDismiss('claude', 'temporary')}
-                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                            >
-                                                <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                                            </Pressable>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Install: npm install -g @anthropic-ai/claude-code •
-                                            </Text>
-                                            <Pressable onPress={() => {
-                                                if (Platform.OS === 'web') {
-                                                    window.open('https://docs.anthropic.com/en/docs/claude-code/installation', '_blank');
-                                                }
-                                            }}>
-                                                <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                    View Installation Guide →
-                                                </Text>
-                                            </Pressable>
-                                        </View>
-                                    </View>
-                                )}
-
-                                {selectedMachineId && cliAvailability.codex === false && !isWarningDismissed('codex') && !hiddenBanners.codex && (
-                                    <View style={{
-                                        backgroundColor: theme.colors.box.warning.background,
-                                        borderRadius: 10,
-                                        padding: 12,
-                                        marginBottom: 12,
-                                        borderWidth: 1,
-                                        borderColor: theme.colors.box.warning.border,
-                                    }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-                                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
-                                                <Ionicons name="warning" size={16} color={theme.colors.warning} />
-                                                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                    Codex CLI Not Detected
-                                                </Text>
-                                                <View style={{ flex: 1, minWidth: 20 }} />
-                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    Don't show this popup for
-                                                </Text>
-                                                <Pressable
-                                                    onPress={() => handleCLIBannerDismiss('codex', 'machine')}
-                                                    style={{
-                                                        borderRadius: 4,
-                                                        borderWidth: 1,
-                                                        borderColor: theme.colors.textSecondary,
-                                                        paddingHorizontal: 8,
-                                                        paddingVertical: 3,
-                                                    }}
-                                                >
-                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                        this machine
-                                                    </Text>
-                                                </Pressable>
-                                                <Pressable
-                                                    onPress={() => handleCLIBannerDismiss('codex', 'global')}
-                                                    style={{
-                                                        borderRadius: 4,
-                                                        borderWidth: 1,
-                                                        borderColor: theme.colors.textSecondary,
-                                                        paddingHorizontal: 8,
-                                                        paddingVertical: 3,
-                                                    }}
-                                                >
-                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                        any machine
-                                                    </Text>
-                                                </Pressable>
-                                            </View>
-                                            <Pressable
-                                                onPress={() => handleCLIBannerDismiss('codex', 'temporary')}
-                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                            >
-                                                <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                                            </Pressable>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Install: npm install -g codex-cli •
-                                            </Text>
-                                            <Pressable onPress={() => {
-                                                if (Platform.OS === 'web') {
-                                                    window.open('https://github.com/openai/openai-codex', '_blank');
-                                                }
-                                            }}>
-                                                <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                    View Installation Guide →
-                                                </Text>
-                                            </Pressable>
-                                        </View>
-                                    </View>
-                                )}
-
-                                {selectedMachineId && cliAvailability.gemini === false && allowGemini && !isWarningDismissed('gemini') && !hiddenBanners.gemini && (
-                                    <View style={{
-                                        backgroundColor: theme.colors.box.warning.background,
-                                        borderRadius: 10,
-                                        padding: 12,
-                                        marginBottom: 12,
-                                        borderWidth: 1,
-                                        borderColor: theme.colors.box.warning.border,
-                                    }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-                                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
-                                                <Ionicons name="warning" size={16} color={theme.colors.warning} />
-                                                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                    Gemini CLI Not Detected
-                                                </Text>
-                                                <View style={{ flex: 1, minWidth: 20 }} />
-                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    Don't show this popup for
-                                                </Text>
-                                                <Pressable
-                                                    onPress={() => handleCLIBannerDismiss('gemini', 'machine')}
-                                                    style={{
-                                                        borderRadius: 4,
-                                                        borderWidth: 1,
-                                                        borderColor: theme.colors.textSecondary,
-                                                        paddingHorizontal: 8,
-                                                        paddingVertical: 3,
-                                                    }}
-                                                >
-                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                        this machine
-                                                    </Text>
-                                                </Pressable>
-                                                <Pressable
-                                                    onPress={() => handleCLIBannerDismiss('gemini', 'global')}
-                                                    style={{
-                                                        borderRadius: 4,
-                                                        borderWidth: 1,
-                                                        borderColor: theme.colors.textSecondary,
-                                                        paddingHorizontal: 8,
-                                                        paddingVertical: 3,
-                                                    }}
-                                                >
-                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                        any machine
-                                                    </Text>
-                                                </Pressable>
-                                            </View>
-                                            <Pressable
-                                                onPress={() => handleCLIBannerDismiss('gemini', 'temporary')}
-                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                            >
-                                                <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                                            </Pressable>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Install gemini CLI if available •
-                                            </Text>
-                                            <Pressable onPress={() => {
-                                                if (Platform.OS === 'web') {
-                                                    window.open('https://ai.google.dev/gemini-api/docs/get-started', '_blank');
-                                                }
-                                            }}>
-                                                <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                    View Gemini Docs →
-                                                </Text>
-                                            </Pressable>
-                                        </View>
-                                    </View>
-                                )}
-
-                                <ItemGroup title={<View />} headerStyle={{ paddingTop: 0, paddingBottom: 0 }}>
-                                    {(() => {
-                                        const selectedProfile = useProfiles && selectedProfileId
-                                            ? (profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId))
-                                            : null;
-
-                                        const options: Array<{
-                                            key: 'claude' | 'codex' | 'gemini';
-                                            title: string;
-                                            subtitle: string;
-                                            icon: React.ComponentProps<typeof Ionicons>['name'];
-                                        }> = [
-                                            { key: 'claude', title: 'Claude', subtitle: 'Claude CLI', icon: 'sparkles-outline' },
-                                            { key: 'codex', title: 'Codex', subtitle: 'Codex CLI', icon: 'terminal-outline' },
-                                            ...(allowGemini ? [{ key: 'gemini' as const, title: 'Gemini', subtitle: 'Gemini CLI', icon: 'planet-outline' as const }] : []),
-                                        ];
-
-                                        return options.map((option, index) => {
-                                            const compatible = !selectedProfile || !!selectedProfile.compatibility?.[option.key];
-                                            const cliOk = cliAvailability[option.key] !== false;
-                                            const disabledReason = !compatible
-                                                ? 'Not compatible with the selected profile.'
-                                                : !cliOk
-                                                    ? `${option.title} CLI not detected on this machine.`
-                                                    : null;
-
-                                            const isSelected = agentType === option.key;
-
-                                            return (
-                                                <Item
-                                                    key={option.key}
-                                                    title={option.title}
-                                                    subtitle={disabledReason ?? option.subtitle}
-                                                        leftElement={<Ionicons name={option.icon} size={24} color={theme.colors.textSecondary} />}
-                                                        selected={isSelected}
-                                                        disabled={!!disabledReason}
-                                                        onPress={() => {
-                                                        if (disabledReason) {
-                                                            Modal.alert(
-                                                                'AI Backend',
-                                                                disabledReason,
-                                                                compatible
-                                                                    ? [{ text: t('common.ok'), style: 'cancel' }]
-                                                                    : [
-                                                                        { text: t('common.ok'), style: 'cancel' },
-                                                                        ...(useProfiles && selectedProfileId ? [{ text: 'Change Profile', onPress: handleAgentInputProfileClick }] : []),
-                                                                    ],
-                                                            );
-                                                            return;
-                                                        }
-                                                        setAgentType(option.key);
-                                                    }}
-                                                    rightElement={(
-                                                        <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                                            <Ionicons
-                                                                name="checkmark-circle"
-                                                                size={24}
-                                                                color={selectedIndicatorColor}
-                                                                style={{ opacity: isSelected ? 1 : 0 }}
-                                                            />
-                                                        </View>
-                                                    )}
-                                                    showChevron={false}
-                                                    showDivider={index < options.length - 1}
-                                                />
-                                            );
-                                        });
-                                    })()}
-                                </ItemGroup>
-
-                                    {modelOptions.length > 0 && (
-                                        <View ref={modelSectionRef} style={{ marginTop: 24 }}>
-                                            <View onLayout={registerWizardSectionOffset('model')}>
-                                                <View style={styles.wizardSectionHeaderRow}>
-                                                    <Ionicons name="sparkles-outline" size={18} color={theme.colors.text} />
-                                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select AI Model</Text>
-                                                </View>
-                                            </View>
-                                            <Text style={styles.sectionDescription}>
-                                                Choose the model used by this session.
-                                            </Text>
-                                            <ItemGroup title="">
-                                                {modelOptions.map((option, index, options) => {
-                                                    const isSelected = modelMode === option.value;
-                                                    return (
-                                                        <Item
-                                                            key={option.value}
-                                                            title={option.label}
-                                                            subtitle={option.description}
-                                                            leftElement={<Ionicons name="sparkles-outline" size={24} color={theme.colors.textSecondary} />}
-                                                            showChevron={false}
-                                                            selected={isSelected}
-                                                            onPress={() => setModelMode(option.value)}
-                                                            rightElement={(
-                                                                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                                                <Ionicons
-                                                                    name="checkmark-circle"
-                                                                    size={24}
-                                                                    color={selectedIndicatorColor}
-                                                                    style={{ opacity: isSelected ? 1 : 0 }}
-                                                                />
-                                                            </View>
-                                                        )}
-                                                        showDivider={index < options.length - 1}
-                                                    />
-                                                );
-                                            })}
-                                        </ItemGroup>
-                                    </View>
-                                )}
-
-                                <View style={{ height: 24 }} />
-
-                                    {/* Section 2: Machine Selection */}
-                                    <View ref={machineSectionRef} onLayout={registerWizardSectionOffset('machine')}>
-                                        <View style={styles.wizardSectionHeaderRow}>
-                                            <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
-                                            <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Machine</Text>
-                                        </View>
-                                    </View>
-                                    <Text style={styles.sectionDescription}>
-                                        Choose where this session runs.
-                                    </Text>
-
-                                <View style={{ marginBottom: 24 }}>
-                                    <MachineSelector
-                                        machines={machines}
-                                        selectedMachine={selectedMachine || null}
-                                        recentMachines={recentMachines}
-                                        favoriteMachines={favoriteMachineItems}
-                                        showFavorites={true}
-                                        showSearch={useMachinePickerSearch}
-                                        searchPlacement="all"
-                                        searchPlaceholder="Search machines..."
-                                        onSelect={(machine) => {
-                                            setSelectedMachineId(machine.id);
-                                            const bestPath = getRecentPathForMachine(machine.id);
-                                            setSelectedPath(bestPath);
-                                        }}
-                                        onToggleFavorite={(machine) => {
-                                            const isInFavorites = favoriteMachines.includes(machine.id);
-                                            if (isInFavorites) {
-                                                setFavoriteMachines(favoriteMachines.filter(id => id !== machine.id));
-                                            } else {
-                                                setFavoriteMachines([...favoriteMachines, machine.id]);
-                                            }
-                                        }}
-                                    />
-                                </View>
-
-                                    {/* Section 3: Working Directory */}
-                                    <View ref={pathSectionRef} onLayout={registerWizardSectionOffset('path')}>
-                                        <View style={styles.wizardSectionHeaderRow}>
-                                            <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
-                                            <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Working Directory</Text>
-                                        </View>
-                                    </View>
-                                    <Text style={styles.sectionDescription}>
-                                        Pick the folder used for commands and context.
-                                    </Text>
-
-                                <View style={{ marginBottom: 24 }}>
-                                        <PathSelector
-                                            machineHomeDir={selectedMachine?.metadata?.homeDir || '/home'}
-                                            selectedPath={selectedPath}
-                                            onChangeSelectedPath={setSelectedPath}
-                                            recentPaths={recentPaths}
-                                            usePickerSearch={usePathPickerSearch}
-                                            searchVariant="group"
-                                            focusInputOnSelect={false}
-                                            favoriteDirectories={favoriteDirectories}
-                                            onChangeFavoriteDirectories={setFavoriteDirectories}
-                                        />
-                                </View>
-
-                                    {/* Section 4: Permission Mode */}
-                                        <View ref={permissionSectionRef} onLayout={registerWizardSectionOffset('permission')}>
-                                                <View style={styles.wizardSectionHeaderRow}>
-                                                    <Ionicons name="shield-outline" size={18} color={theme.colors.text} />
-                                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Permission Mode</Text>
-                                                </View>
-                                            </View>
-                                        <Text style={styles.sectionDescription}>
-                                            Control how strictly actions require approval.
-                                        </Text>
-                                        <ItemGroup title="">
-                                            {(agentType === 'codex' || agentType === 'gemini'
-                                                ? [
-                                                    { value: 'default' as PermissionMode, label: t(agentType === 'codex' ? 'agentInput.codexPermissionMode.default' : 'agentInput.geminiPermissionMode.default'), description: 'Use CLI permission settings', icon: 'shield-outline' },
-                                                    { value: 'read-only' as PermissionMode, label: t(agentType === 'codex' ? 'agentInput.codexPermissionMode.readOnly' : 'agentInput.geminiPermissionMode.readOnly'), description: 'Read-only mode', icon: 'eye-outline' },
-                                                    { value: 'safe-yolo' as PermissionMode, label: t(agentType === 'codex' ? 'agentInput.codexPermissionMode.safeYolo' : 'agentInput.geminiPermissionMode.safeYolo'), description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
-                                                    { value: 'yolo' as PermissionMode, label: t(agentType === 'codex' ? 'agentInput.codexPermissionMode.yolo' : 'agentInput.geminiPermissionMode.yolo'), description: 'Full access, skip permissions', icon: 'flash-outline' },
-                                                ]
-                                                : [
-                                                    { value: 'default' as PermissionMode, label: t('agentInput.permissionMode.default'), description: 'Ask for permissions', icon: 'shield-outline' },
-                                                    { value: 'acceptEdits' as PermissionMode, label: t('agentInput.permissionMode.acceptEdits'), description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                                                    { value: 'plan' as PermissionMode, label: t('agentInput.permissionMode.plan'), description: 'Plan before executing', icon: 'list-outline' },
-                                                    { value: 'bypassPermissions' as PermissionMode, label: t('agentInput.permissionMode.bypassPermissions'), description: 'Skip all permissions', icon: 'flash-outline' },
-                                                ]
-                                            ).map((option, index, array) => (
-                                                <Item
-                                                key={option.value}
-                                                title={option.label}
-                                                subtitle={option.description}
-                                            leftElement={
-                                                <Ionicons
-                                                    name={option.icon as any}
-                                                    size={24}
-                                                    color={theme.colors.textSecondary}
-                                                />
-                                            }
-                                            rightElement={permissionMode === option.value ? (
-                                                <Ionicons
-                                                    name="checkmark-circle"
-                                                    size={24}
-                                                    color={selectedIndicatorColor}
-                                                />
-                                                ) : null}
-                                                    onPress={() => handlePermissionModeChange(option.value)}
-                                                    showChevron={false}
-                                                    selected={permissionMode === option.value}
-                                                    showDivider={index < array.length - 1}
-                                                />
-                                        ))}
-                                    </ItemGroup>
-
-                                    <View style={{ height: 24 }} />
-
-                                        {/* Section 5: Session Type */}
-                                        <View onLayout={registerWizardSectionOffset('sessionType')}>
-                                            <View style={styles.wizardSectionHeaderRow}>
-                                                <Ionicons name="layers-outline" size={18} color={theme.colors.text} />
-                                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Session Type</Text>
-                                            </View>
-                                        </View>
-                                        <Text style={styles.sectionDescription}>
-                                            Choose a simple session or one tied to a Git worktree.
-                                        </Text>
-
-                                    <View style={{ marginBottom: 0 }}>
-                                        <ItemGroup title={<View />} headerStyle={{ paddingTop: 0, paddingBottom: 0 }}>
-                                            <SessionTypeSelectorRows value={sessionType} onChange={setSessionType} />
-                                        </ItemGroup>
-                                    </View>
-                                </View>
-                        </View>
-                    </View>
-                </ScrollView>
-	
-                {/* AgentInput - Sticky at bottom */}
-                <View style={{
-                    paddingTop: 12,
-                    paddingBottom: newSessionBottomPadding,
-                    ...Platform.select({
-                        web: { boxShadow: '0 -10px 30px rgba(0,0,0,0.08)' } as any,
-                        ios: {
-                            shadowColor: theme.colors.shadow.color,
-                            shadowOffset: { width: 0, height: -4 },
-                            shadowOpacity: 0.08,
-                            shadowRadius: 14,
-                        },
-                        android: { borderTopWidth: 1, borderTopColor: theme.colors.divider },
-                        default: {},
-                    }),
-                }}>
-                    <View style={{ paddingHorizontal: newSessionSidePadding }}>
-                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                            <AgentInput
-                                value={sessionPrompt}
-                                onChangeText={setSessionPrompt}
-                                onSend={handleCreateSession}
-                                isSendDisabled={!canCreate}
-                                isSending={isCreating}
-                                placeholder={t('session.inputPlaceholder')}
-                                autocompletePrefixes={[]}
-                                autocompleteSuggestions={async () => []}
-                                agentType={agentType}
-                                onAgentClick={handleAgentInputAgentClick}
-                                permissionMode={permissionMode}
-                                onPermissionClick={handleAgentInputPermissionClick}
-                                modelMode={modelMode}
-                                onModelModeChange={setModelMode}
-                                connectionStatus={connectionStatus}
-                                machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
-                                onMachineClick={handleAgentInputMachineClick}
-                                currentPath={selectedPath}
-                                onPathClick={handleAgentInputPathClick}
-                                contentPaddingHorizontal={0}
-                                {...(useProfiles ? {
-                                    profileId: selectedProfileId,
-                                    onProfileClick: handleAgentInputProfileClick,
-                                    envVarsCount: selectedProfileEnvVarsCount || undefined,
-                                    onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
-                                } : {})}
-                            />
-                        </View>
-                    </View>
-                </View>
-            </View>
-        </KeyboardAvoidingView>
+        <NewSessionWizard
+            layout={wizardLayoutProps}
+            profiles={wizardProfilesProps}
+            agent={wizardAgentProps}
+            machine={wizardMachineProps}
+            footer={wizardFooterProps}
+        />
     );
 }
 
-export default React.memo(NewSessionWizard);
+export default React.memo(NewSessionScreen);
