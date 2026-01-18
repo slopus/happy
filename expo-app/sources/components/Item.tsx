@@ -19,7 +19,7 @@ import { ItemGroupSelectionContext } from '@/components/ItemGroup';
 
 export interface ItemProps {
     title: string;
-    subtitle?: string;
+    subtitle?: React.ReactNode;
     subtitleLines?: number; // set 0 or undefined for auto/multiline
     detail?: string;
     icon?: React.ReactNode;
@@ -152,6 +152,7 @@ export const Item = React.memo<ItemProps>((props) => {
         if (!copy || isWeb) return;
         
         let textToCopy: string;
+        const subtitleText = typeof subtitle === 'string' ? subtitle : null;
         
         if (typeof copy === 'string') {
             // If copy is a string, use it directly
@@ -159,7 +160,7 @@ export const Item = React.memo<ItemProps>((props) => {
         } else {
             // If copy is true, try to figure out what to copy
             // Priority: detail > subtitle > title
-            textToCopy = detail || subtitle || title;
+            textToCopy = detail || subtitleText || title;
         }
         
         try {
@@ -226,10 +227,21 @@ export const Item = React.memo<ItemProps>((props) => {
                         {title}
                     </Text>
                     {subtitle && (() => {
+                        // If subtitle is a ReactNode (not string), render as-is.
+                        // This enables richer subtitle layouts (e.g. inline glyphs).
+                        if (typeof subtitle !== 'string') {
+                            return (
+                                <View style={{ marginTop: Platform.select({ ios: 2, default: 0 }) }}>
+                                    {subtitle}
+                                </View>
+                            );
+                        }
+
                         // Allow multiline when requested or when content contains line breaks
                         const effectiveLines = subtitleLines !== undefined
                             ? (subtitleLines <= 0 ? undefined : subtitleLines)
-                            : (typeof subtitle === 'string' && subtitle.indexOf('\n') !== -1 ? undefined : 1);
+                            : (subtitle.indexOf('\n') !== -1 ? undefined : 1);
+
                         return (
                             <Text
                                 style={[styles.subtitle, subtitleStyle]}
