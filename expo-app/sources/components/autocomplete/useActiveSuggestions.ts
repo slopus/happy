@@ -72,16 +72,10 @@ export function useActiveSuggestions(
     // Sync query to suggestions
     const sync = React.useMemo(() => {
         return new ValueSync<string | null>(async (query) => {
-            console.log('🎯 useActiveSuggestions: Processing query:', JSON.stringify(query));
             if (!query) {
-                console.log('🎯 useActiveSuggestions: No query, skipping');
                 return;
             }
             const suggestions = await handler(query);
-            console.log('🎯 useActiveSuggestions: Got suggestions:', JSON.stringify(suggestions, (key, value) => {
-                if (key === 'component') return '[Function]';
-                return value;
-            }, 2));
             setState((prev) => {
                 if (clampSelection) {
                     // Simply clamp the selection to valid range
