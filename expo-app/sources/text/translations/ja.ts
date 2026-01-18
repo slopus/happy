@@ -61,6 +61,7 @@ export const ja: TranslationStructure = {
         all: 'すべて',
         machine: 'マシン',
         clearSearch: '検索をクリア',
+        refresh: '更新',
         saveAs: '名前を付けて保存',
     },
 
@@ -99,8 +100,8 @@ export const ja: TranslationStructure = {
         custom: 'カスタム',
         builtInSaveAsHint: '組み込みプロファイルを保存すると、新しいカスタムプロファイルが作成されます。',
         builtInNames: {
-            anthropic: 'Anthropic (Default)',
-            deepseek: 'DeepSeek (Reasoner)',
+            anthropic: 'Anthropic（デフォルト）',
+            deepseek: 'DeepSeek（推論）',
             zai: 'Z.AI (GLM-4.6)',
             openai: 'OpenAI (GPT-5)',
             azureOpenai: 'Azure OpenAI',
@@ -124,6 +125,92 @@ export const ja: TranslationStructure = {
             title: 'セットアップ手順',
             viewOfficialGuide: '公式セットアップガイドを表示',
         },
+        machineLogin: {
+            title: 'マシンでのログインが必要',
+            subtitle: 'このプロファイルは、選択したマシン上の CLI ログインキャッシュに依存します。',
+            claudeCode: {
+                title: 'Claude Code',
+                instructions: '`claude` を実行し、`/login` と入力してログインしてください。',
+                warning: '注意: `ANTHROPIC_AUTH_TOKEN` を設定すると CLI ログインを上書きします。',
+            },
+            codex: {
+                title: 'Codex',
+                instructions: '`codex login` を実行してログインしてください。',
+            },
+            geminiCli: {
+                title: 'Gemini CLI',
+                instructions: '`gemini auth` を実行してログインしてください。',
+            },
+        },
+        requirements: {
+            apiKeyRequired: 'APIキー',
+            configured: 'マシンで設定済み',
+            notConfigured: '未設定',
+            checking: '確認中…',
+            modalTitle: 'APIキーが必要です',
+            modalBody: 'このプロファイルにはAPIキーが必要です。\n\n利用可能な選択肢:\n• マシン環境を使用（推奨）\n• アプリ設定の保存済みキーを使用\n• このセッションのみキーを入力',
+            sectionTitle: '要件',
+            sectionSubtitle: 'これらの項目は事前チェックのために使用され、予期しない失敗を避けます。',
+            secretEnvVarPromptDescription: '必要な秘密環境変数名を入力してください（例: OPENAI_API_KEY）。',
+            modalHelpWithEnv: ({ env }: { env: string }) => `このプロファイルには${env}が必要です。以下から1つ選択してください。`,
+            modalHelpGeneric: 'このプロファイルにはAPIキーが必要です。以下から1つ選択してください。',
+            modalRecommendation: '推奨: コンピュータ上のデーモン環境にキーを設定してください（再度貼り付ける必要がなくなります）。その後デーモンを再起動して、新しい環境変数を読み込ませてください。',
+            chooseOptionTitle: '選択してください',
+            machineEnvStatus: {
+                theMachine: 'マシン',
+                checkFor: ({ env }: { env: string }) => `${env} を確認`,
+                checking: ({ env }: { env: string }) => `${env} を確認中…`,
+                found: ({ env, machine }: { env: string; machine: string }) => `${machine}で${env}が見つかりました`,
+                notFound: ({ env, machine }: { env: string; machine: string }) => `${machine}で${env}が見つかりません`,
+            },
+            machineEnvSubtitle: {
+                checking: 'デーモン環境を確認中…',
+                found: 'マシン上のデーモン環境で見つかりました。',
+                notFound: 'マシン上のデーモン環境に設定して、デーモンを再起動してください。',
+            },
+            options: {
+                none: {
+                    title: 'なし',
+                    subtitle: 'APIキーもCLIログインも不要です。',
+                },
+                apiKeyEnv: {
+                    subtitle: 'セッション開始時に注入されるAPIキーが必要です。',
+                },
+                machineLogin: {
+                    subtitle: 'ターゲットマシンでCLIからログインしている必要があります。',
+                    longSubtitle: 'ターゲットマシンで選択したAIバックエンドのCLIにログインしている必要があります。',
+                },
+                useMachineEnvironment: {
+                    title: 'マシン環境を使用',
+                    subtitleWithEnv: ({ env }: { env: string }) => `デーモン環境から${env}を使用します。`,
+                    subtitleGeneric: 'デーモン環境からキーを使用します。',
+                },
+                useSavedApiKey: {
+                    title: '保存済みAPIキーを使用',
+                    subtitle: 'アプリ内の保存済みキーを選択（または追加）します。',
+                },
+                enterOnce: {
+                    title: 'キーを入力',
+                    subtitle: 'このセッションのみキーを貼り付けます（保存されません）。',
+                },
+            },
+            apiKeyEnvVar: {
+                title: 'APIキーの環境変数',
+                subtitle: 'このプロバイダがAPIキーに期待する環境変数名を入力してください（例: OPENAI_API_KEY）。',
+                label: '環境変数名',
+            },
+            sections: {
+                machineEnvironment: 'マシン環境',
+                useOnceTitle: '一度だけ使用',
+                useOnceFooter: 'このセッションのみキーを貼り付けます。保存されません。',
+            },
+            actions: {
+                useMachineEnvironment: {
+                    subtitle: 'マシンに既にあるキーを使用して開始します。',
+                },
+                useOnceButton: '一度だけ使用（セッションのみ）',
+            },
+        },
         defaultSessionType: 'デフォルトのセッションタイプ',
         defaultPermissionMode: {
             title: 'デフォルトの権限モード',
@@ -137,9 +224,9 @@ export const ja: TranslationStructure = {
         aiBackend: {
             title: 'AIバックエンド',
             selectAtLeastOneError: '少なくとも1つのAIバックエンドを選択してください。',
-            claudeSubtitle: 'Claude CLI',
-            codexSubtitle: 'Codex CLI',
-            geminiSubtitleExperimental: 'Gemini CLI（実験）',
+            claudeSubtitle: 'Claude コマンドライン',
+            codexSubtitle: 'Codex コマンドライン',
+            geminiSubtitleExperimental: 'Gemini コマンドライン（実験）',
         },
         tmux: {
             title: 'Tmux',
@@ -246,6 +333,15 @@ export const ja: TranslationStructure = {
         enterSecretKey: 'シークレットキーを入力してください',
         invalidSecretKey: 'シークレットキーが無効です。確認して再試行してください。',
         enterUrlManually: 'URLを手動で入力',
+        terminalUrlPlaceholder: 'happy://terminal?...',
+        restoreQrInstructions: '1. モバイル端末で Happy を開く\n2. 設定 → アカウント に移動\n3. 「新しいデバイスをリンク」をタップ\n4. この QR コードをスキャン',
+        restoreWithSecretKeyInstead: '秘密鍵で復元する',
+        restoreWithSecretKeyDescription: 'アカウントへのアクセスを復元するには秘密鍵を入力してください。',
+        secretKeyPlaceholder: 'XXXXX-XXXXX-XXXXX...',
+        unsupported: {
+            connectTitle: ({ name }: { name: string }) => `${name} を接続`,
+            runCommandInTerminal: 'ターミナルで次のコマンドを実行してください:',
+        },
     },
 
     settings: {
@@ -286,6 +382,8 @@ export const ja: TranslationStructure = {
         usageSubtitle: 'API使用量とコストを確認',
         profiles: 'プロファイル',
         profilesSubtitle: 'セッション用の環境変数プロファイルを管理',
+        apiKeys: 'APIキー',
+        apiKeysSubtitle: '保存したAPIキーを管理（入力後は再表示されません）',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service}アカウントが接続されました`,
@@ -323,6 +421,21 @@ export const ja: TranslationStructure = {
         wrapLinesInDiffsDescription: '差分表示で水平スクロールの代わりに長い行を折り返す',
         alwaysShowContextSize: '常にコンテキストサイズを表示',
         alwaysShowContextSizeDescription: '上限に近づいていなくてもコンテキスト使用量を表示',
+        agentInputActionBarLayout: '入力アクションバー',
+        agentInputActionBarLayoutDescription: '入力欄の上に表示するアクションチップの表示方法を選択します',
+        agentInputActionBarLayoutOptions: {
+            auto: '自動',
+            wrap: '折り返し',
+            scroll: 'スクロール',
+            collapsed: '折りたたみ',
+        },
+        agentInputChipDensity: 'アクションチップ密度',
+        agentInputChipDensityDescription: 'アクションチップをラベル表示にするかアイコン表示にするか選択します',
+        agentInputChipDensityOptions: {
+            auto: '自動',
+            labels: 'ラベル',
+            icons: 'アイコンのみ',
+        },
         avatarStyle: 'アバタースタイル',
         avatarStyleDescription: 'セッションアバターの外観を選択',
         avatarOptions: {
@@ -343,6 +456,22 @@ export const ja: TranslationStructure = {
         experimentalFeatures: '実験的機能',
         experimentalFeaturesEnabled: '実験的機能が有効です',
         experimentalFeaturesDisabled: '安定版機能のみを使用',
+        experimentalOptions: '実験オプション',
+        experimentalOptionsDescription: '有効にする実験的機能を選択します。',
+        expGemini: 'Gemini',
+        expGeminiSubtitle: 'Enable Gemini CLI sessions and Gemini-related UI',
+        expUsageReporting: 'Usage reporting',
+        expUsageReportingSubtitle: 'Enable usage and token reporting screens',
+        expFileViewer: 'File viewer',
+        expFileViewerSubtitle: 'Enable the session file viewer entrypoint',
+        expShowThinkingMessages: 'Show thinking messages',
+        expShowThinkingMessagesSubtitle: 'Show assistant thinking/status messages in chat',
+        expSessionType: 'Session type selector',
+        expSessionTypeSubtitle: 'Show the session type selector (simple vs worktree)',
+        expZen: 'Zen',
+        expZenSubtitle: 'Enable the Zen navigation entry',
+        expVoiceAuthFlow: 'Voice auth flow',
+        expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
         webFeatures: 'Web機能',
         webFeaturesDescription: 'Webバージョンでのみ利用可能な機能。',
         enterToSend: 'Enterで送信',
@@ -419,8 +548,26 @@ export const ja: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: '新しいセッションを開始',
+        selectAiProfileTitle: 'AIプロファイルを選択',
+        selectAiProfileDescription: '環境変数とデフォルト設定をセッションに適用するため、AIプロファイルを選択してください。',
+        changeProfile: 'プロファイルを変更',
+        aiBackendSelectedByProfile: 'AIバックエンドはプロファイルで選択されています。変更するには別のプロファイルを選択してください。',
+        selectAiBackendTitle: 'AIバックエンドを選択',
+        aiBackendLimitedByProfileAndMachineClis: '選択したプロファイルと、このマシンで利用可能なCLIによって制限されます。',
+        aiBackendSelectWhichAiRuns: 'セッションで実行するAIを選択してください。',
+        aiBackendNotCompatibleWithSelectedProfile: '選択したプロファイルと互換性がありません。',
+        aiBackendCliNotDetectedOnMachine: ({ cli }: { cli: string }) => `このマシンで${cli} CLIが検出されませんでした。`,
         selectMachineTitle: 'マシンを選択',
+        selectMachineDescription: 'このセッションを実行する場所を選択します。',
         selectPathTitle: 'パスを選択',
+        selectWorkingDirectoryTitle: '作業ディレクトリを選択',
+        selectWorkingDirectoryDescription: 'コマンドとコンテキストに使用するフォルダを選択してください。',
+        selectPermissionModeTitle: '権限モードを選択',
+        selectPermissionModeDescription: '操作にどの程度承認が必要かを設定します。',
+        selectModelTitle: 'AIモデルを選択',
+        selectModelDescription: 'このセッションで使用するモデルを選択してください。',
+        selectSessionTypeTitle: 'セッションタイプを選択',
+        selectSessionTypeDescription: 'シンプルなセッション、またはGitのワークツリーに紐づくセッションを選択してください。',
         searchPathsPlaceholder: 'パスを検索...',
         noMachinesFound: 'マシンが見つかりません。まずコンピューターでHappyセッションを起動してください。',
         allMachinesOffline: 'すべてのマシンがオフラインです',
@@ -463,6 +610,20 @@ export const ja: TranslationStructure = {
             worktree: 'ワークツリー',
             comingSoon: '近日公開',
         },
+        profileAvailability: {
+            requiresAgent: ({ agent }: { agent: string }) => `${agent} が必要`,
+            cliNotDetected: ({ cli }: { cli: string }) => `${cli} CLI が検出されません`,
+        },
+        cliBanners: {
+            cliNotDetectedTitle: ({ cli }: { cli: string }) => `${cli} CLI が検出されません`,
+            dontShowFor: 'このポップアップを表示しない:',
+            thisMachine: 'このマシン',
+            anyMachine: 'すべてのマシン',
+            installCommand: ({ command }: { command: string }) => `インストール: ${command} •`,
+            installCliIfAvailable: ({ cli }: { cli: string }) => `${cli} CLI が利用可能ならインストール •`,
+            viewInstallationGuide: 'インストールガイドを見る →',
+            viewGeminiDocs: 'Geminiドキュメントを見る →',
+        },
         worktree: {
             creating: ({ name }: { name: string }) => `ワークツリー '${name}' を作成中...`,
             notGitRepo: 'ワークツリーにはGitリポジトリが必要です',
@@ -487,6 +648,19 @@ export const ja: TranslationStructure = {
 
     commandPalette: {
         placeholder: 'コマンドを入力または検索...',
+        noCommandsFound: 'コマンドが見つかりません',
+    },
+
+    commandView: {
+        completedWithNoOutput: '[出力なしでコマンドが完了しました]',
+    },
+
+    voiceAssistant: {
+        connecting: '接続中...',
+        active: '音声アシスタントが有効です',
+        connectionError: '接続エラー',
+        label: '音声アシスタント',
+        tapToEnd: 'タップして終了',
     },
 
     server: {
@@ -513,14 +687,14 @@ export const ja: TranslationStructure = {
         killSessionConfirm: 'このセッションを終了してもよろしいですか？',
         archiveSession: 'セッションをアーカイブ',
         archiveSessionConfirm: 'このセッションをアーカイブしてもよろしいですか？',
-        happySessionIdCopied: 'Happy Session IDがクリップボードにコピーされました',
-        failedToCopySessionId: 'Happy Session IDのコピーに失敗しました',
-        happySessionId: 'Happy Session ID',
-        claudeCodeSessionId: 'Claude Code Session ID',
-        claudeCodeSessionIdCopied: 'Claude Code Session IDがクリップボードにコピーされました',
+        happySessionIdCopied: 'Happy セッション ID をクリップボードにコピーしました',
+        failedToCopySessionId: 'Happy セッション ID のコピーに失敗しました',
+        happySessionId: 'Happy セッション ID',
+        claudeCodeSessionId: 'Claude Code セッション ID',
+        claudeCodeSessionIdCopied: 'Claude Code セッション ID をクリップボードにコピーしました',
         aiProfile: 'AIプロファイル',
         aiProvider: 'AIプロバイダー',
-        failedToCopyClaudeCodeSessionId: 'Claude Code Session IDのコピーに失敗しました',
+        failedToCopyClaudeCodeSessionId: 'Claude Code セッション ID のコピーに失敗しました',
         metadataCopied: 'メタデータがクリップボードにコピーされました',
         failedToCopyMetadata: 'メタデータのコピーに失敗しました',
         failedToKillSession: 'セッションの終了に失敗しました',
@@ -539,9 +713,12 @@ export const ja: TranslationStructure = {
         path: 'パス',
         operatingSystem: 'オペレーティングシステム',
         processId: 'プロセスID',
-        happyHome: 'Happy Home',
+        happyHome: 'Happy のホーム',
         copyMetadata: 'メタデータをコピー',
         agentState: 'エージェント状態',
+        rawJsonDevMode: '生JSON（開発者モード）',
+        sessionStatus: 'セッションステータス',
+        fullSessionObject: 'セッションオブジェクト全体',
         controlledByUser: 'ユーザーによる制御',
         pendingRequests: '保留中のリクエスト',
         activity: 'アクティビティ',
@@ -569,6 +746,35 @@ export const ja: TranslationStructure = {
             runIt: '実行する',
             scanQrCode: 'QRコードをスキャン',
             openCamera: 'カメラを開く',
+            installCommand: '$ npm i -g happy-coder',
+            runCommand: '$ happy',
+        },
+        emptyMessages: {
+            noMessagesYet: 'まだメッセージはありません',
+            created: ({ time }: { time: string }) => `作成 ${time}`,
+        },
+        emptySessionsTablet: {
+            noActiveSessions: 'アクティブなセッションはありません',
+            startNewSessionDescription: '接続済みのどのマシンでも新しいセッションを開始できます。',
+            startNewSessionButton: '新しいセッションを開始',
+            openTerminalToStart: 'セッションを開始するには、コンピュータで新しいターミナルを開いてください。',
+        },
+    },
+
+    zen: {
+        title: 'Zen',
+        add: {
+            placeholder: 'やることは？',
+        },
+        home: {
+            noTasksYet: 'まだタスクはありません。+ をタップして追加します。',
+        },
+        view: {
+            workOnTask: 'タスクに取り組む',
+            clarify: '明確化',
+            delete: '削除',
+            linkedSessions: 'リンクされたセッション',
+            tapTaskTextToEdit: 'タスクのテキストをタップして編集',
         },
     },
 
@@ -650,6 +856,11 @@ export const ja: TranslationStructure = {
         suggestion: {
             fileLabel: 'ファイル',
             folderLabel: 'フォルダ',
+        },
+        actionMenu: {
+            title: '操作',
+            files: 'ファイル',
+            stop: '停止',
         },
         noMachinesAvailable: 'マシンなし',
     },
@@ -739,7 +950,7 @@ export const ja: TranslationStructure = {
 
     files: {
         searchPlaceholder: 'ファイルを検索...',
-        detachedHead: 'detached HEAD',
+        detachedHead: '切り離された HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `ステージ済み ${staged} • 未ステージ ${unstaged}`,
         notRepo: 'Gitリポジトリではありません',
         notUnderGit: 'このディレクトリはGitバージョン管理下にありません',
@@ -875,6 +1086,11 @@ export const ja: TranslationStructure = {
         deviceLinkedSuccessfully: 'デバイスが正常にリンクされました',
         terminalConnectedSuccessfully: 'ターミナルが正常に接続されました',
         invalidAuthUrl: '無効な認証URL',
+        microphoneAccessRequiredTitle: 'マイクへのアクセスが必要です',
+        microphoneAccessRequiredRequestPermission: 'Happy は音声チャットのためにマイクへのアクセスが必要です。求められたら許可してください。',
+        microphoneAccessRequiredEnableInSettings: 'Happy は音声チャットのためにマイクへのアクセスが必要です。端末の設定でマイクのアクセスを有効にしてください。',
+        microphoneAccessRequiredBrowserInstructions: 'ブラウザの設定でマイクへのアクセスを許可してください。アドレスバーの鍵アイコンをクリックし、このサイトのマイク権限を有効にする必要がある場合があります。',
+        openSettings: '設定を開く',
         developerMode: '開発者モード',
         developerModeEnabled: '開発者モードが有効になりました',
         developerModeDisabled: '開発者モードが無効になりました',
@@ -929,6 +1145,15 @@ export const ja: TranslationStructure = {
         daemon: 'デーモン',
         status: 'ステータス',
         stopDaemon: 'デーモンを停止',
+        stopDaemonConfirmTitle: 'デーモンを停止しますか？',
+        stopDaemonConfirmBody: 'このマシンではデーモンを再起動するまで新しいセッションを作成できません。現在のセッションは継続します。',
+        daemonStoppedTitle: 'デーモンを停止しました',
+        stopDaemonFailed: 'デーモンを停止できませんでした。実行されていない可能性があります。',
+        renameTitle: 'マシン名を変更',
+        renameDescription: 'このマシンにカスタム名を設定します。空欄の場合はデフォルトのホスト名を使用します。',
+        renamePlaceholder: 'マシン名を入力',
+        renamedSuccess: 'マシン名を変更しました',
+        renameFailed: 'マシン名の変更に失敗しました',
         lastKnownPid: '最後に確認されたPID',
         lastKnownHttpPort: '最後に確認されたHTTPポート',
         startedAt: '開始時刻',
@@ -945,8 +1170,15 @@ export const ja: TranslationStructure = {
         lastSeen: '最終確認',
         never: 'なし',
         metadataVersion: 'メタデータバージョン',
+        detectedClis: '検出されたCLI',
+        detectedCliNotDetected: '未検出',
+        detectedCliUnknown: '不明',
+        detectedCliNotSupported: '未対応（happy-cliを更新してください）',
         untitledSession: '無題のセッション',
         back: '戻る',
+        notFound: 'マシンが見つかりません',
+        unknownMachine: '不明なマシン',
+        unknownPath: '不明なパス',
     },
 
     message: {
@@ -954,6 +1186,10 @@ export const ja: TranslationStructure = {
         unknownEvent: '不明なイベント',
         usageLimitUntil: ({ time }: { time: string }) => `${time}まで使用制限中`,
         unknownTime: '不明な時間',
+    },
+
+    chatFooter: {
+        permissionsTerminalOnly: '権限はターミナルにのみ表示されます。リセットするかメッセージを送信して、アプリから制御してください。',
     },
 
     codex: {
@@ -982,6 +1218,7 @@ export const ja: TranslationStructure = {
         textCopied: 'テキストがクリップボードにコピーされました',
         failedToCopy: 'テキストのクリップボードへのコピーに失敗しました',
         noTextToCopy: 'コピーできるテキストがありません',
+        failedToOpen: 'テキスト選択を開けませんでした。もう一度お試しください。',
     },
 
     markdown: {
@@ -1002,11 +1239,14 @@ export const ja: TranslationStructure = {
         edit: 'アーティファクトを編集',
         delete: '削除',
         updateError: 'アーティファクトの更新に失敗しました。再試行してください。',
+        deleteError: 'アーティファクトを削除できませんでした。もう一度お試しください。',
         notFound: 'アーティファクトが見つかりません',
         discardChanges: '変更を破棄しますか？',
         discardChangesDescription: '保存されていない変更があります。破棄してもよろしいですか？',
         deleteConfirm: 'アーティファクトを削除しますか？',
         deleteConfirmDescription: 'この操作は取り消せません',
+        noContent: '内容がありません',
+        untitled: '無題',
         titleLabel: 'タイトル',
         titlePlaceholder: 'アーティファクトのタイトルを入力',
         bodyLabel: 'コンテンツ',
@@ -1082,6 +1322,45 @@ export const ja: TranslationStructure = {
         usageOverTime: '使用量の推移',
         byModel: 'モデル別',
         noData: '使用データがありません',
+    },
+
+    apiKeys: {
+        addTitle: '新しいAPIキー',
+        savedTitle: '保存済みAPIキー',
+        badgeReady: 'APIキー',
+        badgeRequired: 'APIキーが必要',
+        addSubtitle: '保存済みAPIキーを追加',
+        noneTitle: 'なし',
+        noneSubtitle: 'マシン環境を使用するか、このセッション用にキーを入力してください',
+        emptyTitle: '保存済みキーがありません',
+        emptySubtitle: 'マシンの環境変数を設定せずにAPIキープロファイルを使うには、追加してください。',
+        savedHiddenSubtitle: '保存済み（値は非表示）',
+        defaultLabel: 'デフォルト',
+        fields: {
+            name: '名前',
+            value: '値',
+        },
+        placeholders: {
+            nameExample: '例: Work OpenAI',
+        },
+        validation: {
+            nameRequired: '名前は必須です。',
+            valueRequired: '値は必須です。',
+        },
+        actions: {
+            replace: '置き換え',
+            replaceValue: '値を置き換え',
+            setDefault: 'デフォルトに設定',
+            unsetDefault: 'デフォルト解除',
+        },
+        prompts: {
+            renameTitle: 'APIキー名を変更',
+            renameDescription: 'このキーの表示名を更新します。',
+            replaceValueTitle: 'APIキーの値を置き換え',
+            replaceValueDescription: '新しいAPIキーの値を貼り付けてください。保存後は再表示されません。',
+            deleteTitle: 'APIキーを削除',
+            deleteConfirm: ({ name }: { name: string }) => `「${name}」を削除しますか？元に戻せません。`,
+        },
     },
 
     feed: {

@@ -69,6 +69,7 @@ export const ca: TranslationStructure = {
         all: 'Tots',
         machine: 'màquina',
         clearSearch: 'Neteja la cerca',
+        refresh: 'Actualitza',
     },
 
     profile: {
@@ -105,6 +106,15 @@ export const ca: TranslationStructure = {
         enterSecretKey: 'Introdueix la teva clau secreta',
         invalidSecretKey: 'Clau secreta no vàlida. Comprova-ho i torna-ho a provar.',
         enterUrlManually: 'Introdueix l\'URL manualment',
+        terminalUrlPlaceholder: 'happy://terminal?...',
+        restoreQrInstructions: '1. Obre Happy al teu dispositiu mòbil\n2. Ves a Configuració → Compte\n3. Toca "Vincular nou dispositiu"\n4. Escaneja aquest codi QR',
+        restoreWithSecretKeyInstead: 'Restaura amb clau secreta',
+        restoreWithSecretKeyDescription: 'Introdueix la teva clau secreta per recuperar l’accés al teu compte.',
+        secretKeyPlaceholder: 'XXXXX-XXXXX-XXXXX...',
+        unsupported: {
+            connectTitle: ({ name }: { name: string }) => `Connecta ${name}`,
+            runCommandInTerminal: 'Executa l\'ordre següent al terminal:',
+        },
     },
 
     settings: {
@@ -145,6 +155,8 @@ export const ca: TranslationStructure = {
         usageSubtitle: "Veure l'ús de l'API i costos",
         profiles: 'Perfils',
         profilesSubtitle: 'Gestiona els perfils d\'entorn i variables',
+        apiKeys: 'Claus d’API',
+        apiKeysSubtitle: 'Gestiona les claus d’API desades (no es tornaran a mostrar després d’introduir-les)',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Compte de ${service} connectat`,
@@ -182,11 +194,26 @@ export const ca: TranslationStructure = {
         wrapLinesInDiffsDescription: 'Ajusta les línies llargues en lloc de desplaçament horitzontal a les vistes de diferències',
         alwaysShowContextSize: 'Mostra sempre la mida del context',
         alwaysShowContextSizeDescription: 'Mostra l\'ús del context fins i tot quan no estigui prop del límit',
+        agentInputActionBarLayout: 'Barra d’accions d’entrada',
+        agentInputActionBarLayoutDescription: 'Tria com es mostren els xips d’acció sobre el camp d’entrada',
+        agentInputActionBarLayoutOptions: {
+            auto: 'Auto',
+            wrap: 'Ajusta',
+            scroll: 'Desplaçable',
+            collapsed: 'Plegat',
+        },
+        agentInputChipDensity: 'Densitat dels xips d’acció',
+        agentInputChipDensityDescription: 'Tria si els xips d’acció mostren etiquetes o icones',
+        agentInputChipDensityOptions: {
+            auto: 'Auto',
+            labels: 'Etiquetes',
+            icons: 'Només icones',
+        },
         avatarStyle: 'Estil d\'avatar',
         avatarStyleDescription: 'Tria l\'aparença de l\'avatar de la sessió',
         avatarOptions: {
             pixelated: 'Pixelat',
-            gradient: 'Gradient',
+            gradient: 'Degradat',
             brutalist: 'Brutalista',
         },
         showFlavorIcons: "Mostrar icones de proveïdors d'IA",
@@ -202,6 +229,22 @@ export const ca: TranslationStructure = {
         experimentalFeatures: 'Funcions experimentals',
         experimentalFeaturesEnabled: 'Funcions experimentals activades',
         experimentalFeaturesDisabled: 'Utilitzant només funcions estables',
+        experimentalOptions: 'Opcions experimentals',
+        experimentalOptionsDescription: 'Tria quines funcions experimentals estan activades.',
+        expGemini: 'Gemini',
+        expGeminiSubtitle: 'Activa sessions de Gemini CLI i la UI relacionada',
+        expUsageReporting: 'Informe d’ús',
+        expUsageReportingSubtitle: 'Activa pantalles d’ús i tokens',
+        expFileViewer: 'Visor de fitxers',
+        expFileViewerSubtitle: 'Activa l’entrada al visor de fitxers de la sessió',
+        expShowThinkingMessages: 'Mostra missatges de pensament',
+        expShowThinkingMessagesSubtitle: 'Mostra missatges d’estat/pensament de l’assistent al xat',
+        expSessionType: 'Selector de tipus de sessió',
+        expSessionTypeSubtitle: 'Mostra el selector de tipus de sessió (simple vs worktree)',
+        expZen: 'Zen',
+        expZenSubtitle: 'Activa l’entrada de navegació Zen',
+        expVoiceAuthFlow: 'Flux d’autenticació de veu',
+        expVoiceAuthFlowSubtitle: 'Utilitza el flux autenticat de tokens de veu (amb paywall)',
         webFeatures: 'Funcions web',
         webFeaturesDescription: 'Funcions disponibles només a la versió web de l\'app.',
         enterToSend: 'Enter per enviar',
@@ -210,7 +253,7 @@ export const ca: TranslationStructure = {
         commandPalette: 'Paleta de comandes',
         commandPaletteEnabled: 'Prem ⌘K per obrir',
         commandPaletteDisabled: 'Accés ràpid a comandes desactivat',
-        markdownCopyV2: 'Markdown Copy v2',
+        markdownCopyV2: 'Còpia de Markdown v2',
         markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
         hideInactiveSessions: 'Amaga les sessions inactives',
         hideInactiveSessionsSubtitle: 'Mostra només els xats actius a la llista',
@@ -278,8 +321,26 @@ export const ca: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Inicia una nova sessió',
+        selectAiProfileTitle: 'Selecciona el perfil d’IA',
+        selectAiProfileDescription: 'Selecciona un perfil d’IA per aplicar variables d’entorn i valors per defecte a la sessió.',
+        changeProfile: 'Canvia el perfil',
+        aiBackendSelectedByProfile: 'El backend d’IA el selecciona el teu perfil. Per canviar-lo, selecciona un perfil diferent.',
+        selectAiBackendTitle: 'Selecciona el backend d’IA',
+        aiBackendLimitedByProfileAndMachineClis: 'Limitat pel perfil seleccionat i els CLI disponibles en aquesta màquina.',
+        aiBackendSelectWhichAiRuns: 'Selecciona quina IA executa la sessió.',
+        aiBackendNotCompatibleWithSelectedProfile: 'No és compatible amb el perfil seleccionat.',
+        aiBackendCliNotDetectedOnMachine: ({ cli }: { cli: string }) => `No s’ha detectat el CLI de ${cli} en aquesta màquina.`,
         selectMachineTitle: 'Selecciona màquina',
+        selectMachineDescription: 'Tria on s’executa aquesta sessió.',
         selectPathTitle: 'Selecciona camí',
+        selectWorkingDirectoryTitle: 'Selecciona el directori de treball',
+        selectWorkingDirectoryDescription: 'Tria la carpeta usada per a ordres i context.',
+        selectPermissionModeTitle: 'Selecciona el mode de permisos',
+        selectPermissionModeDescription: 'Controla com d’estrictes són les aprovacions.',
+        selectModelTitle: 'Selecciona el model d’IA',
+        selectModelDescription: 'Tria el model usat per aquesta sessió.',
+        selectSessionTypeTitle: 'Selecciona el tipus de sessió',
+        selectSessionTypeDescription: 'Tria una sessió simple o una lligada a un worktree de Git.',
         searchPathsPlaceholder: 'Cerca camins...',
         noMachinesFound: 'No s\'han trobat màquines. Inicia una sessió de Happy al teu ordinador primer.',
         allMachinesOffline: 'Totes les màquines estan fora de línia',
@@ -319,8 +380,22 @@ export const ca: TranslationStructure = {
         sessionType: {
             title: 'Tipus de sessió',
             simple: 'Simple',
-            worktree: 'Worktree',
+            worktree: 'Worktree (Git)',
             comingSoon: 'Properament',
+        },
+        profileAvailability: {
+            requiresAgent: ({ agent }: { agent: string }) => `Requereix ${agent}`,
+            cliNotDetected: ({ cli }: { cli: string }) => `${cli} CLI no detectat`,
+        },
+        cliBanners: {
+            cliNotDetectedTitle: ({ cli }: { cli: string }) => `${cli} CLI no detectat`,
+            dontShowFor: 'No mostris aquest avís per a',
+            thisMachine: 'aquesta màquina',
+            anyMachine: 'qualsevol màquina',
+            installCommand: ({ command }: { command: string }) => `Instal·la: ${command} •`,
+            installCliIfAvailable: ({ cli }: { cli: string }) => `Instal·la el CLI de ${cli} si està disponible •`,
+            viewInstallationGuide: 'Veure la guia d’instal·lació →',
+            viewGeminiDocs: 'Veure la documentació de Gemini →',
         },
         worktree: {
             creating: ({ name }: { name: string }) => `Creant worktree '${name}'...`,
@@ -346,6 +421,19 @@ export const ca: TranslationStructure = {
 
     commandPalette: {
         placeholder: 'Escriu una comanda o cerca...',
+        noCommandsFound: 'No s\'han trobat comandes',
+    },
+
+    commandView: {
+        completedWithNoOutput: '[Ordre completada sense sortida]',
+    },
+
+    voiceAssistant: {
+        connecting: 'Connectant...',
+        active: 'Assistent de veu actiu',
+        connectionError: 'Error de connexió',
+        label: 'Assistent de veu',
+        tapToEnd: 'Toca per acabar',
     },
 
     server: {
@@ -401,6 +489,9 @@ export const ca: TranslationStructure = {
         happyHome: 'Directori de Happy',
         copyMetadata: 'Copia les metadades',
         agentState: 'Estat de l\'agent',
+        rawJsonDevMode: 'JSON en brut (mode desenvolupador)',
+        sessionStatus: 'Estat de la sessió',
+        fullSessionObject: 'Objecte complet de la sessió',
         controlledByUser: 'Controlat per l\'usuari',
         pendingRequests: 'Sol·licituds pendents',
         activity: 'Activitat',
@@ -428,6 +519,35 @@ export const ca: TranslationStructure = {
             runIt: 'Executa\'l',
             scanQrCode: 'Escaneja el codi QR',
             openCamera: 'Obre la càmera',
+            installCommand: '$ npm i -g happy-coder',
+            runCommand: '$ happy',
+        },
+        emptyMessages: {
+            noMessagesYet: 'Encara no hi ha missatges',
+            created: ({ time }: { time: string }) => `Creat ${time}`,
+        },
+        emptySessionsTablet: {
+            noActiveSessions: 'No hi ha sessions actives',
+            startNewSessionDescription: 'Inicia una sessió nova a qualsevol de les teves màquines connectades.',
+            startNewSessionButton: 'Inicia una sessió nova',
+            openTerminalToStart: 'Obre un nou terminal a l\'ordinador per iniciar una sessió.',
+        },
+    },
+
+    zen: {
+        title: 'Zen',
+        add: {
+            placeholder: 'Què s’ha de fer?',
+        },
+        home: {
+            noTasksYet: 'Encara no hi ha tasques. Toca + per afegir-ne una.',
+        },
+        view: {
+            workOnTask: 'Treballar en la tasca',
+            clarify: 'Aclarir',
+            delete: 'Suprimeix',
+            linkedSessions: 'Sessions enllaçades',
+            tapTaskTextToEdit: 'Toca el text de la tasca per editar',
         },
     },
 
@@ -461,22 +581,22 @@ export const ca: TranslationStructure = {
         codexPermissionMode: {
             title: 'MODE DE PERMISOS CODEX',
             default: 'Configuració del CLI',
-            readOnly: 'Read Only Mode',
-            safeYolo: 'Safe YOLO',
+            readOnly: 'Mode només lectura',
+            safeYolo: 'YOLO segur',
             yolo: 'YOLO',
             badgeReadOnly: 'Només lectura',
-            badgeSafeYolo: 'Safe YOLO',
+            badgeSafeYolo: 'YOLO segur',
             badgeYolo: 'YOLO',
         },
         codexModel: {
-            title: 'CODEX MODEL',
-            gpt5CodexLow: 'gpt-5-codex low',
-            gpt5CodexMedium: 'gpt-5-codex medium',
-            gpt5CodexHigh: 'gpt-5-codex high',
-            gpt5Minimal: 'GPT-5 Minimal',
-            gpt5Low: 'GPT-5 Low',
-            gpt5Medium: 'GPT-5 Medium',
-            gpt5High: 'GPT-5 High',
+            title: 'MODEL CODEX',
+            gpt5CodexLow: 'gpt-5-codex baix',
+            gpt5CodexMedium: 'gpt-5-codex mitjà',
+            gpt5CodexHigh: 'gpt-5-codex alt',
+            gpt5Minimal: 'GPT-5 Mínim',
+            gpt5Low: 'GPT-5 Baix',
+            gpt5Medium: 'GPT-5 Mitjà',
+            gpt5High: 'GPT-5 Alt',
         },
         geminiPermissionMode: {
             title: 'MODE DE PERMISOS GEMINI',
@@ -509,6 +629,11 @@ export const ca: TranslationStructure = {
         suggestion: {
             fileLabel: 'FITXER',
             folderLabel: 'CARPETA',
+        },
+        actionMenu: {
+            title: 'ACCIONS',
+            files: 'Fitxers',
+            stop: 'Atura',
         },
         noMachinesAvailable: 'Sense màquines',
     },
@@ -734,6 +859,11 @@ export const ca: TranslationStructure = {
         deviceLinkedSuccessfully: 'Dispositiu enllaçat amb èxit',
         terminalConnectedSuccessfully: 'Terminal connectat amb èxit',
         invalidAuthUrl: 'URL d\'autenticació no vàlida',
+        microphoneAccessRequiredTitle: 'Cal accés al micròfon',
+        microphoneAccessRequiredRequestPermission: 'Happy necessita accés al micròfon per al xat de veu. Concedeix el permís quan se’t demani.',
+        microphoneAccessRequiredEnableInSettings: 'Happy necessita accés al micròfon per al xat de veu. Activa l’accés al micròfon a la configuració del dispositiu.',
+        microphoneAccessRequiredBrowserInstructions: 'Permet l’accés al micròfon a la configuració del navegador. Potser hauràs de fer clic a la icona del cadenat a la barra d’adreces i habilitar el permís del micròfon per a aquest lloc.',
+        openSettings: 'Obre la configuració',
         developerMode: 'Mode desenvolupador',
         developerModeEnabled: 'Mode desenvolupador activat',
         developerModeDisabled: 'Mode desenvolupador desactivat',
@@ -788,6 +918,15 @@ export const ca: TranslationStructure = {
         daemon: 'Dimoni',
         status: 'Estat',
         stopDaemon: 'Atura el dimoni',
+        stopDaemonConfirmTitle: 'Aturar el dimoni?',
+        stopDaemonConfirmBody: 'No podràs iniciar sessions noves en aquesta màquina fins que reiniciïs el dimoni a l’ordinador. Les sessions actuals continuaran actives.',
+        daemonStoppedTitle: 'Dimoni aturat',
+        stopDaemonFailed: 'No s’ha pogut aturar el dimoni. Pot ser que no estigui en execució.',
+        renameTitle: 'Canvia el nom de la màquina',
+        renameDescription: 'Dona a aquesta màquina un nom personalitzat. Deixa-ho buit per usar el hostname per defecte.',
+        renamePlaceholder: 'Introdueix el nom de la màquina',
+        renamedSuccess: 'Màquina reanomenada correctament',
+        renameFailed: 'No s’ha pogut reanomenar la màquina',
         lastKnownPid: 'Últim PID conegut',
         lastKnownHttpPort: 'Últim port HTTP conegut',
         startedAt: 'Iniciat a',
@@ -804,8 +943,15 @@ export const ca: TranslationStructure = {
         lastSeen: 'Vist per última vegada',
         never: 'Mai',
         metadataVersion: 'Versió de les metadades',
+        detectedClis: 'CLI detectats',
+        detectedCliNotDetected: 'No detectat',
+        detectedCliUnknown: 'Desconegut',
+        detectedCliNotSupported: 'No compatible (actualitza happy-cli)',
         untitledSession: 'Sessió sense títol',
         back: 'Enrere',
+        notFound: 'Màquina no trobada',
+        unknownMachine: 'màquina desconeguda',
+        unknownPath: 'camí desconegut',
     },
 
     message: {
@@ -813,6 +959,10 @@ export const ca: TranslationStructure = {
         unknownEvent: 'Esdeveniment desconegut',
         usageLimitUntil: ({ time }: { time: string }) => `Límit d'ús assolit fins a ${time}`,
         unknownTime: 'temps desconegut',
+    },
+
+    chatFooter: {
+        permissionsTerminalOnly: 'Els permisos només es mostren al terminal. Reinicia o envia un missatge per controlar des de l\'app.',
     },
 
     codex: {
@@ -841,6 +991,7 @@ export const ca: TranslationStructure = {
         textCopied: 'Text copiat al porta-retalls',
         failedToCopy: 'No s\'ha pogut copiar el text al porta-retalls',
         noTextToCopy: 'No hi ha text disponible per copiar',
+        failedToOpen: 'No s\'ha pogut obrir la selecció de text. Torna-ho a provar.',
     },
 
     markdown: {
@@ -860,11 +1011,14 @@ export const ca: TranslationStructure = {
         edit: 'Edita artefacte',
         delete: 'Elimina',
         updateError: 'No s\'ha pogut actualitzar l\'artefacte. Si us plau, torna-ho a provar.',
+        deleteError: 'No s\'ha pogut eliminar l\'artefacte. Torna-ho a provar.',
         notFound: 'Artefacte no trobat',
         discardChanges: 'Descartar els canvis?',
         discardChangesDescription: 'Tens canvis sense desar. Estàs segur que vols descartar-los?',
         deleteConfirm: 'Eliminar artefacte?',
         deleteConfirmDescription: 'Aquest artefacte s\'eliminarà permanentment.',
+        noContent: 'Sense contingut',
+        untitled: 'Sense títol',
         titlePlaceholder: 'Títol de l\'artefacte',
         bodyPlaceholder: 'Escriu aquí el contingut...',
         save: 'Desa',
@@ -968,8 +1122,8 @@ export const ca: TranslationStructure = {
         custom: 'Personalitzat',
         builtInSaveAsHint: 'Desar un perfil integrat crea un nou perfil personalitzat.',
         builtInNames: {
-            anthropic: 'Anthropic (Default)',
-            deepseek: 'DeepSeek (Reasoner)',
+            anthropic: 'Anthropic (Per defecte)',
+            deepseek: 'DeepSeek (Raonament)',
             zai: 'Z.AI (GLM-4.6)',
             openai: 'OpenAI (GPT-5)',
             azureOpenai: 'Azure OpenAI',
@@ -992,6 +1146,92 @@ export const ca: TranslationStructure = {
         setupInstructions: {
             title: 'Instruccions de configuració',
             viewOfficialGuide: 'Veure la guia oficial de configuració',
+        },
+        machineLogin: {
+            title: 'Inici de sessió CLI',
+            subtitle: 'Aquest perfil depèn d’una memòria cau d’inici de sessió del CLI a la màquina seleccionada.',
+            claudeCode: {
+                title: 'Claude Code',
+                instructions: 'Executa `claude` i després escriu `/login` per iniciar sessió.',
+                warning: 'Nota: definir `ANTHROPIC_AUTH_TOKEN` substitueix l’inici de sessió del CLI.',
+            },
+            codex: {
+                title: 'Codex',
+                instructions: 'Executa `codex login` per iniciar sessió.',
+            },
+            geminiCli: {
+                title: 'Gemini CLI',
+                instructions: 'Executa `gemini auth` per iniciar sessió.',
+            },
+        },
+        requirements: {
+            apiKeyRequired: 'Clau d’API',
+            configured: 'Configurada a la màquina',
+            notConfigured: 'No configurada',
+            checking: 'Comprovant…',
+            modalTitle: 'Cal una clau d’API',
+            modalBody: 'Aquest perfil requereix una clau d’API.\n\nOpcions disponibles:\n• Fer servir l’entorn de la màquina (recomanat)\n• Fer servir una clau desada a la configuració de l’app\n• Introduir una clau només per a aquesta sessió',
+            sectionTitle: 'Requisits',
+            sectionSubtitle: 'Aquests camps s’utilitzen per comprovar l’estat i evitar fallades inesperades.',
+            secretEnvVarPromptDescription: 'Introdueix el nom de la variable d’entorn secreta necessària (p. ex., OPENAI_API_KEY).',
+            modalHelpWithEnv: ({ env }: { env: string }) => `Aquest perfil necessita ${env}. Tria una opció a continuació.`,
+            modalHelpGeneric: 'Aquest perfil necessita una clau d’API. Tria una opció a continuació.',
+            modalRecommendation: 'Recomanat: defineix la clau a l’entorn del dimoni al teu ordinador (per no haver-la d’enganxar de nou). Després reinicia el dimoni perquè llegeixi la nova variable d’entorn.',
+            chooseOptionTitle: 'Tria una opció',
+            machineEnvStatus: {
+                theMachine: 'la màquina',
+                checkFor: ({ env }: { env: string }) => `Comprova ${env}`,
+                checking: ({ env }: { env: string }) => `Comprovant ${env}…`,
+                found: ({ env, machine }: { env: string; machine: string }) => `${env} trobat a ${machine}`,
+                notFound: ({ env, machine }: { env: string; machine: string }) => `${env} no trobat a ${machine}`,
+            },
+            machineEnvSubtitle: {
+                checking: 'Comprovant l’entorn del dimoni…',
+                found: 'Trobat a l’entorn del dimoni a la màquina.',
+                notFound: 'Configura-ho a l’entorn del dimoni a la màquina i reinicia el dimoni.',
+            },
+            options: {
+                none: {
+                    title: 'Cap',
+                    subtitle: 'No requereix clau d’API ni inici de sessió per CLI.',
+                },
+                apiKeyEnv: {
+                    subtitle: 'Requereix una clau d’API que s’injectarà en iniciar la sessió.',
+                },
+                machineLogin: {
+                    subtitle: 'Requereix haver iniciat sessió via un CLI a la màquina de destinació.',
+                    longSubtitle: 'Requereix haver iniciat sessió via el CLI del backend d’IA escollit a la màquina de destinació.',
+                },
+                useMachineEnvironment: {
+                    title: 'Fer servir l’entorn de la màquina',
+                    subtitleWithEnv: ({ env }: { env: string }) => `Fer servir ${env} de l’entorn del dimoni.`,
+                    subtitleGeneric: 'Fer servir la clau de l’entorn del dimoni.',
+                },
+                useSavedApiKey: {
+                    title: 'Fer servir una clau d’API desada',
+                    subtitle: 'Selecciona (o afegeix) una clau desada a l’app.',
+                },
+                enterOnce: {
+                    title: 'Introduir una clau',
+                    subtitle: 'Enganxa una clau només per a aquesta sessió (no es desarà).',
+                },
+            },
+            apiKeyEnvVar: {
+                title: 'Variable d’entorn de la clau d’API',
+                subtitle: 'Introdueix el nom de la variable d’entorn que aquest proveïdor espera per a la clau d’API (p. ex., OPENAI_API_KEY).',
+                label: 'Nom de la variable d’entorn',
+            },
+            sections: {
+                machineEnvironment: 'Entorn de la màquina',
+                useOnceTitle: 'Fer servir una vegada',
+                useOnceFooter: 'Enganxa una clau només per a aquesta sessió. No es desarà.',
+            },
+            actions: {
+                useMachineEnvironment: {
+                    subtitle: 'Comença amb la clau que ja és present a la màquina.',
+                },
+                useOnceButton: 'Fer servir una vegada (només sessió)',
+            },
         },
         defaultSessionType: 'Tipus de sessió predeterminat',
         defaultPermissionMode: {
@@ -1088,6 +1328,45 @@ export const ca: TranslationStructure = {
             message: ({ name }: { name: string }) => `Estàs segur que vols eliminar "${name}"? Aquesta acció no es pot desfer.`,
             confirm: 'Eliminar',
             cancel: 'Cancel·lar',
+        },
+    },
+
+    apiKeys: {
+        addTitle: 'Nova clau d’API',
+        savedTitle: 'Claus d’API desades',
+        badgeReady: 'Clau d’API',
+        badgeRequired: 'Cal una clau d’API',
+        addSubtitle: 'Afegeix una clau d’API desada',
+        noneTitle: 'Cap',
+        noneSubtitle: 'Fes servir l’entorn de la màquina o introdueix una clau per a aquesta sessió',
+        emptyTitle: 'No hi ha claus desades',
+        emptySubtitle: 'Afegeix-ne una per utilitzar perfils amb clau d’API sense configurar variables d’entorn a la màquina.',
+        savedHiddenSubtitle: 'Desada (valor ocult)',
+        defaultLabel: 'Per defecte',
+        fields: {
+            name: 'Nom',
+            value: 'Valor',
+        },
+        placeholders: {
+            nameExample: 'p. ex., Work OpenAI',
+        },
+        validation: {
+            nameRequired: 'El nom és obligatori.',
+            valueRequired: 'El valor és obligatori.',
+        },
+        actions: {
+            replace: 'Substitueix',
+            replaceValue: 'Substitueix el valor',
+            setDefault: 'Estableix com a per defecte',
+            unsetDefault: 'Treu com a per defecte',
+        },
+        prompts: {
+            renameTitle: 'Reanomena la clau d’API',
+            renameDescription: 'Actualitza el nom descriptiu d’aquesta clau.',
+            replaceValueTitle: 'Substitueix el valor de la clau d’API',
+            replaceValueDescription: 'Enganxa el nou valor de la clau d’API. No es tornarà a mostrar després de desar-lo.',
+            deleteTitle: 'Elimina la clau d’API',
+            deleteConfirm: ({ name }: { name: string }) => `Vols eliminar “${name}”? Aquesta acció no es pot desfer.`,
         },
     },
 
