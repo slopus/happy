@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { addTodo } from '@/-zen/model/ops';
 import { useAuth } from '@/auth/AuthContext';
+import { t } from '@/text';
 
 export const ZenAdd = React.memo(() => {
     const router = useRouter();
@@ -38,7 +39,7 @@ export const ZenAdd = React.memo(() => {
                             borderBottomColor: theme.colors.divider,
                         }
                     ]}
-                    placeholder="What needs to be done?"
+                    placeholder={t('zen.add.placeholder')}
                     placeholderTextColor={theme.colors.textSecondary}
                     value={text}
                     onChangeText={setText}

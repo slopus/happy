@@ -14,6 +14,7 @@ import { clarifyPrompt } from '@/-zen/model/prompts';
 import { storeTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { toCamelCase } from '@/utils/stringUtils';
 import { removeTaskLinks, getSessionsForTask } from '@/-zen/model/taskSessionLink';
+import { t } from '@/text';
 
 export const ZenView = React.memo(() => {
     const router = useRouter();
@@ -217,7 +218,7 @@ export const ZenView = React.memo(() => {
                             style={[styles.actionButton, { backgroundColor: theme.colors.button.primary.background }]}
                         >
                             <Ionicons name="hammer-outline" size={20} color="#FFFFFF" />
-                            <Text style={styles.actionButtonText}>Work on task</Text>
+                            <Text style={styles.actionButtonText}>{t('zen.view.workOnTask')}</Text>
                         </Pressable>
 
                         <Pressable
@@ -225,7 +226,7 @@ export const ZenView = React.memo(() => {
                             style={[styles.actionButton, { backgroundColor: theme.colors.surfaceHighest }]}
                         >
                             <Ionicons name="sparkles" size={20} color={theme.colors.text} />
-                            <Text style={[styles.actionButtonText, { color: theme.colors.text }]}>Clarify</Text>
+                            <Text style={[styles.actionButtonText, { color: theme.colors.text }]}>{t('zen.view.clarify')}</Text>
                         </Pressable>
 
                         <Pressable
@@ -233,7 +234,7 @@ export const ZenView = React.memo(() => {
                             style={[styles.actionButton, { backgroundColor: theme.colors.textDestructive }]}
                         >
                             <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
-                            <Text style={styles.actionButtonText}>Delete</Text>
+                            <Text style={styles.actionButtonText}>{t('zen.view.delete')}</Text>
                         </Pressable>
                     </View>
 
@@ -241,7 +242,7 @@ export const ZenView = React.memo(() => {
                     {linkedSessions.length > 0 && (
                         <View style={styles.linkedSessionsSection}>
                             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                                Linked Sessions
+                                {t('zen.view.linkedSessions')}
                             </Text>
                             {linkedSessions.map((link, index) => (
                                 <Pressable
@@ -262,7 +263,7 @@ export const ZenView = React.memo(() => {
                     {/* Helper Text */}
                     <View style={styles.helperSection}>
                         <Text style={[styles.helperText, { color: theme.colors.textSecondary }]}>
-                            Tap the task text to edit
+                            {t('zen.view.tapTaskTextToEdit')}
                         </Text>
                     </View>
                 </View>

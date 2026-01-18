@@ -11,6 +11,7 @@ import { toggleTodo as toggleTodoSync, reorderTodos as reorderTodosSync } from '
 import { useAuth } from '@/auth/AuthContext';
 import { useShallow } from 'zustand/react/shallow';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
+import { t } from '@/text';
 
 export const ZenHome = () => {
     const insets = useSafeAreaInsets();
@@ -103,7 +104,7 @@ export const ZenHome = () => {
                         {undoneTodos.length === 0 ? (
                             <View style={{ padding: 20, alignItems: 'center' }}>
                                 <Text style={{ color: theme.colors.textSecondary, fontSize: 16 }}>
-                                    No tasks yet. Tap + to add one.
+                                    {t('zen.home.noTasksYet')}
                                 </Text>
                             </View>
                         ) : (
