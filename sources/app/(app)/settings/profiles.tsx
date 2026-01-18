@@ -14,13 +14,11 @@ import { ProfileEditForm } from '@/components/ProfileEditForm';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { ItemRowActions } from '@/components/ItemRowActions';
-import { buildProfileActions } from '@/components/profileActions';
 import { Switch } from '@/components/Switch';
-import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
-import { buildProfileGroups, toggleFavoriteProfileId } from '@/sync/profileGrouping';
 import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 import { useSetting } from '@/sync/storage';
+import { ProfilesList } from '@/components/profiles/ProfilesList';
+import { ApiKeyRequirementModal, type ApiKeyRequirementModalResult } from '@/components/ApiKeyRequirementModal';
 
 interface ProfileManagerProps {
     onProfileSelect?: (profile: AIBackendProfile | null) => void;
@@ -29,9 +27,8 @@ interface ProfileManagerProps {
 
 // Profile utilities now imported from @/sync/profileUtils
 const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerProps) {
-    const { theme, rt } = useUnistyles();
+    const { theme } = useUnistyles();
     const navigation = useNavigation();
-    const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const [useProfiles, setUseProfiles] = useSettingMutable('useProfiles');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const [lastUsedProfile, setLastUsedProfile] = useSettingMutable('lastUsedProfile');
@@ -42,6 +39,32 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     const isEditingDirtyRef = React.useRef(false);
     const saveRef = React.useRef<(() => boolean) | null>(null);
     const experimentsEnabled = useSetting('experiments');
+    const [apiKeys, setApiKeys] = useSettingMutable('apiKeys');
+    const [defaultApiKeyByProfileId, setDefaultApiKeyByProfileId] = useSettingMutable('defaultApiKeyByProfileId');
+
+    const openApiKeyModal = React.useCallback((profile: AIBackendProfile) => {
+        const handleResolve = (result: ApiKeyRequirementModalResult) => {
+            if (result.action !== 'selectSaved') return;
+            setDefaultApiKeyByProfileId({
+                ...defaultApiKeyByProfileId,
+                [profile.id]: result.apiKeyId,
+            });
+        };
+
+        Modal.show({
+            component: ApiKeyRequirementModal,
+            props: {
+                profile,
+                machineId: null,
+                apiKeys,
+                defaultApiKeyId: defaultApiKeyByProfileId[profile.id] ?? null,
+                onChangeApiKeys: setApiKeys,
+                allowSessionOnly: false,
+                onResolve: handleResolve,
+                onRequestClose: () => handleResolve({ action: 'cancel' } as ApiKeyRequirementModalResult),
+            },
+        });
+    }, [apiKeys, defaultApiKeyByProfileId, setDefaultApiKeyByProfileId]);
 
     React.useEffect(() => {
         isEditingDirtyRef.current = isEditingDirty;
@@ -189,37 +212,6 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
         setLastUsedProfile(profileId);
     };
 
-    const {
-        favoriteProfiles: favoriteProfileItems,
-        customProfiles: nonFavoriteCustomProfiles,
-        builtInProfiles: nonFavoriteBuiltInProfiles,
-        favoriteIds: favoriteProfileIdSet,
-    } = React.useMemo(() => {
-        return buildProfileGroups({ customProfiles: profiles, favoriteProfileIds });
-    }, [favoriteProfileIds, profiles]);
-
-    const toggleFavoriteProfile = (profileId: string) => {
-        setFavoriteProfileIds(toggleFavoriteProfileId(favoriteProfileIds, profileId));
-    };
-
-    const getProfileBackendSubtitle = React.useCallback((profile: Pick<AIBackendProfile, 'compatibility'>) => {
-        const parts: string[] = [];
-        if (profile.compatibility?.claude) parts.push(t('agentInput.agent.claude'));
-        if (profile.compatibility?.codex) parts.push(t('agentInput.agent.codex'));
-        if (experimentsEnabled && profile.compatibility?.gemini) parts.push(t('agentInput.agent.gemini'));
-        return parts.length > 0 ? parts.join(' • ') : '';
-    }, [experimentsEnabled]);
-
-    const getProfileSubtitle = React.useCallback((profile: AIBackendProfile) => {
-        const backend = getProfileBackendSubtitle(profile);
-        if (profile.isBuiltIn) {
-            const builtInLabel = t('profiles.builtIn');
-            return backend ? `${builtInLabel} · ${backend}` : builtInLabel;
-        }
-        const customLabel = t('profiles.custom');
-        return backend ? `${customLabel} · ${backend}` : customLabel;
-    }, [getProfileBackendSubtitle]);
-
     function handleSaveProfile(profile: AIBackendProfile): boolean {
         // Profile validation - ensure name is not empty
         if (!profile.name || profile.name.trim() === '') {
@@ -309,157 +301,21 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
 
     return (
         <View style={{ flex: 1 }}>
-            <ItemList style={{ paddingTop: 0 }}>
-                {favoriteProfileItems.length > 0 && (
-                    <ItemGroup title={t('profiles.groups.favorites')}>
-                        {favoriteProfileItems.map((profile) => {
-                            const isSelected = selectedProfileId === profile.id;
-                            const isFavorite = favoriteProfileIdSet.has(profile.id);
-                            const actions = buildProfileActions({
-                                profile,
-                                isFavorite,
-                                favoriteActionColor: selectedIndicatorColor,
-                                nonFavoriteActionColor: theme.colors.textSecondary,
-                                onToggleFavorite: () => toggleFavoriteProfile(profile.id),
-                                onEdit: () => handleEditProfile(profile),
-                                onDuplicate: () => handleDuplicateProfile(profile),
-                                onDelete: () => { void handleDeleteProfile(profile); },
-                            });
-                            return (
-                                <Item
-                                    key={profile.id}
-                                    title={profile.name}
-                                    subtitle={getProfileSubtitle(profile)}
-                                    leftElement={<ProfileCompatibilityIcon profile={profile} />}
-                                    onPress={() => handleEditProfile(profile)}
-                                    showChevron={false}
-                                    selected={isSelected}
-                                    rightElement={(
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                                            <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                                <Ionicons
-                                                    name="checkmark-circle"
-                                                    size={24}
-                                                    color={selectedIndicatorColor}
-                                                    style={{ opacity: isSelected ? 1 : 0 }}
-                                                />
-                                            </View>
-                                            <ItemRowActions
-                                                title={profile.name}
-                                                actions={actions}
-                                                compactActionIds={['edit']}
-                                                iconSize={20}
-                                            />
-                                        </View>
-                                    )}
-                                />
-                            );
-                        })}
-                    </ItemGroup>
-                )}
-
-                {nonFavoriteCustomProfiles.length > 0 && (
-                    <ItemGroup title={t('profiles.groups.custom')}>
-                        {nonFavoriteCustomProfiles.map((profile) => {
-                            const isSelected = selectedProfileId === profile.id;
-                            const isFavorite = favoriteProfileIdSet.has(profile.id);
-                            const actions = buildProfileActions({
-                                profile,
-                                isFavorite,
-                                favoriteActionColor: selectedIndicatorColor,
-                                nonFavoriteActionColor: theme.colors.textSecondary,
-                                onToggleFavorite: () => toggleFavoriteProfile(profile.id),
-                                onEdit: () => handleEditProfile(profile),
-                                onDuplicate: () => handleDuplicateProfile(profile),
-                                onDelete: () => { void handleDeleteProfile(profile); },
-                            });
-                            return (
-                                <Item
-                                    key={profile.id}
-                                    title={profile.name}
-                                    subtitle={getProfileSubtitle(profile)}
-                                    leftElement={<ProfileCompatibilityIcon profile={profile} />}
-                                    onPress={() => handleEditProfile(profile)}
-                                    showChevron={false}
-                                    selected={isSelected}
-                                    rightElement={(
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                                            <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                                <Ionicons
-                                                    name="checkmark-circle"
-                                                    size={24}
-                                                    color={selectedIndicatorColor}
-                                                    style={{ opacity: isSelected ? 1 : 0 }}
-                                                />
-                                            </View>
-                                            <ItemRowActions
-                                                title={profile.name}
-                                                actions={actions}
-                                                compactActionIds={['edit']}
-                                                iconSize={20}
-                                            />
-                                        </View>
-                                    )}
-                                />
-                            );
-                        })}
-                    </ItemGroup>
-                )}
-
-                <ItemGroup title={t('profiles.groups.builtIn')} footer={t('profiles.subtitle')}>
-                    {nonFavoriteBuiltInProfiles.map((profile) => {
-                        const isSelected = selectedProfileId === profile.id;
-                        const isFavorite = favoriteProfileIdSet.has(profile.id);
-                        const actions = buildProfileActions({
-                            profile,
-                            isFavorite,
-                            favoriteActionColor: selectedIndicatorColor,
-                            nonFavoriteActionColor: theme.colors.textSecondary,
-                            onToggleFavorite: () => toggleFavoriteProfile(profile.id),
-                            onEdit: () => handleEditProfile(profile),
-                            onDuplicate: () => handleDuplicateProfile(profile),
-                        });
-                        return (
-                            <Item
-                                key={profile.id}
-                                title={profile.name}
-                                subtitle={getProfileSubtitle(profile)}
-                                leftElement={<ProfileCompatibilityIcon profile={profile} />}
-                                onPress={() => handleEditProfile(profile)}
-                                showChevron={false}
-                                selected={isSelected}
-                                rightElement={(
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                                        <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                            <Ionicons
-                                                name="checkmark-circle"
-                                                size={24}
-                                                color={selectedIndicatorColor}
-                                                style={{ opacity: isSelected ? 1 : 0 }}
-                                            />
-                                        </View>
-                                        <ItemRowActions
-                                            title={profile.name}
-                                            actions={actions}
-                                            compactActionIds={['edit']}
-                                            iconSize={20}
-                                        />
-                                    </View>
-                                )}
-                            />
-                        );
-                    })}
-                </ItemGroup>
-
-                <ItemGroup>
-                    <Item
-                        title={t('profiles.addProfile')}
-                        icon={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}
-                        onPress={handleAddProfile}
-                        showChevron={false}
-                    />
-                </ItemGroup>
-            </ItemList>
+            <ProfilesList
+                customProfiles={profiles}
+                favoriteProfileIds={favoriteProfileIds}
+                onFavoriteProfileIdsChange={setFavoriteProfileIds}
+                experimentsEnabled={experimentsEnabled}
+                selectedProfileId={selectedProfileId ?? null}
+                onPressProfile={(profile) => handleEditProfile(profile)}
+                machineId={null}
+                includeAddProfileRow
+                onAddProfilePress={handleAddProfile}
+                onEditProfile={(profile) => handleEditProfile(profile)}
+                onDuplicateProfile={(profile) => handleDuplicateProfile(profile)}
+                onDeleteProfile={(profile) => { void handleDeleteProfile(profile); }}
+                onApiKeyBadgePress={openApiKeyModal}
+            />
 
             {/* Profile Add/Edit Modal */}
             {showAddForm && editingProfile && (

@@ -19,6 +19,9 @@ import { Modal } from '@/modal';
 import { MachineSelector } from '@/components/newSession/MachineSelector';
 import type { Machine } from '@/sync/storageTypes';
 import { isMachineOnline } from '@/utils/machineUtils';
+import { OptionTiles } from '@/components/OptionTiles';
+import { useCLIDetection } from '@/hooks/useCLIDetection';
+import { layout } from '@/components/layout';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
@@ -109,6 +112,8 @@ export function ProfileEditForm({
     const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const styles = stylesheet;
     const experimentsEnabled = useSetting('experiments');
+    const expGemini = useSetting('expGemini');
+    const allowGemini = experimentsEnabled && expGemini;
     const machines = useAllMachines();
     const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
     const routeMachine = machineId;
@@ -120,6 +125,7 @@ export function ProfileEditForm({
 
     const resolvedMachineId = routeMachine ?? previewMachineId;
     const resolvedMachine = useMachine(resolvedMachineId ?? '');
+    const cliDetection = useCLIDetection(resolvedMachineId, { includeLoginStatus: Boolean(resolvedMachineId) });
 
     const toggleFavoriteMachineId = React.useCallback((machineIdToToggle: string) => {
         if (favoriteMachines.includes(machineIdToToggle)) {
@@ -172,6 +178,34 @@ export function ProfileEditForm({
         profile.compatibility || { claude: true, codex: true, gemini: true },
     );
 
+    const [authMode, setAuthMode] = React.useState<AIBackendProfile['authMode']>(profile.authMode);
+    const [requiresMachineLogin, setRequiresMachineLogin] = React.useState<AIBackendProfile['requiresMachineLogin']>(profile.requiresMachineLogin);
+    const [requiredEnvVars, setRequiredEnvVars] = React.useState<NonNullable<AIBackendProfile['requiredEnvVars']>>(profile.requiredEnvVars ?? []);
+
+    const allowedMachineLoginOptions = React.useMemo(() => {
+        const options: Array<'claude-code' | 'codex' | 'gemini-cli'> = [];
+        if (compatibility.claude) options.push('claude-code');
+        if (compatibility.codex) options.push('codex');
+        if (allowGemini && compatibility.gemini) options.push('gemini-cli');
+        return options;
+    }, [allowGemini, compatibility.claude, compatibility.codex, compatibility.gemini]);
+
+    React.useEffect(() => {
+        if (authMode !== 'machineLogin') return;
+        // If exactly one backend is enabled, we can persist the explicit CLI requirement.
+        // If multiple are enabled, the required CLI is derived at session-start from the selected backend.
+        if (allowedMachineLoginOptions.length === 1) {
+            const only = allowedMachineLoginOptions[0];
+            if (requiresMachineLogin !== only) {
+                setRequiresMachineLogin(only);
+            }
+            return;
+        }
+        if (requiresMachineLogin) {
+            setRequiresMachineLogin(undefined);
+        }
+    }, [allowedMachineLoginOptions, authMode, requiresMachineLogin]);
+
     const initialSnapshotRef = React.useRef<string | null>(null);
     if (initialSnapshotRef.current === null) {
         initialSnapshotRef.current = JSON.stringify({
@@ -183,6 +217,9 @@ export function ProfileEditForm({
             defaultSessionType,
             defaultPermissionMode,
             compatibility,
+            authMode,
+            requiresMachineLogin,
+            requiredEnvVars,
         });
     }
 
@@ -196,14 +233,20 @@ export function ProfileEditForm({
             defaultSessionType,
             defaultPermissionMode,
             compatibility,
+            authMode,
+            requiresMachineLogin,
+            requiredEnvVars,
         });
         return currentSnapshot !== initialSnapshotRef.current;
     }, [
+        authMode,
         compatibility,
         defaultPermissionMode,
         defaultSessionType,
         environmentVariables,
         name,
+        requiredEnvVars,
+        requiresMachineLogin,
         tmuxSession,
         tmuxTmpDir,
         useTmux,
@@ -249,6 +292,11 @@ export function ProfileEditForm({
             ...profile,
             name: name.trim(),
             environmentVariables,
+            authMode,
+            requiresMachineLogin: authMode === 'machineLogin' && allowedMachineLoginOptions.length === 1
+                ? allowedMachineLoginOptions[0]
+                : undefined,
+            requiredEnvVars: authMode === 'apiKeyEnv' ? requiredEnvVars : undefined,
             tmuxConfig: useTmux
                 ? {
                       ...(profile.tmuxConfig ?? {}),
@@ -262,6 +310,7 @@ export function ProfileEditForm({
             updatedAt: Date.now(),
         });
     }, [
+        allowedMachineLoginOptions,
         compatibility,
         defaultPermissionMode,
         defaultSessionType,
@@ -269,10 +318,32 @@ export function ProfileEditForm({
         name,
         onSave,
         profile,
+        authMode,
+        requiredEnvVars,
         tmuxSession,
         tmuxTmpDir,
         useTmux,
     ]);
+
+    const editRequiredSecretEnvVar = React.useCallback(async () => {
+        const current = requiredEnvVars.find((v) => (v?.kind ?? 'secret') === 'secret')?.name ?? '';
+        const name = await Modal.prompt(
+            t('profiles.requirements.modalTitle'),
+            t('profiles.requirements.secretEnvVarPromptDescription'),
+            { defaultValue: current, placeholder: 'OPENAI_API_KEY', cancelText: t('common.cancel'), confirmText: t('common.save') },
+        );
+        if (name === null) return;
+        const normalized = name.trim().toUpperCase();
+        if (!/^[A-Z_][A-Z0-9_]*$/.test(normalized)) {
+            Modal.alert(t('common.error'), t('profiles.environmentVariables.validation.invalidNameFormat'));
+            return;
+        }
+
+        setRequiredEnvVars((prev) => {
+            const withoutSecret = prev.filter((v) => (v?.kind ?? 'secret') !== 'secret');
+            return [{ name: normalized, kind: 'secret' }, ...withoutSecret];
+        });
+    }, [requiredEnvVars]);
 
     React.useEffect(() => {
         if (!saveRef) {
@@ -309,6 +380,157 @@ export function ProfileEditForm({
                     />
                 </ItemGroup>
             )}
+
+            <View style={styles.requirementsHeader}>
+                <Text style={styles.requirementsTitle}>{t('profiles.requirements.sectionTitle')}</Text>
+                <Text style={styles.requirementsSubtitle}>
+                    {t('profiles.requirements.sectionSubtitle')}
+                </Text>
+            </View>
+
+            <View style={styles.requirementsTilesContainer}>
+                <OptionTiles
+                    options={[
+                        {
+                            id: 'none',
+                            title: t('profiles.requirements.options.none.title'),
+                            subtitle: t('profiles.requirements.options.none.subtitle'),
+                            icon: 'remove-circle-outline',
+                        },
+                        {
+                            id: 'apiKeyEnv',
+                            title: t('profiles.requirements.apiKeyRequired'),
+                            subtitle: t('profiles.requirements.options.apiKeyEnv.subtitle'),
+                            icon: 'key-outline',
+                        },
+                        {
+                            id: 'machineLogin',
+                            title: t('profiles.machineLogin.title'),
+                            subtitle: t('profiles.requirements.options.machineLogin.subtitle'),
+                            icon: 'terminal-outline',
+                        },
+                    ]}
+                    value={(authMode ?? 'none') as 'none' | 'apiKeyEnv' | 'machineLogin'}
+                    onChange={(next) => {
+                        if (next === 'none') {
+                            setAuthMode(undefined);
+                            setRequiresMachineLogin(undefined);
+                            setRequiredEnvVars([]);
+                            return;
+                        }
+                        if (next === 'apiKeyEnv') {
+                            setAuthMode('apiKeyEnv');
+                            setRequiresMachineLogin(undefined);
+                            return;
+                        }
+                        setAuthMode('machineLogin');
+                        setRequiresMachineLogin(undefined);
+                        setRequiredEnvVars([]);
+                    }}
+                />
+            </View>
+
+            {authMode === 'apiKeyEnv' && (
+                <ItemGroup>
+                    <Item
+                        title={t('profiles.requirements.apiKeyEnvVar.title')}
+                        subtitle={t('profiles.requirements.apiKeyEnvVar.subtitle')}
+                        icon={<Ionicons name="key-outline" size={29} color={theme.colors.button.secondary.tint} />}
+                        showChevron={false}
+                    />
+                    <View style={[styles.inputContainer, { paddingTop: 0, paddingBottom: 16 }]}>
+                        <Text style={styles.fieldLabel}>{t('profiles.requirements.apiKeyEnvVar.label')}</Text>
+                        <TextInput
+                            value={requiredEnvVars.find((v) => (v?.kind ?? 'secret') === 'secret')?.name ?? ''}
+                            onChangeText={(value) => {
+                                const normalized = value.trim().toUpperCase();
+                                setRequiredEnvVars((prev) => {
+                                    const withoutSecret = prev.filter((v) => (v?.kind ?? 'secret') !== 'secret');
+                                    if (!normalized) return withoutSecret;
+                                    return [{ name: normalized, kind: 'secret' }, ...withoutSecret];
+                                });
+                            }}
+                            placeholder="OPENAI_API_KEY"
+                            placeholderTextColor={theme.colors.input.placeholder}
+                            autoCapitalize="characters"
+                            autoCorrect={false}
+                            style={styles.textInput}
+                        />
+                    </View>
+                </ItemGroup>
+            )}
+
+            {authMode === 'machineLogin' && (
+                <ItemGroup>
+                    <Item
+                        title={t('profiles.machineLogin.title')}
+                        subtitle={
+                            t('profiles.requirements.options.machineLogin.longSubtitle')
+                        }
+                        icon={<Ionicons name="terminal-outline" size={29} color={theme.colors.button.secondary.tint} />}
+                        showChevron={false}
+                        showDivider={false}
+                    />
+                </ItemGroup>
+            )}
+
+            <ItemGroup title={t('profiles.aiBackend.title')}>
+                {(() => {
+                    const shouldShowLoginStatus = authMode === 'machineLogin' && Boolean(resolvedMachineId);
+
+                    const renderLoginStatus = (status: boolean) => (
+                        <Text style={[styles.aiBackendStatus, { color: status ? theme.colors.status.connected : theme.colors.status.disconnected }]}>
+                            {status ? 'Logged in' : 'Not logged in'}
+                        </Text>
+                    );
+
+                    const claudeDefaultSubtitle = t('profiles.aiBackend.claudeSubtitle');
+                    const codexDefaultSubtitle = t('profiles.aiBackend.codexSubtitle');
+                    const geminiDefaultSubtitle = t('profiles.aiBackend.geminiSubtitleExperimental');
+
+                    const claudeSubtitle = shouldShowLoginStatus
+                        ? (typeof cliDetection.login.claude === 'boolean' ? renderLoginStatus(cliDetection.login.claude) : claudeDefaultSubtitle)
+                        : claudeDefaultSubtitle;
+                    const codexSubtitle = shouldShowLoginStatus
+                        ? (typeof cliDetection.login.codex === 'boolean' ? renderLoginStatus(cliDetection.login.codex) : codexDefaultSubtitle)
+                        : codexDefaultSubtitle;
+                    const geminiSubtitle = shouldShowLoginStatus
+                        ? (typeof cliDetection.login.gemini === 'boolean' ? renderLoginStatus(cliDetection.login.gemini) : geminiDefaultSubtitle)
+                        : geminiDefaultSubtitle;
+
+                    return (
+                        <>
+                            <Item
+                                title={t('agentInput.agent.claude')}
+                                subtitle={claudeSubtitle}
+                                leftElement={<Ionicons name="sparkles-outline" size={24} color={theme.colors.textSecondary} />}
+                                rightElement={<Switch value={compatibility.claude} onValueChange={() => toggleCompatibility('claude')} />}
+                                showChevron={false}
+                                onPress={() => toggleCompatibility('claude')}
+                            />
+                            <Item
+                                title={t('agentInput.agent.codex')}
+                                subtitle={codexSubtitle}
+                                leftElement={<Ionicons name="terminal-outline" size={24} color={theme.colors.textSecondary} />}
+                                rightElement={<Switch value={compatibility.codex} onValueChange={() => toggleCompatibility('codex')} />}
+                                showChevron={false}
+                                onPress={() => toggleCompatibility('codex')}
+                            />
+                            {allowGemini && (
+                                <Item
+                                    title={t('agentInput.agent.gemini')}
+                                    subtitle={geminiSubtitle}
+                                    leftElement={<Ionicons name="planet-outline" size={24} color={theme.colors.textSecondary} />}
+                                    rightElement={<Switch value={compatibility.gemini} onValueChange={() => toggleCompatibility('gemini')} />}
+                                    showChevron={false}
+                                    onPress={() => toggleCompatibility('gemini')}
+                                    showDivider={false}
+                                />
+                            )}
+                        </>
+                    );
+                })()}
+            </ItemGroup>
 
             <ItemGroup title={t('profiles.defaultSessionType')}>
                 <SessionTypeSelector value={defaultSessionType} onChange={setDefaultSessionType} title={null} />
@@ -363,36 +585,6 @@ export function ProfileEditForm({
                         showDivider={index < array.length - 1}
                     />
                 ))}
-            </ItemGroup>
-
-            <ItemGroup title={t('profiles.aiBackend.title')}>
-                <Item
-                    title={t('agentInput.agent.claude')}
-                    subtitle={t('profiles.aiBackend.claudeSubtitle')}
-                    leftElement={<Ionicons name="sparkles-outline" size={24} color={theme.colors.textSecondary} />}
-                    rightElement={<Switch value={compatibility.claude} onValueChange={() => toggleCompatibility('claude')} />}
-                    showChevron={false}
-                    onPress={() => toggleCompatibility('claude')}
-                />
-                <Item
-                    title={t('agentInput.agent.codex')}
-                    subtitle={t('profiles.aiBackend.codexSubtitle')}
-                    leftElement={<Ionicons name="terminal-outline" size={24} color={theme.colors.textSecondary} />}
-                    rightElement={<Switch value={compatibility.codex} onValueChange={() => toggleCompatibility('codex')} />}
-                    showChevron={false}
-                    onPress={() => toggleCompatibility('codex')}
-                />
-                {experimentsEnabled && (
-                    <Item
-                        title={t('agentInput.agent.gemini')}
-                        subtitle={t('profiles.aiBackend.geminiSubtitleExperimental')}
-                        leftElement={<Ionicons name="planet-outline" size={24} color={theme.colors.textSecondary} />}
-                        rightElement={<Switch value={compatibility.gemini} onValueChange={() => toggleCompatibility('gemini')} />}
-                        showChevron={false}
-                        onPress={() => toggleCompatibility('gemini')}
-                        showDivider={false}
-                    />
-                )}
             </ItemGroup>
 
             <ItemGroup title={t('profiles.tmux.title')}>
@@ -527,11 +719,49 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 12,
         paddingBottom: 4,
     },
+    requirementsHeader: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+        paddingTop: Platform.select({ ios: 26, default: 20 }),
+        paddingBottom: Platform.select({ ios: 8, default: 8 }),
+        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+    },
+    requirementsTitle: {
+        ...Typography.default('regular'),
+        color: theme.colors.groupped.sectionTitle,
+        fontSize: Platform.select({ ios: 13, default: 14 }),
+        lineHeight: Platform.select({ ios: 18, default: 20 }),
+        letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+        textTransform: 'uppercase',
+        fontWeight: Platform.select({ ios: 'normal', default: '500' }),
+    },
+    requirementsSubtitle: {
+        ...Typography.default('regular'),
+        color: theme.colors.groupped.sectionTitle,
+        fontSize: Platform.select({ ios: 13, default: 14 }),
+        lineHeight: Platform.select({ ios: 18, default: 20 }),
+        letterSpacing: Platform.select({ ios: -0.08, default: 0 }),
+        marginTop: Platform.select({ ios: 6, default: 8 }),
+    },
+    requirementsTilesContainer: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+        paddingHorizontal: Platform.select({ ios: 16, default: 12 }),
+        paddingBottom: 8,
+    },
     fieldLabel: {
         ...Typography.default('semiBold'),
         fontSize: 13,
         color: theme.colors.groupped.sectionTitle,
-        marginBottom: 8,
+        marginBottom: 4,
+    },
+    aiBackendStatus: {
+        ...Typography.default('regular'),
+        fontSize: Platform.select({ ios: 15, default: 14 }),
+        lineHeight: 20,
+        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
     },
     textInput: {
         ...Typography.default('regular'),
