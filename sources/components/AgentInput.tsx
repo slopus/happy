@@ -1,7 +1,9 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, Image as RNImage, Pressable } from 'react-native';
+import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, Pressable, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import Color from 'color';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
@@ -47,11 +49,6 @@ interface AgentInputProps {
         color: string;
         dotColor: string;
         isPulsing?: boolean;
-        cliStatus?: {
-            claude: boolean | null;
-            codex: boolean | null;
-            gemini?: boolean | null;
-        };
     };
     autocompletePrefixes: string[];
     autocompleteSuggestions: (query: string) => Promise<{ key: string, text: string, component: React.ElementType }[]>;
@@ -269,6 +266,32 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexWrap: 'wrap',
         overflow: 'visible',
     },
+    actionButtonsLeftScroll: {
+        flex: 1,
+        overflow: 'visible',
+    },
+    actionButtonsLeftScrollContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        columnGap: 6,
+        paddingRight: 6,
+    },
+    actionButtonsFadeLeft: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 18,
+        zIndex: 2,
+    },
+    actionButtonsFadeRight: {
+        position: 'absolute',
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: 18,
+        zIndex: 2,
+    },
     actionButtonsLeftNarrow: {
         columnGap: 4,
     },
@@ -284,6 +307,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         justifyContent: 'center',
         height: 32,
         gap: 6,
+    },
+    actionChipIconOnly: {
+        paddingHorizontal: 8,
+        gap: 0,
     },
     actionChipPressed: {
         opacity: 0.7,
@@ -463,25 +490,26 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         : null;
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
+    const agentInputActionBarLayout = useSetting('agentInputActionBarLayout');
+    const agentInputChipDensity = useSetting('agentInputChipDensity');
 
-    const cliStatusText = React.useMemo(() => {
-        const cliStatus = props.connectionStatus?.cliStatus;
-        if (!cliStatus) return null;
+    const effectiveChipDensity = React.useMemo<'labels' | 'icons'>(() => {
+        if (agentInputChipDensity === 'labels' || agentInputChipDensity === 'icons') {
+            return agentInputChipDensity;
+        }
+        // auto
+        return screenWidth < 420 ? 'icons' : 'labels';
+    }, [agentInputChipDensity, screenWidth]);
 
-        const format = (name: string, value: boolean | null | undefined) => {
-            if (value === true) return `${name}✓`;
-            if (value === false) return `${name}✗`;
-            return `${name}?`;
-        };
+    const effectiveActionBarLayout = React.useMemo<'wrap' | 'scroll' | 'collapsed'>(() => {
+        if (agentInputActionBarLayout === 'wrap' || agentInputActionBarLayout === 'scroll' || agentInputActionBarLayout === 'collapsed') {
+            return agentInputActionBarLayout;
+        }
+        // auto
+        return screenWidth < 420 ? 'scroll' : 'wrap';
+    }, [agentInputActionBarLayout, screenWidth]);
 
-        const parts = [
-            format('claude', cliStatus.claude),
-            format('codex', cliStatus.codex),
-            ...(Object.prototype.hasOwnProperty.call(cliStatus, 'gemini') ? [format('gemini', cliStatus.gemini)] : []),
-        ];
-
-        return ` · CLI: ${parts.join(' ')}`;
-    }, [props.connectionStatus?.cliStatus]);
+    const showChipLabels = effectiveChipDensity === 'labels';
 
 
     // Abort button state
@@ -537,6 +565,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Settings modal state
     const [showSettings, setShowSettings] = React.useState(false);
 
+    // Horizontal action bar scroll state (for gradient fades)
+    const [actionBarViewportWidth, setActionBarViewportWidth] = React.useState(0);
+    const [actionBarContentWidth, setActionBarContentWidth] = React.useState(0);
+    const [actionBarScrollX, setActionBarScrollX] = React.useState(0);
+
     const normalizedPermissionMode = React.useMemo(() => {
         return normalizePermissionModeForAgentFlavor(
             props.permissionMode ?? 'default',
@@ -590,6 +623,35 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, []);
 
     const showPermissionChip = Boolean(props.onPermissionModeChange || props.onPermissionClick);
+    const hasAnyActions = Boolean(
+        showPermissionChip ||
+        props.onProfileClick ||
+        props.onEnvVarsClick ||
+        props.onAgentClick ||
+        props.onMachineClick ||
+        props.onPathClick ||
+        props.onFileViewerPress ||
+        props.onAbort
+    );
+
+    const actionBarShouldScroll = effectiveActionBarLayout === 'scroll';
+    const actionBarIsCollapsed = effectiveActionBarLayout === 'collapsed';
+
+    const canActionBarScroll = actionBarShouldScroll && actionBarContentWidth > actionBarViewportWidth + 8;
+    const showActionBarFadeLeft = canActionBarScroll && actionBarScrollX > 2;
+    const showActionBarFadeRight = canActionBarScroll && (actionBarScrollX + actionBarViewportWidth) < (actionBarContentWidth - 2);
+
+    const actionBarFadeColor = React.useMemo(() => {
+        return theme.colors.input.background;
+    }, [theme.colors.input.background]);
+
+    const actionBarFadeTransparent = React.useMemo(() => {
+        try {
+            return Color(actionBarFadeColor).alpha(0).rgb().string();
+        } catch {
+            return 'transparent';
+        }
+    }, [actionBarFadeColor]);
 
     // Handle settings selection
     const handleSettingsSelect = React.useCallback((mode: PermissionMode) => {
@@ -723,6 +785,194 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
                         ]}>
                             <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
+                                {/* Action shortcuts (collapsed layout) */}
+                                {actionBarIsCollapsed && hasAnyActions && (
+                                    <View style={styles.overlaySection}>
+                                        <Text style={styles.overlaySectionTitle}>
+                                            {t('agentInput.actionMenu.title')}
+                                        </Text>
+
+                                        {props.onProfileClick ? (
+                                            <Pressable
+                                                onPress={() => {
+                                                    hapticsLight();
+                                                    setShowSettings(false);
+                                                    props.onProfileClick?.();
+                                                }}
+                                                style={({ pressed }) => [
+                                                    styles.overlayOptionRow,
+                                                    pressed ? styles.overlayOptionRowPressed : null,
+                                                ]}
+                                            >
+                                                <Ionicons
+                                                    name={profileIcon as any}
+                                                    size={16}
+                                                    color={theme.colors.button.secondary.tint}
+                                                    style={{ marginRight: 12 }}
+                                                />
+                                                <Text style={styles.overlayOptionLabel}>
+                                                    {profileLabel ?? t('profiles.noProfile')}
+                                                </Text>
+                                            </Pressable>
+                                        ) : null}
+
+                                        {props.onEnvVarsClick ? (
+                                            <Pressable
+                                                onPress={() => {
+                                                    hapticsLight();
+                                                    setShowSettings(false);
+                                                    props.onEnvVarsClick?.();
+                                                }}
+                                                style={({ pressed }) => [
+                                                    styles.overlayOptionRow,
+                                                    pressed ? styles.overlayOptionRowPressed : null,
+                                                ]}
+                                            >
+                                                <Ionicons
+                                                    name="list-outline"
+                                                    size={16}
+                                                    color={theme.colors.button.secondary.tint}
+                                                    style={{ marginRight: 12 }}
+                                                />
+                                                <Text style={styles.overlayOptionLabel}>
+                                                    {props.envVarsCount === undefined
+                                                        ? t('agentInput.envVars.title')
+                                                        : t('agentInput.envVars.titleWithCount', { count: props.envVarsCount })}
+                                                </Text>
+                                            </Pressable>
+                                        ) : null}
+
+                                        {props.agentType && props.onAgentClick ? (
+                                            <Pressable
+                                                onPress={() => {
+                                                    hapticsLight();
+                                                    setShowSettings(false);
+                                                    props.onAgentClick?.();
+                                                }}
+                                                style={({ pressed }) => [
+                                                    styles.overlayOptionRow,
+                                                    pressed ? styles.overlayOptionRowPressed : null,
+                                                ]}
+                                            >
+                                                <Octicons
+                                                    name="cpu"
+                                                    size={16}
+                                                    color={theme.colors.button.secondary.tint}
+                                                    style={{ marginRight: 12 }}
+                                                />
+                                                <Text style={styles.overlayOptionLabel}>
+                                                    {props.agentType === 'claude'
+                                                        ? t('agentInput.agent.claude')
+                                                        : props.agentType === 'codex'
+                                                            ? t('agentInput.agent.codex')
+                                                            : t('agentInput.agent.gemini')}
+                                                </Text>
+                                            </Pressable>
+                                        ) : null}
+
+                                        {(props.machineName !== undefined) && props.onMachineClick ? (
+                                            <Pressable
+                                                onPress={() => {
+                                                    hapticsLight();
+                                                    setShowSettings(false);
+                                                    props.onMachineClick?.();
+                                                }}
+                                                style={({ pressed }) => [
+                                                    styles.overlayOptionRow,
+                                                    pressed ? styles.overlayOptionRowPressed : null,
+                                                ]}
+                                            >
+                                                <Ionicons
+                                                    name="desktop-outline"
+                                                    size={16}
+                                                    color={theme.colors.button.secondary.tint}
+                                                    style={{ marginRight: 12 }}
+                                                />
+                                                <Text style={styles.overlayOptionLabel}>
+                                                    {props.machineName === null
+                                                        ? t('agentInput.noMachinesAvailable')
+                                                        : props.machineName}
+                                                </Text>
+                                            </Pressable>
+                                        ) : null}
+
+                                        {(props.currentPath && props.onPathClick) ? (
+                                            <Pressable
+                                                onPress={() => {
+                                                    hapticsLight();
+                                                    setShowSettings(false);
+                                                    props.onPathClick?.();
+                                                }}
+                                                style={({ pressed }) => [
+                                                    styles.overlayOptionRow,
+                                                    pressed ? styles.overlayOptionRowPressed : null,
+                                                ]}
+                                            >
+                                                <Ionicons
+                                                    name="folder-outline"
+                                                    size={16}
+                                                    color={theme.colors.button.secondary.tint}
+                                                    style={{ marginRight: 12 }}
+                                                />
+                                                <Text style={styles.overlayOptionLabel}>
+                                                    {props.currentPath}
+                                                </Text>
+                                            </Pressable>
+                                        ) : null}
+
+                                        {(props.sessionId && props.onFileViewerPress) ? (
+                                            <Pressable
+                                                onPress={() => {
+                                                    hapticsLight();
+                                                    setShowSettings(false);
+                                                    props.onFileViewerPress?.();
+                                                }}
+                                                style={({ pressed }) => [
+                                                    styles.overlayOptionRow,
+                                                    pressed ? styles.overlayOptionRowPressed : null,
+                                                ]}
+                                            >
+                                                <Octicons
+                                                    name="git-branch"
+                                                    size={16}
+                                                    color={theme.colors.button.secondary.tint}
+                                                    style={{ marginRight: 12 }}
+                                                />
+                                                <Text style={styles.overlayOptionLabel}>
+                                                    {t('agentInput.actionMenu.files')}
+                                                </Text>
+                                            </Pressable>
+                                        ) : null}
+
+                                        {props.onAbort ? (
+                                            <Pressable
+                                                onPress={() => {
+                                                    setShowSettings(false);
+                                                    handleAbortPress();
+                                                }}
+                                                style={({ pressed }) => [
+                                                    styles.overlayOptionRow,
+                                                    pressed ? styles.overlayOptionRowPressed : null,
+                                                ]}
+                                            >
+                                                <Octicons
+                                                    name="stop"
+                                                    size={16}
+                                                    color={theme.colors.button.secondary.tint}
+                                                    style={{ marginRight: 12 }}
+                                                />
+                                                <Text style={styles.overlayOptionLabel}>
+                                                    {t('agentInput.actionMenu.stop')}
+                                                </Text>
+                                            </Pressable>
+                                        ) : null}
+                                    </View>
+                                )}
+
+                                {actionBarIsCollapsed && hasAnyActions ? (
+                                    <View style={styles.overlayDivider} />
+                                ) : null}
+
                                 {/* Permission Mode Section */}
                                 <View style={styles.overlaySection}>
                                     <Text style={styles.overlaySectionTitle}>
@@ -865,11 +1115,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     <Text style={[styles.statusText, { color: props.connectionStatus.color }]}>
                                         {props.connectionStatus.text}
                                     </Text>
-                                    {cliStatusText && (
-                                        <Text style={[styles.statusText, { color: theme.colors.textSecondary }]}>
-                                            {cliStatusText}
-                                        </Text>
-                                    )}
                                 </>
                             )}
                             {contextWarning && (
@@ -887,7 +1132,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             )}
                         </View>
                         <View style={styles.permissionModeContainer}>
-                            {props.permissionMode && (
+                            {permissionChipLabel && (
                                 <Text
                                     style={[
                                         styles.permissionModeText,
@@ -902,22 +1147,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         },
                                     ]}
                                 >
-                                    {isCodex ? (
-                                        normalizedPermissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
-                                            normalizedPermissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
-                                                normalizedPermissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
-                                                    normalizedPermissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
-                                    ) : isGemini ? (
-                                        normalizedPermissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') :
-                                            normalizedPermissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.badgeReadOnly') :
-                                                normalizedPermissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.badgeSafeYolo') :
-                                                    normalizedPermissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.badgeYolo') : ''
-                                    ) : (
-                                        normalizedPermissionMode === 'default' ? t('agentInput.permissionMode.default') :
-                                            normalizedPermissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
-                                        normalizedPermissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
-                                            normalizedPermissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
-                                    )}
+                                    {permissionChipLabel}
                                 </Text>
                             )}
                         </View>
@@ -946,144 +1176,165 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         <View style={screenWidth < 420 ? styles.actionButtonsColumnNarrow : styles.actionButtonsColumn}>{[
                             // Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status
                             <View key="row1" style={styles.actionButtonsRow}>
-                                <View style={[styles.actionButtonsLeft, screenWidth < 420 ? styles.actionButtonsLeftNarrow : null]}>
-                                    {/* Permission chip (popover in standard flow, scroll in wizard) */}
-                                    {showPermissionChip && (
+                                {(() => {
+                                    const chipStyle = (pressed: boolean) => ([
+                                        styles.actionChip,
+                                        !showChipLabels ? styles.actionChipIconOnly : null,
+                                        pressed ? styles.actionChipPressed : null,
+                                    ]);
+
+                                    const permissionOrControlsChip = (showPermissionChip || actionBarIsCollapsed) ? (
                                         <Pressable
+                                            key="permission"
                                             onPress={() => {
                                                 hapticsLight();
-                                                if (props.onPermissionClick) {
+                                                if (!actionBarIsCollapsed && props.onPermissionClick) {
                                                     props.onPermissionClick();
                                                     return;
                                                 }
                                                 handleSettingsPress();
                                             }}
                                             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                            style={(p) => [
-                                                styles.actionChip,
-                                                p.pressed ? styles.actionChipPressed : null,
-                                            ]}
+                                            style={(p) => chipStyle(p.pressed)}
                                         >
-                                            <Ionicons
-                                                name="settings-outline"
+                                            <Octicons
+                                                name="gear"
                                                 size={16}
                                                 color={theme.colors.button.secondary.tint}
                                             />
-                                            {permissionChipLabel ? (
+                                            {showChipLabels && permissionChipLabel ? (
                                                 <Text style={styles.actionChipText}>
                                                     {permissionChipLabel}
                                                 </Text>
                                             ) : null}
                                         </Pressable>
-                                    )}
+                                    ) : null;
 
-                                    {/* Profile selector button - FIRST */}
-                                    {props.onProfileClick && (
+                                    const profileChip = props.onProfileClick ? (
                                         <Pressable
+                                            key="profile"
                                             onPress={() => {
                                                 hapticsLight();
                                                 props.onProfileClick?.();
                                             }}
                                             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                            style={(p) => [
-                                                styles.actionChip,
-                                                p.pressed ? styles.actionChipPressed : null,
-                                            ]}
+                                            style={(p) => chipStyle(p.pressed)}
                                         >
                                             <Ionicons
                                                 name={profileIcon as any}
                                                 size={16}
                                                 color={theme.colors.button.secondary.tint}
                                             />
-                                            <Text style={styles.actionChipText}>
-                                                {profileLabel ?? t('profiles.noProfile')}
-                                            </Text>
+                                            {showChipLabels ? (
+                                                <Text style={styles.actionChipText}>
+                                                    {profileLabel ?? t('profiles.noProfile')}
+                                                </Text>
+                                            ) : null}
                                         </Pressable>
-                                    )}
+                                    ) : null;
 
-                                    {/* Env vars preview (standard flow) */}
-                                    {props.onEnvVarsClick && (
+                                    const envVarsChip = props.onEnvVarsClick ? (
                                         <Pressable
+                                            key="envVars"
                                             onPress={() => {
                                                 hapticsLight();
                                                 props.onEnvVarsClick?.();
                                             }}
                                             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                            style={(p) => [
-                                                styles.actionChip,
-                                                p.pressed ? styles.actionChipPressed : null,
-                                            ]}
+                                            style={(p) => chipStyle(p.pressed)}
                                         >
                                             <Ionicons
                                                 name="list-outline"
                                                 size={16}
                                                 color={theme.colors.button.secondary.tint}
                                             />
-                                            <Text style={styles.actionChipText}>
-                                                {props.envVarsCount === undefined
-                                                    ? t('agentInput.envVars.title')
-                                                    : t('agentInput.envVars.titleWithCount', { count: props.envVarsCount })}
-                                            </Text>
+                                            {showChipLabels ? (
+                                                <Text style={styles.actionChipText}>
+                                                    {props.envVarsCount === undefined
+                                                        ? t('agentInput.envVars.title')
+                                                        : t('agentInput.envVars.titleWithCount', { count: props.envVarsCount })}
+                                                </Text>
+                                            ) : null}
                                         </Pressable>
-                                    )}
+                                    ) : null;
 
-                                    {/* Agent selector button */}
-                                    {props.agentType && props.onAgentClick && (
+                                    const agentChip = (props.agentType && props.onAgentClick) ? (
                                         <Pressable
+                                            key="agent"
                                             onPress={() => {
                                                 hapticsLight();
                                                 props.onAgentClick?.();
                                             }}
                                             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                            style={(p) => [
-                                                styles.actionChip,
-                                                p.pressed ? styles.actionChipPressed : null,
-                                            ]}
+                                            style={(p) => chipStyle(p.pressed)}
                                         >
                                             <Octicons
                                                 name="cpu"
                                                 size={16}
                                                 color={theme.colors.button.secondary.tint}
                                             />
-                                            <Text style={styles.actionChipText}>
-                                                {props.agentType === 'claude'
-                                                    ? t('agentInput.agent.claude')
-                                                    : props.agentType === 'codex'
-                                                        ? t('agentInput.agent.codex')
-                                                        : t('agentInput.agent.gemini')}
-                                            </Text>
+                                            {showChipLabels ? (
+                                                <Text style={styles.actionChipText}>
+                                                    {props.agentType === 'claude'
+                                                        ? t('agentInput.agent.claude')
+                                                        : props.agentType === 'codex'
+                                                            ? t('agentInput.agent.codex')
+                                                            : t('agentInput.agent.gemini')}
+                                                </Text>
+                                            ) : null}
                                         </Pressable>
-                                    )}
+                                    ) : null;
 
-                                    {/* Machine selector button */}
-                                    {(props.machineName !== undefined) && props.onMachineClick && (
+                                    const machineChip = ((props.machineName !== undefined) && props.onMachineClick) ? (
                                         <Pressable
+                                            key="machine"
                                             onPress={() => {
                                                 hapticsLight();
                                                 props.onMachineClick?.();
                                             }}
                                             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                            style={(p) => [
-                                                styles.actionChip,
-                                                p.pressed ? styles.actionChipPressed : null,
-                                            ]}
+                                            style={(p) => chipStyle(p.pressed)}
                                         >
                                             <Ionicons
                                                 name="desktop-outline"
                                                 size={16}
                                                 color={theme.colors.button.secondary.tint}
                                             />
-                                            <Text style={styles.actionChipText}>
-                                                {props.machineName === null
-                                                    ? t('agentInput.noMachinesAvailable')
-                                                    : truncateWithEllipsis(props.machineName, 12)}
-                                            </Text>
+                                            {showChipLabels ? (
+                                                <Text style={styles.actionChipText}>
+                                                    {props.machineName === null
+                                                        ? t('agentInput.noMachinesAvailable')
+                                                        : truncateWithEllipsis(props.machineName, 12)}
+                                                </Text>
+                                            ) : null}
                                         </Pressable>
-                                    )}
+                                    ) : null;
 
-                                    {/* Abort button */}
-                                    {props.onAbort && (
-                                        <Shaker ref={shakerRef}>
+                                    const pathChip = (props.currentPath && props.onPathClick) ? (
+                                        <Pressable
+                                            key="path"
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onPathClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => chipStyle(p.pressed)}
+                                        >
+                                            <Ionicons
+                                                name="folder-outline"
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            {showChipLabels ? (
+                                                <Text style={styles.actionChipText}>
+                                                    {props.currentPath}
+                                                </Text>
+                                            ) : null}
+                                        </Pressable>
+                                    ) : null;
+
+                                    const abortButton = props.onAbort && !actionBarIsCollapsed ? (
+                                        <Shaker key="abort" ref={shakerRef}>
                                             <Pressable
                                                 style={(p) => [
                                                     styles.actionButton,
@@ -1107,11 +1358,79 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 )}
                                             </Pressable>
                                         </Shaker>
-                                    )}
+                                    ) : null;
 
-                                    {/* Git Status Badge */}
-                                    <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
-                                </View>
+                                    const gitStatusChip = !actionBarIsCollapsed ? (
+                                        <GitStatusButton
+                                            key="git"
+                                            sessionId={props.sessionId}
+                                            onPress={props.onFileViewerPress}
+                                            compact={actionBarShouldScroll || !showChipLabels}
+                                        />
+                                    ) : null;
+
+                                    const chips = actionBarIsCollapsed
+                                        ? [permissionOrControlsChip].filter(Boolean)
+                                        : [
+                                            permissionOrControlsChip,
+                                            profileChip,
+                                            envVarsChip,
+                                            agentChip,
+                                            machineChip,
+                                            ...(actionBarShouldScroll ? [pathChip] : []),
+                                            abortButton,
+                                            gitStatusChip,
+                                        ].filter(Boolean);
+
+                                    // IMPORTANT: We must always render the ScrollView in "scroll layout" mode,
+                                    // otherwise we never measure content/viewport widths and can't know whether
+                                    // scrolling is needed (deadlock).
+                                    if (actionBarShouldScroll) {
+                                        return (
+                                            <View style={styles.actionButtonsLeftScroll}>
+                                                <ScrollView
+                                                    horizontal
+                                                    showsHorizontalScrollIndicator={false}
+                                                    scrollEnabled={canActionBarScroll}
+                                                    alwaysBounceHorizontal={false}
+                                                    directionalLockEnabled
+                                                    keyboardShouldPersistTaps="handled"
+                                                    contentContainerStyle={styles.actionButtonsLeftScrollContent as any}
+                                                    onLayout={(e) => setActionBarViewportWidth(e.nativeEvent.layout.width)}
+                                                    onContentSizeChange={(w) => setActionBarContentWidth(w)}
+                                                    onScroll={(e) => setActionBarScrollX(e.nativeEvent.contentOffset.x)}
+                                                    scrollEventThrottle={16}
+                                                >
+                                                    {chips as any}
+                                                </ScrollView>
+                                                {showActionBarFadeLeft ? (
+                                                    <LinearGradient
+                                                        pointerEvents="none"
+                                                        colors={[actionBarFadeColor, actionBarFadeTransparent]}
+                                                        start={{ x: 0, y: 0.5 }}
+                                                        end={{ x: 1, y: 0.5 }}
+                                                        style={styles.actionButtonsFadeLeft}
+                                                    />
+                                                ) : null}
+                                                {showActionBarFadeRight ? (
+                                                    <LinearGradient
+                                                        pointerEvents="none"
+                                                        colors={[actionBarFadeColor, actionBarFadeTransparent]}
+                                                        start={{ x: 1, y: 0.5 }}
+                                                        end={{ x: 0, y: 0.5 }}
+                                                        style={styles.actionButtonsFadeRight}
+                                                    />
+                                                ) : null}
+                                            </View>
+                                        );
+                                    }
+
+                                    return (
+                                        <View style={[styles.actionButtonsLeft, screenWidth < 420 ? styles.actionButtonsLeftNarrow : null]}>
+                                            {chips as any}
+                                        </View>
+                                    );
+                                })()}
 
                                 {/* Send/Voice button - aligned with first row */}
                                 <View
@@ -1174,8 +1493,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 	                                </View>
 	                            </View>,
 	
-	                            // Row 2: Path selector (separate line to match pre-PR272 layout)
-	                            props.currentPath && props.onPathClick ? (
+	                            // Row 2: Path selector (separate line to match pre-PR272 layout; hidden when action bar scrolls/collapses)
+	                            (!actionBarShouldScroll && !actionBarIsCollapsed && props.currentPath && props.onPathClick) ? (
 	                                <View key="row2" style={styles.pathRow}>
 	                                    <View style={[styles.actionButtonsLeft, styles.actionButtonsLeftNoFlex]}>
 	                                        <Pressable
@@ -1210,7 +1529,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 }));
 
 // Git Status Button Component
-function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?: () => void }) {
+function GitStatusButton({ sessionId, onPress, compact }: { sessionId?: string, onPress?: () => void, compact?: boolean }) {
     const hasMeaningfulGitStatus = useHasMeaningfulGitStatus(sessionId || '');
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -1229,7 +1548,7 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
                 paddingVertical: 6,
                 height: 32,
                 opacity: p.pressed ? 0.7 : 1,
-                flex: 1,
+                flex: compact ? 0 : 1,
                 overflow: 'hidden',
             })}
             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}

@@ -1,3 +1,4 @@
+import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -19,7 +20,7 @@ const isKnownAvatarStyle = (style: string): style is KnownAvatarStyle => {
     return style === 'pixelated' || style === 'gradient' || style === 'brutalist';
 };
 
-export default function AppearanceSettingsScreen() {
+export default React.memo(function AppearanceSettingsScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
     const [viewInline, setViewInline] = useSettingMutable('viewInline');
@@ -28,6 +29,8 @@ export default function AppearanceSettingsScreen() {
     const [showLineNumbersInToolViews, setShowLineNumbersInToolViews] = useSettingMutable('showLineNumbersInToolViews');
     const [wrapLinesInDiffs, setWrapLinesInDiffs] = useSettingMutable('wrapLinesInDiffs');
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
+    const [agentInputActionBarLayout, setAgentInputActionBarLayout] = useSettingMutable('agentInputActionBarLayout');
+    const [agentInputChipDensity, setAgentInputChipDensity] = useSettingMutable('agentInputChipDensity');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
     const [compactSessionView, setCompactSessionView] = useSettingMutable('compactSessionView');
@@ -199,6 +202,44 @@ export default function AppearanceSettingsScreen() {
                     }
                 />
                 <Item
+                    title={t('settingsAppearance.agentInputActionBarLayout')}
+                    subtitle={t('settingsAppearance.agentInputActionBarLayoutDescription')}
+                    icon={<Ionicons name="menu-outline" size={29} color="#5856D6" />}
+                    detail={
+                        agentInputActionBarLayout === 'auto'
+                            ? t('settingsAppearance.agentInputActionBarLayoutOptions.auto')
+                            : agentInputActionBarLayout === 'wrap'
+                                ? t('settingsAppearance.agentInputActionBarLayoutOptions.wrap')
+                                : agentInputActionBarLayout === 'scroll'
+                                    ? t('settingsAppearance.agentInputActionBarLayoutOptions.scroll')
+                                    : t('settingsAppearance.agentInputActionBarLayoutOptions.collapsed')
+                    }
+                    onPress={() => {
+                        const order: Array<typeof agentInputActionBarLayout> = ['auto', 'wrap', 'scroll', 'collapsed'];
+                        const idx = Math.max(0, order.indexOf(agentInputActionBarLayout));
+                        const next = order[(idx + 1) % order.length]!;
+                        setAgentInputActionBarLayout(next);
+                    }}
+                />
+                <Item
+                    title={t('settingsAppearance.agentInputChipDensity')}
+                    subtitle={t('settingsAppearance.agentInputChipDensityDescription')}
+                    icon={<Ionicons name="text-outline" size={29} color="#5856D6" />}
+                    detail={
+                        agentInputChipDensity === 'auto'
+                            ? t('settingsAppearance.agentInputChipDensityOptions.auto')
+                            : agentInputChipDensity === 'labels'
+                                ? t('settingsAppearance.agentInputChipDensityOptions.labels')
+                                : t('settingsAppearance.agentInputChipDensityOptions.icons')
+                    }
+                    onPress={() => {
+                        const order: Array<typeof agentInputChipDensity> = ['auto', 'labels', 'icons'];
+                        const idx = Math.max(0, order.indexOf(agentInputChipDensity));
+                        const next = order[(idx + 1) % order.length]!;
+                        setAgentInputChipDensity(next);
+                    }}
+                />
+                <Item
                     title={t('settingsAppearance.avatarStyle')}
                     subtitle={t('settingsAppearance.avatarStyleDescription')}
                     icon={<Ionicons name="person-circle-outline" size={29} color="#5856D6" />}
@@ -260,4 +301,4 @@ export default function AppearanceSettingsScreen() {
             </ItemGroup> */}
         </ItemList>
     );
-}
+});
