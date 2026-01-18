@@ -30,3 +30,27 @@ export function consumeProfileIdParam(params: {
     return { nextSelectedProfileId: nextProfileIdFromParams, shouldClearParam: true };
 }
 
+export function consumeApiKeyIdParam(params: {
+    apiKeyIdParam?: string | string[];
+    selectedApiKeyId: string | null;
+}): {
+    nextSelectedApiKeyId: string | null | undefined;
+    shouldClearParam: boolean;
+} {
+    const nextApiKeyIdFromParams = normalizeOptionalParam(params.apiKeyIdParam);
+
+    if (typeof nextApiKeyIdFromParams !== 'string') {
+        return { nextSelectedApiKeyId: undefined, shouldClearParam: false };
+    }
+
+    if (nextApiKeyIdFromParams === '') {
+        return { nextSelectedApiKeyId: null, shouldClearParam: true };
+    }
+
+    if (nextApiKeyIdFromParams === params.selectedApiKeyId) {
+        return { nextSelectedApiKeyId: undefined, shouldClearParam: true };
+    }
+
+    return { nextSelectedApiKeyId: nextApiKeyIdFromParams, shouldClearParam: true };
+}
+

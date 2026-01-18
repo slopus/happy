@@ -120,6 +120,57 @@ describe('settings', () => {
             ]));
             expect((profile as any).openaiConfig).toBeUndefined();
         });
+
+        it('should default per-experiment toggles to true when experiments is true (migration)', () => {
+            const parsed = settingsParse({
+                experiments: true,
+                // Note: per-experiment keys intentionally omitted (older clients)
+            } as any);
+
+            expect((parsed as any).expGemini).toBe(true);
+            expect((parsed as any).expUsageReporting).toBe(true);
+            expect((parsed as any).expFileViewer).toBe(true);
+            expect((parsed as any).expShowThinkingMessages).toBe(true);
+            expect((parsed as any).expSessionType).toBe(true);
+            expect((parsed as any).expZen).toBe(true);
+            expect((parsed as any).expVoiceAuthFlow).toBe(true);
+        });
+
+        it('should default per-experiment toggles to false when experiments is false (migration)', () => {
+            const parsed = settingsParse({
+                experiments: false,
+                // Note: per-experiment keys intentionally omitted (older clients)
+            } as any);
+
+            expect((parsed as any).expGemini).toBe(false);
+            expect((parsed as any).expUsageReporting).toBe(false);
+            expect((parsed as any).expFileViewer).toBe(false);
+            expect((parsed as any).expShowThinkingMessages).toBe(false);
+            expect((parsed as any).expSessionType).toBe(false);
+            expect((parsed as any).expZen).toBe(false);
+            expect((parsed as any).expVoiceAuthFlow).toBe(false);
+        });
+
+        it('should preserve explicit per-experiment toggles when present (no forced override)', () => {
+            const parsed = settingsParse({
+                experiments: true,
+                expGemini: false,
+                expUsageReporting: true,
+                expFileViewer: false,
+                expShowThinkingMessages: true,
+                expSessionType: false,
+                expZen: true,
+                expVoiceAuthFlow: false,
+            } as any);
+
+            expect((parsed as any).expGemini).toBe(false);
+            expect((parsed as any).expUsageReporting).toBe(true);
+            expect((parsed as any).expFileViewer).toBe(false);
+            expect((parsed as any).expShowThinkingMessages).toBe(true);
+            expect((parsed as any).expSessionType).toBe(false);
+            expect((parsed as any).expZen).toBe(true);
+            expect((parsed as any).expVoiceAuthFlow).toBe(false);
+        });
     });
 
     describe('applySettings', () => {
@@ -134,6 +185,13 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                expGemini: false,
+                expUsageReporting: false,
+                expFileViewer: false,
+                expShowThinkingMessages: false,
+                expSessionType: false,
+                expZen: false,
+                expVoiceAuthFlow: false,
                 useProfiles: false,
                 useEnhancedSessionWizard: false,
                 usePickerSearch: false,
@@ -141,6 +199,8 @@ describe('settings', () => {
                 usePathPickerSearch: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
+                agentInputActionBarLayout: 'auto',
+                agentInputChipDensity: 'auto',
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
                 compactSessionView: false,
@@ -158,6 +218,8 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 favoriteProfiles: [],
+                apiKeys: [],
+                defaultApiKeyByProfileId: {},
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {
@@ -173,6 +235,13 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                expGemini: false,
+                expUsageReporting: false,
+                expFileViewer: false,
+                expShowThinkingMessages: false,
+                expSessionType: false,
+                expZen: false,
+                expVoiceAuthFlow: false,
                 useProfiles: false,
                 useEnhancedSessionWizard: false,
                 usePickerSearch: false,
@@ -180,6 +249,8 @@ describe('settings', () => {
                 usePathPickerSearch: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
+                agentInputActionBarLayout: 'auto',
+                agentInputChipDensity: 'auto',
                 avatarStyle: 'gradient', // This should be preserved from currentSettings
                 showFlavorIcons: false,
                 compactSessionView: false,
@@ -197,6 +268,8 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 favoriteProfiles: [],
+                apiKeys: [],
+                defaultApiKeyByProfileId: {},
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             });
         });
@@ -212,6 +285,13 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                expGemini: false,
+                expUsageReporting: false,
+                expFileViewer: false,
+                expShowThinkingMessages: false,
+                expSessionType: false,
+                expZen: false,
+                expVoiceAuthFlow: false,
                 useProfiles: false,
                 useEnhancedSessionWizard: false,
                 usePickerSearch: false,
@@ -219,6 +299,8 @@ describe('settings', () => {
                 usePathPickerSearch: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
+                agentInputActionBarLayout: 'auto',
+                agentInputChipDensity: 'auto',
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
                 compactSessionView: false,
@@ -236,6 +318,8 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 favoriteProfiles: [],
+                apiKeys: [],
+                defaultApiKeyByProfileId: {},
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {};
@@ -253,6 +337,13 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                expGemini: false,
+                expUsageReporting: false,
+                expFileViewer: false,
+                expShowThinkingMessages: false,
+                expSessionType: false,
+                expZen: false,
+                expVoiceAuthFlow: false,
                 useProfiles: false,
                 useEnhancedSessionWizard: false,
                 usePickerSearch: false,
@@ -260,6 +351,8 @@ describe('settings', () => {
                 usePathPickerSearch: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
+                agentInputActionBarLayout: 'auto',
+                agentInputChipDensity: 'auto',
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
                 compactSessionView: false,
@@ -277,6 +370,8 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 favoriteProfiles: [],
+                apiKeys: [],
+                defaultApiKeyByProfileId: {},
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {
@@ -299,6 +394,13 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                expGemini: false,
+                expUsageReporting: false,
+                expFileViewer: false,
+                expShowThinkingMessages: false,
+                expSessionType: false,
+                expZen: false,
+                expVoiceAuthFlow: false,
                 useProfiles: false,
                 useEnhancedSessionWizard: false,
                 usePickerSearch: false,
@@ -306,6 +408,8 @@ describe('settings', () => {
                 usePathPickerSearch: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
+                agentInputActionBarLayout: 'auto',
+                agentInputChipDensity: 'auto',
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
                 compactSessionView: false,
@@ -323,6 +427,8 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 favoriteProfiles: [],
+                apiKeys: [],
+                defaultApiKeyByProfileId: {},
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             expect(applySettings(currentSettings, {})).toEqual(currentSettings);
@@ -354,6 +460,13 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                expGemini: false,
+                expUsageReporting: false,
+                expFileViewer: false,
+                expShowThinkingMessages: false,
+                expSessionType: false,
+                expZen: false,
+                expVoiceAuthFlow: false,
                 useProfiles: false,
                 useEnhancedSessionWizard: false,
                 usePickerSearch: false,
@@ -361,6 +474,8 @@ describe('settings', () => {
                 usePathPickerSearch: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
+                agentInputActionBarLayout: 'auto',
+                agentInputChipDensity: 'auto',
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
                 compactSessionView: false,
@@ -378,6 +493,8 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 favoriteProfiles: [],
+                apiKeys: [],
+                defaultApiKeyByProfileId: {},
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: any = {
@@ -421,6 +538,13 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                expGemini: false,
+                expUsageReporting: false,
+                expFileViewer: false,
+                expShowThinkingMessages: false,
+                expSessionType: false,
+                expZen: false,
+                expVoiceAuthFlow: false,
                 useProfiles: false,
                 alwaysShowContextSize: false,
 	                useEnhancedSessionWizard: false,
@@ -431,6 +555,8 @@ describe('settings', () => {
                 showFlavorIcons: false,
                 compactSessionView: false,
                 agentInputEnterToSend: true,
+                agentInputActionBarLayout: 'auto',
+                agentInputChipDensity: 'auto',
                 hideInactiveSessions: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
@@ -445,6 +571,8 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 favoriteProfiles: [],
+                apiKeys: [],
+                defaultApiKeyByProfileId: {},
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             });
         });
@@ -607,6 +735,78 @@ describe('settings', () => {
                 compatibility: { claude: true, codex: true },
             };
             expect(() => AIBackendProfileSchema.parse(invalidProfile)).toThrow();
+        });
+
+        it('rejects profiles with more than one required secret env var (V1 constraint)', () => {
+            const invalidProfile = {
+                id: crypto.randomUUID(),
+                name: 'Test Profile',
+                authMode: 'apiKeyEnv',
+                requiredEnvVars: [
+                    { name: 'OPENAI_API_KEY', kind: 'secret' },
+                    { name: 'ANTHROPIC_AUTH_TOKEN', kind: 'secret' },
+                ],
+                compatibility: { claude: true, codex: true, gemini: true },
+            };
+            expect(() => AIBackendProfileSchema.parse(invalidProfile)).toThrow();
+        });
+
+        it('rejects machine-login profiles that declare required secret env vars', () => {
+            const invalidProfile = {
+                id: crypto.randomUUID(),
+                name: 'Test Profile',
+                authMode: 'machineLogin',
+                requiredEnvVars: [
+                    { name: 'OPENAI_API_KEY', kind: 'secret' },
+                ],
+                compatibility: { claude: true, codex: true, gemini: true },
+            };
+            expect(() => AIBackendProfileSchema.parse(invalidProfile)).toThrow();
+        });
+
+        it('rejects requiresMachineLogin when authMode is not machineLogin', () => {
+            const invalidProfile = {
+                id: crypto.randomUUID(),
+                name: 'Test Profile',
+                authMode: 'apiKeyEnv',
+                requiresMachineLogin: 'claude-code',
+                requiredEnvVars: [
+                    { name: 'OPENAI_API_KEY', kind: 'secret' },
+                ],
+                compatibility: { claude: true, codex: true, gemini: true },
+            };
+            expect(() => AIBackendProfileSchema.parse(invalidProfile)).toThrow();
+        });
+    });
+
+    describe('SavedApiKey validation', () => {
+        it('accepts valid apiKeys entries in settingsParse', () => {
+            const now = Date.now();
+            const parsed = settingsParse({
+                apiKeys: [
+                    { id: 'k1', name: 'My Key', value: 'sk-test', createdAt: now, updatedAt: now },
+                ],
+            });
+            expect(parsed.apiKeys.length).toBe(1);
+            expect(parsed.apiKeys[0]?.name).toBe('My Key');
+            expect(parsed.apiKeys[0]?.value).toBe('sk-test');
+        });
+
+        it('drops invalid apiKeys entries (missing value)', () => {
+            const parsed = settingsParse({
+                apiKeys: [
+                    { id: 'k1', name: 'Missing value' },
+                ],
+            } as any);
+            // settingsParse validates per-field, so invalid field should fall back to default.
+            expect(parsed.apiKeys).toEqual([]);
+        });
+    });
+
+    describe('defaultApiKeyByProfileId', () => {
+        it('defaults to an empty object', () => {
+            const parsed = settingsParse({});
+            expect(parsed.defaultApiKeyByProfileId).toEqual({});
         });
     });
 
