@@ -98,6 +98,7 @@ class ModalManagerClass implements IModal {
     show<P extends CustomModalInjectedProps>(config: {
         component: CustomModalConfig<P>['component'];
         props?: CustomModalConfig<P>['props'];
+        closeOnBackdrop?: boolean;
     }): string {
         if (!this.showModalFn) {
             console.error('ModalManager not initialized. Make sure ModalProvider is mounted.');
@@ -108,6 +109,7 @@ class ModalManagerClass implements IModal {
             type: 'custom',
             component: config.component as unknown as CustomModalConfig['component'],
             props: config.props as unknown as CustomModalConfig['props'],
+            closeOnBackdrop: config.closeOnBackdrop,
         };
 
         return this.showModalFn(modalConfig);

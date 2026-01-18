@@ -48,6 +48,11 @@ export interface CustomModalConfig<P extends CustomModalInjectedProps = any> ext
     type: 'custom';
     component: ComponentType<P>;
     props?: Omit<P, keyof CustomModalInjectedProps>;
+    /**
+     * Whether tapping the backdrop should close the modal.
+     * Defaults to true.
+     */
+    closeOnBackdrop?: boolean;
 }
 
 export type ModalConfig = AlertModalConfig | ConfirmModalConfig | PromptModalConfig | CustomModalConfig<any>;

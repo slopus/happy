@@ -18,10 +18,26 @@ export function CustomModal({ config, onClose }: CustomModalProps) {
     if (Component === CommandPalette) {
         return <CommandPaletteWithAnimation config={config} onClose={onClose} />;
     }
+
+    const handleClose = React.useCallback(() => {
+        // Allow custom modals to run cleanup/cancel logic when the modal is dismissed
+        // (e.g. tapping the backdrop).
+        // NOTE: props are user-defined; we intentionally check this dynamically.
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const maybe = (config.props as any)?.onRequestClose;
+            if (typeof maybe === 'function') {
+                maybe();
+            }
+        } catch {
+            // ignore
+        }
+        onClose();
+    }, [config.props, onClose]);
     
     return (
-        <BaseModal visible={true} onClose={onClose}>
-            <Component {...config.props} onClose={onClose} />
+        <BaseModal visible={true} onClose={handleClose} closeOnBackdrop={config.closeOnBackdrop ?? true}>
+            <Component {...config.props} onClose={handleClose} />
         </BaseModal>
     );
 }
