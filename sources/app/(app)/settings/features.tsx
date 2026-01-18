@@ -10,6 +10,13 @@ import { t } from '@/text';
 
 export default React.memo(function FeaturesSettingsScreen() {
     const [experiments, setExperiments] = useSettingMutable('experiments');
+    const [expGemini, setExpGemini] = useSettingMutable('expGemini');
+    const [expUsageReporting, setExpUsageReporting] = useSettingMutable('expUsageReporting');
+    const [expFileViewer, setExpFileViewer] = useSettingMutable('expFileViewer');
+    const [expShowThinkingMessages, setExpShowThinkingMessages] = useSettingMutable('expShowThinkingMessages');
+    const [expSessionType, setExpSessionType] = useSettingMutable('expSessionType');
+    const [expZen, setExpZen] = useSettingMutable('expZen');
+    const [expVoiceAuthFlow, setExpVoiceAuthFlow] = useSettingMutable('expVoiceAuthFlow');
     const [useProfiles, setUseProfiles] = useSettingMutable('useProfiles');
     const [agentInputEnterToSend, setAgentInputEnterToSend] = useSettingMutable('agentInputEnterToSend');
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
@@ -19,10 +26,28 @@ export default React.memo(function FeaturesSettingsScreen() {
     const [useMachinePickerSearch, setUseMachinePickerSearch] = useSettingMutable('useMachinePickerSearch');
     const [usePathPickerSearch, setUsePathPickerSearch] = useSettingMutable('usePathPickerSearch');
 
+    const setAllExperimentToggles = React.useCallback((enabled: boolean) => {
+        setExpGemini(enabled);
+        setExpUsageReporting(enabled);
+        setExpFileViewer(enabled);
+        setExpShowThinkingMessages(enabled);
+        setExpSessionType(enabled);
+        setExpZen(enabled);
+        setExpVoiceAuthFlow(enabled);
+    }, [
+        setExpFileViewer,
+        setExpGemini,
+        setExpSessionType,
+        setExpShowThinkingMessages,
+        setExpUsageReporting,
+        setExpVoiceAuthFlow,
+        setExpZen,
+    ]);
+
     return (
         <ItemList style={{ paddingTop: 0 }}>
-            {/* Experimental Features */}
-            <ItemGroup 
+            {/* Experiments master toggle */}
+            <ItemGroup
                 title={t('settingsFeatures.experiments')}
                 footer={t('settingsFeatures.experimentsDescription')}
             >
@@ -33,11 +58,77 @@ export default React.memo(function FeaturesSettingsScreen() {
                     rightElement={
                         <Switch
                             value={experiments}
-                            onValueChange={setExperiments}
+                            onValueChange={(next) => {
+                                setExperiments(next);
+                                // Requirement: toggling the master switch enables/disables all experiments by default.
+                                setAllExperimentToggles(next);
+                            }}
                         />
                     }
                     showChevron={false}
                 />
+            </ItemGroup>
+
+            {/* Per-experiment toggles (only shown when master experiments is enabled) */}
+            {experiments && (
+                <ItemGroup
+                    title={t('settingsFeatures.experimentalOptions')}
+                    footer={t('settingsFeatures.experimentalOptionsDescription')}
+                >
+                    <Item
+                        title={t('settingsFeatures.expGemini')}
+                        subtitle={t('settingsFeatures.expGeminiSubtitle')}
+                        icon={<Ionicons name="planet-outline" size={29} color="#007AFF" />}
+                        rightElement={<Switch value={expGemini} onValueChange={setExpGemini} />}
+                        showChevron={false}
+                    />
+                    <Item
+                        title={t('settingsFeatures.expUsageReporting')}
+                        subtitle={t('settingsFeatures.expUsageReportingSubtitle')}
+                        icon={<Ionicons name="analytics-outline" size={29} color="#007AFF" />}
+                        rightElement={<Switch value={expUsageReporting} onValueChange={setExpUsageReporting} />}
+                        showChevron={false}
+                    />
+                    <Item
+                        title={t('settingsFeatures.expFileViewer')}
+                        subtitle={t('settingsFeatures.expFileViewerSubtitle')}
+                        icon={<Ionicons name="folder-open-outline" size={29} color="#FF9500" />}
+                        rightElement={<Switch value={expFileViewer} onValueChange={setExpFileViewer} />}
+                        showChevron={false}
+                    />
+                    <Item
+                        title={t('settingsFeatures.expShowThinkingMessages')}
+                        subtitle={t('settingsFeatures.expShowThinkingMessagesSubtitle')}
+                        icon={<Ionicons name="chatbubbles-outline" size={29} color="#34C759" />}
+                        rightElement={<Switch value={expShowThinkingMessages} onValueChange={setExpShowThinkingMessages} />}
+                        showChevron={false}
+                    />
+                    <Item
+                        title={t('settingsFeatures.expSessionType')}
+                        subtitle={t('settingsFeatures.expSessionTypeSubtitle')}
+                        icon={<Ionicons name="layers-outline" size={29} color="#AF52DE" />}
+                        rightElement={<Switch value={expSessionType} onValueChange={setExpSessionType} />}
+                        showChevron={false}
+                    />
+                    <Item
+                        title={t('settingsFeatures.expZen')}
+                        subtitle={t('settingsFeatures.expZenSubtitle')}
+                        icon={<Ionicons name="leaf-outline" size={29} color="#34C759" />}
+                        rightElement={<Switch value={expZen} onValueChange={setExpZen} />}
+                        showChevron={false}
+                    />
+                    <Item
+                        title={t('settingsFeatures.expVoiceAuthFlow')}
+                        subtitle={t('settingsFeatures.expVoiceAuthFlowSubtitle')}
+                        icon={<Ionicons name="mic-outline" size={29} color="#FF3B30" />}
+                        rightElement={<Switch value={expVoiceAuthFlow} onValueChange={setExpVoiceAuthFlow} />}
+                        showChevron={false}
+                    />
+                </ItemGroup>
+            )}
+
+            {/* Other feature toggles (not gated by experiments master switch) */}
+            <ItemGroup>
                 <Item
                     title={t('settingsFeatures.markdownCopyV2')}
                     subtitle={t('settingsFeatures.markdownCopyV2Subtitle')}
