@@ -68,9 +68,10 @@ export const zhHans: TranslationStructure = {
         delete: '删除',
         optional: '可选的',
         noMatches: '无匹配结果',
-        all: 'All',
+        all: '全部',
         machine: '机器',
-        clearSearch: 'Clear search',
+        clearSearch: '清除搜索',
+        refresh: '刷新',
     },
 
     profile: {
@@ -107,6 +108,15 @@ export const zhHans: TranslationStructure = {
         enterSecretKey: '请输入密钥',
         invalidSecretKey: '无效的密钥，请检查后重试。',
         enterUrlManually: '手动输入 URL',
+        terminalUrlPlaceholder: 'happy://terminal?...',
+        restoreQrInstructions: '1. 在你的手机上打开 Happy\n2. 前往 设置 → 账户\n3. 点击“链接新设备”\n4. 扫描此二维码',
+        restoreWithSecretKeyInstead: '改用密钥恢复',
+        restoreWithSecretKeyDescription: '输入你的密钥以恢复账户访问权限。',
+        secretKeyPlaceholder: 'XXXXX-XXXXX-XXXXX...',
+        unsupported: {
+            connectTitle: ({ name }: { name: string }) => `连接 ${name}`,
+            runCommandInTerminal: '在终端中运行以下命令：',
+        },
     },
 
     settings: {
@@ -147,6 +157,8 @@ export const zhHans: TranslationStructure = {
         usageSubtitle: '查看 API 使用情况和费用',
         profiles: '配置文件',
         profilesSubtitle: '管理环境配置文件和变量',
+        apiKeys: 'API 密钥',
+        apiKeysSubtitle: '管理已保存的 API 密钥（输入后将不再显示）',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已连接 ${service} 账户`,
@@ -184,6 +196,21 @@ export const zhHans: TranslationStructure = {
         wrapLinesInDiffsDescription: '在差异视图中换行显示长行而不是水平滚动',
         alwaysShowContextSize: '始终显示上下文大小',
         alwaysShowContextSizeDescription: '即使未接近限制时也显示上下文使用情况',
+        agentInputActionBarLayout: '输入操作栏',
+        agentInputActionBarLayoutDescription: '选择在输入框上方如何显示操作标签',
+        agentInputActionBarLayoutOptions: {
+            auto: '自动',
+            wrap: '换行',
+            scroll: '可滚动',
+            collapsed: '折叠',
+        },
+        agentInputChipDensity: '操作标签密度',
+        agentInputChipDensityDescription: '选择操作标签显示文字还是图标',
+        agentInputChipDensityOptions: {
+            auto: '自动',
+            labels: '文字',
+            icons: '仅图标',
+        },
         avatarStyle: '头像风格',
         avatarStyleDescription: '选择会话头像外观',
         avatarOptions: {
@@ -204,6 +231,22 @@ export const zhHans: TranslationStructure = {
         experimentalFeatures: '实验功能',
         experimentalFeaturesEnabled: '实验功能已启用',
         experimentalFeaturesDisabled: '仅使用稳定功能',
+        experimentalOptions: '实验选项',
+        experimentalOptionsDescription: '选择启用哪些实验功能。',
+        expGemini: 'Gemini',
+        expGeminiSubtitle: 'Enable Gemini CLI sessions and Gemini-related UI',
+        expUsageReporting: 'Usage reporting',
+        expUsageReportingSubtitle: 'Enable usage and token reporting screens',
+        expFileViewer: 'File viewer',
+        expFileViewerSubtitle: 'Enable the session file viewer entrypoint',
+        expShowThinkingMessages: 'Show thinking messages',
+        expShowThinkingMessagesSubtitle: 'Show assistant thinking/status messages in chat',
+        expSessionType: 'Session type selector',
+        expSessionTypeSubtitle: 'Show the session type selector (simple vs worktree)',
+        expZen: 'Zen',
+        expZenSubtitle: 'Enable the Zen navigation entry',
+        expVoiceAuthFlow: 'Voice auth flow',
+        expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
         webFeatures: 'Web 功能',
         webFeaturesDescription: '仅在应用的 Web 版本中可用的功能。',
         enterToSend: '回车发送',
@@ -280,8 +323,26 @@ export const zhHans: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: '启动新会话',
+        selectAiProfileTitle: '选择 AI 配置',
+        selectAiProfileDescription: '选择一个 AI 配置，以将环境变量和默认值应用到会话。',
+        changeProfile: '更改配置',
+        aiBackendSelectedByProfile: 'AI 后端由所选配置决定。如需更改，请选择其他配置。',
+        selectAiBackendTitle: '选择 AI 后端',
+        aiBackendLimitedByProfileAndMachineClis: '受所选配置和此设备上可用的 CLI 限制。',
+        aiBackendSelectWhichAiRuns: '选择由哪个 AI 运行会话。',
+        aiBackendNotCompatibleWithSelectedProfile: '与所选配置不兼容。',
+        aiBackendCliNotDetectedOnMachine: ({ cli }: { cli: string }) => `此设备未检测到 ${cli} CLI。`,
         selectMachineTitle: '选择设备',
+        selectMachineDescription: '选择此会话运行的位置。',
         selectPathTitle: '选择路径',
+        selectWorkingDirectoryTitle: '选择工作目录',
+        selectWorkingDirectoryDescription: '选择用于命令和上下文的文件夹。',
+        selectPermissionModeTitle: '选择权限模式',
+        selectPermissionModeDescription: '控制操作需要批准的严格程度。',
+        selectModelTitle: '选择 AI 模型',
+        selectModelDescription: '选择此会话使用的模型。',
+        selectSessionTypeTitle: '选择会话类型',
+        selectSessionTypeDescription: '选择简单会话或与 Git worktree 关联的会话。',
         searchPathsPlaceholder: '搜索路径...',
         noMachinesFound: '未找到设备。请先在您的计算机上启动 Happy 会话。',
         allMachinesOffline: '所有设备似乎都已离线',
@@ -321,8 +382,22 @@ export const zhHans: TranslationStructure = {
         sessionType: {
             title: '会话类型',
             simple: '简单',
-            worktree: 'Worktree',
+            worktree: 'Worktree（Git）',
             comingSoon: '即将推出',
+        },
+        profileAvailability: {
+            requiresAgent: ({ agent }: { agent: string }) => `需要 ${agent}`,
+            cliNotDetected: ({ cli }: { cli: string }) => `未检测到 ${cli} CLI`,
+        },
+        cliBanners: {
+            cliNotDetectedTitle: ({ cli }: { cli: string }) => `${cli} CLI 未检测到`,
+            dontShowFor: '不再显示此提示：',
+            thisMachine: '此设备',
+            anyMachine: '所有设备',
+            installCommand: ({ command }: { command: string }) => `安装：${command} •`,
+            installCliIfAvailable: ({ cli }: { cli: string }) => `如可用请安装 ${cli} CLI •`,
+            viewInstallationGuide: '查看安装指南 →',
+            viewGeminiDocs: '查看 Gemini 文档 →',
         },
         worktree: {
             creating: ({ name }: { name: string }) => `正在创建 worktree '${name}'...`,
@@ -348,6 +423,19 @@ export const zhHans: TranslationStructure = {
 
     commandPalette: {
         placeholder: '输入命令或搜索...',
+        noCommandsFound: '未找到命令',
+    },
+
+    commandView: {
+        completedWithNoOutput: '[命令完成且无输出]',
+    },
+
+    voiceAssistant: {
+        connecting: '连接中...',
+        active: '语音助手已启用',
+        connectionError: '连接错误',
+        label: '语音助手',
+        tapToEnd: '点击结束',
     },
 
     server: {
@@ -403,6 +491,9 @@ export const zhHans: TranslationStructure = {
         happyHome: 'Happy 主目录',
         copyMetadata: '复制元数据',
         agentState: 'Agent 状态',
+        rawJsonDevMode: '原始 JSON（开发者模式）',
+        sessionStatus: '会话状态',
+        fullSessionObject: '完整会话对象',
         controlledByUser: '用户控制',
         pendingRequests: '待处理请求',
         activity: '活动',
@@ -430,6 +521,35 @@ export const zhHans: TranslationStructure = {
             runIt: '运行它',
             scanQrCode: '扫描二维码',
             openCamera: '打开相机',
+            installCommand: '$ npm i -g happy-coder',
+            runCommand: '$ happy',
+        },
+        emptyMessages: {
+            noMessagesYet: '暂无消息',
+            created: ({ time }: { time: string }) => `创建于 ${time}`,
+        },
+        emptySessionsTablet: {
+            noActiveSessions: '没有活动会话',
+            startNewSessionDescription: '在任意已连接设备上开始新的会话。',
+            startNewSessionButton: '开始新会话',
+            openTerminalToStart: '在电脑上打开新的终端以开始会话。',
+        },
+    },
+
+    zen: {
+        title: 'Zen',
+        add: {
+            placeholder: '需要做什么？',
+        },
+        home: {
+            noTasksYet: '还没有任务。点按 + 添加一个。',
+        },
+        view: {
+            workOnTask: '处理任务',
+            clarify: '澄清',
+            delete: '删除',
+            linkedSessions: '已关联的会话',
+            tapTaskTextToEdit: '点击任务文本以编辑',
         },
     },
 
@@ -463,22 +583,22 @@ export const zhHans: TranslationStructure = {
         codexPermissionMode: {
             title: 'CODEX 权限模式',
             default: 'CLI 设置',
-            readOnly: 'Read Only Mode',
-            safeYolo: 'Safe YOLO',
+            readOnly: '只读模式',
+            safeYolo: '安全 YOLO',
             yolo: 'YOLO',
-            badgeReadOnly: 'Read Only Mode',
-            badgeSafeYolo: 'Safe YOLO',
+            badgeReadOnly: '只读',
+            badgeSafeYolo: '安全 YOLO',
             badgeYolo: 'YOLO',
         },
         codexModel: {
-            title: 'CODEX MODEL',
-            gpt5CodexLow: 'gpt-5-codex low',
-            gpt5CodexMedium: 'gpt-5-codex medium',
-            gpt5CodexHigh: 'gpt-5-codex high',
-            gpt5Minimal: 'GPT-5 Minimal',
-            gpt5Low: 'GPT-5 Low',
-            gpt5Medium: 'GPT-5 Medium',
-            gpt5High: 'GPT-5 High',
+            title: 'CODEX 模型',
+            gpt5CodexLow: 'gpt-5-codex 低',
+            gpt5CodexMedium: 'gpt-5-codex 中',
+            gpt5CodexHigh: 'gpt-5-codex 高',
+            gpt5Minimal: 'GPT-5 最小',
+            gpt5Low: 'GPT-5 低',
+            gpt5Medium: 'GPT-5 中',
+            gpt5High: 'GPT-5 高',
         },
         geminiPermissionMode: {
             title: 'GEMINI 权限模式',
@@ -511,6 +631,11 @@ export const zhHans: TranslationStructure = {
         suggestion: {
             fileLabel: '文件',
             folderLabel: '文件夹',
+        },
+        actionMenu: {
+            title: '操作',
+            files: '文件',
+            stop: '停止',
         },
         noMachinesAvailable: '无设备',
     },
@@ -736,6 +861,11 @@ export const zhHans: TranslationStructure = {
         deviceLinkedSuccessfully: '设备链接成功',
         terminalConnectedSuccessfully: '终端连接成功',
         invalidAuthUrl: '无效的认证 URL',
+        microphoneAccessRequiredTitle: '需要麦克风权限',
+        microphoneAccessRequiredRequestPermission: 'Happy 需要访问你的麦克风用于语音聊天。出现提示时请授予权限。',
+        microphoneAccessRequiredEnableInSettings: 'Happy 需要访问你的麦克风用于语音聊天。请在设备设置中启用麦克风权限。',
+        microphoneAccessRequiredBrowserInstructions: '请在浏览器设置中允许麦克风访问。你可能需要点击地址栏中的锁形图标，并为此网站启用麦克风权限。',
+        openSettings: '打开设置',
         developerMode: '开发者模式',
         developerModeEnabled: '开发者模式已启用',
         developerModeDisabled: '开发者模式已禁用',
@@ -790,6 +920,15 @@ export const zhHans: TranslationStructure = {
         daemon: '守护进程',
         status: '状态',
         stopDaemon: '停止守护进程',
+        stopDaemonConfirmTitle: '停止守护进程？',
+        stopDaemonConfirmBody: '在您重新启动电脑上的守护进程之前，您将无法在此设备上创建新会话。当前会话将保持运行。',
+        daemonStoppedTitle: '守护进程已停止',
+        stopDaemonFailed: '停止守护进程失败。它可能未在运行。',
+        renameTitle: '重命名设备',
+        renameDescription: '为此设备设置自定义名称。留空则使用默认主机名。',
+        renamePlaceholder: '输入设备名称',
+        renamedSuccess: '设备重命名成功',
+        renameFailed: '设备重命名失败',
         lastKnownPid: '最后已知 PID',
         lastKnownHttpPort: '最后已知 HTTP 端口',
         startedAt: '启动时间',
@@ -806,8 +945,15 @@ export const zhHans: TranslationStructure = {
         lastSeen: '最后活跃',
         never: '从未',
         metadataVersion: '元数据版本',
+        detectedClis: '已检测到的 CLI',
+        detectedCliNotDetected: '未检测到',
+        detectedCliUnknown: '未知',
+        detectedCliNotSupported: '不支持（请更新 happy-cli）',
         untitledSession: '无标题会话',
         back: '返回',
+        notFound: '未找到设备',
+        unknownMachine: '未知设备',
+        unknownPath: '未知路径',
     },
 
     message: {
@@ -815,6 +961,10 @@ export const zhHans: TranslationStructure = {
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         unknownTime: '未知时间',
+    },
+
+    chatFooter: {
+        permissionsTerminalOnly: '权限仅在终端中显示。重置或发送消息即可从应用中控制。',
     },
 
     codex: {
@@ -843,6 +993,7 @@ export const zhHans: TranslationStructure = {
         textCopied: '文本已复制到剪贴板',
         failedToCopy: '复制文本到剪贴板失败',
         noTextToCopy: '没有可复制的文本',
+        failedToOpen: '无法打开文本选择。请重试。',
     },
 
     markdown: {
@@ -862,11 +1013,14 @@ export const zhHans: TranslationStructure = {
         edit: '编辑工件',
         delete: '删除',
         updateError: '更新工件失败。请重试。',
+        deleteError: '删除工件失败。请重试。',
         notFound: '未找到工件',
         discardChanges: '放弃更改？',
         discardChangesDescription: '您有未保存的更改。确定要放弃它们吗？',
         deleteConfirm: '删除工件？',
         deleteConfirmDescription: '此工件将被永久删除。',
+        noContent: '无内容',
+        untitled: '未命名',
         titlePlaceholder: '工件标题',
         bodyPlaceholder: '在此输入内容...',
         save: '保存',
@@ -970,8 +1124,8 @@ export const zhHans: TranslationStructure = {
         custom: '自定义',
         builtInSaveAsHint: '保存内置配置文件会创建一个新的自定义配置文件。',
         builtInNames: {
-            anthropic: 'Anthropic (Default)',
-            deepseek: 'DeepSeek (Reasoner)',
+            anthropic: 'Anthropic（默认）',
+            deepseek: 'DeepSeek（推理）',
             zai: 'Z.AI (GLM-4.6)',
             openai: 'OpenAI (GPT-5)',
             azureOpenai: 'Azure OpenAI',
@@ -989,11 +1143,97 @@ export const zhHans: TranslationStructure = {
             duplicateProfile: '复制配置文件',
             deleteProfile: '删除配置文件',
         },
-        copySuffix: '(Copy)',
+        copySuffix: '(副本)',
         duplicateName: '已存在同名配置文件',
         setupInstructions: {
             title: '设置说明',
             viewOfficialGuide: '查看官方设置指南',
+        },
+        machineLogin: {
+            title: '需要在设备上登录',
+            subtitle: '此配置文件依赖所选设备上的 CLI 登录缓存。',
+            claudeCode: {
+                title: 'Claude Code',
+                instructions: '运行 `claude`，然后输入 `/login` 登录。',
+                warning: '注意：设置 `ANTHROPIC_AUTH_TOKEN` 会覆盖 CLI 登录。',
+            },
+            codex: {
+                title: 'Codex',
+                instructions: '运行 `codex login` 登录。',
+            },
+            geminiCli: {
+                title: 'Gemini CLI',
+                instructions: '运行 `gemini auth` 登录。',
+            },
+        },
+        requirements: {
+            apiKeyRequired: 'API 密钥',
+            configured: '已在设备上配置',
+            notConfigured: '未配置',
+            checking: '检查中…',
+            modalTitle: '需要 API 密钥',
+            modalBody: '此配置需要 API 密钥。\n\n支持的选项：\n• 使用设备环境（推荐）\n• 使用应用设置中保存的密钥\n• 仅为本次会话输入密钥',
+            sectionTitle: '要求',
+            sectionSubtitle: '这些字段用于预检查就绪状态，避免意外失败。',
+            secretEnvVarPromptDescription: '输入所需的秘密环境变量名称（例如 OPENAI_API_KEY）。',
+            modalHelpWithEnv: ({ env }: { env: string }) => `此配置需要 ${env}。请选择下面的一个选项。`,
+            modalHelpGeneric: '此配置需要 API 密钥。请选择下面的一个选项。',
+            modalRecommendation: '推荐：在电脑上的守护进程环境中设置密钥（这样就无需再次粘贴）。然后重启守护进程以读取新的环境变量。',
+            chooseOptionTitle: '选择一个选项',
+            machineEnvStatus: {
+                theMachine: '设备',
+                checkFor: ({ env }: { env: string }) => `检查 ${env}`,
+                checking: ({ env }: { env: string }) => `正在检查 ${env}…`,
+                found: ({ env, machine }: { env: string; machine: string }) => `在${machine}上找到 ${env}`,
+                notFound: ({ env, machine }: { env: string; machine: string }) => `在${machine}上未找到 ${env}`,
+            },
+            machineEnvSubtitle: {
+                checking: '正在检查守护进程环境…',
+                found: '已在设备的守护进程环境中找到。',
+                notFound: '请在设备的守护进程环境中设置它并重启守护进程。',
+            },
+            options: {
+                none: {
+                    title: '无',
+                    subtitle: '不需要 API 密钥或 CLI 登录。',
+                },
+                apiKeyEnv: {
+                    subtitle: '需要在会话启动时注入 API 密钥。',
+                },
+                machineLogin: {
+                    subtitle: '需要在目标设备上通过 CLI 登录。',
+                    longSubtitle: '需要在目标设备上登录到所选 AI 后端的 CLI。',
+                },
+                useMachineEnvironment: {
+                    title: '使用设备环境',
+                    subtitleWithEnv: ({ env }: { env: string }) => `从守护进程环境中使用 ${env}。`,
+                    subtitleGeneric: '从守护进程环境中使用密钥。',
+                },
+                useSavedApiKey: {
+                    title: '使用已保存的 API 密钥',
+                    subtitle: '在应用中选择（或添加）一个已保存的密钥。',
+                },
+                enterOnce: {
+                    title: '输入密钥',
+                    subtitle: '仅为本次会话粘贴密钥（不会保存）。',
+                },
+            },
+            apiKeyEnvVar: {
+                title: 'API 密钥环境变量',
+                subtitle: '输入此提供方期望的 API 密钥环境变量名（例如 OPENAI_API_KEY）。',
+                label: '环境变量名',
+            },
+            sections: {
+                machineEnvironment: '设备环境',
+                useOnceTitle: '仅使用一次',
+                useOnceFooter: '仅为本次会话粘贴密钥。不会保存。',
+            },
+            actions: {
+                useMachineEnvironment: {
+                    subtitle: '使用设备上已存在的密钥开始。',
+                },
+                useOnceButton: '仅使用一次（仅本次会话）',
+            },
         },
         defaultSessionType: '默认会话类型',
         defaultPermissionMode: {
@@ -1008,9 +1248,9 @@ export const zhHans: TranslationStructure = {
         aiBackend: {
             title: 'AI 后端',
             selectAtLeastOneError: '至少选择一个 AI 后端。',
-            claudeSubtitle: 'Claude CLI',
-            codexSubtitle: 'Codex CLI',
-            geminiSubtitleExperimental: 'Gemini CLI（实验）',
+            claudeSubtitle: 'Claude 命令行',
+            codexSubtitle: 'Codex 命令行',
+            geminiSubtitleExperimental: 'Gemini 命令行（实验）',
         },
         tmux: {
             title: 'tmux',
@@ -1090,6 +1330,45 @@ export const zhHans: TranslationStructure = {
             message: ({ name }: { name: string }) => `确定要删除"${name}"吗？此操作无法撤销。`,
             confirm: '删除',
             cancel: '取消',
+        },
+    },
+
+    apiKeys: {
+        addTitle: '新的 API 密钥',
+        savedTitle: '已保存的 API 密钥',
+        badgeReady: 'API 密钥',
+        badgeRequired: '需要 API 密钥',
+        addSubtitle: '添加已保存的 API 密钥',
+        noneTitle: '无',
+        noneSubtitle: '使用设备环境，或为本次会话输入密钥',
+        emptyTitle: '没有已保存的密钥',
+        emptySubtitle: '添加一个，以在不设置设备环境变量的情况下使用 API 密钥配置。',
+        savedHiddenSubtitle: '已保存（值已隐藏）',
+        defaultLabel: '默认',
+        fields: {
+            name: '名称',
+            value: '值',
+        },
+        placeholders: {
+            nameExample: '例如：Work OpenAI',
+        },
+        validation: {
+            nameRequired: '名称为必填项。',
+            valueRequired: '值为必填项。',
+        },
+        actions: {
+            replace: '替换',
+            replaceValue: '替换值',
+            setDefault: '设为默认',
+            unsetDefault: '取消默认',
+        },
+        prompts: {
+            renameTitle: '重命名 API 密钥',
+            renameDescription: '更新此密钥的友好名称。',
+            replaceValueTitle: '替换 API 密钥值',
+            replaceValueDescription: '粘贴新的 API 密钥值。保存后将不会再次显示。',
+            deleteTitle: '删除 API 密钥',
+            deleteConfirm: ({ name }: { name: string }) => `删除“${name}”？此操作无法撤销。`,
         },
     },
 

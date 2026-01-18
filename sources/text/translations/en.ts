@@ -82,6 +82,7 @@ export const en = {
         all: 'All',
         machine: 'machine',
         clearSearch: 'Clear search',
+        refresh: 'Refresh',
     },
 
     profile: {
@@ -118,6 +119,15 @@ export const en = {
         enterSecretKey: 'Please enter a secret key',
         invalidSecretKey: 'Invalid secret key. Please check and try again.',
         enterUrlManually: 'Enter URL manually',
+        terminalUrlPlaceholder: 'happy://terminal?...',
+        restoreQrInstructions: '1. Open Happy on your mobile device\n2. Go to Settings → Account\n3. Tap "Link New Device"\n4. Scan this QR code',
+        restoreWithSecretKeyInstead: 'Restore with Secret Key Instead',
+        restoreWithSecretKeyDescription: 'Enter your secret key to restore access to your account.',
+        secretKeyPlaceholder: 'XXXXX-XXXXX-XXXXX...',
+        unsupported: {
+            connectTitle: ({ name }: { name: string }) => `Connect ${name}`,
+            runCommandInTerminal: 'Run the following command in your terminal:',
+        },
     },
 
     settings: {
@@ -158,6 +168,8 @@ export const en = {
         usageSubtitle: 'View your API usage and costs',
         profiles: 'Profiles',
         profilesSubtitle: 'Manage environment variable profiles for sessions',
+        apiKeys: 'API Keys',
+        apiKeysSubtitle: 'Manage saved API keys (never shown again after entry)',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service} account connected`,
@@ -195,6 +207,21 @@ export const en = {
         wrapLinesInDiffsDescription: 'Wrap long lines instead of horizontal scrolling in diff views',
         alwaysShowContextSize: 'Always Show Context Size',
         alwaysShowContextSizeDescription: 'Display context usage even when not near limit',
+        agentInputActionBarLayout: 'Input Action Bar',
+        agentInputActionBarLayoutDescription: 'Choose how action chips are displayed above the input',
+        agentInputActionBarLayoutOptions: {
+            auto: 'Auto',
+            wrap: 'Wrap',
+            scroll: 'Scrollable',
+            collapsed: 'Collapsed',
+        },
+        agentInputChipDensity: 'Action Chip Density',
+        agentInputChipDensityDescription: 'Choose whether action chips show labels or icons',
+        agentInputChipDensityOptions: {
+            auto: 'Auto',
+            labels: 'Labels',
+            icons: 'Icons only',
+        },
         avatarStyle: 'Avatar Style',
         avatarStyleDescription: 'Choose session avatar appearance',
         avatarOptions: {
@@ -215,6 +242,22 @@ export const en = {
         experimentalFeatures: 'Experimental Features',
         experimentalFeaturesEnabled: 'Experimental features enabled',
         experimentalFeaturesDisabled: 'Using stable features only',
+        experimentalOptions: 'Experimental options',
+        experimentalOptionsDescription: 'Choose which experimental features are enabled.',
+        expGemini: 'Gemini',
+        expGeminiSubtitle: 'Enable Gemini CLI sessions and Gemini-related UI',
+        expUsageReporting: 'Usage reporting',
+        expUsageReportingSubtitle: 'Enable usage and token reporting screens',
+        expFileViewer: 'File viewer',
+        expFileViewerSubtitle: 'Enable the session file viewer entrypoint',
+        expShowThinkingMessages: 'Show thinking messages',
+        expShowThinkingMessagesSubtitle: 'Show assistant thinking/status messages in chat',
+        expSessionType: 'Session type selector',
+        expSessionTypeSubtitle: 'Show the session type selector (simple vs worktree)',
+        expZen: 'Zen',
+        expZenSubtitle: 'Enable the Zen navigation entry',
+        expVoiceAuthFlow: 'Voice auth flow',
+        expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
         webFeatures: 'Web Features',
         webFeaturesDescription: 'Features available only in the web version of the app.',
         enterToSend: 'Enter to Send',
@@ -291,8 +334,26 @@ export const en = {
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Start New Session',
+        selectAiProfileTitle: 'Select AI Profile',
+        selectAiProfileDescription: 'Select an AI profile to apply environment variables and defaults to your session.',
+        changeProfile: 'Change Profile',
+        aiBackendSelectedByProfile: 'AI backend is selected by your profile. To change it, select a different profile.',
+        selectAiBackendTitle: 'Select AI Backend',
+        aiBackendLimitedByProfileAndMachineClis: 'Limited by your selected profile and available CLIs on this machine.',
+        aiBackendSelectWhichAiRuns: 'Select which AI runs your session.',
+        aiBackendNotCompatibleWithSelectedProfile: 'Not compatible with the selected profile.',
+        aiBackendCliNotDetectedOnMachine: ({ cli }: { cli: string }) => `${cli} CLI not detected on this machine.`,
         selectMachineTitle: 'Select Machine',
+        selectMachineDescription: 'Choose where this session runs.',
         selectPathTitle: 'Select Path',
+        selectWorkingDirectoryTitle: 'Select Working Directory',
+        selectWorkingDirectoryDescription: 'Pick the folder used for commands and context.',
+        selectPermissionModeTitle: 'Select Permission Mode',
+        selectPermissionModeDescription: 'Control how strictly actions require approval.',
+        selectModelTitle: 'Select AI Model',
+        selectModelDescription: 'Choose the model used by this session.',
+        selectSessionTypeTitle: 'Select Session Type',
+        selectSessionTypeDescription: 'Choose a simple session or one tied to a Git worktree.',
         searchPathsPlaceholder: 'Search paths...',
         noMachinesFound: 'No machines found. Start a Happy session on your computer first.',
         allMachinesOffline: 'All machines appear offline',
@@ -335,6 +396,20 @@ export const en = {
             worktree: 'Worktree',
             comingSoon: 'Coming soon',
         },
+        profileAvailability: {
+            requiresAgent: ({ agent }: { agent: string }) => `Requires ${agent}`,
+            cliNotDetected: ({ cli }: { cli: string }) => `${cli} CLI not detected`,
+        },
+        cliBanners: {
+            cliNotDetectedTitle: ({ cli }: { cli: string }) => `${cli} CLI Not Detected`,
+            dontShowFor: "Don't show this popup for",
+            thisMachine: 'this machine',
+            anyMachine: 'any machine',
+            installCommand: ({ command }: { command: string }) => `Install: ${command} •`,
+            installCliIfAvailable: ({ cli }: { cli: string }) => `Install ${cli} CLI if available •`,
+            viewInstallationGuide: 'View Installation Guide →',
+            viewGeminiDocs: 'View Gemini Docs →',
+        },
         worktree: {
             creating: ({ name }: { name: string }) => `Creating worktree '${name}'...`,
             notGitRepo: 'Worktrees require a git repository',
@@ -359,6 +434,19 @@ export const en = {
 
     commandPalette: {
         placeholder: 'Type a command or search...',
+        noCommandsFound: 'No commands found',
+    },
+
+    commandView: {
+        completedWithNoOutput: '[Command completed with no output]',
+    },
+
+    voiceAssistant: {
+        connecting: 'Connecting...',
+        active: 'Voice Assistant Active',
+        connectionError: 'Connection Error',
+        label: 'Voice Assistant',
+        tapToEnd: 'Tap to end',
     },
 
     server: {
@@ -414,6 +502,9 @@ export const en = {
         happyHome: 'Happy Home',
         copyMetadata: 'Copy Metadata',
         agentState: 'Agent State',
+        rawJsonDevMode: 'Raw JSON (Dev Mode)',
+        sessionStatus: 'Session Status',
+        fullSessionObject: 'Full Session Object',
         controlledByUser: 'Controlled by User',
         pendingRequests: 'Pending Requests',
         activity: 'Activity',
@@ -441,6 +532,35 @@ export const en = {
             runIt: 'Run it',
             scanQrCode: 'Scan the QR code',
             openCamera: 'Open Camera',
+            installCommand: '$ npm i -g happy-coder',
+            runCommand: '$ happy',
+        },
+        emptyMessages: {
+            noMessagesYet: 'No messages yet',
+            created: ({ time }: { time: string }) => `Created ${time}`,
+        },
+        emptySessionsTablet: {
+            noActiveSessions: 'No active sessions',
+            startNewSessionDescription: 'Start a new session on any of your connected machines.',
+            startNewSessionButton: 'Start New Session',
+            openTerminalToStart: 'Open a new terminal on your computer to start session.',
+        },
+    },
+
+    zen: {
+        title: 'Zen',
+        add: {
+            placeholder: 'What needs to be done?',
+        },
+        home: {
+            noTasksYet: 'No tasks yet. Tap + to add one.',
+        },
+        view: {
+            workOnTask: 'Work on task',
+            clarify: 'Clarify',
+            delete: 'Delete',
+            linkedSessions: 'Linked Sessions',
+            tapTaskTextToEdit: 'Tap the task text to edit',
         },
     },
 
@@ -522,6 +642,11 @@ export const en = {
         suggestion: {
             fileLabel: 'FILE',
             folderLabel: 'FOLDER',
+        },
+        actionMenu: {
+            title: 'ACTIONS',
+            files: 'Files',
+            stop: 'Stop',
         },
         noMachinesAvailable: 'No machines',
     },
@@ -747,6 +872,11 @@ export const en = {
         deviceLinkedSuccessfully: 'Device linked successfully',
         terminalConnectedSuccessfully: 'Terminal connected successfully',
         invalidAuthUrl: 'Invalid authentication URL',
+        microphoneAccessRequiredTitle: 'Microphone Access Required',
+        microphoneAccessRequiredRequestPermission: 'Happy needs access to your microphone for voice chat. Please grant permission when prompted.',
+        microphoneAccessRequiredEnableInSettings: 'Happy needs access to your microphone for voice chat. Please enable microphone access in your device settings.',
+        microphoneAccessRequiredBrowserInstructions: 'Please allow microphone access in your browser settings. You may need to click the lock icon in the address bar and enable microphone permission for this site.',
+        openSettings: 'Open Settings',
         developerMode: 'Developer Mode',
         developerModeEnabled: 'Developer mode enabled',
         developerModeDisabled: 'Developer mode disabled',
@@ -801,6 +931,15 @@ export const en = {
         daemon: 'Daemon',
         status: 'Status',
         stopDaemon: 'Stop Daemon',
+        stopDaemonConfirmTitle: 'Stop Daemon?',
+        stopDaemonConfirmBody: 'You will not be able to spawn new sessions on this machine until you restart the daemon on your computer again. Your current sessions will stay alive.',
+        daemonStoppedTitle: 'Daemon Stopped',
+        stopDaemonFailed: 'Failed to stop daemon. It may not be running.',
+        renameTitle: 'Rename Machine',
+        renameDescription: 'Give this machine a custom name. Leave empty to use the default hostname.',
+        renamePlaceholder: 'Enter machine name',
+        renamedSuccess: 'Machine renamed successfully',
+        renameFailed: 'Failed to rename machine',
         lastKnownPid: 'Last Known PID',
         lastKnownHttpPort: 'Last Known HTTP Port',
         startedAt: 'Started At',
@@ -817,8 +956,15 @@ export const en = {
         lastSeen: 'Last Seen',
         never: 'Never',
         metadataVersion: 'Metadata Version',
+        detectedClis: 'Detected CLIs',
+        detectedCliNotDetected: 'Not detected',
+        detectedCliUnknown: 'Unknown',
+        detectedCliNotSupported: 'Not supported (update happy-cli)',
         untitledSession: 'Untitled Session',
         back: 'Back',
+        notFound: 'Machine not found',
+        unknownMachine: 'unknown machine',
+        unknownPath: 'unknown path',
     },
 
     message: {
@@ -826,6 +972,10 @@ export const en = {
         unknownEvent: 'Unknown event',
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
         unknownTime: 'unknown time',
+    },
+
+    chatFooter: {
+        permissionsTerminalOnly: 'Permissions are shown in the terminal only. Reset or send a message to control from the app.',
     },
 
     codex: {
@@ -854,6 +1004,7 @@ export const en = {
         textCopied: 'Text copied to clipboard',
         failedToCopy: 'Failed to copy text to clipboard',
         noTextToCopy: 'No text available to copy',
+        failedToOpen: 'Failed to open text selection. Please try again.',
     },
 
     markdown: {
@@ -874,11 +1025,14 @@ export const en = {
         edit: 'Edit Artifact',
         delete: 'Delete',
         updateError: 'Failed to update artifact. Please try again.',
+        deleteError: 'Failed to delete artifact. Please try again.',
         notFound: 'Artifact not found',
         discardChanges: 'Discard changes?',
         discardChangesDescription: 'You have unsaved changes. Are you sure you want to discard them?',
         deleteConfirm: 'Delete artifact?',
         deleteConfirmDescription: 'This action cannot be undone',
+        noContent: 'No content',
+        untitled: 'Untitled',
         titleLabel: 'TITLE',
         titlePlaceholder: 'Enter a title for your artifact',
         bodyLabel: 'CONTENT',
@@ -964,6 +1118,45 @@ export const en = {
         friendAcceptedGeneric: 'Friend request accepted',
     },
 
+    apiKeys: {
+        addTitle: 'New API key',
+        savedTitle: 'Saved API keys',
+        badgeReady: 'API key',
+        badgeRequired: 'API key required',
+        addSubtitle: 'Add a saved API key',
+        noneTitle: 'None',
+        noneSubtitle: 'Use machine environment or enter a key for this session',
+        emptyTitle: 'No saved keys',
+        emptySubtitle: 'Add one to use API-key profiles without setting machine env vars.',
+        savedHiddenSubtitle: 'Saved (value hidden)',
+        defaultLabel: 'Default',
+        fields: {
+            name: 'Name',
+            value: 'Value',
+        },
+        placeholders: {
+            nameExample: 'e.g. Work OpenAI',
+        },
+        validation: {
+            nameRequired: 'Name is required.',
+            valueRequired: 'Value is required.',
+        },
+        actions: {
+            replace: 'Replace',
+            replaceValue: 'Replace value',
+            setDefault: 'Set as default',
+            unsetDefault: 'Unset default',
+        },
+        prompts: {
+            renameTitle: 'Rename API key',
+            renameDescription: 'Update the friendly name for this key.',
+            replaceValueTitle: 'Replace API key value',
+            replaceValueDescription: 'Paste the new API key value. This value will not be shown again after saving.',
+            deleteTitle: 'Delete API key',
+            deleteConfirm: ({ name }: { name: string }) => `Delete “${name}”? This cannot be undone.`,
+        },
+    },
+
     profiles: {
         // Profile management feature
         title: 'Profiles',
@@ -1015,6 +1208,92 @@ export const en = {
         setupInstructions: {
             title: 'Setup Instructions',
             viewOfficialGuide: 'View Official Setup Guide',
+        },
+        machineLogin: {
+            title: 'CLI login',
+            subtitle: 'This profile relies on a CLI login cache on the selected machine.',
+            claudeCode: {
+                title: 'Claude Code',
+                instructions: 'Run `claude`, then type `/login` to sign in.',
+                warning: 'Note: setting `ANTHROPIC_AUTH_TOKEN` overrides CLI login.',
+            },
+            codex: {
+                title: 'Codex',
+                instructions: 'Run `codex login` to sign in.',
+            },
+            geminiCli: {
+                title: 'Gemini CLI',
+                instructions: 'Run `gemini auth` to sign in.',
+            },
+        },
+        requirements: {
+            apiKeyRequired: 'API key',
+            configured: 'Configured on machine',
+            notConfigured: 'Not configured',
+            checking: 'Checking…',
+            modalTitle: 'API key required',
+            modalBody: 'This profile requires an API key.\n\nSupported options:\n• Use machine environment (recommended)\n• Use saved key from app settings\n• Enter a key for this session only',
+            sectionTitle: 'Requirements',
+            sectionSubtitle: 'These fields are used to preflight readiness and to avoid surprise failures.',
+            secretEnvVarPromptDescription: 'Enter the required secret environment variable name (e.g. OPENAI_API_KEY).',
+            modalHelpWithEnv: ({ env }: { env: string }) => `This profile needs ${env}. Choose one option below.`,
+            modalHelpGeneric: 'This profile needs an API key. Choose one option below.',
+            modalRecommendation: 'Recommended: set the key in your daemon environment on your computer (so you don’t have to paste it again). Then restart the daemon so it picks up the new env var.',
+            chooseOptionTitle: 'Choose an option',
+            machineEnvStatus: {
+                theMachine: 'the machine',
+                checkFor: ({ env }: { env: string }) => `Check for ${env}`,
+                checking: ({ env }: { env: string }) => `Checking ${env}…`,
+                found: ({ env, machine }: { env: string; machine: string }) => `${env} found on ${machine}`,
+                notFound: ({ env, machine }: { env: string; machine: string }) => `${env} not found on ${machine}`,
+            },
+            machineEnvSubtitle: {
+                checking: 'Checking daemon environment…',
+                found: 'Found in the daemon environment on the machine.',
+                notFound: 'Set it in the daemon environment on the machine and restart the daemon.',
+            },
+            options: {
+                none: {
+                    title: 'None',
+                    subtitle: 'Does not require an API key or CLI login.',
+                },
+                apiKeyEnv: {
+                    subtitle: 'Requires an API key to be injected at session start.',
+                },
+                machineLogin: {
+                    subtitle: 'Requires being logged in via a CLI on the target machine.',
+                    longSubtitle: 'Requires being logged in via the CLI for the AI backend you choose on the target machine.',
+                },
+                useMachineEnvironment: {
+                    title: 'Use machine environment',
+                    subtitleWithEnv: ({ env }: { env: string }) => `Use ${env} from the daemon environment.`,
+                    subtitleGeneric: 'Use the key from the daemon environment.',
+                },
+                useSavedApiKey: {
+                    title: 'Use a saved API key',
+                    subtitle: 'Select (or add) a saved key in the app.',
+                },
+                enterOnce: {
+                    title: 'Enter a key',
+                    subtitle: 'Paste a key for this session only (won’t be saved).',
+                },
+            },
+            apiKeyEnvVar: {
+                title: 'API key environment variable',
+                subtitle: 'Enter the env var name this provider expects for its API key (e.g. OPENAI_API_KEY).',
+                label: 'Environment variable name',
+            },
+            sections: {
+                machineEnvironment: 'Machine environment',
+                useOnceTitle: 'Use once',
+                useOnceFooter: 'Paste a key for this session only. It won’t be saved.',
+            },
+            actions: {
+                useMachineEnvironment: {
+                    subtitle: 'Start with the key already present on the machine.',
+                },
+                useOnceButton: 'Use once (session only)',
+            },
         },
         defaultSessionType: 'Default Session Type',
         defaultPermissionMode: {

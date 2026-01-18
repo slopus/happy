@@ -80,6 +80,7 @@ export const pl: TranslationStructure = {
         all: 'Wszystko',
         machine: 'maszyna',
         clearSearch: 'Wyczyść wyszukiwanie',
+        refresh: 'Odśwież',
     },
 
     profile: {
@@ -97,8 +98,8 @@ export const pl: TranslationStructure = {
         connecting: 'łączenie',
         disconnected: 'rozłączono',
         error: 'błąd',
-        online: 'online',
-        offline: 'offline',
+        online: 'w sieci',
+        offline: 'poza siecią',
         lastSeen: ({ time }: { time: string }) => `ostatnio widziano ${time}`,
         permissionRequired: 'wymagane uprawnienie',
         activeNow: 'Aktywny teraz',
@@ -116,6 +117,15 @@ export const pl: TranslationStructure = {
         enterSecretKey: 'Proszę wprowadzić klucz tajny',
         invalidSecretKey: 'Nieprawidłowy klucz tajny. Sprawdź i spróbuj ponownie.',
         enterUrlManually: 'Wprowadź URL ręcznie',
+        terminalUrlPlaceholder: 'happy://terminal?...',
+        restoreQrInstructions: '1. Otwórz Happy na urządzeniu mobilnym\n2. Przejdź do Ustawienia → Konto\n3. Dotknij „Połącz nowe urządzenie”\n4. Zeskanuj ten kod QR',
+        restoreWithSecretKeyInstead: 'Przywróć za pomocą klucza tajnego',
+        restoreWithSecretKeyDescription: 'Wpisz swój klucz tajny, aby odzyskać dostęp do konta.',
+        secretKeyPlaceholder: 'XXXXX-XXXXX-XXXXX...',
+        unsupported: {
+            connectTitle: ({ name }: { name: string }) => `Połącz ${name}`,
+            runCommandInTerminal: 'Uruchom poniższe polecenie w terminalu:',
+        },
     },
 
     settings: {
@@ -156,11 +166,13 @@ export const pl: TranslationStructure = {
         usageSubtitle: 'Zobacz użycie API i koszty',
         profiles: 'Profile',
         profilesSubtitle: 'Zarządzaj profilami zmiennych środowiskowych dla sesji',
+        apiKeys: 'Klucze API',
+        apiKeysSubtitle: 'Zarządzaj zapisanymi kluczami API (po wpisaniu nie będą ponownie pokazywane)',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Konto ${service} połączone`,
         machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
-            `${name} jest ${status === 'online' ? 'online' : 'offline'}`,
+            `${name} jest ${status === 'online' ? 'w sieci' : 'poza siecią'}`,
         featureToggled: ({ feature, enabled }: { feature: string; enabled: boolean }) =>
             `${feature} ${enabled ? 'włączona' : 'wyłączona'}`,
     },
@@ -193,6 +205,21 @@ export const pl: TranslationStructure = {
         wrapLinesInDiffsDescription: 'Zawijaj długie linie zamiast przewijania poziomego w widokach różnic',
         alwaysShowContextSize: 'Zawsze pokazuj rozmiar kontekstu',
         alwaysShowContextSizeDescription: 'Wyświetlaj użycie kontekstu nawet gdy nie jest blisko limitu',
+        agentInputActionBarLayout: 'Pasek akcji pola wpisywania',
+        agentInputActionBarLayoutDescription: 'Wybierz, jak wyświetlać chipy akcji nad polem wpisywania',
+        agentInputActionBarLayoutOptions: {
+            auto: 'Automatycznie',
+            wrap: 'Zawijanie',
+            scroll: 'Przewijany',
+            collapsed: 'Zwinięty',
+        },
+        agentInputChipDensity: 'Gęstość chipów akcji',
+        agentInputChipDensityDescription: 'Wybierz, czy chipy akcji pokazują etykiety czy ikony',
+        agentInputChipDensityOptions: {
+            auto: 'Automatycznie',
+            labels: 'Etykiety',
+            icons: 'Tylko ikony',
+        },
         avatarStyle: 'Styl awatara',
         avatarStyleDescription: 'Wybierz wygląd awatara sesji',
         avatarOptions: {
@@ -213,6 +240,22 @@ export const pl: TranslationStructure = {
         experimentalFeatures: 'Funkcje eksperymentalne',
         experimentalFeaturesEnabled: 'Funkcje eksperymentalne włączone',
         experimentalFeaturesDisabled: 'Używane tylko stabilne funkcje',
+        experimentalOptions: 'Opcje eksperymentalne',
+        experimentalOptionsDescription: 'Wybierz, które funkcje eksperymentalne są włączone.',
+        expGemini: 'Gemini',
+        expGeminiSubtitle: 'Enable Gemini CLI sessions and Gemini-related UI',
+        expUsageReporting: 'Usage reporting',
+        expUsageReportingSubtitle: 'Enable usage and token reporting screens',
+        expFileViewer: 'File viewer',
+        expFileViewerSubtitle: 'Enable the session file viewer entrypoint',
+        expShowThinkingMessages: 'Show thinking messages',
+        expShowThinkingMessagesSubtitle: 'Show assistant thinking/status messages in chat',
+        expSessionType: 'Session type selector',
+        expSessionTypeSubtitle: 'Show the session type selector (simple vs worktree)',
+        expZen: 'Zen',
+        expZenSubtitle: 'Enable the Zen navigation entry',
+        expVoiceAuthFlow: 'Voice auth flow',
+        expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
         webFeatures: 'Funkcje webowe',
         webFeaturesDescription: 'Funkcje dostępne tylko w wersji webowej aplikacji.',
         enterToSend: 'Enter aby wysłać',
@@ -221,7 +264,7 @@ export const pl: TranslationStructure = {
         commandPalette: 'Paleta poleceń',
         commandPaletteEnabled: 'Naciśnij ⌘K, aby otworzyć',
         commandPaletteDisabled: 'Szybki dostęp do poleceń wyłączony',
-        markdownCopyV2: 'Markdown Copy v2',
+        markdownCopyV2: 'Kopiowanie Markdown v2',
         markdownCopyV2Subtitle: 'Długie naciśnięcie otwiera modal kopiowania',
         hideInactiveSessions: 'Ukryj nieaktywne sesje',
         hideInactiveSessionsSubtitle: 'Wyświetlaj tylko aktywne czaty na liście',
@@ -289,11 +332,29 @@ export const pl: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Rozpocznij nową sesję',
+        selectAiProfileTitle: 'Wybierz profil AI',
+        selectAiProfileDescription: 'Wybierz profil AI, aby zastosować zmienne środowiskowe i domyślne ustawienia do sesji.',
+        changeProfile: 'Zmień profil',
+        aiBackendSelectedByProfile: 'Backend AI jest wybierany przez profil. Aby go zmienić, wybierz inny profil.',
+        selectAiBackendTitle: 'Wybierz backend AI',
+        aiBackendLimitedByProfileAndMachineClis: 'Ograniczone przez wybrany profil i dostępne CLI na tej maszynie.',
+        aiBackendSelectWhichAiRuns: 'Wybierz, które AI uruchamia Twoją sesję.',
+        aiBackendNotCompatibleWithSelectedProfile: 'Niezgodne z wybranym profilem.',
+        aiBackendCliNotDetectedOnMachine: ({ cli }: { cli: string }) => `Nie wykryto CLI ${cli} na tej maszynie.`,
         selectMachineTitle: 'Wybierz maszynę',
+        selectMachineDescription: 'Wybierz, gdzie ta sesja działa.',
         selectPathTitle: 'Wybierz ścieżkę',
+        selectWorkingDirectoryTitle: 'Wybierz katalog roboczy',
+        selectWorkingDirectoryDescription: 'Wybierz folder używany dla poleceń i kontekstu.',
+        selectPermissionModeTitle: 'Wybierz tryb uprawnień',
+        selectPermissionModeDescription: 'Określ, jak ściśle akcje wymagają zatwierdzenia.',
+        selectModelTitle: 'Wybierz model AI',
+        selectModelDescription: 'Wybierz model używany przez tę sesję.',
+        selectSessionTypeTitle: 'Wybierz typ sesji',
+        selectSessionTypeDescription: 'Wybierz sesję prostą lub powiązaną z Git worktree.',
         searchPathsPlaceholder: 'Szukaj ścieżek...',
         noMachinesFound: 'Nie znaleziono maszyn. Najpierw uruchom sesję Happy na swoim komputerze.',
-        allMachinesOffline: 'Wszystkie maszyny są offline',
+        allMachinesOffline: 'Wszystkie maszyny są poza siecią',
         machineDetails: 'Zobacz szczegóły maszyny →',
         directoryDoesNotExist: 'Katalog nie został znaleziony',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `Katalog ${directory} nie istnieje. Czy chcesz go utworzyć?`,
@@ -330,8 +391,22 @@ export const pl: TranslationStructure = {
         sessionType: {
             title: 'Typ sesji',
             simple: 'Prosta',
-            worktree: 'Worktree',
+            worktree: 'Drzewo robocze',
             comingSoon: 'Wkrótce dostępne',
+        },
+        profileAvailability: {
+            requiresAgent: ({ agent }: { agent: string }) => `Wymaga ${agent}`,
+            cliNotDetected: ({ cli }: { cli: string }) => `Nie wykryto CLI ${cli}`,
+        },
+        cliBanners: {
+            cliNotDetectedTitle: ({ cli }: { cli: string }) => `Nie wykryto CLI ${cli}`,
+            dontShowFor: 'Nie pokazuj tego komunikatu dla',
+            thisMachine: 'tej maszyny',
+            anyMachine: 'dowolnej maszyny',
+            installCommand: ({ command }: { command: string }) => `Zainstaluj: ${command} •`,
+            installCliIfAvailable: ({ cli }: { cli: string }) => `Zainstaluj CLI ${cli}, jeśli jest dostępne •`,
+            viewInstallationGuide: 'Zobacz instrukcję instalacji →',
+            viewGeminiDocs: 'Zobacz dokumentację Gemini →',
         },
         worktree: {
             creating: ({ name }: { name: string }) => `Tworzenie worktree '${name}'...`,
@@ -357,6 +432,19 @@ export const pl: TranslationStructure = {
 
     commandPalette: {
         placeholder: 'Wpisz polecenie lub wyszukaj...',
+        noCommandsFound: 'Nie znaleziono poleceń',
+    },
+
+    commandView: {
+        completedWithNoOutput: '[Polecenie zakończone bez danych wyjściowych]',
+    },
+
+    voiceAssistant: {
+        connecting: 'Łączenie...',
+        active: 'Asystent głosowy aktywny',
+        connectionError: 'Błąd połączenia',
+        label: 'Asystent głosowy',
+        tapToEnd: 'Dotknij, aby zakończyć',
     },
 
     server: {
@@ -412,6 +500,9 @@ export const pl: TranslationStructure = {
         happyHome: 'Katalog domowy Happy',
         copyMetadata: 'Kopiuj metadane',
         agentState: 'Stan agenta',
+        rawJsonDevMode: 'Surowy JSON (tryb deweloperski)',
+        sessionStatus: 'Status sesji',
+        fullSessionObject: 'Pełny obiekt sesji',
         controlledByUser: 'Kontrolowany przez użytkownika',
         pendingRequests: 'Oczekujące żądania',
         activity: 'Aktywność',
@@ -438,6 +529,35 @@ export const pl: TranslationStructure = {
             runIt: 'Uruchom je',
             scanQrCode: 'Zeskanuj kod QR',
             openCamera: 'Otwórz kamerę',
+            installCommand: '$ npm i -g happy-coder',
+            runCommand: '$ happy',
+        },
+        emptyMessages: {
+            noMessagesYet: 'Brak wiadomości',
+            created: ({ time }: { time: string }) => `Utworzono ${time}`,
+        },
+        emptySessionsTablet: {
+            noActiveSessions: 'Brak aktywnych sesji',
+            startNewSessionDescription: 'Rozpocznij nową sesję na dowolnej z połączonych maszyn.',
+            startNewSessionButton: 'Rozpocznij nową sesję',
+            openTerminalToStart: 'Otwórz nowy terminal na komputerze, aby rozpocząć sesję.',
+        },
+    },
+
+    zen: {
+        title: 'Zen',
+        add: {
+            placeholder: 'Co trzeba zrobić?',
+        },
+        home: {
+            noTasksYet: 'Brak zadań. Stuknij +, aby dodać.',
+        },
+        view: {
+            workOnTask: 'Pracuj nad zadaniem',
+            clarify: 'Doprecyzuj',
+            delete: 'Usuń',
+            linkedSessions: 'Powiązane sesje',
+            tapTaskTextToEdit: 'Stuknij tekst zadania, aby edytować',
         },
     },
 
@@ -471,22 +591,22 @@ export const pl: TranslationStructure = {
         codexPermissionMode: {
             title: 'TRYB UPRAWNIEŃ CODEX',
             default: 'Ustawienia CLI',
-            readOnly: 'Read Only Mode',
-            safeYolo: 'Safe YOLO',
+            readOnly: 'Tryb tylko do odczytu',
+            safeYolo: 'Bezpieczne YOLO',
             yolo: 'YOLO',
             badgeReadOnly: 'Tylko do odczytu',
-            badgeSafeYolo: 'Safe YOLO',
+            badgeSafeYolo: 'Bezpieczne YOLO',
             badgeYolo: 'YOLO',
         },
         codexModel: {
-            title: 'CODEX MODEL',
-            gpt5CodexLow: 'gpt-5-codex low',
-            gpt5CodexMedium: 'gpt-5-codex medium',
-            gpt5CodexHigh: 'gpt-5-codex high',
-            gpt5Minimal: 'GPT-5 Minimal',
-            gpt5Low: 'GPT-5 Low',
-            gpt5Medium: 'GPT-5 Medium',
-            gpt5High: 'GPT-5 High',
+            title: 'MODEL CODEX',
+            gpt5CodexLow: 'gpt-5-codex niski',
+            gpt5CodexMedium: 'gpt-5-codex średni',
+            gpt5CodexHigh: 'gpt-5-codex wysoki',
+            gpt5Minimal: 'GPT-5 Minimalny',
+            gpt5Low: 'GPT-5 Niski',
+            gpt5Medium: 'GPT-5 Średni',
+            gpt5High: 'GPT-5 Wysoki',
         },
         geminiPermissionMode: {
             title: 'TRYB UPRAWNIEŃ GEMINI',
@@ -518,7 +638,12 @@ export const pl: TranslationStructure = {
         },
         suggestion: {
             fileLabel: 'PLIK',
-            folderLabel: 'FOLDER',
+            folderLabel: 'KATALOG',
+        },
+        actionMenu: {
+            title: 'AKCJE',
+            files: 'Pliki',
+            stop: 'Zatrzymaj',
         },
         noMachinesAvailable: 'Brak maszyn',
     },
@@ -744,6 +869,11 @@ export const pl: TranslationStructure = {
         deviceLinkedSuccessfully: 'Urządzenie połączone pomyślnie',
         terminalConnectedSuccessfully: 'Terminal połączony pomyślnie',
         invalidAuthUrl: 'Nieprawidłowy URL uwierzytelnienia',
+        microphoneAccessRequiredTitle: 'Wymagany dostęp do mikrofonu',
+        microphoneAccessRequiredRequestPermission: 'Happy potrzebuje dostępu do mikrofonu do czatu głosowego. Udziel zgody, gdy pojawi się prośba.',
+        microphoneAccessRequiredEnableInSettings: 'Happy potrzebuje dostępu do mikrofonu do czatu głosowego. Włącz dostęp do mikrofonu w ustawieniach urządzenia.',
+        microphoneAccessRequiredBrowserInstructions: 'Zezwól na dostęp do mikrofonu w ustawieniach przeglądarki. Być może musisz kliknąć ikonę kłódki na pasku adresu i włączyć uprawnienie mikrofonu dla tej witryny.',
+        openSettings: 'Otwórz ustawienia',
         developerMode: 'Tryb deweloperski',
         developerModeEnabled: 'Tryb deweloperski włączony',
         developerModeDisabled: 'Tryb deweloperski wyłączony',
@@ -795,9 +925,18 @@ export const pl: TranslationStructure = {
         offlineUnableToSpawn: 'Launcher wyłączony, gdy maszyna jest offline',
         offlineHelp: '• Upewnij się, że komputer jest online\n• Uruchom `happy daemon status`, aby zdiagnozować\n• Czy używasz najnowszej wersji CLI? Zaktualizuj poleceniem `npm install -g happy-coder@latest`',
         launchNewSessionInDirectory: 'Uruchom nową sesję w katalogu',
-        daemon: 'Daemon',
+        daemon: 'Demon',
         status: 'Status',
         stopDaemon: 'Zatrzymaj daemon',
+        stopDaemonConfirmTitle: 'Zatrzymać daemon?',
+        stopDaemonConfirmBody: 'Nie będziesz mógł tworzyć nowych sesji na tej maszynie, dopóki nie uruchomisz ponownie daemona na komputerze. Obecne sesje pozostaną aktywne.',
+        daemonStoppedTitle: 'Daemon zatrzymany',
+        stopDaemonFailed: 'Nie udało się zatrzymać daemona. Może nie działa.',
+        renameTitle: 'Zmień nazwę maszyny',
+        renameDescription: 'Nadaj tej maszynie własną nazwę. Pozostaw puste, aby użyć domyślnej nazwy hosta.',
+        renamePlaceholder: 'Wpisz nazwę maszyny',
+        renamedSuccess: 'Nazwa maszyny została zmieniona',
+        renameFailed: 'Nie udało się zmienić nazwy maszyny',
         lastKnownPid: 'Ostatni znany PID',
         lastKnownHttpPort: 'Ostatni znany port HTTP',
         startedAt: 'Uruchomiony o',
@@ -814,8 +953,15 @@ export const pl: TranslationStructure = {
         lastSeen: 'Ostatnio widziana',
         never: 'Nigdy',
         metadataVersion: 'Wersja metadanych',
+        detectedClis: 'Wykryte CLI',
+        detectedCliNotDetected: 'Nie wykryto',
+        detectedCliUnknown: 'Nieznane',
+        detectedCliNotSupported: 'Nieobsługiwane (zaktualizuj happy-cli)',
         untitledSession: 'Sesja bez nazwy',
         back: 'Wstecz',
+        notFound: 'Nie znaleziono maszyny',
+        unknownMachine: 'nieznana maszyna',
+        unknownPath: 'nieznana ścieżka',
     },
 
     message: {
@@ -823,6 +969,10 @@ export const pl: TranslationStructure = {
         unknownEvent: 'Nieznane zdarzenie',
         usageLimitUntil: ({ time }: { time: string }) => `Osiągnięto limit użycia do ${time}`,
         unknownTime: 'nieznany czas',
+    },
+
+    chatFooter: {
+        permissionsTerminalOnly: 'Uprawnienia są widoczne tylko w terminalu. Zresetuj lub wyślij wiadomość, aby sterować z aplikacji.',
     },
 
     codex: {
@@ -851,6 +1001,7 @@ export const pl: TranslationStructure = {
         textCopied: 'Tekst skopiowany do schowka',
         failedToCopy: 'Nie udało się skopiować tekstu do schowka',
         noTextToCopy: 'Brak tekstu do skopiowania',
+        failedToOpen: 'Nie udało się otworzyć wyboru tekstu. Spróbuj ponownie.',
     },
 
     markdown: {
@@ -884,11 +1035,14 @@ export const pl: TranslationStructure = {
         edit: 'Edytuj artefakt',
         delete: 'Usuń',
         updateError: 'Nie udało się zaktualizować artefaktu. Spróbuj ponownie.',
+        deleteError: 'Nie udało się usunąć artefaktu. Spróbuj ponownie.',
         notFound: 'Artefakt nie został znaleziony',
         discardChanges: 'Odrzucić zmiany?',
         discardChangesDescription: 'Masz niezapisane zmiany. Czy na pewno chcesz je odrzucić?',
         deleteConfirm: 'Usunąć artefakt?',
         deleteConfirmDescription: 'Tej operacji nie można cofnąć',
+        noContent: 'Brak treści',
+        untitled: 'Bez tytułu',
         titleLabel: 'TYTUŁ',
         titlePlaceholder: 'Wprowadź tytuł dla swojego artefaktu',
         bodyLabel: 'TREŚĆ',
@@ -974,6 +1128,45 @@ export const pl: TranslationStructure = {
         friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
     },
 
+    apiKeys: {
+        addTitle: 'Nowy klucz API',
+        savedTitle: 'Zapisane klucze API',
+        badgeReady: 'Klucz API',
+        badgeRequired: 'Wymagany klucz API',
+        addSubtitle: 'Dodaj zapisany klucz API',
+        noneTitle: 'Brak',
+        noneSubtitle: 'Użyj środowiska maszyny lub wpisz klucz dla tej sesji',
+        emptyTitle: 'Brak zapisanych kluczy',
+        emptySubtitle: 'Dodaj jeden, aby używać profili z kluczem API bez ustawiania zmiennych środowiskowych na maszynie.',
+        savedHiddenSubtitle: 'Zapisany (wartość ukryta)',
+        defaultLabel: 'Domyślny',
+        fields: {
+            name: 'Nazwa',
+            value: 'Wartość',
+        },
+        placeholders: {
+            nameExample: 'np. Work OpenAI',
+        },
+        validation: {
+            nameRequired: 'Nazwa jest wymagana.',
+            valueRequired: 'Wartość jest wymagana.',
+        },
+        actions: {
+            replace: 'Zastąp',
+            replaceValue: 'Zastąp wartość',
+            setDefault: 'Ustaw jako domyślny',
+            unsetDefault: 'Usuń domyślny',
+        },
+        prompts: {
+            renameTitle: 'Zmień nazwę klucza API',
+            renameDescription: 'Zaktualizuj przyjazną nazwę dla tego klucza.',
+            replaceValueTitle: 'Zastąp wartość klucza API',
+            replaceValueDescription: 'Wklej nową wartość klucza API. Ta wartość nie będzie ponownie wyświetlana po zapisaniu.',
+            deleteTitle: 'Usuń klucz API',
+            deleteConfirm: ({ name }: { name: string }) => `Usunąć “${name}”? Tej czynności nie można cofnąć.`,
+        },
+    },
+
     profiles: {
         // Profile management feature
         title: 'Profile',
@@ -1001,7 +1194,7 @@ export const pl: TranslationStructure = {
         custom: 'Niestandardowe',
         builtInSaveAsHint: 'Zapisanie wbudowanego profilu tworzy nowy profil niestandardowy.',
         builtInNames: {
-            anthropic: 'Anthropic (Default)',
+            anthropic: 'Anthropic (Domyślny)',
             deepseek: 'DeepSeek (Reasoner)',
             zai: 'Z.AI (GLM-4.6)',
             openai: 'OpenAI (GPT-5)',
@@ -1025,6 +1218,92 @@ export const pl: TranslationStructure = {
         setupInstructions: {
             title: 'Instrukcje konfiguracji',
             viewOfficialGuide: 'Zobacz oficjalny przewodnik konfiguracji',
+        },
+        machineLogin: {
+            title: 'Wymagane logowanie na maszynie',
+            subtitle: 'Ten profil korzysta z pamięci podręcznej logowania CLI na wybranej maszynie.',
+            claudeCode: {
+                title: 'Claude Code',
+                instructions: 'Uruchom `claude`, a następnie wpisz `/login`, aby się zalogować.',
+                warning: 'Uwaga: ustawienie `ANTHROPIC_AUTH_TOKEN` zastępuje logowanie CLI.',
+            },
+            codex: {
+                title: 'Codex',
+                instructions: 'Uruchom `codex login`, aby się zalogować.',
+            },
+            geminiCli: {
+                title: 'Gemini CLI',
+                instructions: 'Uruchom `gemini auth`, aby się zalogować.',
+            },
+        },
+        requirements: {
+            apiKeyRequired: 'Klucz API',
+            configured: 'Skonfigurowano na maszynie',
+            notConfigured: 'Nie skonfigurowano',
+            checking: 'Sprawdzanie…',
+            modalTitle: 'Wymagany klucz API',
+            modalBody: 'Ten profil wymaga klucza API.\n\nDostępne opcje:\n• Użyj środowiska maszyny (zalecane)\n• Użyj zapisanego klucza z ustawień aplikacji\n• Wpisz klucz tylko dla tej sesji',
+            sectionTitle: 'Wymagania',
+            sectionSubtitle: 'Te pola służą do wstępnej weryfikacji i aby uniknąć niespodziewanych błędów.',
+            secretEnvVarPromptDescription: 'Wpisz nazwę wymaganej tajnej zmiennej środowiskowej (np. OPENAI_API_KEY).',
+            modalHelpWithEnv: ({ env }: { env: string }) => `Ten profil wymaga ${env}. Wybierz jedną z opcji poniżej.`,
+            modalHelpGeneric: 'Ten profil wymaga klucza API. Wybierz jedną z opcji poniżej.',
+            modalRecommendation: 'Zalecane: ustaw klucz w środowisku daemona na komputerze (żeby nie wklejać go ponownie). Następnie uruchom ponownie daemona, aby wczytał nową zmienną środowiskową.',
+            chooseOptionTitle: 'Wybierz opcję',
+            machineEnvStatus: {
+                theMachine: 'maszynie',
+                checkFor: ({ env }: { env: string }) => `Sprawdź ${env}`,
+                checking: ({ env }: { env: string }) => `Sprawdzanie ${env}…`,
+                found: ({ env, machine }: { env: string; machine: string }) => `${env} znaleziono na ${machine}`,
+                notFound: ({ env, machine }: { env: string; machine: string }) => `${env} nie znaleziono na ${machine}`,
+            },
+            machineEnvSubtitle: {
+                checking: 'Sprawdzanie środowiska daemona…',
+                found: 'Znaleziono w środowisku daemona na maszynie.',
+                notFound: 'Ustaw w środowisku daemona na maszynie i uruchom ponownie daemona.',
+            },
+            options: {
+                none: {
+                    title: 'Brak',
+                    subtitle: 'Nie wymaga klucza API ani logowania CLI.',
+                },
+                apiKeyEnv: {
+                    subtitle: 'Wymaga klucza API wstrzykiwanego przy starcie sesji.',
+                },
+                machineLogin: {
+                    subtitle: 'Wymaga zalogowania przez CLI na maszynie docelowej.',
+                    longSubtitle: 'Wymaga zalogowania w CLI dla wybranego backendu AI na maszynie docelowej.',
+                },
+                useMachineEnvironment: {
+                    title: 'Użyj środowiska maszyny',
+                    subtitleWithEnv: ({ env }: { env: string }) => `Użyj ${env} ze środowiska daemona.`,
+                    subtitleGeneric: 'Użyj klucza ze środowiska daemona.',
+                },
+                useSavedApiKey: {
+                    title: 'Użyj zapisanego klucza API',
+                    subtitle: 'Wybierz (lub dodaj) zapisany klucz w aplikacji.',
+                },
+                enterOnce: {
+                    title: 'Wpisz klucz',
+                    subtitle: 'Wklej klucz tylko dla tej sesji (nie zostanie zapisany).',
+                },
+            },
+            apiKeyEnvVar: {
+                title: 'Zmienna środowiskowa klucza API',
+                subtitle: 'Wpisz nazwę zmiennej środowiskowej, której ten dostawca oczekuje dla klucza API (np. OPENAI_API_KEY).',
+                label: 'Nazwa zmiennej środowiskowej',
+            },
+            sections: {
+                machineEnvironment: 'Środowisko maszyny',
+                useOnceTitle: 'Użyj raz',
+                useOnceFooter: 'Wklej klucz tylko dla tej sesji. Nie zostanie zapisany.',
+            },
+            actions: {
+                useMachineEnvironment: {
+                    subtitle: 'Rozpocznij z kluczem już obecnym na maszynie.',
+                },
+                useOnceButton: 'Użyj raz (tylko sesja)',
+            },
         },
         defaultSessionType: 'Domyślny typ sesji',
         defaultPermissionMode: {
@@ -1111,7 +1390,7 @@ export const pl: TranslationStructure = {
                     fixed: 'Stała',
                     machine: 'Maszyna',
                     checking: 'Sprawdzanie',
-                    fallback: 'Fallback',
+                    fallback: 'Wartość zapasowa',
                     missing: 'Brak',
                 },
             },

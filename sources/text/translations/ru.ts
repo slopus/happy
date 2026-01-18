@@ -80,6 +80,7 @@ export const ru: TranslationStructure = {
         all: 'Все',
         machine: 'машина',
         clearSearch: 'Очистить поиск',
+        refresh: 'Обновить',
     },
 
     connect: {
@@ -87,6 +88,15 @@ export const ru: TranslationStructure = {
         enterSecretKey: 'Пожалуйста, введите секретный ключ',
         invalidSecretKey: 'Неверный секретный ключ. Проверьте и попробуйте снова.',
         enterUrlManually: 'Ввести URL вручную',
+        terminalUrlPlaceholder: 'happy://terminal?...',
+        restoreQrInstructions: '1. Откройте Happy на мобильном устройстве\n2. Перейдите в Настройки → Аккаунт\n3. Нажмите «Подключить новое устройство»\n4. Отсканируйте этот QR-код',
+        restoreWithSecretKeyInstead: 'Восстановить по секретному ключу',
+        restoreWithSecretKeyDescription: 'Введите секретный ключ, чтобы восстановить доступ к аккаунту.',
+        secretKeyPlaceholder: 'XXXXX-XXXXX-XXXXX...',
+        unsupported: {
+            connectTitle: ({ name }: { name: string }) => `Подключить ${name}`,
+            runCommandInTerminal: 'Выполните следующую команду в терминале:',
+        },
     },
 
     settings: {
@@ -127,11 +137,13 @@ export const ru: TranslationStructure = {
         usageSubtitle: 'Просмотр использования API и затрат',
         profiles: 'Профили',
         profilesSubtitle: 'Управление профилями переменных окружения для сессий',
+        apiKeys: 'API-ключи',
+        apiKeysSubtitle: 'Управление сохранёнными API-ключами (после ввода больше не показываются)',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,
         machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
-            `${name} ${status === 'online' ? 'online' : 'offline'}`,
+            `${name} ${status === 'online' ? 'в сети' : 'не в сети'}`,
         featureToggled: ({ feature, enabled }: { feature: string; enabled: boolean }) =>
             `${feature} ${enabled ? 'включена' : 'отключена'}`,
     },
@@ -164,6 +176,21 @@ export const ru: TranslationStructure = {
         wrapLinesInDiffsDescription: 'Переносить длинные строки вместо горизонтальной прокрутки в представлениях различий',
         alwaysShowContextSize: 'Всегда показывать размер контекста',
         alwaysShowContextSizeDescription: 'Отображать использование контекста даже когда не близко к лимиту',
+        agentInputActionBarLayout: 'Панель действий ввода',
+        agentInputActionBarLayoutDescription: 'Выберите, как отображаются действия над полем ввода',
+        agentInputActionBarLayoutOptions: {
+            auto: 'Авто',
+            wrap: 'Перенос',
+            scroll: 'Прокрутка',
+            collapsed: 'Свернуто',
+        },
+        agentInputChipDensity: 'Плотность чипов действий',
+        agentInputChipDensityDescription: 'Выберите, показывать ли чипы действий с подписями или только значками',
+        agentInputChipDensityOptions: {
+            auto: 'Авто',
+            labels: 'Подписи',
+            icons: 'Только значки',
+        },
         avatarStyle: 'Стиль аватара',
         avatarStyleDescription: 'Выберите внешний вид аватара сессии',
         avatarOptions: {
@@ -184,15 +211,31 @@ export const ru: TranslationStructure = {
         experimentalFeatures: 'Экспериментальные функции',
         experimentalFeaturesEnabled: 'Экспериментальные функции включены',
         experimentalFeaturesDisabled: 'Используются только стабильные функции',
+        experimentalOptions: 'Экспериментальные опции',
+        experimentalOptionsDescription: 'Выберите, какие экспериментальные функции включены.',
+        expGemini: 'Gemini',
+        expGeminiSubtitle: 'Enable Gemini CLI sessions and Gemini-related UI',
+        expUsageReporting: 'Usage reporting',
+        expUsageReportingSubtitle: 'Enable usage and token reporting screens',
+        expFileViewer: 'File viewer',
+        expFileViewerSubtitle: 'Enable the session file viewer entrypoint',
+        expShowThinkingMessages: 'Show thinking messages',
+        expShowThinkingMessagesSubtitle: 'Show assistant thinking/status messages in chat',
+        expSessionType: 'Session type selector',
+        expSessionTypeSubtitle: 'Show the session type selector (simple vs worktree)',
+        expZen: 'Zen',
+        expZenSubtitle: 'Enable the Zen navigation entry',
+        expVoiceAuthFlow: 'Voice auth flow',
+        expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
         webFeatures: 'Веб-функции',
         webFeaturesDescription: 'Функции, доступные только в веб-версии приложения.',
         enterToSend: 'Enter для отправки',
         enterToSendEnabled: 'Нажмите Enter для отправки (Shift+Enter для новой строки)',
         enterToSendDisabled: 'Enter вставляет новую строку',
-        commandPalette: 'Command Palette',
+        commandPalette: 'Палитра команд',
         commandPaletteEnabled: 'Нажмите ⌘K для открытия',
         commandPaletteDisabled: 'Быстрый доступ к командам отключён',
-        markdownCopyV2: 'Markdown Copy v2',
+        markdownCopyV2: 'Копирование Markdown v2',
         markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
         hideInactiveSessions: 'Скрывать неактивные сессии',
         hideInactiveSessionsSubtitle: 'Показывать в списке только активные чаты',
@@ -260,11 +303,29 @@ export const ru: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Начать новую сессию',
+        selectAiProfileTitle: 'Выбрать профиль ИИ',
+        selectAiProfileDescription: 'Выберите профиль ИИ, чтобы применить переменные окружения и настройки по умолчанию к вашей сессии.',
+        changeProfile: 'Сменить профиль',
+        aiBackendSelectedByProfile: 'Бэкенд ИИ выбирается вашим профилем. Чтобы изменить его, выберите другой профиль.',
+        selectAiBackendTitle: 'Выбрать бэкенд ИИ',
+        aiBackendLimitedByProfileAndMachineClis: 'Ограничено выбранным профилем и доступными CLI на этой машине.',
+        aiBackendSelectWhichAiRuns: 'Выберите, какой ИИ будет работать в вашей сессии.',
+        aiBackendNotCompatibleWithSelectedProfile: 'Несовместимо с выбранным профилем.',
+        aiBackendCliNotDetectedOnMachine: ({ cli }: { cli: string }) => `${cli} CLI не обнаружен на этой машине.`,
         selectMachineTitle: 'Выбрать машину',
+        selectMachineDescription: 'Выберите, где будет выполняться эта сессия.',
         selectPathTitle: 'Выбрать путь',
+        selectWorkingDirectoryTitle: 'Выбрать рабочую директорию',
+        selectWorkingDirectoryDescription: 'Выберите папку, используемую для команд и контекста.',
+        selectPermissionModeTitle: 'Выбрать режим разрешений',
+        selectPermissionModeDescription: 'Настройте, насколько строго действия требуют подтверждения.',
+        selectModelTitle: 'Выбрать модель ИИ',
+        selectModelDescription: 'Выберите модель, используемую этой сессией.',
+        selectSessionTypeTitle: 'Выбрать тип сессии',
+        selectSessionTypeDescription: 'Выберите простую сессию или сессию, привязанную к Git worktree.',
         searchPathsPlaceholder: 'Поиск путей...',
         noMachinesFound: 'Машины не найдены. Сначала запустите сессию Happy на вашем компьютере.',
-        allMachinesOffline: 'Все машины находятся offline',
+        allMachinesOffline: 'Все машины не в сети',
         machineDetails: 'Посмотреть детали машины →',
         directoryDoesNotExist: 'Директория не найдена',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `Директория ${directory} не существует. Хотите создать её?`,
@@ -301,8 +362,22 @@ export const ru: TranslationStructure = {
         sessionType: {
             title: 'Тип сессии',
             simple: 'Простая',
-            worktree: 'Worktree',
+            worktree: 'Рабочее дерево',
             comingSoon: 'Скоро будет доступно',
+        },
+        profileAvailability: {
+            requiresAgent: ({ agent }: { agent: string }) => `Требуется ${agent}`,
+            cliNotDetected: ({ cli }: { cli: string }) => `${cli} CLI не обнаружен`,
+        },
+        cliBanners: {
+            cliNotDetectedTitle: ({ cli }: { cli: string }) => `${cli} CLI не обнаружен`,
+            dontShowFor: 'Не показывать это предупреждение для',
+            thisMachine: 'этой машины',
+            anyMachine: 'любой машины',
+            installCommand: ({ command }: { command: string }) => `Установить: ${command} •`,
+            installCliIfAvailable: ({ cli }: { cli: string }) => `Установите ${cli} CLI, если доступно •`,
+            viewInstallationGuide: 'Открыть руководство по установке →',
+            viewGeminiDocs: 'Открыть документацию Gemini →',
         },
         worktree: {
             creating: ({ name }: { name: string }) => `Создание worktree '${name}'...`,
@@ -375,6 +450,9 @@ export const ru: TranslationStructure = {
         happyHome: 'Домашний каталог Happy',
         copyMetadata: 'Копировать метаданные',
         agentState: 'Состояние агента',
+        rawJsonDevMode: 'Сырой JSON (режим разработчика)',
+        sessionStatus: 'Статус сессии',
+        fullSessionObject: 'Полный объект сессии',
         controlledByUser: 'Управляется пользователем',
         pendingRequests: 'Ожидающие запросы',
         activity: 'Активность',
@@ -401,6 +479,35 @@ export const ru: TranslationStructure = {
             runIt: 'Запустите его',
             scanQrCode: 'Отсканируйте QR-код',
             openCamera: 'Открыть камеру',
+            installCommand: '$ npm i -g happy-coder',
+            runCommand: '$ happy',
+        },
+        emptyMessages: {
+            noMessagesYet: 'Сообщений пока нет',
+            created: ({ time }: { time: string }) => `Создано ${time}`,
+        },
+        emptySessionsTablet: {
+            noActiveSessions: 'Нет активных сессий',
+            startNewSessionDescription: 'Запустите новую сессию на любой из подключённых машин.',
+            startNewSessionButton: 'Новая сессия',
+            openTerminalToStart: 'Откройте новый терминал на компьютере, чтобы начать сессию.',
+        },
+    },
+
+    zen: {
+        title: 'Zen',
+        add: {
+            placeholder: 'Что нужно сделать?',
+        },
+        home: {
+            noTasksYet: 'Пока нет задач. Нажмите +, чтобы добавить.',
+        },
+        view: {
+            workOnTask: 'Работать над задачей',
+            clarify: 'Уточнить',
+            delete: 'Удалить',
+            linkedSessions: 'Связанные сессии',
+            tapTaskTextToEdit: 'Нажмите на текст задачи, чтобы отредактировать',
         },
     },
 
@@ -419,8 +526,8 @@ export const ru: TranslationStructure = {
         connecting: 'подключение',
         disconnected: 'отключено',
         error: 'ошибка',
-        online: 'online',
-        offline: 'offline',
+        online: 'в сети',
+        offline: 'не в сети',
         lastSeen: ({ time }: { time: string }) => `в сети ${time}`,
         permissionRequired: 'требуется разрешение',
         activeNow: 'Активен сейчас',
@@ -439,6 +546,19 @@ export const ru: TranslationStructure = {
 
     commandPalette: {
         placeholder: 'Введите команду или поиск...',
+        noCommandsFound: 'Команды не найдены',
+    },
+
+    commandView: {
+        completedWithNoOutput: '[Команда завершена без вывода]',
+    },
+
+    voiceAssistant: {
+        connecting: 'Подключение...',
+        active: 'Голосовой ассистент активен',
+        connectionError: 'Ошибка соединения',
+        label: 'Голосовой ассистент',
+        tapToEnd: 'Нажмите, чтобы завершить',
     },
 
     agentInput: {
@@ -471,22 +591,22 @@ export const ru: TranslationStructure = {
         codexPermissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ CODEX',
             default: 'Настройки CLI',
-            readOnly: 'Read Only Mode',
-            safeYolo: 'Safe YOLO',
+            readOnly: 'Только чтение',
+            safeYolo: 'Безопасный YOLO',
             yolo: 'YOLO',
             badgeReadOnly: 'Только чтение',
-            badgeSafeYolo: 'Safe YOLO',
+            badgeSafeYolo: 'Безопасный YOLO',
             badgeYolo: 'YOLO',
         },
         codexModel: {
-            title: 'CODEX MODEL',
-            gpt5CodexLow: 'gpt-5-codex low',
-            gpt5CodexMedium: 'gpt-5-codex medium',
-            gpt5CodexHigh: 'gpt-5-codex high',
-            gpt5Minimal: 'GPT-5 Minimal',
-            gpt5Low: 'GPT-5 Low',
-            gpt5Medium: 'GPT-5 Medium',
-            gpt5High: 'GPT-5 High',
+            title: 'МОДЕЛЬ CODEX',
+            gpt5CodexLow: 'gpt-5-codex низкий',
+            gpt5CodexMedium: 'gpt-5-codex средний',
+            gpt5CodexHigh: 'gpt-5-codex высокий',
+            gpt5Minimal: 'GPT-5 Минимальный',
+            gpt5Low: 'GPT-5 Низкий',
+            gpt5Medium: 'GPT-5 Средний',
+            gpt5High: 'GPT-5 Высокий',
         },
         geminiPermissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ',
@@ -499,7 +619,7 @@ export const ru: TranslationStructure = {
             badgeYolo: 'YOLO',
         },
         geminiModel: {
-            title: 'GEMINI MODEL',
+            title: 'МОДЕЛЬ GEMINI',
             gemini25Pro: {
                 label: 'Gemini 2.5 Pro',
                 description: 'Самая мощная',
@@ -519,6 +639,11 @@ export const ru: TranslationStructure = {
         suggestion: {
             fileLabel: 'ФАЙЛ',
             folderLabel: 'ПАПКА',
+        },
+        actionMenu: {
+            title: 'ДЕЙСТВИЯ',
+            files: 'Файлы',
+            stop: 'Остановить',
         },
         noMachinesAvailable: 'Нет машин',
     },
@@ -732,6 +857,11 @@ export const ru: TranslationStructure = {
         deviceLinkedSuccessfully: 'Устройство успешно связано',
         terminalConnectedSuccessfully: 'Терминал успешно подключен',
         invalidAuthUrl: 'Неверный URL авторизации',
+        microphoneAccessRequiredTitle: 'Требуется доступ к микрофону',
+        microphoneAccessRequiredRequestPermission: 'Happy нужен доступ к микрофону для голосового чата. Разрешите доступ, когда появится запрос.',
+        microphoneAccessRequiredEnableInSettings: 'Happy нужен доступ к микрофону для голосового чата. Включите доступ к микрофону в настройках устройства.',
+        microphoneAccessRequiredBrowserInstructions: 'Разрешите доступ к микрофону в настройках браузера. Возможно, нужно нажать на значок замка в адресной строке и включить разрешение микрофона для этого сайта.',
+        openSettings: 'Открыть настройки',
         developerMode: 'Режим разработчика',
         developerModeEnabled: 'Режим разработчика включен',
         developerModeDisabled: 'Режим разработчика отключен',
@@ -780,12 +910,21 @@ export const ru: TranslationStructure = {
     },
 
     machine: {
-        offlineUnableToSpawn: 'Запуск отключен: машина offline',
-        offlineHelp: '• Убедитесь, что компьютер online\n• Выполните `happy daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g happy-coder@latest`',
+        offlineUnableToSpawn: 'Запуск отключён: машина офлайн',
+        offlineHelp: '• Убедитесь, что компьютер онлайн\n• Выполните `happy daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g happy-coder@latest`',
         launchNewSessionInDirectory: 'Запустить новую сессию в папке',
-        daemon: 'Daemon',
+        daemon: 'Демон',
         status: 'Статус',
         stopDaemon: 'Остановить daemon',
+        stopDaemonConfirmTitle: 'Остановить демон?',
+        stopDaemonConfirmBody: 'Вы не сможете создавать новые сессии на этой машине, пока не перезапустите демон на компьютере. Текущие сессии останутся активными.',
+        daemonStoppedTitle: 'Демон остановлен',
+        stopDaemonFailed: 'Не удалось остановить демон. Возможно, он не запущен.',
+        renameTitle: 'Переименовать машину',
+        renameDescription: 'Дайте этой машине имя. Оставьте пустым, чтобы использовать hostname по умолчанию.',
+        renamePlaceholder: 'Введите имя машины',
+        renamedSuccess: 'Машина успешно переименована',
+        renameFailed: 'Не удалось переименовать машину',
         lastKnownPid: 'Последний известный PID',
         lastKnownHttpPort: 'Последний известный HTTP порт',
         startedAt: 'Запущен в',
@@ -802,8 +941,15 @@ export const ru: TranslationStructure = {
         lastSeen: 'Последняя активность',
         never: 'Никогда',
         metadataVersion: 'Версия метаданных',
+        detectedClis: 'Обнаруженные CLI',
+        detectedCliNotDetected: 'Не обнаружено',
+        detectedCliUnknown: 'Неизвестно',
+        detectedCliNotSupported: 'Не поддерживается (обновите happy-cli)',
         untitledSession: 'Безымянная сессия',
         back: 'Назад',
+        notFound: 'Машина не найдена',
+        unknownMachine: 'неизвестная машина',
+        unknownPath: 'неизвестный путь',
     },
 
     message: {
@@ -811,6 +957,10 @@ export const ru: TranslationStructure = {
         unknownEvent: 'Неизвестное событие',
         usageLimitUntil: ({ time }: { time: string }) => `Лимит использования достигнут до ${time}`,
         unknownTime: 'неизвестное время',
+    },
+
+    chatFooter: {
+        permissionsTerminalOnly: 'Разрешения отображаются только в терминале. Сбросьте их или отправьте сообщение, чтобы управлять из приложения.',
     },
 
     codex: {
@@ -851,6 +1001,7 @@ export const ru: TranslationStructure = {
         textCopied: 'Текст скопирован в буфер обмена',
         failedToCopy: 'Не удалось скопировать текст в буфер обмена',
         noTextToCopy: 'Нет текста для копирования',
+        failedToOpen: 'Не удалось открыть выбор текста. Пожалуйста, попробуйте снова.',
     },
 
     markdown: {
@@ -883,11 +1034,14 @@ export const ru: TranslationStructure = {
         edit: 'Редактировать артефакт',
         delete: 'Удалить',
         updateError: 'Не удалось обновить артефакт. Пожалуйста, попробуйте еще раз.',
+        deleteError: 'Не удалось удалить артефакт. Пожалуйста, попробуйте снова.',
         notFound: 'Артефакт не найден',
         discardChanges: 'Отменить изменения?',
         discardChangesDescription: 'У вас есть несохраненные изменения. Вы уверены, что хотите их отменить?',
         deleteConfirm: 'Удалить артефакт?',
         deleteConfirmDescription: 'Это действие нельзя отменить',
+        noContent: 'Нет содержимого',
+        untitled: 'Без названия',
         titleLabel: 'ЗАГОЛОВОК',
         titlePlaceholder: 'Введите заголовок для вашего артефакта',
         bodyLabel: 'СОДЕРЖИМОЕ',
@@ -973,6 +1127,45 @@ export const ru: TranslationStructure = {
         friendAcceptedGeneric: 'Запрос в друзья принят',
     },
 
+    apiKeys: {
+        addTitle: 'Новый API-ключ',
+        savedTitle: 'Сохранённые API-ключи',
+        badgeReady: 'API‑ключ',
+        badgeRequired: 'Требуется API‑ключ',
+        addSubtitle: 'Добавить сохранённый API-ключ',
+        noneTitle: 'Нет',
+        noneSubtitle: 'Используйте окружение машины или введите ключ для этой сессии',
+        emptyTitle: 'Нет сохранённых ключей',
+        emptySubtitle: 'Добавьте ключ, чтобы использовать профили с API-ключом без переменных окружения на машине.',
+        savedHiddenSubtitle: 'Сохранён (значение скрыто)',
+        defaultLabel: 'По умолчанию',
+        fields: {
+            name: 'Имя',
+            value: 'Значение',
+        },
+        placeholders: {
+            nameExample: 'например, Work OpenAI',
+        },
+        validation: {
+            nameRequired: 'Имя обязательно.',
+            valueRequired: 'Значение обязательно.',
+        },
+        actions: {
+            replace: 'Заменить',
+            replaceValue: 'Заменить значение',
+            setDefault: 'Сделать по умолчанию',
+            unsetDefault: 'Убрать по умолчанию',
+        },
+        prompts: {
+            renameTitle: 'Переименовать API-ключ',
+            renameDescription: 'Обновите понятное имя для этого ключа.',
+            replaceValueTitle: 'Заменить значение API-ключа',
+            replaceValueDescription: 'Вставьте новое значение API-ключа. После сохранения оно больше не будет показано.',
+            deleteTitle: 'Удалить API-ключ',
+            deleteConfirm: ({ name }: { name: string }) => `Удалить «${name}»? Это нельзя отменить.`,
+        },
+    },
+
     profiles: {
         // Profile management feature
         title: 'Профили',
@@ -1000,8 +1193,8 @@ export const ru: TranslationStructure = {
         custom: 'Пользовательский',
         builtInSaveAsHint: 'Сохранение встроенного профиля создаёт новый пользовательский профиль.',
         builtInNames: {
-            anthropic: 'Anthropic (Default)',
-            deepseek: 'DeepSeek (Reasoner)',
+            anthropic: 'Anthropic (по умолчанию)',
+            deepseek: 'DeepSeek (Рассуждение)',
             zai: 'Z.AI (GLM-4.6)',
             openai: 'OpenAI (GPT-5)',
             azureOpenai: 'Azure OpenAI',
@@ -1025,6 +1218,92 @@ export const ru: TranslationStructure = {
             title: 'Инструкции по настройке',
             viewOfficialGuide: 'Открыть официальное руководство',
         },
+        machineLogin: {
+            title: 'Требуется вход на машине',
+            subtitle: 'Этот профиль использует кэш входа CLI на выбранной машине.',
+            claudeCode: {
+                title: 'Claude Code',
+                instructions: 'Запустите `claude`, затем введите `/login`, чтобы войти.',
+                warning: 'Примечание: установка `ANTHROPIC_AUTH_TOKEN` переопределяет вход через CLI.',
+            },
+            codex: {
+                title: 'Codex',
+                instructions: 'Выполните `codex login`, чтобы войти.',
+            },
+            geminiCli: {
+                title: 'Gemini CLI',
+                instructions: 'Выполните `gemini auth`, чтобы войти.',
+            },
+        },
+        requirements: {
+            apiKeyRequired: 'API-ключ',
+            configured: 'Настроен на машине',
+            notConfigured: 'Не настроен',
+            checking: 'Проверка…',
+            modalTitle: 'Требуется API-ключ',
+            modalBody: 'Для этого профиля требуется API-ключ.\n\nДоступные варианты:\n• Использовать окружение машины (рекомендуется)\n• Использовать сохранённый ключ из настроек приложения\n• Ввести ключ только для этой сессии',
+            sectionTitle: 'Требования',
+            sectionSubtitle: 'Эти поля используются для предварительной проверки готовности и чтобы избежать неожиданных ошибок.',
+            secretEnvVarPromptDescription: 'Введите имя обязательной секретной переменной окружения (например, OPENAI_API_KEY).',
+            modalHelpWithEnv: ({ env }: { env: string }) => `Для этого профиля требуется ${env}. Выберите один вариант ниже.`,
+            modalHelpGeneric: 'Для этого профиля требуется API-ключ. Выберите один вариант ниже.',
+            modalRecommendation: 'Рекомендуется: задайте ключ в окружении демона на компьютере (чтобы не вставлять его снова). Затем перезапустите демон, чтобы он подхватил новую переменную окружения.',
+            chooseOptionTitle: 'Выберите вариант',
+            machineEnvStatus: {
+                theMachine: 'машине',
+                checkFor: ({ env }: { env: string }) => `Проверить ${env}`,
+                checking: ({ env }: { env: string }) => `Проверяем ${env}…`,
+                found: ({ env, machine }: { env: string; machine: string }) => `${env} найден на ${machine}`,
+                notFound: ({ env, machine }: { env: string; machine: string }) => `${env} не найден на ${machine}`,
+            },
+            machineEnvSubtitle: {
+                checking: 'Проверяем окружение демона…',
+                found: 'Найдено в окружении демона на машине.',
+                notFound: 'Укажите значение в окружении демона на машине и перезапустите демон.',
+            },
+            options: {
+                none: {
+                    title: 'Нет',
+                    subtitle: 'Не требует API-ключа или входа через CLI.',
+                },
+                apiKeyEnv: {
+                    subtitle: 'Требуется API-ключ, который будет передан при запуске сессии.',
+                },
+                machineLogin: {
+                    subtitle: 'Требуется вход через CLI на целевой машине.',
+                    longSubtitle: 'Требуется быть авторизованным через CLI для выбранного бэкенда ИИ на целевой машине.',
+                },
+                useMachineEnvironment: {
+                    title: 'Использовать окружение машины',
+                    subtitleWithEnv: ({ env }: { env: string }) => `Использовать ${env} из окружения демона.`,
+                    subtitleGeneric: 'Использовать ключ из окружения демона.',
+                },
+                useSavedApiKey: {
+                    title: 'Использовать сохранённый API-ключ',
+                    subtitle: 'Выберите (или добавьте) сохранённый ключ в приложении.',
+                },
+                enterOnce: {
+                    title: 'Ввести ключ',
+                    subtitle: 'Вставьте ключ только для этой сессии (он не будет сохранён).',
+                },
+            },
+            apiKeyEnvVar: {
+                title: 'Переменная окружения для API-ключа',
+                subtitle: 'Введите имя переменной окружения, которую этот провайдер ожидает для API-ключа (например, OPENAI_API_KEY).',
+                label: 'Имя переменной окружения',
+            },
+            sections: {
+                machineEnvironment: 'Окружение машины',
+                useOnceTitle: 'Использовать один раз',
+                useOnceFooter: 'Вставьте ключ только для этой сессии. Он не будет сохранён.',
+            },
+            actions: {
+                useMachineEnvironment: {
+                    subtitle: 'Использовать ключ, который уже есть на машине.',
+                },
+                useOnceButton: 'Использовать один раз (только для сессии)',
+            },
+        },
         defaultSessionType: 'Тип сессии по умолчанию',
         defaultPermissionMode: {
             title: 'Режим разрешений по умолчанию',
@@ -1038,8 +1317,8 @@ export const ru: TranslationStructure = {
         aiBackend: {
             title: 'Бекенд ИИ',
             selectAtLeastOneError: 'Выберите хотя бы один бекенд ИИ.',
-            claudeSubtitle: 'Claude CLI',
-            codexSubtitle: 'Codex CLI',
+            claudeSubtitle: 'CLI Claude',
+            codexSubtitle: 'CLI Codex',
             geminiSubtitleExperimental: 'Gemini CLI (экспериментально)',
         },
         tmux: {
