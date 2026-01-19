@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: handy-server
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: handy-server
+  template:
+    metadata:
+      labels:
+        app: handy-server
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: handy
+        image: docker.korshakov.com/handy-server:{version}
+        ports:
+        - containerPort: 3005
+        env:
+        - name: NODE_ENV
+          value: production
+        - name: PORT
+          value: "3005"
+        - name: REDIS_URL
+          value: redis://happy-redis:6379
+        - name: S3_PUBLIC_URL
+          value: https://files.cluster-fluster.com/happy
+        envFrom:
+        - secretRef:
+            name: handy-secrets
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3005
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3005
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: handy-server-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: handy-server
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: handy-secrets
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: SecretStore
+  target:
+    name: handy-secrets
+    creationPolicy: Owner
+  dataFrom:
+    - extract:
+        key: /handy-db
+    - extract:
+        key: /handy-master
+    - extract:
+        key: /handy-github
+    - extract:
+        key: /handy-files
+    - extract:
+        key: /handy-e2b
+    - extract:
+        key: /handy-revenuecat
+    - extract:
+        key: /handy-elevenlabs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: handy-server
+spec:
+  selector:
+    app: handy-server
+  ports:
+  - port: 3000
+    targetPort: 3005
+  type: ClusterIP

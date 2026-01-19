@@ -1,0 +1,12 @@
+node_modules
+.env
+dist
+.pgdata
+.minio
+
+.env.local
+.env
+
+.logs/
+
+.claude/
