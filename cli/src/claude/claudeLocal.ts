@@ -238,6 +238,28 @@ export async function claudeLocal(opts: {
                 env,
             });
 
+            // Forward signals to child process to prevent orphaned processes
+            // Note: signal: opts.abort handles programmatic abort (mode switching),
+            // but direct OS signals (e.g., kill, Ctrl+C) need explicit forwarding
+            const forwardSignal = (signal: NodeJS.Signals) => {
+                if (child.pid && !child.killed) {
+                    child.kill(signal);
+                }
+            };
+            const onSigterm = () => forwardSignal('SIGTERM');
+            const onSigint = () => forwardSignal('SIGINT');
+            const onSighup = () => forwardSignal('SIGHUP');
+            process.on('SIGTERM', onSigterm);
+            process.on('SIGINT', onSigint);
+            process.on('SIGHUP', onSighup);
+
+            // Cleanup signal handlers when child exits to avoid leaks
+            child.on('exit', () => {
+                process.off('SIGTERM', onSigterm);
+                process.off('SIGINT', onSigint);
+                process.off('SIGHUP', onSighup);
+            });
+
             // Listen to the custom fd (fd 3) for thinking state tracking
             if (child.stdio[3]) {
                 const rl = createInterface({
