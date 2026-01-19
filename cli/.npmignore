@@ -1,0 +1,6 @@
+# Exclude unpacked binaries from npm package
+tools/unpacked/
+
+# Keep these for npm package
+# tools/archives/
+# tools/licenses/
