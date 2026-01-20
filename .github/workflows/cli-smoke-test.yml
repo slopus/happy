@@ -46,7 +46,7 @@ jobs:
     - name: Install packed package globally
       run: |
         PACKAGE_FILE=$(ls cli/*.tgz)
-        npm install -g "$PACKAGE_FILE"
+        npm install -g "./$PACKAGE_FILE"
 
     - name: Test binary execution
       run: |
