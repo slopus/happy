@@ -6,7 +6,8 @@
     "paths": {
       "@/*": [
         "./sources/*"
-      ]
+      ],
+      "hello-world": [ "../hello-world" ]
     },
     "jsx": "react-jsx",
     "esModuleInterop": true,

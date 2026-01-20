@@ -4,6 +4,7 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "base": "expo-app",
     "development": {
       "autoIncrement": true,
       "developmentClient": true,
