@@ -1,0 +1,209 @@
+name: Smoke Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  smoke-test-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 24]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'yarn'
+        
+    - name: Install dependencies
+      run: yarn install --immutable
+      
+    - name: Build package
+      run: yarn build
+      
+    - name: Pack package
+      run: yarn pack
+      
+    - name: Install packed package globally
+      run: |
+        PACKAGE_FILE=$(ls *.tgz)
+        npm install -g "$PACKAGE_FILE"
+        
+    - name: Test binary execution
+      run: |
+        # Test that the binary starts successfully
+        echo "Testing happy --help..."
+        timeout 30s happy --help || {
+          echo "Error: happy --help failed or timed out"
+          exit 1
+        }
+        
+        echo "Testing happy --version..."
+        timeout 10s happy --version || {
+          echo "Error: happy --version failed or timed out"
+          exit 1
+        }
+        
+        echo "Testing happy doctor..."
+        timeout 30s happy doctor || {
+          echo "Error: happy doctor failed or timed out"
+          exit 1
+        }
+        
+        echo "Testing happy daemon status..."
+        timeout 10s happy daemon status || {
+          echo "Error: happy daemon status failed or timed out"
+          exit 1
+        }
+        
+        echo "✅ Smoke test passed on Linux!"
+
+  smoke-test-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        node-version: [20, 24]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'yarn'
+        
+    - name: Install dependencies
+      run: yarn install --immutable
+      
+    - name: Build package
+      run: yarn build
+      
+    - name: Pack package
+      run: yarn pack
+      
+    - name: Install packed package globally
+      shell: cmd
+      run: |
+        for %%f in (*.tgz) do npm install -g "%%f"
+        
+    - name: Debug npm global installation structure
+      shell: cmd
+      run: |
+        for /f "tokens=*" %%i in ('npm config get prefix') do set NPM_PREFIX=%%i
+        echo NPM_PREFIX: %NPM_PREFIX%
+        echo Listing npm prefix directory:
+        dir "%NPM_PREFIX%" 2>nul || echo Failed to list NPM_PREFIX
+        echo.
+        echo Checking for node_modules in npm prefix:
+        if exist "%NPM_PREFIX%\node_modules" (
+          echo Found node_modules directory
+          dir "%NPM_PREFIX%\node_modules" 2>nul
+          echo.
+          echo Checking for happy-coder package:
+          if exist "%NPM_PREFIX%\node_modules\happy-coder" (
+            echo Found happy-coder package
+            dir "%NPM_PREFIX%\node_modules\happy-coder" 2>nul
+            echo.
+            echo Checking for dist directory:
+            if exist "%NPM_PREFIX%\node_modules\happy-coder\dist" (
+              echo Found dist directory
+              dir "%NPM_PREFIX%\node_modules\happy-coder\dist" 2>nul
+            ) else (
+              echo No dist directory found
+            )
+          ) else (
+            echo No happy-coder package found
+          )
+        ) else (
+          echo No node_modules directory found
+        )
+        
+    - name: Test binary execution
+      shell: cmd
+      run: |
+        @echo on
+        
+        rem Get npm global prefix and add to PATH
+        for /f "tokens=*" %%i in ('npm config get prefix') do set NPM_PREFIX=%%i
+        set PATH=%NPM_PREFIX%;%PATH%
+        echo NPM_PREFIX: %NPM_PREFIX%
+        echo Current PATH: %PATH%
+        
+        rem Debug: Check if happy exists in various locations
+        echo Checking for happy binary...
+        where happy 2>nul && echo Found happy in PATH || echo happy not found in PATH
+        if exist "%NPM_PREFIX%\happy.cmd" echo Found happy.cmd in NPM_PREFIX
+        if exist "%NPM_PREFIX%\node_modules\.bin\happy.cmd" echo Found happy.cmd in .bin directory
+        dir "%NPM_PREFIX%\*happy*" 2>nul || echo No happy files found in NPM_PREFIX
+        
+        rem Debug: Check the actual contents and encoding of the installed file
+        if exist "%NPM_PREFIX%\happy.cmd" (
+          echo File size and type:
+          dir "%NPM_PREFIX%\happy.cmd"
+          echo.
+          echo First few lines of the file:
+          type "%NPM_PREFIX%\happy.cmd" | head -5
+          echo.
+          echo Hex dump of first 50 bytes to check line endings:
+          powershell -Command "Get-Content '%NPM_PREFIX%\happy.cmd' -Encoding Byte -TotalCount 50 | ForEach-Object { '{0:X2}' -f $_ } | Join-String -Separator ' '"
+          echo.
+          echo Testing with direct path...
+          "%NPM_PREFIX%\happy.cmd" --help
+        ) else (
+          echo Testing happy --help...
+          happy --help
+        )
+        if errorlevel 1 (
+          echo Error: happy --help failed
+          exit /b 1
+        )
+        
+        rem Test version
+        if exist "%NPM_PREFIX%\happy.cmd" (
+          "%NPM_PREFIX%\happy.cmd" --version
+        ) else (
+          happy --version
+        )
+        if errorlevel 1 (
+          echo Error: happy --version failed
+          exit /b 1
+        )
+        
+        rem Test doctor
+        echo Testing happy doctor...
+        if exist "%NPM_PREFIX%\happy.cmd" (
+          "%NPM_PREFIX%\happy.cmd" doctor
+        ) else (
+          happy doctor
+        )
+        if errorlevel 1 (
+          echo Error: happy doctor failed
+          exit /b 1
+        )
+        
+        rem Test daemon status
+        echo Testing happy daemon status...
+        if exist "%NPM_PREFIX%\happy.cmd" (
+          "%NPM_PREFIX%\happy.cmd" daemon status
+        ) else (
+          happy daemon status
+        )
+        if errorlevel 1 (
+          echo Error: happy daemon status failed
+          exit /b 1
+        )
+        
+        echo ✅ Smoke test passed on Windows!
+
+# We don't need a smoke test for macOS because most contributors are developing on macOS.

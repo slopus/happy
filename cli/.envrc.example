@@ -1,0 +1,17 @@
+# Happy CLI Development Environment
+#
+# This file is for direnv users who want automatic environment switching
+# when entering this directory.
+#
+# Setup:
+#   1. Install direnv: https://direnv.net/
+#   2. Copy this file: cp .envrc.example .envrc
+#   3. Run: direnv allow
+#
+# The .envrc file is gitignored, so each developer can customize it.
+
+export HAPPY_HOME_DIR="$HOME/.happy-dev"
+export HAPPY_VARIANT="dev"
+export HAPPY_SERVER_URL="${HAPPY_SERVER_URL:-https://api.cluster-fluster.com}"
+
+echo "🔧 DEV environment activated (data: $HAPPY_HOME_DIR)"

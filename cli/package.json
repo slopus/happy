@@ -1,0 +1,144 @@
+{
+  "name": "happy-coder",
+  "version": "0.14.0-0",
+  "description": "Mobile and Web client for Claude Code and Codex",
+  "author": "Kirill Dubovitskiy",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://github.com/slopus/happy-cli",
+  "bugs": "https://github.com/slopus/happy-cli/issues",
+  "repository": "slopus/happy-cli",
+  "bin": {
+    "happy": "./bin/happy.mjs",
+    "happy-mcp": "./bin/happy-mcp.mjs"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
+    },
+    "./lib": {
+      "require": {
+        "types": "./dist/lib.d.cts",
+        "default": "./dist/lib.cjs"
+      },
+      "import": {
+        "types": "./dist/lib.d.mts",
+        "default": "./dist/lib.mjs"
+      }
+    },
+    "./codex/happyMcpStdioBridge": {
+      "require": {
+        "types": "./dist/codex/happyMcpStdioBridge.d.cts",
+        "default": "./dist/codex/happyMcpStdioBridge.cjs"
+      },
+      "import": {
+        "types": "./dist/codex/happyMcpStdioBridge.d.mts",
+        "default": "./dist/codex/happyMcpStdioBridge.mjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "bin",
+    "scripts",
+    "tools",
+    "package.json"
+  ],
+  "scripts": {
+    "why do we need to build before running tests / dev?": "We need the binary to be built so we run daemon commands which directly run the binary - we don't want them to go out of sync or have custom spawn logic depending how we started happy",
+    "typecheck": "tsc --noEmit",
+    "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
+    "test": "$npm_execpath run build && vitest run",
+    "start": "$npm_execpath run build && node ./bin/happy.mjs",
+    "dev": "tsx src/index.ts",
+    "dev:local-server": "$npm_execpath run build && tsx --env-file .env.dev-local-server src/index.ts",
+    "dev:integration-test-env": "$npm_execpath run build && tsx --env-file .env.integration-test src/index.ts",
+    "prepublishOnly": "$npm_execpath run build && $npm_execpath test",
+    "release": "$npm_execpath install && release-it",
+    "postinstall": "node scripts/unpack-tools.cjs",
+    "// ==== Dev/Stable Variant Management ====": "",
+    "stable": "node scripts/env-wrapper.cjs stable",
+    "dev:variant": "node scripts/env-wrapper.cjs dev",
+    "// ==== Stable Version Quick Commands ====": "",
+    "stable:daemon:start": "node scripts/env-wrapper.cjs stable daemon start",
+    "stable:daemon:stop": "node scripts/env-wrapper.cjs stable daemon stop",
+    "stable:daemon:status": "node scripts/env-wrapper.cjs stable daemon status",
+    "stable:auth": "node scripts/env-wrapper.cjs stable auth",
+    "// ==== Development Version Quick Commands ====": "",
+    "dev:daemon:start": "node scripts/env-wrapper.cjs dev daemon start",
+    "dev:daemon:stop": "node scripts/env-wrapper.cjs dev daemon stop",
+    "dev:daemon:status": "node scripts/env-wrapper.cjs dev daemon status",
+    "dev:auth": "node scripts/env-wrapper.cjs dev auth",
+    "// ==== Setup ====": "",
+    "setup:dev": "node scripts/setup-dev.cjs",
+    "doctor": "node scripts/env-wrapper.cjs stable doctor",
+    "// ==== Development Linking ====": "",
+    "link:dev": "node scripts/link-dev.cjs",
+    "unlink:dev": "node scripts/link-dev.cjs unlink"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.8.0",
+    "@modelcontextprotocol/sdk": "^1.22.0",
+    "@stablelib/base64": "^2.0.1",
+    "@stablelib/hex": "^2.0.1",
+    "@types/cross-spawn": "^6.0.6",
+    "@types/http-proxy": "^1.17.17",
+    "@types/ps-list": "^6.2.1",
+    "@types/qrcode-terminal": "^0.12.2",
+    "@types/react": "^19.2.7",
+    "@types/tmp": "^0.2.6",
+    "ai": "^5.0.107",
+    "axios": "^1.13.2",
+    "chalk": "^5.6.2",
+    "cross-spawn": "^7.0.6",
+    "expo-server-sdk": "^3.15.0",
+    "fastify": "^5.6.2",
+    "fastify-type-provider-zod": "4.0.2",
+    "http-proxy": "^1.18.1",
+    "http-proxy-middleware": "^3.0.5",
+    "ink": "^6.5.1",
+    "open": "^10.2.0",
+    "ps-list": "^8.1.1",
+    "qrcode-terminal": "^0.12.0",
+    "react": "^19.2.0",
+    "socket.io-client": "^4.8.1",
+    "tar": "^7.5.2",
+    "tmp": "^0.2.5",
+    "tweetnacl": "^1.0.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@eslint/compat": "^1",
+    "@types/node": ">=20",
+    "cross-env": "^10.1.0",
+    "dotenv": "^16.6.1",
+    "eslint": "^9",
+    "eslint-config-prettier": "^10",
+    "pkgroll": "^2.14.2",
+    "release-it": "^19.0.6",
+    "shx": "^0.3.3",
+    "ts-node": "^10",
+    "tsx": "^4.20.6",
+    "typescript": "^5",
+    "vitest": "^3.2.4"
+  },
+  "resolutions": {
+    "whatwg-url": "14.2.0",
+    "parse-path": "7.0.3",
+    "@types/parse-path": "7.0.3"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "packageManager": "yarn@1.22.22"
+}
