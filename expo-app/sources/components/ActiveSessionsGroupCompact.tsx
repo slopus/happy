@@ -9,7 +9,7 @@ import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativ
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines, useSetting } from '@/sync/storage';
+import { useAllMachines, useHasUnreadMessages, useSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession, sessionArchive } from '@/sync/ops';
@@ -249,7 +249,13 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                             <View style={styles.sectionHeaderLeft}>
                                 {avatarId && (
                                     <View style={styles.sectionHeaderAvatar}>
-                                        <Avatar id={avatarId} size={24} flavor={firstSession?.metadata?.flavor} />
+                                        {firstSession && (
+                                            <ProjectHeaderAvatar
+                                                avatarId={avatarId}
+                                                flavor={firstSession.metadata?.flavor}
+                                                sessionId={firstSession.id}
+                                            />
+                                        )}
                                     </View>
                                 )}
                                 <Text style={styles.sectionHeaderPath}>
@@ -287,6 +293,11 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
         </View>
     );
 }
+
+const ProjectHeaderAvatar = React.memo(({ avatarId, flavor, sessionId }: { avatarId: string; flavor?: string | null; sessionId: string }) => {
+    const hasUnreadMessages = useHasUnreadMessages(sessionId);
+    return <Avatar id={avatarId} size={24} flavor={flavor} hasUnreadMessages={hasUnreadMessages} />;
+});
 
 // Compact session row component with status line
 const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {

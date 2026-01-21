@@ -193,6 +193,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
 
+    React.useEffect(() => {
+        storage.getState().markSessionViewed(sessionId);
+    }, [sessionId]);
+
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
         if (machineId && cliVersion) {

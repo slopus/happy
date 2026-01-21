@@ -3,7 +3,7 @@ import { View, Pressable, FlatList, Platform } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
-import { SessionListViewItem } from '@/sync/storage';
+import { SessionListViewItem, useHasUnreadMessages } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
@@ -366,6 +366,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
+    const hasUnreadMessages = useHasUnreadMessages(session.id);
 
     const itemContent = (
         <Pressable
@@ -388,7 +389,13 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
             }}
         >
             <View style={styles.avatarContainer}>
-                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+                <Avatar
+                    id={avatarId}
+                    size={48}
+                    monochrome={!sessionStatus.isConnected}
+                    flavor={session.metadata?.flavor}
+                    hasUnreadMessages={hasUnreadMessages}
+                />
                 {session.draft && (
                     <View style={styles.draftIconContainer}>
                         <Ionicons

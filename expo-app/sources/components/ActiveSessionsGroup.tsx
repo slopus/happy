@@ -9,7 +9,7 @@ import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativ
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines, useSetting } from '@/sync/storage';
+import { useAllMachines, useHasUnreadMessages, useSetting } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession, sessionArchive } from '@/sync/ops';
@@ -370,6 +370,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
+    const hasUnreadMessages = useHasUnreadMessages(session.id);
 
     const itemContent = (
         <Pressable
@@ -390,7 +391,13 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
             }}
         >
             <View style={styles.avatarContainer}>
-                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+                <Avatar
+                    id={avatarId}
+                    size={48}
+                    monochrome={!sessionStatus.isConnected}
+                    flavor={session.metadata?.flavor}
+                    hasUnreadMessages={hasUnreadMessages}
+                />
             </View>
             <View style={styles.sessionContent}>
                 {/* Title line */}

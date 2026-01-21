@@ -12,7 +12,7 @@ import { TodoState } from "../-zen/model/ops";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
 import type { PermissionMode } from '@/sync/permissionTypes';
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionPermissionModeUpdatedAts, saveSessionPermissionModeUpdatedAts, loadSessionModelModes, saveSessionModelModes } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionPermissionModeUpdatedAts, saveSessionPermissionModeUpdatedAts, loadSessionModelModes, saveSessionModelModes, loadSessionLastViewed, saveSessionLastViewed } from "./persistence";
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -23,6 +23,7 @@ import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
 import { nowServerMs } from "./time";
 import { buildSessionListViewData, type SessionListViewItem } from './sessionListViewData';
+import { hasUnreadMessages as computeHasUnreadMessages } from './unread';
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -98,6 +99,7 @@ interface StorageState {
     nativeUpdateStatus: { available: boolean; updateUrl?: string } | null;
     todoState: TodoState | null;
     todosLoaded: boolean;
+    sessionLastViewed: Record<string, number>;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyLoaded: () => void;
@@ -124,6 +126,7 @@ interface StorageState {
     setLastSyncAt: (ts: number) => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
+    markSessionViewed: (sessionId: string) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
     updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => void;
     // Artifact methods
@@ -164,6 +167,7 @@ export const storage = create<StorageState>()((set, get) => {
     let sessionPermissionModes = loadSessionPermissionModes();
     let sessionModelModes = loadSessionModelModes();
     let sessionPermissionModeUpdatedAts = loadSessionPermissionModeUpdatedAts();
+    let sessionLastViewed = loadSessionLastViewed();
 
     const persistSessionPermissionData = (sessions: Record<string, Session>) => {
         const allModes: Record<string, PermissionMode> = {};
@@ -207,6 +211,7 @@ export const storage = create<StorageState>()((set, get) => {
         friendsLoaded: false,  // Initialize as false
         todoState: null,  // Initialize todo state
         todosLoaded: false,  // Initialize todos loaded state
+        sessionLastViewed,
         sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
         sessionMessages: {},
@@ -849,6 +854,15 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
+        markSessionViewed: (sessionId: string) => {
+            const now = Date.now();
+            sessionLastViewed[sessionId] = now;
+            saveSessionLastViewed(sessionLastViewed);
+            set((state) => ({
+                ...state,
+                sessionLastViewed: { ...sessionLastViewed }
+            }));
+        },
         updateSessionPermissionMode: (sessionId: string, mode: PermissionMode) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
@@ -1019,6 +1033,9 @@ export const storage = create<StorageState>()((set, get) => {
             delete modelModes[sessionId];
             saveSessionModelModes(modelModes);
             sessionModelModes = modelModes;
+
+            delete sessionLastViewed[sessionId];
+            saveSessionLastViewed(sessionLastViewed);
             
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(
@@ -1032,6 +1049,7 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: remainingSessions,
                 sessionMessages: remainingSessionMessages,
                 sessionGitStatus: remainingGitStatus,
+                sessionLastViewed: { ...sessionLastViewed },
                 sessionListViewData
             };
         }),
@@ -1179,6 +1197,14 @@ export function useSessionMessages(sessionId: string): { messages: Message[], is
             isLoaded: session?.isLoaded ?? false
         };
     }));
+}
+
+export function useHasUnreadMessages(sessionId: string): boolean {
+    return storage((state) => {
+        const lastViewedAt = state.sessionLastViewed[sessionId];
+        const messages = state.sessionMessages[sessionId]?.messages;
+        return computeHasUnreadMessages({ lastViewedAt, messages });
+    });
 }
 
 export function useMessage(sessionId: string, messageId: string): Message | null {
