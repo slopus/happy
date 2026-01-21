@@ -712,5 +712,4 @@ export type {
     TreeNode,
     SessionRipgrepResponse,
     SessionKillResponse,
-    SessionArchiveResponse
 };
