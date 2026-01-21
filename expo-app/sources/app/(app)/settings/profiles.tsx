@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Pressable } from 'react-native';
+import { View, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { useSettingMutable } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
@@ -30,6 +30,7 @@ interface ProfileManagerProps {
 // Profile utilities now imported from @/sync/profileUtils
 const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerProps) {
     const { theme } = useUnistyles();
+    const router = useRouter();
     const navigation = useNavigation();
     const [useProfiles, setUseProfiles] = useSettingMutable('useProfiles');
     const [profiles, setProfiles] = useSettingMutable('profiles');
@@ -84,16 +85,28 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     }, [isEditingDirty]);
 
     const handleAddProfile = () => {
+        if (Platform.OS !== 'web') {
+            router.push({ pathname: '/new/pick/profile-edit', params: {} } as any);
+            return;
+        }
         setEditingProfile(createEmptyCustomProfile());
         setShowAddForm(true);
     };
 
     const handleEditProfile = (profile: AIBackendProfile) => {
+        if (Platform.OS !== 'web') {
+            router.push({ pathname: '/new/pick/profile-edit', params: { profileId: profile.id } } as any);
+            return;
+        }
         setEditingProfile({ ...profile });
         setShowAddForm(true);
     };
 
     const handleDuplicateProfile = (profile: AIBackendProfile) => {
+        if (Platform.OS !== 'web') {
+            router.push({ pathname: '/new/pick/profile-edit', params: { cloneFromProfileId: profile.id } } as any);
+            return;
+        }
         setEditingProfile(duplicateProfileForEdit(profile, { copySuffix: t('profiles.copySuffix') }));
         setShowAddForm(true);
     };
@@ -394,6 +407,8 @@ const profileManagerStyles = StyleSheet.create((theme) => ({
         width: '100%',
         maxWidth: 600,
         maxHeight: '90%',
+        flex: 1,
+        minHeight: 0,
         borderRadius: 16,
         overflow: 'hidden',
         backgroundColor: theme.colors.groupped.background,

@@ -252,38 +252,35 @@ export default React.memo(function ProfileEditScreen() {
                 options={{
                     headerTitle: profile.name ? t('profiles.editProfile') : t('profiles.addProfile'),
                     headerBackTitle: t('common.back'),
-                    ...(isDirty
-                        ? {
-                            headerLeft: () => (
-                                <Pressable
-                                    onPress={handleCancel}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={t('common.cancel')}
-                                    hitSlop={12}
-                                    style={({ pressed }) => ({
-                                        opacity: pressed ? 0.7 : 1,
-                                        padding: 4,
-                                    })}
-                                >
-                                    <Ionicons name="close" size={24} color={theme.colors.header.tint} />
-                                </Pressable>
-                            ),
-                            headerRight: () => (
-                                <Pressable
-                                    onPress={() => saveRef.current?.()}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={t('common.save')}
-                                    hitSlop={12}
-                                    style={({ pressed }) => ({
-                                        opacity: pressed ? 0.7 : 1,
-                                        padding: 4,
-                                    })}
-                                >
-                                    <Ionicons name="checkmark" size={24} color={theme.colors.header.tint} />
-                                </Pressable>
-                            ),
-                        }
-                    : {}),
+                    headerLeft: () => (
+                        <Pressable
+                            onPress={handleCancel}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('common.cancel')}
+                            hitSlop={12}
+                            style={({ pressed }) => ({
+                                opacity: pressed ? 0.7 : 1,
+                                padding: 4,
+                            })}
+                        >
+                            <Ionicons name="close" size={24} color={theme.colors.header.tint} />
+                        </Pressable>
+                    ),
+                    headerRight: () => (
+                        <Pressable
+                            onPress={() => saveRef.current?.()}
+                            disabled={!isDirty}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('common.save')}
+                            hitSlop={12}
+                            style={({ pressed }) => ({
+                                opacity: !isDirty ? 0.35 : pressed ? 0.7 : 1,
+                                padding: 4,
+                            })}
+                        >
+                            <Ionicons name="checkmark" size={24} color={theme.colors.header.tint} />
+                        </Pressable>
+                    ),
                 }}
             />
             <View style={[

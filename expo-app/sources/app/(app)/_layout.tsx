@@ -330,6 +330,11 @@ export default function RootLayout() {
                 options={{
                     headerTitle: '',
                     headerBackTitle: t('common.back'),
+                    // When /new is presented as `containedModal` on iOS, pushing a default "card" screen
+                    // from within it can end up behind the modal (increasing the back stack without
+                    // becoming visible). Present profile-edit as `containedModal` too so it always
+                    // shows above the wizard.
+                    presentation: Platform.OS === 'ios' ? 'containedModal' : undefined,
                 }}
             />
             <Stack.Screen

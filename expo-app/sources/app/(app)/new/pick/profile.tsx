@@ -1,6 +1,7 @@
 import React from 'react';
 import { Stack, useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Platform, Pressable } from 'react-native';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { useSetting, useSettingMutable } from '@/sync/storage';
@@ -237,6 +238,20 @@ export default React.memo(function ProfilePickerScreen() {
                     headerShown: true,
                     headerTitle: t('profiles.title'),
                     headerBackTitle: t('common.back'),
+                    // /new is presented as `containedModal` on iOS. Ensure picker screens are too,
+                    // otherwise they can be pushed "behind" the modal (invisible but on the back stack).
+                    presentation: Platform.OS === 'ios' ? 'containedModal' : undefined,
+                    headerLeft: () => (
+                        <Pressable
+                            onPress={() => router.back()}
+                            hitSlop={10}
+                            style={({ pressed }) => ({ marginLeft: 10, padding: 4, opacity: pressed ? 0.7 : 1 })}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('common.back')}
+                        >
+                            <Ionicons name="chevron-back" size={22} color={theme.colors.header.tint} />
+                        </Pressable>
+                    ),
                 }}
             />
 
