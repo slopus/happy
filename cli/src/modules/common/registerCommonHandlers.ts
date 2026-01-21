@@ -208,7 +208,7 @@ async function detectCliVersion(params: { name: DetectCliName; resolvedPath: str
 async function detectTmuxVersion(params: { resolvedPath: string }): Promise<string | null> {
     // Best-effort, must never throw.
     try {
-        const timeoutMs = 600;
+        const timeoutMs = 1500;
         const isWindows = process.platform === 'win32';
         const isCmdScript = isWindows && /\.(cmd|bat)$/i.test(params.resolvedPath);
 
