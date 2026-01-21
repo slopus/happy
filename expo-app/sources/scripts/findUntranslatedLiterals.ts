@@ -112,7 +112,15 @@ function scanFile(filePath: string): Finding[] {
     if (rel.includes(`sources${path.sep}scripts${path.sep}`)) return [];
 
     const sourceText = fs.readFileSync(filePath, 'utf8');
-    const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true, filePath.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+    const scriptKind =
+        filePath.endsWith('.tsx')
+            ? ts.ScriptKind.TSX
+            : filePath.endsWith('.ts')
+                ? ts.ScriptKind.TS
+                : filePath.endsWith('.jsx')
+                    ? ts.ScriptKind.JSX
+                    : ts.ScriptKind.JS;
+    const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true, scriptKind);
 
     const findings: Finding[] = [];
 
@@ -242,7 +250,9 @@ console.log(`# Potential Untranslated UI Literals (${all.length} findings)\n`);
 console.log(`Scanned: ${files.length} source files under ${path.relative(projectRoot, sourcesRoot)}\n`);
 
 for (const [key, list] of grouped.entries()) {
-    const [kind, text] = key.split(':', 2);
+    const colonIndex = key.indexOf(':');
+    const kind = colonIndex >= 0 ? key.slice(0, colonIndex) : key;
+    const text = colonIndex >= 0 ? key.slice(colonIndex + 1) : '';
     console.log(`- ${kind}: "${text}" (${list.length} occurrence${list.length === 1 ? '' : 's'})`);
     for (const f of list.slice(0, 10)) {
         console.log(`  - ${f.file}:${f.line}:${f.col}  ${f.context}`);
