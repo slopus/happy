@@ -522,8 +522,6 @@ function NewSessionScreen() {
     }, [machines, recentMachinePaths]);
 
     const openSecretRequirementModal = React.useCallback((profile: AIBackendProfile, options: { revertOnCancel: boolean }) => {
-        isSecretRequirementModalOpenRef.current = true;
-
         const selectedSecretIdByEnvVarName = selectedSecretIdByProfileIdByEnvVarName[profile.id] ?? {};
         const sessionOnlySecretValueByEnvVarName = sessionOnlySecretValueByProfileIdByEnvVarName[profile.id] ?? {};
 
@@ -542,7 +540,11 @@ function NewSessionScreen() {
             satisfaction.items.find((i) => i.required && !i.isSatisfied)?.envVarName ??
             satisfaction.items[0]?.envVarName ??
             null;
-        if (!targetEnvVarName) return;
+        if (!targetEnvVarName) {
+            isSecretRequirementModalOpenRef.current = false;
+            return;
+        }
+        isSecretRequirementModalOpenRef.current = true;
 
         const selectedRaw = selectedSecretIdByEnvVarName[targetEnvVarName];
         const selectedSavedSecretIdForProfile =
