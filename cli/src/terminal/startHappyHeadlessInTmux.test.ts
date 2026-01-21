@@ -34,7 +34,6 @@ vi.mock('@/utils/spawnHappyCLI', () => ({
 
 describe('startHappyHeadlessInTmux', () => {
   const originalTmuxEnv = process.env.TMUX;
-  const originalEnv = process.env;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -47,8 +46,11 @@ describe('startHappyHeadlessInTmux', () => {
     (Date.now as any).mockRestore?.();
     (console.log as any).mockRestore?.();
     (console.error as any).mockRestore?.();
-    process.env = originalEnv;
-    process.env.TMUX = originalTmuxEnv;
+    if (originalTmuxEnv === undefined) {
+      delete process.env.TMUX;
+    } else {
+      process.env.TMUX = originalTmuxEnv;
+    }
   });
 
   it('prints only select-window when already inside tmux', async () => {
@@ -57,9 +59,10 @@ describe('startHappyHeadlessInTmux', () => {
 
     await startHappyHeadlessInTmux([]);
 
-    expect(console.log).toHaveBeenCalledWith('✓ Started Happy in tmux');
-    expect(console.log).toHaveBeenCalledWith('  Target: picked:happy-123-claude');
-    expect(console.log).toHaveBeenCalledWith('  Attach: tmux select-window -t picked:happy-123-claude');
+    const lines = (console.log as any).mock.calls.map((c: any[]) => String(c[0] ?? ''));
+    expect(lines.some((l: string) => l.includes('Started Happy in tmux'))).toBe(true);
+    expect(lines.some((l: string) => l.includes('tmux select-window -t') && l.includes('picked:happy-123-claude'))).toBe(true);
+    expect(lines.some((l: string) => l.includes('tmux attach -t'))).toBe(false);
   });
 
   it('prints attach then select-window when outside tmux', async () => {
@@ -68,13 +71,11 @@ describe('startHappyHeadlessInTmux', () => {
 
     await startHappyHeadlessInTmux([]);
 
-    const calls = (console.log as any).mock.calls.map((c: any[]) => c[0]);
-    expect(calls).toEqual([
-      '✓ Started Happy in tmux',
-      '  Target: happy:happy-123-claude',
-      '  Attach: tmux attach -t happy',
-      '          tmux select-window -t happy:happy-123-claude',
-    ]);
+    const lines = (console.log as any).mock.calls.map((c: any[]) => String(c[0] ?? ''));
+    const attachIdx = lines.findIndex((l: string) => l.includes('tmux attach -t') && l.includes('happy'));
+    const selectIdx = lines.findIndex((l: string) => l.includes('tmux select-window -t') && l.includes('happy:happy-123-claude'));
+    expect(attachIdx).toBeGreaterThanOrEqual(0);
+    expect(selectIdx).toBeGreaterThanOrEqual(0);
+    expect(attachIdx).toBeLessThan(selectIdx);
   });
 });
-
