@@ -86,8 +86,7 @@ export async function startHappyHeadlessInTmux(argv: string[]): Promise<void> {
   if (insideTmux) {
     console.log(`  Attach: tmux select-window -t ${tmuxTarget}`);
   } else {
-    console.log(`  Attach: tmux select-window -t ${tmuxTarget}`);
-    console.log(`          tmux attach -t ${resolvedSessionName}`);
+    console.log(`  Attach: tmux attach -t ${resolvedSessionName}`);
+    console.log(`          tmux select-window -t ${tmuxTarget}`);
   }
 }
-
