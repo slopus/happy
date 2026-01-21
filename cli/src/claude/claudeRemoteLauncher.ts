@@ -15,6 +15,7 @@ import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
+import { formatErrorForUi } from "@/utils/formatErrorForUi";
 
 interface PermissionsField {
     date: number;
@@ -83,17 +84,43 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         await abort();
     }
 
+    async function ensureSessionInfoBeforeSwitch(): Promise<void> {
+        const needsSessionId = session.sessionId === null;
+        const needsTranscriptPath = session.transcriptPath === null;
+        if (!needsSessionId && !needsTranscriptPath) return;
+
+        session.client.sendSessionEvent({
+            type: 'message',
+            message: needsSessionId
+                ? 'Waiting for Claude session to initialize before switching…'
+                : 'Waiting for Claude transcript info before switching…',
+        });
+
+        await session.waitForSessionFound({
+            timeoutMs: 2000,
+            requireTranscriptPath: needsTranscriptPath,
+        });
+    }
+
     async function doSwitch() {
         logger.debug('[remote]: doSwitch');
         if (!exitReason) {
             exitReason = 'switch';
         }
+        await ensureSessionInfoBeforeSwitch();
         await abort();
     }
 
     // When to abort
     session.client.rpcHandlerManager.registerHandler('abort', doAbort); // When abort clicked
-    session.client.rpcHandlerManager.registerHandler('switch', doSwitch); // When switch clicked
+    session.client.rpcHandlerManager.registerHandler('switch', async (params: any) => {
+        // Newer clients send a target mode. Older clients send no params.
+        // Remote launcher is already in remote mode, so {to:'remote'} is a no-op.
+        const to = params && typeof params === 'object' ? (params as any).to : undefined;
+        if (to === 'remote') return false;
+        await doSwitch();
+        return true;
+    }); // When switch clicked
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
     // Create permission handler
@@ -326,6 +353,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             try {
                 const remoteResult = await claudeRemote({
                     sessionId: session.sessionId,
+                    transcriptPath: session.transcriptPath,
                     path: session.path,
                     allowedTools: session.allowedTools ?? [],
                     mcpServers: session.mcpServers,
@@ -403,7 +431,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             } catch (e) {
                 logger.debug('[remote]: launch error', e);
                 if (!exitReason) {
-                    session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    session.client.sendSessionEvent({ type: 'message', message: `Claude process error: ${formatErrorForUi(e)}` });
                     continue;
                 }
             } finally {

@@ -229,4 +229,43 @@ describe('claudeLocal --continue handling', () => {
         const spawnArgs = mockSpawn.mock.calls[0][1];
         expect(spawnArgs).toContain('-r');
     });
+
+    it('should preserve --continue in hook mode (do not convert using local heuristics)', async () => {
+        mockClaudeFindLastSession.mockReturnValue('should-not-be-used');
+
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: ['--continue'],
+            hookSettingsPath: '/tmp/hooks.json',
+        });
+
+        const spawnArgs = mockSpawn.mock.calls[0][1];
+
+        // RED: current implementation strips --continue and may try to convert it.
+        expect(spawnArgs).toContain('--continue');
+        expect(spawnArgs).not.toContain('--resume');
+        expect(spawnArgs).not.toContain('--session-id');
+        expect(onSessionFound).not.toHaveBeenCalled();
+    });
+
+    it('should preserve --session-id in hook mode (Claude should control session ID)', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: ['--session-id', '123e4567-e89b-12d3-a456-426614174999'],
+            hookSettingsPath: '/tmp/hooks.json',
+        });
+
+        const spawnArgs = mockSpawn.mock.calls[0][1];
+
+        // RED: current implementation extracts --session-id and ignores it in hook mode.
+        expect(spawnArgs).toContain('--session-id');
+        expect(spawnArgs).toContain('123e4567-e89b-12d3-a456-426614174999');
+        expect(onSessionFound).not.toHaveBeenCalled();
+    });
 });

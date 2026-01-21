@@ -210,8 +210,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 const previousSessionId = currentSession.sessionId;
                 if (previousSessionId !== sessionId) {
                     logger.debug(`[START] Claude session ID changed: ${previousSessionId} -> ${sessionId}`);
-                    currentSession.onSessionFound(sessionId);
                 }
+                currentSession.onSessionFound(sessionId, data);
             }
         }
     });

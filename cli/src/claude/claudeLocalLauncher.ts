@@ -1,27 +1,35 @@
 import { logger } from "@/ui/logger";
 import { claudeLocal } from "./claudeLocal";
-import { Session } from "./session";
+import { Session, type SessionFoundInfo } from "./session";
 import { Future } from "@/utils/future";
 import { createSessionScanner } from "./utils/sessionScanner";
+import { formatErrorForUi } from "@/utils/formatErrorForUi";
 
 export async function claudeLocalLauncher(session: Session): Promise<'switch' | 'exit'> {
 
     // Create scanner
     const scanner = await createSessionScanner({
         sessionId: session.sessionId,
+        transcriptPath: session.transcriptPath,
         workingDirectory: session.path,
         onMessage: (message) => { 
             // Block SDK summary messages - we generate our own
             if (message.type !== 'summary') {
                 session.client.sendClaudeSessionMessage(message)
             }
-        }
+        },
+        onTranscriptMissing: () => {
+            session.client.sendSessionEvent({
+                type: 'message',
+                message: 'Claude transcript file not found yet — waiting for it to appear…'
+            });
+        },
     });
     
     // Register callback to notify scanner when session ID is found via hook
     // This is important for --continue/--resume where session ID is not known upfront
-    const scannerSessionCallback = (sessionId: string) => {
-        scanner.onNewSession(sessionId);
+    const scannerSessionCallback = (info: SessionFoundInfo) => {
+        scanner.onNewSession({ sessionId: info.sessionId, transcriptPath: info.transcriptPath });
     };
     session.addSessionFoundCallback(scannerSessionCallback);
 
@@ -42,6 +50,24 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
             await exutFuture.promise;
         }
 
+        async function ensureSessionInfoBeforeSwitch(): Promise<void> {
+            const needsSessionId = session.sessionId === null;
+            const needsTranscriptPath = session.transcriptPath === null;
+            if (!needsSessionId && !needsTranscriptPath) return;
+
+            session.client.sendSessionEvent({
+                type: 'message',
+                message: needsSessionId
+                    ? 'Waiting for Claude session to initialize before switching…'
+                    : 'Waiting for Claude transcript info before switching…',
+            });
+
+            await session.waitForSessionFound({
+                timeoutMs: 2000,
+                requireTranscriptPath: needsTranscriptPath,
+            });
+        }
+
         async function doAbort() {
             logger.debug('[local]: doAbort');
 
@@ -54,6 +80,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
             session.queue.reset();
 
             // Abort
+            await ensureSessionInfoBeforeSwitch();
             await abort();
         }
 
@@ -66,15 +93,23 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
             }
 
             // Abort
+            await ensureSessionInfoBeforeSwitch();
             await abort();
         }
 
         // When to abort
         session.client.rpcHandlerManager.registerHandler('abort', doAbort); // Abort current process, clean queue and switch to remote mode
-        session.client.rpcHandlerManager.registerHandler('switch', doSwitch); // When user wants to switch to remote mode
+        session.client.rpcHandlerManager.registerHandler('switch', async (params: any) => {
+            // Newer clients send a target mode. Older clients send no params.
+            // Local launcher is already in local mode, so {to:'local'} is a no-op.
+            const to = params && typeof params === 'object' ? (params as any).to : undefined;
+            if (to === 'local') return false;
+            await doSwitch();
+            return true;
+        }); // When user wants to switch to remote mode
         session.queue.setOnMessage((message: string, mode) => {
             // Switch to remote mode when message received
-            doSwitch();
+            void doSwitch();
         }); // When any message is received, abort current process, clean queue and switch to remote mode
 
         // Exit if there are messages in the queue
@@ -123,7 +158,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
             } catch (e) {
                 logger.debug('[local]: launch error', e);
                 if (!exitReason) {
-                    session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    session.client.sendSessionEvent({ type: 'message', message: `Claude process error: ${formatErrorForUi(e)}` });
                     continue;
                 } else {
                     break;
@@ -138,7 +173,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
 
         // Set handlers to no-op
         session.client.rpcHandlerManager.registerHandler('abort', async () => { });
-        session.client.rpcHandlerManager.registerHandler('switch', async () => { });
+        session.client.rpcHandlerManager.registerHandler('switch', async () => false);
         session.queue.setOnMessage(null);
         
         // Remove session found callback

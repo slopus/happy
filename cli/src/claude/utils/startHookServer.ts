@@ -67,8 +67,10 @@ export interface SessionHookData {
     session_id?: string;
     sessionId?: string;
     transcript_path?: string;
+    transcriptPath?: string;
     cwd?: string;
     hook_event_name?: string;
+    hookEventName?: string;
     source?: string;
     [key: string]: unknown;
 }
@@ -173,4 +175,3 @@ export async function startHookServer(options: HookServerOptions): Promise<HookS
         });
     });
 }
-

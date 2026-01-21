@@ -169,6 +169,80 @@ describe('sessionScanner', () => {
       expect(content).toContain('readme.md')
     }
   })
+
+  it('should read from transcriptPath when provided (even if projectDir differs)', async () => {
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg)
+    })
+
+    const altProjectDir = join(testDir, 'alt-project')
+    await mkdir(altProjectDir, { recursive: true })
+
+    const sessionId = '11111111-1111-1111-1111-111111111111'
+    const transcriptPath = join(altProjectDir, `${sessionId}.jsonl`)
+    await writeFile(transcriptPath, JSON.stringify({
+      type: 'user',
+      uuid: 'm1',
+      message: { content: 'hello from alt dir' }
+    }) + '\n')
+
+    // Intentionally pass a "future" API shape to force a RED test:
+    // current implementation only accepts a string sessionId and will watch the wrong path.
+    ;(scanner as any).onNewSession({ sessionId, transcriptPath })
+
+    await waitFor(() => collectedMessages.length >= 1, 500)
+
+    expect(collectedMessages).toHaveLength(1)
+    expect(collectedMessages[0].type).toBe('user')
+    if (collectedMessages[0].type === 'user') {
+      expect(collectedMessages[0].message.content).toBe('hello from alt dir')
+    }
+  })
+
+  it('should use initial transcriptPath to mark existing messages as processed', async () => {
+    const altProjectDir = join(testDir, 'alt-project')
+    await mkdir(altProjectDir, { recursive: true })
+
+    const sessionId = '22222222-2222-2222-2222-222222222222'
+    const transcriptPath = join(altProjectDir, `${sessionId}.jsonl`)
+
+    // Existing message should be treated as already-processed (not emitted)
+    await writeFile(
+      transcriptPath,
+      JSON.stringify({
+        type: 'user',
+        uuid: 'm_old',
+        message: { content: 'old message' },
+      }) + '\n',
+    )
+
+    scanner = await createSessionScanner({
+      sessionId,
+      // Force a RED test: current implementation ignores this and will watch the wrong path
+      transcriptPath,
+      workingDirectory: testDir,
+      onMessage: (msg: RawJSONLines) => collectedMessages.push(msg),
+    } as any)
+
+    // Should not emit existing history on startup
+    expect(collectedMessages).toHaveLength(0)
+
+    // Append new message and ensure it is emitted
+    await appendFile(
+      transcriptPath,
+      JSON.stringify({
+        type: 'assistant',
+        uuid: 'm_new',
+        message: {},
+      }) + '\n',
+    )
+
+    await waitFor(() => collectedMessages.length >= 1, 1000)
+    expect(collectedMessages).toHaveLength(1)
+    expect(collectedMessages[0].type).toBe('assistant')
+  })
   
   it('should not process duplicate assistant messages with same message ID', async () => {
     // Currently broken unclear if we need this or not post migrating to sdk & removeing deduplication
@@ -231,5 +305,26 @@ describe('sessionScanner', () => {
     //   expect((lastAssistantMsg.message.content as any)[0].text).toBe('kekr')
     //   expect(lastAssistantMsg.message.id).toBe('msg_01KWeuP88pkzRtXmggJRnQmV')
     // }
+  })
+
+  it('should notify when transcript file is missing for too long', async () => {
+    const missing: { sessionId: string; filePath: string }[] = []
+
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+      onTranscriptMissing: (info: { sessionId: string; filePath: string }) => missing.push(info),
+      transcriptMissingWarningMs: 50,
+    })
+
+    const sessionId = '11111111-1111-1111-1111-111111111111'
+    scanner.onNewSession(sessionId)
+
+    await waitFor(() => missing.length >= 1)
+
+    expect(missing).toEqual([
+      { sessionId, filePath: join(projectDir, `${sessionId}.jsonl`) },
+    ])
   })
 })

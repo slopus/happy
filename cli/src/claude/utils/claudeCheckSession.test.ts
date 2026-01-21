@@ -160,6 +160,19 @@ describe('claudeCheckSession', () => {
 
             expect(claudeCheckSession(sessionId, testDir)).toBe(true);
         });
+
+        it('should accept session when transcriptPath override points to valid file outside projectDir', () => {
+            const sessionId = '33333333-3333-3333-3333-333333333333';
+
+            const altDir = join(testDir, 'alt-project');
+            mkdirSync(altDir, { recursive: true });
+
+            const transcriptPath = join(altDir, `${sessionId}.jsonl`);
+            writeFileSync(transcriptPath, JSON.stringify({ uuid: 'msg-override', type: 'user' }) + '\n');
+
+            // RED: current implementation ignores transcriptPath and checks only `${getProjectPath(path)}/${sessionId}.jsonl`
+            expect((claudeCheckSession as any)(sessionId, testDir, transcriptPath)).toBe(true);
+        });
     });
 
     describe('Mixed format sessions', () => {

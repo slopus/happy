@@ -80,9 +80,7 @@ export async function loop(opts: LoopOptions) {
 
             // Non "exit" reason means we need to switch to remote mode
             mode = 'remote';
-            if (opts.onModeChange) {
-                opts.onModeChange(mode);
-            }
+            session.onModeChange(mode);
             continue;
         }
 
@@ -95,9 +93,7 @@ export async function loop(opts: LoopOptions) {
 
             // Non "exit" reason means we need to switch to local mode
             mode = 'local';
-            if (opts.onModeChange) {
-                opts.onModeChange(mode);
-            }
+            session.onModeChange(mode);
             continue;
         }
     }

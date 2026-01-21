@@ -7,8 +7,6 @@ import { projectPath } from "@/projectPath";
 import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { logger } from "@/lib";
 import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
-import { getProjectPath } from "./utils/path";
-import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
@@ -17,6 +15,7 @@ export async function claudeRemote(opts: {
 
     // Fixed parameters
     sessionId: string | null,
+    transcriptPath: string | null,
     path: string,
     mcpServers?: Record<string, any>,
     claudeEnvVars?: Record<string, string>,
@@ -44,7 +43,7 @@ export async function claudeRemote(opts: {
 
     // Check if session is valid
     let startFrom = opts.sessionId;
-    if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path)) {
+    if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path, opts.transcriptPath)) {
         startFrom = null;
     }
     
@@ -177,14 +176,10 @@ export async function claudeRemote(opts: {
                 updateThinking(true);
 
                 const systemInit = message as SDKSystemMessage;
-
-                // Session id is still in memory, wait until session file is written to disk
-                // Start a watcher for to detect the session id
                 if (systemInit.session_id) {
-                    logger.debug(`[claudeRemote] Waiting for session file to be written to disk: ${systemInit.session_id}`);
-                    const projectDir = getProjectPath(opts.path);
-                    const found = await awaitFileExist(join(projectDir, `${systemInit.session_id}.jsonl`));
-                    logger.debug(`[claudeRemote] Session file found: ${systemInit.session_id} ${found}`);
+                    // Do not block on filesystem writes here.
+                    // The session scanner can handle missing files via watcher retries + UI warnings.
+                    logger.debug(`[claudeRemote] Session initialized: ${systemInit.session_id}`);
                     opts.onSessionFound(systemInit.session_id);
                 }
             }

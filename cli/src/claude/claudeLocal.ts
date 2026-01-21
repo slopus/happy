@@ -78,39 +78,44 @@ export async function claudeLocal(opts: {
         return { found: false };
     };
 
-    // 1. Check for --session-id <uuid> (explicit new session with specific ID)
-    const sessionIdFlag = extractFlag(['--session-id'], true);
-    if (sessionIdFlag.found && sessionIdFlag.value) {
-        startFrom = null; // Force new session mode, will use this ID below
-        logger.debug(`[ClaudeLocal] Using explicit --session-id: ${sessionIdFlag.value}`);
-    }
+    // Session-flag interception is only needed in offline mode (no hook server),
+    // where we must determine the session ID ourselves.
+    let sessionIdFlag: { found: boolean; value?: string } = { found: false };
+    if (!opts.hookSettingsPath) {
+        // 1. Check for --session-id <uuid> (explicit new session with specific ID)
+        sessionIdFlag = extractFlag(['--session-id'], true);
+        if (sessionIdFlag.found && sessionIdFlag.value) {
+            startFrom = null; // Force new session mode, will use this ID below
+            logger.debug(`[ClaudeLocal] Using explicit --session-id: ${sessionIdFlag.value}`);
+        }
 
-    // 2. Check for --resume <id> / -r <id> (resume specific session)
-    if (!startFrom && !sessionIdFlag.value) {
-        const resumeFlag = extractFlag(['--resume', '-r'], true);
-        if (resumeFlag.found) {
-            if (resumeFlag.value) {
-                startFrom = resumeFlag.value;
-                logger.debug(`[ClaudeLocal] Using provided session ID from --resume: ${startFrom}`);
-            } else {
-                // --resume without value: find last session
-                const lastSession = claudeFindLastSession(opts.path);
-                if (lastSession) {
-                    startFrom = lastSession;
-                    logger.debug(`[ClaudeLocal] --resume: Found last session: ${lastSession}`);
+        // 2. Check for --resume <id> / -r <id> (resume specific session)
+        if (!startFrom && !sessionIdFlag.value) {
+            const resumeFlag = extractFlag(['--resume', '-r'], true);
+            if (resumeFlag.found) {
+                if (resumeFlag.value) {
+                    startFrom = resumeFlag.value;
+                    logger.debug(`[ClaudeLocal] Using provided session ID from --resume: ${startFrom}`);
+                } else {
+                    // --resume without value: find last session
+                    const lastSession = claudeFindLastSession(opts.path);
+                    if (lastSession) {
+                        startFrom = lastSession;
+                        logger.debug(`[ClaudeLocal] --resume: Found last session: ${lastSession}`);
+                    }
                 }
             }
         }
-    }
 
-    // 3. Check for --continue / -c (resume last session)
-    if (!startFrom && !sessionIdFlag.value) {
-        const continueFlag = extractFlag(['--continue', '-c'], false);
-        if (continueFlag.found) {
-            const lastSession = claudeFindLastSession(opts.path);
-            if (lastSession) {
-                startFrom = lastSession;
-                logger.debug(`[ClaudeLocal] --continue: Found last session: ${lastSession}`);
+        // 3. Check for --continue / -c (resume last session)
+        if (!startFrom && !sessionIdFlag.value) {
+            const continueFlag = extractFlag(['--continue', '-c'], false);
+            if (continueFlag.found) {
+                const lastSession = claudeFindLastSession(opts.path);
+                if (lastSession) {
+                    startFrom = lastSession;
+                    logger.debug(`[ClaudeLocal] --continue: Found last session: ${lastSession}`);
+                }
             }
         }
     }

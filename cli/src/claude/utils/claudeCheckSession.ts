@@ -3,11 +3,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getProjectPath } from "./path";
 
-export function claudeCheckSession(sessionId: string, path: string) {
+export function claudeCheckSession(sessionId: string, path: string, transcriptPath?: string | null) {
     const projectDir = getProjectPath(path);
 
-    // Check if session id is in the project dir
-    const sessionFile = join(projectDir, `${sessionId}.jsonl`);
+    // Prefer explicit transcript path (from Claude hook) over the project-dir heuristic.
+    const sessionFile = transcriptPath ?? join(projectDir, `${sessionId}.jsonl`);
     const sessionExists = existsSync(sessionFile);
     if (!sessionExists) {
         logger.debug(`[claudeCheckSession] Path ${sessionFile} does not exist`);

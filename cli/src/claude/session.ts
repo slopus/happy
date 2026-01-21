@@ -3,6 +3,12 @@ import { MessageQueue2 } from "@/utils/MessageQueue2";
 import { EnhancedMode } from "./loop";
 import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
+import type { SessionHookData } from "./utils/startHookServer";
+
+export type SessionFoundInfo = {
+    sessionId: string;
+    transcriptPath: string | null;
+};
 
 export class Session {
     readonly path: string;
@@ -21,11 +27,12 @@ export class Session {
     readonly jsRuntime: JsRuntime;
 
     sessionId: string | null;
+    transcriptPath: string | null = null;
     mode: 'local' | 'remote' = 'local';
     thinking: boolean = false;
     
     /** Callbacks to be notified when session ID is found/changed */
-    private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
+    private sessionFoundCallbacks: ((info: SessionFoundInfo) => void)[] = [];
     
     /** Keep alive interval reference for cleanup */
     private keepAliveInterval: NodeJS.Timeout;
@@ -99,37 +106,107 @@ export class Session {
      * Updates internal state, syncs to API metadata, and notifies
      * all registered callbacks (e.g., SessionScanner) about the change.
      */
-    onSessionFound = (sessionId: string) => {
+    onSessionFound = (sessionId: string, hookData?: SessionHookData) => {
+        const nextTranscriptPathRaw = hookData?.transcript_path ?? hookData?.transcriptPath;
+        const nextTranscriptPath = typeof nextTranscriptPathRaw === 'string' ? nextTranscriptPathRaw : null;
+
+        const prevSessionId = this.sessionId;
+        const prevTranscriptPath = this.transcriptPath;
+
         this.sessionId = sessionId;
+        if (prevSessionId !== sessionId) {
+            // Avoid carrying a transcript path across different Claude sessions.
+            // If the hook didn't provide a transcript path for this session, force fallback to heuristics.
+            this.transcriptPath = nextTranscriptPath;
+        } else if (nextTranscriptPath) {
+            // Same sessionId, but we learned/updated the exact transcript path.
+            this.transcriptPath = nextTranscriptPath;
+        }
         
         // Update metadata with Claude Code session ID
-        this.client.updateMetadata((metadata) => ({
-            ...metadata,
-            claudeSessionId: sessionId
-        }));
-        logger.debug(`[Session] Claude Code session ID ${sessionId} added to metadata`);
+        if (prevSessionId !== sessionId) {
+            this.client.updateMetadata((metadata) => ({
+                ...metadata,
+                claudeSessionId: sessionId
+            }));
+            logger.debug(`[Session] Claude Code session ID ${sessionId} added to metadata`);
+        }
+
+        // Notify callbacks when either the sessionId changes or we learned a better transcript path.
+        const didTranscriptPathChange = Boolean(nextTranscriptPath) && nextTranscriptPath !== prevTranscriptPath;
+        if (prevSessionId === sessionId && !didTranscriptPathChange) {
+            return;
+        }
+
+        const info: SessionFoundInfo = {
+            sessionId,
+            transcriptPath: this.transcriptPath
+        };
         
         // Notify all registered callbacks
         for (const callback of this.sessionFoundCallbacks) {
-            callback(sessionId);
+            callback(info);
         }
     }
     
     /**
      * Register a callback to be notified when session ID is found/changed
      */
-    addSessionFoundCallback = (callback: (sessionId: string) => void): void => {
+    addSessionFoundCallback = (callback: (info: SessionFoundInfo) => void): void => {
         this.sessionFoundCallbacks.push(callback);
     }
     
     /**
      * Remove a session found callback
      */
-    removeSessionFoundCallback = (callback: (sessionId: string) => void): void => {
+    removeSessionFoundCallback = (callback: (info: SessionFoundInfo) => void): void => {
         const index = this.sessionFoundCallbacks.indexOf(callback);
         if (index !== -1) {
             this.sessionFoundCallbacks.splice(index, 1);
         }
+    }
+
+    /**
+     * Wait until we have a sessionId (and optionally a transcriptPath) from Claude hooks.
+     * Used to avoid switching modes before the session is actually initialized on disk.
+     */
+    waitForSessionFound = async (opts: { timeoutMs?: number; requireTranscriptPath?: boolean } = {}): Promise<SessionFoundInfo | null> => {
+        const timeoutMs = opts.timeoutMs ?? 2000;
+        const requireTranscriptPath = opts.requireTranscriptPath ?? false;
+
+        const isReady = (): boolean => {
+            if (!this.sessionId) return false;
+            if (requireTranscriptPath && !this.transcriptPath) return false;
+            return true;
+        };
+
+        if (isReady()) {
+            return { sessionId: this.sessionId!, transcriptPath: this.transcriptPath };
+        }
+
+        return new Promise((resolve) => {
+            const onUpdate = () => {
+                if (!isReady()) return;
+                cleanup();
+                resolve({ sessionId: this.sessionId!, transcriptPath: this.transcriptPath });
+            };
+
+            const cleanup = () => {
+                clearTimeout(timeoutId);
+                this.removeSessionFoundCallback(onUpdate);
+            };
+
+            const timeoutId = setTimeout(() => {
+                cleanup();
+                if (this.sessionId) {
+                    resolve({ sessionId: this.sessionId, transcriptPath: this.transcriptPath });
+                } else {
+                    resolve(null);
+                }
+            }, timeoutMs);
+
+            this.addSessionFoundCallback(onUpdate);
+        });
     }
 
     /**
@@ -153,6 +230,21 @@ export class Session {
             
             if (arg === '--continue') {
                 logger.debug('[Session] Consumed --continue flag');
+                continue;
+            }
+
+            if (arg === '--session-id') {
+                if (i + 1 < this.claudeArgs.length) {
+                    const nextArg = this.claudeArgs[i + 1];
+                    if (!nextArg.startsWith('-')) {
+                        i++; // Skip the value
+                        logger.debug(`[Session] Consumed --session-id flag with value: ${nextArg}`);
+                    } else {
+                        logger.debug('[Session] Consumed --session-id flag (missing value)');
+                    }
+                } else {
+                    logger.debug('[Session] Consumed --session-id flag (missing value)');
+                }
                 continue;
             }
             

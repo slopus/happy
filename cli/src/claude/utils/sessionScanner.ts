@@ -1,6 +1,6 @@
 import { InvalidateSync } from "@/utils/sync";
 import { RawJSONLines, RawJSONLinesSchema } from "../types";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { logger } from "@/ui/logger";
 import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
@@ -17,25 +17,91 @@ const INTERNAL_CLAUDE_EVENT_TYPES = new Set([
     'queue-operation',
 ]);
 
+export type SessionScannerSessionInfo = {
+    sessionId: string;
+    transcriptPath?: string | null;
+};
+
 export async function createSessionScanner(opts: {
     sessionId: string | null,
+    /**
+     * Optional absolute transcript file path for the initial sessionId (from Claude's SessionStart hook).
+     * When provided, it is used instead of the `getProjectPath()` heuristic.
+     */
+    transcriptPath?: string | null,
     workingDirectory: string
     onMessage: (message: RawJSONLines) => void
+    onTranscriptMissing?: (info: { sessionId: string; filePath: string }) => void
+    /** How long to wait (ms) before warning that the transcript file is missing. Set <= 0 to disable. */
+    transcriptMissingWarningMs?: number
 }) {
 
-    // Resolve project directory
-    const projectDir = getProjectPath(opts.workingDirectory);
+    // Best-effort project directory resolution (fallback).
+    // When available, we prefer the Claude hook's transcriptPath-derived directory instead.
+    const initialProjectDir = getProjectPath(opts.workingDirectory);
+    let projectDirOverride: string | null = null;
+    const sessionFileOverrides = new Map<string, string>();
+
+    const transcriptMissingWarningMs = opts.transcriptMissingWarningMs ?? 5000;
+    const warnedMissingTranscripts = new Set<string>();
+    const missingTranscriptTimers = new Map<string, NodeJS.Timeout>();
+
+    function effectiveProjectDir(): string {
+        return projectDirOverride ?? initialProjectDir;
+    }
+
+    function getSessionFilePath(sessionId: string): string {
+        const override = sessionFileOverrides.get(sessionId);
+        return override ?? join(effectiveProjectDir(), `${sessionId}.jsonl`);
+    }
+
+    function scheduleTranscriptMissingWarning(sessionId: string): void {
+        if (!opts.onTranscriptMissing) return;
+        if (!Number.isFinite(transcriptMissingWarningMs) || transcriptMissingWarningMs <= 0) return;
+        if (warnedMissingTranscripts.has(sessionId)) return;
+        if (missingTranscriptTimers.has(sessionId)) return;
+
+        const timeoutId = setTimeout(async () => {
+            missingTranscriptTimers.delete(sessionId);
+            if (warnedMissingTranscripts.has(sessionId)) return;
+
+            const filePath = getSessionFilePath(sessionId);
+            try {
+                await readFile(filePath, 'utf-8');
+                return;
+            } catch {
+                // still missing (or unreadable)
+            }
+
+            warnedMissingTranscripts.add(sessionId);
+            try {
+                opts.onTranscriptMissing?.({ sessionId, filePath });
+            } catch (err) {
+                logger.debug('[SESSION_SCANNER] onTranscriptMissing callback threw:', err);
+            }
+        }, transcriptMissingWarningMs);
+
+        missingTranscriptTimers.set(sessionId, timeoutId);
+    }
 
     // Finished, pending finishing and current session
     let finishedSessions = new Set<string>();
     let pendingSessions = new Set<string>();
     let currentSessionId: string | null = null;
-    let watchers = new Map<string, (() => void)>();
+    let watchers = new Map<string, { filePath: string; stop: () => void }>();
     let processedMessageKeys = new Set<string>();
+
+    // If the caller already knows the transcript path for the initial session,
+    // apply it before reading any existing messages so we mark the correct history as processed.
+    if (opts.sessionId && typeof opts.transcriptPath === 'string' && opts.transcriptPath.trim()) {
+        const transcriptPath = opts.transcriptPath.trim();
+        sessionFileOverrides.set(opts.sessionId, transcriptPath);
+        projectDirOverride = dirname(transcriptPath);
+    }
 
     // Mark existing messages as processed and start watching the initial session
     if (opts.sessionId) {
-        let messages = await readSessionLog(projectDir, opts.sessionId);
+        let messages = await readSessionLog(getSessionFilePath(opts.sessionId));
         logger.debug(`[SESSION_SCANNER] Marking ${messages.length} existing messages as processed from session ${opts.sessionId}`);
         for (let m of messages) {
             processedMessageKeys.add(messageKey(m));
@@ -44,6 +110,7 @@ export async function createSessionScanner(opts: {
         // may continue writing to it even after creating a new session with --resume
         // (agent tasks and other updates can still write to the original session file)
         currentSessionId = opts.sessionId;
+        scheduleTranscriptMissingWarning(opts.sessionId);
     }
 
     // Main sync function
@@ -68,7 +135,7 @@ export async function createSessionScanner(opts: {
 
         // Process sessions
         for (let session of sessions) {
-            const sessionMessages = await readSessionLog(projectDir, session);
+            const sessionMessages = await readSessionLog(getSessionFilePath(session));
             let skipped = 0;
             let sent = 0;
             for (let file of sessionMessages) {
@@ -97,9 +164,19 @@ export async function createSessionScanner(opts: {
 
         // Update watchers for all sessions
         for (let p of sessions) {
-            if (!watchers.has(p)) {
+            const desiredPath = getSessionFilePath(p);
+            const existing = watchers.get(p);
+
+            if (!existing) {
                 logger.debug(`[SESSION_SCANNER] Starting watcher for session: ${p}`);
-                watchers.set(p, startFileWatcher(join(projectDir, `${p}.jsonl`), () => { sync.invalidate(); }));
+                watchers.set(p, { filePath: desiredPath, stop: startFileWatcher(desiredPath, () => { sync.invalidate(); }) });
+                continue;
+            }
+
+            if (existing.filePath !== desiredPath) {
+                logger.debug(`[SESSION_SCANNER] Restarting watcher for session: ${p} (${existing.filePath} -> ${desiredPath})`);
+                existing.stop();
+                watchers.set(p, { filePath: desiredPath, stop: startFileWatcher(desiredPath, () => { sync.invalidate(); }) });
             }
         }
     });
@@ -113,23 +190,51 @@ export async function createSessionScanner(opts: {
         cleanup: async () => {
             clearInterval(intervalId);
             for (let w of watchers.values()) {
-                w();
+                w.stop();
             }
             watchers.clear();
+            for (const timeoutId of missingTranscriptTimers.values()) {
+                clearTimeout(timeoutId);
+            }
+            missingTranscriptTimers.clear();
             await sync.invalidateAndAwait();
             sync.stop();
         },
-        onNewSession: (sessionId: string) => {
+        onNewSession: (arg: string | SessionScannerSessionInfo) => {
+            const sessionId = typeof arg === 'string' ? arg : arg.sessionId;
+            const transcriptPathRaw = typeof arg === 'string' ? null : arg.transcriptPath;
+            const transcriptPath = typeof transcriptPathRaw === 'string' && transcriptPathRaw.trim() ? transcriptPathRaw : null;
+
+            let didUpdatePaths = false;
+            if (transcriptPath) {
+                const prevOverride = sessionFileOverrides.get(sessionId);
+                if (prevOverride !== transcriptPath) {
+                    sessionFileOverrides.set(sessionId, transcriptPath);
+                    didUpdatePaths = true;
+                }
+                const nextProjectDir = dirname(transcriptPath);
+                if (!projectDirOverride || projectDirOverride !== nextProjectDir) {
+                    projectDirOverride = nextProjectDir;
+                    didUpdatePaths = true;
+                }
+            }
+
             if (currentSessionId === sessionId) {
-                logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is the same as the current session, skipping`);
+                if (didUpdatePaths) {
+                    sync.invalidate();
+                } else {
+                    logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is the same as the current session, skipping`);
+                }
                 return;
             }
             if (finishedSessions.has(sessionId)) {
-                logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is already finished, skipping`);
+                if (didUpdatePaths) sync.invalidate();
+                else logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is already finished, skipping`);
                 return;
             }
             if (pendingSessions.has(sessionId)) {
-                logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is already pending, skipping`);
+                if (didUpdatePaths) sync.invalidate();
+                else logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is already pending, skipping`);
                 return;
             }
             if (currentSessionId) {
@@ -137,6 +242,7 @@ export async function createSessionScanner(opts: {
             }
             logger.debug(`[SESSION_SCANNER] New session: ${sessionId}`)
             currentSessionId = sessionId;
+            scheduleTranscriptMissingWarning(sessionId);
             sync.invalidate();
         },
     }
@@ -167,14 +273,13 @@ function messageKey(message: RawJSONLines): string {
  * Read and parse session log file
  * Returns only valid conversation messages, silently skipping internal events
  */
-async function readSessionLog(projectDir: string, sessionId: string): Promise<RawJSONLines[]> {
-    const expectedSessionFile = join(projectDir, `${sessionId}.jsonl`);
-    logger.debug(`[SESSION_SCANNER] Reading session file: ${expectedSessionFile}`);
+async function readSessionLog(sessionFilePath: string): Promise<RawJSONLines[]> {
+    logger.debug(`[SESSION_SCANNER] Reading session file: ${sessionFilePath}`);
     let file: string;
     try {
-        file = await readFile(expectedSessionFile, 'utf-8');
+        file = await readFile(sessionFilePath, 'utf-8');
     } catch (error) {
-        logger.debug(`[SESSION_SCANNER] Session file not found: ${expectedSessionFile}`);
+        logger.debug(`[SESSION_SCANNER] Session file not found: ${sessionFilePath}`);
         return [];
     }
     let lines = file.split('\n');
