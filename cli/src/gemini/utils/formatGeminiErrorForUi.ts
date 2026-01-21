@@ -63,7 +63,9 @@ export function formatGeminiErrorForUi(error: unknown, displayedModel?: string |
             let resetTimeMsg = '';
             if (resetTimeMatch) {
                 const parts = resetTimeMatch.slice(1).filter(Boolean).join('');
-                resetTimeMsg = ` Quota resets in ${parts}.`;
+                if (parts) {
+                    resetTimeMsg = ` Quota resets in ${parts}.`;
+                }
             }
             errorMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-2.5-flash-lite) or wait for quota reset.`;
         }

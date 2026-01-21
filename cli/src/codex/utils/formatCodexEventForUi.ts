@@ -18,10 +18,9 @@ export function formatCodexEventForUi(msg: unknown): string | null {
 
     if (type === 'mcp_startup_update' && m.status?.state === 'failed') {
         const serverName = typeof m.server === 'string' && m.server.trim() ? m.server.trim() : 'unknown';
-        const errorText = typeof m.status?.error === 'string' && m.status.error.trim() ? m.status.error.trim() : 'MCP server failed to start';
+        const errorText = typeof m.status?.error === 'string' && m.status.error.trim() ? m.status.error.trim() : 'unknown error';
         return `MCP server "${serverName}" failed to start: ${errorText}`;
     }
 
     return null;
 }
-

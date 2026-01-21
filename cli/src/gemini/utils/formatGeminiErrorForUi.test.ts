@@ -15,5 +15,8 @@ describe('formatGeminiErrorForUi', () => {
   it('formats empty object errors as missing CLI install', () => {
     expect(formatGeminiErrorForUi({}, null)).toContain('Is "gemini" CLI installed?');
   });
-});
 
+  it('does not include empty quota reset time when no duration is captured', () => {
+    expect(formatGeminiErrorForUi({ message: 'quota reset after ' }, null)).not.toContain('Quota resets in .');
+  });
+});

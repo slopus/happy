@@ -20,8 +20,16 @@ describe('formatCodexEventForUi', () => {
     ).toBe('MCP server "happy" failed to start: nope');
   });
 
+  it('avoids redundant fallback text for MCP startup failures without an error string', () => {
+    expect(
+      formatCodexEventForUi({
+        type: 'mcp_startup_update',
+        status: { state: 'failed' },
+      }),
+    ).toBe('MCP server "unknown" failed to start: unknown error');
+  });
+
   it('returns null for events that should not be shown', () => {
     expect(formatCodexEventForUi({ type: 'agent_message', message: 'hi' })).toBeNull();
   });
 });
-
