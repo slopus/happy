@@ -348,7 +348,7 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
         // This is especially important for headers/sidebars which often clip overflow.
         if (shouldPortal && anchorRectState) {
             const boundaryRect = boundaryRectState ?? getFallbackBoundaryRect({ windowWidth, windowHeight });
-            const position = Platform.OS === 'web' ? 'fixed' : 'absolute';
+            const position = Platform.OS === 'web' ? ('fixed' as any) : 'absolute';
             const desiredWidth = (() => {
                 // Preserve historical sizing: for top/bottom, the popover was anchored to the
                 // container width (left:0,right:0) and capped by maxWidth. The closest equivalent
@@ -505,7 +505,7 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
     const content = open ? (
         <>
             {backdropEnabled && backdropEffect !== 'none' ? (() => {
-                const position = shouldPortalWeb ? 'fixed' : 'absolute';
+                const position = shouldPortalWeb ? ('fixed' as any) : 'absolute';
                 const zIndex = shouldPortal ? portalZ : 998;
 
                 const fullScreenStyle = [
@@ -640,7 +640,7 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
                     style={[
                         // Default is deliberately "oversized" so it can capture taps outside the anchor area.
                         {
-                            position: shouldPortalWeb ? 'fixed' : 'absolute',
+                            position: shouldPortalWeb ? ('fixed' as any) : 'absolute',
                             top: shouldPortal ? 0 : -1000,
                             left: shouldPortal ? 0 : -1000,
                             right: shouldPortal ? 0 : -1000,
@@ -659,7 +659,7 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
                     pointerEvents="none"
                     style={[
                         {
-                            position: shouldPortalWeb ? 'fixed' : 'absolute',
+                            position: shouldPortalWeb ? ('fixed' as any) : 'absolute',
                             left: Math.max(0, Math.floor(anchorRectState.x)),
                             top: Math.max(0, Math.floor(anchorRectState.y)),
                             width: Math.max(0, Math.min(windowWidth - Math.max(0, Math.floor(anchorRectState.x)), Math.ceil(anchorRectState.width))),
