@@ -46,15 +46,24 @@ export interface SecretsListProps {
 
 export function SecretsList(props: SecretsListProps) {
     const { theme } = useUnistyles();
+    const {
+        secrets,
+        defaultId,
+        onChangeSecrets,
+        onAfterAddSelectId,
+        selectedId,
+        onSelectId,
+        onSetDefaultId,
+    } = props;
 
     const orderedSecrets = React.useMemo(() => {
-        const defaultId = props.defaultId ?? null;
-        if (!defaultId) return props.secrets;
-        const defaultSecret = props.secrets.find((k) => k.id === defaultId) ?? null;
-        if (!defaultSecret) return props.secrets;
-        const rest = props.secrets.filter((k) => k.id !== defaultId);
+        const resolvedDefaultId = defaultId ?? null;
+        if (!resolvedDefaultId) return secrets;
+        const defaultSecret = secrets.find((k) => k.id === resolvedDefaultId) ?? null;
+        if (!defaultSecret) return secrets;
+        const rest = secrets.filter((k) => k.id !== resolvedDefaultId);
         return [defaultSecret, ...rest];
-    }, [props.secrets, props.defaultId]);
+    }, [defaultId, secrets]);
 
     const addSecret = React.useCallback(async () => {
         Modal.show({
@@ -65,17 +74,17 @@ export function SecretsList(props: SecretsListProps) {
                     const next: SavedSecret = {
                         id: newId(),
                         name,
-                            kind: 'apiKey',
+                        kind: 'apiKey',
                         encryptedValue: { _isSecretValue: true, value },
                         createdAt: now,
                         updatedAt: now,
                     };
-                    props.onChangeSecrets([next, ...props.secrets]);
-                    props.onAfterAddSelectId?.(next.id);
+                    onChangeSecrets([next, ...secrets]);
+                    onAfterAddSelectId?.(next.id);
                 },
             },
         });
-    }, [props]);
+    }, [onAfterAddSelectId, onChangeSecrets, secrets]);
 
     const renameSecret = React.useCallback(async (secret: SavedSecret) => {
         const name = await Modal.prompt(
@@ -89,8 +98,8 @@ export function SecretsList(props: SecretsListProps) {
             return;
         }
         const now = Date.now();
-        props.onChangeSecrets(props.secrets.map((k) => (k.id === secret.id ? { ...k, name: name.trim(), updatedAt: now } : k)));
-    }, [props]);
+        onChangeSecrets(secrets.map((k) => (k.id === secret.id ? { ...k, name: name.trim(), updatedAt: now } : k)));
+    }, [onChangeSecrets, secrets]);
 
     const replaceSecretValue = React.useCallback(async (secret: SavedSecret) => {
         const value = await Modal.prompt(
@@ -104,12 +113,12 @@ export function SecretsList(props: SecretsListProps) {
             return;
         }
         const now = Date.now();
-        props.onChangeSecrets(props.secrets.map((k) => (
+        onChangeSecrets(secrets.map((k) => (
             k.id === secret.id
                 ? { ...k, encryptedValue: { ...(k.encryptedValue ?? { _isSecretValue: true }), _isSecretValue: true, value: value.trim() }, updatedAt: now }
                 : k
         )));
-    }, [props]);
+    }, [onChangeSecrets, secrets]);
 
     const deleteSecret = React.useCallback(async (secret: SavedSecret) => {
         const confirmed = await Modal.confirm(
@@ -118,14 +127,14 @@ export function SecretsList(props: SecretsListProps) {
             { cancelText: t('common.cancel'), confirmText: t('common.delete'), destructive: true },
         );
         if (!confirmed) return;
-        props.onChangeSecrets(props.secrets.filter((k) => k.id !== secret.id));
-        if (props.selectedId === secret.id) {
-            props.onSelectId?.('');
+        onChangeSecrets(secrets.filter((k) => k.id !== secret.id));
+        if (selectedId === secret.id) {
+            onSelectId?.('');
         }
-        if (props.defaultId === secret.id) {
-            props.onSetDefaultId?.(null);
+        if (defaultId === secret.id) {
+            onSetDefaultId?.(null);
         }
-    }, [props]);
+    }, [defaultId, onChangeSecrets, onSelectId, onSetDefaultId, secrets, selectedId]);
 
     const groupTitle = props.title ?? t('settings.secrets');
     const groupFooter = props.footer === undefined ? t('settings.secretsSubtitle') : (props.footer ?? undefined);
@@ -239,4 +248,3 @@ export function SecretsList(props: SecretsListProps) {
         </ItemList>
     );
 }
-
