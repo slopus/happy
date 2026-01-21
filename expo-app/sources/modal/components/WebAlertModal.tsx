@@ -10,6 +10,8 @@ interface WebAlertModalProps {
     config: AlertModalConfig | ConfirmModalConfig;
     onClose: () => void;
     onConfirm?: (value: boolean) => void;
+    showBackdrop?: boolean;
+    zIndexBase?: number;
 }
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -88,7 +90,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps) {
+export function WebAlertModal({ config, onClose, onConfirm, showBackdrop = true, zIndexBase }: WebAlertModalProps) {
     useUnistyles();
     const styles = stylesheet;
     const isConfirm = config.type === 'confirm';
@@ -112,7 +114,13 @@ export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps
     const buttonLayout = buttons.length === 3 ? 'twoPlusOne' : buttons.length > 3 ? 'column' : 'row';
 
     return (
-        <BaseModal visible={true} onClose={onClose} closeOnBackdrop={false}>
+        <BaseModal
+            visible={true}
+            onClose={onClose}
+            closeOnBackdrop={false}
+            showBackdrop={showBackdrop}
+            zIndexBase={zIndexBase}
+        >
             <View style={styles.container}>
                 <View style={styles.content}>
                     <Text style={[styles.title, Typography.default('semiBold')]}>

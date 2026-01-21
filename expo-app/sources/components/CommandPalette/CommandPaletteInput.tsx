@@ -1,16 +1,21 @@
 import React from 'react';
-import { View, TextInput, StyleSheet, Platform } from 'react-native';
+import { View, TextInput, Platform } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { StyleSheet } from 'react-native-unistyles';
 
 interface CommandPaletteInputProps {
     value: string;
     onChangeText: (text: string) => void;
     onKeyPress?: (key: string) => void;
     inputRef?: React.RefObject<TextInput | null>;
+    placeholder?: string;
+    autoFocus?: boolean;
 }
 
-export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef }: CommandPaletteInputProps) {
+export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef, placeholder, autoFocus = true }: CommandPaletteInputProps) {
+    const styles = stylesheet;
+
     const handleKeyDown = React.useCallback((e: any) => {
         if (Platform.OS === 'web' && onKeyPress) {
             const key = e.nativeEvent.key;
@@ -31,9 +36,9 @@ export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef 
                 style={[styles.input, Typography.default()]}
                 value={value}
                 onChangeText={onChangeText}
-                placeholder={t('commandPalette.placeholder')}
+                placeholder={placeholder ?? t('commandPalette.placeholder')}
                 placeholderTextColor="#999"
-                autoFocus
+                autoFocus={autoFocus}
                 autoCorrect={false}
                 autoCapitalize="none"
                 returnKeyType="go"
@@ -44,7 +49,7 @@ export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef 
     );
 }
 
-const styles = StyleSheet.create({
+const stylesheet = StyleSheet.create(() => ({
     container: {
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(0, 0, 0, 0.06)',
@@ -62,4 +67,4 @@ const styles = StyleSheet.create({
             outlineWidth: 0,
         } as any : {}),
     },
-});
+}));

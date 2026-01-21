@@ -4,6 +4,7 @@ import { Modal } from './ModalManager';
 import { WebAlertModal } from './components/WebAlertModal';
 import { WebPromptModal } from './components/WebPromptModal';
 import { CustomModal } from './components/CustomModal';
+import { OverlayPortalHost, OverlayPortalProvider } from '@/components/OverlayPortal';
 
 const ModalContext = createContext<ModalContextValue | undefined>(undefined);
 
@@ -57,47 +58,78 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
         hideAllModals
     };
 
-    const currentModal = state.modals[state.modals.length - 1];
+    const topIndex = state.modals.length - 1;
+    const zIndexStep = 10;
+    const zIndexBase = 100000;
 
     return (
-        <ModalContext.Provider value={contextValue}>
-            {children}
-            {currentModal && (
-                <>
-                    {currentModal.type === 'alert' && (
-                        <WebAlertModal
-                            config={currentModal}
-                            onClose={() => hideModal(currentModal.id)}
-                        />
-                    )}
-                    {currentModal.type === 'confirm' && (
-                        <WebAlertModal
-                            config={currentModal}
-                            onClose={() => hideModal(currentModal.id)}
-                            onConfirm={(value) => {
-                                Modal.resolveConfirm(currentModal.id, value);
-                                hideModal(currentModal.id);
-                            }}
-                        />
-                    )}
-                    {currentModal.type === 'prompt' && (
-                        <WebPromptModal
-                            config={currentModal}
-                            onClose={() => hideModal(currentModal.id)}
-                            onConfirm={(value) => {
-                                Modal.resolvePrompt(currentModal.id, value);
-                                hideModal(currentModal.id);
-                            }}
-                        />
-                    )}
-                    {currentModal.type === 'custom' && (
-                        <CustomModal
-                            config={currentModal}
-                            onClose={() => hideModal(currentModal.id)}
-                        />
-                    )}
-                </>
-            )}
-        </ModalContext.Provider>
+        <OverlayPortalProvider>
+            <ModalContext.Provider value={contextValue}>
+                {children}
+                {state.modals.map((modal, index) => {
+                    const showBackdrop = index === topIndex;
+                    const modalZIndexBase = zIndexBase + index * zIndexStep;
+
+                    if (modal.type === 'alert') {
+                        return (
+                            <WebAlertModal
+                                key={modal.id}
+                                config={modal}
+                                onClose={() => hideModal(modal.id)}
+                                showBackdrop={showBackdrop}
+                                zIndexBase={modalZIndexBase}
+                            />
+                        );
+                    }
+
+                    if (modal.type === 'confirm') {
+                        return (
+                            <WebAlertModal
+                                key={modal.id}
+                                config={modal}
+                                onClose={() => hideModal(modal.id)}
+                                onConfirm={(value) => {
+                                    Modal.resolveConfirm(modal.id, value);
+                                    hideModal(modal.id);
+                                }}
+                                showBackdrop={showBackdrop}
+                                zIndexBase={modalZIndexBase}
+                            />
+                        );
+                    }
+
+                    if (modal.type === 'prompt') {
+                        return (
+                            <WebPromptModal
+                                key={modal.id}
+                                config={modal}
+                                onClose={() => hideModal(modal.id)}
+                                onConfirm={(value) => {
+                                    Modal.resolvePrompt(modal.id, value);
+                                    hideModal(modal.id);
+                                }}
+                                showBackdrop={showBackdrop}
+                                zIndexBase={modalZIndexBase}
+                            />
+                        );
+                    }
+
+                    if (modal.type === 'custom') {
+                        return (
+                            <CustomModal
+                                key={modal.id}
+                                config={modal}
+                                onClose={() => hideModal(modal.id)}
+                                showBackdrop={showBackdrop}
+                                zIndexBase={modalZIndexBase}
+                            />
+                        );
+                    }
+
+                    return null;
+                })}
+                <OverlayPortalHost />
+            </ModalContext.Provider>
+        </OverlayPortalProvider>
     );
 }

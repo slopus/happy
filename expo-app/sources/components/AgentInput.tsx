@@ -2,8 +2,6 @@ import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, Pressable, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
-import Color from 'color';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
@@ -16,6 +14,10 @@ import { useActiveWord } from './autocomplete/useActiveWord';
 import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
 import { AgentInputAutocomplete } from './AgentInputAutocomplete';
 import { FloatingOverlay } from './FloatingOverlay';
+import { Popover } from './Popover';
+import { ScrollEdgeFades } from './ScrollEdgeFades';
+import { ScrollEdgeIndicators } from './ScrollEdgeIndicators';
+import { ActionListSection, type ActionListItem } from './ActionListSection';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
@@ -25,7 +27,9 @@ import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
-import { getBuiltInProfile } from '@/sync/profileUtils';
+import { resolveProfileById } from '@/sync/profileUtils';
+import { getProfileDisplayName } from '@/components/profiles/profileDisplay';
+import { useScrollEdgeFades } from './useScrollEdgeFades';
 
 interface AgentInputProps {
     value: string;
@@ -114,21 +118,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
 
     // Overlay styles
-    autocompleteOverlay: {
-        position: 'absolute',
-        bottom: '100%',
-        left: 0,
-        right: 0,
-        marginBottom: 8,
-        zIndex: 1000,
-    },
     settingsOverlay: {
-        position: 'absolute',
-        bottom: '100%',
-        left: 0,
-        right: 0,
-        marginBottom: 8,
-        zIndex: 1000,
+        // positioning is handled by `Popover`
     },
     overlayBackdrop: {
         position: 'absolute',
@@ -139,7 +130,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         zIndex: 999,
     },
     overlaySection: {
-        paddingVertical: 8,
+        paddingVertical: 16,
     },
     overlaySectionTitle: {
         fontSize: 12,
@@ -281,7 +272,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         left: 0,
         top: 0,
         bottom: 0,
-        width: 18,
+        width: 24,
         zIndex: 2,
     },
     actionButtonsFadeRight: {
@@ -289,7 +280,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         right: 0,
         top: 0,
         bottom: 0,
-        width: 18,
+        width: 24,
         zIndex: 2,
     },
     actionButtonsLeftNarrow: {
@@ -458,11 +449,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         if (props.profileId === undefined || props.profileId === null || props.profileId.trim() === '') {
             return null;
         }
-        // Check custom profiles first
-        const customProfile = profiles.find(p => p.id === props.profileId);
-        if (customProfile) return customProfile;
-        // Check built-in profiles
-        return getBuiltInProfile(props.profileId);
+        return resolveProfileById(props.profileId, profiles);
     }, [profiles, props.profileId]);
 
 	    const profileLabel = React.useMemo(() => {
@@ -473,7 +460,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 	            return t('profiles.noProfile');
 	        }
         if (currentProfile) {
-            return currentProfile.name;
+            return getProfileDisplayName(currentProfile);
         }
         const shortId = props.profileId.length > 8 ? `${props.profileId.slice(0, 8)}…` : props.profileId;
         return `${t('status.unknown')} (${shortId})`;
@@ -564,11 +551,15 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Settings modal state
     const [showSettings, setShowSettings] = React.useState(false);
+    const overlayAnchorRef = React.useRef<View>(null);
 
-    // Horizontal action bar scroll state (for gradient fades)
-    const [actionBarViewportWidth, setActionBarViewportWidth] = React.useState(0);
-    const [actionBarContentWidth, setActionBarContentWidth] = React.useState(0);
-    const [actionBarScrollX, setActionBarScrollX] = React.useState(0);
+    const actionBarFades = useScrollEdgeFades({
+        enabledEdges: { left: true, right: true },
+        // Match previous behavior: require a bit of overflow before enabling scroll.
+        overflowThreshold: 8,
+        // Match previous behavior: avoid showing fades for tiny offsets.
+        edgeThreshold: 2,
+    });
 
     const normalizedPermissionMode = React.useMemo(() => {
         return normalizePermissionModeForAgentFlavor(
@@ -622,6 +613,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         setShowSettings(prev => !prev);
     }, []);
 
+    // NOTE: settings overlay sizing is handled by `Popover` now (anchor + boundary measurement).
+
     const showPermissionChip = Boolean(props.onPermissionModeChange || props.onPermissionClick);
     const hasAnyActions = Boolean(
         showPermissionChip ||
@@ -637,28 +630,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const actionBarShouldScroll = effectiveActionBarLayout === 'scroll';
     const actionBarIsCollapsed = effectiveActionBarLayout === 'collapsed';
 
-    const canActionBarScroll = actionBarShouldScroll && actionBarContentWidth > actionBarViewportWidth + 8;
-    const showActionBarFadeLeft = canActionBarScroll && actionBarScrollX > 2;
-    const showActionBarFadeRight = canActionBarScroll && (actionBarScrollX + actionBarViewportWidth) < (actionBarContentWidth - 2);
+    const canActionBarScroll = actionBarShouldScroll && actionBarFades.canScrollX;
+    const showActionBarFadeLeft = canActionBarScroll && actionBarFades.visibility.left;
+    const showActionBarFadeRight = canActionBarScroll && actionBarFades.visibility.right;
 
     const actionBarFadeColor = React.useMemo(() => {
         return theme.colors.input.background;
     }, [theme.colors.input.background]);
-
-    const actionBarFadeTransparent = React.useMemo(() => {
-        try {
-            return Color(actionBarFadeColor).alpha(0).rgb().string();
-        } catch {
-            return 'transparent';
-        }
-    }, [actionBarFadeColor]);
-
-    // Handle settings selection
-    const handleSettingsSelect = React.useCallback((mode: PermissionMode) => {
-        hapticsLight();
-        props.onPermissionModeChange?.(mode);
-        // Don't close the settings overlay - let users see the change and potentially switch again
-    }, [props.onPermissionModeChange]);
 
     // Handle abort button press
     const handleAbortPress = React.useCallback(async () => {
@@ -684,6 +662,141 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             setIsAborting(false);
         }
     }, [props.onAbort]);
+
+    const actionMenuActions = React.useMemo(() => {
+        if (!actionBarIsCollapsed || !hasAnyActions) return [] as ActionListItem[];
+
+        const tint = theme.colors.button.secondary.tint;
+        const actions: ActionListItem[] = [];
+
+        if (props.onProfileClick) {
+            actions.push({
+                id: 'profile',
+                label: profileLabel ?? t('profiles.noProfile'),
+                icon: <Ionicons name={profileIcon as any} size={16} color={tint} />,
+                onPress: () => {
+                    hapticsLight();
+                    setShowSettings(false);
+                    props.onProfileClick?.();
+                },
+            });
+        }
+
+        if (props.onEnvVarsClick) {
+            actions.push({
+                id: 'env-vars',
+                label:
+                    props.envVarsCount === undefined
+                        ? t('agentInput.envVars.title')
+                        : t('agentInput.envVars.titleWithCount', { count: props.envVarsCount }),
+                icon: <Ionicons name="list-outline" size={16} color={tint} />,
+                onPress: () => {
+                    hapticsLight();
+                    setShowSettings(false);
+                    props.onEnvVarsClick?.();
+                },
+            });
+        }
+
+        if (props.agentType && props.onAgentClick) {
+            actions.push({
+                id: 'agent',
+                label:
+                    props.agentType === 'claude'
+                        ? t('agentInput.agent.claude')
+                        : props.agentType === 'codex'
+                            ? t('agentInput.agent.codex')
+                            : t('agentInput.agent.gemini'),
+                icon: <Octicons name="cpu" size={16} color={tint} />,
+                onPress: () => {
+                    hapticsLight();
+                    setShowSettings(false);
+                    props.onAgentClick?.();
+                },
+            });
+        }
+
+        if (props.machineName !== undefined && props.onMachineClick) {
+            actions.push({
+                id: 'machine',
+                label: props.machineName === null ? t('agentInput.noMachinesAvailable') : props.machineName,
+                icon: <Ionicons name="desktop-outline" size={16} color={tint} />,
+                onPress: () => {
+                    hapticsLight();
+                    setShowSettings(false);
+                    props.onMachineClick?.();
+                },
+            });
+        }
+
+        if (props.currentPath && props.onPathClick) {
+            actions.push({
+                id: 'path',
+                label: props.currentPath,
+                icon: <Ionicons name="folder-outline" size={16} color={tint} />,
+                onPress: () => {
+                    hapticsLight();
+                    setShowSettings(false);
+                    props.onPathClick?.();
+                },
+            });
+        }
+
+        if (props.sessionId && props.onFileViewerPress) {
+            actions.push({
+                id: 'files',
+                label: t('agentInput.actionMenu.files'),
+                icon: <Octicons name="git-branch" size={16} color={tint} />,
+                onPress: () => {
+                    hapticsLight();
+                    setShowSettings(false);
+                    props.onFileViewerPress?.();
+                },
+            });
+        }
+
+        if (props.onAbort) {
+            actions.push({
+                id: 'stop',
+                label: t('agentInput.actionMenu.stop'),
+                icon: <Octicons name="stop" size={16} color={tint} />,
+                onPress: () => {
+                    setShowSettings(false);
+                    void handleAbortPress();
+                },
+            });
+        }
+
+        return actions;
+    }, [
+        actionBarIsCollapsed,
+        hasAnyActions,
+        handleAbortPress,
+        profileIcon,
+        profileLabel,
+        props.agentType,
+        props.currentPath,
+        props.envVarsCount,
+        props.machineName,
+        props.onAbort,
+        props.onAgentClick,
+        props.onEnvVarsClick,
+        props.onFileViewerPress,
+        props.onMachineClick,
+        props.onPathClick,
+        props.onProfileClick,
+        props.sessionId,
+        setShowSettings,
+        t,
+        theme.colors.button.secondary.tint,
+    ]);
+
+    // Handle settings selection
+    const handleSettingsSelect = React.useCallback((mode: PermissionMode) => {
+        hapticsLight();
+        props.onPermissionModeChange?.(mode);
+        // Don't close the settings overlay - let users see the change and potentially switch again
+    }, [props.onPermissionModeChange]);
 
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
@@ -757,217 +870,64 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             <View style={[
                 styles.innerContainer,
                 { maxWidth: layout.maxWidth }
-            ]}>
+            ]} ref={overlayAnchorRef}>
                 {/* Autocomplete suggestions overlay */}
                 {suggestions.length > 0 && (
-                    <View style={[
-                        styles.autocompleteOverlay,
-                        { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
-                    ]}>
-                        <AgentInputAutocomplete
-                            suggestions={suggestions.map(s => {
-                                const Component = s.component;
-                                return <Component key={s.key} />;
-                            })}
-                            selectedIndex={selected}
-                            onSelect={handleSuggestionSelect}
-                            itemHeight={48}
-                        />
-                    </View>
+                    <Popover
+                        open={suggestions.length > 0}
+                        anchorRef={overlayAnchorRef}
+                        placement="top"
+                        gap={8}
+                        maxHeightCap={240}
+                        // Allow the suggestions popover to match the full input width on wide screens.
+                        maxWidthCap={layout.maxWidth}
+                        backdrop={false}
+                        containerStyle={{ paddingHorizontal: screenWidth > 700 ? 0 : 8 }}
+                    >
+                        {({ maxHeight }) => (
+                            <AgentInputAutocomplete
+                                maxHeight={maxHeight}
+                                suggestions={suggestions.map(s => {
+                                    const Component = s.component;
+                                    return <Component key={s.key} />;
+                                })}
+                                selectedIndex={selected}
+                                onSelect={handleSuggestionSelect}
+                                itemHeight={48}
+                            />
+                        )}
+                    </Popover>
                 )}
 
                 {/* Settings overlay */}
                 {showSettings && (
-                    <>
-                        <Pressable onPress={() => setShowSettings(false)} style={styles.overlayBackdrop} />
-                        <View style={[
-                            styles.settingsOverlay,
-                            { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
-                        ]}>
-                            <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
+                    <Popover
+                        open={showSettings}
+                        anchorRef={overlayAnchorRef}
+                        placement="top"
+                        gap={8}
+                        maxHeightCap={400}
+                        edgePadding={{
+                            horizontal: Platform.OS === 'web' ? (screenWidth > 700 ? 12 : 16) : 0,
+                            vertical: 12,
+                        }}
+                        onRequestClose={() => setShowSettings(false)}
+                        backdrop={{ style: styles.overlayBackdrop }}
+                    >
+                        {({ maxHeight }) => (
+                            <FloatingOverlay
+                                maxHeight={maxHeight}
+                                keyboardShouldPersistTaps="always"
+                                edgeFades={{ top: true, bottom: true, size: 28 }}
+                                edgeIndicators={true}
+                            >
                                 {/* Action shortcuts (collapsed layout) */}
-                                {actionBarIsCollapsed && hasAnyActions && (
-                                    <View style={styles.overlaySection}>
-                                        <Text style={styles.overlaySectionTitle}>
-                                            {t('agentInput.actionMenu.title')}
-                                        </Text>
-
-                                        {props.onProfileClick ? (
-                                            <Pressable
-                                                onPress={() => {
-                                                    hapticsLight();
-                                                    setShowSettings(false);
-                                                    props.onProfileClick?.();
-                                                }}
-                                                style={({ pressed }) => [
-                                                    styles.overlayOptionRow,
-                                                    pressed ? styles.overlayOptionRowPressed : null,
-                                                ]}
-                                            >
-                                                <Ionicons
-                                                    name={profileIcon as any}
-                                                    size={16}
-                                                    color={theme.colors.button.secondary.tint}
-                                                    style={{ marginRight: 12 }}
-                                                />
-                                                <Text style={styles.overlayOptionLabel}>
-                                                    {profileLabel ?? t('profiles.noProfile')}
-                                                </Text>
-                                            </Pressable>
-                                        ) : null}
-
-                                        {props.onEnvVarsClick ? (
-                                            <Pressable
-                                                onPress={() => {
-                                                    hapticsLight();
-                                                    setShowSettings(false);
-                                                    props.onEnvVarsClick?.();
-                                                }}
-                                                style={({ pressed }) => [
-                                                    styles.overlayOptionRow,
-                                                    pressed ? styles.overlayOptionRowPressed : null,
-                                                ]}
-                                            >
-                                                <Ionicons
-                                                    name="list-outline"
-                                                    size={16}
-                                                    color={theme.colors.button.secondary.tint}
-                                                    style={{ marginRight: 12 }}
-                                                />
-                                                <Text style={styles.overlayOptionLabel}>
-                                                    {props.envVarsCount === undefined
-                                                        ? t('agentInput.envVars.title')
-                                                        : t('agentInput.envVars.titleWithCount', { count: props.envVarsCount })}
-                                                </Text>
-                                            </Pressable>
-                                        ) : null}
-
-                                        {props.agentType && props.onAgentClick ? (
-                                            <Pressable
-                                                onPress={() => {
-                                                    hapticsLight();
-                                                    setShowSettings(false);
-                                                    props.onAgentClick?.();
-                                                }}
-                                                style={({ pressed }) => [
-                                                    styles.overlayOptionRow,
-                                                    pressed ? styles.overlayOptionRowPressed : null,
-                                                ]}
-                                            >
-                                                <Octicons
-                                                    name="cpu"
-                                                    size={16}
-                                                    color={theme.colors.button.secondary.tint}
-                                                    style={{ marginRight: 12 }}
-                                                />
-                                                <Text style={styles.overlayOptionLabel}>
-                                                    {props.agentType === 'claude'
-                                                        ? t('agentInput.agent.claude')
-                                                        : props.agentType === 'codex'
-                                                            ? t('agentInput.agent.codex')
-                                                            : t('agentInput.agent.gemini')}
-                                                </Text>
-                                            </Pressable>
-                                        ) : null}
-
-                                        {(props.machineName !== undefined) && props.onMachineClick ? (
-                                            <Pressable
-                                                onPress={() => {
-                                                    hapticsLight();
-                                                    setShowSettings(false);
-                                                    props.onMachineClick?.();
-                                                }}
-                                                style={({ pressed }) => [
-                                                    styles.overlayOptionRow,
-                                                    pressed ? styles.overlayOptionRowPressed : null,
-                                                ]}
-                                            >
-                                                <Ionicons
-                                                    name="desktop-outline"
-                                                    size={16}
-                                                    color={theme.colors.button.secondary.tint}
-                                                    style={{ marginRight: 12 }}
-                                                />
-                                                <Text style={styles.overlayOptionLabel}>
-                                                    {props.machineName === null
-                                                        ? t('agentInput.noMachinesAvailable')
-                                                        : props.machineName}
-                                                </Text>
-                                            </Pressable>
-                                        ) : null}
-
-                                        {(props.currentPath && props.onPathClick) ? (
-                                            <Pressable
-                                                onPress={() => {
-                                                    hapticsLight();
-                                                    setShowSettings(false);
-                                                    props.onPathClick?.();
-                                                }}
-                                                style={({ pressed }) => [
-                                                    styles.overlayOptionRow,
-                                                    pressed ? styles.overlayOptionRowPressed : null,
-                                                ]}
-                                            >
-                                                <Ionicons
-                                                    name="folder-outline"
-                                                    size={16}
-                                                    color={theme.colors.button.secondary.tint}
-                                                    style={{ marginRight: 12 }}
-                                                />
-                                                <Text style={styles.overlayOptionLabel}>
-                                                    {props.currentPath}
-                                                </Text>
-                                            </Pressable>
-                                        ) : null}
-
-                                        {(props.sessionId && props.onFileViewerPress) ? (
-                                            <Pressable
-                                                onPress={() => {
-                                                    hapticsLight();
-                                                    setShowSettings(false);
-                                                    props.onFileViewerPress?.();
-                                                }}
-                                                style={({ pressed }) => [
-                                                    styles.overlayOptionRow,
-                                                    pressed ? styles.overlayOptionRowPressed : null,
-                                                ]}
-                                            >
-                                                <Octicons
-                                                    name="git-branch"
-                                                    size={16}
-                                                    color={theme.colors.button.secondary.tint}
-                                                    style={{ marginRight: 12 }}
-                                                />
-                                                <Text style={styles.overlayOptionLabel}>
-                                                    {t('agentInput.actionMenu.files')}
-                                                </Text>
-                                            </Pressable>
-                                        ) : null}
-
-                                        {props.onAbort ? (
-                                            <Pressable
-                                                onPress={() => {
-                                                    setShowSettings(false);
-                                                    handleAbortPress();
-                                                }}
-                                                style={({ pressed }) => [
-                                                    styles.overlayOptionRow,
-                                                    pressed ? styles.overlayOptionRowPressed : null,
-                                                ]}
-                                            >
-                                                <Octicons
-                                                    name="stop"
-                                                    size={16}
-                                                    color={theme.colors.button.secondary.tint}
-                                                    style={{ marginRight: 12 }}
-                                                />
-                                                <Text style={styles.overlayOptionLabel}>
-                                                    {t('agentInput.actionMenu.stop')}
-                                                </Text>
-                                            </Pressable>
-                                        ) : null}
-                                    </View>
-                                )}
+                                {actionMenuActions.length > 0 ? (
+                                    <ActionListSection
+                                        title={t('agentInput.actionMenu.title')}
+                                        actions={actionMenuActions}
+                                    />
+                                ) : null}
 
                                 {actionBarIsCollapsed && hasAnyActions ? (
                                     <View style={styles.overlayDivider} />
@@ -1096,8 +1056,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     )}
                                 </View>
                             </FloatingOverlay>
-                        </View>
-                    </>
+                        )}
+                    </Popover>
                 )}
 
                 {/* Connection status, context warning, and permission mode */}
@@ -1396,31 +1356,29 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     directionalLockEnabled
                                                     keyboardShouldPersistTaps="handled"
                                                     contentContainerStyle={styles.actionButtonsLeftScrollContent as any}
-                                                    onLayout={(e) => setActionBarViewportWidth(e.nativeEvent.layout.width)}
-                                                    onContentSizeChange={(w) => setActionBarContentWidth(w)}
-                                                    onScroll={(e) => setActionBarScrollX(e.nativeEvent.contentOffset.x)}
+                                                    onLayout={actionBarFades.onViewportLayout}
+                                                    onContentSizeChange={actionBarFades.onContentSizeChange}
+                                                    onScroll={actionBarFades.onScroll}
                                                     scrollEventThrottle={16}
                                                 >
                                                     {chips as any}
                                                 </ScrollView>
-                                                {showActionBarFadeLeft ? (
-                                                    <LinearGradient
-                                                        pointerEvents="none"
-                                                        colors={[actionBarFadeColor, actionBarFadeTransparent]}
-                                                        start={{ x: 0, y: 0.5 }}
-                                                        end={{ x: 1, y: 0.5 }}
-                                                        style={styles.actionButtonsFadeLeft}
-                                                    />
-                                                ) : null}
-                                                {showActionBarFadeRight ? (
-                                                    <LinearGradient
-                                                        pointerEvents="none"
-                                                        colors={[actionBarFadeColor, actionBarFadeTransparent]}
-                                                        start={{ x: 1, y: 0.5 }}
-                                                        end={{ x: 0, y: 0.5 }}
-                                                        style={styles.actionButtonsFadeRight}
-                                                    />
-                                                ) : null}
+                                                <ScrollEdgeFades
+                                                    color={actionBarFadeColor}
+                                                    size={24}
+                                                    edges={{ left: showActionBarFadeLeft, right: showActionBarFadeRight }}
+                                                    leftStyle={styles.actionButtonsFadeLeft as any}
+                                                    rightStyle={styles.actionButtonsFadeRight as any}
+                                                />
+                                                <ScrollEdgeIndicators
+                                                    edges={{ left: showActionBarFadeLeft, right: showActionBarFadeRight }}
+                                                    color={theme.colors.button.secondary.tint}
+                                                    size={14}
+                                                    opacity={0.28}
+                                                    // Keep indicators within the same fade gutters.
+                                                    leftStyle={styles.actionButtonsFadeLeft as any}
+                                                    rightStyle={styles.actionButtonsFadeRight as any}
+                                                />
                                             </View>
                                         );
                                     }

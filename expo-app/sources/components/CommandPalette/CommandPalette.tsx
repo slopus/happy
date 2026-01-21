@@ -34,6 +34,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
                 onChangeText={handleSearchChange}
                 onKeyPress={handleKeyPress}
                 inputRef={inputRef}
+                autoFocus={true}
             />
             <CommandPaletteResults
                 categories={filteredCategories}

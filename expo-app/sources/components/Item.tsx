@@ -118,6 +118,9 @@ export const Item = React.memo<ItemProps>((props) => {
     const isIOS = Platform.OS === 'ios';
     const isAndroid = Platform.OS === 'android';
     const isWeb = Platform.OS === 'web';
+    const hoverBackgroundColor = isWeb
+        ? (theme.dark ? theme.colors.surfaceHighest : theme.colors.surfaceHigh)
+        : theme.colors.surfacePressedOverlay;
     
     // Timer ref for long press copy functionality
     const longPressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -207,6 +210,20 @@ export const Item = React.memo<ItemProps>((props) => {
 
     const titleColor = destructive ? styles.titleDestructive : (selected ? styles.titleSelected : styles.titleNormal);
     const containerPadding = subtitle ? styles.containerWithSubtitle : styles.containerWithoutSubtitle;
+
+    const isSelectableRow = React.useMemo(() => {
+        // Only show hover for "selection lists" (where rows participate in a selected-state group).
+        // This avoids making all navigation rows hoverable.
+        // NOTE: we intentionally do NOT gate on `selectableItemCount > 1` because single-item
+        // selection lists should still have hover affordances.
+        return typeof selected === 'boolean' && Boolean(selectionContext);
+    }, [selected, selectionContext]);
+
+    const [isHovered, setIsHovered] = React.useState(false);
+    React.useEffect(() => {
+        // Keep hover state coherent with disabled/loading changes.
+        if (disabled || loading) setIsHovered(false);
+    }, [disabled, loading]);
     
     const content = (
         <>
@@ -307,12 +324,18 @@ export const Item = React.memo<ItemProps>((props) => {
                 onLongPress={onLongPress}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
+                onHoverIn={isWeb && isSelectableRow && !disabled && !loading ? () => setIsHovered(true) : undefined}
+                onHoverOut={isWeb ? () => setIsHovered(false) : undefined}
                 disabled={disabled || loading}
                 style={({ pressed }) => [
                     {
-                        backgroundColor: pressed && isIOS && !isWeb
-                            ? theme.colors.surfacePressedOverlay
-                            : (showSelectedBackground ? theme.colors.surfaceSelected : 'transparent'),
+                        backgroundColor: (() => {
+                            if (pressed && isIOS && !isWeb) return theme.colors.surfacePressedOverlay;
+                            if (showSelectedBackground) return theme.colors.surfaceSelected;
+                            // Web-only hover affordance for selectable rows (no hover when disabled).
+                            if (isWeb && isSelectableRow && isHovered && !disabled && !loading) return hoverBackgroundColor;
+                            return 'transparent';
+                        })(),
                         opacity: disabled ? 0.5 : 1
                     },
                     pressableStyle

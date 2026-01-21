@@ -8,10 +8,11 @@ interface AgentInputAutocompleteProps {
     selectedIndex?: number;
     onSelect: (index: number) => void;
     itemHeight: number;
+    maxHeight?: number;
 }
 
 export const AgentInputAutocomplete = React.memo((props: AgentInputAutocompleteProps) => {
-    const { suggestions, selectedIndex = -1, onSelect, itemHeight } = props;
+    const { suggestions, selectedIndex = -1, onSelect, itemHeight, maxHeight = 240 } = props;
     const { theme } = useUnistyles();
 
     if (suggestions.length === 0) {
@@ -19,7 +20,7 @@ export const AgentInputAutocomplete = React.memo((props: AgentInputAutocompleteP
     }
 
     return (
-        <FloatingOverlay maxHeight={240} keyboardShouldPersistTaps="handled">
+        <FloatingOverlay maxHeight={maxHeight} keyboardShouldPersistTaps="handled">
             {suggestions.map((suggestion, index) => (
                 <Pressable
                     key={index}
