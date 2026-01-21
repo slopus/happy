@@ -103,8 +103,10 @@ describe('ModalProvider', () => {
         const top = backdrops.find((b: any) => Boolean(b.props.showBackdrop));
         const bottom = backdrops.find((b: any) => !Boolean(b.props.showBackdrop));
 
+        expect(top).toBeDefined();
+        expect(bottom).toBeDefined();
         expect(typeof top?.props.zIndexBase).toBe('number');
         expect(typeof bottom?.props.zIndexBase).toBe('number');
-        expect(top!.props.zIndexBase).toBeGreaterThan(bottom!.props.zIndexBase);
+        expect(top?.props.zIndexBase).toBeGreaterThan(bottom?.props.zIndexBase);
     });
 });
