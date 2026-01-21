@@ -135,6 +135,10 @@ export const it: TranslationStructure = {
         machineLogin: {
             title: 'Login richiesto sulla macchina',
             subtitle: 'Questo profilo si basa su una cache di login del CLI sulla macchina selezionata.',
+            status: {
+                loggedIn: 'Accesso effettuato',
+                notLoggedIn: 'Accesso non effettuato',
+            },
             claudeCode: {
                 title: 'Claude Code',
                 instructions: 'Esegui `claude`, poi digita `/login` per accedere.',
@@ -150,18 +154,17 @@ export const it: TranslationStructure = {
             },
         },
         requirements: {
-            apiKeyRequired: 'Chiave API',
+            secretRequired: 'Segreto',
             configured: 'Configurata sulla macchina',
             notConfigured: 'Non configurata',
             checking: 'Verifica…',
-            modalTitle: 'Chiave API richiesta',
-            modalBody: 'Questo profilo richiede una chiave API.\n\nOpzioni supportate:\n• Usa ambiente della macchina (consigliato)\n• Usa chiave salvata nelle impostazioni dell’app\n• Inserisci una chiave solo per questa sessione',
+            modalTitle: 'Segreto richiesto',
+            modalBody: 'Questo profilo richiede un segreto.\n\nOpzioni supportate:\n• Usa ambiente della macchina (consigliato)\n• Usa un segreto salvato nelle impostazioni dell’app\n• Inserisci un segreto solo per questa sessione',
             sectionTitle: 'Requisiti',
             sectionSubtitle: 'Questi campi servono per verificare lo stato e evitare fallimenti inattesi.',
             secretEnvVarPromptDescription: 'Inserisci il nome della variabile d’ambiente segreta richiesta (es. OPENAI_API_KEY).',
             modalHelpWithEnv: ({ env }: { env: string }) => `Questo profilo richiede ${env}. Scegli un’opzione qui sotto.`,
-            modalHelpGeneric: 'Questo profilo richiede una chiave API. Scegli un’opzione qui sotto.',
-            modalRecommendation: 'Consigliato: imposta la chiave nell’ambiente del daemon sul tuo computer (così non dovrai incollarla di nuovo). Poi riavvia il daemon per caricare la nuova variabile d’ambiente.',
+            modalHelpGeneric: 'Questo profilo richiede un segreto. Scegli un’opzione qui sotto.',
             chooseOptionTitle: 'Scegli un’opzione',
             machineEnvStatus: {
                 theMachine: 'la macchina',
@@ -178,10 +181,7 @@ export const it: TranslationStructure = {
             options: {
                 none: {
                     title: 'Nessuno',
-                    subtitle: 'Non richiede chiave API né login CLI.',
-                },
-                apiKeyEnv: {
-                    subtitle: 'Richiede una chiave API da iniettare all’avvio della sessione.',
+                    subtitle: 'Non richiede segreto né login CLI.',
                 },
                 machineLogin: {
                     subtitle: 'Richiede essere autenticati tramite un CLI sulla macchina di destinazione.',
@@ -190,26 +190,27 @@ export const it: TranslationStructure = {
                 useMachineEnvironment: {
                     title: 'Usa ambiente della macchina',
                     subtitleWithEnv: ({ env }: { env: string }) => `Usa ${env} dall’ambiente del daemon.`,
-                    subtitleGeneric: 'Usa la chiave dall’ambiente del daemon.',
+                    subtitleGeneric: 'Usa il segreto dall’ambiente del daemon.',
                 },
-                useSavedApiKey: {
-                    title: 'Usa una chiave API salvata',
-                    subtitle: 'Seleziona (o aggiungi) una chiave salvata nell’app.',
+                useSavedSecret: {
+                    title: 'Usa un segreto salvato',
+                    subtitle: 'Seleziona (o aggiungi) un segreto salvato nell’app.',
                 },
                 enterOnce: {
-                    title: 'Inserisci una chiave',
-                    subtitle: 'Incolla una chiave solo per questa sessione (non verrà salvata).',
+                    title: 'Inserisci un segreto',
+                    subtitle: 'Incolla un segreto solo per questa sessione (non verrà salvato).',
                 },
             },
-            apiKeyEnvVar: {
-                title: 'Variabile d’ambiente della chiave API',
-                subtitle: 'Inserisci il nome della variabile d’ambiente che questo provider si aspetta per la chiave API (es. OPENAI_API_KEY).',
+            secretEnvVar: {
+                title: 'Variabile d’ambiente del segreto',
+                subtitle: 'Inserisci il nome della variabile d’ambiente che questo provider si aspetta per il segreto (es. OPENAI_API_KEY).',
                 label: 'Nome variabile d’ambiente',
             },
             sections: {
                 machineEnvironment: 'Ambiente della macchina',
                 useOnceTitle: 'Usa una volta',
-                useOnceFooter: 'Incolla una chiave solo per questa sessione. Non verrà salvata.',
+                useOnceLabel: 'Inserisci un segreto',
+                useOnceFooter: 'Incolla un segreto solo per questa sessione. Non verrà salvato.',
             },
             actions: {
                 useMachineEnvironment: {
@@ -240,8 +241,11 @@ export const it: TranslationStructure = {
             spawnSessionsTitle: 'Avvia sessioni in Tmux',
             spawnSessionsEnabledSubtitle: 'Le sessioni vengono avviate in nuove finestre di tmux.',
             spawnSessionsDisabledSubtitle: 'Le sessioni vengono avviate in una shell normale (senza integrazione tmux)',
+            isolatedServerTitle: 'Server tmux isolato',
+            isolatedServerEnabledSubtitle: 'Avvia le sessioni in un server tmux isolato (consigliato).',
+            isolatedServerDisabledSubtitle: 'Avvia le sessioni nel server tmux predefinito.',
             sessionNamePlaceholder: 'Vuoto = sessione corrente/più recente',
-            tempDirPlaceholder: '/tmp (opzionale)',
+            tempDirPlaceholder: 'Lascia vuoto per generare automaticamente',
         },
         previewMachine: {
             title: 'Anteprima macchina',
@@ -265,11 +269,17 @@ export const it: TranslationStructure = {
                 fallbackValueLabel: 'Valore di fallback:',
                 valueInputPlaceholder: 'Valore',
                 defaultValueInputPlaceholder: 'Valore predefinito',
+                fallbackDisabledForVault: 'I fallback sono disabilitati quando usi il vault dei segreti.',
                 secretNotRetrieved: 'Valore segreto - non recuperato per sicurezza',
-                secretToggleLabel: 'Segreto',
+                secretToggleLabel: 'Nascondi il valore nella UI',
                 secretToggleSubtitle: 'Nasconde il valore nella UI ed evita di recuperarlo dalla macchina per l\'anteprima.',
                 secretToggleEnforcedByDaemon: 'Imposto dal daemon',
                 secretToggleResetToAuto: 'Ripristina su automatico',
+                requirementRequiredLabel: 'Obbligatorio',
+                requirementRequiredSubtitle: 'Blocca la creazione della sessione quando la variabile manca.',
+                requirementUseVaultLabel: 'Usa vault dei segreti',
+                requirementUseVaultSubtitle: 'Usa un segreto salvato (senza valori di fallback).',
+                defaultSecretLabel: 'Segreto predefinito',
                 overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
                     `Sostituzione del valore predefinito documentato: ${expectedValue}`,
                 useMachineEnvToggle: 'Usa valore dall\'ambiente della macchina',
@@ -389,8 +399,9 @@ export const it: TranslationStructure = {
         usageSubtitle: 'Vedi il tuo utilizzo API e i costi',
         profiles: 'Profili',
         profilesSubtitle: 'Gestisci i profili delle variabili ambiente per le sessioni',
-        apiKeys: 'Chiavi API',
-        apiKeysSubtitle: 'Gestisci le chiavi API salvate (non verranno più mostrate dopo l’inserimento)',
+        secrets: 'Segreti',
+        secretsSubtitle: 'Gestisci i segreti salvati (non verranno più mostrati dopo l’inserimento)',
+        terminal: 'Terminale',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Account ${service} collegato`,
@@ -721,6 +732,9 @@ export const it: TranslationStructure = {
         operatingSystem: 'Sistema operativo',
         processId: 'ID processo',
         happyHome: 'Home di Happy',
+        attachFromTerminal: 'Collega dal terminale',
+        tmuxTarget: 'Destinazione tmux',
+        tmuxFallback: 'Fallback tmux',
         copyMetadata: 'Copia metadati',
         agentState: 'Stato agente',
         rawJsonDevMode: 'JSON grezzo (modalità sviluppatore)',
@@ -1186,6 +1200,13 @@ export const it: TranslationStructure = {
         notFound: 'Macchina non trovata',
         unknownMachine: 'macchina sconosciuta',
         unknownPath: 'percorso sconosciuto',
+        tmux: {
+            overrideTitle: 'Sovrascrivi le impostazioni tmux globali',
+            overrideEnabledSubtitle: 'Le impostazioni tmux personalizzate si applicano alle nuove sessioni su questa macchina.',
+            overrideDisabledSubtitle: 'Le nuove sessioni usano le impostazioni tmux globali.',
+            notDetectedSubtitle: 'tmux non è rilevato su questa macchina.',
+            notDetectedMessage: 'tmux non è rilevato su questa macchina. Installa tmux e aggiorna il rilevamento.',
+        },
     },
 
     message: {
@@ -1331,16 +1352,20 @@ export const it: TranslationStructure = {
         noData: 'Nessun dato di utilizzo disponibile',
     },
 
-    apiKeys: {
-        addTitle: 'Nuova chiave API',
-        savedTitle: 'Chiavi API salvate',
-        badgeReady: 'Chiave API',
-        badgeRequired: 'Chiave API richiesta',
-        addSubtitle: 'Aggiungi una chiave API salvata',
+    secrets: {
+        addTitle: 'Nuovo segreto',
+        savedTitle: 'Segreti salvati',
+        badgeReady: 'Segreto',
+        badgeRequired: 'Segreto richiesto',
+        missingForProfile: ({ env }: { env: string | null }) =>
+            `Segreto mancante (${env ?? 'segreto'}). Configuralo sulla macchina oppure seleziona/inserisci un segreto.`,
+        defaultForProfileTitle: 'Segreto predefinito',
+        defineDefaultForProfileTitle: 'Definisci segreto predefinito per questo profilo',
+        addSubtitle: 'Aggiungi un segreto salvato',
         noneTitle: 'Nessuna',
-        noneSubtitle: 'Usa l’ambiente della macchina o inserisci una chiave per questa sessione',
-        emptyTitle: 'Nessuna chiave salvata',
-        emptySubtitle: 'Aggiungine una per usare profili con chiave API senza impostare variabili d’ambiente sulla macchina.',
+        noneSubtitle: 'Usa l’ambiente della macchina o inserisci un segreto per questa sessione',
+        emptyTitle: 'Nessun segreto salvato',
+        emptySubtitle: 'Aggiungine uno per usare profili con segreto senza impostare variabili d’ambiente sulla macchina.',
         savedHiddenSubtitle: 'Salvata (valore nascosto)',
         defaultLabel: 'Predefinita',
         fields: {
@@ -1361,11 +1386,11 @@ export const it: TranslationStructure = {
             unsetDefault: 'Rimuovi predefinita',
         },
         prompts: {
-            renameTitle: 'Rinomina chiave API',
-            renameDescription: 'Aggiorna il nome descrittivo di questa chiave.',
-            replaceValueTitle: 'Sostituisci valore della chiave API',
-            replaceValueDescription: 'Incolla il nuovo valore della chiave API. Questo valore non verrà mostrato di nuovo dopo il salvataggio.',
-            deleteTitle: 'Elimina chiave API',
+            renameTitle: 'Rinomina segreto',
+            renameDescription: 'Aggiorna il nome descrittivo di questo segreto.',
+            replaceValueTitle: 'Sostituisci valore del segreto',
+            replaceValueDescription: 'Incolla il nuovo valore del segreto. Questo valore non verrà mostrato di nuovo dopo il salvataggio.',
+            deleteTitle: 'Elimina segreto',
             deleteConfirm: ({ name }: { name: string }) => `Eliminare “${name}”? Questa azione non può essere annullata.`,
         },
     },

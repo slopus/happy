@@ -8,9 +8,9 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { ItemRowActions } from '@/components/ItemRowActions';
 import { Modal } from '@/modal';
-import type { SavedApiKey } from '@/sync/settings';
+import type { SavedSecret } from '@/sync/settings';
 import { t } from '@/text';
-import { ApiKeyAddModal } from '@/components/ApiKeyAddModal';
+import { SecretAddModal } from '@/components/secrets/SecretAddModal';
 
 function newId(): string {
     try {
@@ -21,9 +21,9 @@ function newId(): string {
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export interface ApiKeysListProps {
-    apiKeys: SavedApiKey[];
-    onChangeApiKeys: (next: SavedApiKey[]) => void;
+export interface SecretsListProps {
+    secrets: SavedSecret[];
+    onChangeSecrets: (next: SavedSecret[]) => void;
 
     title?: string;
     footer?: string | null;
@@ -44,79 +44,99 @@ export interface ApiKeysListProps {
     wrapInItemList?: boolean;
 }
 
-export function ApiKeysList(props: ApiKeysListProps) {
+export function SecretsList(props: SecretsListProps) {
     const { theme } = useUnistyles();
 
-    const addApiKey = React.useCallback(async () => {
+    const orderedSecrets = React.useMemo(() => {
+        const defaultId = props.defaultId ?? null;
+        if (!defaultId) return props.secrets;
+        const defaultSecret = props.secrets.find((k) => k.id === defaultId) ?? null;
+        if (!defaultSecret) return props.secrets;
+        const rest = props.secrets.filter((k) => k.id !== defaultId);
+        return [defaultSecret, ...rest];
+    }, [props.secrets, props.defaultId]);
+
+    const addSecret = React.useCallback(async () => {
         Modal.show({
-            component: ApiKeyAddModal,
+            component: SecretAddModal,
             props: {
                 onSubmit: ({ name, value }) => {
                     const now = Date.now();
-                    const next: SavedApiKey = { id: newId(), name, value, createdAt: now, updatedAt: now };
-                    props.onChangeApiKeys([next, ...props.apiKeys]);
+                    const next: SavedSecret = {
+                        id: newId(),
+                        name,
+                            kind: 'apiKey',
+                        encryptedValue: { _isSecretValue: true, value },
+                        createdAt: now,
+                        updatedAt: now,
+                    };
+                    props.onChangeSecrets([next, ...props.secrets]);
                     props.onAfterAddSelectId?.(next.id);
                 },
             },
         });
     }, [props]);
 
-    const renameApiKey = React.useCallback(async (key: SavedApiKey) => {
+    const renameSecret = React.useCallback(async (secret: SavedSecret) => {
         const name = await Modal.prompt(
-            t('apiKeys.prompts.renameTitle'),
-            t('apiKeys.prompts.renameDescription'),
-            { defaultValue: key.name, placeholder: t('apiKeys.fields.name'), cancelText: t('common.cancel'), confirmText: t('common.rename') },
+            t('secrets.prompts.renameTitle'),
+            t('secrets.prompts.renameDescription'),
+            { defaultValue: secret.name, placeholder: t('secrets.fields.name'), cancelText: t('common.cancel'), confirmText: t('common.rename') },
         );
         if (name === null) return;
         if (!name.trim()) {
-            Modal.alert(t('common.error'), t('apiKeys.validation.nameRequired'));
+            Modal.alert(t('common.error'), t('secrets.validation.nameRequired'));
             return;
         }
         const now = Date.now();
-        props.onChangeApiKeys(props.apiKeys.map((k) => (k.id === key.id ? { ...k, name: name.trim(), updatedAt: now } : k)));
+        props.onChangeSecrets(props.secrets.map((k) => (k.id === secret.id ? { ...k, name: name.trim(), updatedAt: now } : k)));
     }, [props]);
 
-    const replaceApiKeyValue = React.useCallback(async (key: SavedApiKey) => {
+    const replaceSecretValue = React.useCallback(async (secret: SavedSecret) => {
         const value = await Modal.prompt(
-            t('apiKeys.prompts.replaceValueTitle'),
-            t('apiKeys.prompts.replaceValueDescription'),
-            { placeholder: 'sk-...', inputType: 'secure-text', cancelText: t('common.cancel'), confirmText: t('apiKeys.actions.replace') },
+            t('secrets.prompts.replaceValueTitle'),
+            t('secrets.prompts.replaceValueDescription'),
+            { placeholder: 'sk-...', inputType: 'secure-text', cancelText: t('common.cancel'), confirmText: t('secrets.actions.replace') },
         );
         if (value === null) return;
         if (!value.trim()) {
-            Modal.alert(t('common.error'), t('apiKeys.validation.valueRequired'));
+            Modal.alert(t('common.error'), t('secrets.validation.valueRequired'));
             return;
         }
         const now = Date.now();
-        props.onChangeApiKeys(props.apiKeys.map((k) => (k.id === key.id ? { ...k, value: value.trim(), updatedAt: now } : k)));
+        props.onChangeSecrets(props.secrets.map((k) => (
+            k.id === secret.id
+                ? { ...k, encryptedValue: { ...(k.encryptedValue ?? { _isSecretValue: true }), _isSecretValue: true, value: value.trim() }, updatedAt: now }
+                : k
+        )));
     }, [props]);
 
-    const deleteApiKey = React.useCallback(async (key: SavedApiKey) => {
+    const deleteSecret = React.useCallback(async (secret: SavedSecret) => {
         const confirmed = await Modal.confirm(
-            t('apiKeys.prompts.deleteTitle'),
-            t('apiKeys.prompts.deleteConfirm', { name: key.name }),
+            t('secrets.prompts.deleteTitle'),
+            t('secrets.prompts.deleteConfirm', { name: secret.name }),
             { cancelText: t('common.cancel'), confirmText: t('common.delete'), destructive: true },
         );
         if (!confirmed) return;
-        props.onChangeApiKeys(props.apiKeys.filter((k) => k.id !== key.id));
-        if (props.selectedId === key.id) {
+        props.onChangeSecrets(props.secrets.filter((k) => k.id !== secret.id));
+        if (props.selectedId === secret.id) {
             props.onSelectId?.('');
         }
-        if (props.defaultId === key.id) {
+        if (props.defaultId === secret.id) {
             props.onSetDefaultId?.(null);
         }
     }, [props]);
 
-    const groupTitle = props.title ?? t('settings.apiKeys');
-    const groupFooter = props.footer === undefined ? t('settings.apiKeysSubtitle') : (props.footer ?? undefined);
+    const groupTitle = props.title ?? t('settings.secrets');
+    const groupFooter = props.footer === undefined ? t('settings.secretsSubtitle') : (props.footer ?? undefined);
 
     const group = (
         <>
             <ItemGroup title={groupTitle}>
                 {props.includeNoneRow && (
                     <Item
-                        title={t('apiKeys.noneTitle')}
-                        subtitle={props.noneSubtitle ?? t('apiKeys.noneSubtitle')}
+                        title={t('secrets.noneTitle')}
+                        subtitle={props.noneSubtitle ?? t('secrets.noneSubtitle')}
                         icon={<Ionicons name="close-circle-outline" size={29} color={theme.colors.textSecondary} />}
                         onPress={() => props.onSelectId?.('')}
                         showChevron={false}
@@ -125,40 +145,41 @@ export function ApiKeysList(props: ApiKeysListProps) {
                     />
                 )}
 
-                {props.apiKeys.length === 0 ? (
+                {props.secrets.length === 0 ? (
                     <Item
-                        title={t('apiKeys.emptyTitle')}
-                        subtitle={t('apiKeys.emptySubtitle')}
+                        title={t('secrets.emptyTitle')}
+                        subtitle={t('secrets.emptySubtitle')}
                         icon={<Ionicons name="key-outline" size={29} color={theme.colors.textSecondary} />}
                         showChevron={false}
                     />
                 ) : (
-                    props.apiKeys.map((key, idx) => {
-                        const isSelected = props.selectedId === key.id;
-                        const isDefault = props.defaultId === key.id;
+                    orderedSecrets.map((secret, idx) => {
+                        const isSelected = props.selectedId === secret.id;
+                        const isDefault = props.defaultId === secret.id;
                         return (
                             <Item
-                                key={key.id}
-                                title={key.name}
-                                subtitle={t('apiKeys.savedHiddenSubtitle')}
+                                key={secret.id}
+                                title={secret.name}
+                                subtitle={t('secrets.savedHiddenSubtitle')}
                                 icon={<Ionicons name="key-outline" size={29} color={theme.colors.button.secondary.tint} />}
-                                onPress={props.onSelectId ? () => props.onSelectId?.(key.id) : undefined}
+                                onPress={props.onSelectId ? () => props.onSelectId?.(secret.id) : undefined}
                                 showChevron={false}
                                 selected={Boolean(props.onSelectId) ? isSelected : false}
-                                showDivider={idx < props.apiKeys.length - 1}
+                                showDivider={idx < orderedSecrets.length - 1}
                                 rightElement={(
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                                         {props.onSetDefaultId && (
                                             <ItemRowActions
-                                                title={t('apiKeys.defaultLabel')}
-                                                compactActionIds={[]}
-                                                iconSize={0}
+                                                title={t('secrets.defaultLabel')}
+                                                compactActionIds={['default']}
+                                                iconSize={18}
                                                 actions={[
                                                     {
                                                         id: 'default',
-                                                        title: isDefault ? t('apiKeys.actions.unsetDefault') : t('apiKeys.actions.setDefault'),
+                                                        title: isDefault ? t('secrets.actions.unsetDefault') : t('secrets.actions.setDefault'),
                                                         icon: isDefault ? 'star' : 'star-outline',
-                                                        onPress: () => props.onSetDefaultId?.(isDefault ? null : key.id),
+                                                        color: isDefault ? theme.colors.button.primary.background : theme.colors.textSecondary,
+                                                        onPress: () => props.onSetDefaultId?.(isDefault ? null : secret.id),
                                                     },
                                                 ]}
                                             />
@@ -177,12 +198,12 @@ export function ApiKeysList(props: ApiKeysListProps) {
 
                                         {props.allowEdit !== false && (
                                             <ItemRowActions
-                                                title={key.name}
+                                                title={secret.name}
                                                 compactActionIds={['edit']}
                                                 actions={[
-                                                    { id: 'edit', title: t('common.rename'), icon: 'pencil-outline', onPress: () => { void renameApiKey(key); } },
-                                                    { id: 'replace', title: t('apiKeys.actions.replaceValue'), icon: 'refresh-outline', onPress: () => { void replaceApiKeyValue(key); } },
-                                                    { id: 'delete', title: t('common.delete'), icon: 'trash-outline', destructive: true, onPress: () => { void deleteApiKey(key); } },
+                                                    { id: 'edit', title: t('common.rename'), icon: 'pencil-outline', onPress: () => { void renameSecret(secret); } },
+                                                    { id: 'replace', title: t('secrets.actions.replaceValue'), icon: 'refresh-outline', onPress: () => { void replaceSecretValue(secret); } },
+                                                    { id: 'delete', title: t('common.delete'), icon: 'trash-outline', destructive: true, onPress: () => { void deleteSecret(secret); } },
                                                 ]}
                                             />
                                         )}
@@ -197,9 +218,9 @@ export function ApiKeysList(props: ApiKeysListProps) {
                 {props.allowAdd !== false ? (
                     <Item
                         title={t('common.add')}
-                        subtitle={t('apiKeys.addSubtitle')}
+                        subtitle={t('secrets.addSubtitle')}
                         icon={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}
-                        onPress={() => { void addApiKey(); }}
+                        onPress={() => { void addSecret(); }}
                         showChevron={false}
                         showDivider={false}
                     />
@@ -218,3 +239,4 @@ export function ApiKeysList(props: ApiKeysListProps) {
         </ItemList>
     );
 }
+

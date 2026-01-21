@@ -22,6 +22,8 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { OptionTiles } from '@/components/OptionTiles';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
 import { layout } from '@/components/layout';
+import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/SecretRequirementModal';
+import { parseEnvVarTemplate } from '@/utils/envVarTemplate';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
@@ -116,6 +118,8 @@ export function ProfileEditForm({
     const allowGemini = experimentsEnabled && expGemini;
     const machines = useAllMachines();
     const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
+    const [secrets, setSecrets] = useSettingMutable('secrets');
+    const [secretBindingsByProfileId, setSecretBindingsByProfileId] = useSettingMutable('secretBindingsByProfileId');
     const routeMachine = machineId;
     const [previewMachineId, setPreviewMachineId] = React.useState<string | null>(routeMachine);
 
@@ -165,9 +169,6 @@ export function ProfileEditForm({
     );
 
     const [name, setName] = React.useState(profile.name || '');
-    const [useTmux, setUseTmux] = React.useState(profile.tmuxConfig?.sessionName !== undefined);
-    const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxConfig?.sessionName || '');
-    const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxConfig?.tmpDir || '');
     const [defaultSessionType, setDefaultSessionType] = React.useState<'simple' | 'worktree'>(
         profile.defaultSessionType || 'simple',
     );
@@ -180,7 +181,189 @@ export function ProfileEditForm({
 
     const [authMode, setAuthMode] = React.useState<AIBackendProfile['authMode']>(profile.authMode);
     const [requiresMachineLogin, setRequiresMachineLogin] = React.useState<AIBackendProfile['requiresMachineLogin']>(profile.requiresMachineLogin);
-    const [requiredEnvVars, setRequiredEnvVars] = React.useState<NonNullable<AIBackendProfile['requiredEnvVars']>>(profile.requiredEnvVars ?? []);
+    /**
+     * Requirements live in the env-var editor UI, but are persisted in `profile.envVarRequirements`
+     * (derived) and `secretBindingsByProfileId` (per-profile default saved secret choice).
+     *
+     * Attachment model:
+     * - When a row uses `${SOURCE_VAR}`, requirements attach to `SOURCE_VAR`
+     * - Otherwise, requirements attach to the env var name itself (e.g. `OPENAI_API_KEY`)
+     */
+    const [sourceRequirementsByName, setSourceRequirementsByName] = React.useState<Record<string, { required: boolean; useSecretVault: boolean }>>(() => {
+        const map: Record<string, { required: boolean; useSecretVault: boolean }> = {};
+        for (const req of profile.envVarRequirements ?? []) {
+            if (!req || typeof (req as any).name !== 'string') continue;
+            const name = String((req as any).name).trim().toUpperCase();
+            if (!name) continue;
+            const kind = ((req as any).kind ?? 'secret') as 'secret' | 'config';
+            map[name] = {
+                required: Boolean((req as any).required),
+                useSecretVault: kind === 'secret',
+            };
+        }
+        return map;
+    });
+
+    const usedRequirementVarNames = React.useMemo(() => {
+        const set = new Set<string>();
+        for (const v of environmentVariables) {
+            const tpl = parseEnvVarTemplate(v.value);
+            const name = (tpl?.sourceVar ? tpl.sourceVar : v.name).trim().toUpperCase();
+            if (name) set.add(name);
+        }
+        return set;
+    }, [environmentVariables]);
+
+    // Prune requirements that no longer correspond to any referenced requirement var name.
+    React.useEffect(() => {
+        setSourceRequirementsByName((prev) => {
+            let changed = false;
+            const next: Record<string, { required: boolean; useSecretVault: boolean }> = {};
+            for (const [name, state] of Object.entries(prev)) {
+                if (usedRequirementVarNames.has(name)) {
+                    next[name] = state;
+                } else {
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
+        });
+    }, [usedRequirementVarNames]);
+
+    // Prune default secret bindings when the requirement var name is no longer used or no longer uses the vault.
+    React.useEffect(() => {
+        const existing = secretBindingsByProfileId[profile.id];
+        if (!existing) return;
+
+        let changed = false;
+        const nextBindings: Record<string, string> = {};
+        for (const [envVarName, secretId] of Object.entries(existing)) {
+            const req = sourceRequirementsByName[envVarName];
+            const keep = usedRequirementVarNames.has(envVarName) && Boolean(req?.useSecretVault);
+            if (keep) {
+                nextBindings[envVarName] = secretId;
+            } else {
+                changed = true;
+            }
+        }
+        if (!changed) return;
+
+        const out = { ...secretBindingsByProfileId };
+        if (Object.keys(nextBindings).length === 0) {
+            delete out[profile.id];
+        } else {
+            out[profile.id] = nextBindings;
+        }
+        setSecretBindingsByProfileId(out);
+    }, [profile.id, secretBindingsByProfileId, setSecretBindingsByProfileId, sourceRequirementsByName, usedRequirementVarNames]);
+
+    const derivedEnvVarRequirements = React.useMemo<NonNullable<AIBackendProfile['envVarRequirements']>>(() => {
+        const out = Object.entries(sourceRequirementsByName)
+            .filter(([name]) => usedRequirementVarNames.has(name))
+            .map(([name, state]) => ({
+                name,
+                kind: state.useSecretVault ? 'secret' as const : 'config' as const,
+                required: Boolean(state.required),
+            }));
+        out.sort((a, b) => a.name.localeCompare(b.name));
+        return out;
+    }, [sourceRequirementsByName, usedRequirementVarNames]);
+
+    const getDefaultSecretNameForSourceVar = React.useCallback((sourceVarName: string): string | null => {
+        const id = secretBindingsByProfileId[profile.id]?.[sourceVarName] ?? null;
+        if (!id) return null;
+        return secrets.find((s) => s.id === id)?.name ?? null;
+    }, [profile.id, secretBindingsByProfileId, secrets]);
+
+    const openDefaultSecretModalForSourceVar = React.useCallback((sourceVarName: string) => {
+        const normalized = sourceVarName.trim().toUpperCase();
+        if (!normalized) return;
+
+        // Use derived requirements so the modal reflects the current editor state.
+        const previewProfile: AIBackendProfile = {
+            ...profile,
+            name,
+            envVarRequirements: derivedEnvVarRequirements,
+        };
+
+        const defaultSecretId = secretBindingsByProfileId[profile.id]?.[normalized] ?? null;
+
+        const setDefaultSecretId = (id: string | null) => {
+            const existing = secretBindingsByProfileId[profile.id] ?? {};
+            const nextBindings = { ...existing };
+            if (!id) {
+                delete nextBindings[normalized];
+            } else {
+                nextBindings[normalized] = id;
+            }
+            const out = { ...secretBindingsByProfileId };
+            if (Object.keys(nextBindings).length === 0) {
+                delete out[profile.id];
+            } else {
+                out[profile.id] = nextBindings;
+            }
+            setSecretBindingsByProfileId(out);
+        };
+
+        const handleResolve = (result: SecretRequirementModalResult) => {
+            if (result.action !== 'selectSaved') return;
+            setDefaultSecretId(result.secretId);
+        };
+
+        Modal.show({
+            component: SecretRequirementModal,
+            props: {
+                profile: previewProfile,
+                secretEnvVarName: normalized,
+                machineId: null,
+                secrets,
+                defaultSecretId,
+                selectedSavedSecretId: defaultSecretId,
+                onSetDefaultSecretId: setDefaultSecretId,
+                variant: 'defaultForProfile',
+                titleOverride: t('secrets.defineDefaultForProfileTitle'),
+                onChangeSecrets: setSecrets,
+                allowSessionOnly: false,
+                onResolve: handleResolve,
+                onRequestClose: () => handleResolve({ action: 'cancel' } as SecretRequirementModalResult),
+            },
+            closeOnBackdrop: true,
+        });
+    }, [derivedEnvVarRequirements, name, profile, secretBindingsByProfileId, secrets, setSecretBindingsByProfileId, setSecrets]);
+
+    const updateSourceRequirement = React.useCallback((
+        sourceVarName: string,
+        next: { required: boolean; useSecretVault: boolean } | null
+    ) => {
+        const normalized = sourceVarName.trim().toUpperCase();
+        if (!normalized) return;
+
+        setSourceRequirementsByName((prev) => {
+            const out = { ...prev };
+            if (next === null) {
+                delete out[normalized];
+            } else {
+                out[normalized] = { required: Boolean(next.required), useSecretVault: Boolean(next.useSecretVault) };
+            }
+            return out;
+        });
+
+        // If the vault is disabled (or requirement removed), drop any default secret binding immediately.
+        if (next === null || next.useSecretVault !== true) {
+            const existing = secretBindingsByProfileId[profile.id];
+            if (existing && (normalized in existing)) {
+                const nextBindings = { ...existing };
+                delete nextBindings[normalized];
+                const out = { ...secretBindingsByProfileId };
+                if (Object.keys(nextBindings).length === 0) {
+                    delete out[profile.id];
+                } else {
+                    out[profile.id] = nextBindings;
+                }
+                setSecretBindingsByProfileId(out);
+            }
+        }
+    }, [profile.id, secretBindingsByProfileId, setSecretBindingsByProfileId]);
 
     const allowedMachineLoginOptions = React.useMemo(() => {
         const options: Array<'claude-code' | 'codex' | 'gemini-cli'> = [];
@@ -211,15 +394,14 @@ export function ProfileEditForm({
         initialSnapshotRef.current = JSON.stringify({
             name,
             environmentVariables,
-            useTmux,
-            tmuxSession,
-            tmuxTmpDir,
             defaultSessionType,
             defaultPermissionMode,
             compatibility,
             authMode,
             requiresMachineLogin,
-            requiredEnvVars,
+            derivedEnvVarRequirements,
+            // Bindings are settings-level but edited here; include for dirty tracking.
+            secretBindings: secretBindingsByProfileId[profile.id] ?? null,
         });
     }
 
@@ -227,15 +409,13 @@ export function ProfileEditForm({
         const currentSnapshot = JSON.stringify({
             name,
             environmentVariables,
-            useTmux,
-            tmuxSession,
-            tmuxTmpDir,
             defaultSessionType,
             defaultPermissionMode,
             compatibility,
             authMode,
             requiresMachineLogin,
-            requiredEnvVars,
+            derivedEnvVarRequirements,
+            secretBindings: secretBindingsByProfileId[profile.id] ?? null,
         });
         return currentSnapshot !== initialSnapshotRef.current;
     }, [
@@ -245,11 +425,10 @@ export function ProfileEditForm({
         defaultSessionType,
         environmentVariables,
         name,
-        requiredEnvVars,
+        derivedEnvVarRequirements,
         requiresMachineLogin,
-        tmuxSession,
-        tmuxTmpDir,
-        useTmux,
+        secretBindingsByProfileId,
+        profile.id,
     ]);
 
     React.useEffect(() => {
@@ -296,14 +475,7 @@ export function ProfileEditForm({
             requiresMachineLogin: authMode === 'machineLogin' && allowedMachineLoginOptions.length === 1
                 ? allowedMachineLoginOptions[0]
                 : undefined,
-            requiredEnvVars: authMode === 'apiKeyEnv' ? requiredEnvVars : undefined,
-            tmuxConfig: useTmux
-                ? {
-                      ...(profile.tmuxConfig ?? {}),
-                      sessionName: tmuxSession.trim() || '',
-                      tmpDir: tmuxTmpDir.trim() || undefined,
-                  }
-                : undefined,
+            envVarRequirements: derivedEnvVarRequirements,
             defaultSessionType,
             defaultPermissionMode,
             compatibility,
@@ -311,6 +483,7 @@ export function ProfileEditForm({
         });
     }, [
         allowedMachineLoginOptions,
+        derivedEnvVarRequirements,
         compatibility,
         defaultPermissionMode,
         defaultSessionType,
@@ -319,31 +492,7 @@ export function ProfileEditForm({
         onSave,
         profile,
         authMode,
-        requiredEnvVars,
-        tmuxSession,
-        tmuxTmpDir,
-        useTmux,
     ]);
-
-    const editRequiredSecretEnvVar = React.useCallback(async () => {
-        const current = requiredEnvVars.find((v) => (v?.kind ?? 'secret') === 'secret')?.name ?? '';
-        const name = await Modal.prompt(
-            t('profiles.requirements.modalTitle'),
-            t('profiles.requirements.secretEnvVarPromptDescription'),
-            { defaultValue: current, placeholder: 'OPENAI_API_KEY', cancelText: t('common.cancel'), confirmText: t('common.save') },
-        );
-        if (name === null) return;
-        const normalized = name.trim().toUpperCase();
-        if (!/^[A-Z_][A-Z0-9_]*$/.test(normalized)) {
-            Modal.alert(t('common.error'), t('profiles.environmentVariables.validation.invalidNameFormat'));
-            return;
-        }
-
-        setRequiredEnvVars((prev) => {
-            const withoutSecret = prev.filter((v) => (v?.kind ?? 'secret') !== 'secret');
-            return [{ name: normalized, kind: 'secret' }, ...withoutSecret];
-        });
-    }, [requiredEnvVars]);
 
     React.useEffect(() => {
         if (!saveRef) {
@@ -381,98 +530,39 @@ export function ProfileEditForm({
                 </ItemGroup>
             )}
 
-            <View style={styles.requirementsHeader}>
-                <Text style={styles.requirementsTitle}>{t('profiles.requirements.sectionTitle')}</Text>
-                <Text style={styles.requirementsSubtitle}>
-                    {t('profiles.requirements.sectionSubtitle')}
-                </Text>
-            </View>
-
-            <View style={styles.requirementsTilesContainer}>
-                <OptionTiles
-                    options={[
-                        {
-                            id: 'none',
-                            title: t('profiles.requirements.options.none.title'),
-                            subtitle: t('profiles.requirements.options.none.subtitle'),
-                            icon: 'remove-circle-outline',
-                        },
-                        {
-                            id: 'apiKeyEnv',
-                            title: t('profiles.requirements.apiKeyRequired'),
-                            subtitle: t('profiles.requirements.options.apiKeyEnv.subtitle'),
-                            icon: 'key-outline',
-                        },
-                        {
-                            id: 'machineLogin',
-                            title: t('profiles.machineLogin.title'),
-                            subtitle: t('profiles.requirements.options.machineLogin.subtitle'),
-                            icon: 'terminal-outline',
-                        },
-                    ]}
-                    value={(authMode ?? 'none') as 'none' | 'apiKeyEnv' | 'machineLogin'}
-                    onChange={(next) => {
-                        if (next === 'none') {
+            <ItemGroup title={t('profiles.requirements.sectionTitle')} footer={t('profiles.requirements.sectionSubtitle')}>
+                <Item
+                    title={t('profiles.machineLogin.title')}
+                    subtitle={t('profiles.machineLogin.subtitle')}
+                    leftElement={<Ionicons name="terminal-outline" size={24} color={theme.colors.textSecondary} />}
+                    rightElement={(
+                        <Switch
+                            value={authMode === 'machineLogin'}
+                            onValueChange={(next) => {
+                                if (!next) {
+                                    setAuthMode(undefined);
+                                    setRequiresMachineLogin(undefined);
+                                    return;
+                                }
+                                setAuthMode('machineLogin');
+                                setRequiresMachineLogin(undefined);
+                            }}
+                        />
+                    )}
+                    showChevron={false}
+                    onPress={() => {
+                        const next = authMode !== 'machineLogin';
+                        if (!next) {
                             setAuthMode(undefined);
-                            setRequiresMachineLogin(undefined);
-                            setRequiredEnvVars([]);
-                            return;
-                        }
-                        if (next === 'apiKeyEnv') {
-                            setAuthMode('apiKeyEnv');
                             setRequiresMachineLogin(undefined);
                             return;
                         }
                         setAuthMode('machineLogin');
                         setRequiresMachineLogin(undefined);
-                        setRequiredEnvVars([]);
                     }}
+                    showDivider={false}
                 />
-            </View>
-
-            {authMode === 'apiKeyEnv' && (
-                <ItemGroup>
-                    <Item
-                        title={t('profiles.requirements.apiKeyEnvVar.title')}
-                        subtitle={t('profiles.requirements.apiKeyEnvVar.subtitle')}
-                        icon={<Ionicons name="key-outline" size={29} color={theme.colors.button.secondary.tint} />}
-                        showChevron={false}
-                    />
-                    <View style={[styles.inputContainer, { paddingTop: 0, paddingBottom: 16 }]}>
-                        <Text style={styles.fieldLabel}>{t('profiles.requirements.apiKeyEnvVar.label')}</Text>
-                        <TextInput
-                            value={requiredEnvVars.find((v) => (v?.kind ?? 'secret') === 'secret')?.name ?? ''}
-                            onChangeText={(value) => {
-                                const normalized = value.trim().toUpperCase();
-                                setRequiredEnvVars((prev) => {
-                                    const withoutSecret = prev.filter((v) => (v?.kind ?? 'secret') !== 'secret');
-                                    if (!normalized) return withoutSecret;
-                                    return [{ name: normalized, kind: 'secret' }, ...withoutSecret];
-                                });
-                            }}
-                            placeholder="OPENAI_API_KEY"
-                            placeholderTextColor={theme.colors.input.placeholder}
-                            autoCapitalize="characters"
-                            autoCorrect={false}
-                            style={styles.textInput}
-                        />
-                    </View>
-                </ItemGroup>
-            )}
-
-            {authMode === 'machineLogin' && (
-                <ItemGroup>
-                    <Item
-                        title={t('profiles.machineLogin.title')}
-                        subtitle={
-                            t('profiles.requirements.options.machineLogin.longSubtitle')
-                        }
-                        icon={<Ionicons name="terminal-outline" size={29} color={theme.colors.button.secondary.tint} />}
-                        showChevron={false}
-                        showDivider={false}
-                    />
-                </ItemGroup>
-            )}
+            </ItemGroup>
 
             <ItemGroup title={t('profiles.aiBackend.title')}>
                 {(() => {
@@ -480,7 +570,7 @@ export function ProfileEditForm({
 
                     const renderLoginStatus = (status: boolean) => (
                         <Text style={[styles.aiBackendStatus, { color: status ? theme.colors.status.connected : theme.colors.status.disconnected }]}>
-                            {status ? 'Logged in' : 'Not logged in'}
+                            {status ? t('profiles.machineLogin.status.loggedIn') : t('profiles.machineLogin.status.notLoggedIn')}
                         </Text>
                     );
 
@@ -587,42 +677,6 @@ export function ProfileEditForm({
                 ))}
             </ItemGroup>
 
-            <ItemGroup title={t('profiles.tmux.title')}>
-                <Item
-                    title={t('profiles.tmux.spawnSessionsTitle')}
-                    subtitle={useTmux ? t('profiles.tmux.spawnSessionsEnabledSubtitle') : t('profiles.tmux.spawnSessionsDisabledSubtitle')}
-                    rightElement={<Switch value={useTmux} onValueChange={setUseTmux} />}
-                    showChevron={false}
-                    onPress={() => setUseTmux((v) => !v)}
-                />
-                {useTmux && (
-                    <React.Fragment>
-                        <View style={[styles.inputContainer, { paddingTop: 0 }]}>
-                            <Text style={styles.fieldLabel}>{t('profiles.tmuxSession')} ({t('common.optional')})</Text>
-                            <TextInput
-                                style={styles.textInput}
-                                placeholder={t('profiles.tmux.sessionNamePlaceholder')}
-                                placeholderTextColor={theme.colors.input.placeholder}
-                                value={tmuxSession}
-                                onChangeText={setTmuxSession}
-                            />
-                        </View>
-                        <View style={[styles.inputContainer, { paddingTop: 0, paddingBottom: 16 }]}>
-                            <Text style={styles.fieldLabel}>{t('profiles.tmuxTempDir')} ({t('common.optional')})</Text>
-                            <TextInput
-                                style={styles.textInput}
-                                placeholder={t('profiles.tmux.tempDirPlaceholder')}
-                                placeholderTextColor={theme.colors.input.placeholder}
-                                value={tmuxTmpDir}
-                                onChangeText={setTmuxTmpDir}
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                            />
-                        </View>
-                    </React.Fragment>
-                )}
-            </ItemGroup>
-
             {!routeMachine && (
                 <ItemGroup title={t('profiles.previewMachine.title')}>
                     <Item
@@ -644,6 +698,10 @@ export function ProfileEditForm({
                 machineName={resolvedMachine ? (resolvedMachine.metadata?.displayName || resolvedMachine.metadata?.host || resolvedMachine.id) : null}
                 profileDocs={profileDocs}
                 onChange={setEnvironmentVariables}
+                sourceRequirementsByName={sourceRequirementsByName}
+                onUpdateSourceRequirement={updateSourceRequirement}
+                getDefaultSecretNameForSourceVar={getDefaultSecretNameForSourceVar}
+                onPickDefaultSecretForSourceVar={openDefaultSecretModalForSourceVar}
             />
 
             <View style={{ paddingHorizontal: Platform.select({ ios: 16, default: 12 }), paddingTop: 12 }}>

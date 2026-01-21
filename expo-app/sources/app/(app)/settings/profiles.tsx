@@ -9,7 +9,7 @@ import { t } from '@/text';
 import { Modal } from '@/modal';
 import { promptUnsavedChangesAlert } from '@/utils/promptUnsavedChangesAlert';
 import { AIBackendProfile } from '@/sync/settings';
-import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
+import { DEFAULT_PROFILES, getBuiltInProfileNameKey, resolveProfileById } from '@/sync/profileUtils';
 import { ProfileEditForm } from '@/components/ProfileEditForm';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -18,7 +18,9 @@ import { Switch } from '@/components/Switch';
 import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 import { useSetting } from '@/sync/storage';
 import { ProfilesList } from '@/components/profiles/ProfilesList';
-import { ApiKeyRequirementModal, type ApiKeyRequirementModalResult } from '@/components/ApiKeyRequirementModal';
+import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/SecretRequirementModal';
+import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
+import { getRequiredSecretEnvVarNames } from '@/sync/profileSecrets';
 
 interface ProfileManagerProps {
     onProfileSelect?: (profile: AIBackendProfile | null) => void;
@@ -39,32 +41,43 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     const isEditingDirtyRef = React.useRef(false);
     const saveRef = React.useRef<(() => boolean) | null>(null);
     const experimentsEnabled = useSetting('experiments');
-    const [apiKeys, setApiKeys] = useSettingMutable('apiKeys');
-    const [defaultApiKeyByProfileId, setDefaultApiKeyByProfileId] = useSettingMutable('defaultApiKeyByProfileId');
+    const [secrets, setSecrets] = useSettingMutable('secrets');
+    const [secretBindingsByProfileId, setSecretBindingsByProfileId] = useSettingMutable('secretBindingsByProfileId');
 
-    const openApiKeyModal = React.useCallback((profile: AIBackendProfile) => {
-        const handleResolve = (result: ApiKeyRequirementModalResult) => {
+    const openSecretModal = React.useCallback((profile: AIBackendProfile, envVarName?: string) => {
+        const requiredSecretNames = getRequiredSecretEnvVarNames(profile);
+        const requiredSecretName = (envVarName ?? requiredSecretNames[0] ?? '').trim().toUpperCase();
+        if (!requiredSecretName) return;
+
+        const handleResolve = (result: SecretRequirementModalResult) => {
             if (result.action !== 'selectSaved') return;
-            setDefaultApiKeyByProfileId({
-                ...defaultApiKeyByProfileId,
-                [profile.id]: result.apiKeyId,
+            setSecretBindingsByProfileId({
+                ...secretBindingsByProfileId,
+                [profile.id]: {
+                    ...(secretBindingsByProfileId[profile.id] ?? {}),
+                    [requiredSecretName]: result.secretId,
+                },
             });
         };
 
         Modal.show({
-            component: ApiKeyRequirementModal,
+            component: SecretRequirementModal,
             props: {
                 profile,
+                secretEnvVarName: requiredSecretName,
+                secretEnvVarNames: requiredSecretNames,
                 machineId: null,
-                apiKeys,
-                defaultApiKeyId: defaultApiKeyByProfileId[profile.id] ?? null,
-                onChangeApiKeys: setApiKeys,
+                secrets,
+                defaultSecretId: secretBindingsByProfileId[profile.id]?.[requiredSecretName] ?? null,
+                defaultSecretIdByEnvVarName: secretBindingsByProfileId[profile.id] ?? null,
+                onChangeSecrets: setSecrets,
                 allowSessionOnly: false,
                 onResolve: handleResolve,
-                onRequestClose: () => handleResolve({ action: 'cancel' } as ApiKeyRequirementModalResult),
+                onRequestClose: () => handleResolve({ action: 'cancel' } as SecretRequirementModalResult),
             },
+            closeOnBackdrop: true,
         });
-    }, [apiKeys, defaultApiKeyByProfileId, setDefaultApiKeyByProfileId]);
+    }, [secrets, secretBindingsByProfileId, setSecretBindingsByProfileId]);
 
     React.useEffect(() => {
         isEditingDirtyRef.current = isEditingDirty;
@@ -196,14 +209,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
         let profile: AIBackendProfile | null = null;
 
         if (profileId) {
-            // Check if it's a built-in profile
-            const builtInProfile = getBuiltInProfile(profileId);
-            if (builtInProfile) {
-                profile = builtInProfile;
-            } else {
-                // Check if it's a custom profile
-                profile = profiles.find(p => p.id === profileId) || null;
-            }
+            profile = resolveProfileById(profileId, profiles);
         }
 
         if (onProfileSelect) {
@@ -222,9 +228,11 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
         // Check if this is a built-in profile being edited
         const isBuiltIn = DEFAULT_PROFILES.some(bp => bp.id === profile.id);
         const builtInNames = DEFAULT_PROFILES
-            .map((bp) => getBuiltInProfile(bp.id))
-            .filter((p): p is AIBackendProfile => !!p)
-            .map((p) => p.name.trim());
+            .map((bp) => {
+                const key = getBuiltInProfileNameKey(bp.id);
+                return key ? t(key).trim() : null;
+            })
+            .filter((name): name is string => Boolean(name));
 
         // For built-in profiles, create a new custom profile instead of modifying the built-in
         if (isBuiltIn) {
@@ -314,7 +322,36 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
                 onEditProfile={(profile) => handleEditProfile(profile)}
                 onDuplicateProfile={(profile) => handleDuplicateProfile(profile)}
                 onDeleteProfile={(profile) => { void handleDeleteProfile(profile); }}
-                onApiKeyBadgePress={openApiKeyModal}
+                onSecretBadgePress={(profile) => {
+                    const required = getRequiredSecretEnvVarNames(profile);
+                    if (required.length <= 1) {
+                        openSecretModal(profile, required[0]);
+                        return;
+                    }
+                    // When multiple required secrets exist, prompt for which env var to configure.
+                    Modal.alert(
+                        t('secrets.defineDefaultForProfileTitle'),
+                        required.join('\n'),
+                        [
+                            { text: t('common.cancel'), style: 'cancel' },
+                            ...required.map((env) => ({
+                                text: env,
+                                onPress: () => openSecretModal(profile, env),
+                            })),
+                        ],
+                    );
+                }}
+                getSecretOverrideReady={(profile) => {
+                    const satisfaction = getSecretSatisfaction({
+                        profile,
+                        secrets,
+                        defaultBindings: secretBindingsByProfileId[profile.id] ?? null,
+                        // No machine selected on this screen; explicitly treat machine env as unavailable.
+                        machineEnvReadyByName: null,
+                    });
+                    return satisfaction.isSatisfied && satisfaction.items.some((i) => i.required && i.satisfiedBy !== 'machineEnv');
+                }}
+                // No machine selected on this screen, so machine-env preflight is intentionally omitted.
             />
 
             {/* Profile Add/Edit Modal */}

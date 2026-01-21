@@ -22,6 +22,13 @@ export interface EnvironmentVariableCardProps {
     secretOverride?: boolean; // user override (true/false) or undefined for auto
     autoSecret?: boolean;     // UI auto classification (docs + heuristic)
     isForcedSensitive?: boolean; // daemon-enforced sensitivity
+    sourceRequirement?: { required: boolean; useSecretVault: boolean } | null;
+    onUpdateSourceRequirement?: (
+        sourceVarName: string,
+        next: { required: boolean; useSecretVault: boolean } | null
+    ) => void;
+    defaultSecretNameForSourceVar?: string | null;
+    onPickDefaultSecretForSourceVar?: (sourceVarName: string) => void;
     onUpdateSecretOverride?: (index: number, isSecret: boolean | undefined) => void;
     onUpdate: (index: number, newValue: string) => void;
     onDelete: (index: number) => void;
@@ -74,6 +81,10 @@ export function EnvironmentVariableCard({
     secretOverride,
     autoSecret = false,
     isForcedSensitive = false,
+    sourceRequirement = null,
+    onUpdateSourceRequirement,
+    defaultSecretNameForSourceVar = null,
+    onPickDefaultSecretForSourceVar,
     onUpdateSecretOverride,
     onUpdate,
     onDelete,
@@ -95,10 +106,40 @@ export function EnvironmentVariableCard({
         setDefaultValue(parsed.defaultValue);
     }, [parsed.defaultValue, parsed.remoteVariableName, parsed.useRemoteVariable]);
 
+    /**
+     * The requirement key is the env var name that is actually *required/resolved* at session start.
+     *
+     * If the value is a template (e.g. `${SOURCE_VAR}`), then the requirement applies to `SOURCE_VAR`
+     * (not necessarily `variable.name`) because that's what the daemon will read from the machine env.
+     */
+    const requirementVarName = React.useMemo(() => {
+        if (parsed.useRemoteVariable) {
+            const name = parsed.remoteVariableName.trim().toUpperCase();
+            return name.length > 0 ? name : variable.name.trim().toUpperCase();
+        }
+        return variable.name.trim().toUpperCase();
+    }, [parsed.remoteVariableName, parsed.useRemoteVariable, variable.name]);
+
+    const hasRequirementVarName = requirementVarName.length > 0;
+    const effectiveSourceRequirement = hasRequirementVarName
+        ? (sourceRequirement ?? { required: false, useSecretVault: false })
+        : null;
+    const useSecretVault = Boolean(effectiveSourceRequirement?.useSecretVault);
+
+    // Vault-enforced secrets must not persist plaintext or fallbacks.
+    React.useEffect(() => {
+        if (!useSecretVault) return;
+        if (defaultValue.trim() !== '') {
+            setDefaultValue('');
+        }
+    }, [defaultValue, useSecretVault]);
+
     const remoteEntry = remoteVariableName ? machineEnv?.[remoteVariableName] : undefined;
     const remoteValue = remoteEntry?.value;
     const hasFallback = defaultValue.trim() !== '';
-    const computedOperator: EnvVarTemplateOperator | null = hasFallback ? (fallbackOperator ?? ':-') : null;
+    const computedOperator: EnvVarTemplateOperator | null = useSecretVault
+        ? null
+        : (hasFallback ? (fallbackOperator ?? ':-') : null);
     const machineLabel = machineName?.trim() ? machineName.trim() : t('common.machine');
 
     const emptyValue = t('profiles.environmentVariables.preview.emptyValue');
@@ -122,7 +163,7 @@ export function EnvironmentVariableCard({
         if (newValue !== variable.value) {
             onUpdate(index, newValue);
         }
-    }, [computedOperator, defaultValue, index, onUpdate, remoteVariableName, useRemoteVariable, variable.value]);
+    }, [computedOperator, defaultValue, index, onUpdate, remoteVariableName, useRemoteVariable, useSecretVault, variable.value]);
 
     // Determine status
     const showRemoteDiffersWarning = remoteValue !== null && expectedValue && remoteValue !== expectedValue;
@@ -236,7 +277,15 @@ export function EnvironmentVariableCard({
                 autoCapitalize="none"
                 autoCorrect={false}
                 secureTextEntry={isSecret}
+                editable={!useSecretVault}
+                selectTextOnFocus={!useSecretVault}
             />
+
+            {useSecretVault ? (
+                <Text style={[styles.secondaryText, { marginTop: 6 }]}>
+                    {t('profiles.environmentVariables.card.fallbackDisabledForVault')}
+                </Text>
+            ) : null}
 
             <View style={styles.secretRow}>
                 <View style={styles.secretRowLeft}>
@@ -308,6 +357,69 @@ export function EnvironmentVariableCard({
             >
                 {t('profiles.environmentVariables.card.resolvedOnSessionStart')}
             </Text>
+
+            {/* Requirements (independent of "use machine env") */}
+            {hasRequirementVarName ? (
+                <>
+                    <View style={styles.toggleRow}>
+                        <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
+                            {t('profiles.environmentVariables.card.requirementRequiredLabel')}
+                        </Text>
+                        <Switch
+                            value={Boolean(effectiveSourceRequirement?.required)}
+                            onValueChange={(next) => {
+                                if (!onUpdateSourceRequirement) return;
+                                onUpdateSourceRequirement(requirementVarName, {
+                                    required: next,
+                                    useSecretVault: Boolean(effectiveSourceRequirement?.useSecretVault),
+                                });
+                            }}
+                        />
+                    </View>
+                    <Text style={[styles.secondaryText, styles.resolvedOnStartText]}>
+                        {t('profiles.environmentVariables.card.requirementRequiredSubtitle')}
+                    </Text>
+
+                    <View style={styles.toggleRow}>
+                        <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
+                            {t('profiles.environmentVariables.card.requirementUseVaultLabel')}
+                        </Text>
+                        <Switch
+                            value={Boolean(effectiveSourceRequirement?.useSecretVault)}
+                            onValueChange={(next) => {
+                                if (!onUpdateSourceRequirement) return;
+                                const prevRequired = Boolean(effectiveSourceRequirement?.required);
+                                onUpdateSourceRequirement(requirementVarName, {
+                                    required: next ? (prevRequired || true) : prevRequired,
+                                    useSecretVault: next,
+                                });
+                            }}
+                        />
+                    </View>
+                    <Text style={[styles.secondaryText, styles.resolvedOnStartText]}>
+                        {t('profiles.environmentVariables.card.requirementUseVaultSubtitle')}
+                    </Text>
+
+                    {Boolean(effectiveSourceRequirement?.useSecretVault) ? (
+                        <Pressable
+                            onPress={() => onPickDefaultSecretForSourceVar?.(requirementVarName)}
+                            style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+                        >
+                            <View style={styles.toggleRow}>
+                                <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
+                                    {t('profiles.environmentVariables.card.defaultSecretLabel')}
+                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <Text style={[styles.secondaryText, { marginTop: 0 }]}>
+                                        {defaultSecretNameForSourceVar ?? t('secrets.noneTitle')}
+                                    </Text>
+                                    <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+                                </View>
+                            </View>
+                        </Pressable>
+                    ) : null}
+                </>
+            ) : null}
 
             {/* Source variable name input (only when enabled) */}
             {useRemoteVariable && (

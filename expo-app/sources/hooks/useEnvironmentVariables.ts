@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo } from 'react';
 import { machineBash, machinePreviewEnv, type EnvPreviewSecretsPolicy, type PreviewEnvValue } from '@/sync/ops';
 
 // Re-export pure utility functions from envVarUtils for backwards compatibility
@@ -75,7 +75,14 @@ export function useEnvironmentVariables(
         return JSON.stringify(entries);
     }, [options?.sensitiveKeys]);
 
-    useEffect(() => {
+    // IMPORTANT:
+    // We intentionally use a layout effect so `isLoading` flips to true before any consumer `useEffect`
+    // (e.g. auto-prompt logic) can run in the same commit. This prevents a race where:
+    // - consumer sees `isLoading=false` (initial) + `isSet=false` (initial)
+    // - and incorrectly treats the requirement as "missing" before the preflight check begins.
+    const useSafeLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
+    useSafeLayoutEffect(() => {
         // Early exit conditions
         if (!machineId || varNames.length === 0) {
             setVariables({});

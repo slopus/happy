@@ -1,4 +1,4 @@
-import type { ItemAction } from '@/components/ItemActionsMenuModal';
+import type { ItemAction } from '@/components/itemActions/types';
 import type { AIBackendProfile } from '@/sync/settings';
 import { t } from '@/text';
 

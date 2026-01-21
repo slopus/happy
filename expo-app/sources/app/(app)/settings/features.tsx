@@ -46,7 +46,80 @@ export default React.memo(function FeaturesSettingsScreen() {
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
-            {/* Experiments master toggle */}
+            {/* Standard feature toggles first */}
+            <ItemGroup>
+                <Item
+                    title={t('settingsFeatures.markdownCopyV2')}
+                    subtitle={t('settingsFeatures.markdownCopyV2Subtitle')}
+                    icon={<Ionicons name="text-outline" size={29} color="#34C759" />}
+                    rightElement={<Switch value={markdownCopyV2} onValueChange={setMarkdownCopyV2} />}
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.hideInactiveSessions')}
+                    subtitle={t('settingsFeatures.hideInactiveSessionsSubtitle')}
+                    icon={<Ionicons name="eye-off-outline" size={29} color="#FF9500" />}
+                    rightElement={<Switch value={hideInactiveSessions} onValueChange={setHideInactiveSessions} />}
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.enhancedSessionWizard')}
+                    subtitle={useEnhancedSessionWizard
+                        ? t('settingsFeatures.enhancedSessionWizardEnabled')
+                        : t('settingsFeatures.enhancedSessionWizardDisabled')}
+                    icon={<Ionicons name="sparkles-outline" size={29} color="#AF52DE" />}
+                    rightElement={<Switch value={useEnhancedSessionWizard} onValueChange={setUseEnhancedSessionWizard} />}
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.machinePickerSearch')}
+                    subtitle={t('settingsFeatures.machinePickerSearchSubtitle')}
+                    icon={<Ionicons name="search-outline" size={29} color="#007AFF" />}
+                    rightElement={<Switch value={useMachinePickerSearch} onValueChange={setUseMachinePickerSearch} />}
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.pathPickerSearch')}
+                    subtitle={t('settingsFeatures.pathPickerSearchSubtitle')}
+                    icon={<Ionicons name="folder-outline" size={29} color="#007AFF" />}
+                    rightElement={<Switch value={usePathPickerSearch} onValueChange={setUsePathPickerSearch} />}
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.profiles')}
+                    subtitle={useProfiles
+                        ? t('settingsFeatures.profilesEnabled')
+                        : t('settingsFeatures.profilesDisabled')}
+                    icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
+                    rightElement={<Switch value={useProfiles} onValueChange={setUseProfiles} />}
+                    showChevron={false}
+                />
+            </ItemGroup>
+
+            {/* Web-only Features */}
+            {Platform.OS === 'web' && (
+                <ItemGroup
+                    title={t('settingsFeatures.webFeatures')}
+                    footer={t('settingsFeatures.webFeaturesDescription')}
+                >
+                    <Item
+                        title={t('settingsFeatures.enterToSend')}
+                        subtitle={agentInputEnterToSend ? t('settingsFeatures.enterToSendEnabled') : t('settingsFeatures.enterToSendDisabled')}
+                        icon={<Ionicons name="return-down-forward-outline" size={29} color="#007AFF" />}
+                        rightElement={<Switch value={agentInputEnterToSend} onValueChange={setAgentInputEnterToSend} />}
+                        showChevron={false}
+                    />
+                    <Item
+                        title={t('settingsFeatures.commandPalette')}
+                        subtitle={commandPaletteEnabled ? t('settingsFeatures.commandPaletteEnabled') : t('settingsFeatures.commandPaletteDisabled')}
+                        icon={<Ionicons name="keypad-outline" size={29} color="#007AFF" />}
+                        rightElement={<Switch value={commandPaletteEnabled} onValueChange={setCommandPaletteEnabled} />}
+                        showChevron={false}
+                    />
+                </ItemGroup>
+            )}
+
+            {/* Experiments last */}
             <ItemGroup
                 title={t('settingsFeatures.experiments')}
                 footer={t('settingsFeatures.experimentsDescription')}
@@ -69,7 +142,6 @@ export default React.memo(function FeaturesSettingsScreen() {
                 />
             </ItemGroup>
 
-            {/* Per-experiment toggles (only shown when master experiments is enabled) */}
             {experiments && (
                 <ItemGroup
                     title={t('settingsFeatures.experimentalOptions')}
@@ -122,109 +194,6 @@ export default React.memo(function FeaturesSettingsScreen() {
                         subtitle={t('settingsFeatures.expVoiceAuthFlowSubtitle')}
                         icon={<Ionicons name="mic-outline" size={29} color="#FF3B30" />}
                         rightElement={<Switch value={expVoiceAuthFlow} onValueChange={setExpVoiceAuthFlow} />}
-                        showChevron={false}
-                    />
-                </ItemGroup>
-            )}
-
-            {/* Other feature toggles (not gated by experiments master switch) */}
-            <ItemGroup>
-                <Item
-                    title={t('settingsFeatures.markdownCopyV2')}
-                    subtitle={t('settingsFeatures.markdownCopyV2Subtitle')}
-                    icon={<Ionicons name="text-outline" size={29} color="#34C759" />}
-                    rightElement={
-                        <Switch
-                            value={markdownCopyV2}
-                            onValueChange={setMarkdownCopyV2}
-                        />
-                    }
-                    showChevron={false}
-                />
-                <Item
-                    title={t('settingsFeatures.hideInactiveSessions')}
-                    subtitle={t('settingsFeatures.hideInactiveSessionsSubtitle')}
-                    icon={<Ionicons name="eye-off-outline" size={29} color="#FF9500" />}
-                    rightElement={
-                        <Switch
-                            value={hideInactiveSessions}
-                            onValueChange={setHideInactiveSessions}
-                        />
-                    }
-                    showChevron={false}
-                />
-                <Item
-                    title={t('settingsFeatures.enhancedSessionWizard')}
-                    subtitle={useEnhancedSessionWizard
-                        ? t('settingsFeatures.enhancedSessionWizardEnabled')
-                        : t('settingsFeatures.enhancedSessionWizardDisabled')}
-                    icon={<Ionicons name="sparkles-outline" size={29} color="#AF52DE" />}
-                    rightElement={
-                        <Switch
-                            value={useEnhancedSessionWizard}
-                            onValueChange={setUseEnhancedSessionWizard}
-                        />
-                    }
-                    showChevron={false}
-                />
-                <Item
-                    title={t('settingsFeatures.machinePickerSearch')}
-                    subtitle={t('settingsFeatures.machinePickerSearchSubtitle')}
-                    icon={<Ionicons name="search-outline" size={29} color="#007AFF" />}
-                    rightElement={<Switch value={useMachinePickerSearch} onValueChange={setUseMachinePickerSearch} />}
-                    showChevron={false}
-                />
-                <Item
-                    title={t('settingsFeatures.pathPickerSearch')}
-                    subtitle={t('settingsFeatures.pathPickerSearchSubtitle')}
-                    icon={<Ionicons name="folder-outline" size={29} color="#007AFF" />}
-                    rightElement={<Switch value={usePathPickerSearch} onValueChange={setUsePathPickerSearch} />}
-                    showChevron={false}
-                />
-                <Item
-                    title={t('settingsFeatures.profiles')}
-                    subtitle={useProfiles
-                        ? t('settingsFeatures.profilesEnabled')
-                        : t('settingsFeatures.profilesDisabled')}
-                    icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
-                    rightElement={
-                        <Switch
-                            value={useProfiles}
-                            onValueChange={setUseProfiles}
-                        />
-                    }
-                    showChevron={false}
-                />
-            </ItemGroup>
-
-            {/* Web-only Features */}
-            {Platform.OS === 'web' && (
-                <ItemGroup 
-                    title={t('settingsFeatures.webFeatures')}
-                    footer={t('settingsFeatures.webFeaturesDescription')}
-                >
-                    <Item
-                        title={t('settingsFeatures.enterToSend')}
-                        subtitle={agentInputEnterToSend ? t('settingsFeatures.enterToSendEnabled') : t('settingsFeatures.enterToSendDisabled')}
-                        icon={<Ionicons name="return-down-forward-outline" size={29} color="#007AFF" />}
-                        rightElement={
-                            <Switch
-                                value={agentInputEnterToSend}
-                                onValueChange={setAgentInputEnterToSend}
-                            />
-                        }
-                        showChevron={false}
-                    />
-                    <Item
-                        title={t('settingsFeatures.commandPalette')}
-                        subtitle={commandPaletteEnabled ? t('settingsFeatures.commandPaletteEnabled') : t('settingsFeatures.commandPaletteDisabled')}
-                        icon={<Ionicons name="keypad-outline" size={29} color="#007AFF" />}
-                        rightElement={
-                            <Switch
-                                value={commandPaletteEnabled}
-                                onValueChange={setCommandPaletteEnabled}
-                            />
-                        }
                         showChevron={false}
                     />
                 </ItemGroup>

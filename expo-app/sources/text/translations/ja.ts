@@ -128,6 +128,10 @@ export const ja: TranslationStructure = {
         machineLogin: {
             title: 'マシンでのログインが必要',
             subtitle: 'このプロファイルは、選択したマシン上の CLI ログインキャッシュに依存します。',
+            status: {
+                loggedIn: 'ログイン済み',
+                notLoggedIn: '未ログイン',
+            },
             claudeCode: {
                 title: 'Claude Code',
                 instructions: '`claude` を実行し、`/login` と入力してログインしてください。',
@@ -143,18 +147,17 @@ export const ja: TranslationStructure = {
             },
         },
         requirements: {
-            apiKeyRequired: 'APIキー',
+            secretRequired: 'シークレット',
             configured: 'マシンで設定済み',
             notConfigured: '未設定',
             checking: '確認中…',
-            modalTitle: 'APIキーが必要です',
-            modalBody: 'このプロファイルにはAPIキーが必要です。\n\n利用可能な選択肢:\n• マシン環境を使用（推奨）\n• アプリ設定の保存済みキーを使用\n• このセッションのみキーを入力',
+            modalTitle: 'シークレットが必要です',
+            modalBody: 'このプロファイルにはシークレットが必要です。\n\n利用可能な選択肢:\n• マシン環境を使用（推奨）\n• アプリ設定の保存済みシークレットを使用\n• このセッションのみシークレットを入力',
             sectionTitle: '要件',
             sectionSubtitle: 'これらの項目は事前チェックのために使用され、予期しない失敗を避けます。',
             secretEnvVarPromptDescription: '必要な秘密環境変数名を入力してください（例: OPENAI_API_KEY）。',
             modalHelpWithEnv: ({ env }: { env: string }) => `このプロファイルには${env}が必要です。以下から1つ選択してください。`,
-            modalHelpGeneric: 'このプロファイルにはAPIキーが必要です。以下から1つ選択してください。',
-            modalRecommendation: '推奨: コンピュータ上のデーモン環境にキーを設定してください（再度貼り付ける必要がなくなります）。その後デーモンを再起動して、新しい環境変数を読み込ませてください。',
+            modalHelpGeneric: 'このプロファイルにはシークレットが必要です。以下から1つ選択してください。',
             chooseOptionTitle: '選択してください',
             machineEnvStatus: {
                 theMachine: 'マシン',
@@ -171,10 +174,7 @@ export const ja: TranslationStructure = {
             options: {
                 none: {
                     title: 'なし',
-                    subtitle: 'APIキーもCLIログインも不要です。',
-                },
-                apiKeyEnv: {
-                    subtitle: 'セッション開始時に注入されるAPIキーが必要です。',
+                    subtitle: 'シークレットもCLIログインも不要です。',
                 },
                 machineLogin: {
                     subtitle: 'ターゲットマシンでCLIからログインしている必要があります。',
@@ -183,26 +183,27 @@ export const ja: TranslationStructure = {
                 useMachineEnvironment: {
                     title: 'マシン環境を使用',
                     subtitleWithEnv: ({ env }: { env: string }) => `デーモン環境から${env}を使用します。`,
-                    subtitleGeneric: 'デーモン環境からキーを使用します。',
+                    subtitleGeneric: 'デーモン環境からシークレットを使用します。',
                 },
-                useSavedApiKey: {
-                    title: '保存済みAPIキーを使用',
-                    subtitle: 'アプリ内の保存済みキーを選択（または追加）します。',
+                useSavedSecret: {
+                    title: '保存済みシークレットを使用',
+                    subtitle: 'アプリ内の保存済みシークレットを選択（または追加）します。',
                 },
                 enterOnce: {
-                    title: 'キーを入力',
-                    subtitle: 'このセッションのみキーを貼り付けます（保存されません）。',
+                    title: 'シークレットを入力',
+                    subtitle: 'このセッションのみシークレットを貼り付けます（保存されません）。',
                 },
             },
-            apiKeyEnvVar: {
-                title: 'APIキーの環境変数',
-                subtitle: 'このプロバイダがAPIキーに期待する環境変数名を入力してください（例: OPENAI_API_KEY）。',
+            secretEnvVar: {
+                title: 'シークレットの環境変数',
+                subtitle: 'このプロバイダがシークレットに期待する環境変数名を入力してください（例: OPENAI_API_KEY）。',
                 label: '環境変数名',
             },
             sections: {
                 machineEnvironment: 'マシン環境',
                 useOnceTitle: '一度だけ使用',
-                useOnceFooter: 'このセッションのみキーを貼り付けます。保存されません。',
+                useOnceLabel: 'シークレットを入力',
+                useOnceFooter: 'このセッションのみシークレットを貼り付けます。保存されません。',
             },
             actions: {
                 useMachineEnvironment: {
@@ -233,8 +234,11 @@ export const ja: TranslationStructure = {
             spawnSessionsTitle: 'Tmuxでセッションを起動',
             spawnSessionsEnabledSubtitle: 'セッションは新しいtmuxウィンドウで起動します。',
             spawnSessionsDisabledSubtitle: 'セッションは通常のシェルで起動します（tmux連携なし）',
+            isolatedServerTitle: '分離された tmux サーバー',
+            isolatedServerEnabledSubtitle: '分離された tmux サーバーでセッションを開始します（推奨）。',
+            isolatedServerDisabledSubtitle: 'デフォルトの tmux サーバーでセッションを開始します。',
             sessionNamePlaceholder: '空 = 現在/最近のセッション',
-            tempDirPlaceholder: '/tmp（任意）',
+            tempDirPlaceholder: '空欄で自動生成',
         },
         previewMachine: {
             title: 'マシンをプレビュー',
@@ -258,11 +262,17 @@ export const ja: TranslationStructure = {
                 fallbackValueLabel: 'フォールバック値:',
                 valueInputPlaceholder: '値',
                 defaultValueInputPlaceholder: 'デフォルト値',
+                fallbackDisabledForVault: 'シークレット保管庫を使用している場合、フォールバックは無効になります。',
                 secretNotRetrieved: 'シークレット値 — セキュリティのため取得しません',
-                secretToggleLabel: 'シークレット',
+                secretToggleLabel: 'UIで値を隠す',
                 secretToggleSubtitle: 'UIで値を非表示にし、プレビューのためにマシンから取得しません。',
                 secretToggleEnforcedByDaemon: 'デーモンで強制',
                 secretToggleResetToAuto: '自動に戻す',
+                requirementRequiredLabel: '必須',
+                requirementRequiredSubtitle: '変数が不足している場合、セッション作成をブロックします。',
+                requirementUseVaultLabel: 'シークレット保管庫を使用',
+                requirementUseVaultSubtitle: '保存済みシークレットを使用（フォールバックなし）。',
+                defaultSecretLabel: 'デフォルトのシークレット',
                 overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
                     `ドキュメントのデフォルト値を上書き: ${expectedValue}`,
                 useMachineEnvToggle: 'マシン環境から値を使用',
@@ -382,8 +392,9 @@ export const ja: TranslationStructure = {
         usageSubtitle: 'API使用量とコストを確認',
         profiles: 'プロファイル',
         profilesSubtitle: 'セッション用の環境変数プロファイルを管理',
-        apiKeys: 'APIキー',
-        apiKeysSubtitle: '保存したAPIキーを管理（入力後は再表示されません）',
+        secrets: 'シークレット',
+        secretsSubtitle: '保存したシークレットを管理（入力後は再表示されません）',
+        terminal: 'ターミナル',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service}アカウントが接続されました`,
@@ -714,6 +725,9 @@ export const ja: TranslationStructure = {
         operatingSystem: 'オペレーティングシステム',
         processId: 'プロセスID',
         happyHome: 'Happy のホーム',
+        attachFromTerminal: 'ターミナルからアタッチ',
+        tmuxTarget: 'tmux ターゲット',
+        tmuxFallback: 'tmux フォールバック',
         copyMetadata: 'メタデータをコピー',
         agentState: 'エージェント状態',
         rawJsonDevMode: '生JSON（開発者モード）',
@@ -1179,6 +1193,13 @@ export const ja: TranslationStructure = {
         notFound: 'マシンが見つかりません',
         unknownMachine: '不明なマシン',
         unknownPath: '不明なパス',
+        tmux: {
+            overrideTitle: 'グローバル tmux 設定を上書き',
+            overrideEnabledSubtitle: 'このマシンの新しいセッションにカスタム tmux 設定が適用されます。',
+            overrideDisabledSubtitle: '新しいセッションはグローバル tmux 設定を使用します。',
+            notDetectedSubtitle: 'このマシンで tmux が検出されません。',
+            notDetectedMessage: 'このマシンで tmux が検出されません。tmux をインストールして検出を更新してください。',
+        },
     },
 
     message: {
@@ -1324,16 +1345,20 @@ export const ja: TranslationStructure = {
         noData: '使用データがありません',
     },
 
-    apiKeys: {
-        addTitle: '新しいAPIキー',
-        savedTitle: '保存済みAPIキー',
-        badgeReady: 'APIキー',
-        badgeRequired: 'APIキーが必要',
-        addSubtitle: '保存済みAPIキーを追加',
+    secrets: {
+        addTitle: '新しいシークレット',
+        savedTitle: '保存済みシークレット',
+        badgeReady: 'シークレット',
+        badgeRequired: 'シークレットが必要',
+        missingForProfile: ({ env }: { env: string | null }) =>
+            `シークレットがありません（${env ?? 'シークレット'}）。マシンで設定するか、シークレットを選択/入力してください。`,
+        defaultForProfileTitle: 'デフォルトのシークレット',
+        defineDefaultForProfileTitle: 'このプロフィールのデフォルトシークレットを設定',
+        addSubtitle: '保存済みシークレットを追加',
         noneTitle: 'なし',
-        noneSubtitle: 'マシン環境を使用するか、このセッション用にキーを入力してください',
-        emptyTitle: '保存済みキーがありません',
-        emptySubtitle: 'マシンの環境変数を設定せずにAPIキープロファイルを使うには、追加してください。',
+        noneSubtitle: 'マシン環境を使用するか、このセッション用にシークレットを入力してください',
+        emptyTitle: '保存済みシークレットがありません',
+        emptySubtitle: 'マシンの環境変数を設定せずにシークレットが必要なプロファイルを使うには、追加してください。',
         savedHiddenSubtitle: '保存済み（値は非表示）',
         defaultLabel: 'デフォルト',
         fields: {
@@ -1354,11 +1379,11 @@ export const ja: TranslationStructure = {
             unsetDefault: 'デフォルト解除',
         },
         prompts: {
-            renameTitle: 'APIキー名を変更',
-            renameDescription: 'このキーの表示名を更新します。',
-            replaceValueTitle: 'APIキーの値を置き換え',
-            replaceValueDescription: '新しいAPIキーの値を貼り付けてください。保存後は再表示されません。',
-            deleteTitle: 'APIキーを削除',
+            renameTitle: 'シークレット名を変更',
+            renameDescription: 'このシークレットの表示名を更新します。',
+            replaceValueTitle: 'シークレットの値を置き換え',
+            replaceValueDescription: '新しいシークレットの値を貼り付けてください。保存後は再表示されません。',
+            deleteTitle: 'シークレットを削除',
             deleteConfirm: ({ name }: { name: string }) => `「${name}」を削除しますか？元に戻せません。`,
         },
     },

@@ -9,6 +9,7 @@ import { Item } from '@/components/Item';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
+import { parseEnvVarTemplate } from '@/utils/envVarTemplate';
 
 export interface EnvironmentVariablesListProps {
     environmentVariables: Array<{ name: string; value: string; isSecret?: boolean }>;
@@ -16,6 +17,13 @@ export interface EnvironmentVariablesListProps {
     machineName?: string | null;
     profileDocs?: ProfileDocumentation | null;
     onChange: (newVariables: Array<{ name: string; value: string; isSecret?: boolean }>) => void;
+    sourceRequirementsByName: Record<string, { required: boolean; useSecretVault: boolean } | undefined>;
+    onUpdateSourceRequirement: (
+        sourceVarName: string,
+        next: { required: boolean; useSecretVault: boolean } | null
+    ) => void;
+    getDefaultSecretNameForSourceVar: (sourceVarName: string) => string | null;
+    onPickDefaultSecretForSourceVar: (sourceVarName: string) => void;
 }
 
 const SECRET_NAME_REGEX = /TOKEN|KEY|SECRET|AUTH|PASS|PASSWORD|COOKIE/i;
@@ -31,6 +39,10 @@ export function EnvironmentVariablesList({
     machineName,
     profileDocs,
     onChange,
+    sourceRequirementsByName,
+    onUpdateSourceRequirement,
+    getDefaultSecretNameForSourceVar,
+    onPickDefaultSecretForSourceVar,
 }: EnvironmentVariablesListProps) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
@@ -210,6 +222,9 @@ export function EnvironmentVariablesList({
                                 : autoSecret;
                         const expectedValue = primaryDocs.expectedValue ?? refDocs?.expectedValue;
                         const description = primaryDocs.description ?? refDocs?.description;
+                        const template = parseEnvVarTemplate(envVar.value);
+                        const sourceVarName = template?.sourceVar ?? null;
+                        const requirementVarName = (sourceVarName ?? envVar.name).trim().toUpperCase();
 
                         return (
                             <EnvironmentVariableCard
@@ -227,6 +242,10 @@ export function EnvironmentVariablesList({
                                 secretOverride={envVar.isSecret}
                                 autoSecret={autoSecret}
                                 isForcedSensitive={forcedSecret}
+                                sourceRequirement={requirementVarName ? (sourceRequirementsByName[requirementVarName] ?? null) : null}
+                                onUpdateSourceRequirement={onUpdateSourceRequirement}
+                                defaultSecretNameForSourceVar={requirementVarName ? getDefaultSecretNameForSourceVar(requirementVarName) : null}
+                                onPickDefaultSecretForSourceVar={onPickDefaultSecretForSourceVar}
                                 onUpdateSecretOverride={handleUpdateSecretOverride}
                                 onUpdate={handleUpdateVariable}
                                 onDelete={handleDeleteVariable}

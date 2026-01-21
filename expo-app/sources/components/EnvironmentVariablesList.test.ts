@@ -119,6 +119,10 @@ describe('EnvironmentVariablesList', () => {
                     machineId: 'machine-1',
                     profileDocs,
                     onChange: () => {},
+                    sourceRequirementsByName: {},
+                    onUpdateSourceRequirement: () => {},
+                    getDefaultSecretNameForSourceVar: () => null,
+                    onPickDefaultSecretForSourceVar: () => {},
                 }),
             );
         });
@@ -154,6 +158,10 @@ describe('EnvironmentVariablesList', () => {
                     machineId: 'machine-1',
                     profileDocs,
                     onChange: () => {},
+                    sourceRequirementsByName: {},
+                    onUpdateSourceRequirement: () => {},
+                    getDefaultSecretNameForSourceVar: () => null,
+                    onPickDefaultSecretForSourceVar: () => {},
                 }),
             );
         });
@@ -197,6 +205,10 @@ describe('EnvironmentVariablesList', () => {
                     machineId: 'machine-1',
                     profileDocs: null,
                     onChange: () => {},
+                    sourceRequirementsByName: {},
+                    onUpdateSourceRequirement: () => {},
+                    getDefaultSecretNameForSourceVar: () => null,
+                    onPickDefaultSecretForSourceVar: () => {},
                 }),
             );
         });

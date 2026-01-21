@@ -166,8 +166,9 @@ export const pl: TranslationStructure = {
         usageSubtitle: 'Zobacz użycie API i koszty',
         profiles: 'Profile',
         profilesSubtitle: 'Zarządzaj profilami zmiennych środowiskowych dla sesji',
-        apiKeys: 'Klucze API',
-        apiKeysSubtitle: 'Zarządzaj zapisanymi kluczami API (po wpisaniu nie będą ponownie pokazywane)',
+        secrets: 'Sekrety',
+        secretsSubtitle: 'Zarządzaj zapisanymi sekretami (po wpisaniu nie będą ponownie pokazywane)',
+        terminal: 'Terminal',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Konto ${service} połączone`,
@@ -498,6 +499,9 @@ export const pl: TranslationStructure = {
         operatingSystem: 'System operacyjny',
         processId: 'ID procesu',
         happyHome: 'Katalog domowy Happy',
+        attachFromTerminal: 'Dołącz z terminala',
+        tmuxTarget: 'Cel tmux',
+        tmuxFallback: 'Fallback tmux',
         copyMetadata: 'Kopiuj metadane',
         agentState: 'Stan agenta',
         rawJsonDevMode: 'Surowy JSON (tryb deweloperski)',
@@ -962,6 +966,13 @@ export const pl: TranslationStructure = {
         notFound: 'Nie znaleziono maszyny',
         unknownMachine: 'nieznana maszyna',
         unknownPath: 'nieznana ścieżka',
+        tmux: {
+            overrideTitle: 'Zastąp globalne ustawienia tmux',
+            overrideEnabledSubtitle: 'Niestandardowe ustawienia tmux dotyczą nowych sesji na tej maszynie.',
+            overrideDisabledSubtitle: 'Nowe sesje używają globalnych ustawień tmux.',
+            notDetectedSubtitle: 'tmux nie został wykryty na tej maszynie.',
+            notDetectedMessage: 'tmux nie został wykryty na tej maszynie. Zainstaluj tmux i odśwież wykrywanie.',
+        },
     },
 
     message: {
@@ -1128,16 +1139,20 @@ export const pl: TranslationStructure = {
         friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
     },
 
-    apiKeys: {
-        addTitle: 'Nowy klucz API',
-        savedTitle: 'Zapisane klucze API',
-        badgeReady: 'Klucz API',
-        badgeRequired: 'Wymagany klucz API',
-        addSubtitle: 'Dodaj zapisany klucz API',
+    secrets: {
+        addTitle: 'Nowy sekret',
+        savedTitle: 'Zapisane sekrety',
+        badgeReady: 'Sekret',
+        badgeRequired: 'Wymagany sekret',
+        missingForProfile: ({ env }: { env: string | null }) =>
+            `Brak sekretu (${env ?? 'sekret'}). Skonfiguruj go na maszynie lub wybierz/wpisz sekret.`,
+        defaultForProfileTitle: 'Domyślny sekret',
+        defineDefaultForProfileTitle: 'Ustaw domyślny sekret dla tego profilu',
+        addSubtitle: 'Dodaj zapisany sekret',
         noneTitle: 'Brak',
-        noneSubtitle: 'Użyj środowiska maszyny lub wpisz klucz dla tej sesji',
-        emptyTitle: 'Brak zapisanych kluczy',
-        emptySubtitle: 'Dodaj jeden, aby używać profili z kluczem API bez ustawiania zmiennych środowiskowych na maszynie.',
+        noneSubtitle: 'Użyj środowiska maszyny lub wpisz sekret dla tej sesji',
+        emptyTitle: 'Brak zapisanych sekretów',
+        emptySubtitle: 'Dodaj jeden, aby używać profili z sekretem bez ustawiania zmiennych środowiskowych na maszynie.',
         savedHiddenSubtitle: 'Zapisany (wartość ukryta)',
         defaultLabel: 'Domyślny',
         fields: {
@@ -1158,11 +1173,11 @@ export const pl: TranslationStructure = {
             unsetDefault: 'Usuń domyślny',
         },
         prompts: {
-            renameTitle: 'Zmień nazwę klucza API',
-            renameDescription: 'Zaktualizuj przyjazną nazwę dla tego klucza.',
-            replaceValueTitle: 'Zastąp wartość klucza API',
-            replaceValueDescription: 'Wklej nową wartość klucza API. Ta wartość nie będzie ponownie wyświetlana po zapisaniu.',
-            deleteTitle: 'Usuń klucz API',
+            renameTitle: 'Zmień nazwę sekretu',
+            renameDescription: 'Zaktualizuj przyjazną nazwę dla tego sekretu.',
+            replaceValueTitle: 'Zastąp wartość sekretu',
+            replaceValueDescription: 'Wklej nową wartość sekretu. Ta wartość nie będzie ponownie wyświetlana po zapisaniu.',
+            deleteTitle: 'Usuń sekret',
             deleteConfirm: ({ name }: { name: string }) => `Usunąć “${name}”? Tej czynności nie można cofnąć.`,
         },
     },
@@ -1222,6 +1237,10 @@ export const pl: TranslationStructure = {
         machineLogin: {
             title: 'Wymagane logowanie na maszynie',
             subtitle: 'Ten profil korzysta z pamięci podręcznej logowania CLI na wybranej maszynie.',
+            status: {
+                loggedIn: 'Zalogowano',
+                notLoggedIn: 'Nie zalogowano',
+            },
             claudeCode: {
                 title: 'Claude Code',
                 instructions: 'Uruchom `claude`, a następnie wpisz `/login`, aby się zalogować.',
@@ -1237,18 +1256,17 @@ export const pl: TranslationStructure = {
             },
         },
         requirements: {
-            apiKeyRequired: 'Klucz API',
+            secretRequired: 'Sekret',
             configured: 'Skonfigurowano na maszynie',
             notConfigured: 'Nie skonfigurowano',
             checking: 'Sprawdzanie…',
-            modalTitle: 'Wymagany klucz API',
-            modalBody: 'Ten profil wymaga klucza API.\n\nDostępne opcje:\n• Użyj środowiska maszyny (zalecane)\n• Użyj zapisanego klucza z ustawień aplikacji\n• Wpisz klucz tylko dla tej sesji',
+            modalTitle: 'Wymagany sekret',
+            modalBody: 'Ten profil wymaga sekretu.\n\nDostępne opcje:\n• Użyj środowiska maszyny (zalecane)\n• Użyj zapisanego sekretu z ustawień aplikacji\n• Wpisz sekret tylko dla tej sesji',
             sectionTitle: 'Wymagania',
             sectionSubtitle: 'Te pola służą do wstępnej weryfikacji i aby uniknąć niespodziewanych błędów.',
             secretEnvVarPromptDescription: 'Wpisz nazwę wymaganej tajnej zmiennej środowiskowej (np. OPENAI_API_KEY).',
             modalHelpWithEnv: ({ env }: { env: string }) => `Ten profil wymaga ${env}. Wybierz jedną z opcji poniżej.`,
-            modalHelpGeneric: 'Ten profil wymaga klucza API. Wybierz jedną z opcji poniżej.',
-            modalRecommendation: 'Zalecane: ustaw klucz w środowisku daemona na komputerze (żeby nie wklejać go ponownie). Następnie uruchom ponownie daemona, aby wczytał nową zmienną środowiskową.',
+            modalHelpGeneric: 'Ten profil wymaga sekretu. Wybierz jedną z opcji poniżej.',
             chooseOptionTitle: 'Wybierz opcję',
             machineEnvStatus: {
                 theMachine: 'maszynie',
@@ -1265,10 +1283,7 @@ export const pl: TranslationStructure = {
             options: {
                 none: {
                     title: 'Brak',
-                    subtitle: 'Nie wymaga klucza API ani logowania CLI.',
-                },
-                apiKeyEnv: {
-                    subtitle: 'Wymaga klucza API wstrzykiwanego przy starcie sesji.',
+                    subtitle: 'Nie wymaga sekretu ani logowania CLI.',
                 },
                 machineLogin: {
                     subtitle: 'Wymaga zalogowania przez CLI na maszynie docelowej.',
@@ -1277,26 +1292,27 @@ export const pl: TranslationStructure = {
                 useMachineEnvironment: {
                     title: 'Użyj środowiska maszyny',
                     subtitleWithEnv: ({ env }: { env: string }) => `Użyj ${env} ze środowiska daemona.`,
-                    subtitleGeneric: 'Użyj klucza ze środowiska daemona.',
+                    subtitleGeneric: 'Użyj sekretu ze środowiska daemona.',
                 },
-                useSavedApiKey: {
-                    title: 'Użyj zapisanego klucza API',
-                    subtitle: 'Wybierz (lub dodaj) zapisany klucz w aplikacji.',
+                useSavedSecret: {
+                    title: 'Użyj zapisanego sekretu',
+                    subtitle: 'Wybierz (lub dodaj) zapisany sekret w aplikacji.',
                 },
                 enterOnce: {
-                    title: 'Wpisz klucz',
-                    subtitle: 'Wklej klucz tylko dla tej sesji (nie zostanie zapisany).',
+                    title: 'Wpisz sekret',
+                    subtitle: 'Wklej sekret tylko dla tej sesji (nie zostanie zapisany).',
                 },
             },
-            apiKeyEnvVar: {
-                title: 'Zmienna środowiskowa klucza API',
-                subtitle: 'Wpisz nazwę zmiennej środowiskowej, której ten dostawca oczekuje dla klucza API (np. OPENAI_API_KEY).',
+            secretEnvVar: {
+                title: 'Zmienna środowiskowa sekretu',
+                subtitle: 'Wpisz nazwę zmiennej środowiskowej, której ten dostawca oczekuje dla sekretu (np. OPENAI_API_KEY).',
                 label: 'Nazwa zmiennej środowiskowej',
             },
             sections: {
                 machineEnvironment: 'Środowisko maszyny',
                 useOnceTitle: 'Użyj raz',
-                useOnceFooter: 'Wklej klucz tylko dla tej sesji. Nie zostanie zapisany.',
+                useOnceLabel: 'Wprowadź sekret',
+                useOnceFooter: 'Wklej sekret tylko dla tej sesji. Nie zostanie zapisany.',
             },
             actions: {
                 useMachineEnvironment: {
@@ -1327,8 +1343,11 @@ export const pl: TranslationStructure = {
             spawnSessionsTitle: 'Uruchamiaj sesje w Tmux',
             spawnSessionsEnabledSubtitle: 'Sesje uruchamiają się w nowych oknach tmux.',
             spawnSessionsDisabledSubtitle: 'Sesje uruchamiają się w zwykłej powłoce (bez integracji z tmux)',
+            isolatedServerTitle: 'Izolowany serwer tmux',
+            isolatedServerEnabledSubtitle: 'Uruchamiaj sesje w izolowanym serwerze tmux (zalecane).',
+            isolatedServerDisabledSubtitle: 'Uruchamiaj sesje w domyślnym serwerze tmux.',
             sessionNamePlaceholder: 'Puste = bieżąca/najnowsza sesja',
-            tempDirPlaceholder: '/tmp (opcjonalne)',
+            tempDirPlaceholder: 'Pozostaw puste, aby wygenerować automatycznie',
         },
         previewMachine: {
             title: 'Podgląd maszyny',
@@ -1352,11 +1371,17 @@ export const pl: TranslationStructure = {
                 fallbackValueLabel: 'Wartość fallback:',
                 valueInputPlaceholder: 'Wartość',
                 defaultValueInputPlaceholder: 'Wartość domyślna',
+                fallbackDisabledForVault: 'Fallback jest wyłączony podczas używania sejfu sekretów.',
                 secretNotRetrieved: 'Wartość sekretna - nie jest pobierana ze względów bezpieczeństwa',
-                secretToggleLabel: 'Sekret',
+                secretToggleLabel: 'Ukryj wartość w UI',
                 secretToggleSubtitle: 'Ukrywa wartość w UI i nie pobiera jej z maszyny na potrzeby podglądu.',
                 secretToggleEnforcedByDaemon: 'Wymuszone przez daemon',
                 secretToggleResetToAuto: 'Przywróć automatyczne',
+                requirementRequiredLabel: 'Wymagane',
+                requirementRequiredSubtitle: 'Blokuje tworzenie sesji, jeśli zmienna jest brakująca.',
+                requirementUseVaultLabel: 'Użyj sejfu sekretów',
+                requirementUseVaultSubtitle: 'Użyj zapisanego sekretu (bez wartości fallback).',
+                defaultSecretLabel: 'Domyślny sekret',
                 overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
                     `Nadpisywanie udokumentowanej wartości domyślnej: ${expectedValue}`,
                 useMachineEnvToggle: 'Użyj wartości ze środowiska maszyny',

@@ -155,8 +155,9 @@ export const ca: TranslationStructure = {
         usageSubtitle: "Veure l'ús de l'API i costos",
         profiles: 'Perfils',
         profilesSubtitle: 'Gestiona els perfils d\'entorn i variables',
-        apiKeys: 'Claus d’API',
-        apiKeysSubtitle: 'Gestiona les claus d’API desades (no es tornaran a mostrar després d’introduir-les)',
+        secrets: 'Secrets',
+        secretsSubtitle: 'Gestiona els secrets desats (no es tornaran a mostrar després d’introduir-los)',
+        terminal: 'Terminal',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Compte de ${service} connectat`,
@@ -487,6 +488,9 @@ export const ca: TranslationStructure = {
         operatingSystem: 'Sistema operatiu',
         processId: 'ID del procés',
         happyHome: 'Directori de Happy',
+        attachFromTerminal: 'Adjunta des del terminal',
+        tmuxTarget: 'Destí de tmux',
+        tmuxFallback: 'Fallback de tmux',
         copyMetadata: 'Copia les metadades',
         agentState: 'Estat de l\'agent',
         rawJsonDevMode: 'JSON en brut (mode desenvolupador)',
@@ -952,6 +956,13 @@ export const ca: TranslationStructure = {
         notFound: 'Màquina no trobada',
         unknownMachine: 'màquina desconeguda',
         unknownPath: 'camí desconegut',
+        tmux: {
+            overrideTitle: 'Sobreescriu la configuració global de tmux',
+            overrideEnabledSubtitle: 'La configuració personalitzada de tmux s\'aplica a les noves sessions d\'aquesta màquina.',
+            overrideDisabledSubtitle: 'Les noves sessions utilitzen la configuració global de tmux.',
+            notDetectedSubtitle: 'tmux no s\'ha detectat en aquesta màquina.',
+            notDetectedMessage: 'tmux no s\'ha detectat en aquesta màquina. Instal·la tmux i actualitza la detecció.',
+        },
     },
 
     message: {
@@ -1150,6 +1161,10 @@ export const ca: TranslationStructure = {
         machineLogin: {
             title: 'Inici de sessió CLI',
             subtitle: 'Aquest perfil depèn d’una memòria cau d’inici de sessió del CLI a la màquina seleccionada.',
+            status: {
+                loggedIn: 'Sessió iniciada',
+                notLoggedIn: 'Sense sessió iniciada',
+            },
             claudeCode: {
                 title: 'Claude Code',
                 instructions: 'Executa `claude` i després escriu `/login` per iniciar sessió.',
@@ -1165,18 +1180,17 @@ export const ca: TranslationStructure = {
             },
         },
         requirements: {
-            apiKeyRequired: 'Clau d’API',
+            secretRequired: 'Secret',
             configured: 'Configurada a la màquina',
             notConfigured: 'No configurada',
             checking: 'Comprovant…',
-            modalTitle: 'Cal una clau d’API',
-            modalBody: 'Aquest perfil requereix una clau d’API.\n\nOpcions disponibles:\n• Fer servir l’entorn de la màquina (recomanat)\n• Fer servir una clau desada a la configuració de l’app\n• Introduir una clau només per a aquesta sessió',
+            modalTitle: 'Cal un secret',
+            modalBody: 'Aquest perfil requereix un secret.\n\nOpcions disponibles:\n• Fer servir l’entorn de la màquina (recomanat)\n• Fer servir un secret desat a la configuració de l’app\n• Introduir un secret només per a aquesta sessió',
             sectionTitle: 'Requisits',
             sectionSubtitle: 'Aquests camps s’utilitzen per comprovar l’estat i evitar fallades inesperades.',
             secretEnvVarPromptDescription: 'Introdueix el nom de la variable d’entorn secreta necessària (p. ex., OPENAI_API_KEY).',
             modalHelpWithEnv: ({ env }: { env: string }) => `Aquest perfil necessita ${env}. Tria una opció a continuació.`,
-            modalHelpGeneric: 'Aquest perfil necessita una clau d’API. Tria una opció a continuació.',
-            modalRecommendation: 'Recomanat: defineix la clau a l’entorn del dimoni al teu ordinador (per no haver-la d’enganxar de nou). Després reinicia el dimoni perquè llegeixi la nova variable d’entorn.',
+            modalHelpGeneric: 'Aquest perfil necessita un secret. Tria una opció a continuació.',
             chooseOptionTitle: 'Tria una opció',
             machineEnvStatus: {
                 theMachine: 'la màquina',
@@ -1193,10 +1207,7 @@ export const ca: TranslationStructure = {
             options: {
                 none: {
                     title: 'Cap',
-                    subtitle: 'No requereix clau d’API ni inici de sessió per CLI.',
-                },
-                apiKeyEnv: {
-                    subtitle: 'Requereix una clau d’API que s’injectarà en iniciar la sessió.',
+                    subtitle: 'No requereix secret ni inici de sessió per CLI.',
                 },
                 machineLogin: {
                     subtitle: 'Requereix haver iniciat sessió via un CLI a la màquina de destinació.',
@@ -1205,26 +1216,27 @@ export const ca: TranslationStructure = {
                 useMachineEnvironment: {
                     title: 'Fer servir l’entorn de la màquina',
                     subtitleWithEnv: ({ env }: { env: string }) => `Fer servir ${env} de l’entorn del dimoni.`,
-                    subtitleGeneric: 'Fer servir la clau de l’entorn del dimoni.',
+                    subtitleGeneric: 'Fer servir el secret de l’entorn del dimoni.',
                 },
-                useSavedApiKey: {
-                    title: 'Fer servir una clau d’API desada',
-                    subtitle: 'Selecciona (o afegeix) una clau desada a l’app.',
+                useSavedSecret: {
+                    title: 'Fer servir un secret desat',
+                    subtitle: 'Selecciona (o afegeix) un secret desat a l’app.',
                 },
                 enterOnce: {
-                    title: 'Introduir una clau',
-                    subtitle: 'Enganxa una clau només per a aquesta sessió (no es desarà).',
+                    title: 'Introduir un secret',
+                    subtitle: 'Enganxa un secret només per a aquesta sessió (no es desarà).',
                 },
             },
-            apiKeyEnvVar: {
-                title: 'Variable d’entorn de la clau d’API',
-                subtitle: 'Introdueix el nom de la variable d’entorn que aquest proveïdor espera per a la clau d’API (p. ex., OPENAI_API_KEY).',
+            secretEnvVar: {
+                title: 'Variable d’entorn del secret',
+                subtitle: 'Introdueix el nom de la variable d’entorn que aquest proveïdor espera per al secret (p. ex., OPENAI_API_KEY).',
                 label: 'Nom de la variable d’entorn',
             },
             sections: {
                 machineEnvironment: 'Entorn de la màquina',
                 useOnceTitle: 'Fer servir una vegada',
-                useOnceFooter: 'Enganxa una clau només per a aquesta sessió. No es desarà.',
+                useOnceLabel: 'Introdueix un secret',
+                useOnceFooter: 'Enganxa un secret només per a aquesta sessió. No es desarà.',
             },
             actions: {
                 useMachineEnvironment: {
@@ -1255,8 +1267,11 @@ export const ca: TranslationStructure = {
             spawnSessionsTitle: 'Inicia sessions a Tmux',
             spawnSessionsEnabledSubtitle: 'Les sessions s\'inicien en noves finestres de tmux.',
             spawnSessionsDisabledSubtitle: 'Les sessions s\'inicien en un shell normal (sense integració amb tmux)',
+            isolatedServerTitle: 'Servidor tmux aïllat',
+            isolatedServerEnabledSubtitle: 'Inicia sessions en un servidor tmux aïllat (recomanat).',
+            isolatedServerDisabledSubtitle: 'Inicia sessions al servidor tmux predeterminat.',
             sessionNamePlaceholder: 'Buit = sessió actual/més recent',
-            tempDirPlaceholder: '/tmp (opcional)',
+            tempDirPlaceholder: 'Deixa-ho buit per generar automàticament',
         },
         previewMachine: {
             title: 'Previsualitza màquina',
@@ -1280,11 +1295,17 @@ export const ca: TranslationStructure = {
                 fallbackValueLabel: 'Valor de reserva:',
                 valueInputPlaceholder: 'Valor',
                 defaultValueInputPlaceholder: 'Valor per defecte',
+                fallbackDisabledForVault: 'Els valors de reserva estan desactivats quan s\'utilitza el magatzem de secrets.',
                 secretNotRetrieved: 'Valor secret - no es recupera per seguretat',
-                secretToggleLabel: 'Secret',
+                secretToggleLabel: 'Amaga el valor a la UI',
                 secretToggleSubtitle: 'Amaga el valor a la UI i evita obtenir-lo de la màquina per a la previsualització.',
                 secretToggleEnforcedByDaemon: 'Imposat pel dimoni',
                 secretToggleResetToAuto: 'Restablir a automàtic',
+                requirementRequiredLabel: 'Obligatori',
+                requirementRequiredSubtitle: 'Bloqueja la creació de la sessió si falta la variable.',
+                requirementUseVaultLabel: 'Utilitza el magatzem de secrets',
+                requirementUseVaultSubtitle: 'Utilitza un secret desat (sense valors de reserva).',
+                defaultSecretLabel: 'Secret per defecte',
                 overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
                     `S'està substituint el valor predeterminat documentat: ${expectedValue}`,
                 useMachineEnvToggle: 'Utilitza el valor de l\'entorn de la màquina',
@@ -1331,16 +1352,20 @@ export const ca: TranslationStructure = {
         },
     },
 
-    apiKeys: {
-        addTitle: 'Nova clau d’API',
-        savedTitle: 'Claus d’API desades',
-        badgeReady: 'Clau d’API',
-        badgeRequired: 'Cal una clau d’API',
-        addSubtitle: 'Afegeix una clau d’API desada',
+    secrets: {
+        addTitle: 'Nou secret',
+        savedTitle: 'Secrets desats',
+        badgeReady: 'Secret',
+        badgeRequired: 'Cal un secret',
+        missingForProfile: ({ env }: { env: string | null }) =>
+            `Falta el secret (${env ?? 'secret'}). Configura’l a la màquina o selecciona/introdueix un secret.`,
+        defaultForProfileTitle: 'Secret predeterminat',
+        defineDefaultForProfileTitle: 'Defineix el secret predeterminat per a aquest perfil',
+        addSubtitle: 'Afegeix un secret desat',
         noneTitle: 'Cap',
-        noneSubtitle: 'Fes servir l’entorn de la màquina o introdueix una clau per a aquesta sessió',
-        emptyTitle: 'No hi ha claus desades',
-        emptySubtitle: 'Afegeix-ne una per utilitzar perfils amb clau d’API sense configurar variables d’entorn a la màquina.',
+        noneSubtitle: 'Fes servir l’entorn de la màquina o introdueix un secret per a aquesta sessió',
+        emptyTitle: 'No hi ha secrets desats',
+        emptySubtitle: 'Afegeix-ne un per utilitzar perfils amb secret sense configurar variables d’entorn a la màquina.',
         savedHiddenSubtitle: 'Desada (valor ocult)',
         defaultLabel: 'Per defecte',
         fields: {
@@ -1361,11 +1386,11 @@ export const ca: TranslationStructure = {
             unsetDefault: 'Treu com a per defecte',
         },
         prompts: {
-            renameTitle: 'Reanomena la clau d’API',
-            renameDescription: 'Actualitza el nom descriptiu d’aquesta clau.',
-            replaceValueTitle: 'Substitueix el valor de la clau d’API',
-            replaceValueDescription: 'Enganxa el nou valor de la clau d’API. No es tornarà a mostrar després de desar-lo.',
-            deleteTitle: 'Elimina la clau d’API',
+            renameTitle: 'Reanomena el secret',
+            renameDescription: 'Actualitza el nom descriptiu d’aquest secret.',
+            replaceValueTitle: 'Substitueix el valor del secret',
+            replaceValueDescription: 'Enganxa el nou valor del secret. No es tornarà a mostrar després de desar-lo.',
+            deleteTitle: 'Elimina el secret',
             deleteConfirm: ({ name }: { name: string }) => `Vols eliminar “${name}”? Aquesta acció no es pot desfer.`,
         },
     },

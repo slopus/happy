@@ -168,8 +168,9 @@ export const en = {
         usageSubtitle: 'View your API usage and costs',
         profiles: 'Profiles',
         profilesSubtitle: 'Manage environment variable profiles for sessions',
-        apiKeys: 'API Keys',
-        apiKeysSubtitle: 'Manage saved API keys (never shown again after entry)',
+        secrets: 'Secrets',
+        secretsSubtitle: 'Manage saved secrets (never shown again after entry)',
+        terminal: 'Terminal',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service} account connected`,
@@ -500,6 +501,9 @@ export const en = {
         operatingSystem: 'Operating System',
         processId: 'Process ID',
         happyHome: 'Happy Home',
+        attachFromTerminal: 'Attach from terminal',
+        tmuxTarget: 'Tmux target',
+        tmuxFallback: 'Tmux fallback',
         copyMetadata: 'Copy Metadata',
         agentState: 'Agent State',
         rawJsonDevMode: 'Raw JSON (Dev Mode)',
@@ -965,6 +969,13 @@ export const en = {
         notFound: 'Machine not found',
         unknownMachine: 'unknown machine',
         unknownPath: 'unknown path',
+        tmux: {
+            overrideTitle: 'Override global tmux settings',
+            overrideEnabledSubtitle: 'Custom tmux settings apply to new sessions on this machine.',
+            overrideDisabledSubtitle: 'New sessions use the global tmux settings.',
+            notDetectedSubtitle: 'tmux is not detected on this machine.',
+            notDetectedMessage: 'tmux is not detected on this machine. Install tmux and refresh detection.',
+        },
     },
 
     message: {
@@ -1118,16 +1129,20 @@ export const en = {
         friendAcceptedGeneric: 'Friend request accepted',
     },
 
-    apiKeys: {
-        addTitle: 'New API key',
-        savedTitle: 'Saved API keys',
-        badgeReady: 'API key',
-        badgeRequired: 'API key required',
-        addSubtitle: 'Add a saved API key',
+    secrets: {
+        addTitle: 'New secret',
+        savedTitle: 'Saved secrets',
+        badgeReady: 'Secrets',
+        badgeRequired: 'Secret required',
+        missingForProfile: ({ env }: { env: string | null }) =>
+            `Missing secret (${env ?? 'secret'}). Configure it on the machine or select/enter a secret.`,
+        defaultForProfileTitle: 'Default secret',
+        defineDefaultForProfileTitle: 'Define default secret for this profile',
+        addSubtitle: 'Add a saved secret',
         noneTitle: 'None',
-        noneSubtitle: 'Use machine environment or enter a key for this session',
+        noneSubtitle: 'Use machine environment or enter a secret for this session',
         emptyTitle: 'No saved keys',
-        emptySubtitle: 'Add one to use API-key profiles without setting machine env vars.',
+        emptySubtitle: 'Add one to use secret-required profiles without setting machine env vars.',
         savedHiddenSubtitle: 'Saved (value hidden)',
         defaultLabel: 'Default',
         fields: {
@@ -1148,11 +1163,11 @@ export const en = {
             unsetDefault: 'Unset default',
         },
         prompts: {
-            renameTitle: 'Rename API key',
+            renameTitle: 'Rename secret',
             renameDescription: 'Update the friendly name for this key.',
-            replaceValueTitle: 'Replace API key value',
-            replaceValueDescription: 'Paste the new API key value. This value will not be shown again after saving.',
-            deleteTitle: 'Delete API key',
+            replaceValueTitle: 'Replace secret value',
+            replaceValueDescription: 'Paste the new secret value. This value will not be shown again after saving.',
+            deleteTitle: 'Delete secret',
             deleteConfirm: ({ name }: { name: string }) => `Delete “${name}”? This cannot be undone.`,
         },
     },
@@ -1212,6 +1227,10 @@ export const en = {
         machineLogin: {
             title: 'CLI login',
             subtitle: 'This profile relies on a CLI login cache on the selected machine.',
+            status: {
+                loggedIn: 'Logged in',
+                notLoggedIn: 'Not logged in',
+            },
             claudeCode: {
                 title: 'Claude Code',
                 instructions: 'Run `claude`, then type `/login` to sign in.',
@@ -1227,18 +1246,17 @@ export const en = {
             },
         },
         requirements: {
-            apiKeyRequired: 'API key',
+            secretRequired: 'Secret',
             configured: 'Configured on machine',
             notConfigured: 'Not configured',
             checking: 'Checking…',
-            modalTitle: 'API key required',
-            modalBody: 'This profile requires an API key.\n\nSupported options:\n• Use machine environment (recommended)\n• Use saved key from app settings\n• Enter a key for this session only',
+            modalTitle: 'Secret required',
+            modalBody: 'This profile requires a secret.\n\nSupported options:\n• Use machine environment (recommended)\n• Use saved secret from app settings\n• Enter a secret for this session only',
             sectionTitle: 'Requirements',
             sectionSubtitle: 'These fields are used to preflight readiness and to avoid surprise failures.',
             secretEnvVarPromptDescription: 'Enter the required secret environment variable name (e.g. OPENAI_API_KEY).',
             modalHelpWithEnv: ({ env }: { env: string }) => `This profile needs ${env}. Choose one option below.`,
-            modalHelpGeneric: 'This profile needs an API key. Choose one option below.',
-            modalRecommendation: 'Recommended: set the key in your daemon environment on your computer (so you don’t have to paste it again). Then restart the daemon so it picks up the new env var.',
+            modalHelpGeneric: 'This profile needs a secret. Choose one option below.',
             chooseOptionTitle: 'Choose an option',
             machineEnvStatus: {
                 theMachine: 'the machine',
@@ -1255,38 +1273,36 @@ export const en = {
             options: {
                 none: {
                     title: 'None',
-                    subtitle: 'Does not require an API key or CLI login.',
-                },
-                apiKeyEnv: {
-                    subtitle: 'Requires an API key to be injected at session start.',
+                    subtitle: 'Does not require a secret or CLI login.',
                 },
                 machineLogin: {
-                    subtitle: 'Requires being logged in via a CLI on the target machine.',
+                    subtitle: 'Requires the CLI to be logged in on the machine.',
                     longSubtitle: 'Requires being logged in via the CLI for the AI backend you choose on the target machine.',
                 },
                 useMachineEnvironment: {
                     title: 'Use machine environment',
                     subtitleWithEnv: ({ env }: { env: string }) => `Use ${env} from the daemon environment.`,
-                    subtitleGeneric: 'Use the key from the daemon environment.',
+                    subtitleGeneric: 'Use the secret from the daemon environment.',
                 },
-                useSavedApiKey: {
-                    title: 'Use a saved API key',
-                    subtitle: 'Select (or add) a saved key in the app.',
+                useSavedSecret: {
+                    title: 'Use a saved secret',
+                    subtitle: 'Select (or add) a saved secret in the app.',
                 },
                 enterOnce: {
-                    title: 'Enter a key',
-                    subtitle: 'Paste a key for this session only (won’t be saved).',
+                    title: 'Enter a secret',
+                    subtitle: 'Paste a secret for this session only (won’t be saved).',
                 },
             },
-            apiKeyEnvVar: {
-                title: 'API key environment variable',
-                subtitle: 'Enter the env var name this provider expects for its API key (e.g. OPENAI_API_KEY).',
+            secretEnvVar: {
+                title: 'Secret environment variable',
+                subtitle: 'Enter the env var name this provider expects for its secret (e.g. OPENAI_API_KEY).',
                 label: 'Environment variable name',
             },
             sections: {
                 machineEnvironment: 'Machine environment',
                 useOnceTitle: 'Use once',
-                useOnceFooter: 'Paste a key for this session only. It won’t be saved.',
+                useOnceLabel: 'Enter a secret',
+                useOnceFooter: 'Paste a secret for this session only. It won’t be saved.',
             },
             actions: {
                 useMachineEnvironment: {
@@ -1317,8 +1333,11 @@ export const en = {
             spawnSessionsTitle: 'Spawn Sessions in Tmux',
             spawnSessionsEnabledSubtitle: 'Sessions spawn in new tmux windows.',
             spawnSessionsDisabledSubtitle: 'Sessions spawn in regular shell (no tmux integration)',
+            isolatedServerTitle: 'Isolated tmux server',
+            isolatedServerEnabledSubtitle: 'Start sessions in an isolated tmux server (recommended).',
+            isolatedServerDisabledSubtitle: 'Start sessions in your default tmux server.',
             sessionNamePlaceholder: 'Empty = current/most recent session',
-            tempDirPlaceholder: '/tmp (optional)',
+            tempDirPlaceholder: 'Leave blank to auto-generate',
         },
         previewMachine: {
             title: 'Preview Machine',
@@ -1342,11 +1361,17 @@ export const en = {
                 fallbackValueLabel: 'Fallback value:',
                 valueInputPlaceholder: 'Value',
                 defaultValueInputPlaceholder: 'Default value',
+                fallbackDisabledForVault: 'Fallbacks are disabled when using the secret vault.',
                 secretNotRetrieved: 'Secret value - not retrieved for security',
-                secretToggleLabel: 'Secret',
+                secretToggleLabel: 'Hide value in UI',
                 secretToggleSubtitle: 'Hide the value in the UI and avoid fetching it from the machine for preview.',
                 secretToggleEnforcedByDaemon: 'Enforced by daemon',
                 secretToggleResetToAuto: 'Reset to auto',
+                requirementRequiredLabel: 'Required',
+                requirementRequiredSubtitle: 'Block session creation when this variable is missing.',
+                requirementUseVaultLabel: 'Use secret vault',
+                requirementUseVaultSubtitle: 'Use a saved secret for this variable (no fallback values).',
+                defaultSecretLabel: 'Default secret',
                 overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
                     `Overriding documented default: ${expectedValue}`,
                 useMachineEnvToggle: 'Use value from machine environment',

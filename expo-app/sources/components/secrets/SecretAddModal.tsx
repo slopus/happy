@@ -8,18 +8,18 @@ import { t } from '@/text';
 import { ItemListStatic } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 
-export interface ApiKeyAddModalResult {
+export interface SecretAddModalResult {
     name: string;
     value: string;
 }
 
-export interface ApiKeyAddModalProps {
+export interface SecretAddModalProps {
     onClose: () => void;
-    onSubmit: (result: ApiKeyAddModalResult) => void;
+    onSubmit: (result: SecretAddModalResult) => void;
     title?: string;
 }
 
-export function ApiKeyAddModal(props: ApiKeyAddModalProps) {
+export function SecretAddModal(props: SecretAddModalProps) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
 
@@ -29,12 +29,8 @@ export function ApiKeyAddModal(props: ApiKeyAddModalProps) {
     const submit = React.useCallback(() => {
         const trimmedName = name.trim();
         const trimmedValue = value.trim();
-        if (!trimmedName) {
-            return;
-        }
-        if (!trimmedValue) {
-            return;
-        }
+        if (!trimmedName) return;
+        if (!trimmedValue) return;
         props.onSubmit({ name: trimmedName, value: trimmedValue });
         props.onClose();
     }, [name, props, value]);
@@ -42,7 +38,7 @@ export function ApiKeyAddModal(props: ApiKeyAddModalProps) {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>{props.title ?? t('apiKeys.addTitle')}</Text>
+                <Text style={styles.headerTitle}>{props.title ?? t('secrets.addTitle')}</Text>
                 <Pressable
                     onPress={props.onClose}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -54,16 +50,16 @@ export function ApiKeyAddModal(props: ApiKeyAddModalProps) {
 
             <View style={styles.body}>
                 <Text style={styles.helpText}>
-                    {t('settings.apiKeysSubtitle')}
+                    {t('settings.secretsSubtitle')}
                 </Text>
 
                 <ItemListStatic style={{ backgroundColor: 'transparent' }}>
-                    <ItemGroup title={t('apiKeys.addTitle')} containerStyle={{ marginHorizontal: 0 }}>
+                    <ItemGroup title={t('secrets.addTitle')} containerStyle={{ marginHorizontal: 0 }}>
                         <View style={styles.inputContainer}>
-                            <Text style={styles.fieldLabel}>{t('apiKeys.fields.name')}</Text>
+                            <Text style={styles.fieldLabel}>{t('secrets.fields.name')}</Text>
                             <TextInput
                                 style={styles.textInput}
-                                placeholder={t('apiKeys.placeholders.nameExample')}
+                                placeholder={t('secrets.placeholders.nameExample')}
                                 placeholderTextColor={theme.colors.input.placeholder}
                                 value={name}
                                 onChangeText={setName}
@@ -73,7 +69,7 @@ export function ApiKeyAddModal(props: ApiKeyAddModalProps) {
 
                             <View style={{ height: 12 }} />
 
-                            <Text style={styles.fieldLabel}>{t('apiKeys.fields.value')}</Text>
+                            <Text style={styles.fieldLabel}>{t('secrets.fields.value')}</Text>
                             <TextInput
                                 style={styles.textInput}
                                 placeholder="sk-..."
@@ -202,3 +198,4 @@ const stylesheet = StyleSheet.create((theme) => ({
         }) as object),
     },
 }));
+

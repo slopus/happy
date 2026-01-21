@@ -3,27 +3,28 @@ import { Stack } from 'expo-router';
 
 import { useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
-import { ApiKeysList } from '@/components/apiKeys/ApiKeysList';
+import { SecretsList } from '@/components/secrets/SecretsList';
 
-export default React.memo(function ApiKeysSettingsScreen() {
-    const [apiKeys, setApiKeys] = useSettingMutable('apiKeys');
+export default React.memo(function SecretsSettingsScreen() {
+    const [secrets, setSecrets] = useSettingMutable('secrets');
 
     return (
         <>
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    headerTitle: t('settings.apiKeys'),
+                    headerTitle: t('settings.secrets'),
                     headerBackTitle: t('common.back'),
                 }}
             />
 
-            <ApiKeysList
-                apiKeys={apiKeys}
-                onChangeApiKeys={setApiKeys}
+            <SecretsList
+                secrets={secrets}
+                onChangeSecrets={setSecrets}
                 allowAdd
                 allowEdit
             />
         </>
     );
 });
+

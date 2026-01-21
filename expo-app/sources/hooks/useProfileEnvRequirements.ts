@@ -32,12 +32,14 @@ export function useProfileEnvRequirements(
     profile: AIBackendProfile | null | undefined,
 ): ProfileEnvRequirementsResult {
     const required = useMemo<ProfileEnvRequirement[]>(() => {
-        const raw = profile?.requiredEnvVars ?? [];
-        return raw.map((v) => ({
-            name: v.name,
-            kind: v.kind ?? 'secret',
-        }));
-    }, [profile?.requiredEnvVars]);
+        const raw = profile?.envVarRequirements ?? [];
+        return raw
+            .filter((v) => v.required === true)
+            .map((v) => ({
+                name: v.name,
+                kind: v.kind ?? 'secret',
+            }));
+    }, [profile?.envVarRequirements]);
 
     const keysToQuery = useMemo(() => required.map((r) => r.name), [required]);
     const sensitiveKeys = useMemo(() => required.filter((r) => r.kind === 'secret').map((r) => r.name), [required]);

@@ -137,8 +137,9 @@ export const ru: TranslationStructure = {
         usageSubtitle: 'Просмотр использования API и затрат',
         profiles: 'Профили',
         profilesSubtitle: 'Управление профилями переменных окружения для сессий',
-        apiKeys: 'API-ключи',
-        apiKeysSubtitle: 'Управление сохранёнными API-ключами (после ввода больше не показываются)',
+        secrets: 'Секреты',
+        secretsSubtitle: 'Управление сохранёнными секретами (после ввода больше не показываются)',
+        terminal: 'Терминал',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,
@@ -448,6 +449,9 @@ export const ru: TranslationStructure = {
         operatingSystem: 'Операционная система',
         processId: 'ID процесса',
         happyHome: 'Домашний каталог Happy',
+        attachFromTerminal: 'Подключиться из терминала',
+        tmuxTarget: 'Цель tmux',
+        tmuxFallback: 'Fallback tmux',
         copyMetadata: 'Копировать метаданные',
         agentState: 'Состояние агента',
         rawJsonDevMode: 'Сырой JSON (режим разработчика)',
@@ -950,6 +954,13 @@ export const ru: TranslationStructure = {
         notFound: 'Машина не найдена',
         unknownMachine: 'неизвестная машина',
         unknownPath: 'неизвестный путь',
+        tmux: {
+            overrideTitle: 'Переопределить глобальные настройки tmux',
+            overrideEnabledSubtitle: 'Пользовательские настройки tmux применяются к новым сессиям на этой машине.',
+            overrideDisabledSubtitle: 'Новые сессии используют глобальные настройки tmux.',
+            notDetectedSubtitle: 'tmux не обнаружен на этой машине.',
+            notDetectedMessage: 'tmux не обнаружен на этой машине. Установите tmux и обновите обнаружение.',
+        },
     },
 
     message: {
@@ -1127,16 +1138,20 @@ export const ru: TranslationStructure = {
         friendAcceptedGeneric: 'Запрос в друзья принят',
     },
 
-    apiKeys: {
-        addTitle: 'Новый API-ключ',
-        savedTitle: 'Сохранённые API-ключи',
-        badgeReady: 'API‑ключ',
-        badgeRequired: 'Требуется API‑ключ',
-        addSubtitle: 'Добавить сохранённый API-ключ',
+    secrets: {
+        addTitle: 'Новый секрет',
+        savedTitle: 'Сохранённые секреты',
+        badgeReady: 'Секреты',
+        badgeRequired: 'Требуется секрет',
+        missingForProfile: ({ env }: { env: string | null }) =>
+            `Не хватает секрета (${env ?? 'секрет'}). Настройте его на машине или выберите/введите секрет.`,
+        defaultForProfileTitle: 'Секрет по умолчанию',
+        defineDefaultForProfileTitle: 'Установить секрет по умолчанию для этого профиля',
+        addSubtitle: 'Добавить сохранённый секрет',
         noneTitle: 'Нет',
-        noneSubtitle: 'Используйте окружение машины или введите ключ для этой сессии',
+        noneSubtitle: 'Используйте окружение машины или введите секрет для этой сессии',
         emptyTitle: 'Нет сохранённых ключей',
-        emptySubtitle: 'Добавьте ключ, чтобы использовать профили с API-ключом без переменных окружения на машине.',
+        emptySubtitle: 'Добавьте секрет, чтобы использовать профили с требованием секрета без переменных окружения на машине.',
         savedHiddenSubtitle: 'Сохранён (значение скрыто)',
         defaultLabel: 'По умолчанию',
         fields: {
@@ -1157,11 +1172,11 @@ export const ru: TranslationStructure = {
             unsetDefault: 'Убрать по умолчанию',
         },
         prompts: {
-            renameTitle: 'Переименовать API-ключ',
+            renameTitle: 'Переименовать секрет',
             renameDescription: 'Обновите понятное имя для этого ключа.',
-            replaceValueTitle: 'Заменить значение API-ключа',
-            replaceValueDescription: 'Вставьте новое значение API-ключа. После сохранения оно больше не будет показано.',
-            deleteTitle: 'Удалить API-ключ',
+            replaceValueTitle: 'Заменить значение секрета',
+            replaceValueDescription: 'Вставьте новое значение секрета. После сохранения оно больше не будет показано.',
+            deleteTitle: 'Удалить секрет',
             deleteConfirm: ({ name }: { name: string }) => `Удалить «${name}»? Это нельзя отменить.`,
         },
     },
@@ -1221,6 +1236,10 @@ export const ru: TranslationStructure = {
         machineLogin: {
             title: 'Требуется вход на машине',
             subtitle: 'Этот профиль использует кэш входа CLI на выбранной машине.',
+            status: {
+                loggedIn: 'Вход выполнен',
+                notLoggedIn: 'Вход не выполнен',
+            },
             claudeCode: {
                 title: 'Claude Code',
                 instructions: 'Запустите `claude`, затем введите `/login`, чтобы войти.',
@@ -1236,18 +1255,17 @@ export const ru: TranslationStructure = {
             },
         },
         requirements: {
-            apiKeyRequired: 'API-ключ',
+            secretRequired: 'Секрет',
             configured: 'Настроен на машине',
             notConfigured: 'Не настроен',
             checking: 'Проверка…',
-            modalTitle: 'Требуется API-ключ',
-            modalBody: 'Для этого профиля требуется API-ключ.\n\nДоступные варианты:\n• Использовать окружение машины (рекомендуется)\n• Использовать сохранённый ключ из настроек приложения\n• Ввести ключ только для этой сессии',
+            modalTitle: 'Требуется секрет',
+            modalBody: 'Для этого профиля требуется секрет.\n\nДоступные варианты:\n• Использовать окружение машины (рекомендуется)\n• Использовать сохранённый секрет из настроек приложения\n• Ввести секрет только для этой сессии',
             sectionTitle: 'Требования',
             sectionSubtitle: 'Эти поля используются для предварительной проверки готовности и чтобы избежать неожиданных ошибок.',
             secretEnvVarPromptDescription: 'Введите имя обязательной секретной переменной окружения (например, OPENAI_API_KEY).',
             modalHelpWithEnv: ({ env }: { env: string }) => `Для этого профиля требуется ${env}. Выберите один вариант ниже.`,
-            modalHelpGeneric: 'Для этого профиля требуется API-ключ. Выберите один вариант ниже.',
-            modalRecommendation: 'Рекомендуется: задайте ключ в окружении демона на компьютере (чтобы не вставлять его снова). Затем перезапустите демон, чтобы он подхватил новую переменную окружения.',
+            modalHelpGeneric: 'Для этого профиля требуется секрет. Выберите один вариант ниже.',
             chooseOptionTitle: 'Выберите вариант',
             machineEnvStatus: {
                 theMachine: 'машине',
@@ -1264,10 +1282,7 @@ export const ru: TranslationStructure = {
             options: {
                 none: {
                     title: 'Нет',
-                    subtitle: 'Не требует API-ключа или входа через CLI.',
-                },
-                apiKeyEnv: {
-                    subtitle: 'Требуется API-ключ, который будет передан при запуске сессии.',
+                    subtitle: 'Не требует секрета или входа через CLI.',
                 },
                 machineLogin: {
                     subtitle: 'Требуется вход через CLI на целевой машине.',
@@ -1276,30 +1291,31 @@ export const ru: TranslationStructure = {
                 useMachineEnvironment: {
                     title: 'Использовать окружение машины',
                     subtitleWithEnv: ({ env }: { env: string }) => `Использовать ${env} из окружения демона.`,
-                    subtitleGeneric: 'Использовать ключ из окружения демона.',
+                    subtitleGeneric: 'Использовать секрет из окружения демона.',
                 },
-                useSavedApiKey: {
-                    title: 'Использовать сохранённый API-ключ',
-                    subtitle: 'Выберите (или добавьте) сохранённый ключ в приложении.',
+                useSavedSecret: {
+                    title: 'Использовать сохранённый секрет',
+                    subtitle: 'Выберите (или добавьте) сохранённый секрет в приложении.',
                 },
                 enterOnce: {
-                    title: 'Ввести ключ',
-                    subtitle: 'Вставьте ключ только для этой сессии (он не будет сохранён).',
+                    title: 'Ввести секрет',
+                    subtitle: 'Вставьте секрет только для этой сессии (он не будет сохранён).',
                 },
             },
-            apiKeyEnvVar: {
-                title: 'Переменная окружения для API-ключа',
-                subtitle: 'Введите имя переменной окружения, которую этот провайдер ожидает для API-ключа (например, OPENAI_API_KEY).',
+            secretEnvVar: {
+                title: 'Переменная окружения для секрета',
+                subtitle: 'Введите имя переменной окружения, которую этот провайдер ожидает для секрета (например, OPENAI_API_KEY).',
                 label: 'Имя переменной окружения',
             },
             sections: {
                 machineEnvironment: 'Окружение машины',
                 useOnceTitle: 'Использовать один раз',
-                useOnceFooter: 'Вставьте ключ только для этой сессии. Он не будет сохранён.',
+                useOnceLabel: 'Введите секрет',
+                useOnceFooter: 'Вставьте секрет только для этой сессии. Он не будет сохранён.',
             },
             actions: {
                 useMachineEnvironment: {
-                    subtitle: 'Использовать ключ, который уже есть на машине.',
+                    subtitle: 'Использовать секрет, который уже есть на машине.',
                 },
                 useOnceButton: 'Использовать один раз (только для сессии)',
             },
@@ -1326,8 +1342,11 @@ export const ru: TranslationStructure = {
             spawnSessionsTitle: 'Запускать сессии в Tmux',
             spawnSessionsEnabledSubtitle: 'Сессии запускаются в новых окнах tmux.',
             spawnSessionsDisabledSubtitle: 'Сессии запускаются в обычной оболочке (без интеграции с tmux)',
+            isolatedServerTitle: 'Изолированный сервер tmux',
+            isolatedServerEnabledSubtitle: 'Запускать сессии в изолированном сервере tmux (рекомендуется).',
+            isolatedServerDisabledSubtitle: 'Запускать сессии в вашем tmux-сервере по умолчанию.',
             sessionNamePlaceholder: 'Пусто = текущая/последняя сессия',
-            tempDirPlaceholder: '/tmp (необязательно)',
+            tempDirPlaceholder: 'Оставьте пустым для автогенерации',
         },
         previewMachine: {
             title: 'Предпросмотр машины',
@@ -1351,11 +1370,17 @@ export const ru: TranslationStructure = {
                 fallbackValueLabel: 'Значение по умолчанию:',
                 valueInputPlaceholder: 'Значение',
                 defaultValueInputPlaceholder: 'Значение по умолчанию',
+                fallbackDisabledForVault: 'Fallback отключён при использовании хранилища секретов.',
                 secretNotRetrieved: 'Секретное значение — не извлекается из соображений безопасности',
-                secretToggleLabel: 'Секрет',
+                secretToggleLabel: 'Скрыть значение в UI',
                 secretToggleSubtitle: 'Скрывает значение в UI и не извлекает его с машины для предварительного просмотра.',
                 secretToggleEnforcedByDaemon: 'Принудительно демоном',
                 secretToggleResetToAuto: 'Сбросить на авто',
+                requirementRequiredLabel: 'Обязательно',
+                requirementRequiredSubtitle: 'Блокирует создание сессии, если переменная отсутствует.',
+                requirementUseVaultLabel: 'Использовать хранилище секретов',
+                requirementUseVaultSubtitle: 'Использовать сохранённый секрет (без fallback-значений).',
+                defaultSecretLabel: 'Секрет по умолчанию',
                 overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
                     `Переопределение документированного значения: ${expectedValue}`,
                 useMachineEnvToggle: 'Использовать значение из окружения машины',

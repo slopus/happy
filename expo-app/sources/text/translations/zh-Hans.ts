@@ -157,8 +157,9 @@ export const zhHans: TranslationStructure = {
         usageSubtitle: '查看 API 使用情况和费用',
         profiles: '配置文件',
         profilesSubtitle: '管理环境配置文件和变量',
-        apiKeys: 'API 密钥',
-        apiKeysSubtitle: '管理已保存的 API 密钥（输入后将不再显示）',
+        secrets: '机密',
+        secretsSubtitle: '管理已保存的机密（输入后将不再显示）',
+        terminal: '终端',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已连接 ${service} 账户`,
@@ -489,6 +490,9 @@ export const zhHans: TranslationStructure = {
         operatingSystem: '操作系统',
         processId: '进程 ID',
         happyHome: 'Happy 主目录',
+        attachFromTerminal: '从终端附加',
+        tmuxTarget: 'tmux 目标',
+        tmuxFallback: 'tmux 回退',
         copyMetadata: '复制元数据',
         agentState: 'Agent 状态',
         rawJsonDevMode: '原始 JSON（开发者模式）',
@@ -954,6 +958,13 @@ export const zhHans: TranslationStructure = {
         notFound: '未找到设备',
         unknownMachine: '未知设备',
         unknownPath: '未知路径',
+        tmux: {
+            overrideTitle: '覆盖全局 tmux 设置',
+            overrideEnabledSubtitle: '自定义 tmux 设置将应用于此设备上的新会话。',
+            overrideDisabledSubtitle: '新会话使用全局 tmux 设置。',
+            notDetectedSubtitle: '此设备未检测到 tmux。',
+            notDetectedMessage: '此设备未检测到 tmux。请安装 tmux 并刷新检测。',
+        },
     },
 
     message: {
@@ -1152,6 +1163,10 @@ export const zhHans: TranslationStructure = {
         machineLogin: {
             title: '需要在设备上登录',
             subtitle: '此配置文件依赖所选设备上的 CLI 登录缓存。',
+            status: {
+                loggedIn: '已登录',
+                notLoggedIn: '未登录',
+            },
             claudeCode: {
                 title: 'Claude Code',
                 instructions: '运行 `claude`，然后输入 `/login` 登录。',
@@ -1167,18 +1182,17 @@ export const zhHans: TranslationStructure = {
             },
         },
         requirements: {
-            apiKeyRequired: 'API 密钥',
+            secretRequired: '机密',
             configured: '已在设备上配置',
             notConfigured: '未配置',
             checking: '检查中…',
-            modalTitle: '需要 API 密钥',
-            modalBody: '此配置需要 API 密钥。\n\n支持的选项：\n• 使用设备环境（推荐）\n• 使用应用设置中保存的密钥\n• 仅为本次会话输入密钥',
+            modalTitle: '需要机密',
+            modalBody: '此配置需要机密。\n\n支持的选项：\n• 使用设备环境（推荐）\n• 使用应用设置中保存的机密\n• 仅为本次会话输入机密',
             sectionTitle: '要求',
             sectionSubtitle: '这些字段用于预检查就绪状态，避免意外失败。',
             secretEnvVarPromptDescription: '输入所需的秘密环境变量名称（例如 OPENAI_API_KEY）。',
             modalHelpWithEnv: ({ env }: { env: string }) => `此配置需要 ${env}。请选择下面的一个选项。`,
-            modalHelpGeneric: '此配置需要 API 密钥。请选择下面的一个选项。',
-            modalRecommendation: '推荐：在电脑上的守护进程环境中设置密钥（这样就无需再次粘贴）。然后重启守护进程以读取新的环境变量。',
+            modalHelpGeneric: '此配置需要机密。请选择下面的一个选项。',
             chooseOptionTitle: '选择一个选项',
             machineEnvStatus: {
                 theMachine: '设备',
@@ -1195,10 +1209,7 @@ export const zhHans: TranslationStructure = {
             options: {
                 none: {
                     title: '无',
-                    subtitle: '不需要 API 密钥或 CLI 登录。',
-                },
-                apiKeyEnv: {
-                    subtitle: '需要在会话启动时注入 API 密钥。',
+                    subtitle: '不需要机密或 CLI 登录。',
                 },
                 machineLogin: {
                     subtitle: '需要在目标设备上通过 CLI 登录。',
@@ -1207,26 +1218,27 @@ export const zhHans: TranslationStructure = {
                 useMachineEnvironment: {
                     title: '使用设备环境',
                     subtitleWithEnv: ({ env }: { env: string }) => `从守护进程环境中使用 ${env}。`,
-                    subtitleGeneric: '从守护进程环境中使用密钥。',
+                    subtitleGeneric: '从守护进程环境中使用机密。',
                 },
-                useSavedApiKey: {
-                    title: '使用已保存的 API 密钥',
-                    subtitle: '在应用中选择（或添加）一个已保存的密钥。',
+                useSavedSecret: {
+                    title: '使用已保存的机密',
+                    subtitle: '在应用中选择（或添加）一个已保存的机密。',
                 },
                 enterOnce: {
-                    title: '输入密钥',
-                    subtitle: '仅为本次会话粘贴密钥（不会保存）。',
+                    title: '输入机密',
+                    subtitle: '仅为本次会话粘贴机密（不会保存）。',
                 },
             },
-            apiKeyEnvVar: {
-                title: 'API 密钥环境变量',
-                subtitle: '输入此提供方期望的 API 密钥环境变量名（例如 OPENAI_API_KEY）。',
+            secretEnvVar: {
+                title: '机密环境变量',
+                subtitle: '输入此提供方期望的机密环境变量名（例如 OPENAI_API_KEY）。',
                 label: '环境变量名',
             },
             sections: {
                 machineEnvironment: '设备环境',
                 useOnceTitle: '仅使用一次',
-                useOnceFooter: '仅为本次会话粘贴密钥。不会保存。',
+                useOnceLabel: '输入机密',
+                useOnceFooter: '仅为本次会话粘贴机密。不会保存。',
             },
             actions: {
                 useMachineEnvironment: {
@@ -1257,8 +1269,11 @@ export const zhHans: TranslationStructure = {
             spawnSessionsTitle: '在 tmux 中启动会话',
             spawnSessionsEnabledSubtitle: '会话将在新的 tmux 窗口中启动。',
             spawnSessionsDisabledSubtitle: '会话将在普通 shell 中启动（无 tmux 集成）',
+            isolatedServerTitle: '隔离的 tmux 服务器',
+            isolatedServerEnabledSubtitle: '在隔离的 tmux 服务器中启动会话（推荐）。',
+            isolatedServerDisabledSubtitle: '在默认的 tmux 服务器中启动会话。',
             sessionNamePlaceholder: '留空 = 当前/最近会话',
-            tempDirPlaceholder: '/tmp（可选）',
+            tempDirPlaceholder: '留空以自动生成',
         },
         previewMachine: {
             title: '预览设备',
@@ -1282,11 +1297,17 @@ export const zhHans: TranslationStructure = {
                 fallbackValueLabel: '备用值：',
                 valueInputPlaceholder: '值',
                 defaultValueInputPlaceholder: '默认值',
+                fallbackDisabledForVault: '使用机密保管库时，备用值会被禁用。',
                 secretNotRetrieved: '秘密值——出于安全原因不会读取',
-                secretToggleLabel: '秘密',
+                secretToggleLabel: '在 UI 中隐藏值',
                 secretToggleSubtitle: '在 UI 中隐藏该值，并避免为预览从机器获取它。',
                 secretToggleEnforcedByDaemon: '由守护进程强制',
                 secretToggleResetToAuto: '重置为自动',
+                requirementRequiredLabel: '必需',
+                requirementRequiredSubtitle: '当变量缺失时，阻止创建会话。',
+                requirementUseVaultLabel: '使用机密保管库',
+                requirementUseVaultSubtitle: '使用已保存的机密（不允许备用值）。',
+                defaultSecretLabel: '默认机密',
                 overridingDefault: ({ expectedValue }: { expectedValue: string }) =>
                     `正在覆盖文档默认值：${expectedValue}`,
                 useMachineEnvToggle: '使用设备环境中的值',
@@ -1333,16 +1354,20 @@ export const zhHans: TranslationStructure = {
         },
     },
 
-    apiKeys: {
-        addTitle: '新的 API 密钥',
-        savedTitle: '已保存的 API 密钥',
-        badgeReady: 'API 密钥',
-        badgeRequired: '需要 API 密钥',
-        addSubtitle: '添加已保存的 API 密钥',
+    secrets: {
+        addTitle: '新的机密',
+        savedTitle: '已保存的机密',
+        badgeReady: '机密',
+        badgeRequired: '需要机密',
+        missingForProfile: ({ env }: { env: string | null }) =>
+            `缺少机密（${env ?? '机密'}）。请在设备上配置，或选择/输入一个机密。`,
+        defaultForProfileTitle: '默认机密',
+        defineDefaultForProfileTitle: '为此配置文件设置默认机密',
+        addSubtitle: '添加已保存的机密',
         noneTitle: '无',
-        noneSubtitle: '使用设备环境，或为本次会话输入密钥',
-        emptyTitle: '没有已保存的密钥',
-        emptySubtitle: '添加一个，以在不设置设备环境变量的情况下使用 API 密钥配置。',
+        noneSubtitle: '使用设备环境，或为本次会话输入机密',
+        emptyTitle: '没有已保存的机密',
+        emptySubtitle: '添加一个，以在不设置设备环境变量的情况下使用需要机密的配置。',
         savedHiddenSubtitle: '已保存（值已隐藏）',
         defaultLabel: '默认',
         fields: {
@@ -1363,11 +1388,11 @@ export const zhHans: TranslationStructure = {
             unsetDefault: '取消默认',
         },
         prompts: {
-            renameTitle: '重命名 API 密钥',
-            renameDescription: '更新此密钥的友好名称。',
-            replaceValueTitle: '替换 API 密钥值',
-            replaceValueDescription: '粘贴新的 API 密钥值。保存后将不会再次显示。',
-            deleteTitle: '删除 API 密钥',
+            renameTitle: '重命名机密',
+            renameDescription: '更新此机密的友好名称。',
+            replaceValueTitle: '替换机密值',
+            replaceValueDescription: '粘贴新的机密值。保存后将不会再次显示。',
+            deleteTitle: '删除机密',
             deleteConfirm: ({ name }: { name: string }) => `删除“${name}”？此操作无法撤销。`,
         },
     },

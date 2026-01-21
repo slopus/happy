@@ -13,6 +13,19 @@ export interface ProfileRequirementsBadgeProps {
     machineId: string | null;
     onPressIn?: () => void;
     onPress?: () => void;
+    /**
+     * Optional override when the API key requirement is satisfied via a saved/session key
+     * (not the machine environment). Used by New Session flows.
+     */
+    overrideReady?: boolean;
+    /**
+     * Optional override for machine-env preflight readiness/loading.
+     * When provided, this component will NOT run its own env preflight hook.
+     */
+    machineEnvOverride?: {
+        isReady: boolean;
+        isLoading: boolean;
+    } | null;
 }
 
 export function ProfileRequirementsBadge(props: ProfileRequirementsBadgeProps) {
@@ -20,25 +33,34 @@ export function ProfileRequirementsBadge(props: ProfileRequirementsBadgeProps) {
     const styles = stylesheet;
 
     const show = hasRequiredSecret(props.profile);
-    const requirements = useProfileEnvRequirements(props.machineId, show ? props.profile : null);
+    const requirements = useProfileEnvRequirements(
+        props.machineEnvOverride ? null : props.machineId,
+        props.machineEnvOverride ? null : (show ? props.profile : null),
+    );
 
     if (!show) {
         return null;
     }
 
-    const statusColor = requirements.isLoading
+    const machineIsReady = props.machineEnvOverride ? props.machineEnvOverride.isReady : requirements.isReady;
+    const machineIsLoading = props.machineEnvOverride ? props.machineEnvOverride.isLoading : requirements.isLoading;
+
+    const isReady = machineIsReady || props.overrideReady === true;
+    const isLoading = machineIsLoading && !isReady;
+
+    const statusColor = isLoading
         ? theme.colors.status.connecting
-        : requirements.isReady
+        : isReady
             ? theme.colors.status.connected
             : theme.colors.status.disconnected;
 
-    const label = requirements.isReady
-        ? t('apiKeys.badgeReady')
-        : t('apiKeys.badgeRequired');
+    const label = isReady
+        ? t('secrets.badgeReady')
+        : t('secrets.badgeRequired');
 
-    const iconName = requirements.isLoading
+    const iconName = isLoading
         ? 'time-outline'
-        : requirements.isReady
+        : isReady
             ? 'checkmark-circle-outline'
             : 'key-outline';
 

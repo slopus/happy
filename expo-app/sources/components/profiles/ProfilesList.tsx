@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Platform } from 'react-native';
+import { View, Text, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -7,7 +7,7 @@ import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { ItemRowActions } from '@/components/ItemRowActions';
-import type { ItemAction } from '@/components/ItemActionsMenuModal';
+import type { ItemAction } from '@/components/itemActions/types';
 
 import type { AIBackendProfile } from '@/sync/settings';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
@@ -16,6 +16,7 @@ import { ignoreNextRowPress } from '@/utils/ignoreNextRowPress';
 import { toggleFavoriteProfileId } from '@/sync/profileGrouping';
 import { buildProfileActions } from '@/components/profileActions';
 import { getDefaultProfileListStrings, getProfileSubtitle, buildProfilesListGroups } from '@/components/profiles/profileListModel';
+import { getProfileDisplayName } from '@/components/profiles/profileDisplay';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { hasRequiredSecret } from '@/sync/profileSecrets';
@@ -47,7 +48,7 @@ export interface ProfilesListProps {
     onViewEnvironmentVariables?: (profile: AIBackendProfile) => void;
     extraActions?: (profile: AIBackendProfile) => ItemAction[];
 
-    onApiKeyBadgePress?: (profile: AIBackendProfile) => void;
+    onSecretBadgePress?: (profile: AIBackendProfile) => void;
 
     groupTitles?: {
         favorites?: string;
@@ -55,10 +56,27 @@ export interface ProfilesListProps {
         builtIn?: string;
     };
     builtInGroupFooter?: string;
+    /**
+     * Optional explicit boundary ref for row action popovers. Useful when this list is rendered
+     * inside a scroll viewport (e.g. NewSessionWizard) and the popover should be clamped to the
+     * visible portion of that scroll container.
+     */
+    popoverBoundaryRef?: React.RefObject<any> | null;
+    /**
+     * When provided, allows callers to mark API key requirements as satisfied via a saved/session key,
+     * not only machine environment.
+     */
+    getSecretOverrideReady?: (profile: AIBackendProfile) => boolean;
+    /**
+     * When provided, supplies machine-env preflight readiness/loading for the profile's required secret env var.
+     * This allows callers to batch/cache daemon env checks instead of doing one request per row.
+     */
+    getSecretMachineEnvOverride?: (profile: AIBackendProfile) => { isReady: boolean; isLoading: boolean } | null;
 }
 
 type ProfileRowProps = {
     profile: AIBackendProfile;
+    displayName: string;
     isSelected: boolean;
     isFavorite: boolean;
     isDisabled: boolean;
@@ -69,9 +87,11 @@ type ProfileRowProps = {
     subtitleText: string;
     showMobileBadge: boolean;
     onPressProfile?: (profile: AIBackendProfile) => void | Promise<void>;
-    onApiKeyBadgePress?: (profile: AIBackendProfile) => void;
+    onSecretBadgePress?: (profile: AIBackendProfile) => void;
     rightElement: React.ReactNode;
     ignoreRowPressRef: React.MutableRefObject<boolean>;
+    getSecretOverrideReady?: (profile: AIBackendProfile) => boolean;
+    getSecretMachineEnvOverride?: (profile: AIBackendProfile) => { isReady: boolean; isLoading: boolean } | null;
 };
 
 const ProfileRow = React.memo(function ProfileRow(props: ProfileRowProps) {
@@ -96,15 +116,17 @@ const ProfileRow = React.memo(function ProfileRow(props: ProfileRowProps) {
                     <ProfileRequirementsBadge
                         profile={props.profile}
                         machineId={props.machineId}
+                        overrideReady={props.getSecretOverrideReady?.(props.profile) ?? false}
+                        machineEnvOverride={props.getSecretMachineEnvOverride?.(props.profile) ?? null}
                         onPressIn={() => ignoreNextRowPress(props.ignoreRowPressRef)}
                         onPress={() => {
-                            props.onApiKeyBadgePress?.(props.profile);
+                            props.onSecretBadgePress?.(props.profile);
                         }}
                     />
                 </View>
             </View>
         );
-    }, [props.ignoreRowPressRef, props.machineId, props.onApiKeyBadgePress, props.profile, props.showMobileBadge, props.subtitleText, theme.colors.textSecondary]);
+    }, [props.ignoreRowPressRef, props.machineId, props.onSecretBadgePress, props.profile, props.showMobileBadge, props.subtitleText, theme.colors.textSecondary]);
 
     const onPress = React.useCallback(() => {
         if (props.isDisabled) return;
@@ -118,7 +140,7 @@ const ProfileRow = React.memo(function ProfileRow(props: ProfileRowProps) {
     return (
         <Item
             key={props.profile.id}
-            title={props.profile.name}
+            title={props.displayName}
             subtitle={subtitle}
             leftElement={<ProfileCompatibilityIcon profile={props.profile} />}
             showChevron={false}
@@ -147,13 +169,14 @@ export function ProfilesList(props: ProfilesListProps) {
 
     const ignoreRowPressRef = React.useRef(false);
     const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
-    const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
+    const isMobile = useWindowDimensions().width < 580;
 
     const groups = React.useMemo(() => {
         return buildProfilesListGroups({ customProfiles: props.customProfiles, favoriteProfileIds: props.favoriteProfileIds });
     }, [props.customProfiles, props.favoriteProfileIds]);
 
     const isDefaultEnvironmentFavorite = groups.favoriteIds.has('');
+    const showFavoritesGroup = groups.favoriteProfiles.length > 0 || (props.includeDefaultEnvironmentRow && isDefaultEnvironmentFavorite);
 
     const toggleFavorite = React.useCallback((profileId: string) => {
         props.onFavoriteProfileIdsChange(toggleFavoriteProfileId(props.favoriteProfileIds, profileId));
@@ -227,14 +250,17 @@ export function ProfilesList(props: ProfilesListProps) {
                     title={t('profiles.noProfile')}
                     actions={actions}
                     compactActionIds={['favorite']}
+                    pinnedActionIds={['favorite']}
+                    overflowPosition="beforePinned"
                     iconSize={20}
                     onActionPressIn={() => ignoreNextRowPress(ignoreRowPressRef)}
+                    popoverBoundaryRef={props.popoverBoundaryRef}
                 />
             </View>
         );
     }, [isDefaultEnvironmentFavorite, selectedIndicatorColor, theme.colors.textSecondary, toggleFavorite]);
 
-    const renderProfileRightElement = React.useCallback((profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
+    const renderProfileRightElement = React.useCallback((profile: AIBackendProfile, displayName: string, isSelected: boolean, isFavorite: boolean) => {
         const entry = actionsByProfileId.get(profile.id);
         const actions = entry?.actions ?? [];
         const compactActionIds = entry?.compactActionIds ?? ['favorite'];
@@ -245,9 +271,11 @@ export function ProfilesList(props: ProfilesListProps) {
                     <ProfileRequirementsBadge
                         profile={profile}
                         machineId={props.machineId}
+                        overrideReady={props.getSecretOverrideReady?.(profile) ?? false}
+                        machineEnvOverride={props.getSecretMachineEnvOverride?.(profile) ?? null}
                         onPressIn={() => ignoreNextRowPress(ignoreRowPressRef)}
-                        onPress={props.onApiKeyBadgePress ? () => {
-                            props.onApiKeyBadgePress?.(profile);
+                        onPress={props.onSecretBadgePress ? () => {
+                            props.onSecretBadgePress?.(profile);
                         } : undefined}
                     />
                 )}
@@ -255,11 +283,14 @@ export function ProfilesList(props: ProfilesListProps) {
                     <Ionicons name="checkmark-circle" size={24} color={selectedIndicatorColor} style={{ opacity: isSelected ? 1 : 0 }} />
                 </View>
                 <ItemRowActions
-                    title={profile.name}
+                    title={displayName}
                     actions={actions}
                     compactActionIds={compactActionIds}
+                    pinnedActionIds={['favorite']}
+                    overflowPosition="beforePinned"
                     iconSize={20}
                     onActionPressIn={() => ignoreNextRowPress(ignoreRowPressRef)}
+                    popoverBoundaryRef={props.popoverBoundaryRef}
                 />
             </View>
         );
@@ -272,7 +303,7 @@ export function ProfilesList(props: ProfilesListProps) {
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
-            {(props.includeDefaultEnvironmentRow || groups.favoriteProfiles.length > 0 || isDefaultEnvironmentFavorite) && (
+            {showFavoritesGroup && (
                 <ItemGroup
                     title={props.groupTitles?.favorites ?? t('profiles.groups.favorites')}
                     selectableItemCountOverride={Math.max(
@@ -299,17 +330,19 @@ export function ProfilesList(props: ProfilesListProps) {
                         />
                     )}
                     {groups.favoriteProfiles.map((profile, index) => {
+                        const displayName = getProfileDisplayName(profile);
                         const isLast = index === groups.favoriteProfiles.length - 1;
                         const isSelected = props.selectedProfileId === profile.id;
                         const isDisabled = props.getProfileDisabled ? props.getProfileDisabled(profile) : false;
                         const baseSubtitle = getProfileSubtitle({ profile, experimentsEnabled: allowGemini, strings });
                         const extra = props.getProfileSubtitleExtra?.(profile);
                         const subtitleText = extra ? `${baseSubtitle} · ${extra}` : baseSubtitle;
-                        const showMobileBadge = isMobile && hasRequiredSecret(profile) && Boolean(props.onApiKeyBadgePress);
+                        const showMobileBadge = isMobile && hasRequiredSecret(profile) && Boolean(props.onSecretBadgePress);
                         return (
                             <ProfileRow
                                 key={profile.id}
                                 profile={profile}
+                                displayName={displayName}
                                 isSelected={isSelected}
                                 isFavorite={true}
                                 isDisabled={isDisabled}
@@ -320,9 +353,11 @@ export function ProfilesList(props: ProfilesListProps) {
                                 subtitleText={subtitleText}
                                 showMobileBadge={showMobileBadge}
                                 onPressProfile={props.onPressProfile}
-                                onApiKeyBadgePress={props.onApiKeyBadgePress}
-                                rightElement={renderProfileRightElement(profile, isSelected, true)}
+                                onSecretBadgePress={props.onSecretBadgePress}
+                                rightElement={renderProfileRightElement(profile, displayName, isSelected, true)}
                                 ignoreRowPressRef={ignoreRowPressRef}
+                                getSecretOverrideReady={props.getSecretOverrideReady}
+                                getSecretMachineEnvOverride={props.getSecretMachineEnvOverride}
                             />
                         );
                     })}
@@ -335,6 +370,7 @@ export function ProfilesList(props: ProfilesListProps) {
                     selectableItemCountOverride={Math.max(2, groups.customProfiles.length)}
                 >
                     {groups.customProfiles.map((profile, index) => {
+                        const displayName = getProfileDisplayName(profile);
                         const isLast = index === groups.customProfiles.length - 1;
                         const isFavorite = groups.favoriteIds.has(profile.id);
                         const isSelected = props.selectedProfileId === profile.id;
@@ -342,11 +378,12 @@ export function ProfilesList(props: ProfilesListProps) {
                         const baseSubtitle = getProfileSubtitle({ profile, experimentsEnabled: allowGemini, strings });
                         const extra = props.getProfileSubtitleExtra?.(profile);
                         const subtitleText = extra ? `${baseSubtitle} · ${extra}` : baseSubtitle;
-                        const showMobileBadge = isMobile && hasRequiredSecret(profile) && Boolean(props.onApiKeyBadgePress);
+                        const showMobileBadge = isMobile && hasRequiredSecret(profile) && Boolean(props.onSecretBadgePress);
                         return (
                             <ProfileRow
                                 key={profile.id}
                                 profile={profile}
+                                displayName={displayName}
                                 isSelected={isSelected}
                                 isFavorite={isFavorite}
                                 isDisabled={isDisabled}
@@ -357,9 +394,11 @@ export function ProfilesList(props: ProfilesListProps) {
                                 subtitleText={subtitleText}
                                 showMobileBadge={showMobileBadge}
                                 onPressProfile={props.onPressProfile}
-                                onApiKeyBadgePress={props.onApiKeyBadgePress}
-                                rightElement={renderProfileRightElement(profile, isSelected, isFavorite)}
+                                onSecretBadgePress={props.onSecretBadgePress}
+                                rightElement={renderProfileRightElement(profile, displayName, isSelected, isFavorite)}
                                 ignoreRowPressRef={ignoreRowPressRef}
+                                getSecretOverrideReady={props.getSecretOverrideReady}
+                                getSecretMachineEnvOverride={props.getSecretMachineEnvOverride}
                             />
                         );
                     })}
@@ -395,6 +434,7 @@ export function ProfilesList(props: ProfilesListProps) {
                     />
                 )}
                 {groups.builtInProfiles.map((profile, index) => {
+                    const displayName = getProfileDisplayName(profile);
                     const isLast = index === groups.builtInProfiles.length - 1;
                     const isFavorite = groups.favoriteIds.has(profile.id);
                     const isSelected = props.selectedProfileId === profile.id;
@@ -402,11 +442,12 @@ export function ProfilesList(props: ProfilesListProps) {
                     const baseSubtitle = getProfileSubtitle({ profile, experimentsEnabled: allowGemini, strings });
                     const extra = props.getProfileSubtitleExtra?.(profile);
                     const subtitleText = extra ? `${baseSubtitle} · ${extra}` : baseSubtitle;
-                    const showMobileBadge = isMobile && hasRequiredSecret(profile) && Boolean(props.onApiKeyBadgePress);
+                    const showMobileBadge = isMobile && hasRequiredSecret(profile) && Boolean(props.onSecretBadgePress);
                     return (
                         <ProfileRow
                             key={profile.id}
                             profile={profile}
+                            displayName={displayName}
                             isSelected={isSelected}
                             isFavorite={isFavorite}
                             isDisabled={isDisabled}
@@ -417,9 +458,11 @@ export function ProfilesList(props: ProfilesListProps) {
                             subtitleText={subtitleText}
                             showMobileBadge={showMobileBadge}
                             onPressProfile={props.onPressProfile}
-                            onApiKeyBadgePress={props.onApiKeyBadgePress}
-                            rightElement={renderProfileRightElement(profile, isSelected, isFavorite)}
+                            onSecretBadgePress={props.onSecretBadgePress}
+                            rightElement={renderProfileRightElement(profile, displayName, isSelected, isFavorite)}
                             ignoreRowPressRef={ignoreRowPressRef}
+                            getSecretOverrideReady={props.getSecretOverrideReady}
+                            getSecretMachineEnvOverride={props.getSecretMachineEnvOverride}
                         />
                     );
                 })}
