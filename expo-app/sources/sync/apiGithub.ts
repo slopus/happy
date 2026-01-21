@@ -115,8 +115,14 @@ export async function disconnectGitHub(credentials: AuthCredentials): Promise<vo
 
         if (!response.ok) {
             if (response.status === 404) {
-                const error = await response.json();
-                throw new HappyError(error.error || 'GitHub account not connected', false, { status: 404, kind: 'config' });
+                let message = 'GitHub account not connected';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false, { status: 404, kind: 'config' });
             }
             if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
                 let message = 'Failed to disconnect GitHub';

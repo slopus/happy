@@ -60,8 +60,14 @@ export async function disconnectService(credentials: AuthCredentials, service: s
 
         if (!response.ok) {
             if (response.status === 404) {
-                const error = await response.json();
-                throw new HappyError(error.error || `${service} account not connected`, false);
+                let message = `${service} account not connected`;
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
             }
             if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
                 let message = `Failed to disconnect ${service}`;
