@@ -1,6 +1,7 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
+import { HappyError } from '@/utils/errors';
 
 //
 // Types
@@ -84,6 +85,16 @@ export async function kvGet(
         }
 
         if (!response.ok) {
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to get KV value';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
+            }
             throw new Error(`Failed to get KV value: ${response.status}`);
         }
 
@@ -121,6 +132,16 @@ export async function kvList(
         });
 
         if (!response.ok) {
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to list KV items';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
+            }
             throw new Error(`Failed to list KV items: ${response.status}`);
         }
 
@@ -157,6 +178,16 @@ export async function kvBulkGet(
         });
 
         if (!response.ok) {
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to bulk get KV values';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
+            }
             throw new Error(`Failed to bulk get KV values: ${response.status}`);
         }
 
@@ -200,6 +231,16 @@ export async function kvMutate(
         }
 
         if (!response.ok) {
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to mutate KV values';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
+            }
             throw new Error(`Failed to mutate KV values: ${response.status}`);
         }
 

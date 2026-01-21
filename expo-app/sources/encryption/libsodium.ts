@@ -1,5 +1,5 @@
-import { getRandomBytes } from 'expo-crypto';
 import sodium from '@/encryption/libsodium.lib';
+import { getRandomBytes } from '@/platform/cryptoRandom';
 
 export function getPublicKeyForBox(secretKey: Uint8Array): Uint8Array {
     return sodium.crypto_box_seed_keypair(secretKey).publicKey;

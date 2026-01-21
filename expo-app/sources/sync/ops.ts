@@ -6,6 +6,12 @@
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import type { MachineMetadata } from './storageTypes';
+import { buildSpawnHappySessionRpcParams, type SpawnHappySessionRpcParams, type SpawnSessionOptions } from './spawnSessionPayload';
+import { parseDetectCliRpcResponse, type DetectCliResponse } from './detectCliResponse';
+
+export type { SpawnHappySessionRpcParams, SpawnSessionOptions } from './spawnSessionPayload';
+export { buildSpawnHappySessionRpcParams } from './spawnSessionPayload';
+export type { DetectCliResponse, DetectCliEntry, DetectTmuxEntry } from './detectCliResponse';
 
 // Strict type definitions for all operations
 
@@ -132,28 +138,6 @@ export type SpawnSessionResult =
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
     | { type: 'error'; errorMessage: string };
 
-// Options for spawning a session
-export interface SpawnSessionOptions {
-    machineId: string;
-    directory: string;
-    approvedNewDirectoryCreation?: boolean;
-    token?: string;
-    agent?: 'codex' | 'claude' | 'gemini';
-    // Session-scoped profile identity (non-secret). Empty string means "no profile".
-    profileId?: string;
-    // Environment variables from AI backend profile
-    // Accepts any environment variables - daemon will pass them to the agent process
-    // Common variables include:
-    // - ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_MODEL, ANTHROPIC_SMALL_FAST_MODEL
-    // - OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL, OPENAI_API_TIMEOUT_MS
-    // - AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, AZURE_OPENAI_DEPLOYMENT_NAME
-    // - TOGETHER_API_KEY, TOGETHER_MODEL
-    // - TMUX_SESSION_NAME, TMUX_TMPDIR
-    // - API_TIMEOUT_MS, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
-    // - Custom variables (DEEPSEEK_*, Z_AI_*, etc.)
-    environmentVariables?: Record<string, string>;
-}
-
 // Exported session operation functions
 
 /**
@@ -161,22 +145,11 @@ export interface SpawnSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables, profileId } = options;
+    const { machineId } = options;
 
     try {
-        const result = await apiSocket.machineRPC<SpawnSessionResult, {
-            type: 'spawn-in-directory'
-            directory: string
-            approvedNewDirectoryCreation?: boolean,
-            token?: string,
-            agent?: 'codex' | 'claude' | 'gemini',
-            profileId?: string,
-            environmentVariables?: Record<string, string>;
-        }>(
-            machineId,
-            'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, profileId, environmentVariables }
-        );
+        const params = buildSpawnHappySessionRpcParams(options);
+        const result = await apiSocket.machineRPC<SpawnSessionResult, SpawnHappySessionRpcParams>(machineId, 'spawn-happy-session', params);
         return result;
     } catch (error) {
         // Handle RPC errors
@@ -237,18 +210,6 @@ export async function machineBash(
     }
 }
 
-export interface DetectCliEntry {
-    available: boolean;
-    resolvedPath?: string;
-    version?: string;
-    isLoggedIn?: boolean | null;
-}
-
-export interface DetectCliResponse {
-    path: string | null;
-    clis: Record<'claude' | 'codex' | 'gemini', DetectCliEntry>;
-}
-
 export type MachineDetectCliResult =
     | { supported: true; response: DetectCliResponse }
     | { supported: false; reason: 'not-supported' | 'error' };
@@ -278,37 +239,10 @@ export async function machineDetectCli(machineId: string, params?: { includeLogi
             return { supported: false, reason: 'error' };
         }
 
-        const clisRaw = result.clis;
-        if (!isPlainObject(clisRaw)) {
+        const response = parseDetectCliRpcResponse(result);
+        if (!response) {
             return { supported: false, reason: 'error' };
         }
-
-        const getEntry = (name: 'claude' | 'codex' | 'gemini'): DetectCliEntry | null => {
-            const raw = (clisRaw as Record<string, unknown>)[name];
-            if (!isPlainObject(raw) || typeof raw.available !== 'boolean') return null;
-            const resolvedPath = raw.resolvedPath;
-            const version = raw.version;
-            const isLoggedInRaw = (raw as any).isLoggedIn;
-            return {
-                available: raw.available,
-                ...(typeof resolvedPath === 'string' ? { resolvedPath } : {}),
-                ...(typeof version === 'string' ? { version } : {}),
-                ...((typeof isLoggedInRaw === 'boolean' || isLoggedInRaw === null) ? { isLoggedIn: isLoggedInRaw } : {}),
-            };
-        };
-
-        const claude = getEntry('claude');
-        const codex = getEntry('codex');
-        const gemini = getEntry('gemini');
-        if (!claude || !codex || !gemini) {
-            return { supported: false, reason: 'error' };
-        }
-
-        const pathValue = result.path;
-        const response: DetectCliResponse = {
-            path: typeof pathValue === 'string' ? pathValue : null,
-            clis: { claude, codex, gemini },
-        };
 
         return { supported: true, response };
     } catch {

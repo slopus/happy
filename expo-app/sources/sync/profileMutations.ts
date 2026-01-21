@@ -1,4 +1,4 @@
-import { randomUUID } from 'expo-crypto';
+import { randomUUID } from '@/platform/randomUUID';
 import { AIBackendProfile } from '@/sync/settings';
 
 export function createEmptyCustomProfile(): AIBackendProfile {
@@ -7,6 +7,7 @@ export function createEmptyCustomProfile(): AIBackendProfile {
         name: '',
         environmentVariables: [],
         compatibility: { claude: true, codex: true, gemini: true },
+        envVarRequirements: [],
         isBuiltIn: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),

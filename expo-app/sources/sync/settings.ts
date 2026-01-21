@@ -1,14 +1,11 @@
 import * as z from 'zod';
+import { dbgSettings, isSettingsSyncDebugEnabled } from './debugSettings';
+import { SecretStringSchema } from './secretSettings';
+import { pruneSecretBindings } from './secretBindings';
 
 //
 // Configuration Profile Schema (for environment variable profiles)
 //
-
-// Tmux configuration schema
-const TmuxConfigSchema = z.object({
-    sessionName: z.string().optional(),
-    tmpDir: z.string().optional(),
-});
 
 // Environment variables schema with validation
 const EnvironmentVariableSchema = z.object({
@@ -23,10 +20,12 @@ const EnvironmentVariableSchema = z.object({
 
 const RequiredEnvVarKindSchema = z.enum(['secret', 'config']);
 
-const RequiredEnvVarSchema = z.object({
+const EnvVarRequirementSchema = z.object({
     name: z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'Invalid environment variable name'),
-    // Defaults to secret so older serialized forms (missing kind) remain safe/strict.
     kind: RequiredEnvVarKindSchema.default('secret'),
+    // Required=true blocks session creation when unsatisfied.
+    // Required=false is “optional” (still useful for vault binding, but does not block).
+    required: z.boolean().default(true),
 });
 
 const RequiresMachineLoginSchema = z.enum(['codex', 'claude-code', 'gemini-cli']);
@@ -45,9 +44,6 @@ export const AIBackendProfileSchema = z.object({
     name: z.string().min(1).max(100),
     description: z.string().max(500).optional(),
 
-    // Tmux configuration
-    tmuxConfig: TmuxConfigSchema.optional(),
-
     // Environment variables (validated)
     environmentVariables: z.array(EnvironmentVariableSchema).default([]),
 
@@ -64,17 +60,16 @@ export const AIBackendProfileSchema = z.object({
     compatibility: ProfileCompatibilitySchema.default({ claude: true, codex: true, gemini: true }),
 
     // Authentication / requirements metadata (used by UI gating)
-    // - apiKeyEnv: profile expects required env vars to be present (optionally injected at spawn)
-    // - machineLogin: profile relies on a machine-local CLI login cache (no API key injection)
-    authMode: z.enum(['apiKeyEnv', 'machineLogin']).optional(),
+    // - machineLogin: profile relies on a machine-local CLI login cache
+    authMode: z.enum(['machineLogin']).optional(),
 
     // For machine-login profiles, specify which CLI must be logged in on the target machine.
     // This is used for UX copy and for optional login-status detection.
     requiresMachineLogin: RequiresMachineLoginSchema.optional(),
 
     // Explicit environment variable requirements for this profile at runtime.
-    // V1 constraint: at most one required secret per profile (avoids ambiguous precedence/billing behavior).
-    requiredEnvVars: z.array(RequiredEnvVarSchema).optional(),
+    // Secret requirements are satisfied by machine env, vault binding, or “enter once”.
+    envVarRequirements: z.array(EnvVarRequirementSchema).default([]),
 
     // Built-in profile indicator
     isBuiltIn: z.boolean().default(false),
@@ -83,47 +78,49 @@ export const AIBackendProfileSchema = z.object({
     createdAt: z.number().default(() => Date.now()),
     updatedAt: z.number().default(() => Date.now()),
     version: z.string().default('1.0.0'),
-}).superRefine((profile, ctx) => {
-    const requiredEnvVars = profile.requiredEnvVars ?? [];
-    const secretCount = requiredEnvVars.filter(v => (v?.kind ?? 'secret') === 'secret').length;
-
-    if (secretCount > 1) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['requiredEnvVars'],
-            message: 'V1 constraint: profiles may declare at most one required secret environment variable',
-        });
-    }
-
-    if (profile.authMode === 'machineLogin' && secretCount > 0) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['requiredEnvVars'],
-            message: 'Profiles with authMode=machineLogin must not declare required secret environment variables',
-        });
-    }
-
-    if (profile.requiresMachineLogin && profile.authMode !== 'machineLogin') {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['requiresMachineLogin'],
-            message: 'requiresMachineLogin may only be set when authMode=machineLogin',
-        });
-    }
-});
+})
+    // NOTE: Zod v4 marks `superRefine` as deprecated in favor of `.check(...)`.
+    // We use chained `.refine(...)` here to preserve per-field error paths/messages.
+    .refine((profile) => {
+        return !(profile.requiresMachineLogin && profile.authMode !== 'machineLogin');
+    }, {
+        path: ['requiresMachineLogin'],
+        message: 'requiresMachineLogin may only be set when authMode=machineLogin',
+    });
 
 export type AIBackendProfile = z.infer<typeof AIBackendProfileSchema>;
 
-export const SavedApiKeySchema = z.object({
-    id: z.string().min(1),
-    name: z.string().min(1).max(100),
-    // Secret. The UI must never re-display this after entry.
-    value: z.string().min(1),
-    createdAt: z.number().default(() => Date.now()),
-    updatedAt: z.number().default(() => Date.now()),
+//
+// Terminal / tmux settings
+//
+
+const TerminalTmuxMachineOverrideSchema = z.object({
+    useTmux: z.boolean(),
+    sessionName: z.string(),
+    isolated: z.boolean(),
+    tmpDir: z.string().nullable(),
 });
 
-export type SavedApiKey = z.infer<typeof SavedApiKeySchema>;
+export const SavedSecretSchema = z.object({
+    id: z.string().min(1),
+    name: z.string().min(1).max(100),
+    kind: z.enum(['apiKey', 'token', 'password', 'other']).default('apiKey'),
+    // Secret-at-rest container:
+    // - plaintext is set via `encryptedValue.value` (input only; must not be persisted)
+    // - ciphertext persists in `encryptedValue.encryptedValue`
+    encryptedValue: SecretStringSchema,
+    createdAt: z.number().default(() => Date.now()),
+    updatedAt: z.number().default(() => Date.now()),
+}).refine((key) => {
+    const hasValue = typeof key.encryptedValue.value === 'string' && key.encryptedValue.value.trim().length > 0;
+    const hasEnc = Boolean(key.encryptedValue.encryptedValue && typeof key.encryptedValue.encryptedValue.c === 'string' && key.encryptedValue.encryptedValue.c.length > 0);
+    return hasValue || hasEnc;
+}, {
+    path: ['encryptedValue'],
+    message: 'Secret must include a value or encrypted value',
+});
+
+export type SavedSecret = z.infer<typeof SavedSecretSchema>;
 
 // Helper functions for profile validation and compatibility
 export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex' | 'gemini'): boolean {
@@ -156,34 +153,8 @@ function mergeEnvironmentVariables(
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
 }
 
-function normalizeLegacyProfileConfig(profile: unknown): unknown {
-    if (!profile || typeof profile !== 'object') return profile;
-
-    const raw = profile as Record<string, any>;
-    const additions: Record<string, string | undefined> = {
-        ANTHROPIC_BASE_URL: raw.anthropicConfig?.baseUrl,
-        ANTHROPIC_AUTH_TOKEN: raw.anthropicConfig?.authToken,
-        ANTHROPIC_MODEL: raw.anthropicConfig?.model,
-        OPENAI_API_KEY: raw.openaiConfig?.apiKey,
-        OPENAI_BASE_URL: raw.openaiConfig?.baseUrl,
-        OPENAI_MODEL: raw.openaiConfig?.model,
-        AZURE_OPENAI_API_KEY: raw.azureOpenAIConfig?.apiKey,
-        AZURE_OPENAI_ENDPOINT: raw.azureOpenAIConfig?.endpoint,
-        AZURE_OPENAI_API_VERSION: raw.azureOpenAIConfig?.apiVersion,
-        AZURE_OPENAI_DEPLOYMENT_NAME: raw.azureOpenAIConfig?.deploymentName,
-        TOGETHER_API_KEY: raw.togetherAIConfig?.apiKey,
-        TOGETHER_MODEL: raw.togetherAIConfig?.model,
-    };
-
-    const environmentVariables = mergeEnvironmentVariables(raw.environmentVariables, additions);
-
-    // Remove legacy provider config objects. Any values are preserved via environmentVariables migration above.
-    const { anthropicConfig, openaiConfig, azureOpenAIConfig, togetherAIConfig, ...rest } = raw;
-    return {
-        ...rest,
-        environmentVariables,
-    };
-}
+// NOTE: We intentionally do NOT support legacy provider config objects (e.g. `openaiConfig`).
+// Profiles must use `environmentVariables` + `envVarRequirements` only.
 
 /**
  * Converts a profile into environment variables for session spawning.
@@ -228,14 +199,6 @@ export function getProfileEnvironmentVariables(profile: AIBackendProfile): Recor
     profile.environmentVariables.forEach(envVar => {
         envVars[envVar.name] = envVar.value;
     });
-
-    // Add Tmux config
-    if (profile.tmuxConfig) {
-        // Empty string means "use current/most recent session", so include it
-        if (profile.tmuxConfig.sessionName !== undefined) envVars.TMUX_SESSION_NAME = profile.tmuxConfig.sessionName;
-        // Empty string may be valid for tmpDir to use tmux defaults
-        if (profile.tmuxConfig.tmpDir !== undefined) envVars.TMUX_TMPDIR = profile.tmuxConfig.tmpDir;
-    }
 
     return envVars;
 }
@@ -289,6 +252,11 @@ export const SettingsSchema = z.object({
     expVoiceAuthFlow: z.boolean().describe('Experimental: enable authenticated voice token flow'),
     useProfiles: z.boolean().describe('Whether to enable AI backend profiles feature'),
     useEnhancedSessionWizard: z.boolean().describe('A/B test flag: Use enhanced profile-based session wizard UI'),
+    terminalUseTmux: z.boolean().describe('Whether new sessions should start in tmux by default'),
+    terminalTmuxSessionName: z.string().describe('Default tmux session name for new sessions'),
+    terminalTmuxIsolated: z.boolean().describe('Whether to use an isolated tmux server for new sessions'),
+    terminalTmuxTmpDir: z.string().nullable().describe('Optional TMUX_TMPDIR override for isolated tmux server'),
+    terminalTmuxByMachineId: z.record(z.string(), TerminalTmuxMachineOverrideSchema).default({}).describe('Per-machine overrides for tmux session spawning'),
     // Legacy combined toggle (kept for backward compatibility; see settingsParse migration)
     usePickerSearch: z.boolean().describe('Whether to show search in machine/path picker UIs (legacy combined toggle)'),
     useMachinePickerSearch: z.boolean().describe('Whether to show search in machine picker UIs'),
@@ -315,8 +283,8 @@ export const SettingsSchema = z.object({
     // Profile management settings
     profiles: z.array(AIBackendProfileSchema).describe('User-defined profiles for AI backend and environment variables'),
     lastUsedProfile: z.string().nullable().describe('Last selected profile for new sessions'),
-    apiKeys: z.array(SavedApiKeySchema).default([]).describe('Saved API keys (encrypted settings). Value is never re-displayed in UI.'),
-    defaultApiKeyByProfileId: z.record(z.string(), z.string()).default({}).describe('Default saved API key ID to use per profile'),
+    secrets: z.array(SavedSecretSchema).default([]).describe('Saved secrets (encrypted settings). Values are never re-displayed in UI.'),
+    secretBindingsByProfileId: z.record(z.string(), z.record(z.string(), z.string())).default({}).describe('Default saved secret ID per profile and env var name'),
     // Favorite directories for quick path selection
     favoriteDirectories: z.array(z.string()).describe('User-defined favorite directories for quick access in path selection'),
     // Favorite machines for quick machine selection
@@ -375,6 +343,11 @@ export const settingsDefaults: Settings = {
     expZen: false,
     expVoiceAuthFlow: false,
     useProfiles: false,
+    terminalUseTmux: false,
+    terminalTmuxSessionName: 'happy',
+    terminalTmuxIsolated: true,
+    terminalTmuxTmpDir: null,
+    terminalTmuxByMachineId: {},
     useEnhancedSessionWizard: false,
     usePickerSearch: false,
     useMachinePickerSearch: false,
@@ -398,8 +371,8 @@ export const settingsDefaults: Settings = {
     // Profile management defaults
     profiles: [],
     lastUsedProfile: null,
-    apiKeys: [],
-    defaultApiKeyByProfileId: {},
+    secrets: [],
+    secretBindingsByProfileId: {},
     // Favorite directories (empty by default)
     favoriteDirectories: [],
     // Favorite machines (empty by default)
@@ -422,6 +395,7 @@ export function settingsParse(settings: unknown): Settings {
     }
 
     const isDev = typeof __DEV__ !== 'undefined' && __DEV__;
+    const debug = isSettingsSyncDebugEnabled();
 
     // IMPORTANT: be tolerant of partially-invalid settings objects.
     // A single invalid field (e.g. one malformed profile) must not reset all other known settings to defaults.
@@ -438,7 +412,7 @@ export function settingsParse(settings: unknown): Settings {
             if (Array.isArray(profilesValue)) {
                 const parsedProfiles: AIBackendProfile[] = [];
                 for (const rawProfile of profilesValue) {
-                    const parsedProfile = AIBackendProfileSchema.safeParse(normalizeLegacyProfileConfig(rawProfile));
+                    const parsedProfile = AIBackendProfileSchema.safeParse(rawProfile);
                     if (parsedProfile.success) {
                         parsedProfiles.push(parsedProfile.data);
                     } else if (isDev) {
@@ -454,8 +428,18 @@ export function settingsParse(settings: unknown): Settings {
         const parsedField = schema.safeParse(input[key]);
         if (parsedField.success) {
             result[key] = parsedField.data;
-        } else if (isDev) {
+        } else if (isDev || debug) {
             console.warn(`[settingsParse] Invalid settings field "${String(key)}" - using default`, parsedField.error.issues);
+            if (debug) {
+                dbgSettings('settingsParse: invalid field', {
+                    key: String(key),
+                    issues: parsedField.error.issues.map((i) => ({
+                        path: i.path,
+                        code: i.code,
+                        message: i.message,
+                    })),
+                });
+            }
         }
     });
 
@@ -509,7 +493,7 @@ export function settingsParse(settings: unknown): Settings {
         }
     }
 
-    return result as Settings;
+    return pruneSecretBindings(result as Settings);
 }
 
 //
@@ -528,5 +512,5 @@ export function applySettings(settings: Settings, delta: Partial<Settings>): Set
         }
     });
 
-    return result;
+    return pruneSecretBindings(result as Settings);
 }

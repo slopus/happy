@@ -1,4 +1,4 @@
-import { backoff } from "@/utils/time";
+import { createBackoff } from "@/utils/time";
 
 export class InvalidateSync {
     private _invalidated = false;
@@ -6,9 +6,30 @@ export class InvalidateSync {
     private _stopped = false;
     private _command: () => Promise<void>;
     private _pendings: (() => void)[] = [];
+    private _onError?: (e: any) => void;
+    private _onSuccess?: () => void;
+    private _onRetry?: (info: { failuresCount: number; nextDelayMs: number; nextRetryAt: number }) => void;
+    private _backoff = createBackoff({ maxFailureCount: Number.POSITIVE_INFINITY });
 
-    constructor(command: () => Promise<void>) {
+    constructor(
+        command: () => Promise<void>,
+        opts?: {
+            onError?: (e: any) => void;
+            onSuccess?: () => void;
+            onRetry?: (info: { failuresCount: number; nextDelayMs: number; nextRetryAt: number }) => void;
+        }
+    ) {
         this._command = command;
+        this._onError = opts?.onError;
+        this._onSuccess = opts?.onSuccess;
+        this._onRetry = opts?.onRetry;
+        this._backoff = createBackoff({
+            maxFailureCount: Number.POSITIVE_INFINITY,
+            onError: (e) => console.warn(e),
+            onRetry: (_e, failuresCount, nextDelayMs) => {
+                this._onRetry?.({ failuresCount, nextDelayMs, nextRetryAt: Date.now() + nextDelayMs });
+            }
+        });
     }
 
     invalidate() {
@@ -62,12 +83,20 @@ export class InvalidateSync {
 
 
     private _doSync = async () => {
-        await backoff(async () => {
-            if (this._stopped) {
-                return;
-            }
-            await this._command();
-        });
+        try {
+            await this._backoff(async () => {
+                if (this._stopped) {
+                    return;
+                }
+                await this._command();
+            });
+            this._onSuccess?.();
+        } catch (e) {
+            // Non-retryable errors (e.g. auth/config) should not brick the sync queue.
+            // We treat this as a "give up for now" and allow future invalidations to retry.
+            this._onError?.(e);
+            console.warn(e);
+        }
         if (this._stopped) {
             this._notifyPendings();
             return;
@@ -145,12 +174,19 @@ export class ValueSync<T> {
             const value = this._latestValue!;
             this._hasValue = false;
             
-            await backoff(async () => {
-                if (this._stopped) {
-                    return;
-                }
-                await this._command(value);
-            });
+            try {
+                const backoffForever = createBackoff({ maxFailureCount: Number.POSITIVE_INFINITY, onError: (e) => console.warn(e) });
+                await backoffForever(async () => {
+                    if (this._stopped) {
+                        return;
+                    }
+                    await this._command(value);
+                });
+            } catch (e) {
+                // Non-retryable errors should stop this processing loop, but not deadlock awaiters.
+                console.warn(e);
+                break;
+            }
             
             if (this._stopped) {
                 this._notifyPendings();

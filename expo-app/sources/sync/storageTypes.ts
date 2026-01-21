@@ -22,6 +22,15 @@ export const MetadataSchema = z.object({
     homeDir: z.string().optional(), // User's home directory on the machine
     happyHomeDir: z.string().optional(), // Happy configuration directory 
     hostPid: z.number().optional(), // Process ID of the session
+    terminal: z.object({
+        mode: z.enum(['plain', 'tmux']),
+        requested: z.enum(['plain', 'tmux']).optional(),
+        fallbackReason: z.string().optional(),
+        tmux: z.object({
+            target: z.string(),
+            tmpDir: z.string().optional(),
+        }).optional(),
+    }).optional(),
     flavor: z.string().nullish() // Session flavor/variant identifier
 });
 

@@ -24,6 +24,7 @@ describe('buildProfileGroups', () => {
                 name: 'Custom Profile',
                 environmentVariables: [],
                 compatibility: { claude: true, codex: true, gemini: true },
+                envVarRequirements: [],
                 isBuiltIn: false,
                 createdAt: 0,
                 updatedAt: 0,

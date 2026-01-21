@@ -24,7 +24,7 @@ vi.mock('react-native-mmkv', () => {
     return { MMKV };
 });
 
-import { clearPersistence, loadNewSessionDraft, loadSessionModelModes, saveSessionModelModes } from './persistence';
+import { clearPersistence, loadNewSessionDraft, loadPendingSettings, savePendingSettings, loadSessionModelModes, saveSessionModelModes } from './persistence';
 
 describe('persistence', () => {
     beforeEach(() => {
@@ -47,6 +47,82 @@ describe('persistence', () => {
                 JSON.stringify({ abc: 'gemini-2.5-pro', bad: 'adaptiveUsage' }),
             );
             expect(loadSessionModelModes()).toEqual({ abc: 'gemini-2.5-pro' });
+        });
+    });
+
+    describe('pending settings', () => {
+        it('returns empty object when nothing is persisted', () => {
+            expect(loadPendingSettings()).toEqual({});
+        });
+
+        it('does not materialize schema defaults when persisted pending is {}', () => {
+            // Historically, parsing pending via SettingsSchema.partial().parse({}) would
+            // synthesize defaults (secrets, dismissedCLIWarnings, etc) once defaults were
+            // added to the schema. Pending must remain delta-only.
+            store.set('pending-settings', JSON.stringify({}));
+            expect(loadPendingSettings()).toEqual({});
+        });
+
+        it('returns empty object when pending-settings JSON is invalid', () => {
+            const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+            store.set('pending-settings', '{ this is not json');
+            expect(loadPendingSettings()).toEqual({});
+            spy.mockRestore();
+        });
+
+        it('returns empty object when persisted pending is not an object', () => {
+            store.set('pending-settings', JSON.stringify(null));
+            expect(loadPendingSettings()).toEqual({});
+
+            store.set('pending-settings', JSON.stringify('oops'));
+            expect(loadPendingSettings()).toEqual({});
+
+            store.set('pending-settings', JSON.stringify(123));
+            expect(loadPendingSettings()).toEqual({});
+
+            store.set('pending-settings', JSON.stringify([1, 2, 3]));
+            expect(loadPendingSettings()).toEqual({});
+        });
+
+        it('drops unknown keys from pending', () => {
+            store.set('pending-settings', JSON.stringify({ unknownFutureKey: 1, viewInline: true }));
+            expect(loadPendingSettings()).toEqual({ viewInline: true });
+        });
+
+        it('drops invalid known keys from pending (type mismatch)', () => {
+            store.set('pending-settings', JSON.stringify({ viewInline: 'nope', analyticsOptOut: 123 }));
+            expect(loadPendingSettings()).toEqual({});
+        });
+
+        it('keeps valid secrets delta and does not inject other defaults', () => {
+            store.set('pending-settings', JSON.stringify({
+                secrets: [{
+                    id: 'k1',
+                    name: 'Test',
+                    kind: 'apiKey',
+                    encryptedValue: { _isSecretValue: true, encryptedValue: { t: 'enc-v1', c: 'abc' } },
+                    createdAt: 1,
+                    updatedAt: 1,
+                }],
+            }));
+            const pending = loadPendingSettings() as any;
+            expect(Object.keys(pending).sort()).toEqual(['secrets']);
+            expect(pending.secrets).toHaveLength(1);
+            expect(pending.secrets[0].id).toBe('k1');
+        });
+
+        it('drops invalid secrets delta (missing value) and does not inject defaults', () => {
+            store.set('pending-settings', JSON.stringify({
+                secrets: [{ id: 'k1', name: 'Missing value', encryptedValue: { _isSecretValue: true } }],
+            }));
+            expect(loadPendingSettings()).toEqual({});
+        });
+
+        it('deletes pending-settings key when saving empty object', () => {
+            savePendingSettings({ someUnknownKey: 1 } as any);
+            expect(store.get('pending-settings')).toBeTruthy();
+            savePendingSettings({});
+            expect(store.get('pending-settings')).toBeUndefined();
         });
     });
 

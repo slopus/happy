@@ -93,6 +93,10 @@ interface StorageState {
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
+    socketLastError: string | null;
+    socketLastErrorAt: number | null;
+    syncError: { message: string; retryable: boolean; kind: 'auth' | 'config' | 'network' | 'server' | 'unknown'; at: number; failuresCount?: number; nextRetryAt?: number } | null;
+    lastSyncAt: number | null;
     isDataReady: boolean;
     nativeUpdateStatus: { available: boolean; updateUrl?: string } | null;
     todoState: TodoState | null;
@@ -117,6 +121,10 @@ interface StorageState {
     setRealtimeMode: (mode: 'idle' | 'speaking', immediate?: boolean) => void;
     clearRealtimeModeDebounce: () => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
+    setSocketError: (message: string | null) => void;
+    setSyncError: (error: StorageState['syncError']) => void;
+    clearSyncError: () => void;
+    setLastSyncAt: (ts: number) => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
@@ -282,6 +290,10 @@ export const storage = create<StorageState>()((set, get) => {
         socketStatus: 'disconnected',
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
+        socketLastError: null,
+        socketLastErrorAt: null,
+        syncError: null,
+        lastSyncAt: null,
         isDataReady: false,
         nativeUpdateStatus: null,
         isMutableToolCall: (sessionId: string, callId: string) => {
@@ -732,6 +744,8 @@ export const storage = create<StorageState>()((set, get) => {
             // Update timestamp based on status
             if (status === 'connected') {
                 updates.socketLastConnectedAt = now;
+                updates.socketLastError = null;
+                updates.socketLastErrorAt = null;
             } else if (status === 'disconnected' || status === 'error') {
                 updates.socketLastDisconnectedAt = now;
             }
@@ -741,6 +755,23 @@ export const storage = create<StorageState>()((set, get) => {
                 ...updates
             };
         }),
+        setSocketError: (message: string | null) => set((state) => {
+            if (!message) {
+                return {
+                    ...state,
+                    socketLastError: null,
+                    socketLastErrorAt: null,
+                };
+            }
+            return {
+                ...state,
+                socketLastError: message,
+                socketLastErrorAt: Date.now(),
+            };
+        }),
+        setSyncError: (error) => set((state) => ({ ...state, syncError: error })),
+        clearSyncError: () => set((state) => ({ ...state, syncError: null })),
+        setLastSyncAt: (ts) => set((state) => ({ ...state, lastSyncAt: ts })),
         updateSessionDraft: (sessionId: string, draft: string | null) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
@@ -1254,8 +1285,18 @@ export function useSocketStatus() {
     return storage(useShallow((state) => ({
         status: state.socketStatus,
         lastConnectedAt: state.socketLastConnectedAt,
-        lastDisconnectedAt: state.socketLastDisconnectedAt
+        lastDisconnectedAt: state.socketLastDisconnectedAt,
+        lastError: state.socketLastError,
+        lastErrorAt: state.socketLastErrorAt,
     })));
+}
+
+export function useSyncError() {
+    return storage(useShallow((state) => state.syncError));
+}
+
+export function useLastSyncAt() {
+    return storage(useShallow((state) => state.lastSyncAt));
 }
 
 export function useSessionGitStatus(sessionId: string): GitStatus | null {

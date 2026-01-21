@@ -42,6 +42,11 @@ export function getBuiltInProfileNameKey(id: string): BuiltInProfileNameKey | nu
     }
 }
 
+export function resolveProfileById(id: string, customProfiles: AIBackendProfile[]): AIBackendProfile | null {
+    const custom = customProfiles.find((p) => p.id === id);
+    return custom ?? getBuiltInProfile(id);
+}
+
 /**
  * Documentation and expected values for built-in profiles.
  * These help users understand what environment variables to set and their expected values.
@@ -294,6 +299,7 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                 environmentVariables: [],
                 defaultPermissionMode: 'default',
                 compatibility: { claude: true, codex: false, gemini: false },
+                envVarRequirements: [],
                 isBuiltIn: true,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
@@ -308,8 +314,7 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
             return {
                 id: 'deepseek',
                 name: 'DeepSeek (Reasoner)',
-                authMode: 'apiKeyEnv',
-                requiredEnvVars: [{ name: 'DEEPSEEK_AUTH_TOKEN', kind: 'secret' }],
+                envVarRequirements: [{ name: 'DEEPSEEK_AUTH_TOKEN', kind: 'secret', required: true }],
                 environmentVariables: [
                     { name: 'ANTHROPIC_BASE_URL', value: '${DEEPSEEK_BASE_URL:-https://api.deepseek.com/anthropic}' },
                     { name: 'ANTHROPIC_AUTH_TOKEN', value: '${DEEPSEEK_AUTH_TOKEN}' }, // Secret - no fallback
@@ -335,8 +340,7 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
             return {
                 id: 'zai',
                 name: 'Z.AI (GLM-4.6)',
-                authMode: 'apiKeyEnv',
-                requiredEnvVars: [{ name: 'Z_AI_AUTH_TOKEN', kind: 'secret' }],
+                envVarRequirements: [{ name: 'Z_AI_AUTH_TOKEN', kind: 'secret', required: true }],
                 environmentVariables: [
                     { name: 'ANTHROPIC_BASE_URL', value: '${Z_AI_BASE_URL:-https://api.z.ai/api/anthropic}' },
                     { name: 'ANTHROPIC_AUTH_TOKEN', value: '${Z_AI_AUTH_TOKEN}' }, // Secret - no fallback
@@ -357,8 +361,7 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
             return {
                 id: 'openai',
                 name: 'OpenAI (GPT-5)',
-                authMode: 'apiKeyEnv',
-                requiredEnvVars: [{ name: 'OPENAI_API_KEY', kind: 'secret' }],
+                envVarRequirements: [{ name: 'OPENAI_API_KEY', kind: 'secret', required: true }],
                 environmentVariables: [
                     { name: 'OPENAI_BASE_URL', value: 'https://api.openai.com/v1' },
                     { name: 'OPENAI_MODEL', value: 'gpt-5-codex-high' },
@@ -377,10 +380,9 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
             return {
                 id: 'azure-openai',
                 name: 'Azure OpenAI',
-                authMode: 'apiKeyEnv',
-                requiredEnvVars: [
-                    { name: 'AZURE_OPENAI_API_KEY', kind: 'secret' },
-                    { name: 'AZURE_OPENAI_ENDPOINT', kind: 'config' },
+                envVarRequirements: [
+                    { name: 'AZURE_OPENAI_API_KEY', kind: 'secret', required: true },
+                    { name: 'AZURE_OPENAI_ENDPOINT', kind: 'config', required: true },
                 ],
                 environmentVariables: [
                     { name: 'AZURE_OPENAI_API_VERSION', value: '2024-02-15-preview' },

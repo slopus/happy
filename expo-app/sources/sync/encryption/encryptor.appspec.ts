@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@/dev/testRunner';
 import { SecretBoxEncryption, BoxEncryption, AES256Encryption } from './encryptor';
-import { getRandomBytes } from 'expo-crypto';
+import { getRandomBytes } from '@/platform/cryptoRandom';
 
 describe('SecretBoxEncryption', () => {
     it('should encrypt and decrypt single Uint8Array', async () => {

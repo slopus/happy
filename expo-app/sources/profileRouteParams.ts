@@ -30,27 +30,27 @@ export function consumeProfileIdParam(params: {
     return { nextSelectedProfileId: nextProfileIdFromParams, shouldClearParam: true };
 }
 
-export function consumeApiKeyIdParam(params: {
-    apiKeyIdParam?: string | string[];
-    selectedApiKeyId: string | null;
+export function consumeSecretIdParam(params: {
+    secretIdParam?: string | string[];
+    selectedSecretId: string | null;
 }): {
-    nextSelectedApiKeyId: string | null | undefined;
+    nextSelectedSecretId: string | null | undefined;
     shouldClearParam: boolean;
 } {
-    const nextApiKeyIdFromParams = normalizeOptionalParam(params.apiKeyIdParam);
+    const nextSecretIdFromParams = normalizeOptionalParam(params.secretIdParam);
 
-    if (typeof nextApiKeyIdFromParams !== 'string') {
-        return { nextSelectedApiKeyId: undefined, shouldClearParam: false };
+    if (typeof nextSecretIdFromParams !== 'string') {
+        return { nextSelectedSecretId: undefined, shouldClearParam: false };
     }
 
-    if (nextApiKeyIdFromParams === '') {
-        return { nextSelectedApiKeyId: null, shouldClearParam: true };
+    if (nextSecretIdFromParams === '') {
+        return { nextSelectedSecretId: null, shouldClearParam: true };
     }
 
-    if (nextApiKeyIdFromParams === params.selectedApiKeyId) {
-        return { nextSelectedApiKeyId: undefined, shouldClearParam: true };
+    if (nextSecretIdFromParams === params.selectedSecretId) {
+        return { nextSelectedSecretId: undefined, shouldClearParam: true };
     }
 
-    return { nextSelectedApiKeyId: nextApiKeyIdFromParams, shouldClearParam: true };
+    return { nextSelectedSecretId: nextSecretIdFromParams, shouldClearParam: true };
 }
 

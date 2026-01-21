@@ -1,4 +1,4 @@
-import { randomUUID } from 'expo-crypto';
+import { randomUUID } from '@/platform/randomUUID';
 
 export interface TempDataEntry {
     data: any;

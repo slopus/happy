@@ -7,7 +7,7 @@ import { MachineEncryption } from "./machineEncryption";
 import { encodeBase64, decodeBase64 } from "@/encryption/base64";
 import sodium from '@/encryption/libsodium.lib';
 import { decryptBox, encryptBox } from "@/encryption/libsodium";
-import { randomUUID } from 'expo-crypto';
+import { randomUUID } from '@/platform/randomUUID';
 
 export class Encryption {
 

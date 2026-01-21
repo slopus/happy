@@ -3,6 +3,11 @@ import { settingsParse, applySettings, settingsDefaults, type Settings, AIBacken
 import { getBuiltInProfile } from './profileUtils';
 
 describe('settings', () => {
+    const makeSettings = (overrides: Partial<Settings> = {}): Settings => ({
+        ...settingsDefaults,
+        ...overrides,
+    });
+
     describe('settingsParse', () => {
         it('should return defaults when given invalid input', () => {
             expect(settingsParse(null)).toEqual(settingsDefaults);
@@ -90,37 +95,6 @@ describe('settings', () => {
             });
         });
 
-        it('should migrate legacy provider config objects into environmentVariables', () => {
-            const settingsWithLegacyProfileConfig: any = {
-                profiles: [
-                    {
-                        id: 'legacy-profile',
-                        name: 'Legacy Profile',
-                        isBuiltIn: false,
-                        compatibility: { claude: true, codex: true, gemini: true },
-                        environmentVariables: [{ name: 'FOO', value: 'bar' }],
-                        openaiConfig: {
-                            apiKey: 'sk-test',
-                            baseUrl: 'https://example.com',
-                            model: 'gpt-test',
-                        },
-                    },
-                ],
-            };
-
-            const parsed = settingsParse(settingsWithLegacyProfileConfig);
-            expect(parsed.profiles).toHaveLength(1);
-
-            const profile = parsed.profiles[0]!;
-            expect(profile.environmentVariables).toEqual(expect.arrayContaining([
-                { name: 'FOO', value: 'bar' },
-                { name: 'OPENAI_API_KEY', value: 'sk-test' },
-                { name: 'OPENAI_BASE_URL', value: 'https://example.com' },
-                { name: 'OPENAI_MODEL', value: 'gpt-test' },
-            ]));
-            expect((profile as any).openaiConfig).toBeUndefined();
-        });
-
         it('should default per-experiment toggles to true when experiments is true (migration)', () => {
             const parsed = settingsParse({
                 experiments: true,
@@ -175,205 +149,25 @@ describe('settings', () => {
 
     describe('applySettings', () => {
         it('should apply delta to existing settings', () => {
-            const currentSettings: Settings = {
-                schemaVersion: 1,
-                viewInline: false,
-                expandTodos: true,
-                showLineNumbers: true,
-                showLineNumbersInToolViews: false,
-                wrapLinesInDiffs: false,
-                analyticsOptOut: false,
-                inferenceOpenAIKey: null,
-                experiments: false,
-                expGemini: false,
-                expUsageReporting: false,
-                expFileViewer: false,
-                expShowThinkingMessages: false,
-                expSessionType: false,
-                expZen: false,
-                expVoiceAuthFlow: false,
-                useProfiles: false,
-                useEnhancedSessionWizard: false,
-                usePickerSearch: false,
-                useMachinePickerSearch: false,
-                usePathPickerSearch: false,
-                alwaysShowContextSize: false,
-                agentInputEnterToSend: true,
-                agentInputActionBarLayout: 'auto',
-                agentInputChipDensity: 'auto',
-                avatarStyle: 'gradient',
-                showFlavorIcons: false,
-                compactSessionView: false,
-                hideInactiveSessions: false,
-                reviewPromptAnswered: false,
-                reviewPromptLikedApp: null,
-                voiceAssistantLanguage: null,
-                preferredLanguage: null,
-                recentMachinePaths: [],
-                lastUsedAgent: null,
-                lastUsedPermissionMode: null,
-                lastUsedModelMode: null,
-                profiles: [],
-                lastUsedProfile: null,
-                favoriteDirectories: [],
-                favoriteMachines: [],
-                favoriteProfiles: [],
-                apiKeys: [],
-                defaultApiKeyByProfileId: {},
-                dismissedCLIWarnings: { perMachine: {}, global: {} },
-            };
+            const currentSettings = makeSettings({ schemaVersion: 1, avatarStyle: 'gradient' });
             const delta: Partial<Settings> = {
                 viewInline: true
             };
             expect(applySettings(currentSettings, delta)).toEqual({
+                ...currentSettings,
                 schemaVersion: 1, // Preserved from currentSettings
                 viewInline: true,
-                expandTodos: true,
-                showLineNumbers: true,
-                showLineNumbersInToolViews: false,
-                wrapLinesInDiffs: false,
-                analyticsOptOut: false,
-                inferenceOpenAIKey: null,
-                experiments: false,
-                expGemini: false,
-                expUsageReporting: false,
-                expFileViewer: false,
-                expShowThinkingMessages: false,
-                expSessionType: false,
-                expZen: false,
-                expVoiceAuthFlow: false,
-                useProfiles: false,
-                useEnhancedSessionWizard: false,
-                usePickerSearch: false,
-                useMachinePickerSearch: false,
-                usePathPickerSearch: false,
-                alwaysShowContextSize: false,
-                agentInputEnterToSend: true,
-                agentInputActionBarLayout: 'auto',
-                agentInputChipDensity: 'auto',
-                avatarStyle: 'gradient', // This should be preserved from currentSettings
-                showFlavorIcons: false,
-                compactSessionView: false,
-                hideInactiveSessions: false,
-                reviewPromptAnswered: false,
-                reviewPromptLikedApp: null,
-                voiceAssistantLanguage: null,
-                preferredLanguage: null,
-                recentMachinePaths: [],
-                lastUsedAgent: null,
-                lastUsedPermissionMode: null,
-                lastUsedModelMode: null,
-                profiles: [],
-                lastUsedProfile: null,
-                favoriteDirectories: [],
-                favoriteMachines: [],
-                favoriteProfiles: [],
-                apiKeys: [],
-                defaultApiKeyByProfileId: {},
-                dismissedCLIWarnings: { perMachine: {}, global: {} },
             });
         });
 
         it('should merge with defaults', () => {
-            const currentSettings: Settings = {
-                schemaVersion: 1,
-                viewInline: true,
-                expandTodos: true,
-                showLineNumbers: true,
-                showLineNumbersInToolViews: false,
-                wrapLinesInDiffs: false,
-                analyticsOptOut: false,
-                inferenceOpenAIKey: null,
-                experiments: false,
-                expGemini: false,
-                expUsageReporting: false,
-                expFileViewer: false,
-                expShowThinkingMessages: false,
-                expSessionType: false,
-                expZen: false,
-                expVoiceAuthFlow: false,
-                useProfiles: false,
-                useEnhancedSessionWizard: false,
-                usePickerSearch: false,
-                useMachinePickerSearch: false,
-                usePathPickerSearch: false,
-                alwaysShowContextSize: false,
-                agentInputEnterToSend: true,
-                agentInputActionBarLayout: 'auto',
-                agentInputChipDensity: 'auto',
-                avatarStyle: 'gradient',
-                showFlavorIcons: false,
-                compactSessionView: false,
-                hideInactiveSessions: false,
-                reviewPromptAnswered: false,
-                reviewPromptLikedApp: null,
-                voiceAssistantLanguage: null,
-                preferredLanguage: null,
-                recentMachinePaths: [],
-                lastUsedAgent: null,
-                lastUsedPermissionMode: null,
-                lastUsedModelMode: null,
-                profiles: [],
-                lastUsedProfile: null,
-                favoriteDirectories: [],
-                favoriteMachines: [],
-                favoriteProfiles: [],
-                apiKeys: [],
-                defaultApiKeyByProfileId: {},
-                dismissedCLIWarnings: { perMachine: {}, global: {} },
-            };
+            const currentSettings = makeSettings({ schemaVersion: 1, avatarStyle: 'gradient', viewInline: true });
             const delta: Partial<Settings> = {};
             expect(applySettings(currentSettings, delta)).toEqual(currentSettings);
         });
 
         it('should override existing values with delta', () => {
-            const currentSettings: Settings = {
-                schemaVersion: 1,
-                viewInline: true,
-                expandTodos: true,
-                showLineNumbers: true,
-                showLineNumbersInToolViews: false,
-                wrapLinesInDiffs: false,
-                analyticsOptOut: false,
-                inferenceOpenAIKey: null,
-                experiments: false,
-                expGemini: false,
-                expUsageReporting: false,
-                expFileViewer: false,
-                expShowThinkingMessages: false,
-                expSessionType: false,
-                expZen: false,
-                expVoiceAuthFlow: false,
-                useProfiles: false,
-                useEnhancedSessionWizard: false,
-                usePickerSearch: false,
-                useMachinePickerSearch: false,
-                usePathPickerSearch: false,
-                alwaysShowContextSize: false,
-                agentInputEnterToSend: true,
-                agentInputActionBarLayout: 'auto',
-                agentInputChipDensity: 'auto',
-                avatarStyle: 'gradient',
-                showFlavorIcons: false,
-                compactSessionView: false,
-                hideInactiveSessions: false,
-                reviewPromptAnswered: false,
-                reviewPromptLikedApp: null,
-                voiceAssistantLanguage: null,
-                preferredLanguage: null,
-                recentMachinePaths: [],
-                lastUsedAgent: null,
-                lastUsedPermissionMode: null,
-                lastUsedModelMode: null,
-                profiles: [],
-                lastUsedProfile: null,
-                favoriteDirectories: [],
-                favoriteMachines: [],
-                favoriteProfiles: [],
-                apiKeys: [],
-                defaultApiKeyByProfileId: {},
-                dismissedCLIWarnings: { perMachine: {}, global: {} },
-            };
+            const currentSettings = makeSettings({ schemaVersion: 1, avatarStyle: 'gradient', viewInline: true });
             const delta: Partial<Settings> = {
                 viewInline: false
             };
@@ -384,53 +178,7 @@ describe('settings', () => {
         });
 
         it('should handle empty delta', () => {
-            const currentSettings: Settings = {
-                schemaVersion: 1,
-                viewInline: true,
-                expandTodos: true,
-                showLineNumbers: true,
-                showLineNumbersInToolViews: false,
-                wrapLinesInDiffs: false,
-                analyticsOptOut: false,
-                inferenceOpenAIKey: null,
-                experiments: false,
-                expGemini: false,
-                expUsageReporting: false,
-                expFileViewer: false,
-                expShowThinkingMessages: false,
-                expSessionType: false,
-                expZen: false,
-                expVoiceAuthFlow: false,
-                useProfiles: false,
-                useEnhancedSessionWizard: false,
-                usePickerSearch: false,
-                useMachinePickerSearch: false,
-                usePathPickerSearch: false,
-                alwaysShowContextSize: false,
-                agentInputEnterToSend: true,
-                agentInputActionBarLayout: 'auto',
-                agentInputChipDensity: 'auto',
-                avatarStyle: 'gradient',
-                showFlavorIcons: false,
-                compactSessionView: false,
-                hideInactiveSessions: false,
-                reviewPromptAnswered: false,
-                reviewPromptLikedApp: null,
-                voiceAssistantLanguage: null,
-                preferredLanguage: null,
-                recentMachinePaths: [],
-                lastUsedAgent: null,
-                lastUsedPermissionMode: null,
-                lastUsedModelMode: null,
-                profiles: [],
-                lastUsedProfile: null,
-                favoriteDirectories: [],
-                favoriteMachines: [],
-                favoriteProfiles: [],
-                apiKeys: [],
-                defaultApiKeyByProfileId: {},
-                dismissedCLIWarnings: { perMachine: {}, global: {} },
-            };
+            const currentSettings = makeSettings({ schemaVersion: 1, avatarStyle: 'gradient', viewInline: true });
             expect(applySettings(currentSettings, {})).toEqual(currentSettings);
         });
 
@@ -450,53 +198,7 @@ describe('settings', () => {
         });
 
         it('should handle extra fields in delta', () => {
-            const currentSettings: Settings = {
-                schemaVersion: 1,
-                viewInline: true,
-                expandTodos: true,
-                showLineNumbers: true,
-                showLineNumbersInToolViews: false,
-                wrapLinesInDiffs: false,
-                analyticsOptOut: false,
-                inferenceOpenAIKey: null,
-                experiments: false,
-                expGemini: false,
-                expUsageReporting: false,
-                expFileViewer: false,
-                expShowThinkingMessages: false,
-                expSessionType: false,
-                expZen: false,
-                expVoiceAuthFlow: false,
-                useProfiles: false,
-                useEnhancedSessionWizard: false,
-                usePickerSearch: false,
-                useMachinePickerSearch: false,
-                usePathPickerSearch: false,
-                alwaysShowContextSize: false,
-                agentInputEnterToSend: true,
-                agentInputActionBarLayout: 'auto',
-                agentInputChipDensity: 'auto',
-                avatarStyle: 'gradient',
-                showFlavorIcons: false,
-                compactSessionView: false,
-                hideInactiveSessions: false,
-                reviewPromptAnswered: false,
-                reviewPromptLikedApp: null,
-                voiceAssistantLanguage: null,
-                preferredLanguage: null,
-                recentMachinePaths: [],
-                lastUsedAgent: null,
-                lastUsedPermissionMode: null,
-                lastUsedModelMode: null,
-                profiles: [],
-                lastUsedProfile: null,
-                favoriteDirectories: [],
-                favoriteMachines: [],
-                favoriteProfiles: [],
-                apiKeys: [],
-                defaultApiKeyByProfileId: {},
-                dismissedCLIWarnings: { perMachine: {}, global: {} },
-            };
+            const currentSettings = makeSettings({ schemaVersion: 1, avatarStyle: 'gradient', viewInline: true });
             const delta: any = {
                 viewInline: false,
                 newField: 'new value'
@@ -571,9 +273,14 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 favoriteProfiles: [],
-                apiKeys: [],
-                defaultApiKeyByProfileId: {},
+                secrets: [],
+                secretBindingsByProfileId: {},
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
+                terminalUseTmux: false,
+                terminalTmuxSessionName: 'happy',
+                terminalTmuxIsolated: true,
+                terminalTmuxTmpDir: null,
+                terminalTmuxByMachineId: {},
             });
         });
 
@@ -737,76 +444,86 @@ describe('settings', () => {
             expect(() => AIBackendProfileSchema.parse(invalidProfile)).toThrow();
         });
 
-        it('rejects profiles with more than one required secret env var (V1 constraint)', () => {
-            const invalidProfile = {
+        it('accepts profiles with multiple required secret env vars', () => {
+            const profile = {
                 id: crypto.randomUUID(),
                 name: 'Test Profile',
-                authMode: 'apiKeyEnv',
-                requiredEnvVars: [
-                    { name: 'OPENAI_API_KEY', kind: 'secret' },
-                    { name: 'ANTHROPIC_AUTH_TOKEN', kind: 'secret' },
+                envVarRequirements: [
+                    { name: 'OPENAI_API_KEY', kind: 'secret', required: true },
+                    { name: 'ANTHROPIC_AUTH_TOKEN', kind: 'secret', required: true },
                 ],
                 compatibility: { claude: true, codex: true, gemini: true },
             };
-            expect(() => AIBackendProfileSchema.parse(invalidProfile)).toThrow();
+            expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
         });
 
-        it('rejects machine-login profiles that declare required secret env vars', () => {
-            const invalidProfile = {
+        it('accepts machine-login profiles that also declare secret requirements', () => {
+            const profile = {
                 id: crypto.randomUUID(),
                 name: 'Test Profile',
                 authMode: 'machineLogin',
-                requiredEnvVars: [
-                    { name: 'OPENAI_API_KEY', kind: 'secret' },
-                ],
+                requiresMachineLogin: 'claude-code',
+                envVarRequirements: [{ name: 'OPENAI_API_KEY', kind: 'secret', required: true }],
                 compatibility: { claude: true, codex: true, gemini: true },
             };
-            expect(() => AIBackendProfileSchema.parse(invalidProfile)).toThrow();
+            expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
         });
 
         it('rejects requiresMachineLogin when authMode is not machineLogin', () => {
             const invalidProfile = {
                 id: crypto.randomUUID(),
                 name: 'Test Profile',
-                authMode: 'apiKeyEnv',
+                authMode: undefined,
                 requiresMachineLogin: 'claude-code',
-                requiredEnvVars: [
-                    { name: 'OPENAI_API_KEY', kind: 'secret' },
-                ],
+                envVarRequirements: [],
                 compatibility: { claude: true, codex: true, gemini: true },
             };
             expect(() => AIBackendProfileSchema.parse(invalidProfile)).toThrow();
         });
     });
 
-    describe('SavedApiKey validation', () => {
-        it('accepts valid apiKeys entries in settingsParse', () => {
+    describe('SavedSecret validation', () => {
+        it('accepts valid secrets entries in settingsParse', () => {
             const now = Date.now();
             const parsed = settingsParse({
-                apiKeys: [
-                    { id: 'k1', name: 'My Key', value: 'sk-test', createdAt: now, updatedAt: now },
+                secrets: [
+                    { id: 'k1', name: 'My Secret', kind: 'apiKey', encryptedValue: { _isSecretValue: true, value: 'sk-test' }, createdAt: now, updatedAt: now },
                 ],
             });
-            expect(parsed.apiKeys.length).toBe(1);
-            expect(parsed.apiKeys[0]?.name).toBe('My Key');
-            expect(parsed.apiKeys[0]?.value).toBe('sk-test');
+            expect(parsed.secrets.length).toBe(1);
+            expect(parsed.secrets[0]?.name).toBe('My Secret');
+            // settingsParse should tolerate plaintext values (legacy/input form),
+            // but the runtime should seal them before persisting.
+            expect(parsed.secrets[0]?.encryptedValue?.value).toBe('sk-test');
         });
 
-        it('drops invalid apiKeys entries (missing value)', () => {
+        it('drops invalid secrets entries (missing value)', () => {
             const parsed = settingsParse({
-                apiKeys: [
-                    { id: 'k1', name: 'Missing value' },
+                secrets: [
+                    { id: 'k1', name: 'Missing value', kind: 'apiKey', encryptedValue: { _isSecretValue: true } },
                 ],
             } as any);
             // settingsParse validates per-field, so invalid field should fall back to default.
-            expect(parsed.apiKeys).toEqual([]);
+            expect(parsed.secrets).toEqual([]);
+        });
+
+        it('accepts encrypted-at-rest secrets entries (SecretString.encryptedValue)', () => {
+            const now = Date.now();
+            const parsed = settingsParse({
+                secrets: [
+                    { id: 'k1', name: 'My Secret', kind: 'apiKey', encryptedValue: { _isSecretValue: true, encryptedValue: { t: 'enc-v1', c: 'Zm9v' } }, createdAt: now, updatedAt: now },
+                ],
+            } as any);
+            expect(parsed.secrets.length).toBe(1);
+            expect(parsed.secrets[0]?.name).toBe('My Secret');
+            expect(parsed.secrets[0]?.encryptedValue?.encryptedValue?.t).toBe('enc-v1');
         });
     });
 
-    describe('defaultApiKeyByProfileId', () => {
+    describe('secretBindingsByProfileId', () => {
         it('defaults to an empty object', () => {
             const parsed = settingsParse({});
-            expect(parsed.defaultApiKeyByProfileId).toEqual({});
+            expect(parsed.secretBindingsByProfileId).toEqual({});
         });
     });
 
@@ -828,6 +545,7 @@ describe('settings', () => {
                         name: 'Server Profile',
                         environmentVariables: [],
                         compatibility: { claude: true, codex: true, gemini: true },
+                        envVarRequirements: [],
                         isBuiltIn: false,
                         createdAt: Date.now(),
                         updatedAt: Date.now(),
@@ -845,6 +563,7 @@ describe('settings', () => {
                         name: 'Local Profile',
                         environmentVariables: [],
                         compatibility: { claude: true, codex: true, gemini: true },
+                        envVarRequirements: [],
                         isBuiltIn: false,
                         createdAt: Date.now(),
                         updatedAt: Date.now(),
@@ -946,6 +665,7 @@ describe('settings', () => {
                     name: 'Test',
                     environmentVariables: [],
                     compatibility: { claude: true, codex: true, gemini: true },
+                    envVarRequirements: [],
                     isBuiltIn: false,
                     createdAt: Date.now(),
                     updatedAt: Date.now(),
@@ -1089,6 +809,7 @@ describe('settings', () => {
                     name: 'Server Profile',
                     environmentVariables: [],
                     compatibility: { claude: true, codex: true },
+                    envVarRequirements: [],
                     isBuiltIn: false,
                     createdAt: 1000,
                     updatedAt: 1000,
@@ -1107,6 +828,7 @@ describe('settings', () => {
                     name: 'Local Profile',
                     environmentVariables: [],
                     compatibility: { claude: true, codex: true, gemini: true },
+                    envVarRequirements: [],
                     isBuiltIn: false,
                     createdAt: 2000,
                     updatedAt: 2000,

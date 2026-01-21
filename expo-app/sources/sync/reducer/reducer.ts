@@ -217,6 +217,24 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     let changed: Set<string> = new Set();
     let hasReadyEvent = false;
 
+    const isEmptyArray = (v: unknown): v is [] => Array.isArray(v) && v.length === 0;
+
+    const equalOptionalStringArrays = (a: unknown, b: unknown): boolean => {
+        // Treat `undefined` / `null` / `[]` as equivalent “empty”.
+        if (a == null || isEmptyArray(a)) {
+            return b == null || isEmptyArray(b);
+        }
+        if (b == null || isEmptyArray(b)) {
+            return a == null || isEmptyArray(a);
+        }
+        if (!Array.isArray(a) || !Array.isArray(b)) return false;
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) {
+            if (a[i] !== b[i]) return false;
+        }
+        return true;
+    };
+
     // First, trace all messages to identify sidechains
     const tracedMessages = traceMessages(state.tracerState, messages);
 
@@ -435,7 +453,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             message.tool.permission?.status !== completed.status ||
                             message.tool.permission?.reason !== completed.reason ||
                             message.tool.permission?.mode !== completed.mode ||
-                            message.tool.permission?.allowedTools !== completed.allowedTools ||
+                            !equalOptionalStringArrays(message.tool.permission?.allowedTools, completed.allowedTools) ||
                             message.tool.permission?.decision !== completed.decision;
 
                         if (!needsUpdate) {

@@ -1,7 +1,7 @@
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { ArtifactHeader, ArtifactBody } from '../artifactTypes';
 import { AES256Encryption } from './encryptor';
-import * as Random from 'expo-crypto';
+import { getRandomBytes } from '@/platform/cryptoRandom';
 
 export class ArtifactEncryption {
     private encryptor: AES256Encryption;
@@ -14,7 +14,7 @@ export class ArtifactEncryption {
      * Generate a new data encryption key for an artifact
      */
     static generateDataEncryptionKey(): Uint8Array {
-        return Random.getRandomBytes(32);  // 256 bits for AES-256
+        return getRandomBytes(32);  // 256 bits for AES-256
     }
     
     /**

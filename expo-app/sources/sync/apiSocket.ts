@@ -32,6 +32,7 @@ class ApiSocket {
     private messageHandlers: Map<string, (data: any) => void> = new Map();
     private reconnectedListeners: Set<() => void> = new Set();
     private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
+    private errorListeners: Set<(error: Error | null) => void> = new Set();
     private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
 
     //
@@ -93,6 +94,11 @@ class ApiSocket {
         // Immediately notify with current status
         listener(this.currentStatus);
         return () => this.statusListeners.delete(listener);
+    };
+
+    onError = (listener: (error: Error | null) => void) => {
+        this.errorListeners.add(listener);
+        return () => this.errorListeners.delete(listener);
     };
 
     //
@@ -220,6 +226,8 @@ class ApiSocket {
             // console.log('🔌 SyncSocket: Connected, recovered: ' + this.socket?.recovered);
             // console.log('🔌 SyncSocket: Socket ID:', this.socket?.id);
             this.updateStatus('connected');
+            // Clear last error on successful connect
+            this.errorListeners.forEach(listener => listener(null));
             if (!this.socket?.recovered) {
                 this.reconnectedListeners.forEach(listener => listener());
             }
@@ -234,11 +242,13 @@ class ApiSocket {
         this.socket.on('connect_error', (error) => {
             // console.error('🔌 SyncSocket: Connection error', error);
             this.updateStatus('error');
+            this.errorListeners.forEach(listener => listener(error));
         });
 
         this.socket.on('error', (error) => {
             // console.error('🔌 SyncSocket: Error', error);
             this.updateStatus('error');
+            this.errorListeners.forEach(listener => listener(error));
         });
 
         // Message handling

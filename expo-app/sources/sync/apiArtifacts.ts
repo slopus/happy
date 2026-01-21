@@ -2,6 +2,7 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
 import { Artifact, ArtifactCreateRequest, ArtifactUpdateRequest, ArtifactUpdateResponse } from './artifactTypes';
+import { HappyError } from '@/utils/errors';
 
 /**
  * Fetch all artifacts for the account
@@ -18,6 +19,16 @@ export async function fetchArtifacts(credentials: AuthCredentials): Promise<Arti
         });
 
         if (!response.ok) {
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to fetch artifacts';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
+            }
             throw new Error(`Failed to fetch artifacts: ${response.status}`);
         }
 
@@ -42,7 +53,17 @@ export async function fetchArtifact(credentials: AuthCredentials, artifactId: st
 
         if (!response.ok) {
             if (response.status === 404) {
-                throw new Error('Artifact not found');
+                throw new HappyError('Artifact not found', false);
+            }
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to fetch artifact';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
             }
             throw new Error(`Failed to fetch artifact: ${response.status}`);
         }
@@ -73,7 +94,17 @@ export async function createArtifact(
 
         if (!response.ok) {
             if (response.status === 409) {
-                throw new Error('Artifact ID already exists');
+                throw new HappyError('Artifact ID already exists', false);
+            }
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to create artifact';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
             }
             throw new Error(`Failed to create artifact: ${response.status}`);
         }
@@ -105,7 +136,17 @@ export async function updateArtifact(
 
         if (!response.ok) {
             if (response.status === 404) {
-                throw new Error('Artifact not found');
+                throw new HappyError('Artifact not found', false);
+            }
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to update artifact';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
             }
             throw new Error(`Failed to update artifact: ${response.status}`);
         }
@@ -134,7 +175,17 @@ export async function deleteArtifact(
 
         if (!response.ok) {
             if (response.status === 404) {
-                throw new Error('Artifact not found');
+                throw new HappyError('Artifact not found', false);
+            }
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to delete artifact';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
             }
             throw new Error(`Failed to delete artifact: ${response.status}`);
         }

@@ -1,5 +1,6 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
+import { HappyError } from '@/utils/errors';
 import { getServerUrl } from './serverConfig';
 
 export interface GitHubOAuthParams {
@@ -38,7 +39,17 @@ export async function getGitHubOAuthParams(credentials: AuthCredentials): Promis
         if (!response.ok) {
             if (response.status === 400) {
                 const error = await response.json();
-                throw new Error(error.error || 'GitHub OAuth not configured');
+                throw new HappyError(error.error || 'GitHub OAuth not configured', false, { status: 400, kind: 'config' });
+            }
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to get GitHub OAuth params';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false, { status: response.status, kind: response.status === 401 || response.status === 403 ? 'auth' : 'config' });
             }
             throw new Error(`Failed to get GitHub OAuth params: ${response.status}`);
         }
@@ -64,6 +75,16 @@ export async function getAccountProfile(credentials: AuthCredentials): Promise<A
         });
 
         if (!response.ok) {
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to get account profile';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false, { status: response.status, kind: response.status === 401 || response.status === 403 ? 'auth' : 'config' });
+            }
             throw new Error(`Failed to get account profile: ${response.status}`);
         }
 
@@ -89,7 +110,17 @@ export async function disconnectGitHub(credentials: AuthCredentials): Promise<vo
         if (!response.ok) {
             if (response.status === 404) {
                 const error = await response.json();
-                throw new Error(error.error || 'GitHub account not connected');
+                throw new HappyError(error.error || 'GitHub account not connected', false, { status: 404, kind: 'config' });
+            }
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to disconnect GitHub';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false, { status: response.status, kind: response.status === 401 || response.status === 403 ? 'auth' : 'config' });
             }
             throw new Error(`Failed to disconnect GitHub: ${response.status}`);
         }

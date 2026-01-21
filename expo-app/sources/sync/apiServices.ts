@@ -1,5 +1,6 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
+import { HappyError } from '@/utils/errors';
 import { getServerUrl } from './serverConfig';
 
 /**
@@ -23,6 +24,16 @@ export async function connectService(
         });
 
         if (!response.ok) {
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = `Failed to connect ${service}`;
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
+            }
             throw new Error(`Failed to connect ${service}: ${response.status}`);
         }
 
@@ -50,7 +61,17 @@ export async function disconnectService(credentials: AuthCredentials, service: s
         if (!response.ok) {
             if (response.status === 404) {
                 const error = await response.json();
-                throw new Error(error.error || `${service} account not connected`);
+                throw new HappyError(error.error || `${service} account not connected`, false);
+            }
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = `Failed to disconnect ${service}`;
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
             }
             throw new Error(`Failed to disconnect ${service}: ${response.status}`);
         }

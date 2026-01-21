@@ -9,7 +9,7 @@ import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
-import { randomUUID } from 'expo-crypto';
+import { randomUUID } from '@/platform/randomUUID';
 import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
 import { Platform, AppState, InteractionManager } from 'react-native';
@@ -40,6 +40,10 @@ import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { initializeTodoSync } from '../-zen/model/ops';
 import { buildOutgoingMessageMeta } from './messageMeta';
+import { HappyError } from '@/utils/errors';
+import { dbgSettings, isSettingsSyncDebugEnabled, summarizeSettings, summarizeSettingsDelta } from './debugSettings';
+import { deriveSettingsSecretsKey, decryptSecretValue, encryptSecretString, sealSecretsDeep } from './secretSettings';
+import type { SavedSecret } from './settings';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -72,6 +76,7 @@ class Sync {
     private pendingSettingsFlushTimer: ReturnType<typeof setTimeout> | null = null;
     private pendingSettingsDirty = false;
     revenueCatInitialized = false;
+    private settingsSecretsKey: Uint8Array | null = null;
 
     // Generic locking mechanism
     private recalculationLockCount = 0;
@@ -80,11 +85,32 @@ class Sync {
     private lastMachinesRefreshAt = 0;
 
     constructor() {
-        this.sessionsSync = new InvalidateSync(this.fetchSessions);
-        this.settingsSync = new InvalidateSync(this.syncSettings);
-        this.profileSync = new InvalidateSync(this.fetchProfile);
-        this.purchasesSync = new InvalidateSync(this.syncPurchases);
-        this.machinesSync = new InvalidateSync(this.fetchMachines);
+        dbgSettings('Sync.constructor: loaded pendingSettings', {
+            pendingKeys: Object.keys(this.pendingSettings).sort(),
+        });
+        const onSuccess = () => {
+            storage.getState().clearSyncError();
+            storage.getState().setLastSyncAt(Date.now());
+        };
+        const onError = (e: any) => {
+            const message = e instanceof Error ? e.message : String(e);
+            const retryable = !(e instanceof HappyError && e.canTryAgain === false);
+            const kind: 'auth' | 'config' | 'network' | 'server' | 'unknown' =
+                e instanceof HappyError && e.kind ? e.kind : 'unknown';
+            storage.getState().setSyncError({ message, retryable, kind, at: Date.now() });
+        };
+
+        const onRetry = (info: { failuresCount: number; nextDelayMs: number; nextRetryAt: number }) => {
+            const ex = storage.getState().syncError;
+            if (!ex) return;
+            storage.getState().setSyncError({ ...ex, failuresCount: info.failuresCount, nextRetryAt: info.nextRetryAt });
+        };
+
+        this.sessionsSync = new InvalidateSync(this.fetchSessions, { onError, onSuccess, onRetry });
+        this.settingsSync = new InvalidateSync(this.syncSettings, { onError, onSuccess, onRetry });
+        this.profileSync = new InvalidateSync(this.fetchProfile, { onError, onSuccess, onRetry });
+        this.purchasesSync = new InvalidateSync(this.syncPurchases, { onError, onSuccess, onRetry });
+        this.machinesSync = new InvalidateSync(this.fetchMachines, { onError, onSuccess, onRetry });
         this.nativeUpdateSync = new InvalidateSync(this.fetchNativeUpdate);
         this.artifactsSync = new InvalidateSync(this.fetchArtifactsList);
         this.friendsSync = new InvalidateSync(this.fetchFriends);
@@ -166,6 +192,16 @@ class Sync {
         this.encryption = encryption;
         this.anonID = encryption.anonID;
         this.serverID = parseToken(credentials.token);
+        // Derive a stable per-account key for field-level secret settings.
+        // This is separate from the outer settings blob encryption.
+        try {
+            const secretKey = decodeBase64(credentials.secret, 'base64url');
+            if (secretKey.length === 32) {
+                this.settingsSecretsKey = await deriveSettingsSecretsKey(secretKey);
+            }
+        } catch {
+            this.settingsSecretsKey = null;
+        }
         await this.#init();
 
         // Await settings sync to have fresh settings
@@ -185,7 +221,34 @@ class Sync {
         this.encryption = encryption;
         this.anonID = encryption.anonID;
         this.serverID = parseToken(credentials.token);
+        try {
+            const secretKey = decodeBase64(credentials.secret, 'base64url');
+            if (secretKey.length === 32) {
+                this.settingsSecretsKey = await deriveSettingsSecretsKey(secretKey);
+            }
+        } catch {
+            this.settingsSecretsKey = null;
+        }
         await this.#init();
+    }
+
+    /**
+     * Encrypt a secret value into an encrypted-at-rest container.
+     * Used for transient persistence (e.g. local drafts) where plaintext must never be stored.
+     */
+    public encryptSecretValue(value: string): import('./secretSettings').SecretString | null {
+        const v = typeof value === 'string' ? value.trim() : '';
+        if (!v) return null;
+        if (!this.settingsSecretsKey) return null;
+        return { _isSecretValue: true, encryptedValue: encryptSecretString(v, this.settingsSecretsKey) };
+    }
+
+    /**
+     * Generic secret-string decryption helper for settings-like objects.
+     * Prefer this over adding per-field helpers unless a field needs special handling.
+     */
+    public decryptSecretValue(input: import('./secretSettings').SecretString | null | undefined): string | null {
+        return decryptSecretValue(input, this.settingsSecretsKey);
     }
 
     async #init() {
@@ -335,10 +398,62 @@ class Sync {
     }
 
     applySettings = (delta: Partial<Settings>) => {
+        // Seal secret settings fields before any persistence.
+        delta = sealSecretsDeep(delta, this.settingsSecretsKey);
+        // Avoid no-op writes. Settings writes cause:
+        // - local persistence writes
+        // - pending delta persistence
+        // - a server POST (eventually)
+        //
+        // So we must not write when nothing actually changed.
+        const currentSettings = storage.getState().settings;
+        const deltaEntries = Object.entries(delta) as Array<[keyof Settings, unknown]>;
+        const hasRealChange = deltaEntries.some(([key, next]) => {
+            const prev = (currentSettings as any)[key];
+            if (Object.is(prev, next)) return false;
+
+            // Keep this O(1) and UI-friendly:
+            // - For objects/arrays/records, rely on reference changes.
+            // - Settings updates should always replace values immutably.
+            const prevIsObj = prev !== null && typeof prev === 'object';
+            const nextIsObj = next !== null && typeof next === 'object';
+            if (prevIsObj || nextIsObj) {
+                return prev !== next;
+            }
+            return true;
+        });
+        if (!hasRealChange) {
+            dbgSettings('applySettings skipped (no-op delta)', {
+                delta: summarizeSettingsDelta(delta),
+                base: summarizeSettings(currentSettings, { version: storage.getState().settingsVersion }),
+            });
+            return;
+        }
+
+        if (isSettingsSyncDebugEnabled()) {
+            const stack = (() => {
+                try {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const s = (new Error('settings-sync trace') as any)?.stack;
+                    return typeof s === 'string' ? s.split('\n').slice(0, 10).join('\n') : null;
+                } catch {
+                    return null;
+                }
+            })();
+            const st = storage.getState();
+            dbgSettings('applySettings called', {
+                delta: summarizeSettingsDelta(delta),
+                base: summarizeSettings(st.settings, { version: st.settingsVersion }),
+                stack,
+            });
+        }
         storage.getState().applySettingsLocal(delta);
 
         // Save pending settings
         this.pendingSettings = { ...this.pendingSettings, ...delta };
+        dbgSettings('applySettings: pendingSettings updated', {
+            pendingKeys: Object.keys(this.pendingSettings).sort(),
+        });
 
         // Sync PostHog opt-out state if it was changed
         if (tracking && 'analyticsOptOut' in delta) {
@@ -512,6 +627,9 @@ class Sync {
         });
 
         if (!response.ok) {
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                throw new HappyError(`Failed to fetch sessions (${response.status})`, false);
+            }
             throw new Error(`Failed to fetch sessions: ${response.status}`);
         }
 
@@ -583,6 +701,26 @@ class Sync {
 
     public refreshMachines = async () => {
         return this.fetchMachines();
+    }
+
+    public retryNow = () => {
+        try {
+            storage.getState().clearSyncError();
+            apiSocket.disconnect();
+            apiSocket.connect();
+        } catch {
+            // ignore
+        }
+        this.sessionsSync.invalidate();
+        this.settingsSync.invalidate();
+        this.profileSync.invalidate();
+        this.machinesSync.invalidate();
+        this.purchasesSync.invalidate();
+        this.artifactsSync.invalidate();
+        this.friendsSync.invalidate();
+        this.friendRequestsSync.invalidate();
+        this.feedSync.invalidate();
+        this.todosSync.invalidate();
     }
 
     public refreshMachinesThrottled = async (params?: { staleMs?: number; force?: boolean }) => {
@@ -1200,10 +1338,23 @@ class Sync {
 
         // Apply pending settings
         if (Object.keys(this.pendingSettings).length > 0) {
+            dbgSettings('syncSettings: pending detected; will POST', {
+                endpoint: API_ENDPOINT,
+                expectedVersion: storage.getState().settingsVersion ?? 0,
+                pendingKeys: Object.keys(this.pendingSettings).sort(),
+                pendingSummary: summarizeSettingsDelta(this.pendingSettings as Partial<Settings>),
+                base: summarizeSettings(storage.getState().settings, { version: storage.getState().settingsVersion }),
+            });
 
             while (retryCount < maxRetries) {
                 let version = storage.getState().settingsVersion;
                 let settings = applySettings(storage.getState().settings, this.pendingSettings);
+                dbgSettings('syncSettings: POST attempt', {
+                    endpoint: API_ENDPOINT,
+                    attempt: retryCount + 1,
+                    expectedVersion: version ?? 0,
+                    merged: summarizeSettings(settings, { version }),
+                });
                 const response = await fetch(`${API_ENDPOINT}/v1/account/settings`, {
                     method: 'POST',
                     body: JSON.stringify({
@@ -1226,6 +1377,10 @@ class Sync {
                 if (data.success) {
                     this.pendingSettings = {};
                     savePendingSettings({});
+                    dbgSettings('syncSettings: POST success; pending cleared', {
+                        endpoint: API_ENDPOINT,
+                        newServerVersion: (version ?? 0) + 1,
+                    });
                     break;
                 }
                 if (data.error === 'version-mismatch') {
@@ -1241,6 +1396,14 @@ class Sync {
 
                     // Merge: server base + our pending changes (our changes win)
                     const mergedSettings = applySettings(serverSettings, this.pendingSettings);
+                    dbgSettings('syncSettings: version-mismatch merge', {
+                        endpoint: API_ENDPOINT,
+                        expectedVersion: version ?? 0,
+                        currentVersion: data.currentVersion,
+                        pendingKeys: Object.keys(this.pendingSettings).sort(),
+                        serverParsed: summarizeSettings(serverSettings, { version: data.currentVersion }),
+                        merged: summarizeSettings(mergedSettings, { version: data.currentVersion }),
+                    });
 
                     // Update local storage with merged result at server's version.
                     //
@@ -1279,6 +1442,9 @@ class Sync {
             }
         });
         if (!response.ok) {
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                throw new HappyError(`Failed to fetch settings (${response.status})`, false);
+            }
             throw new Error(`Failed to fetch settings: ${response.status}`);
         }
         const data = await response.json() as {
@@ -1293,6 +1459,11 @@ class Sync {
         } else {
             parsedSettings = { ...settingsDefaults };
         }
+        dbgSettings('syncSettings: GET applied', {
+            endpoint: API_ENDPOINT,
+            serverVersion: data.settingsVersion,
+            parsed: summarizeSettings(parsedSettings, { version: data.settingsVersion }),
+        });
 
         // Apply settings to storage
         storage.getState().applySettings(parsedSettings, data.settingsVersion);
@@ -1319,6 +1490,9 @@ class Sync {
         });
 
         if (!response.ok) {
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                throw new HappyError(`Failed to fetch profile (${response.status})`, false);
+            }
             throw new Error(`Failed to fetch profile: ${response.status}`);
         }
 
@@ -2166,6 +2340,23 @@ async function syncInit(credentials: AuthCredentials, restore: boolean) {
     // Wire socket status to storage
     apiSocket.onStatusChange((status) => {
         storage.getState().setSocketStatus(status);
+    });
+    apiSocket.onError((error) => {
+        if (!error) {
+            storage.getState().setSocketError(null);
+            return;
+        }
+        const msg = error.message || 'Connection error';
+        storage.getState().setSocketError(msg);
+
+        // Prefer explicit status if provided by the socket error (depends on server implementation).
+        const status = (error as any)?.data?.status;
+        const statusNum = typeof status === 'number' ? status : null;
+        const kind: 'auth' | 'config' | 'network' | 'server' | 'unknown' =
+            statusNum === 401 || statusNum === 403 ? 'auth' : 'unknown';
+        const retryable = kind !== 'auth';
+
+        storage.getState().setSyncError({ message: msg, retryable, kind, at: Date.now() });
     });
 
     // Initialize sessions engine

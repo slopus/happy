@@ -1,5 +1,5 @@
-import { getRandomBytes } from 'expo-crypto';
-import * as Crypto from 'expo-crypto';
+import { getRandomBytes } from '@/platform/cryptoRandom';
+import { digest } from '@/platform/digest';
 
 // OAuth Configuration for Claude.ai
 export const CLAUDE_OAUTH_CONFIG = {
@@ -44,11 +44,8 @@ export async function generatePKCE(): Promise<PKCECodes> {
     const verifier = base64urlEncode(verifierBytes);
 
     // Generate code challenge (SHA256 of verifier, base64url encoded)
-    const challengeBytes = await Crypto.digest(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        new TextEncoder().encode(verifier)
-    );
-    const challenge = base64urlEncode(new Uint8Array(challengeBytes));
+    const challengeBytes = await digest('SHA-256', new TextEncoder().encode(verifier));
+    const challenge = base64urlEncode(challengeBytes);
 
     return { verifier, challenge };
 }

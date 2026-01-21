@@ -1,6 +1,7 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
+import { HappyError } from '@/utils/errors';
 import {
     UserProfile,
     UserResponse,
@@ -34,6 +35,16 @@ export async function searchUsersByUsername(
         if (!response.ok) {
             if (response.status === 404) {
                 return [];
+            }
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to search users';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
             }
             throw new Error(`Failed to search users: ${response.status}`);
         }
@@ -72,6 +83,16 @@ export async function getUserProfile(
         if (!response.ok) {
             if (response.status === 404) {
                 return null;
+            }
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to get user profile';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
             }
             throw new Error(`Failed to get user profile: ${response.status}`);
         }
@@ -127,6 +148,16 @@ export async function sendFriendRequest(
             if (response.status === 404) {
                 return null;
             }
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to add friend';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
+            }
             throw new Error(`Failed to add friend: ${response.status}`);
         }
 
@@ -164,6 +195,16 @@ export async function getFriendsList(
         });
 
         if (!response.ok) {
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to get friends list';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
+            }
             throw new Error(`Failed to get friends list: ${response.status}`);
         }
 
@@ -200,6 +241,16 @@ export async function removeFriend(
         if (!response.ok) {
             if (response.status === 404) {
                 return null;
+            }
+            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+                let message = 'Failed to remove friend';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false);
             }
             throw new Error(`Failed to remove friend: ${response.status}`);
         }
