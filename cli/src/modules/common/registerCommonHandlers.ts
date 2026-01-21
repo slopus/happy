@@ -260,7 +260,8 @@ async function detectCliLoginStatus(params: { name: DetectCliName; resolvedPath:
                 await execFileAsync(file, args, { timeout: timeoutMs, windowsHide: true });
                 return true;
             } catch (error) {
-                const code = (error as any)?.code;
+                // execFileAsync throws on non-zero exit; check exit code via various properties.
+                const code = (error as any)?.status ?? (error as any)?.exitCode ?? (error as any)?.code;
                 // Non-zero exit codes are still a deterministic "not logged in" for our probes.
                 if (typeof code === 'number') {
                     return false;
