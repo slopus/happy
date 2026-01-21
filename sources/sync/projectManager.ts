@@ -4,6 +4,7 @@
  */
 
 import { Session, MachineMetadata, GitStatus } from "./storageTypes";
+import { normalizePathForKey } from "@/utils/normalizePathForKey";
 
 /**
  * Unique project identifier based on machine ID and path
@@ -45,10 +46,13 @@ class ProjectManager {
     private nextProjectId = 1;
 
     /**
-     * Generate a unique key string from machine ID and path
+     * Generate a unique key string from machine ID and path.
+     * Uses normalized path to ensure consistent matching regardless of
+     * whether the original path contains underscores, dots, or other special characters.
+     * This matches Claude Code's .claude/projects folder naming convention.
      */
     private getProjectKeyString(key: ProjectKey): string {
-        return `${key.machineId}:${key.path}`;
+        return `${key.machineId}:${normalizePathForKey(key.path)}`;
     }
 
     /**
