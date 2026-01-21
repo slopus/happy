@@ -171,7 +171,7 @@ export function validateProfile(profile: unknown): AIBackendProfile {
 
 // Profile versioning system
 // Profile version: Semver string for individual profile data compatibility (e.g., "1.0.0")
-// Used to version the AIBackendProfile schema itself (anthropicConfig, etc.)
+// Used to version the AIBackendProfile schema itself
 export const CURRENT_PROFILE_VERSION = '1.0.0';
 
 // Settings schema version: Integer for overall Settings structure compatibility
