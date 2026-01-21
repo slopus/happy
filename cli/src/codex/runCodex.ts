@@ -3,6 +3,7 @@ import React from "react";
 import { ApiClient } from '@/api/api';
 import { CodexMcpClient } from './codexMcpClient';
 import { CodexPermissionHandler } from './utils/permissionHandler';
+import { formatCodexEventForUi } from './utils/formatCodexEventForUi';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
@@ -22,12 +23,13 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
-import type { CodexSessionConfig } from './types';
+import type { CodexSessionConfig, CodexToolResponse } from './types';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { delay } from "@/utils/time";
 import { stopCaffeinate } from "@/utils/caffeinate";
+import { formatErrorForUi } from "@/utils/formatErrorForUi";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
@@ -58,6 +60,18 @@ export function emitReadyIfIdle({ pending, queueSize, shouldExit, sendReady, not
     sendReady();
     notify?.();
     return true;
+}
+
+export function extractCodexToolErrorText(response: CodexToolResponse): string | null {
+    if (!response?.isError) {
+        return null;
+    }
+    const text = (response.content || [])
+        .map((c) => (c && typeof c.text === 'string' ? c.text : ''))
+        .filter(Boolean)
+        .join('\n')
+        .trim();
+    return text || 'Codex error';
 }
 
 /**
@@ -405,8 +419,28 @@ export async function runCodex(opts: {
         session.sendCodexMessage(message);
     });
     client.setPermissionHandler(permissionHandler);
+
+    function forwardCodexStatusToUi(messageText: string): void {
+        messageBuffer.addMessage(messageText, 'status');
+        session.sendSessionEvent({ type: 'message', message: messageText });
+    }
+
+    function forwardCodexErrorToUi(errorText: string): void {
+        const text = typeof errorText === 'string' ? errorText.trim() : '';
+        if (!text || text === 'Codex error') {
+            forwardCodexStatusToUi('Codex error');
+            return;
+        }
+        forwardCodexStatusToUi(`Codex error: ${text}`);
+    }
+
     client.setHandler((msg) => {
         logger.debug(`[Codex] MCP message: ${JSON.stringify(msg)}`);
+
+        const uiText = formatCodexEventForUi(msg);
+        if (uiText) {
+            forwardCodexStatusToUi(uiText);
+        }
 
         // Add messages to the ink UI buffer based on message type
         if (msg.type === 'agent_message') {
@@ -691,16 +725,24 @@ export async function runCodex(opts: {
                         }
                         storedSessionIdForResume = null; // consume once
                     }
-                    
+
                     // Apply resume file if found
                     if (resumeFile) {
                         (startConfig.config as any).experimental_resume = resumeFile;
                     }
-                    
-                    await client.startSession(
+
+                    const startResponse = await client.startSession(
                         startConfig,
                         { signal: abortController.signal }
                     );
+                    const startError = extractCodexToolErrorText(startResponse);
+                    if (startError) {
+                        forwardCodexErrorToUi(startError);
+                        client.clearSession();
+                        wasCreated = false;
+                        currentModeHash = null;
+                        continue;
+                    }
                     wasCreated = true;
                     first = false;
                 } else {
@@ -709,11 +751,19 @@ export async function runCodex(opts: {
                         { signal: abortController.signal }
                     );
                     logger.debug('[Codex] continueSession response:', response);
+                    const continueError = extractCodexToolErrorText(response);
+                    if (continueError) {
+                        forwardCodexErrorToUi(continueError);
+                        client.clearSession();
+                        wasCreated = false;
+                        currentModeHash = null;
+                        continue;
+                    }
                 }
             } catch (error) {
                 logger.warn('Error in codex session:', error);
                 const isAbortError = error instanceof Error && error.name === 'AbortError';
-                
+
                 if (isAbortError) {
                     messageBuffer.addMessage('Aborted by user', 'status');
                     session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
@@ -721,8 +771,10 @@ export async function runCodex(opts: {
                     // Do not clear session state here; the next user message should continue on the
                     // existing session if possible.
                 } else {
-                    messageBuffer.addMessage('Process exited unexpectedly', 'status');
-                    session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    const details = formatErrorForUi(error);
+                    const messageText = `Codex process error: ${details}`;
+                    messageBuffer.addMessage(messageText, 'status');
+                    session.sendSessionEvent({ type: 'message', message: messageText });
                     // For unexpected exits, try to store session for potential recovery
                     if (client.hasActiveSession()) {
                         storedSessionIdForResume = client.storeSessionForResume();
