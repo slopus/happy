@@ -355,8 +355,8 @@ import { handleAttachCommand } from '@/commands/attach'
           env: process.env
         });
         daemonProcess.unref();
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
 
       await runGemini({credentials, startedBy, terminalRuntime});
     } catch (error) {
