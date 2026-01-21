@@ -94,12 +94,6 @@ function normalizeLegacyProfileConfig(profile: unknown): unknown {
   };
 }
 
-// Tmux configuration schema (matching GUI exactly)
-const TmuxConfigSchema = z.object({
-    sessionName: z.string().optional(),
-    tmpDir: z.string().optional(),
-});
-
 // Environment variables schema with validation (matching GUI exactly)
 const EnvironmentVariableSchema = z.object({
     name: z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'Invalid environment variable name'),
@@ -119,9 +113,6 @@ export const AIBackendProfileSchema = z.preprocess(normalizeLegacyProfileConfig,
     id: z.string().min(1),
     name: z.string().min(1).max(100),
     description: z.string().max(500).optional(),
-
-    // Tmux configuration
-    tmuxConfig: TmuxConfigSchema.optional(),
 
     // Environment variables (validated)
     environmentVariables: z.array(EnvironmentVariableSchema).default([]),
@@ -165,14 +156,6 @@ export function getProfileEnvironmentVariables(profile: AIBackendProfile): Recor
     envVars[envVar.name] = envVar.value;
   });
 
-  // Add Tmux config
-  if (profile.tmuxConfig) {
-    // Empty string means "use current/most recent session", so include it
-    if (profile.tmuxConfig.sessionName !== undefined) envVars.TMUX_SESSION_NAME = profile.tmuxConfig.sessionName;
-    // Empty string may be valid to use tmux defaults; include if explicitly provided.
-    if (profile.tmuxConfig.tmpDir !== undefined) envVars.TMUX_TMPDIR = profile.tmuxConfig.tmpDir;
-  }
-
   return envVars;
 }
 
@@ -188,7 +171,7 @@ export function validateProfile(profile: unknown): AIBackendProfile {
 
 // Profile versioning system
 // Profile version: Semver string for individual profile data compatibility (e.g., "1.0.0")
-// Used to version the AIBackendProfile schema itself (anthropicConfig, tmuxConfig, etc.)
+// Used to version the AIBackendProfile schema itself (anthropicConfig, etc.)
 export const CURRENT_PROFILE_VERSION = '1.0.0';
 
 // Settings schema version: Integer for overall Settings structure compatibility
