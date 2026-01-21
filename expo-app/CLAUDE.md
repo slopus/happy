@@ -118,6 +118,86 @@ sources/
 - **Always apply layout width constraints** from `@/components/layout` to full-screen ScrollViews and content containers for responsive design across device sizes
 - Always run `yarn typecheck` after all changes to ensure type safety
 
+## Modals & dialogs (web + native)
+
+### Rules of thumb
+- **Never call `Alert` / `Alert.prompt` directly**. Use `Modal` from `sources/modal` (`import { Modal } from '@/modal'`).
+- **Avoid `react-native` `<Modal>`** for app-controlled overlays. Use the app modal system so stacking works consistently.
+- If you need a new overlay:
+  - “OK / Confirm / Prompt” → `Modal.alert()` / `Modal.confirm()` / `Modal.prompt()`
+  - Custom UI → `Modal.show({ component, props })`
+
+### Web implementation (Radix)
+On web, `BaseModal` renders a Radix `Dialog` (portal to `document.body`) so focus, scroll, and pointer events behave correctly when stacking modals (including when an Expo Router / Vaul drawer is already open).
+
+**Critical invariant:** Radix “singleton” stacks (DismissableLayer / FocusScope) must be shared across *all* dialogs. With Metro + package `exports`, mixing ESM and CJS entrypoints can load *two* Radix module instances and break focus/stacking.
+
+- Use the CJS entrypoints via `sources/utils/radixCjs.ts` (`requireRadixDialog()` / `requireRadixDismissableLayer()`) for any web dialog primitives.
+- Wrap stacked dialog content with `DismissableLayer.Branch` so underlying Radix/Vaul layers don’t treat the top dialog as “outside” and dismiss.
+- Only the top-most modal should render a backdrop; `ModalProvider` handles this via `showBackdrop`.
+
+### Native implementation (iOS/Android)
+On native, stacking a React Navigation / Expo Router modal screen with an RN `<Modal>` can produce “invisible overlay blocks touches” and z-index ordering bugs.
+
+- `BaseModal` renders a “portal-style” overlay inside the current screen tree (absolute fill + high `zIndex`) so touches/focus stay within the same navigation presentation context.
+- `Modal.alert()` / `Modal.confirm()` use the native system alert UI on iOS/Android (good accessibility + expected platform UX).
+- `Modal.prompt()` uses the app prompt modal on all platforms for consistent behavior (since `Alert.prompt` is iOS-only).
+
+### Popovers (menus/tooltips)
+Use the app `Popover` + `FloatingOverlay` for menus/tooltips/context menus.
+
+- Use `portal={{ web: { target: 'body' }, native: true }}` when the anchor is inside overflow-clipped containers (headers, lists, scrollviews).
+- When the backdrop is enabled (default), `onRequestClose` is required (Popover is controlled).
+- For context-menu style overlays, prefer `backdrop={{ effect: 'blur', anchorOverlay: ..., closeOnPan: true }}` so the trigger stays crisp above the blur without cutout seams.
+- On web, portaled popovers are wrapped in Radix `DismissableLayer.Branch` (via `radixCjs.ts`) so Expo Router/Vaul/Radix layers don’t treat them as “outside”.
+
+## Settings persistence & sync (Account.settings + pending delta) — rules
+
+### Correct model
+- **Effective settings** = server settings merged with `settingsDefaults` (+ migrations in `settingsParse()`).
+- **Pending settings** = a **delta-only** object of user-intended changes not yet ACKed by the server (`pending-settings`).
+- `/v1/account/settings` **POST replaces the blob** (not a patch), so accidental uploads can overwrite server state.
+
+### Hard rules (do NOT break these)
+- **Never apply schema defaults when parsing pending deltas.**
+  - Do NOT do `SettingsSchema.partial().parse(...)` (or any parse path that synthesizes missing keys) if the schema contains `.default(...)`.
+  - Pending parsing must be “delta-only”: include a key only if it exists in the stored object and validates.
+- **Treat settings as immutable.**
+  - Never mutate `settings` (or nested arrays/objects like `secrets`, `profiles`, `favorite*`, `dismissedCLIWarnings`) in place.
+  - Always update settings via `sync.applySettings({ field: nextValue })` / `useSettingMutable(...)` using immutable patterns (`map`, `filter`, `...spread`).
+- **Avoid no-op writes on boot.**
+  - Do not call `sync.applySettings()` unconditionally in mount effects.
+  - Only persist when the value actually changed vs the current settings.
+- **Never log secrets.**
+  - Do not log `secrets[].encryptedValue.value` or env-var secret values. If you add logs, log only counts/booleans (`hasValue`) and keys.
+
+### Defaults placement guidance
+- It’s OK for `SettingsSchema` to have `.default(...)` for **effective settings parsing**, but you must ensure pending parsing does **not** trigger those defaults.
+- If you need both behaviors, consider **separating schemas**:
+  - `SettingsSchema` (effective) may include defaults
+  - `PendingSettingsSchema` (delta-only) must not
+
+### Pending storage when empty
+- Writing `"{}"` for “no pending” is acceptable **only if pending parsing is delta-only** (so `{}` stays `{}`).
+- Deleting the `pending-settings` key when empty is a recommended optimization (less churn/ambiguity), but not required for correctness once delta-only parsing is in place.
+
+## Secret settings (encrypted-at-rest fields inside settings)
+
+Some settings values are secrets (e.g. API keys). Even though the outer `Account.settings` blob is encrypted for server transport, we also require **field-level encryption at rest** so secrets are not stored as plaintext in MMKV/JSON after the blob is decrypted.
+
+### Rules
+- **Never persist plaintext secrets** in settings. Plaintext may be accepted as input, but must be sealed before persistence.
+- **Decrypt just-in-time** (e.g. right before sending an encrypted machine RPC to spawn a session).
+- **Never log secret values** (only counts/booleans like `hasValue`).
+
+### How to add a new secret setting field
+- Use the standardized secret container schema: **`SecretStringSchema`** from `sources/sync/secretSettings.ts`
+  - Marker: **`_isSecretValue: true`** (required for automatic sealing)
+  - Plaintext input only: `.value` (must not be persisted)
+  - Ciphertext persisted: `.encryptedValue` (an `EncryptedStringSchema`)
+- Sealing is automatic: `sync.applySettings(...)` runs `sealSecretsDeep(...)` (see `sources/sync/secretSettings.ts`).
+- Decrypt just-in-time via `sync.decryptSecretValue(...)`.
+
 ### Internationalization (i18n) Guidelines
 
 **CRITICAL: Always use the `t(...)` function for ALL user-visible strings**
