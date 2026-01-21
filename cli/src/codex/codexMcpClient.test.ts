@@ -79,7 +79,7 @@ describe('CodexMcpClient command detection', () => {
 
         const stdioModule = (await import('@modelcontextprotocol/sdk/client/stdio.js')) as any;
         const __transportInstances = stdioModule.__transportInstances as any[];
-        __transportInstances.splice(0);
+        __transportInstances.length = 0;
 
         const mod = await import('./codexMcpClient');
 
