@@ -33,6 +33,9 @@ import { formatErrorForUi } from "@/utils/formatErrorForUi";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
+import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
+import { writeTerminalAttachmentInfo } from '@/terminal/terminalAttachmentInfo';
+import { buildTerminalFallbackMessage } from '@/terminal/terminalFallbackMessage';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -80,6 +83,7 @@ export function extractCodexToolErrorText(response: CodexToolResponse): string |
 export async function runCodex(opts: {
     credentials: Credentials;
     startedBy?: 'daemon' | 'terminal';
+    terminalRuntime?: import('@/terminal/terminalRuntimeFlags').TerminalRuntimeFlags | null;
 }): Promise<void> {
     // Use shared PermissionMode type for cross-agent compatibility
     type PermissionMode = import('@/api/types').PermissionMode;
@@ -125,9 +129,11 @@ export async function runCodex(opts: {
     const { state, metadata } = createSessionMetadata({
         flavor: 'codex',
         machineId,
-        startedBy: opts.startedBy
+        startedBy: opts.startedBy,
+        terminalRuntime: opts.terminalRuntime ?? null,
     });
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+    const terminal = buildTerminalMetadataFromRuntimeFlags(opts.terminalRuntime ?? null);
 
     // Handle server unreachable case - create offline stub with hot reconnection
     let session: ApiSessionClient;
@@ -149,6 +155,24 @@ export async function runCodex(opts: {
         }
     });
     session = initialSession;
+
+    // Persist terminal attachment info locally (best-effort) once we have a real session ID.
+    if (response && terminal) {
+        try {
+            await writeTerminalAttachmentInfo({
+                happyHomeDir: configuration.happyHomeDir,
+                sessionId: response.id,
+                terminal,
+            });
+        } catch (error) {
+            logger.debug('[START] Failed to persist terminal attachment info', error);
+        }
+
+        const fallbackMessage = buildTerminalFallbackMessage(terminal);
+        if (fallbackMessage) {
+            session.sendSessionEvent({ type: 'message', message: fallbackMessage });
+        }
+    }
 
     // Always report to daemon if it exists (skip if offline)
     if (response) {

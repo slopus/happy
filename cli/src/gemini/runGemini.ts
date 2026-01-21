@@ -31,6 +31,9 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { formatGeminiErrorForUi } from '@/gemini/utils/formatGeminiErrorForUi';
+import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
+import { writeTerminalAttachmentInfo } from '@/terminal/terminalAttachmentInfo';
+import { buildTerminalFallbackMessage } from '@/terminal/terminalFallbackMessage';
 
 import { createGeminiBackend } from '@/agent/factories/gemini';
 import type { AgentBackend, AgentMessage } from '@/agent';
@@ -60,6 +63,7 @@ import { ConversationHistory } from '@/gemini/utils/conversationHistory';
 export async function runGemini(opts: {
   credentials: Credentials;
   startedBy?: 'daemon' | 'terminal';
+  terminalRuntime?: import('@/terminal/terminalRuntimeFlags').TerminalRuntimeFlags | null;
 }): Promise<void> {
   //
   // Define session
@@ -128,9 +132,11 @@ export async function runGemini(opts: {
   const { state, metadata } = createSessionMetadata({
     flavor: 'gemini',
     machineId,
-    startedBy: opts.startedBy
+    startedBy: opts.startedBy,
+    terminalRuntime: opts.terminalRuntime ?? null,
   });
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+  const terminal = buildTerminalMetadataFromRuntimeFlags(opts.terminalRuntime ?? null);
 
   // Handle server unreachable case - create offline stub with hot reconnection
   let session: ApiSessionClient;
@@ -180,6 +186,24 @@ export async function runGemini(opts: {
     }
   });
   session = initialSession;
+
+  // Persist terminal attachment info locally (best-effort) once we have a real session ID.
+  if (response && terminal) {
+    try {
+      await writeTerminalAttachmentInfo({
+        happyHomeDir: configuration.happyHomeDir,
+        sessionId: response.id,
+        terminal,
+      });
+    } catch (error) {
+      logger.debug('[START] Failed to persist terminal attachment info', error);
+    }
+
+    const fallbackMessage = buildTerminalFallbackMessage(terminal);
+    if (fallbackMessage) {
+      session.sendSessionEvent({ type: 'message', message: fallbackMessage });
+    }
+  }
 
   // Report to daemon (only if we have a real session)
   if (response) {

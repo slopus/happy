@@ -306,6 +306,19 @@ export type Metadata = {
   name?: string,
   os?: string,
   /**
+   * Terminal/attach metadata for this Happy session (non-secret).
+   * Used by the UI (Session Details) and CLI attach flows.
+   */
+  terminal?: {
+    mode: 'plain' | 'tmux',
+    requested?: 'plain' | 'tmux',
+    fallbackReason?: string,
+    tmux?: {
+      target: string,
+      tmpDir?: string | null,
+    },
+  },
+  /**
    * Session-scoped profile identity (non-secret).
    * Used for display/debugging across devices; runtime behavior is still driven by env vars at spawn.
    * Null indicates "no profile".

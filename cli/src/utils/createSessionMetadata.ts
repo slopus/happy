@@ -14,6 +14,8 @@ import type { AgentState, Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
 import packageJson from '../../package.json';
+import type { TerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags';
+import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
 
 /**
  * Backend flavor identifier for session metadata.
@@ -30,6 +32,8 @@ export interface CreateSessionMetadataOptions {
     machineId: string;
     /** How the session was started */
     startedBy?: 'daemon' | 'terminal';
+    /** Internal terminal runtime flags passed by the spawner (daemon/tmux wrapper). */
+    terminalRuntime?: TerminalRuntimeFlags | null;
 }
 
 /**
@@ -75,6 +79,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         host: os.hostname(),
         version: packageJson.version,
         os: os.platform(),
+        ...(opts.terminalRuntime ? { terminal: buildTerminalMetadataFromRuntimeFlags(opts.terminalRuntime) } : {}),
         ...(profileIdEnv !== undefined ? { profileId } : {}),
         machineId: opts.machineId,
         homeDir: os.homedir(),

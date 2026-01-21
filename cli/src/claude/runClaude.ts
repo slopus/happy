@@ -27,6 +27,10 @@ import { startOfflineReconnection, connectionState } from '@/utils/serverConnect
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
+import type { TerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags';
+import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
+import { writeTerminalAttachmentInfo } from '@/terminal/terminalAttachmentInfo';
+import { buildTerminalFallbackMessage } from '@/terminal/terminalFallbackMessage';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -41,6 +45,8 @@ export interface StartOptions {
     startedBy?: 'daemon' | 'terminal'
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
+    /** Internal terminal runtime flags passed by the spawner (daemon/tmux wrapper). */
+    terminalRuntime?: TerminalRuntimeFlags | null
 }
 
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
@@ -85,12 +91,14 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     const profileIdEnv = process.env.HAPPY_SESSION_PROFILE_ID;
     const profileId = profileIdEnv === undefined ? undefined : (profileIdEnv.trim() || null);
+    const terminal = buildTerminalMetadataFromRuntimeFlags(options.terminalRuntime ?? null);
 
     let metadata: Metadata = {
         path: workingDirectory,
         host: os.hostname(),
         version: packageJson.version,
         os: os.platform(),
+        ...(terminal ? { terminal } : {}),
         ...(profileIdEnv !== undefined ? { profileId } : {}),
         machineId: machineId,
         homeDir: os.homedir(),
@@ -160,6 +168,30 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     logger.debug(`Session created: ${response.id}`);
 
+    // Create realtime session
+    const session = api.sessionSyncClient(response);
+
+    // Persist terminal attachment info locally (best-effort).
+    if (terminal) {
+        try {
+            await writeTerminalAttachmentInfo({
+                happyHomeDir: configuration.happyHomeDir,
+                sessionId: response.id,
+                terminal,
+            });
+        } catch (error) {
+            logger.debug('[START] Failed to persist terminal attachment info', error);
+        }
+    }
+
+    // If tmux was requested but unavailable, surface the reason in the session chat (UI-facing).
+    if (terminal) {
+        const fallbackMessage = buildTerminalFallbackMessage(terminal);
+        if (fallbackMessage) {
+            session.sendSessionEvent({ type: 'message', message: fallbackMessage });
+        }
+    }
+
     // Always report to daemon if it exists
     try {
         logger.debug(`[START] Reporting session ${response.id} to daemon`);
@@ -178,7 +210,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         logger.debug('[start] SDK metadata extracted, updating session:', sdkMetadata);
         try {
             // Update session metadata with tools and slash commands
-            api.sessionSyncClient(response).updateMetadata((currentMetadata) => ({
+            session.updateMetadata((currentMetadata) => ({
                 ...currentMetadata,
                 tools: sdkMetadata.tools,
                 slashCommands: sdkMetadata.slashCommands
@@ -188,9 +220,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug('[start] Failed to update session metadata:', error);
         }
     });
-
-    // Create realtime session
-    const session = api.sessionSyncClient(response);
 
     // Start Happy MCP server
     const happyServer = await startHappyServer(session);

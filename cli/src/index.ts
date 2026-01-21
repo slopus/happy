@@ -28,10 +28,14 @@ import { handleConnectCommand } from './commands/connect'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
 import { execFileSync } from 'node:child_process'
+import { parseAndStripTerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags'
+import { handleAttachCommand } from '@/commands/attach'
 
 
 (async () => {
-  const args = process.argv.slice(2)
+  const parsed = parseAndStripTerminalRuntimeFlags(process.argv.slice(2))
+  const terminalRuntime = parsed.terminal
+  const args = parsed.argv
 
   // If --version is passed - do not log, its likely daemon inquiring about our version
   if (!args.includes('--version')) {
@@ -40,6 +44,33 @@ import { execFileSync } from 'node:child_process'
 
   // Check if first argument is a subcommand
   const subcommand = args[0]
+
+  // Headless tmux launcher (CLI flow)
+  if (args.includes('--tmux')) {
+    // If user is asking for help/version, don't start a session.
+    if (args.includes('-h') || args.includes('--help') || args.includes('-v') || args.includes('--version')) {
+      const idx = args.indexOf('--tmux');
+      if (idx !== -1) args.splice(idx, 1);
+    } else {
+      const disallowed = new Set(['doctor', 'auth', 'connect', 'notify', 'daemon', 'install', 'uninstall', 'logout', 'attach']);
+      if (subcommand && disallowed.has(subcommand)) {
+        console.error(chalk.red('Error:'), '--tmux can only be used when starting a session.');
+        process.exit(1);
+      }
+
+      try {
+        const { startHappyHeadlessInTmux } = await import('@/terminal/startHappyHeadlessInTmux');
+        await startHappyHeadlessInTmux(args);
+      } catch (error) {
+        console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+        if (process.env.DEBUG) {
+          console.error(error)
+        }
+        process.exit(1)
+      }
+      return;
+    }
+  }
   
   // Log which subcommand was detected (for debugging)
   if (!args.includes('--version')) {
@@ -81,6 +112,17 @@ import { execFileSync } from 'node:child_process'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'attach') {
+    try {
+      await handleAttachCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'codex') {
     // Handle codex command
     try {
@@ -97,7 +139,7 @@ import { execFileSync } from 'node:child_process'
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
-      await runCodex({credentials, startedBy});
+      await runCodex({credentials, startedBy, terminalRuntime});
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
@@ -313,10 +355,10 @@ import { execFileSync } from 'node:child_process'
           env: process.env
         });
         daemonProcess.unref();
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
 
-      await runGemini({credentials, startedBy});
+      await runGemini({credentials, startedBy, terminalRuntime});
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
@@ -606,6 +648,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
     // Start the CLI
     try {
+      options.terminalRuntime = terminalRuntime;
       await runClaude(credentials, options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
