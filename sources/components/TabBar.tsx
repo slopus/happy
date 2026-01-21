@@ -8,7 +8,9 @@ import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 
-export type TabType = 'zen' | 'inbox' | 'sessions' | 'settings';
+// Import and re-export TabType from the hook for backward compatibility
+import type { TabType } from '@/hooks/useTabState';
+export type { TabType };
 
 interface TabBarProps {
     activeTab: TabType;
