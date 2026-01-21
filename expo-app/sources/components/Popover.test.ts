@@ -100,8 +100,9 @@ describe('Popover (web)', () => {
         });
 
         const pressables = tree?.root.findAllByType('Pressable' as any) ?? [];
-        const backdrop = pressables.find((p: any) => flattenStyle(p.props.style).top === -1000);
+        const backdrop = pressables.find((p: any) => flattenStyle(p.props.style).top === 0);
         expect(backdrop).toBeTruthy();
+        expect(flattenStyle(backdrop?.props.style).position).toBe('fixed');
 
         const child = tree?.root.findByType('PopoverChild' as any);
         const content = nearestView(child);
@@ -200,6 +201,124 @@ describe('Popover (web)', () => {
 
         await act(async () => {
             await flushMicrotasks(3);
+        });
+
+        const childAfter = tree?.root.findByType('PopoverChild' as any);
+        const contentViewAfter = nearestView(childAfter);
+        expect(flattenStyle(contentViewAfter?.props?.style).opacity).toBe(1);
+    });
+
+    it('measures DOM anchors on web when measureInWindow is unavailable (prevents invisible portal popovers)', async () => {
+        const { Popover } = await import('./Popover');
+
+        const anchorRef = {
+            current: {
+                getBoundingClientRect: () => ({ left: 120, top: 140, width: 48, height: 22 }),
+            },
+        } as any;
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        act(() => {
+            tree = renderer.create(
+                React.createElement(Popover, {
+                    open: true,
+                    anchorRef,
+                    placement: 'bottom',
+                    portal: { web: true },
+                    backdrop: false,
+                    children: () => React.createElement('PopoverChild'),
+                }),
+            );
+        });
+
+        const child = tree?.root.findByType('PopoverChild' as any);
+        const contentView = nearestView(child);
+        expect(flattenStyle(contentView?.props?.style).opacity).toBe(0);
+
+        await act(async () => {
+            await flushMicrotasks(3);
+        });
+
+        const childAfter = tree?.root.findByType('PopoverChild' as any);
+        const contentViewAfter = nearestView(childAfter);
+        expect(flattenStyle(contentViewAfter?.props?.style).opacity).toBe(1);
+    });
+
+    it('falls back to DOM anchors on web when measureInWindow returns invalid values (prevents stuck invisible portal popovers)', async () => {
+        const { Popover } = await import('./Popover');
+
+        const anchorRef = {
+            current: {
+                measureInWindow: (cb: any) => {
+                    queueMicrotask(() => cb(NaN, NaN, NaN, NaN));
+                },
+                getBoundingClientRect: () => ({ left: 120, top: 140, width: 48, height: 22 }),
+            },
+        } as any;
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        act(() => {
+            tree = renderer.create(
+                React.createElement(Popover, {
+                    open: true,
+                    anchorRef,
+                    placement: 'bottom',
+                    portal: { web: true },
+                    backdrop: false,
+                    children: () => React.createElement('PopoverChild'),
+                }),
+            );
+        });
+
+        const child = tree?.root.findByType('PopoverChild' as any);
+        const contentView = nearestView(child);
+        expect(flattenStyle(contentView?.props?.style).opacity).toBe(0);
+
+        await act(async () => {
+            await flushMicrotasks(3);
+        });
+
+        const childAfter = tree?.root.findByType('PopoverChild' as any);
+        const contentViewAfter = nearestView(childAfter);
+        expect(flattenStyle(contentViewAfter?.props?.style).opacity).toBe(1);
+    });
+
+    it('retries measuring portal anchors on web when measureInWindow returns invalid values (prevents needing a resize)', async () => {
+        const { Popover } = await import('./Popover');
+
+        let calls = 0;
+        const anchorRef = {
+            current: {
+                measureInWindow: (cb: any) => {
+                    calls += 1;
+                    queueMicrotask(() => {
+                        if (calls === 1) return cb(NaN, NaN, NaN, NaN);
+                        cb(100, 100, 20, 20);
+                    });
+                },
+            },
+        } as any;
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        act(() => {
+            tree = renderer.create(
+                React.createElement(Popover, {
+                    open: true,
+                    anchorRef,
+                    placement: 'bottom',
+                    portal: { web: true },
+                    backdrop: false,
+                    children: () => React.createElement('PopoverChild'),
+                }),
+            );
+        });
+
+        const child = tree?.root.findByType('PopoverChild' as any);
+        const contentView = nearestView(child);
+        expect(flattenStyle(contentView?.props?.style).opacity).toBe(0);
+
+        await act(async () => {
+            await flushMicrotasks(6);
         });
 
         const childAfter = tree?.root.findByType('PopoverChild' as any);

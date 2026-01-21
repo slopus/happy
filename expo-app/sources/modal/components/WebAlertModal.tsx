@@ -109,7 +109,9 @@ export function WebAlertModal({ config, onClose, onConfirm, showBackdrop = true,
             { text: config.cancelText || t('common.cancel'), style: 'cancel' as const },
             { text: config.confirmText || t('common.ok'), style: config.destructive ? 'destructive' as const : 'default' as const }
         ]
-        : config.buttons || [{ text: t('common.ok'), style: 'default' as const }];
+        : (config.buttons && config.buttons.length > 0)
+            ? config.buttons
+            : [{ text: t('common.ok'), style: 'default' as const }];
 
     const buttonLayout = buttons.length === 3 ? 'twoPlusOne' : buttons.length > 3 ? 'column' : 'row';
 

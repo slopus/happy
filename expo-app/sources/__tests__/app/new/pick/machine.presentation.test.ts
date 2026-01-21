@@ -35,6 +35,12 @@ vi.mock('expo-router', () => ({
     useLocalSearchParams: () => ({ selectedId: 'm1' }),
 }));
 
+vi.mock('@react-navigation/native', () => ({
+    CommonActions: {
+        setParams: (params: any) => ({ type: 'SET_PARAMS', payload: { params } }),
+    },
+}));
+
 vi.mock('@/sync/storage', () => ({
     useAllMachines: () => [],
     useSessions: () => [],

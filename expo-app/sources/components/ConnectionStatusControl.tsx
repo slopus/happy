@@ -158,6 +158,7 @@ export const ConnectionStatusControl = React.memo(function ConnectionStatusContr
                     edgePadding={{ horizontal: 12, vertical: 12 }}
                     portal={{
                         web: true,
+                        native: true,
                         matchAnchorWidth: false,
                         anchorAlign: 'center',
                     }}

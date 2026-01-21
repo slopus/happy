@@ -5,6 +5,7 @@ import { requireRadixDismissableLayer } from '@/utils/radixCjs';
 import { useOverlayPortal } from '@/components/OverlayPortal';
 import { useModalPortalTarget } from '@/components/ModalPortalTarget';
 import { requireReactDOM } from '@/utils/reactDomCjs';
+import { requireReactNativeScreens } from '@/utils/reactNativeScreensCjs';
 
 export type PopoverPlacement = 'top' | 'bottom' | 'left' | 'right' | 'auto';
 export type ResolvedPopoverPlacement = Exclude<PopoverPlacement, 'auto'>;
@@ -113,11 +114,47 @@ type PopoverWithoutBackdrop = PopoverCommonProps & Readonly<{
 function measureInWindow(node: any): Promise<WindowRect | null> {
     return new Promise(resolve => {
         try {
-            if (!node?.measureInWindow) return resolve(null);
-            node.measureInWindow((x: number, y: number, width: number, height: number) => {
-                if (![x, y, width, height].every(n => Number.isFinite(n))) return resolve(null);
-                resolve({ x, y, width, height });
-            });
+            if (!node) return resolve(null);
+
+            const measureDomRect = (candidate: any): WindowRect | null => {
+                const el: any =
+                    typeof candidate?.getBoundingClientRect === 'function'
+                        ? candidate
+                        : candidate?.getScrollableNode?.();
+                if (!el || typeof el.getBoundingClientRect !== 'function') return null;
+                const rect = el.getBoundingClientRect();
+                const x = rect?.left ?? rect?.x;
+                const y = rect?.top ?? rect?.y;
+                const width = rect?.width;
+                const height = rect?.height;
+                if (![x, y, width, height].every(n => Number.isFinite(n))) return null;
+                return { x, y, width, height };
+            };
+
+            // On web, prefer DOM measurement. It's synchronous and avoids cases where
+            // RN-web's `measureInWindow` returns invalid values or never calls back.
+            if (Platform.OS === 'web') {
+                const rect = measureDomRect(node);
+                if (rect) return resolve(rect);
+            }
+
+            if (typeof node.measureInWindow === 'function') {
+                node.measureInWindow((x: number, y: number, width: number, height: number) => {
+                    if (![x, y, width, height].every(n => Number.isFinite(n))) {
+                        if (Platform.OS === 'web') {
+                            const rect = measureDomRect(node);
+                            if (rect) return resolve(rect);
+                        }
+                        return resolve(null);
+                    }
+                    resolve({ x, y, width, height });
+                });
+                return;
+            }
+
+            if (Platform.OS === 'web') return resolve(measureDomRect(node));
+
+            resolve(null);
         } catch {
             resolve(null);
         }
@@ -212,6 +249,12 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
     const [anchorRectState, setAnchorRectState] = React.useState<WindowRect | null>(null);
     const [boundaryRectState, setBoundaryRectState] = React.useState<WindowRect | null>(null);
     const [contentRectState, setContentRectState] = React.useState<WindowRect | null>(null);
+    const isMountedRef = React.useRef(true);
+    React.useEffect(() => {
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
 
     const edgeInsets = React.useMemo(() => {
         const horizontal =
@@ -229,22 +272,23 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
     const recompute = React.useCallback(async () => {
         if (!open) return;
 
-        const anchorNode = anchorRef.current as any;
-        const boundaryNodeRaw = boundaryRef?.current as any;
-        // On web, if boundary is a ScrollView ref, measure the real scrollable node to match
-        // the element we attach scroll listeners to. This reduces coordinate mismatches.
-        const boundaryNode =
-            Platform.OS === 'web'
-                ? (boundaryNodeRaw?.getScrollableNode?.() ?? boundaryNodeRaw)
-                : boundaryNodeRaw;
+        const measureOnce = async (): Promise<boolean> => {
+            const anchorNode = anchorRef.current as any;
+            const boundaryNodeRaw = boundaryRef?.current as any;
+            // On web, if boundary is a ScrollView ref, measure the real scrollable node to match
+            // the element we attach scroll listeners to. This reduces coordinate mismatches.
+            const boundaryNode =
+                Platform.OS === 'web'
+                    ? (boundaryNodeRaw?.getScrollableNode?.() ?? boundaryNodeRaw)
+                    : boundaryNodeRaw;
 
-        const measureOnce = async () => {
             const [anchorRect, boundaryRectRaw] = await Promise.all([
                 measureInWindow(anchorNode),
                 boundaryNode ? measureInWindow(boundaryNode) : Promise.resolve(null),
             ]);
 
-            if (!anchorRect) return;
+            if (!isMountedRef.current) return false;
+            if (!anchorRect) return false;
 
             const boundaryRect = boundaryRectRaw ?? getFallbackBoundaryRect({ windowWidth, windowHeight });
 
@@ -293,19 +337,41 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
             });
             setAnchorRectState(anchorRect);
             setBoundaryRectState(effectiveBoundaryRect);
+            return true;
         };
 
         if (Platform.OS === 'web') {
+            const scheduleFrame = (cb: () => void) => {
+                // In some test/non-browser environments, rAF may be missing.
+                // Prefer rAF when available so layout has a chance to settle.
+                if (typeof requestAnimationFrame === 'function') {
+                    requestAnimationFrame(cb);
+                    return;
+                }
+                setTimeout(cb, 0);
+            };
+
             // On web, layout can "settle" a frame later (especially when opening).
-            requestAnimationFrame(() => {
-                void measureOnce();
+            // If the initial measurement returns invalid values, retry a couple times so we
+            // don't get stuck in an invisible "open" state until a resize/scroll occurs.
+            const measureWithRetries = async (attempt: number) => {
+                const ok = await measureOnce();
+                if (ok) return;
+                if (!isMountedRef.current) return;
+                if (attempt >= 2) return;
+                scheduleFrame(() => {
+                    void measureWithRetries(attempt + 1);
+                });
+            };
+            scheduleFrame(() => {
+                void measureWithRetries(0);
             });
         } else {
             void measureOnce();
         }
     }, [anchorRef, boundaryRef, edgeInsets.horizontal, edgeInsets.vertical, gap, maxHeightCap, maxWidthCap, open, placement, windowHeight, windowWidth]);
 
-    React.useEffect(() => {
+    React.useLayoutEffect(() => {
         if (!open) return;
         recompute();
     }, [open, recompute]);
@@ -348,7 +414,7 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
         // This is especially important for headers/sidebars which often clip overflow.
         if (shouldPortal && anchorRectState) {
             const boundaryRect = boundaryRectState ?? getFallbackBoundaryRect({ windowWidth, windowHeight });
-            const position = Platform.OS === 'web' ? ('fixed' as any) : 'absolute';
+            const position = Platform.OS === 'web' ? 'fixed' : 'absolute';
             const desiredWidth = (() => {
                 // Preserve historical sizing: for top/bottom, the popover was anchored to the
                 // container width (left:0,right:0) and capped by maxWidth. The closest equivalent
@@ -505,17 +571,20 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
     const content = open ? (
         <>
             {backdropEnabled && backdropEffect !== 'none' ? (() => {
-                const position = shouldPortalWeb ? ('fixed' as any) : 'absolute';
+                // On web, use fixed positioning even when not in portal mode to avoid contributing
+                // to scrollHeight/scrollWidth (e.g. inside Radix Dialog/Expo Router modals).
+                const position = Platform.OS === 'web' ? 'fixed' : 'absolute';
                 const zIndex = shouldPortal ? portalZ : 998;
+                const edge = Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000);
 
                 const fullScreenStyle = [
                     StyleSheet.absoluteFill,
                     {
                         position,
-                        top: shouldPortal ? 0 : -1000,
-                        left: shouldPortal ? 0 : -1000,
-                        right: shouldPortal ? 0 : -1000,
-                        bottom: shouldPortal ? 0 : -1000,
+                        top: edge,
+                        left: edge,
+                        right: edge,
+                        bottom: edge,
                         opacity: portalOpacity,
                         zIndex,
                     } as const,
@@ -640,11 +709,11 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
                     style={[
                         // Default is deliberately "oversized" so it can capture taps outside the anchor area.
                         {
-                            position: shouldPortalWeb ? ('fixed' as any) : 'absolute',
-                            top: shouldPortal ? 0 : -1000,
-                            left: shouldPortal ? 0 : -1000,
-                            right: shouldPortal ? 0 : -1000,
-                            bottom: shouldPortal ? 0 : -1000,
+                            position: Platform.OS === 'web' ? 'fixed' : (shouldPortalWeb ? 'fixed' : 'absolute'),
+                            top: Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000),
+                            left: Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000),
+                            right: Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000),
+                            bottom: Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000),
                             opacity: portalOpacity,
                             zIndex: shouldPortal ? portalZ : 999,
                         },
@@ -659,7 +728,7 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
                     pointerEvents="none"
                     style={[
                         {
-                            position: shouldPortalWeb ? ('fixed' as any) : 'absolute',
+                            position: shouldPortalWeb ? 'fixed' : 'absolute',
                             left: Math.max(0, Math.floor(anchorRectState.x)),
                             top: Math.max(0, Math.floor(anchorRectState.y)),
                             width: Math.max(0, Math.min(windowWidth - Math.max(0, Math.floor(anchorRectState.x)), Math.ceil(anchorRectState.width))),
@@ -727,18 +796,30 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
         if (!shouldPortalNative || !content) return null;
         if (!useFullWindowOverlayOnIOS || Platform.OS !== 'ios') return content;
         try {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const { FullWindowOverlay } = require('react-native-screens');
+            const { FullWindowOverlay } = requireReactNativeScreens();
             if (!FullWindowOverlay) return content;
+            // On iOS, FullWindowOverlay can end up "click-through" when pointerEvents is `box-none`,
+            // depending on how react-native-screens and RN coordinate hit testing. This makes
+            // context-menu style popovers appear visually but not respond to taps (taps land on the
+            // underlying screen, closing the popover without firing the action).
+            //
+            // When a backdrop is enabled, we *do* want to intercept touches for the full window.
+            // When the popover is still measuring (portalOpacity=0), avoid blocking touches.
+            const overlayPointerEvents: 'none' | 'auto' | 'box-none' =
+                portalOpacity === 0
+                    ? 'none'
+                    : backdropEnabled
+                        ? 'auto'
+                        : 'box-none';
             return (
-                <FullWindowOverlay pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+                <FullWindowOverlay pointerEvents={overlayPointerEvents} style={StyleSheet.absoluteFill}>
                     {content}
                 </FullWindowOverlay>
             );
         } catch {
             return content;
         }
-    }, [content, shouldPortalNative, useFullWindowOverlayOnIOS]);
+    }, [backdropEnabled, content, portalOpacity, shouldPortalNative, useFullWindowOverlayOnIOS]);
 
     React.useLayoutEffect(() => {
         if (!overlayPortal) return;
