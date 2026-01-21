@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-native-mmkv', () => {
     class MMKV {
@@ -11,6 +11,10 @@ vi.mock('react-native-mmkv', () => {
 
 import { HappyError } from '@/utils/errors';
 import { disconnectGitHub, getGitHubOAuthParams } from './apiGithub';
+
+afterEach(() => {
+    vi.unstubAllGlobals();
+});
 
 describe('getGitHubOAuthParams', () => {
     it('throws a config HappyError when a 400 response body is not JSON', async () => {
