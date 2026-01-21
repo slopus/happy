@@ -1,6 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, Text, View, Platform } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
+import { CommonActions } from '@react-navigation/native';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, useSessions, useSetting, useSettingMutable } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -58,10 +59,9 @@ export default React.memo(function MachinePickerScreen() {
         const previousRoute = state?.routes?.[state.index - 1];
         if (state && state.index > 0 && previousRoute) {
             navigation.dispatch({
-                type: 'SET_PARAMS',
-                payload: { params: { machineId } },
+                ...CommonActions.setParams({ machineId }),
                 source: previousRoute.key,
-            } as never);
+            });
         }
 
         router.back();

@@ -31,6 +31,18 @@ import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 
+const CONFIGURABLE_MODEL_MODES = [
+    'default',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+] as const;
+type ConfigurableModelMode = (typeof CONFIGURABLE_MODEL_MODES)[number];
+
+const isConfigurableModelMode = (mode: ModelMode): mode is ConfigurableModelMode => {
+    return (CONFIGURABLE_MODEL_MODES as readonly string[]).includes(mode);
+};
+
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
     const router = useRouter();
@@ -198,24 +210,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         storage.getState().updateSessionPermissionMode(sessionId, mode);
     }, [sessionId]);
 
-    const CONFIGURABLE_MODEL_MODES = [
-        'default',
-        'gemini-2.5-pro',
-        'gemini-2.5-flash',
-        'gemini-2.5-flash-lite',
-    ] as const;
-    type ConfigurableModelMode = (typeof CONFIGURABLE_MODEL_MODES)[number];
-    const isConfigurableModelMode = React.useCallback((mode: ModelMode): mode is ConfigurableModelMode => {
-        return (CONFIGURABLE_MODEL_MODES as readonly string[]).includes(mode);
-    }, []);
-
     // Function to update model mode (for Gemini sessions)
     const updateModelMode = React.useCallback((mode: ModelMode) => {
         // Only Gemini model modes are configurable from the UI today.
         if (isConfigurableModelMode(mode)) {
             storage.getState().updateSessionModelMode(sessionId, mode);
         }
-    }, [isConfigurableModelMode, sessionId]);
+    }, [sessionId]);
 
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({

@@ -42,7 +42,7 @@ export default React.memo(function TerminalSettingsScreen() {
                                 style={styles.textInput}
                                 placeholder={t('profiles.tmux.sessionNamePlaceholder')}
                                 placeholderTextColor={theme.colors.input.placeholder}
-                                value={tmuxSessionName}
+                                value={tmuxSessionName ?? ''}
                                 onChangeText={setTmuxSessionName}
                             />
                         </View>
@@ -114,4 +114,3 @@ const styles = StyleSheet.create((theme) => ({
         }) as object),
     },
 }));
-

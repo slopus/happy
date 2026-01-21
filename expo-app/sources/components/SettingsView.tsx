@@ -140,14 +140,13 @@ export const SettingsView = React.memo(function SettingsView() {
 
     // GitHub connection
     const [connectingGitHub, connectGitHub] = useHappyAction(async () => {
+        setGithubUnavailableReason(null);
         try {
             const params = await getGitHubOAuthParams(auth.credentials!);
-            setGithubUnavailableReason(null);
             await Linking.openURL(params.url);
         } catch (e) {
             if (e instanceof HappyError && e.canTryAgain === false) {
                 setGithubUnavailableReason(e.message);
-                throw e;
             }
             throw e;
         }

@@ -8,7 +8,7 @@ import { Popover } from '@/components/Popover';
 import { ActionListSection } from '@/components/ActionListSection';
 import { FloatingOverlay } from '@/components/FloatingOverlay';
 import { useSocketStatus, useSyncError, useLastSyncAt } from '@/sync/storage';
-import { getServerUrl, isUsingCustomServer } from '@/sync/serverConfig';
+import { getServerUrl } from '@/sync/serverConfig';
 import { useAuth } from '@/auth/AuthContext';
 import { useRouter } from 'expo-router';
 import { sync } from '@/sync/sync';
@@ -94,7 +94,6 @@ export const ConnectionStatusControl = React.memo(function ConnectionStatusContr
     const socketStatus = useSocketStatus();
     const syncError = useSyncError();
     const lastSyncAt = useLastSyncAt();
-    const isCustomServer = isUsingCustomServer();
 
     const [open, setOpen] = React.useState(false);
     const anchorRef = React.useRef<any>(null);

@@ -9,7 +9,7 @@ export class InvalidateSync {
     private _onError?: (e: any) => void;
     private _onSuccess?: () => void;
     private _onRetry?: (info: { failuresCount: number; nextDelayMs: number; nextRetryAt: number }) => void;
-    private _backoff = createBackoff({ maxFailureCount: Number.POSITIVE_INFINITY });
+    private _backoff!: ReturnType<typeof createBackoff>;
 
     constructor(
         command: () => Promise<void>,

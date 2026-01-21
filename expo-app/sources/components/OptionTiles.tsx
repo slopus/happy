@@ -114,6 +114,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: Platform.select({ ios: 17, default: 16 }),
         lineHeight: Platform.select({ ios: 22, default: 24 }),
         letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+        color: theme.colors.text,
     },
     subtitle: {
         ...Typography.default(),
@@ -123,4 +124,3 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
     },
 }));
-

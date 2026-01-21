@@ -101,7 +101,7 @@ export function DropdownMenu(props: DropdownMenuProps) {
                         name="chevron-forward"
                         size={18}
                         color={theme.colors.textSecondary}
-                        style={{ opacity: rowVariant === 'slim' ? 0 : 0 }}
+                        style={{ opacity: rowVariant === 'slim' ? 0 : 1 }}
                     />
                 ),
         }));
