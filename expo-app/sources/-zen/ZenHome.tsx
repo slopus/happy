@@ -32,12 +32,12 @@ export const ZenHome = () => {
         const undone = todoState.undoneOrder
             .map(id => todoState.todos[id])
             .filter(Boolean)
-            .map(t => ({ id: t.id, title: t.title, done: t.done }));
+            .map(todo => ({ id: todo.id, title: todo.title, done: todo.done }));
 
         const done = todoState.doneOrder
             .map(id => todoState.todos[id])
             .filter(Boolean)
-            .map(t => ({ id: t.id, title: t.title, done: t.done }));
+            .map(todo => ({ id: todo.id, title: todo.title, done: todo.done }));
 
         return { undoneTodos: undone, doneTodos: done };
     }, [todoState]);
