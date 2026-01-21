@@ -11,7 +11,10 @@ export function formatGeminiErrorForUi(error: unknown, displayedModel?: string |
         const errObj = error as any;
 
         // Extract error information from various possible formats
-        const errorDetails = errObj.data?.details || errObj.details || '';
+        const rawDetails = errObj.data?.details ?? errObj.details ?? '';
+        const errorDetails = Array.isArray(rawDetails)
+            ? rawDetails.map((d) => (typeof d === 'string' ? d : JSON.stringify(d))).join('\n')
+            : String(rawDetails);
         const errorCode = errObj.code || errObj.status || (errObj.response?.status);
         const errorMessage = errObj.message || errObj.error?.message || '';
         const errorString = String(error);
