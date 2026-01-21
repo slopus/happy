@@ -15,14 +15,18 @@ describe('daemon tmux spawn config', () => {
                 directory: '/tmp',
                 extraEnv: {
                     FOO: 'bar',
+                },
+                tmuxCommandEnv: {
                     TMUX_TMPDIR: '/custom/tmux',
                 },
+                extraArgs: ['--happy-terminal-mode', 'tmux'],
             });
 
             expect(cfg.commandTokens[0]).toBe('bun');
             expect(cfg.tmuxEnv.PATH).toBe('/bin');
             expect(cfg.tmuxEnv.FOO).toBe('bar');
             expect(cfg.tmuxCommandEnv.TMUX_TMPDIR).toBe('/custom/tmux');
+            expect(cfg.commandTokens).toEqual(expect.arrayContaining(['--happy-terminal-mode', 'tmux']));
         } finally {
             if (originalRuntimeOverride === undefined) {
                 delete process.env.HAPPY_CLI_SUBPROCESS_RUNTIME;

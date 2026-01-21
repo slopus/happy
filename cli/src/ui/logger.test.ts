@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -42,5 +42,19 @@ describe('logger.debugLargeJson', () => {
         const content = readFileSync(logger.getLogPath(), 'utf8');
         expect(content).toContain('[TEST] debugLargeJson');
     });
-});
 
+    it('does not throw if log file cannot be written (even when DEBUG is set)', async () => {
+        // Make logs dir read-only so appendFileSync fails deterministically.
+        const logsDir = join(tempDir, 'logs');
+        mkdirSync(logsDir, { recursive: true });
+        chmodSync(logsDir, 0o555);
+
+        process.env.DEBUG = '1';
+
+        const { logger } = (await import('@/ui/logger')) as typeof import('@/ui/logger');
+
+        expect(() => {
+            logger.debug('[TEST] log write should not throw');
+        }).not.toThrow();
+    });
+});

@@ -1,6 +1,8 @@
 import fs from 'fs/promises';
 import os from 'os';
 import * as tmp from 'tmp';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
 import { ApiClient } from '@/api/api';
 import { TrackedSession } from './types';
@@ -22,6 +24,33 @@ import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { TmuxUtilities, isTmuxAvailable } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
+import { resolveTerminalRequestFromSpawnOptions } from '@/terminal/terminalConfig';
+import { selectPreferredTmuxSessionName } from '@/terminal/tmuxSessionSelector';
+
+const execFileAsync = promisify(execFile);
+
+async function getPreferredHostName(): Promise<string> {
+  const fallback = os.hostname();
+  if (process.platform !== 'darwin') {
+    return fallback;
+  }
+
+  const tryScutil = async (key: 'HostName' | 'LocalHostName' | 'ComputerName'): Promise<string | null> => {
+    try {
+      const { stdout } = await execFileAsync('scutil', ['--get', key], { timeout: 400 });
+      const value = typeof stdout === 'string' ? stdout.trim() : '';
+      return value.length > 0 ? value : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Prefer HostName (can be FQDN) → LocalHostName → ComputerName → os.hostname()
+  return (await tryScutil('HostName'))
+    ?? (await tryScutil('LocalHostName'))
+    ?? (await tryScutil('ComputerName'))
+    ?? fallback;
+}
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -48,6 +77,8 @@ export function buildTmuxSpawnConfig(params: {
   agent: 'claude' | 'codex' | 'gemini';
   directory: string;
   extraEnv: Record<string, string>;
+  tmuxCommandEnv?: Record<string, string>;
+  extraArgs?: string[];
 }): {
   commandTokens: string[];
   tmuxEnv: Record<string, string>;
@@ -60,6 +91,7 @@ export function buildTmuxSpawnConfig(params: {
     'remote',
     '--started-by',
     'daemon',
+    ...(params.extraArgs ?? []),
   ];
 
   const { runtime, argv } = buildHappyCliSubprocessInvocation(args);
@@ -67,10 +99,10 @@ export function buildTmuxSpawnConfig(params: {
 
   const tmuxEnv = buildTmuxWindowEnv(process.env, params.extraEnv);
 
-  const tmuxCommandEnv: Record<string, string> = {};
-  const tmuxTmpDir = params.extraEnv.TMUX_TMPDIR;
-  if (typeof tmuxTmpDir === 'string' && tmuxTmpDir.length > 0) {
-    tmuxCommandEnv.TMUX_TMPDIR = tmuxTmpDir;
+  const tmuxCommandEnv: Record<string, string> = { ...(params.tmuxCommandEnv ?? {}) };
+  const tmuxTmpDir = tmuxCommandEnv.TMUX_TMPDIR;
+  if (typeof tmuxTmpDir !== 'string' || tmuxTmpDir.length === 0) {
+    delete tmuxCommandEnv.TMUX_TMPDIR;
   }
 
   return {
@@ -234,7 +266,7 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
-    const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
+	    const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       // Do NOT log raw options: it may include secrets (token / env vars).
       const envKeys = options.environmentVariables && typeof options.environmentVariables === 'object'
         ? Object.keys(options.environmentVariables as Record<string, unknown>)
@@ -389,45 +421,102 @@ export async function startDaemon(): Promise<void> {
           };
         }
 
-        // Check if tmux is available and should be used
-        const tmuxAvailable = await isTmuxAvailable();
-        let useTmux = tmuxAvailable;
+	        const terminalRequest = resolveTerminalRequestFromSpawnOptions({
+	          happyHomeDir: configuration.happyHomeDir,
+	          terminal: options.terminal,
+	          environmentVariables: extraEnv,
+	        });
 
-        // Get tmux session name from environment variables (now set by profile system)
-        // Empty string means "use current/most recent session" (tmux default behavior)
-        let tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME;
+	        // Remove tmux control env vars from the spawned agent process.
+	        // TMUX_SESSION_NAME is Happy-specific; TMUX_TMPDIR is a daemon/runtime concern.
+	        const extraEnvForChild = { ...extraEnv };
+	        delete extraEnvForChild.TMUX_SESSION_NAME;
+	        delete extraEnvForChild.TMUX_TMPDIR;
 
-        // If tmux is not available or session name is explicitly undefined, fall back to regular spawning
-        // Note: Empty string is valid (means use current/most recent tmux session)
-        if (!tmuxAvailable || tmuxSessionName === undefined) {
-          useTmux = false;
-          if (tmuxSessionName !== undefined) {
-            logger.debug(`[DAEMON RUN] tmux session name specified but tmux not available, falling back to regular spawning`);
-          }
-        }
+	        // Check if tmux is available and should be used
+	        const tmuxAvailable = await isTmuxAvailable();
+	        const tmuxRequested = terminalRequest.requested === 'tmux';
+	        let useTmux = tmuxAvailable && tmuxRequested;
 
-        if (useTmux && tmuxSessionName !== undefined) {
-          // Try to spawn in tmux session
-          const sessionDesc = tmuxSessionName || 'current/most recent session';
-          logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
+	        const tmuxSessionName = tmuxRequested ? terminalRequest.tmux.sessionName : undefined;
+	        const tmuxTmpDir = tmuxRequested ? terminalRequest.tmux.tmpDir : null;
+	        const tmuxCommandEnv: Record<string, string> = {};
+	        if (tmuxTmpDir) {
+	          tmuxCommandEnv.TMUX_TMPDIR = tmuxTmpDir;
+	        }
+
+	        let tmuxFallbackReason: string | null = null;
+
+	        if (!tmuxAvailable && tmuxRequested) {
+	          tmuxFallbackReason = 'tmux is not available on this machine';
+	          logger.debug('[DAEMON RUN] tmux requested but tmux is not available; falling back to regular spawning');
+	        }
+
+	        if (useTmux && tmuxSessionName !== undefined) {
+	          // Resolve empty-string session name (legacy "current/most recent") deterministically.
+	          let resolvedTmuxSessionName = tmuxSessionName;
+	          if (tmuxSessionName === '') {
+	            try {
+	              const tmuxForDiscovery = new TmuxUtilities(undefined, tmuxCommandEnv);
+	              const listResult = await tmuxForDiscovery.executeTmuxCommand([
+	                'list-sessions',
+	                '-F',
+	                '#{session_name}\t#{session_attached}\t#{session_last_attached}',
+	              ]);
+	              resolvedTmuxSessionName =
+	                selectPreferredTmuxSessionName(listResult?.stdout ?? '') ?? TmuxUtilities.DEFAULT_SESSION_NAME;
+	            } catch (error) {
+	              logger.debug('[DAEMON RUN] Failed to resolve current/most-recent tmux session; defaulting to "happy"', error);
+	              resolvedTmuxSessionName = TmuxUtilities.DEFAULT_SESSION_NAME;
+	            }
+	          }
+
+	          // Try to spawn in tmux session
+	          const sessionDesc = resolvedTmuxSessionName || 'current/most recent session';
+	          logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
 
           // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
-          const { commandTokens, tmuxEnv, tmuxCommandEnv } = buildTmuxSpawnConfig({ agent, directory, extraEnv });
-          const tmux = new TmuxUtilities(tmuxSessionName, tmuxCommandEnv);
+	          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
+	          const windowName = `happy-${Date.now()}-${agent}`;
+	          const tmuxTarget = `${resolvedTmuxSessionName}:${windowName}`;
+
+	          const terminalRuntimeArgs = [
+	            '--happy-terminal-mode',
+	            'tmux',
+	            '--happy-terminal-requested',
+	            'tmux',
+	            '--happy-tmux-target',
+	            tmuxTarget,
+	            ...(tmuxTmpDir ? ['--happy-tmux-tmpdir', tmuxTmpDir] : []),
+	          ];
+
+	          const { commandTokens, tmuxEnv } = buildTmuxSpawnConfig({
+	            agent,
+	            directory,
+	            extraEnv: extraEnvForChild,
+	            tmuxCommandEnv,
+	            extraArgs: terminalRuntimeArgs,
+	          });
+	          const tmux = new TmuxUtilities(resolvedTmuxSessionName, tmuxCommandEnv);
 
           // Spawn in tmux with environment variables
           // IMPORTANT: `spawnInTmux` uses `-e KEY=VALUE` flags for the window.
           // Use merged env so tmux mode matches regular process spawn behavior.
           // Note: this may add many `-e` flags; if it becomes a problem we can optimize
           // by diffing against `tmux show-environment` in a follow-up.
-          const windowName = `happy-${Date.now()}-${agent}`;
+	          if (tmuxTmpDir) {
+	            try {
+	              await fs.mkdir(tmuxTmpDir, { recursive: true });
+	            } catch (error) {
+	              logger.debug('[DAEMON RUN] Failed to ensure TMUX_TMPDIR exists; tmux may fail to start', error);
+	            }
+	          }
 
-          const tmuxResult = await tmux.spawnInTmux(commandTokens, {
-            sessionName: tmuxSessionName,
-            windowName: windowName,
-            cwd: directory
-          }, tmuxEnv);  // Pass complete environment for tmux session
+	          const tmuxResult = await tmux.spawnInTmux(commandTokens, {
+	            sessionName: resolvedTmuxSessionName,
+	            windowName: windowName,
+	            cwd: directory
+	          }, tmuxEnv);  // Pass complete environment for tmux session
 
           if (tmuxResult.success) {
             logger.debug(`[DAEMON RUN] Successfully spawned in tmux session: ${tmuxResult.sessionId}, PID: ${tmuxResult.pid}`);
@@ -438,7 +527,7 @@ export async function startDaemon(): Promise<void> {
             }
 
             // Resolve the actual tmux session name used (important when sessionName was empty/undefined)
-            const tmuxSession = tmuxResult.sessionName ?? (tmuxSessionName || 'happy');
+            const tmuxSession = tmuxResult.sessionName ?? (resolvedTmuxSessionName || 'happy');
 
             // Create a tracked session for tmux windows - now we have the real PID!
             const trackedSession: TrackedSession = {
@@ -482,15 +571,16 @@ export async function startDaemon(): Promise<void> {
                 });
               });
             });
-          } else {
-            logger.debug(`[DAEMON RUN] Failed to spawn in tmux: ${tmuxResult.error}, falling back to regular spawning`);
-            useTmux = false;
-          }
-        }
-
-        // Regular process spawning (fallback or if tmux not available)
-        if (!useTmux) {
-          logger.debug(`[DAEMON RUN] Using regular process spawning`);
+	          } else {
+	            tmuxFallbackReason = tmuxResult.error ?? 'tmux spawn failed';
+	            logger.debug(`[DAEMON RUN] Failed to spawn in tmux: ${tmuxResult.error}, falling back to regular spawning`);
+	            useTmux = false;
+	          }
+	        }
+	
+	        // Regular process spawning (fallback or if tmux not available)
+	        if (!useTmux) {
+	          logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
           // Construct arguments for the CLI - support claude, codex, and gemini
           let agentCommand: string;
@@ -517,16 +607,28 @@ export async function startDaemon(): Promise<void> {
             '--started-by', 'daemon'
           ];
 
+          if (tmuxRequested) {
+            const reason = tmuxFallbackReason ?? 'tmux was not used';
+            args.push(
+              '--happy-terminal-mode',
+              'plain',
+              '--happy-terminal-requested',
+              'tmux',
+              '--happy-terminal-fallback-reason',
+              reason,
+            );
+          }
+
           // Note: sessionId is not currently used to resume sessions; each spawn creates a new session.
-          const happyProcess = spawnHappyCLI(args, {
-            cwd: directory,
-            detached: true,  // Sessions stay alive when daemon stops
-            stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
-            env: {
-              ...process.env,
-              ...extraEnv
-            }
-          });
+	          const happyProcess = spawnHappyCLI(args, {
+	            cwd: directory,
+	            detached: true,  // Sessions stay alive when daemon stops
+	            stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
+	            env: {
+	              ...process.env,
+	              ...extraEnvForChild
+	            }
+	          });
 
           // Log output for debugging
           if (process.env.DEBUG) {
@@ -710,9 +812,11 @@ export async function startDaemon(): Promise<void> {
     const api = await ApiClient.create(credentials);
 
     // Get or create machine
+    const preferredHostForRegistration = await getPreferredHostName();
+    const metadataForRegistration: MachineMetadata = { ...initialMachineMetadata, host: preferredHostForRegistration };
     const machine = await api.getOrCreateMachine({
       machineId,
-      metadata: initialMachineMetadata,
+      metadata: metadataForRegistration,
       daemonState: initialDaemonState
     });
     logger.debug(`[DAEMON RUN] Machine registered: ${machine.id}`);
@@ -728,7 +832,45 @@ export async function startDaemon(): Promise<void> {
     });
 
     // Connect to server
-    apiMachine.connect();
+    const preferredHost = await getPreferredHostName();
+    let didRefreshMachineMetadata = false;
+    apiMachine.connect({
+      onConnect: async () => {
+        if (didRefreshMachineMetadata) return;
+
+        // Keep machine metadata fresh without clobbering user-provided fields (e.g. displayName) that may exist.
+        await apiMachine.updateMachineMetadata((metadata) => {
+          const base = (metadata ?? (machine.metadata as any) ?? {}) as any;
+          const next: MachineMetadata = {
+            ...base,
+            host: preferredHost,
+            platform: os.platform(),
+            happyCliVersion: packageJson.version,
+            homeDir: os.homedir(),
+            happyHomeDir: configuration.happyHomeDir,
+            happyLibDir: projectPath(),
+          } as MachineMetadata;
+
+          // If nothing changes, skip emitting an update entirely.
+          const current = base as Partial<MachineMetadata>;
+          const isSame =
+            current.host === next.host &&
+            current.platform === next.platform &&
+            current.happyCliVersion === next.happyCliVersion &&
+            current.homeDir === next.homeDir &&
+            current.happyHomeDir === next.happyHomeDir &&
+            current.happyLibDir === next.happyLibDir;
+
+          if (isSame) {
+            return base as MachineMetadata;
+          }
+
+          return next;
+        });
+
+        didRefreshMachineMetadata = true;
+      },
+    });
 
     // Every 60 seconds:
     // 1. Prune stale sessions

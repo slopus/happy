@@ -1,4 +1,4 @@
-import { backoff } from "@/utils/time";
+import { backoffForever } from "@/utils/time";
 
 export class InvalidateSync {
     private _invalidated = false;
@@ -53,7 +53,7 @@ export class InvalidateSync {
 
 
     private _doSync = async () => {
-        await backoff(async () => {
+        await backoffForever(async () => {
             if (this._stopped) {
                 return;
             }

@@ -102,7 +102,7 @@ export class ApiMachineClient {
     }: MachineRpcHandlers) {
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId } = params || {};
+            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId, terminal } = params || {};
             const envKeys = environmentVariables && typeof environmentVariables === 'object'
                 ? Object.keys(environmentVariables as Record<string, unknown>)
                 : [];
@@ -116,6 +116,7 @@ export class ApiMachineClient {
                 approvedNewDirectoryCreation,
                 profileId,
                 hasToken: !!token,
+                terminal,
                 environmentVariableCount: envKeys.length,
                 environmentVariableKeySample: envKeySample,
                 environmentVariableKeysTruncated: envKeys.length > maxEnvKeysToLog,
@@ -125,7 +126,7 @@ export class ApiMachineClient {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId });
+            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId, terminal });
 
             switch (result.type) {
                 case 'success':
@@ -181,6 +182,11 @@ export class ApiMachineClient {
         await backoff(async () => {
             const updated = handler(this.machine.metadata);
 
+            // No-op: don't write if nothing changed.
+            if (this.machine.metadata && JSON.stringify(updated) === JSON.stringify(this.machine.metadata)) {
+                return;
+            }
+
             const answer = await this.socket.emitWithAck('machine-update-metadata', {
                 machineId: this.machine.id,
                 metadata: encodeBase64(encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, updated)),
@@ -229,7 +235,7 @@ export class ApiMachineClient {
         });
     }
 
-    connect() {
+    connect(params?: { onConnect?: () => void | Promise<void> }) {
         const serverUrl = configuration.serverUrl.replace(/^http/, 'ws');
         logger.debug(`[API MACHINE] Connecting to ${serverUrl}`);
 
@@ -266,6 +272,13 @@ export class ApiMachineClient {
 
             // Start keep-alive
             this.startKeepAlive();
+
+            // Optional hook for callers that need a "connected" moment
+            if (params?.onConnect) {
+                Promise.resolve(params.onConnect()).catch(() => {
+                    // Best-effort hook; ignore errors to avoid destabilizing the daemon.
+                });
+            }
         });
 
         this.socket.on('disconnect', () => {
