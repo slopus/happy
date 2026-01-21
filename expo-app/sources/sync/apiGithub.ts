@@ -38,8 +38,14 @@ export async function getGitHubOAuthParams(credentials: AuthCredentials): Promis
 
         if (!response.ok) {
             if (response.status === 400) {
-                const error = await response.json();
-                throw new HappyError(error.error || 'GitHub OAuth not configured', false, { status: 400, kind: 'config' });
+                let message = 'GitHub OAuth not configured';
+                try {
+                    const error = await response.json();
+                    if (error?.error) message = error.error;
+                } catch {
+                    // ignore
+                }
+                throw new HappyError(message, false, { status: 400, kind: 'config' });
             }
             if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
                 let message = 'Failed to get GitHub OAuth params';

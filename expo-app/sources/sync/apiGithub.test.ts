@@ -1,0 +1,42 @@
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('react-native-mmkv', () => {
+    class MMKV {
+        getString() {
+            return undefined;
+        }
+    }
+    return { MMKV };
+});
+
+import { HappyError } from '@/utils/errors';
+import { getGitHubOAuthParams } from './apiGithub';
+
+describe('getGitHubOAuthParams', () => {
+    it('throws a config HappyError when a 400 response body is not JSON', async () => {
+        const jsonError = new Error('invalid json');
+        (jsonError as any).canTryAgain = false;
+
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async () => ({
+                ok: false,
+                status: 400,
+                json: async () => {
+                    throw jsonError;
+                },
+            })),
+        );
+
+        try {
+            await getGitHubOAuthParams({ token: 'test' } as any);
+            throw new Error('expected getGitHubOAuthParams to throw');
+        } catch (e) {
+            expect(e).toBeInstanceOf(HappyError);
+            expect((e as HappyError).message).toBe('GitHub OAuth not configured');
+            expect((e as HappyError).status).toBe(400);
+            expect((e as HappyError).kind).toBe('config');
+        }
+    });
+});
+
