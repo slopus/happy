@@ -286,6 +286,7 @@ describe('settings', () => {
                 agentInputActionBarLayout: 'auto',
                 agentInputChipDensity: 'auto',
                 hideInactiveSessions: false,
+                groupInactiveSessionsByProject: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,

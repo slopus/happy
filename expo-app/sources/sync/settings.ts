@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { dbgSettings, isSettingsSyncDebugEnabled } from './debugSettings';
 import { SecretStringSchema } from './secretSettings';
 import { pruneSecretBindings } from './secretBindings';
+import { PERMISSION_MODES } from '@/constants/PermissionModes';
 
 //
 // Configuration Profile Schema (for environment variable profiles)
@@ -269,6 +270,7 @@ export const SettingsSchema = z.object({
     showFlavorIcons: z.boolean().describe('Whether to show AI provider icons in avatars'),
     compactSessionView: z.boolean().describe('Whether to use compact view for active sessions'),
     hideInactiveSessions: z.boolean().describe('Hide inactive sessions in the main list'),
+    groupInactiveSessionsByProject: z.boolean().describe('Group inactive sessions by project in the main list'),
     reviewPromptAnswered: z.boolean().describe('Whether the review prompt has been answered'),
     reviewPromptLikedApp: z.boolean().nullish().describe('Whether user liked the app when asked'),
     voiceAssistantLanguage: z.string().nullable().describe('Preferred language for voice assistant (null for auto-detect)'),
@@ -360,6 +362,7 @@ export const settingsDefaults: Settings = {
     showFlavorIcons: false,
     compactSessionView: false,
     hideInactiveSessions: false,
+    groupInactiveSessionsByProject: false,
     reviewPromptAnswered: false,
     reviewPromptLikedApp: null,
     voiceAssistantLanguage: null,

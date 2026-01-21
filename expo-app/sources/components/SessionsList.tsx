@@ -278,8 +278,8 @@ export function SessionsList() {
                 const prevItem = index > 0 && dataWithSelected ? dataWithSelected[index - 1] : null;
                 const nextItem = index < (dataWithSelected?.length || 0) - 1 && dataWithSelected ? dataWithSelected[index + 1] : null;
 
-                const isFirst = prevItem?.type === 'header';
-                const isLast = nextItem?.type === 'header' || nextItem == null || nextItem?.type === 'active-sessions';
+                const isFirst = prevItem?.type === 'header' || prevItem?.type === 'project-group';
+                const isLast = nextItem?.type === 'header' || nextItem?.type === 'project-group' || nextItem == null || nextItem?.type === 'active-sessions';
                 const isSingle = isFirst && isLast;
 
                 return (
@@ -289,6 +289,7 @@ export function SessionsList() {
                         isFirst={isFirst}
                         isLast={isLast}
                         isSingle={isSingle}
+                        variant={item.variant}
                     />
                 );
         }
@@ -322,12 +323,13 @@ export function SessionsList() {
 }
 
 // Sub-component that handles session message logic
-const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }: {
+const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, variant }: {
     session: Session;
     selected?: boolean;
     isFirst?: boolean;
     isLast?: boolean;
     isSingle?: boolean;
+    variant?: 'default' | 'no-path';
 }) => {
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
@@ -409,9 +411,11 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 </View>
 
                 {/* Subtitle line */}
-                <Text style={styles.sessionSubtitle} numberOfLines={1}>
-                    {sessionSubtitle}
-                </Text>
+                {variant !== 'no-path' && (
+                    <Text style={styles.sessionSubtitle} numberOfLines={1}>
+                        {sessionSubtitle}
+                    </Text>
+                )}
 
                 {/* Status line with dot */}
                 <View style={styles.statusRow}>

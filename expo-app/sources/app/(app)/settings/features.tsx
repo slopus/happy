@@ -22,6 +22,7 @@ export default React.memo(function FeaturesSettingsScreen() {
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
+    const [groupInactiveSessionsByProject, setGroupInactiveSessionsByProject] = useSettingMutable('groupInactiveSessionsByProject');
     const [useEnhancedSessionWizard, setUseEnhancedSessionWizard] = useSettingMutable('useEnhancedSessionWizard');
     const [useMachinePickerSearch, setUseMachinePickerSearch] = useSettingMutable('useMachinePickerSearch');
     const [usePathPickerSearch, setUsePathPickerSearch] = useSettingMutable('usePathPickerSearch');
@@ -60,6 +61,13 @@ export default React.memo(function FeaturesSettingsScreen() {
                     subtitle={t('settingsFeatures.hideInactiveSessionsSubtitle')}
                     icon={<Ionicons name="eye-off-outline" size={29} color="#FF9500" />}
                     rightElement={<Switch value={hideInactiveSessions} onValueChange={setHideInactiveSessions} />}
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.groupInactiveSessionsByProject')}
+                    subtitle={t('settingsFeatures.groupInactiveSessionsByProjectSubtitle')}
+                    icon={<Ionicons name="folder-outline" size={29} color="#007AFF" />}
+                    rightElement={<Switch value={groupInactiveSessionsByProject} onValueChange={setGroupInactiveSessionsByProject} />}
                     showChevron={false}
                 />
                 <Item

@@ -240,6 +240,8 @@ export const ru: TranslationStructure = {
         markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
         hideInactiveSessions: 'Скрывать неактивные сессии',
         hideInactiveSessionsSubtitle: 'Показывать в списке только активные чаты',
+        groupInactiveSessionsByProject: 'Группировать неактивные сессии по проектам',
+        groupInactiveSessionsByProjectSubtitle: 'Организовать неактивные чаты по проектам',
         enhancedSessionWizard: 'Улучшенный мастер сессий',
         enhancedSessionWizardEnabled: 'Лаунчер с профилем активен',
         enhancedSessionWizardDisabled: 'Используется стандартный лаунчер',

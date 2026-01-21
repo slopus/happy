@@ -269,6 +269,8 @@ export const pl: TranslationStructure = {
         markdownCopyV2Subtitle: 'Długie naciśnięcie otwiera modal kopiowania',
         hideInactiveSessions: 'Ukryj nieaktywne sesje',
         hideInactiveSessionsSubtitle: 'Wyświetlaj tylko aktywne czaty na liście',
+        groupInactiveSessionsByProject: 'Grupuj nieaktywne sesje według projektu',
+        groupInactiveSessionsByProjectSubtitle: 'Porządkuj nieaktywne czaty według projektu',
         enhancedSessionWizard: 'Ulepszony kreator sesji',
         enhancedSessionWizardEnabled: 'Aktywny launcher z profilem',
         enhancedSessionWizardDisabled: 'Używanie standardowego launchera sesji',

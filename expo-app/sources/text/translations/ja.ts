@@ -496,6 +496,8 @@ export const ja: TranslationStructure = {
         markdownCopyV2Subtitle: '長押しでコピーモーダルを開く',
         hideInactiveSessions: '非アクティブセッションを非表示',
         hideInactiveSessionsSubtitle: 'アクティブなチャットのみをリストに表示',
+        groupInactiveSessionsByProject: '非アクティブセッションをプロジェクト別にグループ化',
+        groupInactiveSessionsByProjectSubtitle: '非アクティブなチャットをプロジェクトごとに整理',
         enhancedSessionWizard: '拡張セッションウィザード',
         enhancedSessionWizardEnabled: 'プロファイル優先セッションランチャーが有効',
         enhancedSessionWizardDisabled: '標準セッションランチャーを使用',

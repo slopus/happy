@@ -260,6 +260,8 @@ export const zhHans: TranslationStructure = {
         markdownCopyV2Subtitle: '长按打开复制模态框',
         hideInactiveSessions: '隐藏非活跃会话',
         hideInactiveSessionsSubtitle: '仅在列表中显示活跃的聊天',
+        groupInactiveSessionsByProject: '按项目分组非活跃会话',
+        groupInactiveSessionsByProjectSubtitle: '按项目整理非活跃聊天',
         enhancedSessionWizard: '增强会话向导',
         enhancedSessionWizardEnabled: '配置文件优先启动器已激活',
         enhancedSessionWizardDisabled: '使用标准会话启动器',
