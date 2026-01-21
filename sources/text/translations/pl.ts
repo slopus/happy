@@ -442,12 +442,12 @@ export const pl: TranslationStructure = {
         geminiPermissionMode: {
             title: 'TRYB UPRAWNIEŃ',
             default: 'Domyślny',
-            acceptEdits: 'Akceptuj edycje',
-            plan: 'Tryb planowania',
-            bypassPermissions: 'Tryb YOLO',
-            badgeAcceptAllEdits: 'Akceptuj wszystkie edycje',
-            badgeBypassAllPermissions: 'Omiń wszystkie uprawnienia',
-            badgePlanMode: 'Tryb planowania',
+            readOnly: 'Tylko do odczytu',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Tylko do odczytu',
+            badgeSafeYolo: 'Safe YOLO',
+            badgeYolo: 'YOLO',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `Pozostało ${percent}%`,

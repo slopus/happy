@@ -432,12 +432,12 @@ export const es: TranslationStructure = {
         geminiPermissionMode: {
             title: 'MODO DE PERMISOS',
             default: 'Por defecto',
-            acceptEdits: 'Aceptar ediciones',
-            plan: 'Modo de planificación',
-            bypassPermissions: 'Modo Yolo',
-            badgeAcceptAllEdits: 'Aceptar todas las ediciones',
-            badgeBypassAllPermissions: 'Omitir todos los permisos',
-            badgePlanMode: 'Modo de planificación',
+            readOnly: 'Solo lectura',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Solo lectura',
+            badgeSafeYolo: 'Safe YOLO',
+            badgeYolo: 'YOLO',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,

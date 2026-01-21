@@ -434,12 +434,12 @@ export const zhHans: TranslationStructure = {
         geminiPermissionMode: {
             title: '权限模式',
             default: '默认',
-            acceptEdits: '接受编辑',
-            plan: '计划模式',
-            bypassPermissions: 'Yolo 模式',
-            badgeAcceptAllEdits: '接受所有编辑',
-            badgeBypassAllPermissions: '绕过所有权限',
-            badgePlanMode: '计划模式',
+            readOnly: '只读',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: '只读',
+            badgeSafeYolo: 'Safe YOLO',
+            badgeYolo: 'YOLO',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
