@@ -20,11 +20,13 @@ import { getProfileEnvironmentVariables, type AIBackendProfile } from '@/sync/se
 import { useSetting } from '@/sync/storage';
 import type { Machine } from '@/sync/storageTypes';
 import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
+import type { SecretSatisfactionResult } from '@/utils/secretSatisfaction';
 
 type CLIAvailability = {
     claude: boolean | null;
     codex: boolean | null;
     gemini: boolean | null;
+    tmux: boolean | null;
     login: { claude: boolean | null; codex: boolean | null; gemini: boolean | null };
     isDetecting: boolean;
     timestamp: number;
@@ -38,15 +40,6 @@ export interface NewSessionWizardLayoutProps {
     headerHeight: number;
     newSessionSidePadding: number;
     newSessionBottomPadding: number;
-    scrollViewRef: any;
-    profileSectionRef: any;
-    modelSectionRef: any;
-    machineSectionRef: any;
-    pathSectionRef: any;
-    permissionSectionRef: any;
-    registerWizardSectionOffset: (
-        section: 'profile' | 'agent' | 'model' | 'machine' | 'path' | 'permission' | 'sessionType'
-    ) => (evt: any) => void;
 }
 
 export interface NewSessionWizardProfilesProps {
@@ -66,16 +59,19 @@ export interface NewSessionWizardProfilesProps {
     handleDuplicateProfile: (profile: AIBackendProfile) => void;
     handleDeleteProfile: (profile: AIBackendProfile) => void;
     openProfileEnvVarsPreview: (profile: AIBackendProfile) => void;
-    suppressNextApiKeyAutoPromptKeyRef: React.MutableRefObject<string | null>;
-    sessionOnlyApiKeyValue: string | null;
-    selectedSavedApiKeyValue: string | null | undefined;
-    apiKeyPreflightIsReady: boolean;
-    openApiKeyRequirementModal: (profile: AIBackendProfile, opts: { revertOnCancel: boolean }) => void;
+    suppressNextSecretAutoPromptKeyRef: React.MutableRefObject<string | null>;
+    openSecretRequirementModal: (profile: AIBackendProfile, opts: { revertOnCancel: boolean }) => void;
     profilesGroupTitles: { favorites: string; custom: string; builtIn: string };
+    getSecretOverrideReady: (profile: AIBackendProfile) => boolean;
+    // NOTE: Multi-secret satisfaction result shape is evolving; wizard only needs `isSatisfied`.
+    // Keep this permissive to avoid cross-file type coupling.
+    getSecretSatisfactionForProfile: (profile: AIBackendProfile) => { isSatisfied: boolean };
+    getSecretMachineEnvOverride?: (profile: AIBackendProfile) => { isReady: boolean; isLoading: boolean } | null;
 }
 
 export interface NewSessionWizardAgentProps {
     cliAvailability: CLIAvailability;
+    tmuxRequested: boolean;
     allowGemini: boolean;
     isWarningDismissed: (cli: 'claude' | 'codex' | 'gemini') => boolean;
     hiddenBanners: { claude: boolean; codex: boolean; gemini: boolean };
@@ -87,7 +83,6 @@ export interface NewSessionWizardAgentProps {
     setModelMode: (mode: ModelMode) => void;
     selectedIndicatorColor: string;
     profileMap: Map<string, AIBackendProfile>;
-    handleAgentInputProfileClick: () => void;
     permissionMode: PermissionMode;
     handlePermissionModeChange: (mode: PermissionMode) => void;
     sessionType: 'simple' | 'worktree';
@@ -100,6 +95,7 @@ export interface NewSessionWizardMachineProps {
     recentMachines: Machine[];
     favoriteMachineItems: Machine[];
     useMachinePickerSearch: boolean;
+    onRefreshMachines?: () => void;
     setSelectedMachineId: (id: string) => void;
     getBestPathForMachine: (id: string) => string;
     setSelectedPath: (path: string) => void;
@@ -120,12 +116,7 @@ export interface NewSessionWizardFooterProps {
     isCreating: boolean;
     emptyAutocompletePrefixes: React.ComponentProps<typeof AgentInput>['autocompletePrefixes'];
     emptyAutocompleteSuggestions: React.ComponentProps<typeof AgentInput>['autocompleteSuggestions'];
-    handleAgentInputAgentClick: () => void;
-    handleAgentInputPermissionClick: () => void;
     connectionStatus?: React.ComponentProps<typeof AgentInput>['connectionStatus'];
-    handleAgentInputMachineClick: () => void;
-    handleAgentInputPathClick: () => void;
-    handleAgentInputProfileClick: () => void;
     selectedProfileEnvVarsCount: number;
     handleEnvVarsClick: () => void;
 }
@@ -146,14 +137,51 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
         headerHeight,
         newSessionSidePadding,
         newSessionBottomPadding,
-        scrollViewRef,
-        profileSectionRef,
-        modelSectionRef,
-        machineSectionRef,
-        pathSectionRef,
-        permissionSectionRef,
-        registerWizardSectionOffset,
     } = props.layout;
+
+    // Wizard-only scroll bookkeeping (keep it out of NewSessionScreen)
+    const scrollViewRef = React.useRef<ScrollView>(null);
+    const wizardSectionOffsets = React.useRef<{
+        profile?: number;
+        agent?: number;
+        model?: number;
+        machine?: number;
+        path?: number;
+        permission?: number;
+        sessionType?: number;
+    }>({});
+    const registerWizardSectionOffset = React.useCallback((key: keyof typeof wizardSectionOffsets.current) => {
+        return (e: any) => {
+            wizardSectionOffsets.current[key] = e?.nativeEvent?.layout?.y ?? 0;
+        };
+    }, []);
+    const scrollToWizardSection = React.useCallback((key: keyof typeof wizardSectionOffsets.current) => {
+        const y = wizardSectionOffsets.current[key];
+        if (typeof y !== 'number' || !scrollViewRef.current) return;
+        scrollViewRef.current.scrollTo({ y: Math.max(0, y - 20), animated: true });
+    }, []);
+
+    const handleAgentInputProfileClick = React.useCallback(() => {
+        scrollToWizardSection('profile');
+    }, [scrollToWizardSection]);
+
+    const handleAgentInputMachineClick = React.useCallback(() => {
+        scrollToWizardSection('machine');
+    }, [scrollToWizardSection]);
+
+    const handleAgentInputPathClick = React.useCallback(() => {
+        scrollToWizardSection('path');
+    }, [scrollToWizardSection]);
+
+    const handleAgentInputPermissionClick = React.useCallback(() => {
+        scrollToWizardSection('permission');
+    }, [scrollToWizardSection]);
+
+    const handleAgentInputAgentClick = React.useCallback(() => {
+        scrollToWizardSection('agent');
+    }, [scrollToWizardSection]);
+
+    const onRefreshMachines = props.machine.onRefreshMachines;
 
     const {
         useProfiles,
@@ -172,12 +200,12 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
         handleDuplicateProfile,
         handleDeleteProfile,
         openProfileEnvVarsPreview,
-        suppressNextApiKeyAutoPromptKeyRef,
-        sessionOnlyApiKeyValue,
-        selectedSavedApiKeyValue,
-        apiKeyPreflightIsReady,
-        openApiKeyRequirementModal,
+        suppressNextSecretAutoPromptKeyRef,
+        openSecretRequirementModal,
         profilesGroupTitles,
+        getSecretOverrideReady,
+        getSecretSatisfactionForProfile,
+        getSecretMachineEnvOverride,
     } = props.profiles;
 
     const expSessionType = useSetting('expSessionType');
@@ -185,6 +213,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
 
     const {
         cliAvailability,
+        tmuxRequested,
         allowGemini,
         isWarningDismissed,
         hiddenBanners,
@@ -196,7 +225,6 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
         setModelMode,
         selectedIndicatorColor,
         profileMap,
-        handleAgentInputProfileClick,
         permissionMode,
         handlePermissionModeChange,
         sessionType,
@@ -229,12 +257,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
         isCreating,
         emptyAutocompletePrefixes,
         emptyAutocompleteSuggestions,
-        handleAgentInputAgentClick,
-        handleAgentInputPermissionClick,
         connectionStatus,
-        handleAgentInputMachineClick,
-        handleAgentInputPathClick,
-        handleAgentInputProfileClick: handleFooterProfileClick,
         selectedProfileEnvVarsCount,
         handleEnvVarsClick,
     } = props.footer;
@@ -256,7 +279,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                         <View style={[
                             { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
                         ]}>
-                            <View ref={profileSectionRef} onLayout={registerWizardSectionOffset('profile')} style={styles.wizardContainer}>
+                            <View onLayout={registerWizardSectionOffset('profile')} style={styles.wizardContainer}>
                                 {useProfiles && (
                                     <>
                                         <View style={styles.wizardSectionHeaderRow}>
@@ -274,10 +297,13 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                             onFavoriteProfileIdsChange={setFavoriteProfileIds}
                                             experimentsEnabled={experimentsEnabled}
                                             selectedProfileId={selectedProfileId}
+                                            popoverBoundaryRef={scrollViewRef}
                                             includeDefaultEnvironmentRow
                                             onPressDefaultEnvironment={onPressDefaultEnvironment}
                                             onPressProfile={onPressProfile}
                                             machineId={selectedMachineId ?? null}
+                                            getSecretOverrideReady={getSecretOverrideReady}
+                                            getSecretMachineEnvOverride={getSecretMachineEnvOverride}
                                             getProfileDisabled={getProfileDisabled}
                                             getProfileSubtitleExtra={getProfileSubtitleExtra}
                                             includeAddProfileRow
@@ -287,15 +313,11 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                             onDeleteProfile={handleDeleteProfile}
                                             getHasEnvironmentVariables={(profile) => Object.keys(getProfileEnvironmentVariables(profile)).length > 0}
                                             onViewEnvironmentVariables={openProfileEnvVarsPreview}
-                                            onApiKeyBadgePress={(profile) => {
-                                                if (selectedMachineId) {
-                                                    suppressNextApiKeyAutoPromptKeyRef.current = `${selectedMachineId}:${profile.id}`;
-                                                }
-                                                const hasInjected = Boolean(sessionOnlyApiKeyValue || selectedSavedApiKeyValue);
-                                                const hasMachineEnv = apiKeyPreflightIsReady;
+                                            onSecretBadgePress={(profile) => {
+                                                const satisfaction = getSecretSatisfactionForProfile(profile);
                                                 const isMissingForSelectedProfile =
-                                                    profile.id === selectedProfileId && !hasInjected && !hasMachineEnv;
-                                                openApiKeyRequirementModal(profile, { revertOnCancel: isMissingForSelectedProfile });
+                                                    profile.id === selectedProfileId && !satisfaction.isSatisfied;
+                                                openSecretRequirementModal(profile, { revertOnCancel: isMissingForSelectedProfile });
                                             }}
                                             groupTitles={profilesGroupTitles}
                                         />
@@ -320,6 +342,27 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                 </Text>
 
                                 {/* Missing CLI Installation Banners */}
+                                {selectedMachineId && tmuxRequested && cliAvailability.tmux === false && (
+                                    <View style={{
+                                        backgroundColor: theme.colors.box.warning.background,
+                                        borderRadius: 10,
+                                        padding: 12,
+                                        marginBottom: 12,
+                                        borderWidth: 1,
+                                        borderColor: theme.colors.box.warning.border,
+                                    }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                            <Ionicons name="warning" size={16} color={theme.colors.warning} />
+                                            <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
+                                                {t('machine.tmux.notDetectedSubtitle')}
+                                            </Text>
+                                        </View>
+                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                            {t('machine.tmux.notDetectedMessage')}
+                                        </Text>
+                                    </View>
+                                )}
+
                                 {selectedMachineId && cliAvailability.claude === false && !isWarningDismissed('claude') && !hiddenBanners.claude && (
                                     <View style={{
                                         backgroundColor: theme.colors.box.warning.background,
@@ -607,7 +650,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                 </ItemGroup>
 
                                 {modelOptions.length > 0 && (
-                                    <View ref={modelSectionRef} style={{ marginTop: 24 }}>
+                                    <View style={{ marginTop: 24 }}>
                                         <View onLayout={registerWizardSectionOffset('model')}>
                                             <View style={styles.wizardSectionHeaderRow}>
                                                 <Ionicons name="sparkles-outline" size={18} color={theme.colors.text} />
@@ -650,10 +693,23 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                 <View style={{ height: 24 }} />
 
                                 {/* Section 2: Machine Selection */}
-                                <View ref={machineSectionRef} onLayout={registerWizardSectionOffset('machine')}>
-                                    <View style={styles.wizardSectionHeaderRow}>
-                                        <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
-                                        <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>{t('newSession.selectMachineTitle')}</Text>
+                                <View onLayout={registerWizardSectionOffset('machine')}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <View style={styles.wizardSectionHeaderRow}>
+                                            <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
+                                            <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>{t('newSession.selectMachineTitle')}</Text>
+                                        </View>
+                                        {onRefreshMachines ? (
+                                            <Pressable
+                                                onPress={onRefreshMachines}
+                                                hitSlop={10}
+                                                style={{ padding: 2 }}
+                                                accessibilityRole="button"
+                                                accessibilityLabel={t('common.refresh')}
+                                            >
+                                                <Ionicons name="refresh-outline" size={18} color={theme.colors.textSecondary} />
+                                            </Pressable>
+                                        ) : null}
                                     </View>
                                 </View>
                                 <Text style={styles.sectionDescription}>
@@ -691,7 +747,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                 {/* API key selection is now handled inline from the profile list (via the requirements badge). */}
 
                                 {/* Section 3: Working Directory */}
-                                <View ref={pathSectionRef} onLayout={registerWizardSectionOffset('path')}>
+                                <View onLayout={registerWizardSectionOffset('path')}>
                                     <View style={styles.wizardSectionHeaderRow}>
                                         <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
                                         <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>{t('newSession.selectWorkingDirectoryTitle')}</Text>
@@ -716,7 +772,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                 </View>
 
                                 {/* Section 4: Permission Mode */}
-                                <View ref={permissionSectionRef} onLayout={registerWizardSectionOffset('permission')}>
+                                <View onLayout={registerWizardSectionOffset('permission')}>
                                     <View style={styles.wizardSectionHeaderRow}>
                                         <Ionicons name="shield-outline" size={18} color={theme.colors.text} />
                                         <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>{t('newSession.selectPermissionModeTitle')}</Text>
@@ -863,7 +919,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                 contentPaddingHorizontal={0}
                                 {...(useProfiles ? {
                                     profileId: selectedProfileId,
-                                    onProfileClick: handleFooterProfileClick,
+                                                onProfileClick: handleAgentInputProfileClick,
                                     envVarsCount: selectedProfileEnvVarsCount || undefined,
                                     onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
                                 } : {})}
@@ -875,4 +931,3 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
         </KeyboardAvoidingView>
     );
 });
-

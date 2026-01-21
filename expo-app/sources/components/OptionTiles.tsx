@@ -9,6 +9,7 @@ export interface OptionTile<T extends string> {
     title: string;
     subtitle?: string;
     icon?: React.ComponentProps<typeof Ionicons>['name'];
+    disabled?: boolean;
 }
 
 export interface OptionTilesProps<T extends string> {
@@ -49,16 +50,21 @@ export function OptionTiles<T extends string>(props: OptionTilesProps<T>) {
         >
             {props.options.map((opt) => {
                 const selected = props.value === opt.id;
+                const disabled = opt.disabled === true;
                 return (
                     <Pressable
                         key={opt.id}
-                        onPress={() => props.onChange(opt.id)}
+                        disabled={disabled}
+                        onPress={() => {
+                            if (disabled) return;
+                            props.onChange(opt.id);
+                        }}
                         style={({ pressed }) => [
                             styles.tile,
                             tileWidth ? { width: tileWidth } : null,
                             {
                                 borderColor: selected ? theme.colors.button.primary.background : theme.colors.divider,
-                                opacity: pressed ? 0.85 : 1,
+                                opacity: disabled ? 0.45 : (pressed ? 0.85 : 1),
                             },
                         ]}
                     >
@@ -94,7 +100,8 @@ const stylesheet = StyleSheet.create((theme) => ({
         borderRadius: 12,
         borderWidth: 2,
         padding: 12,
-        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: 20
     },
     iconSlot: {
         width: 29,
@@ -109,11 +116,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
     },
     subtitle: {
-        marginTop: 4,
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        lineHeight: 16,
         ...Typography.default(),
+        fontSize: Platform.select({ ios: 15, default: 14 }),
+        lineHeight: 20,
+        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
+        color: theme.colors.textSecondary,
     },
 }));
 

@@ -1,4 +1,4 @@
-import { getRandomBytes } from 'expo-crypto';
+import { getRandomBytes } from '@/platform/cryptoRandom';
 import sodium from '@/encryption/libsodium.lib';
 
 export function authChallenge(secret: Uint8Array) {

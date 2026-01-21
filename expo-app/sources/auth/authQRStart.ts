@@ -1,4 +1,4 @@
-import { getRandomBytes } from 'expo-crypto';
+import { getRandomBytes } from '@/platform/cryptoRandom';
 import sodium from '@/encryption/libsodium.lib';
 import axios from 'axios';
 import { encodeBase64 } from '../encryption/base64';

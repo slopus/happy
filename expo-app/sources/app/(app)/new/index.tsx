@@ -26,8 +26,7 @@ import { getBuiltInProfile, DEFAULT_PROFILES, getProfilePrimaryCli } from '@/syn
 import { AgentInput } from '@/components/AgentInput';
 import { StyleSheet } from 'react-native-unistyles';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
-import { useProfileEnvRequirements } from '@/hooks/useProfileEnvRequirements';
-import { getRequiredSecretEnvVarName } from '@/sync/profileSecrets';
+import { getRequiredSecretEnvVarNames } from '@/sync/profileSecrets';
 
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
@@ -37,20 +36,18 @@ import { PathSelector } from '@/components/newSession/PathSelector';
 import { SearchHeader } from '@/components/SearchHeader';
 import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
 import { EnvironmentVariablesPreviewModal } from '@/components/newSession/EnvironmentVariablesPreviewModal';
-import { buildProfileGroups, toggleFavoriteProfileId } from '@/sync/profileGrouping';
-import { ItemRowActions } from '@/components/ItemRowActions';
-import { ProfileRequirementsBadge } from '@/components/ProfileRequirementsBadge';
-import { buildProfileActions } from '@/components/profileActions';
-import type { ItemAction } from '@/components/ItemActionsMenuModal';
-import { consumeApiKeyIdParam, consumeProfileIdParam } from '@/profileRouteParams';
+import { consumeProfileIdParam, consumeSecretIdParam } from '@/profileRouteParams';
 import { getModelOptionsForAgentType } from '@/sync/modelOptions';
-import { ignoreNextRowPress } from '@/utils/ignoreNextRowPress';
-import { ApiKeyRequirementModal, type ApiKeyRequirementModalResult } from '@/components/ApiKeyRequirementModal';
+import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/SecretRequirementModal';
 import { useFocusEffect } from '@react-navigation/native';
 import { getRecentPathsForMachine } from '@/utils/recentPaths';
+import { useMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
+import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
 import { InteractionManager } from 'react-native';
 import { NewSessionWizard } from './NewSessionWizard';
-import { prefetchMachineDetectCliIfStale } from '@/hooks/useMachineDetectCliCache';
+import { prefetchMachineDetectCli, prefetchMachineDetectCliIfStale } from '@/hooks/useMachineDetectCliCache';
+import { PopoverBoundaryProvider } from '@/components/PopoverBoundary';
+import { resolveTerminalSpawnOptions } from '@/sync/terminalSettings';
 
 // Optimized profile lookup utility
 const useProfileMap = (profiles: AIBackendProfile[]) => {
@@ -236,24 +233,18 @@ function NewSessionScreen() {
     const headerHeight = useHeaderHeight();
     const { width: screenWidth } = useWindowDimensions();
     const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
-
-    const openApiKeys = React.useCallback(() => {
-        router.push({
-            pathname: '/new/pick/api-key',
-            params: { selectedId: '' },
-        });
-    }, [router]);
+    const popoverBoundaryRef = React.useRef<View>(null!);
 
     const newSessionSidePadding = 16;
     const newSessionBottomPadding = Math.max(screenWidth < 420 ? 8 : 16, safeArea.bottom);
-    const { prompt, dataId, machineId: machineIdParam, path: pathParam, profileId: profileIdParam, apiKeyId: apiKeyIdParam, apiKeySessionOnlyId } = useLocalSearchParams<{
+    const { prompt, dataId, machineId: machineIdParam, path: pathParam, profileId: profileIdParam, secretId: secretIdParam, secretSessionOnlyId } = useLocalSearchParams<{
         prompt?: string;
         dataId?: string;
         machineId?: string;
         path?: string;
         profileId?: string;
-        apiKeyId?: string;
-        apiKeySessionOnlyId?: string;
+        secretId?: string;
+        secretSessionOnlyId?: string;
     }>();
 
     // Try to get data from temporary store first
@@ -276,8 +267,8 @@ function NewSessionScreen() {
     // Variant B (true): Enhanced profile-first wizard with sections
     const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
     const useProfiles = useSetting('useProfiles');
-    const [apiKeys, setApiKeys] = useSettingMutable('apiKeys');
-    const [defaultApiKeyByProfileId, setDefaultApiKeyByProfileId] = useSettingMutable('defaultApiKeyByProfileId');
+    const [secrets, setSecrets] = useSettingMutable('secrets');
+    const [secretBindingsByProfileId, setSecretBindingsByProfileId] = useSettingMutable('secretBindingsByProfileId');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const experimentsEnabled = useSetting('experiments');
     const expGemini = useSetting('expGemini');
@@ -290,6 +281,8 @@ function NewSessionScreen() {
     const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
     const [favoriteProfileIds, setFavoriteProfileIds] = useSettingMutable('favoriteProfiles');
     const [dismissedCLIWarnings, setDismissedCLIWarnings] = useSettingMutable('dismissedCLIWarnings');
+    const terminalUseTmux = useSetting('terminalUseTmux');
+    const terminalTmuxByMachineId = useSetting('terminalTmuxByMachineId');
 
     useFocusEffect(
         React.useCallback(() => {
@@ -311,21 +304,6 @@ function NewSessionScreen() {
     }, [profiles]);
 
     const profileMap = useProfileMap(allProfiles);
-
-    const {
-        favoriteProfiles: favoriteProfileItems,
-        customProfiles: nonFavoriteCustomProfiles,
-        builtInProfiles: nonFavoriteBuiltInProfiles,
-        favoriteIds: favoriteProfileIdSet,
-    } = React.useMemo(() => {
-        return buildProfileGroups({ customProfiles: profiles, favoriteProfileIds });
-    }, [favoriteProfileIds, profiles]);
-
-    const isDefaultEnvironmentFavorite = favoriteProfileIdSet.has('');
-
-    const toggleFavoriteProfile = React.useCallback((profileId: string) => {
-        setFavoriteProfileIds(toggleFavoriteProfileId(favoriteProfileIds, profileId));
-    }, [favoriteProfileIds, setFavoriteProfileIds]);
     const machines = useAllMachines();
 
     // Wizard state
@@ -344,16 +322,70 @@ function NewSessionScreen() {
         return null;
     });
 
-    const [selectedApiKeyId, setSelectedApiKeyId] = React.useState<string | null>(() => {
-        return persistedDraft?.selectedApiKeyId ?? null;
+    /**
+     * Per-profile per-env-var secret selections for the current flow (multi-secret).
+     * This allows the user to resolve secrets for multiple profiles without switching selection.
+     *
+     * - value === '' means “prefer machine env” for that env var (disallow default saved).
+     * - value === savedSecretId means “use saved secret”
+     * - null/undefined means “no explicit choice yet”
+     */
+    const [selectedSecretIdByProfileIdByEnvVarName, setSelectedSecretIdByProfileIdByEnvVarName] = React.useState<Record<string, Record<string, string | null>>>(() => {
+        const raw = persistedDraft?.selectedSecretIdByProfileIdByEnvVarName;
+        if (!raw || typeof raw !== 'object') return {};
+        const out: Record<string, Record<string, string | null>> = {};
+        for (const [profileId, byEnv] of Object.entries(raw)) {
+            if (!byEnv || typeof byEnv !== 'object') continue;
+            const inner: Record<string, string | null> = {};
+            for (const [envVarName, v] of Object.entries(byEnv as any)) {
+                if (v === null) inner[envVarName] = null;
+                else if (typeof v === 'string') inner[envVarName] = v;
+            }
+            if (Object.keys(inner).length > 0) out[profileId] = inner;
+        }
+        return out;
+    });
+    /**
+     * Session-only secrets (never persisted in plaintext), keyed by profileId then env var name.
+     */
+    const [sessionOnlySecretValueByProfileIdByEnvVarName, setSessionOnlySecretValueByProfileIdByEnvVarName] = React.useState<Record<string, Record<string, string | null>>>(() => {
+        const raw = persistedDraft?.sessionOnlySecretValueEncByProfileIdByEnvVarName;
+        if (!raw || typeof raw !== 'object') return {};
+        const out: Record<string, Record<string, string | null>> = {};
+        for (const [profileId, byEnv] of Object.entries(raw)) {
+            if (!byEnv || typeof byEnv !== 'object') continue;
+            const inner: Record<string, string | null> = {};
+            for (const [envVarName, enc] of Object.entries(byEnv as any)) {
+                const decrypted = enc ? sync.decryptSecretValue(enc as any) : null;
+                if (typeof decrypted === 'string' && decrypted.trim().length > 0) {
+                    inner[envVarName] = decrypted;
+                }
+            }
+            if (Object.keys(inner).length > 0) out[profileId] = inner;
+        }
+        return out;
     });
 
-    // Session-only secret (NOT persisted). Highest-precedence override for this session.
-    const [sessionOnlyApiKeyValue, setSessionOnlyApiKeyValue] = React.useState<string | null>(null);
+    const prevProfileIdBeforeSecretPromptRef = React.useRef<string | null>(null);
+    const lastSecretPromptKeyRef = React.useRef<string | null>(null);
+    const suppressNextSecretAutoPromptKeyRef = React.useRef<string | null>(null);
+    const isSecretRequirementModalOpenRef = React.useRef(false);
 
-    const prevProfileIdBeforeApiKeyPromptRef = React.useRef<string | null>(null);
-    const lastApiKeyPromptKeyRef = React.useRef<string | null>(null);
-    const suppressNextApiKeyAutoPromptKeyRef = React.useRef<string | null>(null);
+    const getSessionOnlySecretValueEncByProfileIdByEnvVarName = React.useCallback(() => {
+        const out: Record<string, Record<string, any>> = {};
+        for (const [profileId, byEnv] of Object.entries(sessionOnlySecretValueByProfileIdByEnvVarName)) {
+            if (!byEnv || typeof byEnv !== 'object') continue;
+            for (const [envVarName, value] of Object.entries(byEnv)) {
+                const v = typeof value === 'string' ? value.trim() : '';
+                if (!v) continue;
+                const enc = sync.encryptSecretValue(v);
+                if (!enc) continue;
+                if (!out[profileId]) out[profileId] = {};
+                out[profileId]![envVarName] = enc;
+            }
+        }
+        return Object.keys(out).length > 0 ? out : null;
+    }, [sessionOnlySecretValueByProfileIdByEnvVarName]);
 
     React.useEffect(() => {
         if (!useProfiles && selectedProfileId !== null) {
@@ -397,11 +429,12 @@ function NewSessionScreen() {
         });
     }, [allowGemini]);
 
-    // Persist agent selection changes (separate from setState to avoid race condition)
-    // This runs after agentType state is updated, ensuring the value is stable
+    // Persist agent selection changes, but avoid no-op writes (especially on initial mount).
+    // `sync.applySettings()` triggers a server POST, so only write when it actually changed.
     React.useEffect(() => {
+        if (lastUsedAgent === agentType) return;
         sync.applySettings({ lastUsedAgent: agentType });
-    }, [agentType]);
+    }, [agentType, lastUsedAgent]);
 
     const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
@@ -458,6 +491,24 @@ function NewSessionScreen() {
         return null;
     });
 
+    const allProfilesRequirementNames = React.useMemo(() => {
+        const names = new Set<string>();
+        for (const p of allProfiles) {
+            for (const req of p.envVarRequirements ?? []) {
+                const name = typeof req?.name === 'string' ? req.name : '';
+                if (name) names.add(name);
+            }
+        }
+        return Array.from(names);
+    }, [allProfiles]);
+
+    const machineEnvPresence = useMachineEnvPresence(
+        selectedMachineId ?? null,
+        allProfilesRequirementNames,
+        { ttlMs: 5 * 60_000 },
+    );
+    const refreshMachineEnvPresence = machineEnvPresence.refresh;
+
     const getBestPathForMachine = React.useCallback((machineId: string | null): string => {
         if (!machineId) return '';
         const recent = getRecentPathsForMachine({
@@ -470,63 +521,152 @@ function NewSessionScreen() {
         return machine?.metadata?.homeDir ?? '';
     }, [machines, recentMachinePaths]);
 
-    const openApiKeyRequirementModal = React.useCallback((profile: AIBackendProfile, options: { revertOnCancel: boolean }) => {
-        const handleResolve = (result: ApiKeyRequirementModalResult) => {
+    const openSecretRequirementModal = React.useCallback((profile: AIBackendProfile, options: { revertOnCancel: boolean }) => {
+        isSecretRequirementModalOpenRef.current = true;
+
+        const selectedSecretIdByEnvVarName = selectedSecretIdByProfileIdByEnvVarName[profile.id] ?? {};
+        const sessionOnlySecretValueByEnvVarName = sessionOnlySecretValueByProfileIdByEnvVarName[profile.id] ?? {};
+
+        const satisfaction = getSecretSatisfaction({
+            profile,
+            secrets,
+            defaultBindings: secretBindingsByProfileId[profile.id] ?? null,
+            selectedSecretIds: selectedSecretIdByEnvVarName,
+            sessionOnlyValues: sessionOnlySecretValueByEnvVarName,
+            machineEnvReadyByName: Object.fromEntries(
+                Object.entries(machineEnvPresence.meta ?? {}).map(([k, v]) => [k, Boolean(v?.isSet)]),
+            ),
+        });
+
+        const targetEnvVarName =
+            satisfaction.items.find((i) => i.required && !i.isSatisfied)?.envVarName ??
+            satisfaction.items[0]?.envVarName ??
+            null;
+        if (!targetEnvVarName) return;
+
+        const selectedRaw = selectedSecretIdByEnvVarName[targetEnvVarName];
+        const selectedSavedSecretIdForProfile =
+            typeof selectedRaw === 'string' && selectedRaw.length > 0 && selectedRaw !== ''
+                ? selectedRaw
+                : null;
+
+        const handleResolve = (result: SecretRequirementModalResult) => {
             if (result.action === 'cancel') {
+                isSecretRequirementModalOpenRef.current = false;
                 // Always allow future prompts for this profile.
-                lastApiKeyPromptKeyRef.current = null;
-                suppressNextApiKeyAutoPromptKeyRef.current = null;
+                lastSecretPromptKeyRef.current = null;
+                suppressNextSecretAutoPromptKeyRef.current = null;
                 if (options.revertOnCancel) {
-                    const prev = prevProfileIdBeforeApiKeyPromptRef.current;
+                    const prev = prevProfileIdBeforeSecretPromptRef.current;
                     setSelectedProfileId(prev);
                 }
                 return;
             }
 
+            isSecretRequirementModalOpenRef.current = false;
+
             if (result.action === 'useMachine') {
-                // Explicit choice: do not auto-apply default key.
-                setSelectedApiKeyId('');
-                setSessionOnlyApiKeyValue(null);
+                setSelectedSecretIdByProfileIdByEnvVarName((prev) => ({
+                    ...prev,
+                    [profile.id]: {
+                        ...(prev[profile.id] ?? {}),
+                        [result.envVarName]: '',
+                    },
+                }));
+                setSessionOnlySecretValueByProfileIdByEnvVarName((prev) => ({
+                    ...prev,
+                    [profile.id]: {
+                        ...(prev[profile.id] ?? {}),
+                        [result.envVarName]: null,
+                    },
+                }));
                 return;
             }
 
             if (result.action === 'enterOnce') {
-                // Explicit choice: do not auto-apply default key.
-                setSelectedApiKeyId('');
-                setSessionOnlyApiKeyValue(result.value);
+                setSelectedSecretIdByProfileIdByEnvVarName((prev) => ({
+                    ...prev,
+                    [profile.id]: {
+                        ...(prev[profile.id] ?? {}),
+                        [result.envVarName]: '',
+                    },
+                }));
+                setSessionOnlySecretValueByProfileIdByEnvVarName((prev) => ({
+                    ...prev,
+                    [profile.id]: {
+                        ...(prev[profile.id] ?? {}),
+                        [result.envVarName]: result.value,
+                    },
+                }));
                 return;
             }
 
             if (result.action === 'selectSaved') {
-                setSessionOnlyApiKeyValue(null);
-                setSelectedApiKeyId(result.apiKeyId);
+                setSessionOnlySecretValueByProfileIdByEnvVarName((prev) => ({
+                    ...prev,
+                    [profile.id]: {
+                        ...(prev[profile.id] ?? {}),
+                        [result.envVarName]: null,
+                    },
+                }));
+                setSelectedSecretIdByProfileIdByEnvVarName((prev) => ({
+                    ...prev,
+                    [profile.id]: {
+                        ...(prev[profile.id] ?? {}),
+                        [result.envVarName]: result.secretId,
+                    },
+                }));
                 if (result.setDefault) {
-                    setDefaultApiKeyByProfileId({
-                        ...defaultApiKeyByProfileId,
-                        [profile.id]: result.apiKeyId,
+                    setSecretBindingsByProfileId({
+                        ...secretBindingsByProfileId,
+                        [profile.id]: {
+                            ...(secretBindingsByProfileId[profile.id] ?? {}),
+                            [result.envVarName]: result.secretId,
+                        },
                     });
                 }
             }
         };
 
         Modal.show({
-            component: ApiKeyRequirementModal,
+            component: SecretRequirementModal,
             props: {
                 profile,
+                secretEnvVarName: targetEnvVarName,
+                secretEnvVarNames: satisfaction.items.map((i) => i.envVarName),
                 machineId: selectedMachineId ?? null,
-                apiKeys,
-                defaultApiKeyId: defaultApiKeyByProfileId[profile.id] ?? null,
-                onChangeApiKeys: setApiKeys,
+                secrets,
+                defaultSecretId: secretBindingsByProfileId[profile.id]?.[targetEnvVarName] ?? null,
+                selectedSavedSecretId: selectedSavedSecretIdForProfile,
+                selectedSecretIdByEnvVarName: selectedSecretIdByEnvVarName,
+                sessionOnlySecretValueByEnvVarName: sessionOnlySecretValueByEnvVarName,
+                defaultSecretIdByEnvVarName: secretBindingsByProfileId[profile.id] ?? null,
+                onSetDefaultSecretId: (id) => {
+                    if (!id) return;
+                    setSecretBindingsByProfileId({
+                        ...secretBindingsByProfileId,
+                        [profile.id]: {
+                            ...(secretBindingsByProfileId[profile.id] ?? {}),
+                            [targetEnvVarName]: id,
+                        },
+                    });
+                },
+                onChangeSecrets: setSecrets,
                 allowSessionOnly: true,
                 onResolve: handleResolve,
                 onRequestClose: () => handleResolve({ action: 'cancel' }),
             },
+            closeOnBackdrop: true,
         });
     }, [
-        apiKeys,
-        defaultApiKeyByProfileId,
+        machineEnvPresence.meta,
+        secrets,
+        secretBindingsByProfileId,
+        selectedSecretIdByProfileIdByEnvVarName,
         selectedMachineId,
-        setDefaultApiKeyByProfileId,
+        selectedProfileId,
+        sessionOnlySecretValueByProfileIdByEnvVarName,
+        setSecretBindingsByProfileId,
     ]);
 
     const hasUserSelectedPermissionModeRef = React.useRef(false);
@@ -613,16 +753,15 @@ function NewSessionScreen() {
 
     // Path selection state - initialize with formatted selected path
 
-    // Refs for scrolling to sections
-    const scrollViewRef = React.useRef<ScrollView>(null);
-    const profileSectionRef = React.useRef<View>(null);
-    const modelSectionRef = React.useRef<View>(null);
-    const machineSectionRef = React.useRef<View>(null);
-    const pathSectionRef = React.useRef<View>(null);
-    const permissionSectionRef = React.useRef<View>(null);
-
     // CLI Detection - automatic, non-blocking detection of installed CLIs on selected machine
     const cliAvailability = useCLIDetection(selectedMachineId, { autoDetect: false });
+
+    const tmuxRequested = React.useMemo(() => {
+        return Boolean(resolveTerminalSpawnOptions({
+            settings: storage.getState().settings,
+            machineId: selectedMachineId,
+        }));
+    }, [selectedMachineId, terminalTmuxByMachineId, terminalUseTmux]);
 
     // Auto-correct invalid agent selection after CLI detection completes
     // This handles the case where lastUsedAgent was 'codex' but codex is not installed
@@ -752,48 +891,101 @@ function NewSessionScreen() {
         return getBuiltInProfile(selectedProfileId);
     }, [selectedProfileId, profileMap]);
 
-    React.useEffect(() => {
-        // Session-only secrets are only for the current launch attempt; clear when profile changes.
-        setSessionOnlyApiKeyValue(null);
-    }, [selectedProfileId]);
+    // NOTE: we intentionally do NOT clear per-profile secret overrides when profile changes.
+    // Users may resolve secrets for multiple profiles and then switch between them before creating a session.
 
     const selectedMachine = React.useMemo(() => {
         if (!selectedMachineId) return null;
         return machines.find(m => m.id === selectedMachineId);
     }, [selectedMachineId, machines]);
 
-    const requiredSecretEnvVarName = React.useMemo(() => {
-        return getRequiredSecretEnvVarName(selectedProfile);
+    const secretRequirements = React.useMemo(() => {
+        const reqs = selectedProfile?.envVarRequirements ?? [];
+        return reqs
+            .filter((r) => (r?.kind ?? 'secret') === 'secret')
+            .map((r) => ({ name: r.name, required: r.required === true }))
+            .filter((r) => typeof r.name === 'string' && r.name.length > 0) as Array<{ name: string; required: boolean }>;
     }, [selectedProfile]);
+    const shouldShowSecretSection = secretRequirements.length > 0;
 
-    const shouldShowApiKeySection = Boolean(
-        selectedProfile &&
-        selectedProfile.authMode === 'apiKeyEnv' &&
-        requiredSecretEnvVarName,
-    );
+    // Legacy convenience: treat the first required secret (or first secret) as the “primary” secret for
+    // older single-secret UI paths (e.g. route params, draft persistence). Multi-secret enforcement uses
+    // the full maps + `getSecretSatisfaction`.
+    const primarySecretEnvVarName = React.useMemo(() => {
+        const required = secretRequirements.find((r) => r.required)?.name ?? null;
+        return required ?? (secretRequirements[0]?.name ?? null);
+    }, [secretRequirements]);
 
-    const apiKeyPreflight = useProfileEnvRequirements(
-        shouldShowApiKeySection ? selectedMachineId : null,
-        shouldShowApiKeySection ? selectedProfile : null,
-    );
+    const selectedSecretId = React.useMemo(() => {
+        if (!primarySecretEnvVarName) return null;
+        if (!selectedProfileId) return null;
+        const v = (selectedSecretIdByProfileIdByEnvVarName[selectedProfileId] ?? {})[primarySecretEnvVarName];
+        return typeof v === 'string' ? v : null;
+    }, [primarySecretEnvVarName, selectedProfileId, selectedSecretIdByProfileIdByEnvVarName]);
 
-    const selectedSavedApiKey = React.useMemo(() => {
-        if (!selectedApiKeyId) return null;
-        return apiKeys.find((k) => k.id === selectedApiKeyId) ?? null;
-    }, [apiKeys, selectedApiKeyId]);
+    const setSelectedSecretId = React.useCallback((next: string | null) => {
+        if (!primarySecretEnvVarName) return;
+        if (!selectedProfileId) return;
+        setSelectedSecretIdByProfileIdByEnvVarName((prev) => ({
+            ...prev,
+            [selectedProfileId]: {
+                ...(prev[selectedProfileId] ?? {}),
+                [primarySecretEnvVarName]: next,
+            },
+        }));
+    }, [primarySecretEnvVarName, selectedProfileId]);
+
+    const sessionOnlySecretValue = React.useMemo(() => {
+        if (!primarySecretEnvVarName) return null;
+        if (!selectedProfileId) return null;
+        const v = (sessionOnlySecretValueByProfileIdByEnvVarName[selectedProfileId] ?? {})[primarySecretEnvVarName];
+        return typeof v === 'string' ? v : null;
+    }, [primarySecretEnvVarName, selectedProfileId, sessionOnlySecretValueByProfileIdByEnvVarName]);
+
+    const setSessionOnlySecretValue = React.useCallback((next: string | null) => {
+        if (!primarySecretEnvVarName) return;
+        if (!selectedProfileId) return;
+        setSessionOnlySecretValueByProfileIdByEnvVarName((prev) => ({
+            ...prev,
+            [selectedProfileId]: {
+                ...(prev[selectedProfileId] ?? {}),
+                [primarySecretEnvVarName]: next,
+            },
+        }));
+    }, [primarySecretEnvVarName, selectedProfileId]);
+
+    const refreshMachineData = React.useCallback(() => {
+        // Treat this as “refresh machine-related data”:
+        // - machine list from server (new machines / metadata updates)
+        // - CLI detection cache for selected machine (glyphs + login/availability)
+        // - machine env presence preflight cache (API key env var presence)
+        void sync.refreshMachinesThrottled({ staleMs: 0, force: true });
+        refreshMachineEnvPresence();
+
+        if (selectedMachineId) {
+            void prefetchMachineDetectCli({ machineId: selectedMachineId });
+            void prefetchMachineDetectCli({ machineId: selectedMachineId, includeLoginStatus: true });
+        }
+    }, [refreshMachineEnvPresence, selectedMachineId, sync]);
+
+    const selectedSavedSecret = React.useMemo(() => {
+        if (!selectedSecretId) return null;
+        return secrets.find((k) => k.id === selectedSecretId) ?? null;
+    }, [secrets, selectedSecretId]);
 
     React.useEffect(() => {
         if (!selectedProfileId) return;
-        if (selectedApiKeyId !== null) return;
-        const nextDefault = defaultApiKeyByProfileId[selectedProfileId];
+        if (selectedSecretId !== null) return;
+        if (!primarySecretEnvVarName) return;
+        const nextDefault = secretBindingsByProfileId[selectedProfileId]?.[primarySecretEnvVarName] ?? null;
         if (typeof nextDefault === 'string' && nextDefault.length > 0) {
-            setSelectedApiKeyId(nextDefault);
+            setSelectedSecretId(nextDefault);
         }
-    }, [defaultApiKeyByProfileId, selectedApiKeyId, selectedProfileId]);
+    }, [primarySecretEnvVarName, secretBindingsByProfileId, selectedSecretId, selectedProfileId]);
 
-    const activeApiKeySource = sessionOnlyApiKeyValue
+    const activeSecretSource = sessionOnlySecretValue
         ? 'sessionOnly'
-        : selectedApiKeyId
+        : selectedSecretId
             ? 'saved'
             : 'machineEnv';
 
@@ -805,7 +997,9 @@ function NewSessionScreen() {
             selectedMachineId,
             selectedPath,
             selectedProfileId: useProfiles ? selectedProfileId : null,
-            selectedApiKeyId,
+            selectedSecretId,
+            selectedSecretIdByProfileIdByEnvVarName,
+            sessionOnlySecretValueEncByProfileIdByEnvVarName: getSessionOnlySecretValueEncByProfileIdByEnvVarName(),
             agentType,
             permissionMode,
             modelMode,
@@ -824,7 +1018,21 @@ function NewSessionScreen() {
         InteractionManager.runAfterInteractions(() => {
             saveNewSessionDraft(draft);
         });
-    }, [agentType, modelMode, permissionMode, router, selectedMachineId, selectedPath, selectedProfileId, sessionPrompt, sessionType, useProfiles]);
+    }, [
+        agentType,
+        getSessionOnlySecretValueEncByProfileIdByEnvVarName,
+        modelMode,
+        permissionMode,
+        router,
+        selectedMachineId,
+        selectedPath,
+        selectedProfileId,
+        selectedSecretId,
+        selectedSecretIdByProfileIdByEnvVarName,
+        sessionPrompt,
+        sessionType,
+        useProfiles,
+    ]);
 
     const handleAddProfile = React.useCallback(() => {
         openProfileEdit({});
@@ -956,9 +1164,9 @@ function NewSessionScreen() {
 
     const selectProfile = React.useCallback((profileId: string) => {
         const prevSelectedProfileId = selectedProfileId;
-        prevProfileIdBeforeApiKeyPromptRef.current = prevSelectedProfileId;
+        prevProfileIdBeforeSecretPromptRef.current = prevSelectedProfileId;
         // Ensure selecting a profile can re-prompt if needed.
-        lastApiKeyPromptKeyRef.current = null;
+        lastSecretPromptKeyRef.current = null;
         pendingProfileSelectionRef.current = { profileId, prevProfileId: prevSelectedProfileId };
         setSelectedProfileId(profileId);
     }, [selectedProfileId]);
@@ -1056,44 +1264,62 @@ function NewSessionScreen() {
     React.useEffect(() => {
         if (!useProfiles) return;
         if (!selectedMachineId) return;
-        if (!shouldShowApiKeySection) return;
+        if (!shouldShowSecretSection) return;
         if (!selectedProfileId) return;
+        if (isSecretRequirementModalOpenRef.current) return;
 
-        const hasInjected = Boolean(sessionOnlyApiKeyValue || selectedSavedApiKey?.value);
-        const hasMachineEnv = apiKeyPreflight.isReady;
-        if (hasInjected || hasMachineEnv) {
+        // Wait for the machine env check to complete. Otherwise we can briefly treat
+        // a configured machine as "missing" and incorrectly pop the modal.
+        if (machineEnvPresence.isLoading) return;
+
+        const selectedSecretIdByEnvVarName = selectedSecretIdByProfileIdByEnvVarName[selectedProfileId] ?? {};
+        const sessionOnlySecretValueByEnvVarName = sessionOnlySecretValueByProfileIdByEnvVarName[selectedProfileId] ?? {};
+
+        const satisfaction = getSecretSatisfaction({
+            profile: selectedProfile ?? null,
+            secrets,
+            defaultBindings: secretBindingsByProfileId[selectedProfileId] ?? null,
+            selectedSecretIds: selectedSecretIdByEnvVarName,
+            sessionOnlyValues: sessionOnlySecretValueByEnvVarName,
+            machineEnvReadyByName: Object.fromEntries(
+                Object.entries(machineEnvPresence.meta ?? {}).map(([k, v]) => [k, Boolean(v?.isSet)]),
+            ),
+        });
+
+        if (satisfaction.isSatisfied) {
             // Reset prompt key when requirements are satisfied so future selections can prompt again if needed.
-            lastApiKeyPromptKeyRef.current = null;
+            lastSecretPromptKeyRef.current = null;
             return;
         }
 
-        const promptKey = `${selectedMachineId}:${selectedProfileId}`;
-        if (suppressNextApiKeyAutoPromptKeyRef.current === promptKey) {
+        const missing = satisfaction.items.find((i) => i.required && !i.isSatisfied) ?? null;
+        const promptKey = `${selectedMachineId}:${selectedProfileId}:${missing?.envVarName ?? 'unknown'}`;
+        if (suppressNextSecretAutoPromptKeyRef.current === promptKey) {
             // One-shot suppression (used when the user explicitly opened the modal via the badge).
-            suppressNextApiKeyAutoPromptKeyRef.current = null;
+            suppressNextSecretAutoPromptKeyRef.current = null;
             return;
         }
-        if (lastApiKeyPromptKeyRef.current === promptKey) {
+        if (lastSecretPromptKeyRef.current === promptKey) {
             return;
         }
-        lastApiKeyPromptKeyRef.current = promptKey;
+        lastSecretPromptKeyRef.current = promptKey;
         if (!selectedProfile) {
             return;
         }
-        openApiKeyRequirementModal(selectedProfile, { revertOnCancel: true });
+        openSecretRequirementModal(selectedProfile, { revertOnCancel: true });
     }, [
-        apiKeyPreflight.isReady,
-        defaultApiKeyByProfileId,
-        openApiKeyRequirementModal,
-        requiredSecretEnvVarName,
-        selectedApiKeyId,
+        secrets,
+        secretBindingsByProfileId,
+        machineEnvPresence.isLoading,
+        machineEnvPresence.meta,
+        openSecretRequirementModal,
+        selectedSecretIdByProfileIdByEnvVarName,
         selectedMachineId,
         selectedProfileId,
         selectedProfile,
-        selectedSavedApiKey?.value,
-        sessionOnlyApiKeyValue,
-        shouldShowApiKeySection,
-        suppressNextApiKeyAutoPromptKeyRef,
+        sessionOnlySecretValueByProfileIdByEnvVarName,
+        shouldShowSecretSection,
+        suppressNextSecretAutoPromptKeyRef,
         useProfiles,
     ]);
 
@@ -1129,57 +1355,57 @@ function NewSessionScreen() {
         }
     }, [navigation, profileIdParam, selectedProfileId, selectProfile, useProfiles]);
 
-    // Handle apiKey route param from picker screens
+    // Handle secret route param from picker screens
     React.useEffect(() => {
-        const { nextSelectedApiKeyId, shouldClearParam } = consumeApiKeyIdParam({
-            apiKeyIdParam,
-            selectedApiKeyId,
+        const { nextSelectedSecretId, shouldClearParam } = consumeSecretIdParam({
+            secretIdParam,
+            selectedSecretId,
         });
 
-        if (nextSelectedApiKeyId === null) {
-            if (selectedApiKeyId !== null) {
-                setSelectedApiKeyId(null);
+        if (nextSelectedSecretId === null) {
+            if (selectedSecretId !== null) {
+                setSelectedSecretId(null);
             }
-        } else if (typeof nextSelectedApiKeyId === 'string') {
-            setSelectedApiKeyId(nextSelectedApiKeyId);
+        } else if (typeof nextSelectedSecretId === 'string') {
+            setSelectedSecretId(nextSelectedSecretId);
         }
 
         if (shouldClearParam) {
             const setParams = (navigation as any)?.setParams;
             if (typeof setParams === 'function') {
-                setParams({ apiKeyId: undefined });
+                setParams({ secretId: undefined });
             } else {
                 navigation.dispatch({
                     type: 'SET_PARAMS',
-                    payload: { params: { apiKeyId: undefined } },
+                    payload: { params: { secretId: undefined } },
                 } as never);
             }
         }
-    }, [apiKeyIdParam, navigation, selectedApiKeyId]);
+    }, [navigation, secretIdParam, selectedSecretId]);
 
-    // Handle session-only API key temp id from picker screens (value is stored in-memory only).
+    // Handle session-only secret temp id from picker screens (value is stored in-memory only).
     React.useEffect(() => {
-        if (typeof apiKeySessionOnlyId !== 'string' || apiKeySessionOnlyId.length === 0) {
+        if (typeof secretSessionOnlyId !== 'string' || secretSessionOnlyId.length === 0) {
             return;
         }
 
-        const entry = getTempData<{ apiKey?: string }>(apiKeySessionOnlyId);
-        const value = entry?.apiKey;
+        const entry = getTempData<{ secret?: string }>(secretSessionOnlyId);
+        const value = entry?.secret;
         if (typeof value === 'string' && value.length > 0) {
-            setSessionOnlyApiKeyValue(value);
-            setSelectedApiKeyId(null);
+            setSessionOnlySecretValue(value);
+            setSelectedSecretId(null);
         }
 
         const setParams = (navigation as any)?.setParams;
         if (typeof setParams === 'function') {
-            setParams({ apiKeySessionOnlyId: undefined });
+            setParams({ secretSessionOnlyId: undefined });
         } else {
             navigation.dispatch({
                 type: 'SET_PARAMS',
-                payload: { params: { apiKeySessionOnlyId: undefined } },
+                payload: { params: { secretSessionOnlyId: undefined } },
             } as never);
         }
-    }, [apiKeySessionOnlyId, navigation]);
+    }, [navigation, secretSessionOnlyId]);
 
     // Keep agentType compatible with the currently selected profile.
     React.useEffect(() => {
@@ -1256,41 +1482,6 @@ function NewSessionScreen() {
         }
     }, [agentType, modelMode]);
 
-    // Scroll to section helpers - for AgentInput button clicks
-	    const wizardSectionOffsets = React.useRef<{ profile?: number; agent?: number; model?: number; machine?: number; path?: number; permission?: number; sessionType?: number }>({});
-    const registerWizardSectionOffset = React.useCallback((key: keyof typeof wizardSectionOffsets.current) => {
-        return (e: any) => {
-            wizardSectionOffsets.current[key] = e?.nativeEvent?.layout?.y ?? 0;
-        };
-    }, []);
-    const scrollToWizardSection = React.useCallback((key: keyof typeof wizardSectionOffsets.current) => {
-        const y = wizardSectionOffsets.current[key];
-        if (typeof y !== 'number' || !scrollViewRef.current) return;
-        scrollViewRef.current.scrollTo({ y: Math.max(0, y - 20), animated: true });
-    }, []);
-
-    const handleAgentInputProfileClick = React.useCallback(() => {
-        scrollToWizardSection('profile');
-    }, [scrollToWizardSection]);
-
-    const handleAgentInputMachineClick = React.useCallback(() => {
-        scrollToWizardSection('machine');
-    }, [scrollToWizardSection]);
-
-    const handleAgentInputPathClick = React.useCallback(() => {
-        scrollToWizardSection('path');
-    }, [scrollToWizardSection]);
-
-    const handleAgentInputPermissionClick = React.useCallback(() => {
-        scrollToWizardSection('permission');
-    }, [scrollToWizardSection]);
-
-    const handleAgentInputAgentClick = React.useCallback(() => {
-        scrollToWizardSection('agent');
-    }, [scrollToWizardSection]);
-
-    const ignoreProfileRowPressRef = React.useRef(false);
-
     const openProfileEnvVarsPreview = React.useCallback((profile: AIBackendProfile) => {
         Modal.show({
             component: EnvironmentVariablesPreviewModal,
@@ -1302,131 +1493,6 @@ function NewSessionScreen() {
             },
         });
     }, [selectedMachine, selectedMachineId]);
-
-	    const renderProfileLeftElement = React.useCallback((profile: AIBackendProfile) => {
-	        return <ProfileCompatibilityIcon profile={profile} />;
-	    }, []);
-
-	    const renderDefaultEnvironmentRightElement = React.useCallback((isSelected: boolean) => {
-	        const isFavorite = isDefaultEnvironmentFavorite;
-	        const actions: ItemAction[] = [
-	            {
-	                id: 'favorite',
-	                title: isFavorite ? t('profiles.actions.removeFromFavorites') : t('profiles.actions.addToFavorites'),
-	                icon: isFavorite ? 'star' : 'star-outline',
-	                onPress: () => toggleFavoriteProfile(''),
-	                color: isFavorite ? selectedIndicatorColor : theme.colors.textSecondary,
-	            },
-	        ];
-
-	        return (
-	            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-	                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-	                    <Ionicons
-	                        name="checkmark-circle"
-	                        size={24}
-	                        color={selectedIndicatorColor}
-	                        style={{ opacity: isSelected ? 1 : 0 }}
-	                    />
-	                </View>
-	                <ItemRowActions
-	                    title={t('profiles.noProfile')}
-	                    actions={actions}
-	                    compactActionIds={['favorite']}
-	                    iconSize={20}
-	                    onActionPressIn={() => {
-	                        ignoreNextRowPress(ignoreProfileRowPressRef);
-	                    }}
-	                />
-	            </View>
-	        );
-	    }, [isDefaultEnvironmentFavorite, selectedIndicatorColor, theme.colors.textSecondary, toggleFavoriteProfile]);
-
-	    const renderProfileRightElement = React.useCallback((profile: AIBackendProfile, isSelected: boolean, isFavorite: boolean) => {
-	        const envVarCount = Object.keys(getProfileEnvironmentVariables(profile)).length;
-
-	        const actions = buildProfileActions({
-	            profile,
-	            isFavorite,
-	            favoriteActionColor: selectedIndicatorColor,
-	            nonFavoriteActionColor: theme.colors.textSecondary,
-	            onToggleFavorite: () => toggleFavoriteProfile(profile.id),
-	            onEdit: () => openProfileEdit({ profileId: profile.id }),
-	            onDuplicate: () => handleDuplicateProfile(profile),
-	            onDelete: () => handleDeleteProfile(profile),
-	            onViewEnvironmentVariables: envVarCount > 0 ? () => openProfileEnvVarsPreview(profile) : undefined,
-	        });
-
-	        return (
-	            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                    <ProfileRequirementsBadge
-                        profile={profile}
-                        machineId={selectedMachineId ?? null}
-                        onPress={openApiKeys}
-                    />
-	                <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-	                    <Ionicons
-                        name="checkmark-circle"
-                        size={24}
-	                        color={selectedIndicatorColor}
-	                        style={{ opacity: isSelected ? 1 : 0 }}
-	                    />
-	                </View>
-		                <ItemRowActions
-		                    title={profile.name}
-		                    actions={actions}
-		                    compactActionIds={['favorite', ...(envVarCount > 0 ? ['envVars'] : [])]}
-		                    iconSize={20}
-		                    onActionPressIn={() => {
-		                        ignoreNextRowPress(ignoreProfileRowPressRef);
-		                    }}
-		                />
-	            </View>
-	        );
-	    }, [
-	        handleDeleteProfile,
-	        handleDuplicateProfile,
-            openApiKeys,
-	        openProfileEnvVarsPreview,
-	        openProfileEdit,
-	        screenWidth,
-            selectedMachineId,
-	        selectedIndicatorColor,
-	        theme.colors.button.secondary.tint,
-	        theme.colors.deleteAction,
-	        theme.colors.textSecondary,
-	        toggleFavoriteProfile,
-	    ]);
-
-    // Helper to get meaningful subtitle text for profiles
-    const getProfileSubtitle = React.useCallback((profile: AIBackendProfile): string => {
-        const parts: string[] = [];
-        const availability = isProfileAvailable(profile);
-
-        if (profile.isBuiltIn) {
-            parts.push('Built-in');
-        }
-
-        if (profile.compatibility.claude && profile.compatibility.codex) {
-            parts.push('Claude & Codex');
-        } else if (profile.compatibility.claude) {
-            parts.push('Claude');
-        } else if (profile.compatibility.codex) {
-            parts.push('Codex');
-        }
-
-        if (!availability.available && availability.reason) {
-            if (availability.reason.startsWith('requires-agent:')) {
-                const required = availability.reason.split(':')[1];
-                parts.push(`Requires ${required}`);
-            } else if (availability.reason.startsWith('cli-not-detected:')) {
-                const cli = availability.reason.split(':')[1];
-                parts.push(`${cli} CLI not detected`);
-            }
-        }
-
-        return parts.join(' · ');
-    }, [isProfileAvailable]);
 
     const handleMachineClick = React.useCallback(() => {
         router.push({
@@ -1572,39 +1638,62 @@ function NewSessionScreen() {
                     environmentVariables = transformProfileToEnvironmentVars(selectedProfile);
 
                     // Spawn-time secret injection overlay (saved key / session-only key)
-                    const requiredSecretName = requiredSecretEnvVarName;
-                    const injectedSecretValue =
-                        sessionOnlyApiKeyValue
-                            ?? selectedSavedApiKey?.value
-                            ?? null;
+                    const selectedSecretIdByEnvVarName = selectedSecretIdByProfileIdByEnvVarName[selectedProfileId] ?? {};
+                    const sessionOnlySecretValueByEnvVarName = sessionOnlySecretValueByProfileIdByEnvVarName[selectedProfileId] ?? {};
+                    const machineEnvReadyByName = Object.fromEntries(
+                        Object.entries(machineEnvPresence.meta ?? {}).map(([k, v]) => [k, Boolean(v?.isSet)]),
+                    );
+                    const satisfaction = getSecretSatisfaction({
+                        profile: selectedProfile,
+                        secrets,
+                        defaultBindings: secretBindingsByProfileId[selectedProfile.id] ?? null,
+                        selectedSecretIds: selectedSecretIdByEnvVarName,
+                        sessionOnlyValues: sessionOnlySecretValueByEnvVarName,
+                        machineEnvReadyByName,
+                    });
 
-                    const needsSecret =
-                        selectedProfile.authMode === 'apiKeyEnv' &&
-                        typeof requiredSecretName === 'string' &&
-                        requiredSecretName.length > 0;
+                    if (satisfaction.hasSecretRequirements && !satisfaction.isSatisfied) {
+                        const missing = satisfaction.items.find((i) => i.required && !i.isSatisfied)?.envVarName ?? null;
+                        Modal.alert(
+                            t('common.error'),
+                            t('secrets.missingForProfile', { env: missing ?? t('profiles.requirements.secretRequired') }),
+                        );
+                        setIsCreating(false);
+                        return;
+                    }
 
-                    if (needsSecret) {
-                        const hasMachineEnv = apiKeyPreflight.isReady;
-                        const hasInjected = typeof injectedSecretValue === 'string' && injectedSecretValue.length > 0;
+                    // Inject any secrets that were satisfied via saved key or session-only.
+                    // Machine-env satisfied secrets are not injected (daemon will resolve from its env).
+                    for (const item of satisfaction.items) {
+                        if (!item.isSatisfied) continue;
+                        let injected: string | null = null;
 
-                        if (!hasInjected && !hasMachineEnv) {
-                            Modal.alert(
-                                t('common.error'),
-                                `Missing API key (${requiredSecretName}). Configure it on the machine or select/enter a key.`,
-                            );
-                            setIsCreating(false);
-                            return;
+                        if (item.satisfiedBy === 'sessionOnly') {
+                            injected = sessionOnlySecretValueByEnvVarName[item.envVarName] ?? null;
+                        } else if (
+                            item.satisfiedBy === 'selectedSaved' ||
+                            item.satisfiedBy === 'rememberedSaved' ||
+                            item.satisfiedBy === 'defaultSaved'
+                        ) {
+                            const id = item.savedSecretId;
+                            const secret = id ? (secrets.find((k) => k.id === id) ?? null) : null;
+                            injected = sync.decryptSecretValue(secret?.encryptedValue ?? null);
                         }
 
-                        if (hasInjected) {
+                        if (typeof injected === 'string' && injected.length > 0) {
                             environmentVariables = {
                                 ...environmentVariables,
-                                [requiredSecretName]: injectedSecretValue!,
+                                [item.envVarName]: injected,
                             };
                         }
                     }
                 }
             }
+
+            const terminal = resolveTerminalSpawnOptions({
+                settings: storage.getState().settings,
+                machineId: selectedMachineId,
+            });
 
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
@@ -1612,7 +1701,8 @@ function NewSessionScreen() {
                 approvedNewDirectoryCreation: true,
                 agent: agentType,
                 profileId: profilesActive ? (selectedProfileId ?? '') : undefined,
-                environmentVariables
+                environmentVariables,
+                terminal,
             });
 
             if ('sessionId' in result && result.sessionId) {
@@ -1655,19 +1745,20 @@ function NewSessionScreen() {
         }
     }, [
         agentType,
-        apiKeyPreflight.isReady,
         experimentsEnabled,
+        machineEnvPresence.meta,
         modelMode,
         permissionMode,
         profileMap,
         recentMachinePaths,
-        requiredSecretEnvVarName,
         router,
+        secretBindingsByProfileId,
+        secrets,
+        selectedSecretIdByProfileIdByEnvVarName,
         selectedMachineId,
         selectedPath,
         selectedProfileId,
-        selectedSavedApiKey?.value,
-        sessionOnlyApiKeyValue,
+        sessionOnlySecretValueByProfileIdByEnvVarName,
         sessionPrompt,
         sessionType,
         useEnhancedSessionWizard,
@@ -1708,14 +1799,29 @@ function NewSessionScreen() {
             selectedMachineId,
             selectedPath,
             selectedProfileId: useProfiles ? selectedProfileId : null,
-            selectedApiKeyId,
+            selectedSecretId,
+            selectedSecretIdByProfileIdByEnvVarName,
+            sessionOnlySecretValueEncByProfileIdByEnvVarName: getSessionOnlySecretValueEncByProfileIdByEnvVarName(),
             agentType,
             permissionMode,
             modelMode,
             sessionType,
             updatedAt: Date.now(),
         });
-    }, [agentType, modelMode, permissionMode, selectedApiKeyId, selectedMachineId, selectedPath, selectedProfileId, sessionPrompt, sessionType, useProfiles]);
+    }, [
+        agentType,
+        getSessionOnlySecretValueEncByProfileIdByEnvVarName,
+        modelMode,
+        permissionMode,
+        selectedSecretId,
+        selectedSecretIdByProfileIdByEnvVarName,
+        selectedMachineId,
+        selectedPath,
+        selectedProfileId,
+        sessionPrompt,
+        sessionType,
+        useProfiles,
+    ]);
 
     // Persist the current wizard state so it survives remounts and screen navigation
     // Uses debouncing to avoid excessive writes
@@ -1769,65 +1875,78 @@ function NewSessionScreen() {
                         ]),
                 ]}
             >
-                <View style={{ 
-                    width: '100%',
-                    alignSelf: 'center',
-                    paddingTop: safeArea.top,
-                    paddingBottom: safeArea.bottom,
-                }}>
-                    {/* Session type selector only if enabled via experiments */}
-                    {experimentsEnabled && expSessionType && (
-                        <View style={{ paddingHorizontal: newSessionSidePadding, marginBottom: 16 }}>
-                            <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                                <ItemGroup title={t('newSession.sessionType.title')} containerStyle={{ marginHorizontal: 0 }}>
-                                    <SessionTypeSelectorRows value={sessionType} onChange={setSessionType} />
-                                </ItemGroup>
-                            </View>
-                        </View>
-                    )}
+                <View
+                    ref={popoverBoundaryRef}
+                    style={{
+                        flex: 1,
+                        width: '100%',
+                        // Keep the content centered on web. Without this, the boundary wrapper (flex:1)
+                        // can cause the inner content to stick to the top even when the modal is centered.
+                        justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
+                    }}
+                >
+                    <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
+                        <View style={{
+                            width: '100%',
+                            alignSelf: 'center',
+                            paddingTop: safeArea.top,
+                            paddingBottom: safeArea.bottom,
+                        }}>
+                            {/* Session type selector only if enabled via experiments */}
+                            {experimentsEnabled && expSessionType && (
+                                <View style={{ paddingHorizontal: newSessionSidePadding, marginBottom: 16 }}>
+                                    <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                                        <ItemGroup title={t('newSession.sessionType.title')} containerStyle={{ marginHorizontal: 0 }}>
+                                            <SessionTypeSelectorRows value={sessionType} onChange={setSessionType} />
+                                        </ItemGroup>
+                                    </View>
+                                </View>
+                            )}
 
-                    {/* AgentInput with inline chips - sticky at bottom */}
-                    <View
-                        style={{
-                            paddingTop: 12,
-                            paddingBottom: newSessionBottomPadding,
-                        }}
-                    >
-                        <View style={{ paddingHorizontal: newSessionSidePadding }}>
-                            <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                                <AgentInput
-                                    value={sessionPrompt}
-                                    onChangeText={setSessionPrompt}
-                                    onSend={handleCreateSession}
-                                    isSendDisabled={!canCreate}
-                                    isSending={isCreating}
-                                    placeholder={t('session.inputPlaceholder')}
-                                    autocompletePrefixes={emptyAutocompletePrefixes}
-                                    autocompleteSuggestions={emptyAutocompleteSuggestions}
-                                    agentType={agentType}
-                                    onAgentClick={handleAgentClick}
-                                    permissionMode={permissionMode}
-                                    onPermissionModeChange={handlePermissionModeChange}
-                                    modelMode={modelMode}
-                                    onModelModeChange={setModelMode}
-                                    connectionStatus={connectionStatus}
-                                    machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
-                                    onMachineClick={handleMachineClick}
-                                    currentPath={selectedPath}
-                                    onPathClick={handlePathClick}
-                                    contentPaddingHorizontal={0}
-                                    {...(useProfiles
-                                        ? {
-                                                profileId: selectedProfileId,
-                                                onProfileClick: handleProfileClick,
-                                                envVarsCount: selectedProfileEnvVarsCount || undefined,
-                                                onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
-                                            }
-                                        : {})}
-                                />
+                            {/* AgentInput with inline chips - sticky at bottom */}
+                            <View
+                                style={{
+                                    paddingTop: 12,
+                                    paddingBottom: newSessionBottomPadding,
+                                }}
+                            >
+                                <View style={{ paddingHorizontal: newSessionSidePadding }}>
+                                    <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                                        <AgentInput
+                                            value={sessionPrompt}
+                                            onChangeText={setSessionPrompt}
+                                            onSend={handleCreateSession}
+                                            isSendDisabled={!canCreate}
+                                            isSending={isCreating}
+                                            placeholder={t('session.inputPlaceholder')}
+                                            autocompletePrefixes={emptyAutocompletePrefixes}
+                                            autocompleteSuggestions={emptyAutocompleteSuggestions}
+                                            agentType={agentType}
+                                            onAgentClick={handleAgentClick}
+                                            permissionMode={permissionMode}
+                                            onPermissionModeChange={handlePermissionModeChange}
+                                            modelMode={modelMode}
+                                            onModelModeChange={setModelMode}
+                                            connectionStatus={connectionStatus}
+                                            machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
+                                            onMachineClick={handleMachineClick}
+                                            currentPath={selectedPath}
+                                            onPathClick={handlePathClick}
+                                            contentPaddingHorizontal={0}
+                                            {...(useProfiles
+                                                ? {
+                                                    profileId: selectedProfileId,
+                                                    onProfileClick: handleProfileClick,
+                                                    envVarsCount: selectedProfileEnvVarsCount || undefined,
+                                                    onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
+                                                }
+                                                : {})}
+                                        />
+                                    </View>
+                                </View>
                             </View>
                         </View>
-                    </View>
+                    </PopoverBoundaryProvider>
                 </View>
             </KeyboardAvoidingView>
         );
@@ -1846,15 +1965,56 @@ function NewSessionScreen() {
             headerHeight,
             newSessionSidePadding,
             newSessionBottomPadding,
-            scrollViewRef,
-            profileSectionRef,
-            modelSectionRef,
-            machineSectionRef,
-            pathSectionRef,
-            permissionSectionRef,
-            registerWizardSectionOffset,
         };
-    }, [headerHeight, newSessionBottomPadding, newSessionSidePadding, registerWizardSectionOffset, safeArea.bottom, theme]);
+    }, [headerHeight, newSessionBottomPadding, newSessionSidePadding, safeArea.bottom, theme]);
+
+    const getSecretSatisfactionForProfile = React.useCallback((profile: AIBackendProfile) => {
+        const selectedSecretIds = selectedSecretIdByProfileIdByEnvVarName[profile.id] ?? null;
+        const sessionOnlyValues = sessionOnlySecretValueByProfileIdByEnvVarName[profile.id] ?? null;
+        const machineEnvReadyByName = Object.fromEntries(
+            Object.entries(machineEnvPresence.meta ?? {}).map(([k, v]) => [k, Boolean(v?.isSet)]),
+        );
+        return getSecretSatisfaction({
+            profile,
+            secrets,
+            defaultBindings: secretBindingsByProfileId[profile.id] ?? null,
+            selectedSecretIds,
+            sessionOnlyValues,
+            machineEnvReadyByName,
+        });
+    }, [
+        machineEnvPresence.meta,
+        secrets,
+        secretBindingsByProfileId,
+        selectedSecretIdByProfileIdByEnvVarName,
+        sessionOnlySecretValueByProfileIdByEnvVarName,
+    ]);
+
+    const getSecretOverrideReady = React.useCallback((profile: AIBackendProfile): boolean => {
+        const satisfaction = getSecretSatisfactionForProfile(profile);
+        // Override should only represent non-machine satisfaction (defaults / saved / session-only).
+        if (!satisfaction.hasSecretRequirements) return false;
+        const required = satisfaction.items.filter((i) => i.required);
+        if (required.length === 0) return false;
+        if (!required.every((i) => i.isSatisfied)) return false;
+        return required.some((i) => i.satisfiedBy !== 'machineEnv');
+    }, [getSecretSatisfactionForProfile]);
+
+    const getSecretMachineEnvOverride = React.useCallback((profile: AIBackendProfile) => {
+        if (!selectedMachineId) return null;
+        if (!machineEnvPresence.isPreviewEnvSupported) return null;
+        const requiredNames = getRequiredSecretEnvVarNames(profile);
+        if (requiredNames.length === 0) return null;
+        return {
+            isReady: requiredNames.every((name) => Boolean(machineEnvPresence.meta[name]?.isSet)),
+            isLoading: machineEnvPresence.isLoading,
+        };
+    }, [
+        machineEnvPresence.isLoading,
+        machineEnvPresence.isPreviewEnvSupported,
+        machineEnvPresence.meta,
+        selectedMachineId,
+    ]);
 
     const wizardProfilesProps = React.useMemo(() => {
         return {
@@ -1874,41 +2034,42 @@ function NewSessionScreen() {
             handleDuplicateProfile,
             handleDeleteProfile,
             openProfileEnvVarsPreview,
-            suppressNextApiKeyAutoPromptKeyRef,
-            sessionOnlyApiKeyValue,
-            selectedSavedApiKeyValue: selectedSavedApiKey?.value,
-            apiKeyPreflightIsReady: apiKeyPreflight.isReady,
-            openApiKeyRequirementModal,
+            suppressNextSecretAutoPromptKeyRef,
+            openSecretRequirementModal,
             profilesGroupTitles,
+            getSecretOverrideReady,
+            getSecretSatisfactionForProfile,
+            getSecretMachineEnvOverride,
         };
     }, [
-        apiKeyPreflight.isReady,
         experimentsEnabled,
         favoriteProfileIds,
+        getSecretOverrideReady,
         getProfileDisabled,
         getProfileSubtitleExtra,
+        getSecretSatisfactionForProfile,
+        getSecretMachineEnvOverride,
         handleAddProfile,
         handleDeleteProfile,
         handleDuplicateProfile,
         onPressDefaultEnvironment,
         onPressProfile,
-        openApiKeyRequirementModal,
+        openSecretRequirementModal,
         openProfileEdit,
         openProfileEnvVarsPreview,
         profiles,
         profilesGroupTitles,
         selectedMachineId,
         selectedProfileId,
-        selectedSavedApiKey?.value,
-        sessionOnlyApiKeyValue,
         setFavoriteProfileIds,
-        suppressNextApiKeyAutoPromptKeyRef,
+        suppressNextSecretAutoPromptKeyRef,
         useProfiles,
     ]);
 
     const wizardAgentProps = React.useMemo(() => {
         return {
             cliAvailability,
+            tmuxRequested,
             allowGemini,
             isWarningDismissed,
             hiddenBanners,
@@ -1920,7 +2081,6 @@ function NewSessionScreen() {
             setModelMode,
             selectedIndicatorColor,
             profileMap,
-            handleAgentInputProfileClick,
             permissionMode,
             handlePermissionModeChange,
             sessionType,
@@ -1930,7 +2090,6 @@ function NewSessionScreen() {
         agentType,
         allowGemini,
         cliAvailability,
-        handleAgentInputProfileClick,
         handleCLIBannerDismiss,
         hiddenBanners,
         isWarningDismissed,
@@ -1944,6 +2103,7 @@ function NewSessionScreen() {
         setModelMode,
         setSessionType,
         handlePermissionModeChange,
+        tmuxRequested,
     ]);
 
     const wizardMachineProps = React.useMemo(() => {
@@ -1953,6 +2113,7 @@ function NewSessionScreen() {
             recentMachines,
             favoriteMachineItems,
             useMachinePickerSearch,
+            onRefreshMachines: refreshMachineData,
             setSelectedMachineId,
             getBestPathForMachine,
             setSelectedPath,
@@ -1972,6 +2133,7 @@ function NewSessionScreen() {
         machines,
         recentMachines,
         recentPaths,
+        refreshMachineData,
         selectedMachine,
         selectedPath,
         setFavoriteDirectories,
@@ -1991,12 +2153,7 @@ function NewSessionScreen() {
             isCreating,
             emptyAutocompletePrefixes,
             emptyAutocompleteSuggestions,
-            handleAgentInputAgentClick,
-            handleAgentInputPermissionClick,
             connectionStatus,
-            handleAgentInputMachineClick,
-            handleAgentInputPathClick,
-            handleAgentInputProfileClick: handleAgentInputProfileClick,
             selectedProfileEnvVarsCount,
             handleEnvVarsClick,
         };
@@ -2005,27 +2162,26 @@ function NewSessionScreen() {
         connectionStatus,
         emptyAutocompletePrefixes,
         emptyAutocompleteSuggestions,
-        handleAgentInputAgentClick,
-        handleAgentInputMachineClick,
-        handleAgentInputPathClick,
-        handleAgentInputPermissionClick,
         handleCreateSession,
         handleEnvVarsClick,
         isCreating,
         selectedProfileEnvVarsCount,
         sessionPrompt,
         setSessionPrompt,
-        handleAgentInputProfileClick,
     ]);
 
     return (
-        <NewSessionWizard
-            layout={wizardLayoutProps}
-            profiles={wizardProfilesProps}
-            agent={wizardAgentProps}
-            machine={wizardMachineProps}
-            footer={wizardFooterProps}
-        />
+        <View ref={popoverBoundaryRef} style={{ flex: 1, width: '100%' }}>
+            <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
+                <NewSessionWizard
+                    layout={wizardLayoutProps}
+                    profiles={wizardProfilesProps}
+                    agent={wizardAgentProps}
+                    machine={wizardMachineProps}
+                    footer={wizardFooterProps}
+                />
+            </PopoverBoundaryProvider>
+        </View>
     );
 }
 

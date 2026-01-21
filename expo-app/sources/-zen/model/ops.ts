@@ -11,7 +11,7 @@ import {
     KvItem,
     KvMutation
 } from '../../sync/apiKv';
-import { randomUUID } from 'expo-crypto';
+import { randomUUID } from '@/platform/randomUUID';
 import { AsyncLock } from '@/utils/lock';
 
 //

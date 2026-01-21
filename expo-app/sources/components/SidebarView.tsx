@@ -1,4 +1,4 @@
-import { useSocketStatus, useFriendRequests, useSetting } from '@/sync/storage';
+import { useSocketStatus, useFriendRequests, useSetting, useSyncError } from '@/sync/storage';
 import * as React from 'react';
 import { Text, View, Pressable, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +15,9 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 import { Ionicons } from '@expo/vector-icons';
+import { sync } from '@/sync/sync';
+import { PopoverBoundaryProvider } from '@/components/PopoverBoundary';
+import { ConnectionStatusControl } from '@/components/ConnectionStatusControl';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -23,6 +26,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         backgroundColor: theme.colors.groupped.background,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
+        overflow: 'visible',
     },
     header: {
         flexDirection: 'row',
@@ -30,6 +34,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingHorizontal: 16,
         backgroundColor: theme.colors.groupped.background,
         position: 'relative',
+        zIndex: 100,
+        overflow: 'visible',
     },
     logoContainer: {
         width: 32,
@@ -44,7 +50,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         right: 0,
         flexDirection: 'column',
         alignItems: 'center',
-        pointerEvents: 'none',
+        // Allow the status control to be tappable, while still letting taps pass through
+        // to underlying header buttons when not hitting a child.
+        pointerEvents: 'box-none',
+        overflow: 'visible',
     },
     titleContainerLeft: {
         flex: 1,
@@ -52,6 +61,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'flex-start',
         marginLeft: 8,
         justifyContent: 'center',
+        overflow: 'visible',
     },
     titleText: {
         fontSize: 17,
@@ -127,6 +137,39 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         borderRadius: 3,
         backgroundColor: theme.colors.text,
     },
+    banner: {
+        marginHorizontal: 12,
+        marginBottom: 8,
+        marginTop: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 12,
+        backgroundColor: theme.colors.surface,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    bannerText: {
+        flex: 1,
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+    },
+    bannerButton: {
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 10,
+        backgroundColor: theme.colors.groupped.background,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+    },
+    bannerButtonText: {
+        fontSize: 12,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
 }));
 
 export const SidebarView = React.memo(() => {
@@ -137,6 +180,8 @@ export const SidebarView = React.memo(() => {
     const headerHeight = useHeaderHeight();
     const socketStatus = useSocketStatus();
     const realtimeStatus = useRealtimeStatus();
+    const syncError = useSyncError();
+    const popoverBoundaryRef = React.useRef<any>(null);
     const friendRequests = useFriendRequests();
     const inboxHasContent = useInboxHasContent();
     const experimentsEnabled = useSetting('experiments');
@@ -201,25 +246,19 @@ export const SidebarView = React.memo(() => {
     const titleContent = (
         <>
             <Text style={styles.titleText}>{t('sidebar.sessionsTitle')}</Text>
-            {connectionStatus.text && (
-                <View style={styles.statusContainer}>
-                    <StatusDot
-                        color={connectionStatus.color}
-                        isPulsing={connectionStatus.isPulsing}
-                        size={6}
-                        style={styles.statusDot}
-                    />
-                    <Text style={[styles.statusText, { color: connectionStatus.textColor }]}>
-                        {connectionStatus.text}
-                    </Text>
-                </View>
-            )}
+            {connectionStatus.text ? (
+                <ConnectionStatusControl
+                    variant="sidebar"
+                    alignSelf={shouldLeftJustify ? 'flex-start' : 'center'}
+                />
+            ) : null}
         </>
     );
 
     return (
         <>
-            <View style={[styles.container, { paddingTop: safeArea.top }]}>
+            <View ref={popoverBoundaryRef} style={[styles.container, { paddingTop: safeArea.top }]}>
+                <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
                 <View style={[styles.header, { height: headerHeight }]}>
                     {/* Logo - always first */}
                     <View style={styles.logoContainer}>
@@ -300,10 +339,37 @@ export const SidebarView = React.memo(() => {
                         </View>
                     )}
                 </View>
+                {(syncError || socketStatus.status === 'error' || socketStatus.status === 'disconnected') && (
+                    <View style={styles.banner}>
+                        <Text style={styles.bannerText} numberOfLines={2}>
+                            {syncError?.message
+                                ?? socketStatus.lastError
+                                ?? (socketStatus.status === 'disconnected' ? t('status.disconnected') : t('status.error'))}
+                        </Text>
+                        {syncError?.kind === 'auth' ? (
+                            <Pressable
+                                onPress={() => router.push('/restore')}
+                                style={styles.bannerButton}
+                                accessibilityRole="button"
+                            >
+                                <Text style={styles.bannerButtonText}>{t('connect.restoreAccount')}</Text>
+                            </Pressable>
+                        ) : syncError?.retryable !== false ? (
+                            <Pressable
+                                onPress={() => sync.retryNow()}
+                                style={styles.bannerButton}
+                                accessibilityRole="button"
+                            >
+                                <Text style={styles.bannerButtonText}>{t('common.retry')}</Text>
+                            </Pressable>
+                        ) : null}
+                    </View>
+                )}
                 {realtimeStatus !== 'disconnected' && (
                     <VoiceAssistantStatusBar variant="sidebar" />
                 )}
                 <MainView variant="sidebar" />
+                </PopoverBoundaryProvider>
             </View>
             <FABWide onPress={handleNewSession} />
         </>

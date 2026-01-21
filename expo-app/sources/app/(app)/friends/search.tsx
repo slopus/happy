@@ -18,7 +18,7 @@ export default function SearchFriendsScreen() {
     const [processingUserId, setProcessingUserId] = useState<string | null>(null);
     
     // Use the new search hook
-    const { results: searchResults, isSearching } = useSearch(
+    const { results: searchResults, isSearching, error: searchError } = useSearch(
         searchQuery,
         useCallback((query: string) => {
             if (!credentials) {
@@ -99,6 +99,9 @@ export default function SearchFriendsScreen() {
                             </View>
                         )}
                     </View>
+                    {searchError ? (
+                        <Text style={styles.errorText}>{searchError}</Text>
+                    ) : null}
                 </ItemGroup>
 
                 <ItemGroup
@@ -174,6 +177,12 @@ const styles = StyleSheet.create((theme) => ({
         top: 0,
         bottom: 0,
         justifyContent: 'center',
+    },
+    errorText: {
+        paddingHorizontal: 16,
+        paddingTop: 6,
+        fontSize: 13,
+        color: theme.colors.status.error,
     },
     resultsGroup: {
         marginBottom: 16,

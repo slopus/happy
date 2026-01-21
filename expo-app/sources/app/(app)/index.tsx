@@ -7,7 +7,7 @@ import { encodeBase64 } from "@/encryption/base64";
 import { authGetToken } from "@/auth/authGetToken";
 import { router, useRouter } from "expo-router";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { getRandomBytesAsync } from "expo-crypto";
+import { getRandomBytesAsync } from "@/platform/cryptoRandom";
 import { useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
 import { trackAccountCreated, trackAccountRestored } from '@/track';

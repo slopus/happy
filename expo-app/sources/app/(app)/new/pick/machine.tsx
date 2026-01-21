@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, useSessions, useSetting, useSettingMutable } from '@/sync/storage';
@@ -8,6 +8,10 @@ import { t } from '@/text';
 import { ItemList } from '@/components/ItemList';
 import { MachineSelector } from '@/components/newSession/MachineSelector';
 import { getRecentMachinesFromSessions } from '@/utils/recentMachines';
+import { Ionicons } from '@expo/vector-icons';
+import { sync } from '@/sync/sync';
+import { prefetchMachineDetectCli } from '@/hooks/useMachineDetectCliCache';
+import { invalidateMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
 
 export default React.memo(function MachinePickerScreen() {
     const { theme } = useUnistyles();
@@ -21,6 +25,29 @@ export default React.memo(function MachinePickerScreen() {
     const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
 
     const selectedMachine = machines.find(m => m.id === params.selectedId) || null;
+
+    const [isRefreshing, setIsRefreshing] = React.useState(false);
+    const selectedMachineId = typeof params.selectedId === 'string' ? params.selectedId : null;
+
+    const handleRefresh = React.useCallback(async () => {
+        if (isRefreshing) return;
+        setIsRefreshing(true);
+        try {
+            // Always refresh the machine list (new machines / metadata updates).
+            await sync.refreshMachinesThrottled({ staleMs: 0, force: true });
+
+            // Refresh machine-scoped caches only for the currently-selected machine (if any).
+            if (selectedMachineId) {
+                invalidateMachineEnvPresence({ machineId: selectedMachineId });
+                await Promise.all([
+                    prefetchMachineDetectCli({ machineId: selectedMachineId }),
+                    prefetchMachineDetectCli({ machineId: selectedMachineId, includeLoginStatus: true }),
+                ]);
+            }
+        } finally {
+            setIsRefreshing(false);
+        }
+    }, [isRefreshing, selectedMachineId]);
 
     const handleSelectMachine = (machine: typeof machines[0]) => {
         // Support both callback pattern (feature branch wizard) and navigation params (main)
@@ -52,7 +79,21 @@ export default React.memo(function MachinePickerScreen() {
                     options={{
                         headerShown: true,
                         headerTitle: t('newSession.selectMachineTitle'),
-                        headerBackTitle: t('common.back')
+                        headerBackTitle: t('common.back'),
+                        headerRight: () => (
+                            <Pressable
+                                onPress={() => { void handleRefresh(); }}
+                                hitSlop={10}
+                                style={{ padding: 2 }}
+                                accessibilityRole="button"
+                                accessibilityLabel={t('common.refresh')}
+                                disabled={isRefreshing}
+                            >
+                                {isRefreshing
+                                    ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                                    : <Ionicons name="refresh-outline" size={20} color={theme.colors.textSecondary} />}
+                            </Pressable>
+                        ),
                     }}
                 />
                 <View style={styles.container}>
@@ -72,7 +113,21 @@ export default React.memo(function MachinePickerScreen() {
                 options={{
                     headerShown: true,
                     headerTitle: t('newSession.selectMachineTitle'),
-                    headerBackTitle: t('common.back')
+                    headerBackTitle: t('common.back'),
+                    headerRight: () => (
+                        <Pressable
+                            onPress={() => { void handleRefresh(); }}
+                            hitSlop={10}
+                            style={{ padding: 2 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('common.refresh')}
+                            disabled={isRefreshing}
+                        >
+                            {isRefreshing
+                                ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                                : <Ionicons name="refresh-outline" size={20} color={theme.colors.textSecondary} />}
+                        </Pressable>
+                    ),
                 }}
             />
             <ItemList>

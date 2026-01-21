@@ -8,13 +8,15 @@ import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { AIBackendProfile } from '@/sync/settings';
 import { Modal } from '@/modal';
-import type { ItemAction } from '@/components/ItemActionsMenuModal';
+import type { ItemAction } from '@/components/itemActions/types';
 import { machinePreviewEnv } from '@/sync/ops';
 import { getProfileEnvironmentVariables } from '@/sync/settings';
-import { getRequiredSecretEnvVarName } from '@/sync/profileSecrets';
+import { getRequiredSecretEnvVarNames } from '@/sync/profileSecrets';
 import { storeTempData } from '@/utils/tempDataStore';
 import { ProfilesList } from '@/components/profiles/ProfilesList';
-import { ApiKeyRequirementModal, type ApiKeyRequirementModalResult } from '@/components/ApiKeyRequirementModal';
+import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/SecretRequirementModal';
+import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
+import { useMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
 
 export default React.memo(function ProfilePickerScreen() {
     const { theme } = useUnistyles();
@@ -23,15 +25,15 @@ export default React.memo(function ProfilePickerScreen() {
     const params = useLocalSearchParams<{ selectedId?: string; machineId?: string; profileId?: string | string[] }>();
     const useProfiles = useSetting('useProfiles');
     const experimentsEnabled = useSetting('experiments');
-    const [apiKeys, setApiKeys] = useSettingMutable('apiKeys');
-    const [defaultApiKeyByProfileId, setDefaultApiKeyByProfileId] = useSettingMutable('defaultApiKeyByProfileId');
+    const [secrets, setSecrets] = useSettingMutable('secrets');
+    const [secretBindingsByProfileId, setSecretBindingsByProfileId] = useSettingMutable('secretBindingsByProfileId');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const [favoriteProfileIds, setFavoriteProfileIds] = useSettingMutable('favoriteProfiles');
 
     const selectedId = typeof params.selectedId === 'string' ? params.selectedId : '';
     const machineId = typeof params.machineId === 'string' ? params.machineId : undefined;
     const profileId = Array.isArray(params.profileId) ? params.profileId[0] : params.profileId;
-    const setParamsOnPreviousAndClose = React.useCallback((next: { profileId: string; apiKeyId?: string; apiKeySessionOnlyId?: string }) => {
+    const setParamsOnPreviousAndClose = React.useCallback((next: { profileId: string; secretId?: string; secretSessionOnlyId?: string }) => {
         const state = navigation.getState();
         const previousRoute = state?.routes?.[state.index - 1];
         if (state && state.index > 0 && previousRoute) {
@@ -44,83 +46,134 @@ export default React.memo(function ProfilePickerScreen() {
         router.back();
     }, [navigation, router]);
 
-    const openApiKeyModal = React.useCallback((profile: AIBackendProfile) => {
-        const handleResolve = (result: ApiKeyRequirementModalResult) => {
+    const openSecretModal = React.useCallback((profile: AIBackendProfile, envVarName: string) => {
+        const requiredSecretName = envVarName.trim().toUpperCase();
+        if (!requiredSecretName) return;
+
+        const requiredSecretNames = getRequiredSecretEnvVarNames(profile);
+
+        const handleResolve = (result: SecretRequirementModalResult) => {
             if (result.action === 'cancel') return;
 
             if (result.action === 'useMachine') {
                 // Explicit choice: prefer machine key (do not auto-apply defaults in parent).
-                setParamsOnPreviousAndClose({ profileId: profile.id, apiKeyId: '' });
+                setParamsOnPreviousAndClose({ profileId: profile.id, secretId: '' });
                 return;
             }
 
             if (result.action === 'enterOnce') {
-                const tempId = storeTempData({ apiKey: result.value });
-                setParamsOnPreviousAndClose({ profileId: profile.id, apiKeySessionOnlyId: tempId });
+                const tempId = storeTempData({ secret: result.value });
+                setParamsOnPreviousAndClose({ profileId: profile.id, secretSessionOnlyId: tempId });
                 return;
             }
 
             if (result.action === 'selectSaved') {
                 if (result.setDefault) {
-                    setDefaultApiKeyByProfileId({
-                        ...defaultApiKeyByProfileId,
-                        [profile.id]: result.apiKeyId,
+                    setSecretBindingsByProfileId({
+                        ...secretBindingsByProfileId,
+                        [profile.id]: {
+                            ...(secretBindingsByProfileId[profile.id] ?? {}),
+                            [requiredSecretName]: result.secretId,
+                        },
                     });
                 }
-                setParamsOnPreviousAndClose({ profileId: profile.id, apiKeyId: result.apiKeyId });
+                setParamsOnPreviousAndClose({ profileId: profile.id, secretId: result.secretId });
             }
         };
 
         Modal.show({
-            component: ApiKeyRequirementModal,
+            component: SecretRequirementModal,
             props: {
                 profile,
+                secretEnvVarName: requiredSecretName,
+                secretEnvVarNames: requiredSecretNames,
                 machineId: machineId ?? null,
-                apiKeys,
-                defaultApiKeyId: defaultApiKeyByProfileId[profile.id] ?? null,
-                onChangeApiKeys: setApiKeys,
+                secrets,
+                defaultSecretId: secretBindingsByProfileId[profile.id]?.[requiredSecretName] ?? null,
+                defaultSecretIdByEnvVarName: secretBindingsByProfileId[profile.id] ?? null,
+                onChangeSecrets: setSecrets,
                 allowSessionOnly: true,
                 onResolve: handleResolve,
                 onRequestClose: () => handleResolve({ action: 'cancel' }),
             },
+            closeOnBackdrop: true,
         });
-    }, [apiKeys, defaultApiKeyByProfileId, machineId, setDefaultApiKeyByProfileId, setParamsOnPreviousAndClose]);
+    }, [machineId, secretBindingsByProfileId, secrets, setParamsOnPreviousAndClose, setSecretBindingsByProfileId, setSecrets]);
 
     const handleProfilePress = React.useCallback(async (profile: AIBackendProfile) => {
         const profileId = profile.id;
-        // Gate API-key profiles: require machine env OR a selected/saved key before selecting.
-        const requiredSecret = getRequiredSecretEnvVarName(profile);
+        const requiredSecretNames = getRequiredSecretEnvVarNames(profile);
+        const machineEnvReadyByName: Record<string, boolean> = {};
 
-        if (machineId && profile && profile.authMode === 'apiKeyEnv' && requiredSecret) {
-            const defaultKeyId = defaultApiKeyByProfileId[profileId] ?? '';
-            const defaultKey = defaultKeyId ? (apiKeys.find((k) => k.id === defaultKeyId) ?? null) : null;
-
-            // Check machine env for required secret (best-effort; if unsupported treat as "not detected").
+        if (machineId && requiredSecretNames.length > 0) {
+            // Best-effort: ask daemon for presence of all required secrets.
             const preview = await machinePreviewEnv(machineId, {
-                keys: [requiredSecret],
+                keys: requiredSecretNames,
                 extraEnv: getProfileEnvironmentVariables(profile),
-                sensitiveKeys: [requiredSecret],
+                sensitiveKeys: requiredSecretNames,
             });
-            const machineHasKey = preview.supported
-                ? Boolean(preview.response.values[requiredSecret]?.isSet)
-                : false;
-
-            if (!machineHasKey && !defaultKey) {
-                openApiKeyModal(profile);
-                return;
+            if (preview.supported) {
+                for (const name of requiredSecretNames) {
+                    machineEnvReadyByName[name] = Boolean(preview.response.values[name]?.isSet);
+                }
+            } else {
+                for (const name of requiredSecretNames) {
+                    machineEnvReadyByName[name] = false;
+                }
             }
+        }
 
-            // Auto-apply default key if available (still overrideable later).
-            if (defaultKey) {
-                setParamsOnPreviousAndClose({ profileId, apiKeyId: defaultKey.id });
+        const satisfaction = getSecretSatisfaction({
+            profile,
+            secrets,
+            defaultBindings: secretBindingsByProfileId[profileId] ?? null,
+            machineEnvReadyByName: machineId ? machineEnvReadyByName : null,
+        });
+
+        // If all required secrets are satisfied solely by a default saved secret AND this is the primary secret,
+        // we can still support the single-secret return param for legacy callers.
+        if (requiredSecretNames.length === 1) {
+            const only = requiredSecretNames[0]!;
+            const item = satisfaction.items.find((i) => i.envVarName === only) ?? null;
+            if (item?.satisfiedBy === 'defaultSaved' && item.savedSecretId) {
+                setParamsOnPreviousAndClose({ profileId, secretId: item.savedSecretId });
                 return;
             }
         }
 
-        const defaultKeyId = defaultApiKeyByProfileId[profileId] ?? '';
-        const defaultKey = defaultKeyId ? (apiKeys.find((k) => k.id === defaultKeyId) ?? null) : null;
-        setParamsOnPreviousAndClose(defaultKey ? { profileId, apiKeyId: defaultKey.id } : { profileId });
-    }, [apiKeys, defaultApiKeyByProfileId, machineId, router, setParamsOnPreviousAndClose]);
+        if (!satisfaction.isSatisfied) {
+            const missing = satisfaction.items.find((i) => i.required && !i.isSatisfied)?.envVarName ?? null;
+            if (missing) {
+                openSecretModal(profile, missing);
+                return;
+            }
+        }
+
+        setParamsOnPreviousAndClose({ profileId });
+    }, [machineId, openSecretModal, secretBindingsByProfileId, secrets, setParamsOnPreviousAndClose]);
+
+    const allRequiredSecretNames = React.useMemo(() => {
+        const names = new Set<string>();
+        for (const p of profiles) {
+            for (const req of getRequiredSecretEnvVarNames(p)) {
+                names.add(req);
+            }
+        }
+        return Array.from(names);
+    }, [profiles]);
+
+    const machineEnvPresence = useMachineEnvPresence(machineId ?? null, allRequiredSecretNames, { ttlMs: 5 * 60_000 });
+
+    const getSecretMachineEnvOverride = React.useCallback((profile: AIBackendProfile) => {
+        const required = getRequiredSecretEnvVarNames(profile);
+        if (required.length === 0) return null;
+        if (!machineId) return null;
+        if (!machineEnvPresence.isPreviewEnvSupported) return null;
+        return {
+            isReady: required.every((name) => Boolean(machineEnvPresence.meta[name]?.isSet)),
+            isLoading: machineEnvPresence.isLoading,
+        };
+    }, [machineEnvPresence.isLoading, machineEnvPresence.isPreviewEnvSupported, machineEnvPresence.meta, machineId]);
 
     const handleDefaultEnvironmentPress = React.useCallback(() => {
         setParamsOnPreviousAndClose({ profileId: '' });
@@ -215,10 +268,35 @@ export default React.memo(function ProfilePickerScreen() {
                     includeAddProfileRow
                     onAddProfilePress={handleAddProfile}
                     machineId={machineId ?? null}
+                    getSecretOverrideReady={(profile) => {
+                        const requiredSecretNames = getRequiredSecretEnvVarNames(profile);
+                        if (requiredSecretNames.length === 0) return false;
+                        const satisfaction = getSecretSatisfaction({
+                            profile,
+                            secrets,
+                            defaultBindings: secretBindingsByProfileId[profile.id] ?? null,
+                            machineEnvReadyByName: null,
+                        });
+                        if (!satisfaction.isSatisfied) return false;
+                        const required = satisfaction.items.filter((i) => i.required);
+                        if (required.length == 0) return false;
+                        return required.some((i) => i.satisfiedBy !== 'machineEnv');
+                    }}
+                    getSecretMachineEnvOverride={getSecretMachineEnvOverride}
                     onEditProfile={(p) => openProfileEdit(p.id)}
                     onDuplicateProfile={(p) => openProfileDuplicate(p.id)}
                     onDeleteProfile={handleDeleteProfile}
-                    onApiKeyBadgePress={(profile) => openApiKeyModal(profile)}
+                    onSecretBadgePress={(profile) => {
+                        const missing = getSecretSatisfaction({
+                            profile,
+                            secrets,
+                            defaultBindings: secretBindingsByProfileId[profile.id] ?? null,
+                            machineEnvReadyByName: machineEnvPresence.meta
+                                ? Object.fromEntries(Object.entries(machineEnvPresence.meta).map(([k, v]) => [k, Boolean(v?.isSet)]))
+                                : null,
+                        }).items.find((i) => i.required && !i.isSatisfied)?.envVarName ?? null;
+                        openSecretModal(profile, missing ?? (getRequiredSecretEnvVarNames(profile)[0] ?? ''));
+                    }}
                 />
             )}
         </>

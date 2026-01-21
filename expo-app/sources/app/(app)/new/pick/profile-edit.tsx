@@ -10,7 +10,7 @@ import { ProfileEditForm } from '@/components/ProfileEditForm';
 import { AIBackendProfile } from '@/sync/settings';
 import { layout } from '@/components/layout';
 import { useSettingMutable } from '@/sync/storage';
-import { DEFAULT_PROFILES, getBuiltInProfile } from '@/sync/profileUtils';
+import { DEFAULT_PROFILES, getBuiltInProfile, getBuiltInProfileNameKey, resolveProfileById } from '@/sync/profileUtils';
 import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 import { Modal } from '@/modal';
 import { promptUnsavedChangesAlert } from '@/utils/promptUnsavedChangesAlert';
@@ -75,7 +75,7 @@ export default React.memo(function ProfileEditScreen() {
                 console.error('Failed to parse profile data:', error);
             }
         }
-        const resolveById = (id: string) => profiles.find((p) => p.id === id) ?? getBuiltInProfile(id) ?? null;
+        const resolveById = (id: string) => resolveProfileById(id, profiles);
 
         if (cloneFromProfileIdParam) {
             const base = resolveById(cloneFromProfileIdParam);
@@ -146,7 +146,7 @@ export default React.memo(function ProfileEditScreen() {
         const isBuiltIn =
             savedProfile.isBuiltIn === true ||
             DEFAULT_PROFILES.some((bp) => bp.id === savedProfile.id) ||
-            !!getBuiltInProfile(savedProfile.id);
+            getBuiltInProfileNameKey(savedProfile.id) !== null;
 
         let profileToSave = savedProfile;
         if (isBuiltIn) {
@@ -154,9 +154,11 @@ export default React.memo(function ProfileEditScreen() {
         }
 
         const builtInNames = DEFAULT_PROFILES
-            .map((bp) => getBuiltInProfile(bp.id))
-            .filter((p): p is AIBackendProfile => !!p)
-            .map((p) => p.name.trim());
+            .map((bp) => {
+                const key = getBuiltInProfileNameKey(bp.id);
+                return key ? t(key).trim() : null;
+            })
+            .filter((name): name is string => Boolean(name));
         const hasBuiltInNameConflict = builtInNames.includes(profileToSave.name.trim());
 
         // Duplicate name guard (same behavior as settings/profiles)

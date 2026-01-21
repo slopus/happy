@@ -3,17 +3,17 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
-import { ApiKeysList } from '@/components/apiKeys/ApiKeysList';
+import { SecretsList } from '@/components/secrets/SecretsList';
 
-export default React.memo(function ApiKeyPickerScreen() {
+export default React.memo(function SecretPickerScreen() {
     const router = useRouter();
     const params = useLocalSearchParams<{ selectedId?: string }>();
     const selectedId = typeof params.selectedId === 'string' ? params.selectedId : '';
 
-    const [apiKeys, setApiKeys] = useSettingMutable('apiKeys');
+    const [secrets, setSecrets] = useSettingMutable('secrets');
 
-    const setApiKeyParamAndClose = React.useCallback((apiKeyId: string) => {
-        router.setParams({ apiKeyId });
+    const setSecretParamAndClose = React.useCallback((secretId: string) => {
+        router.setParams({ secretId });
         router.back();
     }, [router]);
 
@@ -22,21 +22,22 @@ export default React.memo(function ApiKeyPickerScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    headerTitle: t('settings.apiKeys'),
+                    headerTitle: t('settings.secrets'),
                     headerBackTitle: t('common.back'),
                 }}
             />
 
-            <ApiKeysList
-                apiKeys={apiKeys}
-                onChangeApiKeys={setApiKeys}
+            <SecretsList
+                secrets={secrets}
+                onChangeSecrets={setSecrets}
                 selectedId={selectedId}
-                onSelectId={setApiKeyParamAndClose}
+                onSelectId={setSecretParamAndClose}
                 includeNoneRow
                 allowAdd
                 allowEdit
-                onAfterAddSelectId={setApiKeyParamAndClose}
+                onAfterAddSelectId={setSecretParamAndClose}
             />
         </>
     );
 });
+
