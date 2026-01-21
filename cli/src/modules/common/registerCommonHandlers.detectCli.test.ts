@@ -42,14 +42,33 @@ function createTestRpcManager(params?: { scopePrefix?: string }) {
 }
 
 describe('registerCommonHandlers detect-cli', () => {
-    const originalEnv = { ...process.env };
+    const originalPath = process.env.PATH;
+    const originalPathext = process.env.PATHEXT;
 
     beforeEach(() => {
-        process.env = { ...originalEnv };
+        if (originalPath === undefined) {
+            delete process.env.PATH;
+        } else {
+            process.env.PATH = originalPath;
+        }
+        if (originalPathext === undefined) {
+            delete process.env.PATHEXT;
+        } else {
+            process.env.PATHEXT = originalPathext;
+        }
     });
 
     afterEach(() => {
-        process.env = { ...originalEnv };
+        if (originalPath === undefined) {
+            delete process.env.PATH;
+        } else {
+            process.env.PATH = originalPath;
+        }
+        if (originalPathext === undefined) {
+            delete process.env.PATHEXT;
+        } else {
+            process.env.PATHEXT = originalPathext;
+        }
     });
 
     it('returns available=true when an executable exists on PATH', async () => {
