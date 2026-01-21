@@ -133,7 +133,6 @@ export async function runCodex(opts: {
         machineId,
         startedBy: opts.startedBy,
         terminalRuntime: opts.terminalRuntime ?? null,
-        terminalRuntime: opts.terminalRuntime ?? null,
         permissionMode: initialPermissionMode,
         permissionModeUpdatedAt: Date.now(),
     });

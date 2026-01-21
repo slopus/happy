@@ -140,7 +140,6 @@ export async function runGemini(opts: {
     machineId,
     startedBy: opts.startedBy,
     terminalRuntime: opts.terminalRuntime ?? null,
-    terminalRuntime: opts.terminalRuntime ?? null,
     permissionMode: initialPermissionMode,
     permissionModeUpdatedAt: Date.now(),
   });

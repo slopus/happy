@@ -25,7 +25,7 @@ describe('ApiMachineClient spawn-happy-session handler', () => {
         captured = options;
         return { type: 'success', sessionId: 'session-1' };
       },
-      stopSession: () => true,
+      stopSession: async () => true,
       requestShutdown: () => {},
     });
 
@@ -49,4 +49,3 @@ describe('ApiMachineClient spawn-happy-session handler', () => {
     );
   });
 });
-
