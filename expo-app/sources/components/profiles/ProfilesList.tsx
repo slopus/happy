@@ -454,7 +454,7 @@ export function ProfilesList(props: ProfilesListProps) {
                             showDivider={!isLast}
                             isMobile={isMobile}
                             machineId={props.machineId}
-                            experimentsEnabled={props.experimentsEnabled}
+                            experimentsEnabled={allowGemini}
                             subtitleText={subtitleText}
                             showMobileBadge={showMobileBadge}
                             onPressProfile={props.onPressProfile}
@@ -483,4 +483,3 @@ export function ProfilesList(props: ProfilesListProps) {
         </ItemList>
     );
 }
-
