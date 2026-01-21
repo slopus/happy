@@ -56,11 +56,16 @@ export function DetectedClisList({ state, layout = 'inline' }: Props) {
         );
     }
 
-    const entries = [
-        ['claude', state.response.clis.claude] as const,
-        ['codex', state.response.clis.codex] as const,
-        ['gemini', state.response.clis.gemini] as const,
-    ].filter(([name]) => name !== 'gemini' || allowGemini);
+    const entries: Array<[string, { available: boolean; resolvedPath?: string; version?: string }]> = [
+        ['claude', state.response.clis.claude],
+        ['codex', state.response.clis.codex],
+    ];
+    if (allowGemini) {
+        entries.push(['gemini', state.response.clis.gemini]);
+    }
+    if (state.response.tmux) {
+        entries.push(['tmux', state.response.tmux]);
+    }
 
     return (
         <>
@@ -68,7 +73,7 @@ export function DetectedClisList({ state, layout = 'inline' }: Props) {
                 const available = entry.available;
                 const iconName = available ? 'checkmark-circle' : 'close-circle';
                 const iconColor = available ? theme.colors.status.connected : theme.colors.textSecondary;
-                const version = extractSemver(entry.version);
+                const version = name === 'tmux' ? (entry.version ?? null) : extractSemver(entry.version);
 
                 const subtitle = !available
                     ? t('machine.detectedCliNotDetected')
@@ -120,4 +125,3 @@ export function DetectedClisList({ state, layout = 'inline' }: Props) {
         </>
     );
 }
-

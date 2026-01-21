@@ -16,11 +16,13 @@ import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import { getAttachCommandForSession, getTmuxFallbackReason, getTmuxTargetForSession } from '@/utils/terminalSessionDetails';
 import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
-import { getBuiltInProfile, getBuiltInProfileNameKey } from '@/sync/profileUtils';
+import { resolveProfileById } from '@/sync/profileUtils';
+import { getProfileDisplayName } from '@/components/profiles/profileDisplay';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -77,16 +79,24 @@ function SessionInfoContent({ session }: { session: Session }) {
         const profileId = session.metadata?.profileId;
         if (profileId === null || profileId === '') return t('profiles.noProfile');
         if (typeof profileId !== 'string') return t('status.unknown');
-
-        const builtIn = getBuiltInProfile(profileId);
-        if (builtIn) {
-            const key = getBuiltInProfileNameKey(profileId);
-            return key ? t(key) : builtIn.name;
+        const resolved = resolveProfileById(profileId, profiles);
+        if (resolved) {
+            return getProfileDisplayName(resolved);
         }
-
-        const custom = profiles.find(p => p.id === profileId);
-        return custom?.name ?? t('status.unknown');
+        return t('status.unknown');
     }, [profiles, session.metadata?.profileId]);
+
+    const attachCommand = React.useMemo(() => {
+        return getAttachCommandForSession({ sessionId: session.id, terminal: session.metadata?.terminal });
+    }, [session.id, session.metadata?.terminal]);
+
+    const tmuxTarget = React.useMemo(() => {
+        return getTmuxTargetForSession(session.metadata?.terminal);
+    }, [session.metadata?.terminal]);
+
+    const tmuxFallbackReason = React.useMemo(() => {
+        return getTmuxFallbackReason(session.metadata?.terminal);
+    }, [session.metadata?.terminal]);
 
     const handleCopySessionId = useCallback(async () => {
         if (!session) return;
@@ -97,6 +107,16 @@ function SessionInfoContent({ session }: { session: Session }) {
             Modal.alert(t('common.error'), t('sessionInfo.failedToCopySessionId'));
         }
     }, [session]);
+
+    const handleCopyAttachCommand = useCallback(async () => {
+        if (!attachCommand) return;
+        try {
+            await Clipboard.setStringAsync(attachCommand);
+            Modal.alert(t('common.copied'), t('items.copiedToClipboard', { label: t('sessionInfo.attachFromTerminal') }));
+        } catch (error) {
+            Modal.alert(t('common.error'), t('sessionInfo.failedToCopyMetadata'));
+        }
+    }, [attachCommand]);
 
     const handleCopyMetadata = useCallback(async () => {
         if (!session?.metadata) return;
@@ -358,6 +378,31 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 title={t('sessionInfo.happyHome')}
                                 subtitle={formatPathRelativeToHome(session.metadata.happyHomeDir, session.metadata.homeDir)}
                                 icon={<Ionicons name="home-outline" size={29} color="#5856D6" />}
+                                showChevron={false}
+                            />
+                        )}
+                        {!!attachCommand && (
+                            <Item
+                                title={t('sessionInfo.attachFromTerminal')}
+                                subtitle={attachCommand}
+                                icon={<Ionicons name="terminal-outline" size={29} color="#5856D6" />}
+                                onPress={handleCopyAttachCommand}
+                                showChevron={false}
+                            />
+                        )}
+                        {!!tmuxTarget && (
+                            <Item
+                                title={t('sessionInfo.tmuxTarget')}
+                                subtitle={tmuxTarget}
+                                icon={<Ionicons name="albums-outline" size={29} color="#5856D6" />}
+                                showChevron={false}
+                            />
+                        )}
+                        {!!tmuxFallbackReason && (
+                            <Item
+                                title={t('sessionInfo.tmuxFallback')}
+                                subtitle={tmuxFallbackReason}
+                                icon={<Ionicons name="alert-circle-outline" size={29} color="#FF9500" />}
                                 showChevron={false}
                             />
                         )}

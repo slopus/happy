@@ -15,6 +15,7 @@ interface CLIAvailability {
     claude: boolean | null; // null = unknown/loading, true = installed, false = not installed
     codex: boolean | null;
     gemini: boolean | null;
+    tmux: boolean | null;
     login: {
         claude: boolean | null; // null = unknown/unsupported
         codex: boolean | null;
@@ -84,6 +85,7 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
         claude: boolean | null;
         codex: boolean | null;
         gemini: boolean | null;
+        tmux: boolean | null;
         timestamp: number;
         error?: string;
     } | null>(null);
@@ -105,7 +107,8 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
                     machineId,
                     '(command -v claude >/dev/null 2>&1 && echo "claude:true" || echo "claude:false") && ' +
                     '(command -v codex >/dev/null 2>&1 && echo "codex:true" || echo "codex:false") && ' +
-                    '(command -v gemini >/dev/null 2>&1 && echo "gemini:true" || echo "gemini:false")',
+                    '(command -v gemini >/dev/null 2>&1 && echo "gemini:true" || echo "gemini:false") && ' +
+                    '(command -v tmux >/dev/null 2>&1 && echo "tmux:true" || echo "tmux:false")',
                     '/'
                 );
 
@@ -113,12 +116,12 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
 
                 if (result.success && result.exitCode === 0) {
                     const lines = result.stdout.trim().split('\n');
-                    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean } = {};
+                    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean; tmux?: boolean } = {};
 
                     lines.forEach(line => {
                         const [cli, status] = line.split(':');
                         if (cli && status) {
-                            cliStatus[cli.trim() as 'claude' | 'codex' | 'gemini'] = status.trim() === 'true';
+                            cliStatus[cli.trim() as 'claude' | 'codex' | 'gemini' | 'tmux'] = status.trim() === 'true';
                         }
                     });
 
@@ -127,6 +130,7 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
                         claude: cliStatus.claude ?? null,
                         codex: cliStatus.codex ?? null,
                         gemini: cliStatus.gemini ?? null,
+                        tmux: cliStatus.tmux ?? null,
                         timestamp: Date.now(),
                     });
                     return;
@@ -137,6 +141,7 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
                     claude: null,
                     codex: null,
                     gemini: null,
+                    tmux: null,
                     timestamp: 0,
                     error: `Detection failed: ${result.stderr || 'Unknown error'}`,
                 });
@@ -146,6 +151,7 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
                     claude: null,
                     codex: null,
                     gemini: null,
+                    tmux: null,
                     timestamp: 0,
                     error: error instanceof Error ? error.message : 'Detection error',
                 });
@@ -175,6 +181,7 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
                 claude: null,
                 codex: null,
                 gemini: null,
+                tmux: null,
                 login: { claude: null, codex: null, gemini: null },
                 isDetecting: false,
                 timestamp: 0
@@ -197,6 +204,7 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
                 claude: cachedResponse.clis.claude.available,
                 codex: cachedResponse.clis.codex.available,
                 gemini: cachedResponse.clis.gemini.available,
+                tmux: cachedResponse.tmux?.available ?? null,
                 login: {
                     claude: options?.includeLoginStatus ? (cachedResponse.clis.claude.isLoggedIn ?? null) : null,
                     codex: options?.includeLoginStatus ? (cachedResponse.clis.codex.isLoggedIn ?? null) : null,
@@ -213,6 +221,7 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
                 claude: bashAvailability.claude,
                 codex: bashAvailability.codex,
                 gemini: bashAvailability.gemini,
+                tmux: bashAvailability.tmux,
                 login: { claude: null, codex: null, gemini: null },
                 isDetecting: cached.status === 'loading' || bashInFlightRef.current !== null,
                 timestamp: bashAvailability.timestamp,
@@ -224,6 +233,7 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
             claude: null,
             codex: null,
             gemini: null,
+            tmux: null,
             login: { claude: null, codex: null, gemini: null },
             isDetecting: cached.status === 'loading',
             timestamp: 0,

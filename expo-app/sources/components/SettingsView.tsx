@@ -30,6 +30,7 @@ import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
 import { Avatar } from '@/components/Avatar';
 import { t } from '@/text';
 import { MachineCliGlyphs } from '@/components/newSession/MachineCliGlyphs';
+import { HappyError } from '@/utils/errors';
 
 export const SettingsView = React.memo(function SettingsView() {
     const { theme } = useUnistyles();
@@ -41,12 +42,14 @@ export const SettingsView = React.memo(function SettingsView() {
     const experiments = useSetting('experiments');
     const expUsageReporting = useSetting('expUsageReporting');
     const useProfiles = useSetting('useProfiles');
+    const terminalUseTmux = useSetting('terminalUseTmux');
     const isCustomServer = isUsingCustomServer();
     const allMachines = useAllMachines();
     const profile = useProfile();
     const displayName = getDisplayName(profile);
     const avatarUrl = getAvatarUrl(profile);
     const bio = getBio(profile);
+    const [githubUnavailableReason, setGithubUnavailableReason] = React.useState<string | null>(null);
 
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
     const [refreshingMachines, refreshMachines] = useHappyAction(async () => {
@@ -137,8 +140,17 @@ export const SettingsView = React.memo(function SettingsView() {
 
     // GitHub connection
     const [connectingGitHub, connectGitHub] = useHappyAction(async () => {
-        const params = await getGitHubOAuthParams(auth.credentials!);
-        await Linking.openURL(params.url);
+        try {
+            const params = await getGitHubOAuthParams(auth.credentials!);
+            setGithubUnavailableReason(null);
+            await Linking.openURL(params.url);
+        } catch (e) {
+            if (e instanceof HappyError && e.canTryAgain === false) {
+                setGithubUnavailableReason(e.message);
+                throw e;
+            }
+            throw e;
+        }
     });
 
     // GitHub disconnection
@@ -275,7 +287,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     title={t('settings.github')}
                     subtitle={isGitHubConnected
                         ? t('settings.githubConnected', { login: profile.github?.login! })
-                        : t('settings.connectGithubAccount')
+                        : (githubUnavailableReason ?? t('settings.connectGithubAccount'))
                     }
                     icon={
                         <Ionicons
@@ -284,7 +296,10 @@ export const SettingsView = React.memo(function SettingsView() {
                             color={isGitHubConnected ? theme.colors.status.connected : theme.colors.textSecondary}
                         />
                     }
-                    onPress={isGitHubConnected ? handleDisconnectGitHub : connectGitHub}
+                    onPress={isGitHubConnected
+                        ? handleDisconnectGitHub
+                        : (githubUnavailableReason ? undefined : connectGitHub)
+                    }
                     loading={connectingGitHub || disconnectingGitHub}
                     showChevron={false}
                 />
@@ -390,6 +405,12 @@ export const SettingsView = React.memo(function SettingsView() {
                     icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
                     onPress={() => router.push('/(app)/settings/features')}
                 />
+                <Item
+                    title={t('settings.terminal')}
+                    subtitle={terminalUseTmux ? t('profiles.tmux.spawnSessionsEnabledSubtitle') : t('profiles.tmux.spawnSessionsDisabledSubtitle')}
+                    icon={<Ionicons name="terminal-outline" size={29} color="#5856D6" />}
+                    onPress={() => router.push('/(app)/settings/terminal')}
+                />
                 {useProfiles && (
                     <Item
                         title={t('settings.profiles')}
@@ -400,10 +421,10 @@ export const SettingsView = React.memo(function SettingsView() {
                 )}
                 {useProfiles && (
                     <Item
-                        title={t('settings.apiKeys')}
-                        subtitle={t('settings.apiKeysSubtitle')}
+                        title={t('settings.secrets')}
+                        subtitle={t('settings.secretsSubtitle')}
                         icon={<Ionicons name="key-outline" size={29} color="#AF52DE" />}
-                        onPress={() => router.push('/(app)/settings/api-keys')}
+                        onPress={() => router.push('/(app)/settings/secrets')}
                     />
                 )}
                 {experiments && expUsageReporting && (

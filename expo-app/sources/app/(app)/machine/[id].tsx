@@ -5,7 +5,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
-import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
+import { useSessions, useAllMachines, useMachine, storage, useSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import { machineDetectCli, type DetectCliResponse, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
@@ -21,6 +21,8 @@ import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
 import { DetectedClisList } from '@/components/machine/DetectedClisList';
 import type { MachineDetectCliCacheState } from '@/hooks/useMachineDetectCliCache';
+import { resolveTerminalSpawnOptions } from '@/sync/terminalSettings';
+import { Switch } from '@/components/Switch';
 
 const styles = StyleSheet.create((theme) => ({
     pathInputContainer: {
@@ -62,6 +64,39 @@ const styles = StyleSheet.create((theme) => ({
             default: theme.colors.permissionButton?.inactive?.background ?? theme.colors.surfaceHigh,
         }) as any,
     },
+    tmuxInputContainer: {
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+    },
+    tmuxFieldLabel: {
+        ...Typography.default('semiBold'),
+        fontSize: 13,
+        color: theme.colors.groupped.sectionTitle,
+        marginBottom: 4,
+    },
+    tmuxTextInput: {
+        ...Typography.default('regular'),
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: Platform.select({ ios: 10, default: 12 }),
+        fontSize: Platform.select({ ios: 17, default: 16 }),
+        lineHeight: Platform.select({ ios: 22, default: 24 }),
+        letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+        color: theme.colors.input.text,
+        ...(Platform.select({
+            web: {
+                outline: 'none',
+                outlineStyle: 'none',
+                outlineWidth: 0,
+                outlineColor: 'transparent',
+                boxShadow: 'none',
+                WebkitBoxShadow: 'none',
+                WebkitAppearance: 'none',
+            },
+            default: {},
+        }) as object),
+    },
 }));
 
 export default function MachineDetailScreen() {
@@ -86,6 +121,74 @@ export default function MachineDetailScreen() {
         | null
     >(null);
     // Variant D only
+
+    const terminalUseTmux = useSetting('terminalUseTmux');
+    const terminalTmuxSessionName = useSetting('terminalTmuxSessionName');
+    const terminalTmuxIsolated = useSetting('terminalTmuxIsolated');
+    const terminalTmuxTmpDir = useSetting('terminalTmuxTmpDir');
+    const [terminalTmuxByMachineId, setTerminalTmuxByMachineId] = useSettingMutable('terminalTmuxByMachineId');
+
+    const tmuxOverride = machineId ? terminalTmuxByMachineId?.[machineId] : undefined;
+    const tmuxOverrideEnabled = Boolean(tmuxOverride);
+
+    const tmuxAvailable = React.useMemo(() => {
+        const response =
+            detectedClis?.status === 'loaded'
+                ? detectedClis.response
+                : detectedClis?.status === 'loading'
+                    ? detectedClis.response
+                    : null;
+        // Old daemons may omit tmux; treat as unknown.
+        if (!response?.tmux) return null;
+        return response.tmux.available;
+    }, [detectedClis]);
+
+    const setTmuxOverrideEnabled = useCallback((enabled: boolean) => {
+        if (!machineId) return;
+        if (enabled) {
+            setTerminalTmuxByMachineId({
+                ...terminalTmuxByMachineId,
+                [machineId]: {
+                    useTmux: terminalUseTmux,
+                    sessionName: terminalTmuxSessionName,
+                    isolated: terminalTmuxIsolated,
+                    tmpDir: terminalTmuxTmpDir,
+                },
+            });
+            return;
+        }
+
+        const next = { ...terminalTmuxByMachineId };
+        delete next[machineId];
+        setTerminalTmuxByMachineId(next);
+    }, [
+        machineId,
+        setTerminalTmuxByMachineId,
+        terminalTmuxByMachineId,
+        terminalUseTmux,
+        terminalTmuxIsolated,
+        terminalTmuxSessionName,
+        terminalTmuxTmpDir,
+    ]);
+
+    const updateTmuxOverride = useCallback((patch: Partial<NonNullable<typeof tmuxOverride>>) => {
+        if (!machineId || !tmuxOverride) return;
+        setTerminalTmuxByMachineId({
+            ...terminalTmuxByMachineId,
+            [machineId]: {
+                ...tmuxOverride,
+                ...patch,
+            },
+        });
+    }, [machineId, setTerminalTmuxByMachineId, terminalTmuxByMachineId, tmuxOverride]);
+
+    const setTmuxOverrideUseTmux = useCallback((next: boolean) => {
+        if (next && tmuxAvailable === false) {
+            Modal.alert(t('common.error'), t('machine.tmux.notDetectedMessage'));
+            return;
+        }
+        updateTmuxOverride({ useTmux: next });
+    }, [tmuxAvailable, updateTmuxOverride]);
 
     const machineSessions = useMemo(() => {
         if (!sessions || !machineId) return [];
@@ -306,10 +409,15 @@ export default function MachineDetailScreen() {
             if (!isMachineOnline(machine)) return;
             setIsSpawning(true);
             const absolutePath = resolveAbsolutePath(pathToUse, machine?.metadata?.homeDir);
+            const terminal = resolveTerminalSpawnOptions({
+                settings: storage.getState().settings,
+                machineId,
+            });
             const result = await machineSpawnNewSession({
                 machineId: machineId!,
                 directory: absolutePath,
-                approvedNewDirectoryCreation
+                approvedNewDirectoryCreation,
+                terminal,
             });
             switch (result.type) {
                 case 'success':
@@ -517,6 +625,83 @@ export default function MachineDetailScreen() {
                         </View>
                         </ItemGroup>
                     </>
+                )}
+
+                {/* Machine-specific tmux override */}
+                {!!machineId && (
+                    <ItemGroup title={t('profiles.tmux.title')}>
+                        <Item
+                            title={t('machine.tmux.overrideTitle')}
+                            subtitle={tmuxOverrideEnabled ? t('machine.tmux.overrideEnabledSubtitle') : t('machine.tmux.overrideDisabledSubtitle')}
+                            rightElement={<Switch value={tmuxOverrideEnabled} onValueChange={setTmuxOverrideEnabled} />}
+                            showChevron={false}
+                            onPress={() => setTmuxOverrideEnabled(!tmuxOverrideEnabled)}
+                        />
+
+                                {tmuxOverrideEnabled && tmuxOverride && (
+                            <>
+                                <Item
+                                    title={t('profiles.tmux.spawnSessionsTitle')}
+                                    subtitle={
+                                        tmuxAvailable === false
+                                            ? t('machine.tmux.notDetectedSubtitle')
+                                            : (tmuxOverride.useTmux ? t('profiles.tmux.spawnSessionsEnabledSubtitle') : t('profiles.tmux.spawnSessionsDisabledSubtitle'))
+                                    }
+                                    rightElement={
+                                        <Switch
+                                            value={tmuxOverride.useTmux}
+                                            onValueChange={setTmuxOverrideUseTmux}
+                                            disabled={tmuxAvailable === false && !tmuxOverride.useTmux}
+                                        />
+                                    }
+                                    showChevron={false}
+                                    onPress={() => setTmuxOverrideUseTmux(!tmuxOverride.useTmux)}
+                                />
+
+                                {tmuxOverride.useTmux && (
+                                    <>
+                                        <View style={[styles.tmuxInputContainer, { paddingTop: 0 }]}>
+                                            <Text style={styles.tmuxFieldLabel}>
+                                                {t('profiles.tmuxSession')} ({t('common.optional')})
+                                            </Text>
+                                            <TextInput
+                                                style={styles.tmuxTextInput}
+                                                placeholder={t('profiles.tmux.sessionNamePlaceholder')}
+                                                placeholderTextColor={theme.colors.input.placeholder}
+                                                value={tmuxOverride.sessionName}
+                                                onChangeText={(value) => updateTmuxOverride({ sessionName: value })}
+                                            />
+                                        </View>
+
+                                        <Item
+                                            title={t('profiles.tmux.isolatedServerTitle')}
+                                            subtitle={tmuxOverride.isolated ? t('profiles.tmux.isolatedServerEnabledSubtitle') : t('profiles.tmux.isolatedServerDisabledSubtitle')}
+                                            rightElement={<Switch value={tmuxOverride.isolated} onValueChange={(next) => updateTmuxOverride({ isolated: next })} />}
+                                            showChevron={false}
+                                            onPress={() => updateTmuxOverride({ isolated: !tmuxOverride.isolated })}
+                                        />
+
+                                        {tmuxOverride.isolated && (
+                                            <View style={[styles.tmuxInputContainer, { paddingTop: 0, paddingBottom: 16 }]}>
+                                                <Text style={styles.tmuxFieldLabel}>
+                                                    {t('profiles.tmuxTempDir')} ({t('common.optional')})
+                                                </Text>
+                                                <TextInput
+                                                    style={styles.tmuxTextInput}
+                                                    placeholder={t('profiles.tmux.tempDirPlaceholder')}
+                                                    placeholderTextColor={theme.colors.input.placeholder}
+                                                    value={tmuxOverride.tmpDir ?? ''}
+                                                    onChangeText={(value) => updateTmuxOverride({ tmpDir: value.trim().length > 0 ? value : null })}
+                                                    autoCapitalize="none"
+                                                    autoCorrect={false}
+                                                />
+                                            </View>
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        )}
+                    </ItemGroup>
                 )}
 
                 {/* Detected CLIs */}
