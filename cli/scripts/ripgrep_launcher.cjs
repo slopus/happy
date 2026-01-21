@@ -121,7 +121,8 @@ function loadRipgrepNative() {
     const runtime = detectRuntime();
     const toolsDir = path.join(__dirname, '..', 'tools', 'unpacked');
     const nativePath = path.join(toolsDir, 'ripgrep.node');
-    const binaryPath = path.join(toolsDir, 'rg');
+    const binaryName = process.platform === 'win32' ? 'rg.exe' : 'rg';
+    const binaryPath = path.join(toolsDir, binaryName);
 
     // Try Node.js native addon first (preserves existing behavior)
     if (runtime === 'node') {

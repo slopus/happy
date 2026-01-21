@@ -26,6 +26,10 @@ function getPlatformDir() {
         if (arch === 'x64') return 'x64-linux';
     } else if (platform === 'win32') {
         if (arch === 'x64') return 'x64-win32';
+        // Windows on ARM can run x64 binaries under emulation.
+        // Note: native Node addons won't load cross-arch, but our launcher
+        // falls back to the packaged rg.exe binary when that happens.
+        if (arch === 'arm64') return 'x64-win32';
     }
     
     throw new Error(`Unsupported platform: ${arch}-${platform}`);

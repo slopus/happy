@@ -5,13 +5,13 @@ import dotenv from 'dotenv'
 
 const testEnv = dotenv.config({
     path: '.env.integration-test'
-}).parsed
+}).parsed ?? {}
 
 export default defineConfig({
     test: {
         globals: false,
         environment: 'node',
-        include: ['src/**/*.test.ts'],
+        include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
         globalSetup: ['./src/test-setup.ts'],
         coverage: {
             provider: 'v8',
@@ -25,8 +25,8 @@ export default defineConfig({
             ],
         },
         env: {
-            ...process.env,
             ...testEnv,
+            ...process.env,
         }
     },
     resolve: {
