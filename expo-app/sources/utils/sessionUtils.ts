@@ -14,17 +14,27 @@ export interface SessionStatus {
     isPulsing?: boolean;
 }
 
+export const OPTIMISTIC_SESSION_THINKING_TIMEOUT_MS = 15_000;
+
 /**
  * Get the current state of a session based on presence and thinking status.
  * Uses centralized session state from storage.ts
  */
-export function useSessionStatus(session: Session): SessionStatus {
+export function getSessionStatus(session: Session, nowMs: number = Date.now(), vibingIndex?: number): SessionStatus {
     const isOnline = session.presence === "online";
     const hasPermissions = (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
 
-    const vibingMessage = React.useMemo(() => {
-        return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
-    }, [isOnline, hasPermissions, session.thinking]);
+    const optimisticThinkingAt = session.optimisticThinkingAt ?? null;
+    const isOptimisticThinking = typeof optimisticThinkingAt === 'number' && nowMs - optimisticThinkingAt < OPTIMISTIC_SESSION_THINKING_TIMEOUT_MS;
+    const isOptimisticOnly = isOptimisticThinking && session.thinking !== true;
+    const isThinking = session.thinking === true || isOptimisticThinking;
+
+    const vibingMessage = (() => {
+        const idx = typeof vibingIndex === 'number'
+            ? vibingIndex
+            : Math.floor(Math.random() * vibingMessages.length);
+        return vibingMessages[idx % vibingMessages.length].toLowerCase() + '…';
+    })();
 
     if (!isOnline) {
         return {
@@ -50,7 +60,7 @@ export function useSessionStatus(session: Session): SessionStatus {
         };
     }
 
-    if (session.thinking === true) {
+    if (isThinking) {
         return {
             state: 'thinking',
             isConnected: true,
@@ -70,6 +80,25 @@ export function useSessionStatus(session: Session): SessionStatus {
         statusColor: '#34C759',
         statusDotColor: '#34C759'
     };
+}
+
+/**
+ * Hook wrapper around `getSessionStatus` that keeps vibing text stable while the session is thinking.
+ */
+export function useSessionStatus(session: Session): SessionStatus {
+    const isOnline = session.presence === "online";
+    const hasPermissions = (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
+
+    const now = Date.now();
+    const optimisticThinkingAt = session.optimisticThinkingAt ?? null;
+    const isOptimisticThinking = typeof optimisticThinkingAt === 'number' && now - optimisticThinkingAt < OPTIMISTIC_SESSION_THINKING_TIMEOUT_MS;
+    const isThinking = session.thinking === true || isOptimisticThinking;
+
+    const vibingIndex = React.useMemo(() => {
+        return Math.floor(Math.random() * vibingMessages.length);
+    }, [isOnline, hasPermissions, isThinking]);
+
+    return getSessionStatus(session, now, vibingIndex);
 }
 
 /**

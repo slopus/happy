@@ -41,18 +41,19 @@ User types message and presses send
 UI checks: canResumeSession(metadata)?
   ↓
 ┌─────────────────────────────────────────────┐
-│ YES: Enqueue message as server-pending      │
-│   - pending-enqueue (preserves history)     │
-│   - then send "resume-session" RPC          │
-│     (spawns agent, no message payload)      │
+│ YES: Enqueue message as metadata-pending    │
+│   - update session.metadata.messageQueueV1  │
+│     (encrypted; preserves message locally)  │
+│   - then spawn the resume flow via machine  │
+│     RPC (spawns agent, no message payload)  │
 └─────────────────────────────────────────────┘
   ↓
-Server receives "resume-session"
+Daemon receives "spawn-happy-session" (type=resume-session)
   ↓
-Server extracts agentSessionId from metadata
+Daemon extracts agentSessionId from metadata
   (claudeSessionId or codexSessionId)
   ↓
-Server calls daemon RPC "spawn-happy-session" with:
+Daemon spawns CLI with:
   - directory (from session metadata)
   - agent (from session metadata)
   - resume (agentSessionId)
@@ -85,17 +86,12 @@ Conversation continues in same session
 - Checks: agent is resumable AND has stored session ID
 
 **sync/ops.ts**
-- Add `resumeSession(sessionId, message)` operation
-- Sends "resume-session" WebSocket event
+- Add `machineResumeSession(...)` operation
+- Uses machine RPC `spawn-happy-session` with `type=resume-session`
 
 #### 2. happy-server-light
 
-**sessionUpdateHandler.ts**
-- Add "resume-session" event handler
-- Validates user owns session
-- Extracts agent session ID from metadata
-- Calls daemon RPC to spawn session
-- Queues message for delivery
+No server changes are required for inactive resume: the app uses machine RPCs and the encrypted session metadata queue.
 
 #### 3. happy-cli
 

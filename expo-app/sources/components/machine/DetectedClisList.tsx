@@ -6,10 +6,11 @@ import { Item } from '@/components/Item';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useSetting } from '@/sync/storage';
-import type { MachineDetectCliCacheState } from '@/hooks/useMachineDetectCliCache';
+import type { MachineCapabilitiesCacheState } from '@/hooks/useMachineCapabilitiesCache';
+import type { CapabilityDetectResult, CliCapabilityData, TmuxCapabilityData } from '@/sync/capabilitiesProtocol';
 
 type Props = {
-    state: MachineDetectCliCacheState;
+    state: MachineCapabilitiesCacheState;
     layout?: 'inline' | 'stacked';
 };
 
@@ -56,27 +57,58 @@ export function DetectedClisList({ state, layout = 'inline' }: Props) {
         );
     }
 
-    const entries: Array<[string, { available: boolean; resolvedPath?: string; version?: string }]> = [
-        ['claude', state.response.clis.claude],
-        ['codex', state.response.clis.codex],
+    if (state.status !== 'loaded') {
+        return <Item title={t('machine.detectedCliUnknown')} showChevron={false} />;
+    }
+
+    const snapshot = state.snapshot;
+    const results = snapshot?.response.results ?? {};
+
+    function readCliResult(result: CapabilityDetectResult | undefined): { available: boolean | null; resolvedPath?: string; version?: string } {
+        if (!result || !result.ok) return { available: null };
+        const data = result.data as Partial<CliCapabilityData>;
+        const available = typeof data.available === 'boolean' ? data.available : null;
+        if (!available) return { available };
+        return {
+            available,
+            ...(typeof data.resolvedPath === 'string' ? { resolvedPath: data.resolvedPath } : {}),
+            ...(typeof data.version === 'string' ? { version: data.version } : {}),
+        };
+    }
+
+    function readTmuxResult(result: CapabilityDetectResult | undefined): { available: boolean | null; resolvedPath?: string; version?: string } {
+        if (!result || !result.ok) return { available: null };
+        const data = result.data as Partial<TmuxCapabilityData>;
+        const available = typeof data.available === 'boolean' ? data.available : null;
+        if (!available) return { available };
+        return {
+            available,
+            ...(typeof data.resolvedPath === 'string' ? { resolvedPath: data.resolvedPath } : {}),
+            ...(typeof data.version === 'string' ? { version: data.version } : {}),
+        };
+    }
+
+    const entries: Array<[string, { available: boolean | null; resolvedPath?: string; version?: string }]> = [
+        ['claude', readCliResult(results['cli.claude'])],
+        ['codex', readCliResult(results['cli.codex'])],
     ];
     if (allowGemini) {
-        entries.push(['gemini', state.response.clis.gemini]);
+        entries.push(['gemini', readCliResult(results['cli.gemini'])]);
     }
-    if (state.response.tmux) {
-        entries.push(['tmux', state.response.tmux]);
-    }
+    entries.push(['tmux', readTmuxResult(results['tool.tmux'])]);
 
     return (
         <>
             {entries.map(([name, entry], index) => {
                 const available = entry.available;
-                const iconName = available ? 'checkmark-circle' : 'close-circle';
-                const iconColor = available ? theme.colors.status.connected : theme.colors.textSecondary;
+                const iconName = available === true ? 'checkmark-circle' : available === false ? 'close-circle' : 'time-outline';
+                const iconColor = available === true ? theme.colors.status.connected : theme.colors.textSecondary;
                 const version = name === 'tmux' ? (entry.version ?? null) : extractSemver(entry.version);
 
-                const subtitle = !available
+                const subtitle = available === false
                     ? t('machine.detectedCliNotDetected')
+                    : available === null
+                        ? t('machine.detectedCliUnknown')
                     : (
                         layout === 'stacked' ? (
                             <View style={{ gap: 2 }}>

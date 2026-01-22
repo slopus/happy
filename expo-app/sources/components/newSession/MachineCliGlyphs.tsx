@@ -5,14 +5,14 @@ import { Typography } from '@/constants/Typography';
 import { useSetting } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { useMachineDetectCliCache } from '@/hooks/useMachineDetectCliCache';
+import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import { DetectedClisModal } from '@/components/machine/DetectedClisModal';
 
 type Props = {
     machineId: string;
     isOnline: boolean;
     /**
-     * When true, the component may trigger detect-cli fetches.
+     * When true, the component may trigger capabilities detection fetches.
      * When false, it will render cached results only (no automatic fetching).
      */
     autoDetect?: boolean;
@@ -48,9 +48,10 @@ export const MachineCliGlyphs = React.memo(({ machineId, isOnline, autoDetect = 
     const expGemini = useSetting('expGemini');
     const allowGemini = experimentsEnabled && expGemini;
 
-    const { state, refresh } = useMachineDetectCliCache({
+    const { state } = useMachineCapabilitiesCache({
         machineId,
         enabled: autoDetect && isOnline,
+        request: { checklistId: 'new-session' },
     });
 
     const onPress = React.useCallback(() => {
@@ -71,9 +72,10 @@ export const MachineCliGlyphs = React.memo(({ machineId, isOnline, autoDetect = 
         }
 
         const items: Array<{ key: string; glyph: string; factor: number; muted: boolean }> = [];
-        const hasClaude = state.response.clis.claude.available;
-        const hasCodex = state.response.clis.codex.available;
-        const hasGemini = allowGemini && state.response.clis.gemini.available;
+        const results = state.snapshot.response.results;
+        const hasClaude = (results['cli.claude']?.ok && (results['cli.claude'].data as any)?.available === true) ?? false;
+        const hasCodex = (results['cli.codex']?.ok && (results['cli.codex'].data as any)?.available === true) ?? false;
+        const hasGemini = allowGemini && ((results['cli.gemini']?.ok && (results['cli.gemini'].data as any)?.available === true) ?? false);
 
         if (hasClaude) items.push({ key: 'claude', glyph: CLAUDE_GLYPH, factor: 1.0, muted: false });
         if (hasCodex) items.push({ key: 'codex', glyph: CODEX_GLYPH, factor: 0.92, muted: false });
@@ -84,7 +86,7 @@ export const MachineCliGlyphs = React.memo(({ machineId, isOnline, autoDetect = 
         }
 
         return items;
-    }, [allowGemini, state.status, state]);
+    }, [allowGemini, state]);
 
     return (
         <Pressable
@@ -109,4 +111,3 @@ export const MachineCliGlyphs = React.memo(({ machineId, isOnline, autoDetect = 
         </Pressable>
     );
 });
-

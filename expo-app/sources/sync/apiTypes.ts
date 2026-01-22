@@ -218,17 +218,10 @@ export const ApiEphemeralMachineActivityUpdateSchema = z.object({
     activeAt: z.number(),
 });
 
-export const ApiEphemeralPendingQueueUpdateSchema = z.object({
-    type: z.literal('pending-queue'),
-    id: z.string(), // session id
-    count: z.number(),
-});
-
 export const ApiEphemeralUpdateSchema = z.union([
     ApiEphemeralActivityUpdateSchema,
     ApiEphemeralUsageUpdateSchema,
     ApiEphemeralMachineActivityUpdateSchema,
-    ApiEphemeralPendingQueueUpdateSchema,
 ]);
 
 export type ApiEphemeralActivityUpdate = z.infer<typeof ApiEphemeralActivityUpdateSchema>;

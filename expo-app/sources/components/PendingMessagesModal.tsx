@@ -10,13 +10,11 @@ import { sessionAbort } from '@/sync/ops';
 
 export function PendingMessagesModal(props: { sessionId: string; onClose: () => void }) {
     const { theme } = useUnistyles();
-    const { messages, isLoaded } = useSessionPendingMessages(props.sessionId);
+    const { messages, discarded, isLoaded } = useSessionPendingMessages(props.sessionId);
 
     React.useEffect(() => {
-        if (!isLoaded) {
-            void sync.fetchPendingMessages(props.sessionId);
-        }
-    }, [isLoaded, props.sessionId]);
+        void sync.fetchPendingMessages(props.sessionId);
+    }, [props.sessionId]);
 
     const handleEdit = React.useCallback(async (pendingId: string, currentText: string) => {
         const next = await Modal.prompt(
@@ -65,6 +63,46 @@ export function PendingMessagesModal(props: { sessionId: string; onClose: () => 
         }
     }, [props.sessionId, props.onClose]);
 
+    const handleRequeueDiscarded = React.useCallback(async (pendingId: string) => {
+        try {
+            await sync.restoreDiscardedPendingMessage(props.sessionId, pendingId);
+        } catch (e) {
+            Modal.alert('Error', e instanceof Error ? e.message : 'Failed to restore discarded message');
+        }
+    }, [props.sessionId]);
+
+    const handleRemoveDiscarded = React.useCallback(async (pendingId: string) => {
+        const confirmed = await Modal.confirm(
+            'Remove discarded message?',
+            'This will delete the discarded message.',
+            { confirmText: 'Remove', destructive: true }
+        );
+        if (!confirmed) return;
+        try {
+            await sync.deleteDiscardedPendingMessage(props.sessionId, pendingId);
+        } catch (e) {
+            Modal.alert('Error', e instanceof Error ? e.message : 'Failed to delete discarded message');
+        }
+    }, [props.sessionId]);
+
+    const handleSendDiscardedNow = React.useCallback(async (pendingId: string, text: string) => {
+        const confirmed = await Modal.confirm(
+            'Send now?',
+            'This will stop the current turn and send this message immediately.',
+            { confirmText: 'Send now' }
+        );
+        if (!confirmed) return;
+
+        try {
+            await sync.deleteDiscardedPendingMessage(props.sessionId, pendingId);
+            props.onClose();
+            await sessionAbort(props.sessionId);
+            await sync.sendMessage(props.sessionId, text);
+        } catch (e) {
+            Modal.alert('Error', e instanceof Error ? e.message : 'Failed to send discarded message');
+        }
+    }, [props.sessionId, props.onClose]);
+
     return (
         <View style={{ padding: 16, width: '100%', maxWidth: 720 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -89,7 +127,7 @@ export function PendingMessagesModal(props: { sessionId: string; onClose: () => 
                 </View>
             )}
 
-            {isLoaded && messages.length === 0 && (
+            {isLoaded && messages.length === 0 && discarded.length === 0 && (
                 <Text style={{ marginTop: 12, color: theme.colors.textSecondary, ...Typography.default() }}>
                     No pending messages.
                 </Text>
@@ -140,6 +178,68 @@ export function PendingMessagesModal(props: { sessionId: string; onClose: () => 
                     ))}
                 </ScrollView>
             )}
+
+            {isLoaded && discarded.length > 0 && (
+                <View style={{ marginTop: 16 }}>
+                    <Text style={{ fontSize: 14, color: theme.colors.textSecondary, ...Typography.default('semiBold') }}>
+                        Discarded messages
+                    </Text>
+                    <Text style={{ marginTop: 6, color: theme.colors.textSecondary, ...Typography.default() }}>
+                        These messages were not sent to the agent (for example, when switching from remote to local).
+                    </Text>
+
+                    <ScrollView style={{ marginTop: 12, maxHeight: 360 }}>
+                        {discarded
+                            .slice()
+                            .sort((a, b) => a.discardedAt - b.discardedAt)
+                            .map((m) => (
+                                <View
+                                    key={`discarded-${m.id}`}
+                                    style={{
+                                        borderRadius: 12,
+                                        backgroundColor: theme.colors.input.background,
+                                        padding: 12,
+                                        marginBottom: 10,
+                                        opacity: 0.8,
+                                    }}
+                                >
+                                    <Text
+                                        numberOfLines={4}
+                                        style={{
+                                            color: theme.colors.text,
+                                            fontSize: 14,
+                                            ...Typography.default(),
+                                        }}
+                                    >
+                                        {(m.displayText ?? m.text).trim()}
+                                    </Text>
+                                    <Text style={{ marginTop: 6, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                        Discarded
+                                    </Text>
+
+                                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                                        <ActionButton
+                                            title="Re-queue"
+                                            onPress={() => handleRequeueDiscarded(m.id)}
+                                            theme={theme}
+                                        />
+                                        <ActionButton
+                                            title="Remove"
+                                            onPress={() => handleRemoveDiscarded(m.id)}
+                                            theme={theme}
+                                            destructive
+                                        />
+                                        <ActionButton
+                                            title="Send now"
+                                            onPress={() => handleSendDiscardedNow(m.id, m.text)}
+                                            theme={theme}
+                                        />
+                                    </View>
+                                </View>
+                            ))}
+                    </ScrollView>
+                </View>
+            )}
         </View>
     );
 }
@@ -173,4 +273,3 @@ function ActionButton(props: {
         </Pressable>
     );
 }
-

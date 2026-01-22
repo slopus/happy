@@ -64,8 +64,8 @@ vi.mock('@/sync/sync', () => ({
     sync: { refreshMachinesThrottled: vi.fn() },
 }));
 
-vi.mock('@/hooks/useMachineDetectCliCache', () => ({
-    prefetchMachineDetectCli: vi.fn(),
+vi.mock('@/hooks/useMachineCapabilitiesCache', () => ({
+    prefetchMachineCapabilities: vi.fn(),
 }));
 
 vi.mock('@/hooks/useMachineEnvPresence', () => ({

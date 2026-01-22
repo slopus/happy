@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
-import { Session, Machine, GitStatus, PendingMessage } from "./storageTypes";
+import { Session, Machine, GitStatus, PendingMessage, DiscardedPendingMessage } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
@@ -29,6 +29,11 @@ import { hasUnreadMessages as computeHasUnreadMessages } from './unread';
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const REALTIME_MODE_DEBOUNCE_MS = 150;
+
+// UI-only "optimistic processing" marker.
+// Cleared via timers so components don't need to poll time.
+const OPTIMISTIC_SESSION_THINKING_TIMEOUT_MS = 15_000;
+const optimisticThinkingTimeoutBySessionId = new Map<string, ReturnType<typeof setTimeout>>();
 
 /**
  * Centralized session online state resolver
@@ -61,6 +66,7 @@ interface SessionMessages {
 
 interface SessionPending {
     messages: PendingMessage[];
+    discarded: DiscardedPendingMessage[];
     isLoaded: boolean;
 }
 
@@ -115,6 +121,7 @@ interface StorageState {
     applyMessagesLoaded: (sessionId: string) => void;
     applyPendingLoaded: (sessionId: string) => void;
     applyPendingMessages: (sessionId: string, messages: PendingMessage[]) => void;
+    applyDiscardedPendingMessages: (sessionId: string, messages: DiscardedPendingMessage[]) => void;
     upsertPendingMessage: (sessionId: string, message: PendingMessage) => void;
     removePendingMessage: (sessionId: string, pendingId: string) => void;
     applySettings: (settings: Settings, version: number) => void;
@@ -137,6 +144,8 @@ interface StorageState {
     setLastSyncAt: (ts: number) => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
+    markSessionOptimisticThinking: (sessionId: string) => void;
+    clearSessionOptimisticThinking: (sessionId: string) => void;
     markSessionViewed: (sessionId: string) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
     updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => void;
@@ -258,7 +267,7 @@ export const storage = create<StorageState>()((set, get) => {
             const state = get();
             return Object.values(state.sessions).filter(s => s.active);
         },
-        applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
+	        applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
             // Load drafts and permission modes if sessions are empty (initial load)
             const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
             const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
@@ -282,6 +291,7 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedModelMode = savedModelModes[session.id];
                 const existingPermissionModeUpdatedAt = state.sessions[session.id]?.permissionModeUpdatedAt;
                 const savedPermissionModeUpdatedAt = savedPermissionModeUpdatedAts[session.id];
+                const existingOptimisticThinkingAt = state.sessions[session.id]?.optimisticThinkingAt ?? null;
 
                 // CLI may publish a session permission mode in encrypted metadata for local-only starts.
                 // This is a fallback signal for when there are no app-sent user messages carrying meta.permissionMode yet.
@@ -311,6 +321,7 @@ export const storage = create<StorageState>()((set, get) => {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
+                    optimisticThinkingAt: session.thinking === true ? null : existingOptimisticThinkingAt,
                     permissionMode: mergedPermissionMode,
                     // Preserve local coordination timestamp (not synced to server)
                     permissionModeUpdatedAt: mergedPermissionModeUpdatedAt,
@@ -677,6 +688,7 @@ export const storage = create<StorageState>()((set, get) => {
                     ...state.sessionPending,
                     [sessionId]: {
                         messages: existing?.messages ?? [],
+                        discarded: existing?.discarded ?? [],
                         isLoaded: true
                     }
                 }
@@ -688,12 +700,24 @@ export const storage = create<StorageState>()((set, get) => {
                 ...state.sessionPending,
                 [sessionId]: {
                     messages,
+                    discarded: state.sessionPending[sessionId]?.discarded ?? [],
                     isLoaded: true
                 }
             }
         })),
+        applyDiscardedPendingMessages: (sessionId: string, messages: DiscardedPendingMessage[]) => set((state) => ({
+            ...state,
+            sessionPending: {
+                ...state.sessionPending,
+                [sessionId]: {
+                    messages: state.sessionPending[sessionId]?.messages ?? [],
+                    discarded: messages,
+                    isLoaded: state.sessionPending[sessionId]?.isLoaded ?? false,
+                },
+            },
+        })),
         upsertPendingMessage: (sessionId: string, message: PendingMessage) => set((state) => {
-            const existing = state.sessionPending[sessionId] ?? { messages: [], isLoaded: false };
+            const existing = state.sessionPending[sessionId] ?? { messages: [], discarded: [], isLoaded: false };
             const idx = existing.messages.findIndex((m) => m.id === message.id);
             const next = idx >= 0
                 ? [...existing.messages.slice(0, idx), message, ...existing.messages.slice(idx + 1)]
@@ -704,6 +728,7 @@ export const storage = create<StorageState>()((set, get) => {
                     ...state.sessionPending,
                     [sessionId]: {
                         messages: next,
+                        discarded: existing.discarded,
                         isLoaded: existing.isLoaded
                     }
                 }
@@ -945,6 +970,89 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
+        markSessionOptimisticThinking: (sessionId: string) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+
+            const nextSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    optimisticThinkingAt: Date.now(),
+                },
+            };
+            const sessionListViewData = buildSessionListViewData(
+                nextSessions,
+                state.machines,
+                { groupInactiveSessionsByProject: state.settings.groupInactiveSessionsByProject }
+            );
+
+            const existingTimeout = optimisticThinkingTimeoutBySessionId.get(sessionId);
+            if (existingTimeout) {
+                clearTimeout(existingTimeout);
+            }
+            const timeout = setTimeout(() => {
+                optimisticThinkingTimeoutBySessionId.delete(sessionId);
+                set((s) => {
+                    const current = s.sessions[sessionId];
+                    if (!current) return s;
+                    if (!current.optimisticThinkingAt) return s;
+
+                    const next = {
+                        ...s.sessions,
+                        [sessionId]: {
+                            ...current,
+                            optimisticThinkingAt: null,
+                        },
+                    };
+                    return {
+                        ...s,
+                        sessions: next,
+                        sessionListViewData: buildSessionListViewData(
+                            next,
+                            s.machines,
+                            { groupInactiveSessionsByProject: s.settings.groupInactiveSessionsByProject }
+                        ),
+                    };
+                });
+            }, OPTIMISTIC_SESSION_THINKING_TIMEOUT_MS);
+            optimisticThinkingTimeoutBySessionId.set(sessionId, timeout);
+
+            return {
+                ...state,
+                sessions: nextSessions,
+                sessionListViewData,
+            };
+        }),
+        clearSessionOptimisticThinking: (sessionId: string) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+            if (!session.optimisticThinkingAt) return state;
+
+            const existingTimeout = optimisticThinkingTimeoutBySessionId.get(sessionId);
+            if (existingTimeout) {
+                clearTimeout(existingTimeout);
+                optimisticThinkingTimeoutBySessionId.delete(sessionId);
+            }
+
+            const nextSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    optimisticThinkingAt: null,
+                },
+            };
+
+            return {
+                ...state,
+                sessions: nextSessions,
+                sessionListViewData: buildSessionListViewData(
+                    nextSessions,
+                    state.machines,
+                    { groupInactiveSessionsByProject: state.settings.groupInactiveSessionsByProject }
+                ),
+            };
+        }),
         markSessionViewed: (sessionId: string) => {
             const now = Date.now();
             sessionLastViewed[sessionId] = now;
@@ -1095,9 +1203,15 @@ export const storage = create<StorageState>()((set, get) => {
                 artifacts: remainingArtifacts
             };
         }),
-        deleteSession: (sessionId: string) => set((state) => {
-            // Remove session from sessions
-            const { [sessionId]: deletedSession, ...remainingSessions } = state.sessions;
+	        deleteSession: (sessionId: string) => set((state) => {
+	            const optimisticTimeout = optimisticThinkingTimeoutBySessionId.get(sessionId);
+	            if (optimisticTimeout) {
+	                clearTimeout(optimisticTimeout);
+	                optimisticThinkingTimeoutBySessionId.delete(sessionId);
+	            }
+
+	            // Remove session from sessions
+	            const { [sessionId]: deletedSession, ...remainingSessions } = state.sessions;
             
             // Remove session messages if they exist
             const { [sessionId]: deletedMessages, ...remainingSessionMessages } = state.sessionMessages;
@@ -1298,11 +1412,12 @@ export function useHasUnreadMessages(sessionId: string): boolean {
     });
 }
 
-export function useSessionPendingMessages(sessionId: string): { messages: PendingMessage[], isLoaded: boolean } {
+export function useSessionPendingMessages(sessionId: string): { messages: PendingMessage[]; discarded: DiscardedPendingMessage[]; isLoaded: boolean } {
     return storage(useShallow((state) => {
         const pending = state.sessionPending[sessionId];
         return {
             messages: pending?.messages ?? emptyArray,
+            discarded: pending?.discarded ?? emptyArray,
             isLoaded: pending?.isLoaded ?? false
         };
     }));

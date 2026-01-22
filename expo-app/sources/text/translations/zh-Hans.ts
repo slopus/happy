@@ -1004,6 +1004,7 @@ export const zhHans: TranslationStructure = {
 
     message: {
         switchedToMode: ({ mode }: { mode: string }) => `已切换到 ${mode} 模式`,
+        discarded: '已丢弃',
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         unknownTime: '未知时间',

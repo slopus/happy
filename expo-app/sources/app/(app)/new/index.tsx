@@ -12,7 +12,7 @@ import { t } from '@/text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { machineSpawnNewSession } from '@/sync/ops';
+import { machineCapabilitiesInvoke, machineSpawnNewSession } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { SessionTypeSelectorRows } from '@/components/SessionTypeSelector';
@@ -45,7 +45,7 @@ import { useMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
 import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
 import { InteractionManager } from 'react-native';
 import { NewSessionWizard } from './NewSessionWizard';
-import { prefetchMachineDetectCli, prefetchMachineDetectCliIfStale } from '@/hooks/useMachineDetectCliCache';
+import { prefetchMachineCapabilities, prefetchMachineCapabilitiesIfStale, useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import { PopoverBoundaryProvider } from '@/components/PopoverBoundary';
 import { resolveTerminalSpawnOptions } from '@/sync/terminalSettings';
 import { canAgentResume } from '@/utils/agentCapabilities';
@@ -787,6 +787,11 @@ function NewSessionScreen() {
 
     // CLI Detection - automatic, non-blocking detection of installed CLIs on selected machine
     const cliAvailability = useCLIDetection(selectedMachineId, { autoDetect: false });
+    const { state: selectedMachineCapabilities } = useMachineCapabilitiesCache({
+        machineId: selectedMachineId,
+        enabled: false,
+        request: { checklistId: 'new-session' },
+    });
 
     const tmuxRequested = React.useMemo(() => {
         return Boolean(resolveTerminalSpawnOptions({
@@ -794,6 +799,127 @@ function NewSessionScreen() {
             machineId: selectedMachineId,
         }));
     }, [selectedMachineId, terminalTmuxByMachineId, terminalUseTmux]);
+
+    const wantsCodexResume = React.useMemo(() => {
+        return (
+            experimentsEnabled &&
+            expCodexResume &&
+            agentType === 'codex' &&
+            resumeSessionId.trim().length > 0 &&
+            canAgentResume(agentType, { allowCodexResume: true })
+        );
+    }, [agentType, canAgentResume, expCodexResume, experimentsEnabled, resumeSessionId]);
+
+    const [isInstallingCodexResume, setIsInstallingCodexResume] = React.useState(false);
+
+    const selectedMachineCapabilitiesSnapshot = React.useMemo(() => {
+        return selectedMachineCapabilities.status === 'loaded'
+            ? selectedMachineCapabilities.snapshot
+            : selectedMachineCapabilities.status === 'loading'
+                ? selectedMachineCapabilities.snapshot
+                : selectedMachineCapabilities.status === 'error'
+                    ? selectedMachineCapabilities.snapshot
+                    : undefined;
+    }, [selectedMachineCapabilities]);
+
+    const systemCodexVersion = React.useMemo(() => {
+        const result = selectedMachineCapabilitiesSnapshot?.response.results['cli.codex'];
+        if (!result || !result.ok) return null;
+        const data = result.data as any;
+        if (data?.available !== true) return null;
+        return typeof data.version === 'string' ? data.version : null;
+    }, [selectedMachineCapabilitiesSnapshot]);
+
+    const codexResumeDep = React.useMemo(() => {
+        const result = selectedMachineCapabilitiesSnapshot?.response.results['dep.codex-mcp-resume'];
+        if (!result || !result.ok) return null;
+        const data = result.data as any;
+        return data && typeof data === 'object' ? data : null;
+    }, [selectedMachineCapabilitiesSnapshot]);
+
+    const codexResumeLatestVersion = React.useMemo(() => {
+        const registry = codexResumeDep?.registry;
+        if (!registry || typeof registry !== 'object') return null;
+        if (registry.ok !== true) return null;
+        return typeof registry.latestVersion === 'string' ? registry.latestVersion : null;
+    }, [codexResumeDep]);
+
+    const codexResumeUpdateAvailable = React.useMemo(() => {
+        if (codexResumeDep?.installed !== true) return false;
+        const installed = typeof codexResumeDep.installedVersion === 'string' ? codexResumeDep.installedVersion : null;
+        const latest = codexResumeLatestVersion;
+        if (!installed || !latest) return false;
+        return installed !== latest;
+    }, [codexResumeDep, codexResumeLatestVersion]);
+
+    const checkCodexResumeUpdates = React.useCallback(() => {
+        if (!selectedMachineId) return;
+        void prefetchMachineCapabilities({
+            machineId: selectedMachineId,
+            request: { checklistId: 'resume.codex' },
+            timeoutMs: 12_000,
+        });
+    }, [selectedMachineId]);
+
+    React.useEffect(() => {
+        if (!wantsCodexResume) return;
+        if (!selectedMachineId) return;
+        const machine = machines.find((m) => m.id === selectedMachineId);
+        if (!machine || !isMachineOnline(machine)) return;
+
+        InteractionManager.runAfterInteractions(() => {
+            checkCodexResumeUpdates();
+        });
+    }, [checkCodexResumeUpdates, machines, selectedMachineId, wantsCodexResume]);
+
+    const handleInstallOrUpdateCodexResume = React.useCallback(() => {
+        if (!selectedMachineId) return;
+        if (!wantsCodexResume) return;
+
+        Modal.alert(
+            codexResumeDep?.installed ? (codexResumeUpdateAvailable ? 'Update Codex resume?' : 'Reinstall Codex resume?') : 'Install Codex resume?',
+            'This installs an experimental Codex MCP server wrapper used only for resume operations.',
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                    text: codexResumeDep?.installed ? (codexResumeUpdateAvailable ? 'Update' : 'Reinstall') : 'Install',
+                    onPress: async () => {
+                        setIsInstallingCodexResume(true);
+                        try {
+                            const method = codexResumeDep?.installed ? (codexResumeUpdateAvailable ? 'upgrade' : 'install') : 'install';
+                            const invoke = await machineCapabilitiesInvoke(
+                                selectedMachineId,
+                                { id: 'dep.codex-mcp-resume', method },
+                                { timeoutMs: 5 * 60_000 },
+                            );
+                            if (!invoke.supported) {
+                                Modal.alert('Error', invoke.reason === 'not-supported' ? 'Update Happy CLI to install this dependency.' : 'Install failed');
+                                return;
+                            }
+                            if (!invoke.response.ok) {
+                                Modal.alert('Error', invoke.response.error.message);
+                                return;
+                            }
+                            const logPath = (invoke.response.result as any)?.logPath;
+                            Modal.alert('Success', typeof logPath === 'string' ? `Install log: ${logPath}` : 'Installed');
+                            checkCodexResumeUpdates();
+                        } catch (e) {
+                            Modal.alert('Error', e instanceof Error ? e.message : 'Install failed');
+                        } finally {
+                            setIsInstallingCodexResume(false);
+                        }
+                    },
+                },
+            ],
+        );
+    }, [
+        checkCodexResumeUpdates,
+        codexResumeDep,
+        codexResumeUpdateAvailable,
+        selectedMachineId,
+        t,
+        wantsCodexResume,
+    ]);
 
     // Auto-correct invalid agent selection after CLI detection completes
     // This handles the case where lastUsedAgent was 'codex' but codex is not installed
@@ -995,8 +1121,7 @@ function NewSessionScreen() {
         refreshMachineEnvPresence();
 
         if (selectedMachineId) {
-            void prefetchMachineDetectCli({ machineId: selectedMachineId });
-            void prefetchMachineDetectCli({ machineId: selectedMachineId, includeLoginStatus: true });
+            void prefetchMachineCapabilities({ machineId: selectedMachineId, request: { checklistId: 'new-session' } });
         }
     }, [refreshMachineEnvPresence, selectedMachineId, sync]);
 
@@ -1122,7 +1247,7 @@ function NewSessionScreen() {
     // Keep this fairly conservative to avoid impacting iOS responsiveness.
     const CLI_DETECT_REVALIDATE_STALE_MS = 2 * 60 * 1000; // 2 minutes
 
-    // One-time prefetch of detect-cli results for the wizard machine list.
+    // One-time prefetch of machine capabilities for the wizard machine list.
     // This keeps machine glyphs responsive (cache-only in the list) without
     // triggering per-row auto-detect work during taps.
     const didPrefetchWizardMachineGlyphsRef = React.useRef(false);
@@ -1151,7 +1276,11 @@ function NewSessionScreen() {
                     const machine = machines.find((m) => m.id === machineId);
                     if (!machine) continue;
                     if (!isMachineOnline(machine)) continue;
-                    void prefetchMachineDetectCliIfStale({ machineId, staleMs: CLI_DETECT_REVALIDATE_STALE_MS });
+                    void prefetchMachineCapabilitiesIfStale({
+                        machineId,
+                        staleMs: CLI_DETECT_REVALIDATE_STALE_MS,
+                        request: { checklistId: 'new-session' },
+                    });
                 }
             } catch {
                 // best-effort prefetch only
@@ -1159,7 +1288,7 @@ function NewSessionScreen() {
         });
     }, [favoriteMachineItems, machines, recentMachines, useEnhancedSessionWizard]);
 
-    // Cache-first + background refresh: for the actively selected machine, prefetch detect-cli
+    // Cache-first + background refresh: for the actively selected machine, prefetch capabilities
     // if missing or stale. This updates the banners/agent availability on screen open, but avoids
     // any fetches on tap handlers.
     React.useEffect(() => {
@@ -1169,9 +1298,10 @@ function NewSessionScreen() {
         if (!isMachineOnline(machine)) return;
 
         InteractionManager.runAfterInteractions(() => {
-            void prefetchMachineDetectCliIfStale({
+            void prefetchMachineCapabilitiesIfStale({
                 machineId: selectedMachineId,
                 staleMs: CLI_DETECT_REVALIDATE_STALE_MS,
+                request: { checklistId: 'new-session' },
             });
         });
     }, [machines, selectedMachineId]);
@@ -1737,6 +1867,44 @@ function NewSessionScreen() {
                 machineId: selectedMachineId,
             });
 
+            const wantsCodexResume =
+                experimentsEnabled &&
+                expCodexResume &&
+                agentType === 'codex' &&
+                resumeSessionId.trim().length > 0 &&
+                canAgentResume(agentType, { allowCodexResume: true });
+
+            if (wantsCodexResume) {
+                const installed =
+                    (() => {
+                        const snapshot =
+                            selectedMachineCapabilities.status === 'loaded'
+                                ? selectedMachineCapabilities.snapshot
+                                : selectedMachineCapabilities.status === 'loading'
+                                    ? selectedMachineCapabilities.snapshot
+                                    : selectedMachineCapabilities.status === 'error'
+                                        ? selectedMachineCapabilities.snapshot
+                                        : undefined;
+                        const dep = snapshot?.response.results['dep.codex-mcp-resume'];
+                        if (!dep || !dep.ok) return null;
+                        const data = dep.data as any;
+                        return typeof data?.installed === 'boolean' ? data.installed : null;
+                    })();
+
+                if (installed === false) {
+                    const openMachine = await Modal.confirm(
+                        'Codex resume is not installed on this machine',
+                        'To resume a Codex conversation, install @leeroy/codex-mcp-resume on the target machine (Machine Details → Codex resume).',
+                        { confirmText: 'Open machine' }
+                    );
+                    if (openMachine) {
+                        router.push(`/machine/${selectedMachineId}` as any);
+                    }
+                    setIsCreating(false);
+                    return;
+                }
+            }
+
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
                 directory: actualPath,
@@ -1792,6 +1960,7 @@ function NewSessionScreen() {
     }, [
         agentType,
         experimentsEnabled,
+        expCodexResume,
         machineEnvPresence.meta,
         modelMode,
         permissionMode,
@@ -1801,6 +1970,7 @@ function NewSessionScreen() {
         router,
         secretBindingsByProfileId,
         secrets,
+        selectedMachineCapabilities,
         selectedSecretIdByProfileIdByEnvVarName,
         selectedMachineId,
         selectedPath,
@@ -2117,6 +2287,45 @@ function NewSessionScreen() {
         useProfiles,
     ]);
 
+    const codexResumeBanner = React.useMemo(() => {
+        if (!selectedMachineId) return null;
+        if (!wantsCodexResume) return null;
+        if (cliAvailability.codex !== true) return null;
+
+        const installed = typeof codexResumeDep?.installed === 'boolean' ? codexResumeDep.installed : null;
+        const installedVersion = typeof codexResumeDep?.installedVersion === 'string' ? codexResumeDep.installedVersion : null;
+        const registry = codexResumeDep?.registry;
+        const registryError =
+            registry && typeof registry === 'object' && registry.ok === false && typeof (registry as any).errorMessage === 'string'
+                ? String((registry as any).errorMessage)
+                : null;
+
+        return {
+            installed,
+            installedVersion,
+            latestVersion: codexResumeLatestVersion,
+            updateAvailable: codexResumeUpdateAvailable,
+            systemCodexVersion,
+            registryError,
+            isChecking: selectedMachineCapabilities.status === 'loading',
+            isInstalling: isInstallingCodexResume,
+            onCheckUpdates: checkCodexResumeUpdates,
+            onInstallOrUpdate: handleInstallOrUpdateCodexResume,
+        };
+    }, [
+        checkCodexResumeUpdates,
+        cliAvailability.codex,
+        codexResumeDep,
+        codexResumeLatestVersion,
+        codexResumeUpdateAvailable,
+        handleInstallOrUpdateCodexResume,
+        isInstallingCodexResume,
+        selectedMachineCapabilities.status,
+        selectedMachineId,
+        systemCodexVersion,
+        wantsCodexResume,
+    ]);
+
     const wizardAgentProps = React.useMemo(() => {
         return {
             cliAvailability,
@@ -2136,11 +2345,13 @@ function NewSessionScreen() {
             handlePermissionModeChange,
             sessionType,
             setSessionType,
+            codexResumeBanner,
         };
     }, [
         agentType,
         allowGemini,
         cliAvailability,
+        codexResumeBanner,
         handleCLIBannerDismiss,
         hiddenBanners,
         isWarningDismissed,

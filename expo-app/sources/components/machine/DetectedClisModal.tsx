@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '@/components/RoundButton';
-import { useMachineDetectCliCache } from '@/hooks/useMachineDetectCliCache';
+import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import { DetectedClisList } from '@/components/machine/DetectedClisList';
 import { t } from '@/text';
 import type { CustomModalInjectedProps } from '@/modal';
@@ -58,10 +58,11 @@ export function DetectedClisModal({ onClose, machineId, isOnline }: Props) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
 
-    const { state, refresh } = useMachineDetectCliCache({
+    const { state, refresh } = useMachineCapabilitiesCache({
         machineId,
         // Cache-first: never auto-fetch on mount; user can explicitly refresh.
         enabled: false,
+        request: { checklistId: 'new-session' },
     });
 
     return (
@@ -103,4 +104,3 @@ export function DetectedClisModal({ onClose, machineId, isOnline }: Props) {
         </View>
     );
 }
-

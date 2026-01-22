@@ -87,6 +87,18 @@ export interface NewSessionWizardAgentProps {
     handlePermissionModeChange: (mode: PermissionMode) => void;
     sessionType: 'simple' | 'worktree';
     setSessionType: (t: 'simple' | 'worktree') => void;
+    codexResumeBanner?: null | {
+        installed: boolean | null;
+        installedVersion: string | null;
+        latestVersion: string | null;
+        updateAvailable: boolean;
+        systemCodexVersion: string | null;
+        registryError: string | null;
+        isChecking: boolean;
+        isInstalling: boolean;
+        onCheckUpdates: () => void;
+        onInstallOrUpdate: () => void;
+    };
 }
 
 export interface NewSessionWizardMachineProps {
@@ -231,6 +243,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
         handlePermissionModeChange,
         sessionType,
         setSessionType,
+        codexResumeBanner,
     } = props.agent;
 
     const {
@@ -364,6 +377,80 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                         <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
                                             {t('machine.tmux.notDetectedMessage')}
                                         </Text>
+                                    </View>
+                                )}
+
+                                {codexResumeBanner && (
+                                    <View style={{
+                                        backgroundColor: theme.colors.box.warning.background,
+                                        borderRadius: 10,
+                                        padding: 12,
+                                        marginBottom: 12,
+                                        borderWidth: 1,
+                                        borderColor: theme.colors.box.warning.border,
+                                    }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
+                                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
+                                                <Ionicons
+                                                    name={codexResumeBanner.updateAvailable ? 'alert-circle-outline' : codexResumeBanner.installed ? 'checkmark-circle-outline' : 'warning'}
+                                                    size={16}
+                                                    color={codexResumeBanner.updateAvailable ? theme.colors.warning : theme.colors.textSecondary}
+                                                />
+                                                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
+                                                    Codex resume
+                                                </Text>
+                                                {codexResumeBanner.updateAvailable ? (
+                                                    <Text style={{ fontSize: 11, color: theme.colors.warning, ...Typography.default() }}>
+                                                        Update available
+                                                    </Text>
+                                                ) : null}
+                                            </View>
+                                            <Pressable
+                                                onPress={codexResumeBanner.onCheckUpdates}
+                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                disabled={codexResumeBanner.isChecking || codexResumeBanner.isInstalling}
+                                            >
+                                                <Ionicons
+                                                    name={codexResumeBanner.isChecking ? 'time-outline' : 'refresh'}
+                                                    size={18}
+                                                    color={theme.colors.textSecondary}
+                                                />
+                                            </Pressable>
+                                        </View>
+
+                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                            System codex: {codexResumeBanner.systemCodexVersion ?? 'unknown'}{'\n'}
+                                            codex-mcp-resume: {codexResumeBanner.installedVersion ?? (codexResumeBanner.installed === false ? 'not installed' : 'unknown')}
+                                            {codexResumeBanner.latestVersion ? ` (latest ${codexResumeBanner.latestVersion})` : ''}
+                                        </Text>
+
+                                        {codexResumeBanner.registryError ? (
+                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginTop: 6, ...Typography.default() }}>
+                                                Registry check failed: {codexResumeBanner.registryError}
+                                            </Text>
+                                        ) : null}
+
+                                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                                            <Pressable
+                                                onPress={codexResumeBanner.onInstallOrUpdate}
+                                                disabled={codexResumeBanner.isInstalling}
+                                                style={{
+                                                    borderRadius: 8,
+                                                    paddingHorizontal: 12,
+                                                    paddingVertical: 8,
+                                                    backgroundColor: theme.colors.button.primary.background,
+                                                    opacity: codexResumeBanner.isInstalling ? 0.6 : 1,
+                                                }}
+                                            >
+                                                <Text style={{ color: theme.colors.button.primary.text, fontSize: 12, ...Typography.default('semiBold') }}>
+                                                    {codexResumeBanner.installed === false
+                                                        ? 'Install'
+                                                        : codexResumeBanner.updateAvailable
+                                                            ? 'Update'
+                                                            : 'Reinstall'}
+                                                </Text>
+                                            </Pressable>
+                                        </View>
                                     </View>
                                 )}
 

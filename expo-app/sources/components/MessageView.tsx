@@ -14,6 +14,7 @@ import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
 import { useSetting } from "@/sync/storage";
+import { isCommittedMessageDiscarded } from "@/utils/discardedCommittedMessages";
 
 export const MessageView = (props: {
   message: Message;
@@ -44,7 +45,7 @@ function RenderBlock(props: {
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
-      return <UserTextBlock message={props.message} sessionId={props.sessionId} />;
+      return <UserTextBlock message={props.message} metadata={props.metadata} sessionId={props.sessionId} />;
 
     case 'agent-text':
       return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
@@ -70,8 +71,10 @@ function RenderBlock(props: {
 
 function UserTextBlock(props: {
   message: UserTextMessage;
+  metadata: Metadata | null;
   sessionId: string;
 }) {
+  const isDiscarded = isCommittedMessageDiscarded(props.metadata, props.message.localId);
   const handleOptionPress = React.useCallback((option: Option) => {
     void (async () => {
       try {
@@ -84,8 +87,11 @@ function UserTextBlock(props: {
 
   return (
     <View style={styles.userMessageContainer}>
-      <View style={styles.userMessageBubble}>
+      <View style={[styles.userMessageBubble, isDiscarded && styles.userMessageBubbleDiscarded]}>
         <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} />
+        {isDiscarded && (
+          <Text style={styles.discardedCommittedMessageLabel}>{t('message.discarded')}</Text>
+        )}
         <View style={styles.messageActionsRow}>
           <CopyMessageButton markdown={props.message.displayText || props.message.text} />
         </View>
@@ -278,6 +284,14 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 12,
     marginBottom: 12,
     maxWidth: '100%',
+  },
+  userMessageBubbleDiscarded: {
+    opacity: 0.65,
+  },
+  discardedCommittedMessageLabel: {
+    marginTop: 6,
+    fontSize: 12,
+    color: theme.colors.agentEventText,
   },
   agentMessageContainer: {
     marginHorizontal: 16,

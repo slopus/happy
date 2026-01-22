@@ -1240,6 +1240,7 @@ export const ja: TranslationStructure = {
 
     message: {
         switchedToMode: ({ mode }: { mode: string }) => `${mode}モードに切り替えました`,
+        discarded: '破棄済み',
         unknownEvent: '不明なイベント',
         usageLimitUntil: ({ time }: { time: string }) => `${time}まで使用制限中`,
         unknownTime: '不明な時間',

@@ -9,14 +9,10 @@ import { useSessions, useAllMachines, useMachine, storage, useSetting, useSettin
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import {
-    machineDepStatus,
-    machineDetectCli,
-    machineInstallDep,
+    machineCapabilitiesInvoke,
     machineSpawnNewSession,
     machineStopDaemon,
     machineUpdateMetadata,
-    type DepStatus,
-    type DetectCliResponse,
 } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
@@ -28,9 +24,10 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
 import { DetectedClisList } from '@/components/machine/DetectedClisList';
-import type { MachineDetectCliCacheState } from '@/hooks/useMachineDetectCliCache';
+import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import { resolveTerminalSpawnOptions } from '@/sync/terminalSettings';
 import { Switch } from '@/components/Switch';
+import type { CodexMcpResumeDepData } from '@/sync/capabilitiesProtocol';
 
 const styles = StyleSheet.create((theme) => ({
     pathInputContainer: {
@@ -121,14 +118,7 @@ export default function MachineDetailScreen() {
     const [isSpawning, setIsSpawning] = useState(false);
     const inputRef = useRef<MultiTextInputHandle>(null);
     const [showAllPaths, setShowAllPaths] = useState(false);
-    const [detectedClis, setDetectedClis] = useState<
-        | { status: 'loading'; response?: DetectCliResponse }
-        | { status: 'loaded'; response: DetectCliResponse }
-        | { status: 'not-supported' }
-        | { status: 'error' }
-        | null
-    >(null);
-    // Variant D only
+    const isOnline = !!machine && isMachineOnline(machine);
 
     const terminalUseTmux = useSetting('terminalUseTmux');
     const terminalTmuxSessionName = useSetting('terminalTmuxSessionName');
@@ -138,25 +128,38 @@ export default function MachineDetailScreen() {
     const experimentsEnabled = useSetting('experiments');
     const expCodexResume = useSetting('expCodexResume');
     const [codexResumeInstallSpec, setCodexResumeInstallSpec] = useSettingMutable('codexResumeInstallSpec');
-
-    const [codexResumeStatus, setCodexResumeStatus] = useState<DepStatus | null>(null);
-    const [codexResumeStatusState, setCodexResumeStatusState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
     const [isInstallingCodexResume, setIsInstallingCodexResume] = useState(false);
+
+    const { state: detectedCapabilities, refresh: refreshDetectedCapabilities } = useMachineCapabilitiesCache({
+        machineId: machineId ?? null,
+        enabled: Boolean(machineId && isOnline),
+        request: {
+            checklistId: 'machine-details',
+            overrides: {
+                'cli.codex': { params: { includeLoginStatus: true } },
+                'cli.claude': { params: { includeLoginStatus: true } },
+                'cli.gemini': { params: { includeLoginStatus: true } },
+            },
+        },
+    });
 
     const tmuxOverride = machineId ? terminalTmuxByMachineId?.[machineId] : undefined;
     const tmuxOverrideEnabled = Boolean(tmuxOverride);
 
     const tmuxAvailable = React.useMemo(() => {
-        const response =
-            detectedClis?.status === 'loaded'
-                ? detectedClis.response
-                : detectedClis?.status === 'loading'
-                    ? detectedClis.response
-                    : null;
-        // Old daemons may omit tmux; treat as unknown.
-        if (!response?.tmux) return null;
-        return response.tmux.available;
-    }, [detectedClis]);
+        const snapshot =
+            detectedCapabilities.status === 'loaded'
+                ? detectedCapabilities.snapshot
+                : detectedCapabilities.status === 'loading'
+                    ? detectedCapabilities.snapshot
+                    : detectedCapabilities.status === 'error'
+                        ? detectedCapabilities.snapshot
+                        : undefined;
+        const result = snapshot?.response.results['tool.tmux'];
+        if (!result || !result.ok) return null;
+        const data = result.data as any;
+        return typeof data?.available === 'boolean' ? data.available : null;
+    }, [detectedCapabilities]);
 
     const setTmuxOverrideEnabled = useCallback((enabled: boolean) => {
         if (!machineId) return;
@@ -285,85 +288,76 @@ export default function MachineDetailScreen() {
 
     const handleRefresh = async () => {
         setIsRefreshing(true);
-        await sync.refreshMachines();
-        if (machineId) {
-            try {
-                setDetectedClis((prev) => ({ status: 'loading', ...(prev && 'response' in prev ? { response: prev.response } : {}) }));
-                const result = await machineDetectCli(machineId);
-                if (result.supported) {
-                    setDetectedClis({ status: 'loaded', response: result.response });
-                } else {
-                    setDetectedClis(result.reason === 'not-supported' ? { status: 'not-supported' } : { status: 'error' });
-                }
-            } catch {
-                setDetectedClis({ status: 'error' });
-            }
+        try {
+            await sync.refreshMachines();
+            refreshDetectedCapabilities();
+        } finally {
+            setIsRefreshing(false);
         }
-        setIsRefreshing(false);
     };
 
-    const refreshDetectedClis = useCallback(async () => {
+    const refreshCapabilities = useCallback(async () => {
         if (!machineId) return;
-        try {
-            setDetectedClis((prev) => ({ status: 'loading', ...(prev && 'response' in prev ? { response: prev.response } : {}) }));
-            // On direct loads/refreshes, machine encryption/socket may not be ready yet.
-            // Refreshing machines first makes this much more reliable and avoids misclassifying
-            // transient failures as “not supported / update CLI”.
-            await sync.refreshMachines();
-            const result = await machineDetectCli(machineId);
-            if (result.supported) {
-                setDetectedClis({ status: 'loaded', response: result.response });
-                return;
-            }
-            setDetectedClis(result.reason === 'not-supported' ? { status: 'not-supported' } : { status: 'error' });
-        } catch {
-            setDetectedClis({ status: 'error' });
-        }
-    }, [machineId]);
-
-    const refreshCodexResumeStatus = useCallback(async () => {
-        if (!machineId) return;
-        if (!experimentsEnabled || !expCodexResume) return;
-        try {
-            setCodexResumeStatusState('loading');
-            const status = await machineDepStatus(machineId, 'codex-mcp-resume');
-            setCodexResumeStatus(status);
-            setCodexResumeStatusState('loaded');
-        } catch {
-            setCodexResumeStatusState('error');
-        }
-    }, [expCodexResume, experimentsEnabled, machineId]);
-
-    React.useEffect(() => {
-        void refreshDetectedClis();
-    }, [refreshDetectedClis]);
-
-    React.useEffect(() => {
-        void refreshCodexResumeStatus();
-    }, [refreshCodexResumeStatus]);
-
-    const detectedClisState: MachineDetectCliCacheState = useMemo(() => {
-        if (!detectedClis) return { status: 'idle' };
-        if (detectedClis.status === 'loaded') return { status: 'loaded', response: detectedClis.response };
-        if (detectedClis.status === 'loading') return { status: 'loading' };
-        if (detectedClis.status === 'not-supported') return { status: 'not-supported' };
-        return { status: 'error' };
-    }, [detectedClis]);
+        // On direct loads/refreshes, machine encryption/socket may not be ready yet.
+        // Refreshing machines first makes this much more reliable and avoids misclassifying
+        // transient failures as “not supported / update CLI”.
+        await sync.refreshMachines();
+        refreshDetectedCapabilities();
+    }, [machineId, refreshDetectedCapabilities]);
 
     const systemCodexVersion = useMemo(() => {
-        if (detectedClisState.status !== 'loaded') return null;
-        const entry = detectedClisState.response?.clis?.codex;
-        if (!entry?.available) return null;
-        return typeof entry.version === 'string' ? entry.version : null;
-    }, [detectedClisState]);
+        const snapshot =
+            detectedCapabilities.status === 'loaded'
+                ? detectedCapabilities.snapshot
+                : detectedCapabilities.status === 'loading'
+                    ? detectedCapabilities.snapshot
+                    : detectedCapabilities.status === 'error'
+                        ? detectedCapabilities.snapshot
+                        : undefined;
+        const result = snapshot?.response.results['cli.codex'];
+        if (!result || !result.ok) return null;
+        const data = result.data as any;
+        if (data?.available !== true) return null;
+        return typeof data.version === 'string' ? data.version : null;
+    }, [detectedCapabilities]);
+
+    const codexResumeStatus = useMemo(() => {
+        const snapshot =
+            detectedCapabilities.status === 'loaded'
+                ? detectedCapabilities.snapshot
+                : detectedCapabilities.status === 'loading'
+                    ? detectedCapabilities.snapshot
+                    : detectedCapabilities.status === 'error'
+                        ? detectedCapabilities.snapshot
+                        : undefined;
+        const result = snapshot?.response.results['dep.codex-mcp-resume'];
+        if (!result || !result.ok) return null;
+        return result.data as CodexMcpResumeDepData;
+    }, [detectedCapabilities]);
 
     const codexResumeUpdateAvailable = useMemo(() => {
         if (!codexResumeStatus?.installed) return false;
         const installed = codexResumeStatus.installedVersion;
-        const latest = codexResumeStatus.latestVersion;
+        const latest = codexResumeStatus.registry && codexResumeStatus.registry.ok ? codexResumeStatus.registry.latestVersion : null;
         if (!installed || !latest) return false;
         return installed !== latest;
     }, [codexResumeStatus]);
+
+    React.useEffect(() => {
+        if (!machineId) return;
+        if (!isOnline) return;
+        if (!experimentsEnabled || !expCodexResume) return;
+
+        // Best-effort: keep registry version info reasonably fresh for the machine details UI.
+        refreshDetectedCapabilities({
+            request: {
+                requests: [
+                    { id: 'dep.codex-mcp-resume', params: { includeRegistry: true, onlyIfInstalled: true, distTag: 'happy-codex-resume' } },
+                ],
+            },
+            timeoutMs: 12_000,
+        });
+    }, [experimentsEnabled, expCodexResume, isOnline, machineId, refreshDetectedCapabilities]);
 
     const detectedClisTitle = useMemo(() => {
         const headerTextStyle = [
@@ -378,30 +372,30 @@ export default function MachineDetailScreen() {
             },
         ];
 
-        const isOnline = !!machine && isMachineOnline(machine);
-        const canRefresh = isOnline && detectedClisState.status !== 'loading';
+        const canRefresh = isOnline && detectedCapabilities.status !== 'loading';
 
         return (
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Text style={headerTextStyle as any}>{t('machine.detectedClis')}</Text>
                 <Pressable
-                    onPress={() => refreshDetectedClis()}
+                    onPress={() => void refreshCapabilities()}
                     hitSlop={10}
                     style={{ padding: 2 }}
                     accessibilityRole="button"
                     accessibilityLabel={t('common.refresh')}
                     disabled={!canRefresh}
                 >
-                    {detectedClisState.status === 'loading'
+                    {detectedCapabilities.status === 'loading'
                         ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                         : <Ionicons name="refresh" size={18} color={isOnline ? theme.colors.textSecondary : theme.colors.divider} />}
                 </Pressable>
             </View>
         );
     }, [
-        detectedClisState.status,
+        detectedCapabilities.status,
+        isOnline,
         machine,
-        refreshDetectedClis,
+        refreshCapabilities,
         theme.colors.divider,
         theme.colors.groupped.sectionTitle,
         theme.colors.textSecondary,
@@ -753,7 +747,7 @@ export default function MachineDetailScreen() {
 
                 {/* Detected CLIs */}
                 <ItemGroup title={detectedClisTitle}>
-                    <DetectedClisList state={detectedClisState} />
+                    <DetectedClisList state={detectedCapabilities} />
                 </ItemGroup>
 
                 {/* Codex resume installer (experimental) */}
@@ -768,25 +762,47 @@ export default function MachineDetailScreen() {
                         <Item
                             title="Codex resume server"
                             subtitle={
-                                codexResumeStatusState === 'loading'
+                                detectedCapabilities.status === 'loading'
                                     ? 'Loading…'
-                                    : codexResumeStatus?.installed
-                                        ? codexResumeUpdateAvailable
-                                            ? `Installed (v${codexResumeStatus.installedVersion ?? 'unknown'}) — update available (v${codexResumeStatus.latestVersion ?? 'unknown'})`
-                                            : `Installed${codexResumeStatus.installedVersion ? ` (v${codexResumeStatus.installedVersion})` : ''}`
-                                        : 'Not installed'
+                                    : detectedCapabilities.status === 'not-supported'
+                                        ? 'Not available (update CLI)'
+                                        : detectedCapabilities.status === 'error'
+                                            ? 'Error (refresh)'
+                                            : detectedCapabilities.status !== 'loaded'
+                                                ? 'Not available'
+                                        : codexResumeStatus?.installed
+                                            ? codexResumeUpdateAvailable
+                                                ? `Installed (v${codexResumeStatus.installedVersion ?? 'unknown'}) — update available (v${codexResumeStatus.registry && codexResumeStatus.registry.ok ? (codexResumeStatus.registry.latestVersion ?? 'unknown') : 'unknown'})`
+                                                : `Installed${codexResumeStatus.installedVersion ? ` (v${codexResumeStatus.installedVersion})` : ''}`
+                                            : 'Not installed'
                             }
                             icon={<Ionicons name="refresh-circle-outline" size={22} color={theme.colors.textSecondary} />}
                             showChevron={false}
-                            onPress={() => refreshCodexResumeStatus()}
+                            onPress={() => {
+                                if (!machineId) return;
+                                refreshDetectedCapabilities({
+                                    request: {
+                                        requests: [
+                                            { id: 'dep.codex-mcp-resume', params: { includeRegistry: true, onlyIfInstalled: true, distTag: 'happy-codex-resume' } },
+                                        ],
+                                    },
+                                    timeoutMs: 12_000,
+                                });
+                            }}
                         />
-                        {codexResumeStatus?.latestVersion && (
+                        {codexResumeStatus?.registry && codexResumeStatus.registry.ok && codexResumeStatus.registry.latestVersion && (
                             <Item
                                 title="Latest"
-                                subtitle={codexResumeStatus.distTag
-                                    ? `${codexResumeStatus.latestVersion} (tag: ${codexResumeStatus.distTag})`
-                                    : codexResumeStatus.latestVersion}
+                                subtitle={`${codexResumeStatus.registry.latestVersion} (tag: ${codexResumeStatus.distTag})`}
                                 icon={<Ionicons name="cloud-download-outline" size={22} color={theme.colors.textSecondary} />}
+                                showChevron={false}
+                            />
+                        )}
+                        {codexResumeStatus?.registry && !codexResumeStatus.registry.ok && (
+                            <Item
+                                title="Registry check"
+                                subtitle={`Failed: ${codexResumeStatus.registry.errorMessage}`}
+                                icon={<Ionicons name="cloud-offline-outline" size={22} color={theme.colors.textSecondary} />}
                                 showChevron={false}
                             />
                         )}
@@ -814,7 +830,7 @@ export default function MachineDetailScreen() {
                             title={codexResumeStatus?.installed ? (codexResumeUpdateAvailable ? 'Update' : 'Reinstall') : 'Install'}
                             subtitle="Installs a forked Codex MCP server used only for resume operations."
                             icon={<Ionicons name="download-outline" size={22} color={theme.colors.textSecondary} />}
-                            disabled={isInstallingCodexResume || codexResumeStatusState === 'loading'}
+                            disabled={isInstallingCodexResume || detectedCapabilities.status === 'loading'}
                             onPress={async () => {
                                 if (!machineId) return;
                                 Modal.alert(
@@ -827,13 +843,34 @@ export default function MachineDetailScreen() {
                                             onPress: async () => {
                                                 setIsInstallingCodexResume(true);
                                                 try {
-                                                    const result = await machineInstallDep(machineId, {
-                                                        dep: 'codex-mcp-resume',
-                                                        installSpec: codexResumeInstallSpec?.trim() ? codexResumeInstallSpec.trim() : undefined,
+                                                    const installSpec = codexResumeInstallSpec?.trim() ? codexResumeInstallSpec.trim() : undefined;
+                                                    const method = codexResumeStatus?.installed ? (codexResumeUpdateAvailable ? 'upgrade' : 'install') : 'install';
+                                                    const invoke = await machineCapabilitiesInvoke(
+                                                        machineId,
+                                                        {
+                                                            id: 'dep.codex-mcp-resume',
+                                                            method,
+                                                            ...(installSpec ? { params: { installSpec } } : {}),
+                                                        },
+                                                        { timeoutMs: 5 * 60_000 },
+                                                    );
+                                                    if (!invoke.supported) {
+                                                        Modal.alert('Error', invoke.reason === 'not-supported' ? 'Update Happy CLI to install this dependency.' : 'Install failed');
+                                                    } else if (!invoke.response.ok) {
+                                                        Modal.alert('Error', invoke.response.error.message);
+                                                    } else {
+                                                        const logPath = (invoke.response.result as any)?.logPath;
+                                                        Modal.alert('Success', typeof logPath === 'string' ? `Install log: ${logPath}` : 'Installed');
+                                                    }
+                                                    await refreshCapabilities();
+                                                    refreshDetectedCapabilities({
+                                                        request: {
+                                                            requests: [
+                                                                { id: 'dep.codex-mcp-resume', params: { includeRegistry: true, onlyIfInstalled: true, distTag: 'happy-codex-resume' } },
+                                                            ],
+                                                        },
+                                                        timeoutMs: 12_000,
                                                     });
-                                                    if (result.type === 'error') Modal.alert('Error', result.errorMessage);
-                                                    else Modal.alert('Success', `Install log: ${result.logPath}`);
-                                                    await refreshCodexResumeStatus();
                                                 } catch (e) {
                                                     Modal.alert('Error', e instanceof Error ? e.message : 'Install failed');
                                                 } finally {

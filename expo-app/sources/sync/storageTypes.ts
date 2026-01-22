@@ -38,6 +38,35 @@ export const MetadataSchema = z.object({
     // Published by happy-cli so the app can seed permission state even before there are messages.
     permissionMode: z.enum(PERMISSION_MODES).optional(),
     permissionModeUpdatedAt: z.number().optional(),
+    messageQueueV1: z.object({
+        v: z.literal(1),
+        queue: z.array(z.object({
+            localId: z.string(),
+            message: z.string(),
+            createdAt: z.number(),
+            updatedAt: z.number(),
+        })),
+        inFlight: z.object({
+            localId: z.string(),
+            message: z.string(),
+            createdAt: z.number(),
+            updatedAt: z.number(),
+            claimedAt: z.number(),
+        }).nullable().optional(),
+    }).optional(),
+    messageQueueV1Discarded: z.array(z.object({
+        localId: z.string(),
+        message: z.string(),
+        createdAt: z.number(),
+        updatedAt: z.number(),
+        discardedAt: z.number(),
+        discardedReason: z.enum(['switch_to_local', 'manual']),
+    })).optional(),
+    /**
+     * Local-only markers for committed transcript messages that should be treated as discarded
+     * (e.g. when the user switches to terminal control and abandons unprocessed remote messages).
+     */
+    discardedCommittedMessageLocalIds: z.array(z.string()).optional(),
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;
@@ -78,6 +107,7 @@ export interface Session {
     thinking: boolean,
     thinkingAt: number,
     presence: "online" | number, // "online" when active, timestamp when last seen
+    optimisticThinkingAt?: number | null; // Local-only timestamp used for immediate "processing" UI feedback after submit
     todos?: Array<{
         content: string;
         status: 'pending' | 'in_progress' | 'completed';
@@ -85,7 +115,6 @@ export interface Session {
         id: string;
     }>;
     draft?: string | null; // Local draft message, not synced to server
-    pendingCount?: number; // Server-side pending queue count (ephemeral)
     permissionMode?: PermissionMode | null; // Local permission mode, not synced to server
     permissionModeUpdatedAt?: number | null; // Local timestamp to coordinate inferred (from last message) vs user-selected mode, not synced to server
     modelMode?: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | null; // Local model mode, not synced to server
@@ -110,6 +139,11 @@ export interface PendingMessage {
     text: string;
     displayText?: string;
     rawRecord: any;
+}
+
+export interface DiscardedPendingMessage extends PendingMessage {
+    discardedAt: number;
+    discardedReason: 'switch_to_local' | 'manual';
 }
 
 export interface DecryptedMessage {

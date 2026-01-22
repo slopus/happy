@@ -208,10 +208,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, [sessionId]);
 
     React.useEffect(() => {
-        if (!pendingLoaded) {
-            void sync.fetchPendingMessages(sessionId).catch(() => { });
-        }
-    }, [sessionId, pendingLoaded]);
+        void sync.fetchPendingMessages(sessionId).catch(() => { });
+    }, [sessionId, session.metadataVersion]);
 
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
@@ -355,7 +353,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         <View>
             <PendingQueueIndicator
                 sessionId={sessionId}
-                count={(session.pendingCount ?? 0) || (pendingLoaded ? pendingMessages.length : 0)}
+                count={
+                    pendingLoaded
+                        ? pendingMessages.length
+                        : ((session.metadata?.messageQueueV1?.queue?.length ?? 0) +
+                            (session.metadata?.messageQueueV1?.inFlight ? 1 : 0))
+                }
             />
             <AgentInput
                 placeholder={t('session.inputPlaceholder')}
@@ -396,8 +399,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                         void (async () => {
                             try {
                                 // Always enqueue as a server-side pending message first so:
-                                // - the user message is preserved in history even if spawn fails
-                                // - the agent can pull it when it is ready (via pending-pop)
+                                // - the user message is preserved even if spawn fails
+                                // - the agent can pull it when it is ready (metadata-backed messageQueueV1)
                                 await sync.enqueuePendingMessage(sessionId, text);
                                 await handleResumeSession();
                             } catch (e) {

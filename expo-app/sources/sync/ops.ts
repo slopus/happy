@@ -7,11 +7,26 @@ import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import type { MachineMetadata } from './storageTypes';
 import { buildSpawnHappySessionRpcParams, type SpawnHappySessionRpcParams, type SpawnSessionOptions } from './spawnSessionPayload';
-import { parseDetectCliRpcResponse, type DetectCliResponse } from './detectCliResponse';
+import {
+    parseCapabilitiesDescribeResponse,
+    parseCapabilitiesDetectResponse,
+    parseCapabilitiesInvokeResponse,
+    type CapabilitiesDescribeResponse,
+    type CapabilitiesDetectRequest,
+    type CapabilitiesDetectResponse,
+    type CapabilitiesInvokeRequest,
+    type CapabilitiesInvokeResponse,
+} from './capabilitiesProtocol';
 
 export type { SpawnHappySessionRpcParams, SpawnSessionOptions } from './spawnSessionPayload';
 export { buildSpawnHappySessionRpcParams } from './spawnSessionPayload';
-export type { DetectCliResponse, DetectCliEntry, DetectTmuxEntry } from './detectCliResponse';
+export type {
+    CapabilitiesDescribeResponse,
+    CapabilitiesDetectRequest,
+    CapabilitiesDetectResponse,
+    CapabilitiesInvokeRequest,
+    CapabilitiesInvokeResponse,
+} from './capabilitiesProtocol';
 
 // Strict type definitions for all operations
 
@@ -219,39 +234,85 @@ export async function resumeSession(options: ResumeSessionOptions): Promise<Resu
     }
 }
 
-export type InstallDepId = 'codex-mcp-resume';
+export type MachineCapabilitiesDescribeResult =
+    | { supported: true; response: CapabilitiesDescribeResponse }
+    | { supported: false; reason: 'not-supported' | 'error' };
 
-export type InstallDepResult =
-    | { type: 'success'; dep: InstallDepId; logPath: string }
-    | { type: 'error'; dep: InstallDepId; errorMessage: string; logPath?: string };
-
-export type DepStatus = {
-    dep: InstallDepId;
-    installed: boolean;
-    installDir: string;
-    binPath: string | null;
-    installedVersion: string | null;
-    latestVersion: string | null;
-    distTag: string | null;
-    lastInstallLogPath: string | null;
-};
-
-export async function machineDepStatus(machineId: string, dep: InstallDepId): Promise<DepStatus> {
-    const result = await apiSocket.machineRPC<DepStatus, { dep: InstallDepId }>(
-        machineId,
-        'dep-status',
-        { dep },
-    );
-    return result;
+export async function machineCapabilitiesDescribe(machineId: string): Promise<MachineCapabilitiesDescribeResult> {
+    try {
+        const result = await apiSocket.machineRPC<unknown, {}>(machineId, 'capabilities.describe', {});
+        if (isPlainObject(result) && typeof result.error === 'string') {
+            if (result.error === 'Method not found') return { supported: false, reason: 'not-supported' };
+            return { supported: false, reason: 'error' };
+        }
+        const parsed = parseCapabilitiesDescribeResponse(result);
+        if (!parsed) return { supported: false, reason: 'error' };
+        return { supported: true, response: parsed };
+    } catch {
+        return { supported: false, reason: 'error' };
+    }
 }
 
-export async function machineInstallDep(machineId: string, options: { dep: InstallDepId; installSpec?: string }): Promise<InstallDepResult> {
-    const result = await apiSocket.machineRPC<InstallDepResult, { dep: InstallDepId; installSpec?: string }>(
-        machineId,
-        'install-dep',
-        { dep: options.dep, installSpec: options.installSpec },
-    );
-    return result;
+export type MachineCapabilitiesDetectResult =
+    | { supported: true; response: CapabilitiesDetectResponse }
+    | { supported: false; reason: 'not-supported' | 'error' };
+
+export async function machineCapabilitiesDetect(
+    machineId: string,
+    request: CapabilitiesDetectRequest,
+    options?: { timeoutMs?: number },
+): Promise<MachineCapabilitiesDetectResult> {
+    try {
+        const timeoutMs = typeof options?.timeoutMs === 'number' ? options.timeoutMs : 2500;
+        const result = await Promise.race([
+            apiSocket.machineRPC<unknown, CapabilitiesDetectRequest>(machineId, 'capabilities.detect', request),
+            new Promise<{ error: string }>((resolve) => {
+                setTimeout(() => resolve({ error: 'Timeout' }), timeoutMs);
+            }),
+        ]);
+
+        if (isPlainObject(result) && typeof result.error === 'string') {
+            if (result.error === 'Method not found') return { supported: false, reason: 'not-supported' };
+            return { supported: false, reason: 'error' };
+        }
+
+        const parsed = parseCapabilitiesDetectResponse(result);
+        if (!parsed) return { supported: false, reason: 'error' };
+        return { supported: true, response: parsed };
+    } catch {
+        return { supported: false, reason: 'error' };
+    }
+}
+
+export type MachineCapabilitiesInvokeResult =
+    | { supported: true; response: CapabilitiesInvokeResponse }
+    | { supported: false; reason: 'not-supported' | 'error' };
+
+export async function machineCapabilitiesInvoke(
+    machineId: string,
+    request: CapabilitiesInvokeRequest,
+    options?: { timeoutMs?: number },
+): Promise<MachineCapabilitiesInvokeResult> {
+    try {
+        const timeoutMs = typeof options?.timeoutMs === 'number' ? options.timeoutMs : 30_000;
+        const result = await Promise.race([
+            apiSocket.machineRPC<unknown, CapabilitiesInvokeRequest>(machineId, 'capabilities.invoke', request),
+            new Promise<{ error: string }>((resolve) => {
+                setTimeout(() => resolve({ error: 'Timeout' }), timeoutMs);
+            }),
+        ]);
+
+        if (isPlainObject(result) && typeof result.error === 'string') {
+            if (result.error === 'Method not found') return { supported: false, reason: 'not-supported' };
+            return { supported: false, reason: 'error' };
+        }
+
+        const parsed = parseCapabilitiesInvokeResponse(result);
+        if (!parsed) return { supported: false, reason: 'error' };
+        return { supported: true, response: parsed };
+    } catch {
+        return { supported: false, reason: 'error' };
+    }
 }
 
 /**
@@ -301,46 +362,6 @@ export async function machineBash(
             stderr: error instanceof Error ? error.message : 'Unknown error',
             exitCode: -1
         };
-    }
-}
-
-export type MachineDetectCliResult =
-    | { supported: true; response: DetectCliResponse }
-    | { supported: false; reason: 'not-supported' | 'error' };
-
-/**
- * Query daemon CLI availability using a dedicated RPC (preferred).
- *
- * Falls back to `{ supported: false }` for older daemons that don't implement it.
- */
-export async function machineDetectCli(machineId: string, params?: { includeLoginStatus?: boolean }): Promise<MachineDetectCliResult> {
-    try {
-        const result = await apiSocket.machineRPC<unknown, {}>(
-            machineId,
-            'detect-cli',
-            { ...(params?.includeLoginStatus ? { includeLoginStatus: true } : {}) }
-        );
-
-        if (isPlainObject(result) && typeof result.error === 'string') {
-            // Older daemons (or errors) return an encrypted `{ error: ... }` payload.
-            if (result.error === 'Method not found') {
-                return { supported: false, reason: 'not-supported' };
-            }
-            return { supported: false, reason: 'error' };
-        }
-
-        if (!isPlainObject(result)) {
-            return { supported: false, reason: 'error' };
-        }
-
-        const response = parseDetectCliRpcResponse(result);
-        if (!response) {
-            return { supported: false, reason: 'error' };
-        }
-
-        return { supported: true, response };
-    } catch {
-        return { supported: false, reason: 'error' };
     }
 }
 

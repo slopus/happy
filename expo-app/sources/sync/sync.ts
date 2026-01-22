@@ -6,7 +6,7 @@ import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
-import { Session, Machine, PendingMessage } from './storageTypes';
+import { Session, Machine, PendingMessage, DiscardedPendingMessage, type Metadata } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from '@/platform/randomUUID';
@@ -44,6 +44,9 @@ import { buildOutgoingMessageMeta } from './messageMeta';
 import { HappyError } from '@/utils/errors';
 import { dbgSettings, isSettingsSyncDebugEnabled, summarizeSettings, summarizeSettingsDelta } from './debugSettings';
 import { deriveSettingsSecretsKey, decryptSecretValue, encryptSecretString, sealSecretsDeep } from './secretSettings';
+import { deleteMessageQueueV1DiscardedItem, deleteMessageQueueV1Item, enqueueMessageQueueV1Item, restoreMessageQueueV1DiscardedItem, updateMessageQueueV1Item } from './messageQueueV1';
+import { didControlReturnToMobile } from './controlledByUserTransitions';
+import { chooseSubmitMode } from './submitMode';
 import type { SavedSecret } from './settings';
 
 class Sync {
@@ -315,10 +318,12 @@ class Sync {
 
 
     async sendMessage(sessionId: string, text: string, displayText?: string) {
+        storage.getState().markSessionOptimisticThinking(sessionId);
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);
         if (!encryption) { // Should never happen
+            storage.getState().clearSessionOptimisticThinking(sessionId);
             console.error(`Session ${sessionId} not found`);
             return;
         }
@@ -326,76 +331,82 @@ class Sync {
         // Get session data from storage
         const session = storage.getState().sessions[sessionId];
         if (!session) {
+            storage.getState().clearSessionOptimisticThinking(sessionId);
             console.error(`Session ${sessionId} not found in storage`);
             return;
         }
 
-        // Read permission mode from session state
-        const permissionMode = session.permissionMode || 'default';
-        
-        // Read model mode - for Gemini, default to gemini-2.5-pro if not set
-        const flavor = session.metadata?.flavor;
-        const isGemini = flavor === 'gemini';
-        const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
+        try {
+            // Read permission mode from session state
+            const permissionMode = session.permissionMode || 'default';
+            
+            // Read model mode - for Gemini, default to gemini-2.5-pro if not set
+            const flavor = session.metadata?.flavor;
+            const isGemini = flavor === 'gemini';
+            const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
 
-        // Generate local ID
-        const localId = randomUUID();
+            // Generate local ID
+            const localId = randomUUID();
 
-        // Determine sentFrom based on platform
-        let sentFrom: string;
-        if (Platform.OS === 'web') {
-            sentFrom = 'web';
-        } else if (Platform.OS === 'android') {
-            sentFrom = 'android';
-        } else if (Platform.OS === 'ios') {
-            // Check if running on Mac (Catalyst or Designed for iPad on Mac)
-            if (isRunningOnMac()) {
-                sentFrom = 'mac';
+            // Determine sentFrom based on platform
+            let sentFrom: string;
+            if (Platform.OS === 'web') {
+                sentFrom = 'web';
+            } else if (Platform.OS === 'android') {
+                sentFrom = 'android';
+            } else if (Platform.OS === 'ios') {
+                // Check if running on Mac (Catalyst or Designed for iPad on Mac)
+                if (isRunningOnMac()) {
+                    sentFrom = 'mac';
+                } else {
+                    sentFrom = 'ios';
+                }
             } else {
-                sentFrom = 'ios';
+                sentFrom = 'web'; // fallback
             }
-        } else {
-            sentFrom = 'web'; // fallback
-        }
 
-        const model = isGemini && modelMode !== 'default' ? modelMode : undefined;
-        // Create user message content with metadata
-        const content: RawRecord = {
-            role: 'user',
-            content: {
-                type: 'text',
-                text
-            },
-            meta: buildOutgoingMessageMeta({
+            const model = isGemini && modelMode !== 'default' ? modelMode : undefined;
+            // Create user message content with metadata
+            const content: RawRecord = {
+                role: 'user',
+                content: {
+                    type: 'text',
+                    text
+                },
+                meta: buildOutgoingMessageMeta({
+                    sentFrom,
+                    permissionMode: permissionMode || 'default',
+                    model,
+                    appendSystemPrompt: systemPrompt,
+                    displayText,
+                })
+            };
+            const encryptedRawRecord = await encryption.encryptRawRecord(content);
+
+            // Add to messages - normalize the raw record
+            const createdAt = nowServerMs();
+            const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
+            if (normalizedMessage) {
+                this.applyMessages(sessionId, [normalizedMessage]);
+            }
+
+            const ready = await this.waitForAgentReady(sessionId);
+            if (!ready) {
+                log.log(`Session ${sessionId} not ready after timeout, sending anyway`);
+            }
+
+            // Send message with optional permission mode and source identifier
+            apiSocket.send('message', {
+                sid: sessionId,
+                message: encryptedRawRecord,
+                localId,
                 sentFrom,
-                permissionMode: permissionMode || 'default',
-                model,
-                appendSystemPrompt: systemPrompt,
-                displayText,
-            })
-        };
-        const encryptedRawRecord = await encryption.encryptRawRecord(content);
-
-        // Add to messages - normalize the raw record
-        const createdAt = nowServerMs();
-        const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
-        if (normalizedMessage) {
-            this.applyMessages(sessionId, [normalizedMessage]);
+                permissionMode: permissionMode || 'default'
+            });
+        } catch (e) {
+            storage.getState().clearSessionOptimisticThinking(sessionId);
+            throw e;
         }
-
-        const ready = await this.waitForAgentReady(sessionId);
-        if (!ready) {
-            log.log(`Session ${sessionId} not ready after timeout, sending anyway`);
-        }
-
-        // Send message with optional permission mode and source identifier
-        apiSocket.send('message', {
-            sid: sessionId,
-            message: encryptedRawRecord,
-            localId,
-            sentFrom,
-            permissionMode: permissionMode || 'default'
-        });
     }
 
     async abortSession(sessionId: string): Promise<void> {
@@ -405,7 +416,10 @@ class Sync {
     }
 
     async submitMessage(sessionId: string, text: string, displayText?: string): Promise<void> {
-        const mode = storage.getState().settings.messageSendMode;
+        const configuredMode = storage.getState().settings.messageSendMode;
+        const session = storage.getState().sessions[sessionId] ?? null;
+        const mode = chooseSubmitMode({ configuredMode, session });
+
         if (mode === 'interrupt') {
             try { await this.abortSession(sessionId); } catch { }
             await this.sendMessage(sessionId, text, displayText);
@@ -418,40 +432,110 @@ class Sync {
         await this.sendMessage(sessionId, text, displayText);
     }
 
+    private async updateSessionMetadataWithRetry(sessionId: string, updater: (metadata: Metadata) => Metadata): Promise<void> {
+        const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            throw new Error(`Session ${sessionId} not found`);
+        }
+
+        const attempt = async (expectedVersion: number, base: Metadata): Promise<'success' | 'version-mismatch'> => {
+            const updatedMetadata = updater(base);
+            const encryptedMetadata = await encryption.encryptMetadata(updatedMetadata);
+            const result = await apiSocket.emitWithAck<{
+                result: 'success' | 'version-mismatch' | 'error';
+                version?: number;
+                metadata?: string;
+                message?: string;
+            }>('update-metadata', {
+                sid: sessionId,
+                expectedVersion,
+                metadata: encryptedMetadata
+            });
+
+            if (result.result === 'success') {
+                if (typeof result.version === 'number' && typeof result.metadata === 'string') {
+                    const decrypted = await encryption.decryptMetadata(result.version, result.metadata);
+                    const currentSession = storage.getState().sessions[sessionId];
+                    if (decrypted && currentSession) {
+                        this.applySessions([{
+                            ...currentSession,
+                            metadata: decrypted,
+                            metadataVersion: result.version
+                        }]);
+                    }
+                }
+                return 'success';
+            }
+
+            if (result.result === 'version-mismatch') {
+                return 'version-mismatch';
+            }
+
+            throw new Error(result.message || 'Failed to update session metadata');
+        };
+
+        const currentSession = storage.getState().sessions[sessionId];
+        if (!currentSession?.metadata) {
+            throw new Error('Session metadata not available');
+        }
+
+        const first = await attempt(currentSession.metadataVersion, currentSession.metadata);
+        if (first === 'success') return;
+
+        await this.refreshSessions();
+        const refreshed = storage.getState().sessions[sessionId];
+        if (!refreshed?.metadata) {
+            throw new Error('Session metadata not available');
+        }
+        await attempt(refreshed.metadataVersion, refreshed.metadata);
+    }
+
     async fetchPendingMessages(sessionId: string): Promise<void> {
         const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) return;
-
-        const session = storage.getState().sessions[sessionId];
-        if (!session) return;
-
-        const result = await apiSocket.emitWithAck<{
-            ok: boolean;
-            error?: string;
-            messages?: Array<{
-                id: string;
-                localId: string | null;
-                message: string;
-                createdAt: number;
-                updatedAt: number;
-            }>;
-        }>('pending-list', { sid: sessionId, limit: 200 });
-
-        if (!result?.ok || !Array.isArray(result.messages)) {
+        if (!encryption) {
             storage.getState().applyPendingLoaded(sessionId);
+            storage.getState().applyDiscardedPendingMessages(sessionId, []);
             return;
         }
 
+        const session = storage.getState().sessions[sessionId];
+        if (!session) {
+            storage.getState().applyPendingLoaded(sessionId);
+            storage.getState().applyDiscardedPendingMessages(sessionId, []);
+            return;
+        }
+
+        const queue = session.metadata?.messageQueueV1?.queue ?? [];
+        const discardedQueue = session.metadata?.messageQueueV1Discarded ?? [];
+
         const pending: PendingMessage[] = [];
-        for (const m of result.messages) {
-            const raw = await encryption.decryptRaw(m.message);
+        for (const item of queue) {
+            const raw = await encryption.decryptRaw(item.message);
             const text = (raw as any)?.content?.text;
             if (typeof text !== 'string') continue;
             pending.push({
-                id: m.id,
-                localId: typeof m.localId === 'string' ? m.localId : null,
-                createdAt: m.createdAt,
-                updatedAt: m.updatedAt,
+                id: item.localId,
+                localId: item.localId,
+                createdAt: item.createdAt,
+                updatedAt: item.updatedAt,
+                text,
+                displayText: typeof (raw as any)?.meta?.displayText === 'string' ? (raw as any).meta.displayText : undefined,
+                rawRecord: raw as any,
+            });
+        }
+
+        const discarded: DiscardedPendingMessage[] = [];
+        for (const item of discardedQueue) {
+            const raw = await encryption.decryptRaw(item.message);
+            const text = (raw as any)?.content?.text;
+            if (typeof text !== 'string') continue;
+            discarded.push({
+                id: item.localId,
+                localId: item.localId,
+                createdAt: item.createdAt,
+                updatedAt: item.updatedAt,
+                discardedAt: item.discardedAt,
+                discardedReason: item.discardedReason,
                 text,
                 displayText: typeof (raw as any)?.meta?.displayText === 'string' ? (raw as any).meta.displayText : undefined,
                 rawRecord: raw as any,
@@ -459,16 +543,21 @@ class Sync {
         }
 
         storage.getState().applyPendingMessages(sessionId, pending);
+        storage.getState().applyDiscardedPendingMessages(sessionId, discarded);
     }
 
     async enqueuePendingMessage(sessionId: string, text: string, displayText?: string): Promise<void> {
+        storage.getState().markSessionOptimisticThinking(sessionId);
+
         const encryption = this.encryption.getSessionEncryption(sessionId);
         if (!encryption) {
+            storage.getState().clearSessionOptimisticThinking(sessionId);
             throw new Error(`Session ${sessionId} not found`);
         }
 
         const session = storage.getState().sessions[sessionId];
         if (!session) {
+            storage.getState().clearSessionOptimisticThinking(sessionId);
             throw new Error(`Session ${sessionId} not found in storage`);
         }
 
@@ -506,27 +595,32 @@ class Sync {
             }),
         };
 
+        const createdAt = nowServerMs();
+        const updatedAt = createdAt;
         const encryptedRawRecord = await encryption.encryptRawRecord(content);
-        const ack = await apiSocket.emitWithAck<{ ok: boolean; id?: string; error?: string }>('pending-enqueue', {
-            sid: sessionId,
-            message: encryptedRawRecord,
-            localId,
-        });
 
-        if (!ack?.ok || !ack.id) {
-            throw new Error(ack?.error || 'Failed to enqueue pending message');
-        }
-
-        const now = Date.now();
         storage.getState().upsertPendingMessage(sessionId, {
-            id: ack.id,
+            id: localId,
             localId,
-            createdAt: now,
-            updatedAt: now,
+            createdAt,
+            updatedAt,
             text,
             displayText,
             rawRecord: content,
         });
+
+        try {
+            await this.updateSessionMetadataWithRetry(sessionId, (metadata) => enqueueMessageQueueV1Item(metadata, {
+                localId,
+                message: encryptedRawRecord,
+                createdAt,
+                updatedAt,
+            }));
+        } catch (e) {
+            storage.getState().removePendingMessage(sessionId, localId);
+            storage.getState().clearSessionOptimisticThinking(sessionId);
+            throw e;
+        }
     }
 
     async updatePendingMessage(sessionId: string, pendingId: string, text: string): Promise<void> {
@@ -555,32 +649,38 @@ class Sync {
         };
 
         const encryptedRawRecord = await encryption.encryptRawRecord(content);
-        const ack = await apiSocket.emitWithAck<{ ok: boolean; error?: string }>('pending-update', {
-            sid: sessionId,
-            id: pendingId,
+        const updatedAt = nowServerMs();
+
+        await this.updateSessionMetadataWithRetry(sessionId, (metadata) => updateMessageQueueV1Item(metadata, {
+            localId: pendingId,
             message: encryptedRawRecord,
-        });
-        if (!ack?.ok) {
-            throw new Error(ack?.error || 'Failed to update pending message');
-        }
+            createdAt: existing.createdAt,
+            updatedAt,
+        }));
 
         storage.getState().upsertPendingMessage(sessionId, {
             ...existing,
             text,
-            updatedAt: Date.now(),
+            updatedAt,
             rawRecord: content,
         });
     }
 
     async deletePendingMessage(sessionId: string, pendingId: string): Promise<void> {
-        const ack = await apiSocket.emitWithAck<{ ok: boolean; error?: string }>('pending-delete', {
-            sid: sessionId,
-            id: pendingId,
-        });
-        if (!ack?.ok) {
-            throw new Error(ack?.error || 'Failed to delete pending message');
-        }
+        await this.updateSessionMetadataWithRetry(sessionId, (metadata) => deleteMessageQueueV1Item(metadata, pendingId));
         storage.getState().removePendingMessage(sessionId, pendingId);
+    }
+
+    async restoreDiscardedPendingMessage(sessionId: string, pendingId: string): Promise<void> {
+        await this.updateSessionMetadataWithRetry(sessionId, (metadata) =>
+            restoreMessageQueueV1DiscardedItem(metadata, { localId: pendingId, now: nowServerMs() })
+        );
+        await this.fetchPendingMessages(sessionId);
+    }
+
+    async deleteDiscardedPendingMessage(sessionId: string, pendingId: string): Promise<void> {
+        await this.updateSessionMetadataWithRetry(sessionId, (metadata) => deleteMessageQueueV1DiscardedItem(metadata, pendingId));
+        await this.fetchPendingMessages(sessionId);
     }
 
     applySettings = (delta: Partial<Settings>) => {
@@ -1946,23 +2046,13 @@ class Sync {
                     const rawContent = decrypted.content as { role?: string; content?: { type?: string; data?: { type?: string } } } | null;
                     const contentType = rawContent?.content?.type;
                     const dataType = rawContent?.content?.data?.type;
-                    
-                    // Debug logging to trace lifecycle events
-                    const isDev = typeof __DEV__ !== 'undefined' && __DEV__;
-                    if (isDev && (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started')) {
-                        console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}`);
-                    }
-                    
+
                     const isTaskComplete = 
                         ((contentType === 'acp' || contentType === 'codex') && 
                             (dataType === 'task_complete' || dataType === 'turn_aborted'));
                     
                     const isTaskStarted = 
                         ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started');
-                    
-                    if (isDev && (isTaskComplete || isTaskStarted)) {
-                        console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
-                    }
 
                     // Update session
                     const session = storage.getState().sessions[updateData.body.sid];
@@ -2064,7 +2154,7 @@ class Sync {
                     // This catches up on any messages that were exchanged while desktop had control
                     const wasControlledByUser = session.agentState?.controlledByUser;
                     const isNowControlledByUser = agentState?.controlledByUser;
-                    if (!wasControlledByUser && isNowControlledByUser) {
+                    if (didControlReturnToMobile(wasControlledByUser, isNowControlledByUser)) {
                         log.log(`🔄 Control returned to mobile for session ${updateData.body.id}, re-fetching messages`);
                         this.onSessionVisible(updateData.body.id);
                     }
@@ -2399,17 +2489,6 @@ class Sync {
             }
         }
 
-        // Handle pending queue count updates (ephemeral)
-        if (updateData.type === 'pending-queue') {
-            const session = storage.getState().sessions[updateData.id];
-            if (session) {
-                this.applySessions([{
-                    ...session,
-                    pendingCount: updateData.count
-                }]);
-            }
-        }
-
         // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity
     }
 
@@ -2438,16 +2517,7 @@ class Sync {
         presence?: "online" | number;
     })[]) => {
         const active = storage.getState().getActiveSessions();
-        const existing = storage.getState().sessions;
-        const patchedSessions = sessions.map((s) => {
-            const prev = existing[s.id];
-            const hasPendingCount = Object.prototype.hasOwnProperty.call(s as any, 'pendingCount');
-            if (!hasPendingCount && prev?.pendingCount !== undefined) {
-                return { ...(s as any), pendingCount: prev.pendingCount };
-            }
-            return s;
-        });
-        storage.getState().applySessions(patchedSessions);
+        storage.getState().applySessions(sessions);
         const newActive = storage.getState().getActiveSessions();
         this.applySessionDiff(active, newActive);
     }

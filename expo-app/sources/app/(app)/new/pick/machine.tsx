@@ -11,7 +11,7 @@ import { MachineSelector } from '@/components/newSession/MachineSelector';
 import { getRecentMachinesFromSessions } from '@/utils/recentMachines';
 import { Ionicons } from '@expo/vector-icons';
 import { sync } from '@/sync/sync';
-import { prefetchMachineDetectCli } from '@/hooks/useMachineDetectCliCache';
+import { prefetchMachineCapabilities } from '@/hooks/useMachineCapabilitiesCache';
 import { invalidateMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
 
 export default React.memo(function MachinePickerScreen() {
@@ -41,8 +41,7 @@ export default React.memo(function MachinePickerScreen() {
             if (selectedMachineId) {
                 invalidateMachineEnvPresence({ machineId: selectedMachineId });
                 await Promise.all([
-                    prefetchMachineDetectCli({ machineId: selectedMachineId }),
-                    prefetchMachineDetectCli({ machineId: selectedMachineId, includeLoginStatus: true }),
+                    prefetchMachineCapabilities({ machineId: selectedMachineId, request: { checklistId: 'new-session' } }),
                 ]);
             }
         } finally {
