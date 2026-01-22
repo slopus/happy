@@ -78,8 +78,8 @@ curl http://127.0.0.1:3005/health
 Notes:
 
 - If port `3005` is already in use, choose another: `PORT=3007 ...`.
+- `yarn dev` does **not** kill anything by default. If you prefer the old behavior that force-kills whatever is listening on the port, use: `PORT=3005 yarn dev -- --kill-port` (or `yarn dev:kill-port`).
 - `yarn start` is production-style (it expects env vars already set in your environment).
-- `yarn dev` exists but kills **anything** listening on port `3005` (`lsof ... | xargs kill -9`). Prefer the `tsx --env-file=.env.dev ...` command above.
 - Minio cleanup: `yarn s3:down`.
 
 #### Light flavor (SQLite + local files)
