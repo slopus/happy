@@ -1260,6 +1260,7 @@ export const it: TranslationStructure = {
     codex: {
         // Codex permission dialog buttons
         permissions: {
+            yesAlwaysAllowCommand: 'Sì, consenti sempre globalmente',
             yesForSession: 'Sì, e non chiedere per una sessione',
             stopAndExplain: 'Fermati e spiega cosa devo fare',
         }

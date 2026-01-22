@@ -1253,6 +1253,7 @@ export const ja: TranslationStructure = {
     codex: {
         // Codex permission dialog buttons
         permissions: {
+            yesAlwaysAllowCommand: 'はい、グローバルに常に許可',
             yesForSession: "はい、このセッションでは確認しない",
             stopAndExplain: '停止して、何をすべきか説明',
         }
