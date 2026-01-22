@@ -42,6 +42,63 @@ Happy Server supports two flavors that share the same API + internal logic. The 
 
 For local development, `yarn dev:light` is the easiest entrypoint for the light flavor (it creates the local dirs and runs `prisma db push` for the SQLite database file before starting).
 
+### Local development
+
+#### Prerequisites
+
+- Node.js + Yarn
+- Docker (required for the full flavor dependencies: Postgres, Redis, Minio)
+
+#### Full flavor (Postgres + Redis + S3/Minio)
+
+This repo includes convenience scripts to start Postgres/Redis/Minio via Docker and then run migrations.
+
+```bash
+yarn install
+
+# Start dependencies
+yarn db
+yarn redis
+yarn s3
+yarn s3:init
+
+# Apply migrations (uses `.env.dev`)
+yarn migrate
+
+# Start the server (recommended dev start; loads `.env.dev`)
+PORT=3005 yarn -s tsx --env-file=.env.dev ./sources/main.ts
+```
+
+Verify:
+
+```bash
+curl http://127.0.0.1:3005/health
+```
+
+Notes:
+
+- If port `3005` is already in use, choose another: `PORT=3007 ...`.
+- `yarn start` is production-style (it expects env vars already set in your environment).
+- `yarn dev` exists but kills **anything** listening on port `3005` (`lsof ... | xargs kill -9`). Prefer the `tsx --env-file=.env.dev ...` command above.
+- Minio cleanup: `yarn s3:down`.
+
+#### Light flavor (SQLite + local files)
+
+The light flavor does not require Docker. It uses a local SQLite database file and serves public files from disk under `GET /files/*`.
+
+```bash
+yarn install
+
+# Runs `prisma db push` for SQLite before starting
+PORT=3005 yarn dev:light
+```
+
+Verify:
+
+```bash
+curl http://127.0.0.1:3005/health
+```
+
 ### Prisma schema (full vs light)
 
 - `prisma/schema.prisma` is the **source of truth** (the full flavor uses it directly).
@@ -56,18 +113,6 @@ SQLite uses `prisma db push` (schema sync) instead of migrations:
 The full (Postgres) flavor uses migrations as usual:
 
 - Dev migrations: `yarn migrate` / `yarn migrate:reset` (uses `.env.dev`)
-
-### Run (full)
-
-```bash
-yarn start
-```
-
-### Run (light)
-
-```bash
-yarn dev:light
-```
 
 Light defaults (when env vars are missing):
 
