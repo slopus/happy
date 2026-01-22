@@ -26,20 +26,20 @@ export function resolveTerminalSpawnOptions(params: {
 }): TerminalSpawnOptions | null {
     const { settings, machineId } = params;
 
-    const override = machineId ? settings.terminalTmuxByMachineId?.[machineId] : undefined;
+    const override = machineId ? settings.sessionTmuxByMachineId?.[machineId] : undefined;
 
-    const useTmux = override ? override.useTmux : settings.terminalUseTmux;
+    const useTmux = override ? override.useTmux : settings.sessionUseTmux;
     if (!useTmux) return null;
 
     // NOTE: empty string means "use current/most recent tmux session".
     const sessionName = (override ? normalizeTmuxSessionName(override.sessionName) : null)
-        ?? normalizeTmuxSessionName(settings.terminalTmuxSessionName)
+        ?? normalizeTmuxSessionName(settings.sessionTmuxSessionName)
         ?? 'happy';
 
-    const isolated = override ? override.isolated : settings.terminalTmuxIsolated;
+    const isolated = override ? override.isolated : settings.sessionTmuxIsolated;
 
     const tmpDir = (override ? normalizeOptionalString(override.tmpDir) : null)
-        ?? normalizeOptionalString(settings.terminalTmuxTmpDir)
+        ?? normalizeOptionalString(settings.sessionTmuxTmpDir)
         ?? null;
 
     return {

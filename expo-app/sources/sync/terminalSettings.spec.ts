@@ -7,7 +7,7 @@ describe('resolveTerminalSpawnOptions', () => {
     it('returns null when tmux is disabled', () => {
         const settings: any = {
             ...settingsDefaults,
-            terminalUseTmux: false,
+            sessionUseTmux: false,
         };
         expect(resolveTerminalSpawnOptions({ settings, machineId: 'm1' })).toBeNull();
     });
@@ -15,11 +15,11 @@ describe('resolveTerminalSpawnOptions', () => {
     it('returns tmux spawn options when enabled', () => {
         const settings: any = {
             ...settingsDefaults,
-            terminalUseTmux: true,
-            terminalTmuxSessionName: 'happy',
-            terminalTmuxIsolated: true,
-            terminalTmuxTmpDir: null,
-            terminalTmuxByMachineId: {},
+            sessionUseTmux: true,
+            sessionTmuxSessionName: 'happy',
+            sessionTmuxIsolated: true,
+            sessionTmuxTmpDir: null,
+            sessionTmuxByMachineId: {},
         };
 
         expect(resolveTerminalSpawnOptions({ settings, machineId: 'm1' })).toEqual({
@@ -35,11 +35,11 @@ describe('resolveTerminalSpawnOptions', () => {
     it('allows blank session name to use current/most recent tmux session', () => {
         const settings: any = {
             ...settingsDefaults,
-            terminalUseTmux: true,
-            terminalTmuxSessionName: '   ',
-            terminalTmuxIsolated: true,
-            terminalTmuxTmpDir: null,
-            terminalTmuxByMachineId: {},
+            sessionUseTmux: true,
+            sessionTmuxSessionName: '   ',
+            sessionTmuxIsolated: true,
+            sessionTmuxTmpDir: null,
+            sessionTmuxByMachineId: {},
         };
 
         expect(resolveTerminalSpawnOptions({ settings, machineId: 'm1' })?.tmux?.sessionName).toBe('');
@@ -48,11 +48,11 @@ describe('resolveTerminalSpawnOptions', () => {
     it('supports per-machine overrides when enabled', () => {
         const settings: any = {
             ...settingsDefaults,
-            terminalUseTmux: true,
-            terminalTmuxSessionName: 'happy',
-            terminalTmuxIsolated: true,
-            terminalTmuxTmpDir: null,
-            terminalTmuxByMachineId: {
+            sessionUseTmux: true,
+            sessionTmuxSessionName: 'happy',
+            sessionTmuxIsolated: true,
+            sessionTmuxTmpDir: null,
+            sessionTmuxByMachineId: {
                 m1: {
                     useTmux: true,
                     sessionName: 'dev',

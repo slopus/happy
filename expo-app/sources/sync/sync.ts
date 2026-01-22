@@ -416,7 +416,7 @@ class Sync {
     }
 
     async submitMessage(sessionId: string, text: string, displayText?: string): Promise<void> {
-        const configuredMode = storage.getState().settings.messageSendMode;
+        const configuredMode = storage.getState().settings.sessionMessageSendMode;
         const session = storage.getState().sessions[sessionId] ?? null;
         const mode = chooseSubmitMode({ configuredMode, session });
 

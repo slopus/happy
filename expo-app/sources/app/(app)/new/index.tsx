@@ -303,8 +303,8 @@ function NewSessionScreen() {
     const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
     const [favoriteProfileIds, setFavoriteProfileIds] = useSettingMutable('favoriteProfiles');
     const [dismissedCLIWarnings, setDismissedCLIWarnings] = useSettingMutable('dismissedCLIWarnings');
-    const terminalUseTmux = useSetting('terminalUseTmux');
-    const terminalTmuxByMachineId = useSetting('terminalTmuxByMachineId');
+    const terminalUseTmux = useSetting('sessionUseTmux');
+    const terminalTmuxByMachineId = useSetting('sessionTmuxByMachineId');
 
     useFocusEffect(
         React.useCallback(() => {

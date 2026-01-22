@@ -42,7 +42,7 @@ export const SettingsView = React.memo(function SettingsView() {
     const experiments = useSetting('experiments');
     const expUsageReporting = useSetting('expUsageReporting');
     const useProfiles = useSetting('useProfiles');
-    const terminalUseTmux = useSetting('terminalUseTmux');
+    const terminalUseTmux = useSetting('sessionUseTmux');
     const isCustomServer = isUsingCustomServer();
     const allMachines = useAllMachines();
     const profile = useProfile();
@@ -399,22 +399,16 @@ export const SettingsView = React.memo(function SettingsView() {
                     onPress={() => router.push('/(app)/settings/voice')}
                 />
                 <Item
-                    title="Message sending"
-                    subtitle="Pending queue and interrupt behavior"
-                    icon={<Ionicons name="send-outline" size={29} color="#007AFF" />}
-                    onPress={() => router.push('/settings/message-sending' as any)}
-                />
-                <Item
                     title={t('settings.featuresTitle')}
                     subtitle={t('settings.featuresSubtitle')}
                     icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
                     onPress={() => router.push('/(app)/settings/features')}
                 />
                 <Item
-                    title={t('settings.terminal')}
-                    subtitle={terminalUseTmux ? t('profiles.tmux.spawnSessionsEnabledSubtitle') : t('profiles.tmux.spawnSessionsDisabledSubtitle')}
+                    title="Session"
+                    subtitle={terminalUseTmux ? 'Tmux enabled' : 'Message sending and tmux'}
                     icon={<Ionicons name="terminal-outline" size={29} color="#5856D6" />}
-                    onPress={() => router.push('/(app)/settings/terminal')}
+                    onPress={() => router.push('/(app)/settings/session')}
                 />
                 {useProfiles && (
                     <Item

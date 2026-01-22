@@ -120,11 +120,11 @@ export default function MachineDetailScreen() {
     const [showAllPaths, setShowAllPaths] = useState(false);
     const isOnline = !!machine && isMachineOnline(machine);
 
-    const terminalUseTmux = useSetting('terminalUseTmux');
-    const terminalTmuxSessionName = useSetting('terminalTmuxSessionName');
-    const terminalTmuxIsolated = useSetting('terminalTmuxIsolated');
-    const terminalTmuxTmpDir = useSetting('terminalTmuxTmpDir');
-    const [terminalTmuxByMachineId, setTerminalTmuxByMachineId] = useSettingMutable('terminalTmuxByMachineId');
+    const terminalUseTmux = useSetting('sessionUseTmux');
+    const terminalTmuxSessionName = useSetting('sessionTmuxSessionName');
+    const terminalTmuxIsolated = useSetting('sessionTmuxIsolated');
+    const terminalTmuxTmpDir = useSetting('sessionTmuxTmpDir');
+    const [terminalTmuxByMachineId, setTerminalTmuxByMachineId] = useSettingMutable('sessionTmuxByMachineId');
     const experimentsEnabled = useSetting('experiments');
     const expCodexResume = useSetting('expCodexResume');
     const [codexResumeInstallSpec, setCodexResumeInstallSpec] = useSettingMutable('codexResumeInstallSpec');

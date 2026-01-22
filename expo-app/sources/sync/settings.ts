@@ -92,10 +92,10 @@ export const AIBackendProfileSchema = z.object({
 export type AIBackendProfile = z.infer<typeof AIBackendProfileSchema>;
 
 //
-// Terminal / tmux settings
+// Session / tmux settings
 //
 
-const TerminalTmuxMachineOverrideSchema = z.object({
+const SessionTmuxMachineOverrideSchema = z.object({
     useTmux: z.boolean(),
     sessionName: z.string(),
     isolated: z.boolean(),
@@ -257,11 +257,11 @@ export const SettingsSchema = z.object({
     codexResumeInstallSpec: z.string().describe('Codex resume installer spec (npm/git/file); empty uses daemon default'),
     useProfiles: z.boolean().describe('Whether to enable AI backend profiles feature'),
     useEnhancedSessionWizard: z.boolean().describe('A/B test flag: Use enhanced profile-based session wizard UI'),
-    terminalUseTmux: z.boolean().describe('Whether new sessions should start in tmux by default'),
-    terminalTmuxSessionName: z.string().describe('Default tmux session name for new sessions'),
-    terminalTmuxIsolated: z.boolean().describe('Whether to use an isolated tmux server for new sessions'),
-    terminalTmuxTmpDir: z.string().nullable().describe('Optional TMUX_TMPDIR override for isolated tmux server'),
-    terminalTmuxByMachineId: z.record(z.string(), TerminalTmuxMachineOverrideSchema).default({}).describe('Per-machine overrides for tmux session spawning'),
+    sessionUseTmux: z.boolean().describe('Whether new sessions should start in tmux by default'),
+    sessionTmuxSessionName: z.string().describe('Default tmux session name for new sessions'),
+    sessionTmuxIsolated: z.boolean().describe('Whether to use an isolated tmux server for new sessions'),
+    sessionTmuxTmpDir: z.string().nullable().describe('Optional TMUX_TMPDIR override for isolated tmux server'),
+    sessionTmuxByMachineId: z.record(z.string(), SessionTmuxMachineOverrideSchema).default({}).describe('Per-machine overrides for tmux session spawning'),
     // Legacy combined toggle (kept for backward compatibility; see settingsParse migration)
     usePickerSearch: z.boolean().describe('Whether to show search in machine/path picker UIs (legacy combined toggle)'),
     useMachinePickerSearch: z.boolean().describe('Whether to show search in machine picker UIs'),
@@ -286,7 +286,7 @@ export const SettingsSchema = z.object({
     lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
     lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
     lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
-    messageSendMode: z.enum(['agent_queue', 'interrupt', 'server_pending']).describe('How the app submits messages while an agent is running'),
+    sessionMessageSendMode: z.enum(['agent_queue', 'interrupt', 'server_pending']).describe('How the app submits messages while an agent is running'),
     // Profile management settings
     profiles: z.array(AIBackendProfileSchema).describe('User-defined profiles for AI backend and environment variables'),
     lastUsedProfile: z.string().nullable().describe('Last selected profile for new sessions'),
@@ -352,11 +352,11 @@ export const settingsDefaults: Settings = {
     expCodexResume: false,
     codexResumeInstallSpec: '@leeroy/codex-mcp-resume@happy-codex-resume',
     useProfiles: false,
-    terminalUseTmux: false,
-    terminalTmuxSessionName: 'happy',
-    terminalTmuxIsolated: true,
-    terminalTmuxTmpDir: null,
-    terminalTmuxByMachineId: {},
+    sessionUseTmux: false,
+    sessionTmuxSessionName: 'happy',
+    sessionTmuxIsolated: true,
+    sessionTmuxTmpDir: null,
+    sessionTmuxByMachineId: {},
     useEnhancedSessionWizard: false,
     usePickerSearch: false,
     useMachinePickerSearch: false,
@@ -378,7 +378,7 @@ export const settingsDefaults: Settings = {
     lastUsedAgent: null,
     lastUsedPermissionMode: null,
     lastUsedModelMode: null,
-    messageSendMode: 'agent_queue',
+    sessionMessageSendMode: 'agent_queue',
     // Profile management defaults
     profiles: [],
     lastUsedProfile: null,
@@ -487,6 +487,33 @@ export function settingsParse(settings: unknown): Settings {
             result.useMachinePickerSearch = true;
             result.usePathPickerSearch = true;
         }
+    }
+
+    // Migration: Rename terminal/message send settings to session-prefixed names.
+    // These settings have not been deployed broadly, but we still migrate to avoid breaking local dev devices.
+    if (!('sessionUseTmux' in input) && 'terminalUseTmux' in input) {
+        const parsed = z.boolean().safeParse((input as any).terminalUseTmux);
+        if (parsed.success) result.sessionUseTmux = parsed.data;
+    }
+    if (!('sessionTmuxSessionName' in input) && 'terminalTmuxSessionName' in input) {
+        const parsed = z.string().safeParse((input as any).terminalTmuxSessionName);
+        if (parsed.success) result.sessionTmuxSessionName = parsed.data;
+    }
+    if (!('sessionTmuxIsolated' in input) && 'terminalTmuxIsolated' in input) {
+        const parsed = z.boolean().safeParse((input as any).terminalTmuxIsolated);
+        if (parsed.success) result.sessionTmuxIsolated = parsed.data;
+    }
+    if (!('sessionTmuxTmpDir' in input) && 'terminalTmuxTmpDir' in input) {
+        const parsed = z.string().nullable().safeParse((input as any).terminalTmuxTmpDir);
+        if (parsed.success) result.sessionTmuxTmpDir = parsed.data;
+    }
+    if (!('sessionTmuxByMachineId' in input) && 'terminalTmuxByMachineId' in input) {
+        const parsed = z.record(z.string(), SessionTmuxMachineOverrideSchema).safeParse((input as any).terminalTmuxByMachineId);
+        if (parsed.success) result.sessionTmuxByMachineId = parsed.data;
+    }
+    if (!('sessionMessageSendMode' in input) && 'messageSendMode' in input) {
+        const parsed = z.enum(['agent_queue', 'interrupt', 'server_pending'] as const).safeParse((input as any).messageSendMode);
+        if (parsed.success) result.sessionMessageSendMode = parsed.data;
     }
 
     // Migration: Introduce per-experiment toggles.
