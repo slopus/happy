@@ -116,6 +116,7 @@ import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState } from "../storageTypes";
 import { MessageMeta } from "../typesMessageMeta";
 import { parseMessageAsEvent } from "./messageToEvent";
+import { compareToolCalls } from "../../utils/toolComparison";
 
 type ReducerMessage = {
     id: string;
@@ -376,15 +377,29 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         if (ENABLE_LOGGING) {
                             console.log(`[REDUCER] Updating existing tool ${permId} with permission`);
                         }
-                        // Always update input to get latest arguments (e.g., proposedExecpolicyAmendment)
-                        message.tool.input = request.arguments;
+                        let hasChanged = false;
+
+                        // Update input only when it actually changed (keeps reducer idempotent).
+                        // This still allows late-arriving fields (e.g. proposedExecpolicyAmendment)
+                        // to update the existing permission message.
+                        const inputUnchanged = compareToolCalls(
+                            { name: request.tool, arguments: message.tool.input },
+                            { name: request.tool, arguments: request.arguments }
+                        );
+                        if (!inputUnchanged) {
+                            message.tool.input = request.arguments;
+                            hasChanged = true;
+                        }
                         if (!message.tool.permission) {
                             message.tool.permission = {
                                 id: permId,
                                 status: 'pending'
                             };
+                            hasChanged = true;
                         }
-                        changed.add(existingMessageId);
+                        if (hasChanged) {
+                            changed.add(existingMessageId);
+                        }
                     }
                 } else {
                     if (ENABLE_LOGGING) {
