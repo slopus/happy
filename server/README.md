@@ -2,6 +2,47 @@
 
 Minimal backend for open-source end-to-end encrypted Claude Code clients.
 
+## Server flavors
+
+This repo supports two server flavors:
+
+- **full** (default, recommended for production): Postgres + Redis + S3/Minio-style public file storage.
+- **light** (recommended for self-hosting/testing): SQLite + local file storage served from the same process under `GET /files/*`.
+
+SQLite schema note:
+
+- `prisma/schema.prisma` is the source of truth.
+- `prisma/schema.sqlite.prisma` is auto-generated (do not edit).
+- Regenerate with `yarn schema:sqlite`.
+
+### Run (full)
+
+```bash
+yarn start
+```
+
+### Run (light)
+
+```bash
+yarn dev:light
+```
+
+Light defaults (when env vars are missing):
+
+- data dir: `~/.happy/server-light`
+- sqlite db: `~/.happy/server-light/happy-server-light.sqlite`
+- public files: `~/.happy/server-light/files/*`
+- `HANDY_MASTER_SECRET` is generated (once) and persisted to `~/.happy/server-light/handy-master-secret.txt`
+
+Optional UI serving (any flavor):
+
+- `HAPPY_SERVER_UI_DIR=/path/to/ui-build`
+- `HAPPY_SERVER_UI_PREFIX=/` (default)
+
+Legacy (still supported):
+
+- `HAPPY_SERVER_LIGHT_UI_DIR=/path/to/ui-build`
+- `HAPPY_SERVER_LIGHT_UI_PREFIX=/` (default)
 ## What is Happy?
 
 Happy Server is the synchronization backbone for secure Claude Code clients. It enables multiple devices to share encrypted conversations while maintaining complete privacy - the server never sees your messages, only encrypted blobs it cannot read.
