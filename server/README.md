@@ -47,7 +47,7 @@ For local development, `yarn dev:light` is the easiest entrypoint for the light 
 #### Prerequisites
 
 - Node.js + Yarn
-- Docker (required for the full flavor dependencies: Postgres, Redis, Minio)
+- Docker (required for the **full** flavor dependencies: Postgres, Redis, Minio). The **light** flavor does not require Docker.
 
 #### Full flavor (Postgres + Redis + S3/Minio)
 
@@ -65,8 +65,8 @@ yarn s3:init
 # Apply migrations (uses `.env.dev`)
 yarn migrate
 
-# Start the server (recommended dev start; loads `.env.dev`)
-PORT=3005 yarn -s tsx --env-file=.env.dev ./sources/main.ts
+# Start the server (loads `.env.dev`)
+PORT=3005 yarn dev
 ```
 
 Verify:
@@ -132,11 +132,6 @@ Notes:
 
 - If `HAPPY_SERVER_UI_PREFIX=/`, the server serves the UI at `/` and uses an SPA fallback for unknown `GET` routes (it does **not** fallback for API paths like `/v1/*` or `/files/*`).
 - If `HAPPY_SERVER_UI_PREFIX=/ui`, the UI is served under `/ui` and the server keeps its default `/` route.
-
-Legacy env vars (still supported):
-
-- `HAPPY_SERVER_LIGHT_UI_DIR=/absolute/path/to/ui-build`
-- `HAPPY_SERVER_LIGHT_UI_PREFIX=/` (default)
 
 ## License
 
