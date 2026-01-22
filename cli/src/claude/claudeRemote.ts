@@ -39,7 +39,8 @@ export async function claudeRemote(opts: {
     onThinkingChange?: (thinking: boolean) => void,
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
-    onSessionReset?: () => void
+    onSessionReset?: () => void,
+    setUserMessageSender?: (sender: ((message: SDKUserMessage) => void) | null) => void,
 }) {
 
     // Determine how we should (re)start the Claude session.
@@ -162,6 +163,7 @@ export async function claudeRemote(opts: {
 
     // Push initial message
     let messages = new PushableAsyncIterable<SDKUserMessage>();
+    opts.setUserMessageSender?.((message: SDKUserMessage) => messages.push(message));
     messages.push({
         type: 'user',
         message: {
@@ -248,6 +250,7 @@ export async function claudeRemote(opts: {
             throw e;
         }
     } finally {
+        opts.setUserMessageSender?.(null);
         updateThinking(false);
     }
 }

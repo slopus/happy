@@ -18,6 +18,7 @@ import { getToolName } from "./utils/getToolName";
 import { formatErrorForUi } from "@/utils/formatErrorForUi";
 import { waitForMessagesOrPending } from "@/utils/waitForMessagesOrPending";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
+import { handleClaudeInteractionRespond } from "./utils/interactionRespond";
 
 interface PermissionsField {
     date: number;
@@ -128,6 +129,32 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     // Create permission handler
     const permissionHandler = new PermissionHandler(session);
+
+    let userMessageSender: ((message: SDKUserMessage) => void) | null = null;
+
+    session.client.rpcHandlerManager.registerHandler('interaction.respond', async (params: any) => {
+        const toolCallId = params && typeof params === 'object' ? (params as any).toolCallId : undefined;
+        const responseText = params && typeof params === 'object' ? (params as any).responseText : undefined;
+        if (typeof toolCallId !== 'string' || toolCallId.length === 0) {
+            throw new Error('interaction.respond: toolCallId is required');
+        }
+        if (typeof responseText !== 'string') {
+            throw new Error('interaction.respond: responseText is required');
+        }
+        if (!userMessageSender) {
+            throw new Error('interaction.respond: no active Claude remote prompt');
+        }
+        const sender = userMessageSender;
+
+        await handleClaudeInteractionRespond({
+            toolCallId,
+            responseText,
+            approveToolCall: async (id) => permissionHandler.approveToolCall(id),
+            pushToolResult: (message) => sender(message),
+        });
+
+        return { ok: true } as const;
+    });
 
     // Create outgoing message queue
     const messageQueue = new OutgoingMessageQueue(
@@ -416,6 +443,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
                     onMessage,
+                    setUserMessageSender: (sender) => {
+                        userMessageSender = sender;
+                    },
                     onCompletionEvent: (message: string) => {
                         logger.debug(`[remote]: Completion event: ${message}`);
                         session.client.sendSessionEvent({ type: 'message', message });

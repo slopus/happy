@@ -48,6 +48,52 @@ export class PermissionHandler {
         this.session = session;
         this.setupClientHandler();
     }
+
+    approveToolCall(toolCallId: string): void {
+        this.applyPermissionResponse({ id: toolCallId, approved: true });
+    }
+
+    private applyPermissionResponse(message: PermissionResponse): void {
+        logger.debug(`Permission response: ${JSON.stringify(message)}`);
+
+        const id = message.id;
+        const pending = this.pendingRequests.get(id);
+
+        if (!pending) {
+            logger.debug('Permission request not found or already resolved');
+            return;
+        }
+
+        // Store the response with timestamp
+        this.responses.set(id, { ...message, receivedAt: Date.now() });
+        this.pendingRequests.delete(id);
+
+        // Handle the permission response based on tool type
+        this.handlePermissionResponse(message, pending);
+
+        // Move processed request to completedRequests
+        this.session.client.updateAgentState((currentState) => {
+            const request = currentState.requests?.[id];
+            if (!request) return currentState;
+            let r = { ...currentState.requests };
+            delete r[id];
+            return {
+                ...currentState,
+                requests: r,
+                completedRequests: {
+                    ...currentState.completedRequests,
+                    [id]: {
+                        ...request,
+                        completedAt: Date.now(),
+                        status: message.approved ? 'approved' : 'denied',
+                        reason: message.reason,
+                        mode: message.mode,
+                        allowTools: message.allowTools
+                    }
+                }
+            };
+        });
+    }
     
     /**
      * Set callback to trigger when permission request is made
@@ -378,46 +424,9 @@ export class PermissionHandler {
      * Sets up the client handler for permission responses
      */
     private setupClientHandler(): void {
-        this.session.client.rpcHandlerManager.registerHandler<PermissionResponse, void>('permission', async (message) => {
-            logger.debug(`Permission response: ${JSON.stringify(message)}`);
-
-            const id = message.id;
-            const pending = this.pendingRequests.get(id);
-
-            if (!pending) {
-                logger.debug('Permission request not found or already resolved');
-                return;
-            }
-
-            // Store the response with timestamp
-            this.responses.set(id, { ...message, receivedAt: Date.now() });
-            this.pendingRequests.delete(id);
-
-            // Handle the permission response based on tool type
-            this.handlePermissionResponse(message, pending);
-
-            // Move processed request to completedRequests
-            this.session.client.updateAgentState((currentState) => {
-                const request = currentState.requests?.[id];
-                if (!request) return currentState;
-                let r = { ...currentState.requests };
-                delete r[id];
-                return {
-                    ...currentState,
-                    requests: r,
-                    completedRequests: {
-                        ...currentState.completedRequests,
-                        [id]: {
-                            ...request,
-                            completedAt: Date.now(),
-                            status: message.approved ? 'approved' : 'denied',
-                            reason: message.reason,
-                            mode: message.mode,
-                            allowTools: message.allowTools
-                        }
-                    }
-                };
-            });
+        this.session.client.rpcHandlerManager.registerHandler<PermissionResponse, { ok: true }>('permission', async (message) => {
+            this.applyPermissionResponse(message);
+            return { ok: true } as const;
         });
     }
 
