@@ -59,22 +59,6 @@ interface DetectCliResponse {
     tmux: DetectTmuxEntry;
 }
 
-type CodexResumeStatusResponse = {
-    installed: boolean;
-    installDir: string;
-    binPath: string | null;
-    version: string | null;
-    lastInstallLogPath: string | null;
-};
-
-type CodexResumeInstallRequest = {
-    installSpec?: string;
-};
-
-type CodexResumeInstallResponse =
-    | { type: 'success'; logPath: string; version: string | null }
-    | { type: 'error'; errorMessage: string; logPath?: string };
-
 type InstallDepId = 'codex-mcp-resume';
 
 type InstallDepRequest = {
@@ -85,6 +69,21 @@ type InstallDepRequest = {
 type InstallDepResponse =
     | { type: 'success'; dep: InstallDepId; logPath: string }
     | { type: 'error'; dep: InstallDepId; errorMessage: string; logPath?: string };
+
+type DepStatusRequest = {
+    dep: InstallDepId;
+};
+
+type DepStatusResponse = {
+    dep: InstallDepId;
+    installed: boolean;
+    installDir: string;
+    binPath: string | null;
+    installedVersion: string | null;
+    latestVersion: string | null;
+    distTag: string | null;
+    lastInstallLogPath: string | null;
+};
 
 type EnvPreviewSecretsPolicy = 'none' | 'redacted' | 'full';
 
@@ -698,7 +697,47 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         await writeFile(codexResumeStatePath(), JSON.stringify(next, null, 2), 'utf8');
     }
 
-    const DEFAULT_CODEX_MCP_RESUME_INSTALL_SPEC = '@leeroy/codex-mcp-resume@happy-codex-resume';
+    const CODEX_MCP_RESUME_NPM_PACKAGE = '@leeroy/codex-mcp-resume';
+    const CODEX_MCP_RESUME_DIST_TAG = 'happy-codex-resume';
+    const DEFAULT_CODEX_MCP_RESUME_INSTALL_SPEC = `${CODEX_MCP_RESUME_NPM_PACKAGE}@${CODEX_MCP_RESUME_DIST_TAG}`;
+
+    function getPackageJsonPathForInstallPrefix(opts: { installDir: string; packageName: string }): string {
+        const pkg = opts.packageName.trim();
+        if (!pkg) return join(opts.installDir, 'node_modules', 'package.json');
+        if (pkg.startsWith('@')) {
+            const [scope, name] = pkg.split('/');
+            if (scope && name) {
+                return join(opts.installDir, 'node_modules', scope, name, 'package.json');
+            }
+        }
+        return join(opts.installDir, 'node_modules', pkg, 'package.json');
+    }
+
+    async function readInstalledNpmPackageVersion(opts: { installDir: string; packageName: string }): Promise<string | null> {
+        try {
+            const raw = await readFile(getPackageJsonPathForInstallPrefix(opts), 'utf8');
+            const parsed = JSON.parse(raw);
+            const version = typeof parsed?.version === 'string' ? parsed.version.trim() : '';
+            return version || null;
+        } catch {
+            return null;
+        }
+    }
+
+    async function readNpmDistTagVersion(opts: { packageName: string; distTag: string }): Promise<string | null> {
+        try {
+            const spec = `${opts.packageName}@${opts.distTag}`;
+            const { stdout } = await execFileAsync(
+                'npm',
+                ['view', spec, 'version'],
+                { timeout: 10_000, windowsHide: true, maxBuffer: 1024 * 1024 },
+            );
+            const text = typeof stdout === 'string' ? stdout.trim() : '';
+            return text || null;
+        } catch {
+            return null;
+        }
+    }
 
     async function installNpmDepToPrefix(opts: {
         installDir: string;
@@ -751,7 +790,14 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         } catch { }
 
         if (!result.ok) {
-            return { type: 'error', dep, errorMessage: result.errorMessage, logPath };
+            const extraHelp = (() => {
+                if (installSpec !== DEFAULT_CODEX_MCP_RESUME_INSTALL_SPEC) return '';
+                const msg = result.errorMessage || '';
+                if (!msg.includes('No matching version found')) return '';
+                return `\n\nTip: the npm dist-tag "${CODEX_MCP_RESUME_DIST_TAG}" may not be set yet.\n` +
+                    `Publish and then run your dist-tag workflow, or temporarily install "${CODEX_MCP_RESUME_NPM_PACKAGE}@latest".`;
+            })();
+            return { type: 'error', dep, errorMessage: result.errorMessage + extraHelp, logPath };
         }
 
         return { type: 'success', dep, logPath };
@@ -769,7 +815,12 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         return installCodexMcpResume(data.installSpec);
     });
 
-    rpcHandlerManager.registerHandler<{}, CodexResumeStatusResponse>('codex-resume-status', async () => {
+    rpcHandlerManager.registerHandler<DepStatusRequest, DepStatusResponse>('dep-status', async (data) => {
+        const dep = data?.dep;
+        if (dep !== 'codex-mcp-resume') {
+            throw new Error(`Unsupported dep: ${String(dep)}`);
+        }
+
         const primaryBinPath = codexResumeBinPath();
         const legacyBinPath = codexResumeLegacyBinPath();
         const state = await readCodexResumeStateWithFallback();
@@ -800,37 +851,20 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
             })()
             : null;
 
-        const version = installed
-            ? await (async () => {
-                try {
-                    const { stdout } = await execFileAsync(binPath!, ['--version'], { timeout: 10_000, windowsHide: true });
-                    const text = typeof stdout === 'string' ? stdout.trim() : '';
-                    return text || null;
-                } catch {
-                    return null;
-                }
-            })()
-            : null;
+        const installDir = binPath?.startsWith(codexResumeLegacyInstallDir()) ? codexResumeLegacyInstallDir() : codexResumeInstallDir();
+        const installedVersion = await readInstalledNpmPackageVersion({ installDir, packageName: CODEX_MCP_RESUME_NPM_PACKAGE });
+        const latestVersion = await readNpmDistTagVersion({ packageName: CODEX_MCP_RESUME_NPM_PACKAGE, distTag: CODEX_MCP_RESUME_DIST_TAG });
 
         return {
+            dep,
             installed,
-            installDir: binPath?.startsWith(codexResumeLegacyInstallDir()) ? codexResumeLegacyInstallDir() : codexResumeInstallDir(),
             binPath,
-            version,
+            installDir,
+            installedVersion,
+            latestVersion,
+            distTag: CODEX_MCP_RESUME_DIST_TAG,
             lastInstallLogPath: state?.lastInstallLogPath ?? null,
         };
-    });
-
-    rpcHandlerManager.registerHandler<CodexResumeInstallRequest, CodexResumeInstallResponse>('codex-resume-install', async (data) => {
-        // Deprecated: use install-dep with dep=codex-mcp-resume.
-        const installSpecOverride = typeof data?.installSpec === 'string' ? data.installSpec : undefined;
-        const result = await installCodexMcpResume(installSpecOverride);
-
-        if (result.type === 'error') {
-            return { type: 'error', errorMessage: result.errorMessage, logPath: result.logPath };
-        }
-
-        return { type: 'success', logPath: result.logPath, version: null };
     });
 
     // Environment preview handler - returns daemon-effective env values with secret policy applied.

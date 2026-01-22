@@ -9,13 +9,13 @@ import { useSessions, useAllMachines, useMachine, storage, useSetting, useSettin
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import {
-    machineCodexResumeInstall,
-    machineCodexResumeStatus,
+    machineDepStatus,
     machineDetectCli,
+    machineInstallDep,
     machineSpawnNewSession,
     machineStopDaemon,
     machineUpdateMetadata,
-    type CodexResumeStatus,
+    type DepStatus,
     type DetectCliResponse,
 } from '@/sync/ops';
 import { Modal } from '@/modal';
@@ -139,7 +139,7 @@ export default function MachineDetailScreen() {
     const expCodexResume = useSetting('expCodexResume');
     const [codexResumeInstallSpec, setCodexResumeInstallSpec] = useSettingMutable('codexResumeInstallSpec');
 
-    const [codexResumeStatus, setCodexResumeStatus] = useState<CodexResumeStatus | null>(null);
+    const [codexResumeStatus, setCodexResumeStatus] = useState<DepStatus | null>(null);
     const [codexResumeStatusState, setCodexResumeStatusState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
     const [isInstallingCodexResume, setIsInstallingCodexResume] = useState(false);
 
@@ -326,7 +326,7 @@ export default function MachineDetailScreen() {
         if (!experimentsEnabled || !expCodexResume) return;
         try {
             setCodexResumeStatusState('loading');
-            const status = await machineCodexResumeStatus(machineId);
+            const status = await machineDepStatus(machineId, 'codex-mcp-resume');
             setCodexResumeStatus(status);
             setCodexResumeStatusState('loaded');
         } catch {
@@ -356,6 +356,14 @@ export default function MachineDetailScreen() {
         if (!entry?.available) return null;
         return typeof entry.version === 'string' ? entry.version : null;
     }, [detectedClisState]);
+
+    const codexResumeUpdateAvailable = useMemo(() => {
+        if (!codexResumeStatus?.installed) return false;
+        const installed = codexResumeStatus.installedVersion;
+        const latest = codexResumeStatus.latestVersion;
+        if (!installed || !latest) return false;
+        return installed !== latest;
+    }, [codexResumeStatus]);
 
     const detectedClisTitle = useMemo(() => {
         const headerTextStyle = [
@@ -763,13 +771,25 @@ export default function MachineDetailScreen() {
                                 codexResumeStatusState === 'loading'
                                     ? 'Loading…'
                                     : codexResumeStatus?.installed
-                                        ? `Installed${codexResumeStatus.version ? ` (v${codexResumeStatus.version})` : ''}`
+                                        ? codexResumeUpdateAvailable
+                                            ? `Installed (v${codexResumeStatus.installedVersion ?? 'unknown'}) — update available (v${codexResumeStatus.latestVersion ?? 'unknown'})`
+                                            : `Installed${codexResumeStatus.installedVersion ? ` (v${codexResumeStatus.installedVersion})` : ''}`
                                         : 'Not installed'
                             }
                             icon={<Ionicons name="refresh-circle-outline" size={22} color={theme.colors.textSecondary} />}
                             showChevron={false}
                             onPress={() => refreshCodexResumeStatus()}
                         />
+                        {codexResumeStatus?.latestVersion && (
+                            <Item
+                                title="Latest"
+                                subtitle={codexResumeStatus.distTag
+                                    ? `${codexResumeStatus.latestVersion} (tag: ${codexResumeStatus.distTag})`
+                                    : codexResumeStatus.latestVersion}
+                                icon={<Ionicons name="cloud-download-outline" size={22} color={theme.colors.textSecondary} />}
+                                showChevron={false}
+                            />
+                        )}
                         <Item
                             title="Install source"
                             subtitle={codexResumeInstallSpec?.trim() ? codexResumeInstallSpec.trim() : '(default)'}
@@ -791,8 +811,8 @@ export default function MachineDetailScreen() {
                             }}
                         />
                         <Item
-                            title={codexResumeStatus?.installed ? 'Reinstall / update' : 'Install'}
-                            subtitle="Installs a separate Codex build used only for resume operations."
+                            title={codexResumeStatus?.installed ? (codexResumeUpdateAvailable ? 'Update' : 'Reinstall') : 'Install'}
+                            subtitle="Installs a forked Codex MCP server used only for resume operations."
                             icon={<Ionicons name="download-outline" size={22} color={theme.colors.textSecondary} />}
                             disabled={isInstallingCodexResume || codexResumeStatusState === 'loading'}
                             onPress={async () => {
@@ -807,14 +827,12 @@ export default function MachineDetailScreen() {
                                             onPress: async () => {
                                                 setIsInstallingCodexResume(true);
                                                 try {
-                                                    const result = await machineCodexResumeInstall(machineId, {
+                                                    const result = await machineInstallDep(machineId, {
+                                                        dep: 'codex-mcp-resume',
                                                         installSpec: codexResumeInstallSpec?.trim() ? codexResumeInstallSpec.trim() : undefined,
                                                     });
-                                                    if (result.type === 'error') {
-                                                        Modal.alert('Error', result.errorMessage);
-                                                    } else {
-                                                        Modal.alert('Success', `Install log: ${result.logPath}`);
-                                                    }
+                                                    if (result.type === 'error') Modal.alert('Error', result.errorMessage);
+                                                    else Modal.alert('Success', `Install log: ${result.logPath}`);
                                                     await refreshCodexResumeStatus();
                                                 } catch (e) {
                                                     Modal.alert('Error', e instanceof Error ? e.message : 'Install failed');
