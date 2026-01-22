@@ -159,6 +159,26 @@ No-data-loss guidelines:
 - Prefer “expand/contract”: add new columns/tables, backfill, switch code, and only remove old fields in a major version (or never).
 - Be careful with renames. If you only need to rename the Prisma Client API, prefer `@map` / `@@map`.
 
+### Schema changes (developer workflow)
+
+When you change the data model, you must update both migration histories:
+
+1. Edit `prisma/schema.prisma`
+2. Regenerate the SQLite schema and commit the result:
+   - `yarn schema:sqlite`
+3. Create/update the **full (Postgres)** migration:
+   - `yarn migrate --name <name>` (writes to `prisma/migrations/*`)
+4. Create/update the **light (SQLite)** migration:
+   - `yarn migrate:light:new -- --name <name>` (writes to `prisma/sqlite/migrations/*`)
+5. Validate:
+   - `yarn test`
+   - Smoke test both flavors (`yarn dev` and `yarn dev:light`)
+
+No-data-loss guidelines:
+
+- Prefer “expand/contract”: add new columns/tables, backfill, switch code, and only remove old fields in a major version (or never).
+- Be careful with renames. If you only need to rename the Prisma Client API, prefer `@map` / `@@map`.
+
 Light defaults (when env vars are missing):
 
 - data dir: `~/.happy/server-light`
