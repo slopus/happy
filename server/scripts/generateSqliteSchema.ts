@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { mkdir } from 'node:fs/promises';
 
 export function normalizeSchemaText(input: string): string {
     return input.replace(/\r\n/g, '\n').trimEnd() + '\n';
@@ -35,7 +36,7 @@ export function generateSqliteSchemaFromPostgres(postgresSchema: string): string
         'generator client {',
         '    provider        = "prisma-client-js"',
         '    previewFeatures = ["metrics"]',
-        '    output          = "../generated/sqlite-client"',
+        '    output          = "../../generated/sqlite-client"',
         '}',
     ].join('\n');
 
@@ -61,7 +62,7 @@ async function main(args: string[]): Promise<void> {
 
     const root = resolveRepoRoot();
     const masterPath = join(root, 'prisma', 'schema.prisma');
-    const sqlitePath = join(root, 'prisma', 'schema.sqlite.prisma');
+    const sqlitePath = join(root, 'prisma', 'sqlite', 'schema.prisma');
 
     const master = await readFile(masterPath, 'utf-8');
     const generated = generateSqliteSchemaFromPostgres(master);
@@ -74,19 +75,20 @@ async function main(args: string[]): Promise<void> {
             // ignore
         }
         if (normalizeSchemaText(existing) !== normalizeSchemaText(generated)) {
-            console.error('[schema] prisma/schema.sqlite.prisma is out of date.');
+            console.error('[schema] prisma/sqlite/schema.prisma is out of date.');
             console.error('[schema] Run: yarn schema:sqlite');
             process.exit(1);
         }
         if (!quiet) {
-            console.log('[schema] prisma/schema.sqlite.prisma is up to date.');
+            console.log('[schema] prisma/sqlite/schema.prisma is up to date.');
         }
         return;
     }
 
+    await mkdir(dirname(sqlitePath), { recursive: true });
     await writeFile(sqlitePath, generated, 'utf-8');
     if (!quiet) {
-        console.log('[schema] Wrote prisma/schema.sqlite.prisma');
+        console.log('[schema] Wrote prisma/sqlite/schema.prisma');
     }
 }
 

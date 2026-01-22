@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readdir } from 'node:fs/promises';
 import { applyLightDefaultEnv } from '@/flavors/light/env';
-import { buildLightDevPlan } from './dev.lightPlan';
 
 function run(cmd: string, args: string[], env: NodeJS.ProcessEnv): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -18,27 +17,38 @@ function run(cmd: string, args: string[], env: NodeJS.ProcessEnv): Promise<void>
     });
 }
 
+async function findBaselineMigrationDir(): Promise<string> {
+    const entries = await readdir('prisma/sqlite/migrations', { withFileTypes: true });
+    const dirs = entries
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort();
+    const first = dirs[0];
+    if (!first) {
+        throw new Error('No prisma/sqlite/migrations/* directories found to use as a baseline.');
+    }
+    return first;
+}
+
 async function main() {
     const env: NodeJS.ProcessEnv = { ...process.env };
     applyLightDefaultEnv(env);
 
     const dataDir = env.HAPPY_SERVER_LIGHT_DATA_DIR!;
-    const filesDir = env.HAPPY_SERVER_LIGHT_FILES_DIR!;
-    const plan = buildLightDevPlan();
-
-    // Ensure dirs exist so SQLite can create the DB file.
     await mkdir(dataDir, { recursive: true });
-    await mkdir(filesDir, { recursive: true });
 
-    // Ensure sqlite schema is present, then apply migrations (idempotent).
     await run('yarn', ['-s', 'schema:sqlite', '--quiet'], env);
-    await run('yarn', plan.prismaDeployArgs, env);
 
-    // Run the light flavor.
-    await run('yarn', plan.startLightArgs, env);
+    const baseline = await findBaselineMigrationDir();
+    await run(
+        'yarn',
+        ['-s', 'prisma', 'migrate', 'resolve', '--schema', 'prisma/sqlite/schema.prisma', '--applied', baseline],
+        env
+    );
 }
 
 main().catch((err) => {
     console.error(err);
     process.exit(1);
 });
+

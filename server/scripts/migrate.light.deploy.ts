@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { applyLightDefaultEnv } from '@/flavors/light/env';
-import { buildLightDevPlan } from './dev.lightPlan';
 
 function run(cmd: string, args: string[], env: NodeJS.ProcessEnv): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -23,22 +22,14 @@ async function main() {
     applyLightDefaultEnv(env);
 
     const dataDir = env.HAPPY_SERVER_LIGHT_DATA_DIR!;
-    const filesDir = env.HAPPY_SERVER_LIGHT_FILES_DIR!;
-    const plan = buildLightDevPlan();
-
-    // Ensure dirs exist so SQLite can create the DB file.
     await mkdir(dataDir, { recursive: true });
-    await mkdir(filesDir, { recursive: true });
 
-    // Ensure sqlite schema is present, then apply migrations (idempotent).
     await run('yarn', ['-s', 'schema:sqlite', '--quiet'], env);
-    await run('yarn', plan.prismaDeployArgs, env);
-
-    // Run the light flavor.
-    await run('yarn', plan.startLightArgs, env);
+    await run('yarn', ['-s', 'prisma', 'migrate', 'deploy', '--schema', 'prisma/sqlite/schema.prisma'], env);
 }
 
 main().catch((err) => {
     console.error(err);
     process.exit(1);
 });
+

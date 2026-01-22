@@ -8,7 +8,7 @@
 generator client {
     provider        = "prisma-client-js"
     previewFeatures = ["metrics"]
-    output          = "../generated/sqlite-client"
+    output          = "../../generated/sqlite-client"
 }
 
 datasource db {
