@@ -84,7 +84,10 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
                 if (callback) {
                     callback({
                         ok: false,
-                        error: 'RPC method not available'
+                        error: 'RPC method not available',
+                        // Backward compatible: older clients rely on the error string.
+                        // Newer clients should prefer this structured code.
+                        errorCode: 'RPC_METHOD_NOT_AVAILABLE'
                     });
                 }
                 return;

@@ -2,6 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { Encryption } from './encryption/encryption';
 import { observeServerTimestamp } from './time';
+import { createRpcCallError } from './rpcErrors';
 
 //
 // Types
@@ -124,7 +125,7 @@ class ApiSocket {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
         
-        const result = await this.socket!.emitWithAck('rpc-call', {
+        const result: any = await this.socket!.emitWithAck('rpc-call', {
             method: `${sessionId}:${method}`,
             params: await sessionEncryption.encryptRaw(params)
         });
@@ -132,7 +133,10 @@ class ApiSocket {
         if (result.ok) {
             return await sessionEncryption.decryptRaw(result.result) as R;
         }
-        throw new Error('RPC call failed');
+        throw createRpcCallError({
+            error: typeof result.error === 'string' ? result.error : 'RPC call failed',
+            errorCode: typeof result.errorCode === 'string' ? result.errorCode : undefined,
+        });
     }
 
     /**
@@ -144,7 +148,7 @@ class ApiSocket {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const result = await this.socket!.emitWithAck('rpc-call', {
+        const result: any = await this.socket!.emitWithAck('rpc-call', {
             method: `${machineId}:${method}`,
             params: await machineEncryption.encryptRaw(params)
         });
@@ -152,7 +156,10 @@ class ApiSocket {
         if (result.ok) {
             return await machineEncryption.decryptRaw(result.result) as R;
         }
-        throw new Error('RPC call failed');
+        throw createRpcCallError({
+            error: typeof result.error === 'string' ? result.error : 'RPC call failed',
+            errorCode: typeof result.errorCode === 'string' ? result.errorCode : undefined,
+        });
     }
 
     send(event: string, data: any) {

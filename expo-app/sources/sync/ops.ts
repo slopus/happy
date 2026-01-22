@@ -7,6 +7,7 @@ import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import type { MachineMetadata } from './storageTypes';
 import { buildSpawnHappySessionRpcParams, type SpawnHappySessionRpcParams, type SpawnSessionOptions } from './spawnSessionPayload';
+import { isRpcMethodNotAvailableError } from './rpcErrors';
 import {
     parseCapabilitiesDescribeResponse,
     parseCapabilitiesDetectResponse,
@@ -145,6 +146,7 @@ interface SessionKillRequest {
 interface SessionKillResponse {
     success: boolean;
     message: string;
+    errorCode?: string;
 }
 
 // Response types for spawn session
@@ -748,7 +750,8 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
     } catch (error) {
         return {
             success: false,
-            message: error instanceof Error ? error.message : 'Unknown error'
+            message: error instanceof Error ? error.message : 'Unknown error',
+            errorCode: error && typeof error === 'object' ? (error as any).rpcErrorCode : undefined,
         };
     }
 }
@@ -772,7 +775,10 @@ export async function sessionArchive(sessionId: string): Promise<SessionArchiveR
     }
 
     const message = killResult.message || 'Failed to archive session';
-    const isRpcMethodUnavailable = message.toLowerCase().includes('rpc method not available');
+    const isRpcMethodUnavailable = isRpcMethodNotAvailableError({
+        rpcErrorCode: killResult.errorCode,
+        message,
+    });
 
     if (isRpcMethodUnavailable) {
         try {
