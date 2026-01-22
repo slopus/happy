@@ -240,13 +240,28 @@ export type CodexResumeInstallResult =
     | { type: 'success'; logPath: string; version: string | null }
     | { type: 'error'; errorMessage: string; logPath?: string };
 
-export async function machineCodexResumeInstall(machineId: string, options: { installSpec?: string }): Promise<CodexResumeInstallResult> {
-    const result = await apiSocket.machineRPC<CodexResumeInstallResult, { installSpec?: string }>(
+export type InstallDepId = 'codex-mcp-resume';
+
+export type InstallDepResult =
+    | { type: 'success'; dep: InstallDepId; logPath: string }
+    | { type: 'error'; dep: InstallDepId; errorMessage: string; logPath?: string };
+
+export async function machineInstallDep(machineId: string, options: { dep: InstallDepId; installSpec?: string }): Promise<InstallDepResult> {
+    const result = await apiSocket.machineRPC<InstallDepResult, { dep: InstallDepId; installSpec?: string }>(
         machineId,
-        'codex-resume-install',
-        { installSpec: options.installSpec },
+        'install-dep',
+        { dep: options.dep, installSpec: options.installSpec },
     );
     return result;
+}
+
+export async function machineCodexResumeInstall(machineId: string, options: { installSpec?: string }): Promise<CodexResumeInstallResult> {
+    // Deprecated: use machineInstallDep({ dep: 'codex-mcp-resume' }).
+    const result = await machineInstallDep(machineId, { dep: 'codex-mcp-resume', installSpec: options.installSpec });
+    if (result.type === 'error') {
+        return { type: 'error', errorMessage: result.errorMessage, logPath: result.logPath };
+    }
+    return { type: 'success', logPath: result.logPath, version: null };
 }
 
 /**

@@ -13,6 +13,8 @@ import { execFileSync } from 'child_process';
 
 const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days, which is the half of the maximum possible timeout (~28 days for int32 value in NodeJS)
 
+type CodexMcpClientSpawnMode = 'codex-cli' | 'mcp-server';
+
 /**
  * Get the correct MCP subcommand based on installed codex version
  * Versions >= 0.43.0-alpha.5 use 'mcp-server', older versions use 'mcp'
@@ -128,9 +130,13 @@ export class CodexMcpClient {
     private handler: ((event: any) => void) | null = null;
     private permissionHandler: CodexPermissionHandler | null = null;
     private codexCommand: string;
+    private mode: CodexMcpClientSpawnMode;
+    private mcpServerArgs: string[];
 
-    constructor(options?: { command?: string }) {
+    constructor(options?: { command?: string; mode?: CodexMcpClientSpawnMode; args?: string[] }) {
         this.codexCommand = options?.command ?? 'codex';
+        this.mode = options?.mode ?? 'codex-cli';
+        this.mcpServerArgs = options?.args ?? [];
         this.client = new Client(
             { name: 'happy-codex-client', version: '1.0.0' },
             { capabilities: { elicitation: {} } }
@@ -162,25 +168,32 @@ export class CodexMcpClient {
     async connect(): Promise<void> {
         if (this.connected) return;
 
-        const mcpCommand = getCodexMcpCommand(this.codexCommand);
+        const transportArgs = (() => {
+            if (this.mode === 'mcp-server') {
+                logger.debug(`[CodexMCP] Connecting to MCP server using command: ${this.codexCommand} ${this.mcpServerArgs.join(' ')}`.trim());
+                return this.mcpServerArgs;
+            }
 
-        if (mcpCommand === null) {
-            throw new Error(
-                `Codex CLI not found or not executable: ${this.codexCommand}\n` +
-                '\n' +
-                'To install codex:\n' +
-                '  npm install -g @openai/codex\n' +
-                '\n' +
-                'Alternatively, use Claude:\n' +
-                '  happy claude'
-            );
-        }
+            const mcpCommand = getCodexMcpCommand(this.codexCommand);
+            if (mcpCommand === null) {
+                throw new Error(
+                    `Codex CLI not found or not executable: ${this.codexCommand}\n` +
+                    '\n' +
+                    'To install codex:\n' +
+                    '  npm install -g @openai/codex\n' +
+                    '\n' +
+                    'Alternatively, use Claude:\n' +
+                    '  happy claude'
+                );
+            }
 
-        logger.debug(`[CodexMCP] Connecting to Codex MCP server using command: ${this.codexCommand} ${mcpCommand}`);
+            logger.debug(`[CodexMCP] Connecting to Codex MCP server using command: ${this.codexCommand} ${mcpCommand}`);
+            return [mcpCommand];
+        })();
 
         this.transport = new StdioClientTransport({
             command: this.codexCommand,
-            args: [mcpCommand],
+            args: transportArgs,
             env: Object.keys(process.env).reduce((acc, key) => {
                 const value = process.env[key];
                 if (typeof value === 'string') acc[key] = value;

@@ -350,7 +350,7 @@ export const settingsDefaults: Settings = {
     expZen: false,
     expVoiceAuthFlow: false,
     expCodexResume: false,
-    codexResumeInstallSpec: '',
+    codexResumeInstallSpec: '@leeroy/codex-mcp-resume@happy-codex-resume',
     useProfiles: false,
     terminalUseTmux: false,
     terminalTmuxSessionName: 'happy',

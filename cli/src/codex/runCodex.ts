@@ -477,27 +477,42 @@ export async function runCodex(opts: {
     //
 
     const isVendorResumeRequested = typeof opts.resume === 'string' && opts.resume.trim().length > 0;
-    const codexCommand = (() => {
-        if (!isVendorResumeRequested) return 'codex';
+    const codexMcpServer = (() => {
+        if (!isVendorResumeRequested) {
+            return { mode: 'codex-cli' as const, command: 'codex' };
+        }
+
         if (!isExperimentalCodexVendorResumeEnabled()) {
             throw new Error('Codex resume is experimental and is disabled on this machine.');
         }
 
-        const fromEnv = typeof process.env.HAPPY_CODEX_RESUME_BIN === 'string' ? process.env.HAPPY_CODEX_RESUME_BIN.trim() : '';
-        if (fromEnv && existsSync(fromEnv)) return fromEnv;
+        const envOverride = (() => {
+            const v = typeof process.env.HAPPY_CODEX_RESUME_MCP_SERVER_BIN === 'string'
+                ? process.env.HAPPY_CODEX_RESUME_MCP_SERVER_BIN.trim()
+                : (typeof process.env.HAPPY_CODEX_RESUME_BIN === 'string' ? process.env.HAPPY_CODEX_RESUME_BIN.trim() : '');
+            return v;
+        })();
+        if (envOverride && existsSync(envOverride)) {
+            return { mode: 'mcp-server' as const, command: envOverride };
+        }
 
-        const binName = process.platform === 'win32' ? 'codex.cmd' : 'codex';
-        const defaultPath = join(configuration.happyHomeDir, 'tools', 'codex-resume', 'node_modules', '.bin', binName);
-        if (existsSync(defaultPath)) return defaultPath;
+        const binName = process.platform === 'win32' ? 'codex-mcp-resume.cmd' : 'codex-mcp-resume';
+        const defaultNew = join(configuration.happyHomeDir, 'tools', 'codex-mcp-resume', 'node_modules', '.bin', binName);
+        const defaultOld = join(configuration.happyHomeDir, 'tools', 'codex-resume', 'node_modules', '.bin', binName);
+
+        const found = [defaultNew, defaultOld].find((p) => existsSync(p));
+        if (found) {
+            return { mode: 'mcp-server' as const, command: found };
+        }
 
         throw new Error(
-            `Codex resume tool is not installed.\n` +
-            `Install it from the Happy app (Machine details → Codex resume), or set HAPPY_CODEX_RESUME_BIN.\n` +
-            `Expected: ${defaultPath}`,
+            `Codex resume MCP server is not installed.\n` +
+            `Install it from the Happy app (Machine details → Codex resume), or set HAPPY_CODEX_RESUME_MCP_SERVER_BIN.\n` +
+            `Expected: ${defaultNew}`,
         );
     })();
 
-    const client = new CodexMcpClient({ command: codexCommand });
+    const client = new CodexMcpClient({ mode: codexMcpServer.mode, command: codexMcpServer.command });
 
     // NOTE: Codex resume support varies by build; forks may seed `codex-reply` with a stored session id.
     permissionHandler = new CodexPermissionHandler(session);

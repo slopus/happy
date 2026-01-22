@@ -75,6 +75,17 @@ type CodexResumeInstallResponse =
     | { type: 'success'; logPath: string; version: string | null }
     | { type: 'error'; errorMessage: string; logPath?: string };
 
+type InstallDepId = 'codex-mcp-resume';
+
+type InstallDepRequest = {
+    dep: InstallDepId;
+    installSpec?: string;
+};
+
+type InstallDepResponse =
+    | { type: 'success'; dep: InstallDepId; logPath: string }
+    | { type: 'error'; dep: InstallDepId; errorMessage: string; logPath?: string };
+
 type EnvPreviewSecretsPolicy = 'none' | 'redacted' | 'full';
 
 interface PreviewEnvRequest {
@@ -642,16 +653,38 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
     // Installs an alternate Codex CLI into a Happy-owned prefix so:
     // - the user keeps their system Codex for normal sessions
     // - Happy can use the alternate build only when `--resume` is requested
-    const codexResumeInstallDir = () => join(configuration.happyHomeDir, 'tools', 'codex-resume');
+    //
+    // NOTE: We now install a forked MCP server binary wrapper (`codex-mcp-resume`) via npm,
+    // rather than replacing the user's system `codex` CLI.
+    const codexResumeInstallDir = () => join(configuration.happyHomeDir, 'tools', 'codex-mcp-resume');
+    const codexResumeLegacyInstallDir = () => join(configuration.happyHomeDir, 'tools', 'codex-resume');
     const codexResumeBinPath = () => {
-        const binName = process.platform === 'win32' ? 'codex.cmd' : 'codex';
+        const binName = process.platform === 'win32' ? 'codex-mcp-resume.cmd' : 'codex-mcp-resume';
         return join(codexResumeInstallDir(), 'node_modules', '.bin', binName);
     };
+    const codexResumeLegacyBinPath = () => {
+        const binName = process.platform === 'win32' ? 'codex-mcp-resume.cmd' : 'codex-mcp-resume';
+        return join(codexResumeLegacyInstallDir(), 'node_modules', '.bin', binName);
+    };
     const codexResumeStatePath = () => join(codexResumeInstallDir(), 'install-state.json');
+    const codexResumeLegacyStatePath = () => join(codexResumeLegacyInstallDir(), 'install-state.json');
 
     async function readCodexResumeState(): Promise<{ lastInstallLogPath: string | null } | null> {
         try {
             const raw = await readFile(codexResumeStatePath(), 'utf8');
+            const parsed = JSON.parse(raw);
+            const lastInstallLogPath = typeof parsed?.lastInstallLogPath === 'string' ? parsed.lastInstallLogPath : null;
+            return { lastInstallLogPath };
+        } catch {
+            return null;
+        }
+    }
+
+    async function readCodexResumeStateWithFallback(): Promise<{ lastInstallLogPath: string | null } | null> {
+        const primary = await readCodexResumeState();
+        if (primary) return primary;
+        try {
+            const raw = await readFile(codexResumeLegacyStatePath(), 'utf8');
             const parsed = JSON.parse(raw);
             const lastInstallLogPath = typeof parsed?.lastInstallLogPath === 'string' ? parsed.lastInstallLogPath : null;
             return { lastInstallLogPath };
@@ -665,23 +698,111 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         await writeFile(codexResumeStatePath(), JSON.stringify(next, null, 2), 'utf8');
     }
 
+    const DEFAULT_CODEX_MCP_RESUME_INSTALL_SPEC = '@leeroy/codex-mcp-resume@happy-codex-resume';
+
+    async function installNpmDepToPrefix(opts: {
+        installDir: string;
+        installSpec: string;
+        logPath: string;
+    }): Promise<{ ok: true } | { ok: false; errorMessage: string }> {
+        try {
+            await mkdir(opts.installDir, { recursive: true });
+            const { stdout, stderr } = await execFileAsync(
+                'npm',
+                ['install', '--no-audit', '--no-fund', '--prefix', opts.installDir, opts.installSpec],
+                { timeout: 15 * 60_000, windowsHide: true, maxBuffer: 50 * 1024 * 1024 },
+            );
+
+            await writeFile(
+                opts.logPath,
+                [`# installSpec: ${opts.installSpec}`, '', '## stdout', stdout ?? '', '', '## stderr', stderr ?? ''].join('\n'),
+                'utf8',
+            );
+
+            return { ok: true };
+        } catch (e) {
+            const message = e instanceof Error ? e.message : 'Install failed';
+            try {
+                await writeFile(opts.logPath, `# installSpec: ${opts.installSpec}\n\n${message}\n`, 'utf8');
+            } catch { }
+            return { ok: false, errorMessage: message };
+        }
+    }
+
+    async function installCodexMcpResume(installSpecOverride?: string): Promise<InstallDepResponse> {
+        const dep: InstallDepId = 'codex-mcp-resume';
+        const logPath = join(configuration.logsDir, `install-dep-${dep}-${Date.now()}.log`);
+
+        const installSpecRaw = typeof installSpecOverride === 'string' ? installSpecOverride.trim() : '';
+        const installSpec =
+            installSpecRaw ||
+            (typeof process.env.HAPPY_CODEX_MCP_RESUME_INSTALL_SPEC === 'string' ? process.env.HAPPY_CODEX_MCP_RESUME_INSTALL_SPEC.trim() : '') ||
+            (typeof process.env.HAPPY_CODEX_RESUME_INSTALL_SPEC === 'string' ? process.env.HAPPY_CODEX_RESUME_INSTALL_SPEC.trim() : '') ||
+            DEFAULT_CODEX_MCP_RESUME_INSTALL_SPEC;
+
+        const result = await installNpmDepToPrefix({
+            installDir: codexResumeInstallDir(),
+            installSpec,
+            logPath,
+        });
+
+        try {
+            await writeCodexResumeState({ lastInstallLogPath: logPath });
+        } catch { }
+
+        if (!result.ok) {
+            return { type: 'error', dep, errorMessage: result.errorMessage, logPath };
+        }
+
+        return { type: 'success', dep, logPath };
+    }
+
+    rpcHandlerManager.registerHandler<InstallDepRequest, InstallDepResponse>('install-dep', async (data) => {
+        if (data?.dep !== 'codex-mcp-resume') {
+            return {
+                type: 'error',
+                dep: 'codex-mcp-resume',
+                errorMessage: `Unsupported dep: ${String(data?.dep)}`,
+            };
+        }
+
+        return installCodexMcpResume(data.installSpec);
+    });
+
     rpcHandlerManager.registerHandler<{}, CodexResumeStatusResponse>('codex-resume-status', async () => {
-        const binPath = codexResumeBinPath();
-        const state = await readCodexResumeState();
+        const primaryBinPath = codexResumeBinPath();
+        const legacyBinPath = codexResumeLegacyBinPath();
+        const state = await readCodexResumeStateWithFallback();
 
         const installed = await (async () => {
             try {
-                await access(binPath, fsConstants.X_OK);
+                await access(primaryBinPath, fsConstants.X_OK);
                 return true;
             } catch {
-                return false;
+                try {
+                    await access(legacyBinPath, fsConstants.X_OK);
+                    return true;
+                } catch {
+                    return false;
+                }
             }
         })();
+
+        const binPath = installed
+            ? await (async () => {
+                try {
+                    await access(primaryBinPath, fsConstants.X_OK);
+                    return primaryBinPath;
+                } catch {
+                    return legacyBinPath;
+                }
+            })()
+            : null;
 
         const version = installed
             ? await (async () => {
                 try {
-                    const { stdout } = await execFileAsync(binPath, ['--version'], { timeout: 10_000, windowsHide: true });
+                    const { stdout } = await execFileAsync(binPath!, ['--version'], { timeout: 10_000, windowsHide: true });
                     const text = typeof stdout === 'string' ? stdout.trim() : '';
                     return text || null;
                 } catch {
@@ -692,65 +813,23 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
 
         return {
             installed,
-            installDir: codexResumeInstallDir(),
-            binPath: installed ? binPath : null,
+            installDir: binPath?.startsWith(codexResumeLegacyInstallDir()) ? codexResumeLegacyInstallDir() : codexResumeInstallDir(),
+            binPath,
             version,
             lastInstallLogPath: state?.lastInstallLogPath ?? null,
         };
     });
 
     rpcHandlerManager.registerHandler<CodexResumeInstallRequest, CodexResumeInstallResponse>('codex-resume-install', async (data) => {
-        const installDir = codexResumeInstallDir();
-        const binPath = codexResumeBinPath();
-        const logPath = join(configuration.logsDir, `codex-resume-install-${Date.now()}.log`);
+        // Deprecated: use install-dep with dep=codex-mcp-resume.
+        const installSpecOverride = typeof data?.installSpec === 'string' ? data.installSpec : undefined;
+        const result = await installCodexMcpResume(installSpecOverride);
 
-        const installSpecRaw = typeof data?.installSpec === 'string' ? data.installSpec.trim() : '';
-        const installSpec =
-            installSpecRaw ||
-            (typeof process.env.HAPPY_CODEX_RESUME_INSTALL_SPEC === 'string' ? process.env.HAPPY_CODEX_RESUME_INSTALL_SPEC.trim() : '');
-
-        if (!installSpec) {
-            return {
-                type: 'error',
-                errorMessage: 'Missing install spec. Set it in the app (Machine details → Codex resume) or via HAPPY_CODEX_RESUME_INSTALL_SPEC.',
-            };
+        if (result.type === 'error') {
+            return { type: 'error', errorMessage: result.errorMessage, logPath: result.logPath };
         }
 
-        try {
-            await mkdir(installDir, { recursive: true });
-            const { stdout, stderr } = await execFileAsync(
-                'npm',
-                ['install', '--no-audit', '--no-fund', '--prefix', installDir, installSpec],
-                { timeout: 15 * 60_000, windowsHide: true, maxBuffer: 50 * 1024 * 1024 },
-            );
-
-            await writeFile(
-                logPath,
-                [`# installSpec: ${installSpec}`, '', '## stdout', stdout ?? '', '', '## stderr', stderr ?? ''].join('\n'),
-                'utf8',
-            );
-
-            await writeCodexResumeState({ lastInstallLogPath: logPath });
-
-            const version = await (async () => {
-                try {
-                    const { stdout: v } = await execFileAsync(binPath, ['--version'], { timeout: 10_000, windowsHide: true });
-                    const text = typeof v === 'string' ? v.trim() : '';
-                    return text || null;
-                } catch {
-                    return null;
-                }
-            })();
-
-            return { type: 'success', logPath, version };
-        } catch (e) {
-            const message = e instanceof Error ? e.message : 'Install failed';
-            try {
-                await writeFile(logPath, `# installSpec: ${installSpec}\n\n${message}\n`, 'utf8');
-                await writeCodexResumeState({ lastInstallLogPath: logPath });
-            } catch { }
-            return { type: 'error', errorMessage: message, logPath };
-        }
+        return { type: 'success', logPath: result.logPath, version: null };
     });
 
     // Environment preview handler - returns daemon-effective env values with secret policy applied.
