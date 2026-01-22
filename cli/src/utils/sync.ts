@@ -2,9 +2,31 @@ import { createBackoff, type BackoffFunc } from "@/utils/time";
 
 export type InvalidateSyncOptions = {
     backoff?: BackoffFunc;
+    /**
+     * Called whenever an attempted sync fails.
+     *
+     * Notes:
+     * - `failuresCount` counts the number of failed attempts for the current sync run (1-based).
+     * - With the default backoff, this is called on each retry attempt, and once more when the run
+     *   ultimately fails (because the final thrown error does not trigger the backoff's `onError`).
+     */
     onError?: (error: unknown, failuresCount: number) => void;
 };
 
+/**
+ * Coalescing invalidation runner.
+ *
+ * Behavior:
+ * - `invalidate()` schedules a run of `command()` if one isn't already in progress.
+ * - If `invalidate()` is called while a run is in-flight, it queues exactly one additional run
+ *   after the current run completes (coalescing repeated invalidations).
+ * - `invalidateAndAwait()` resolves when the current (and any queued) run finishes.
+ *
+ * Failure semantics:
+ * - `command()` is executed via a bounded backoff (default: up to 8 attempts).
+ * - `invalidateAndAwait()` always resolves even if `command()` ultimately fails, so callers
+ *   don't hang forever (e.g., startup/shutdown flows).
+ */
 export class InvalidateSync {
     private _invalidated = false;
     private _invalidatedDouble = false;

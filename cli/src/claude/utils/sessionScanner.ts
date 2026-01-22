@@ -151,8 +151,12 @@ export async function createSessionScanner(opts: {
                 }
                 processedMessageKeys.add(key);
                 logger.debug(`[SESSION_SCANNER] Sending new message: type=${file.type}, uuid=${file.type === 'summary' ? file.leafUuid : file.uuid}`);
-                opts.onMessage(file);
-                sent++;
+                try {
+                    opts.onMessage(file);
+                    sent++;
+                } catch (err) {
+                    logger.debug('[SESSION_SCANNER] onMessage callback threw:', err);
+                }
             }
             if (sessionMessages.length > 0) {
                 logger.debug(`[SESSION_SCANNER] Session ${session}: found=${sessionMessages.length}, skipped=${skipped}, sent=${sent}`);
