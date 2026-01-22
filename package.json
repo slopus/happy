@@ -2,8 +2,8 @@
     "name": "monorepo",
     "private": true,
     "scripts": {
-        "test": "yarn --cwd expo-app test",
-        "typecheck": "yarn --cwd expo-app typecheck"
+        "test": "yarn --cwd expo-app test && yarn --cwd cli test && yarn --cwd server test",
+        "typecheck": "yarn --cwd expo-app typecheck && yarn --cwd cli typecheck && yarn --cwd server build"
     },
     "workspaces": {
         "packages": [
@@ -11,13 +11,13 @@
             "hello-world"
         ],
         "nohoist": [
-           "**/react",
-           "**/react-dom",
-           "**/react-native",
-           "**/react-native/**",
-           "**/react-native-edge-to-edge/**",
-           "**/react-native-incall-manager/**"
-     ]
+            "**/react",
+            "**/react-dom",
+            "**/react-native",
+            "**/react-native/**",
+            "**/react-native-edge-to-edge/**",
+            "**/react-native-incall-manager/**"
+        ]
     },
     "packageManager": "yarn@1.22.22"
 }
