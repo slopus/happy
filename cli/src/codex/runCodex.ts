@@ -40,6 +40,7 @@ import { writeTerminalAttachmentInfo } from '@/terminal/terminalAttachmentInfo';
 import { buildTerminalFallbackMessage } from '@/terminal/terminalFallbackMessage';
 import { readPersistedHappySession, writePersistedHappySession, updatePersistedHappySessionVendorResumeId } from "@/daemon/persistedHappySession";
 import { isExperimentalCodexVendorResumeEnabled } from '@/utils/agentCapabilities';
+import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -287,14 +288,17 @@ export async function runCodex(opts: {
         // Resolve permission mode (accept all modes, will be mapped in switch statement)
         let messagePermissionMode = currentPermissionMode;
         if (message.meta?.permissionMode) {
-            messagePermissionMode = message.meta.permissionMode as import('@/api/types').PermissionMode;
-            currentPermissionMode = messagePermissionMode;
-            logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
-            session.updateMetadata((current) => ({
-                ...current,
-                permissionMode: currentPermissionMode,
-                permissionModeUpdatedAt: Date.now(),
-            }));
+            const nextPermissionMode = message.meta.permissionMode as import('@/api/types').PermissionMode;
+            const res = maybeUpdatePermissionModeMetadata({
+                currentPermissionMode,
+                nextPermissionMode,
+                updateMetadata: (updater) => session.updateMetadata(updater),
+            });
+            currentPermissionMode = res.currentPermissionMode;
+            messagePermissionMode = currentPermissionMode;
+            if (res.didChange) {
+                logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
+            }
         } else {
             logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
         }

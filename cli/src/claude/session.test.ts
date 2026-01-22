@@ -3,6 +3,41 @@ import { Session } from './session';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 
 describe('Session', () => {
+    it('does not bump permissionModeUpdatedAt when permission mode does not change', () => {
+        const metadataUpdates: any[] = [];
+        const client = {
+            keepAlive: vi.fn(),
+            updateMetadata: vi.fn((updater: (current: any) => any) => {
+                metadataUpdates.push(updater({}));
+            }),
+        } as any;
+
+        const session = new Session({
+            api: {} as any,
+            client,
+            path: '/tmp',
+            logPath: '/tmp/log',
+            sessionId: null,
+            mcpServers: {},
+            messageQueue: new MessageQueue2<any>(() => 'mode'),
+            onModeChange: () => {},
+            hookSettingsPath: '/tmp/hooks.json',
+        });
+
+        try {
+            session.setLastPermissionMode('default', 111);
+            session.setLastPermissionMode('default', 222);
+            session.setLastPermissionMode('plan', 333);
+            session.setLastPermissionMode('plan', 444);
+
+            expect(metadataUpdates).toEqual([
+                { permissionMode: 'plan', permissionModeUpdatedAt: 333 },
+            ]);
+        } finally {
+            session.cleanup();
+        }
+    });
+
     it('notifies sessionFound callbacks with transcriptPath when provided', () => {
         let metadata: any = {};
 

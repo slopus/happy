@@ -96,6 +96,9 @@ export class Session {
     }
 
     setLastPermissionMode = (mode: PermissionMode, updatedAt: number = Date.now()): void => {
+        if (mode === this.lastPermissionMode) {
+            return;
+        }
         this.lastPermissionMode = mode;
         this.lastPermissionModeUpdatedAt = updatedAt;
         this.client.updateMetadata((metadata) => ({

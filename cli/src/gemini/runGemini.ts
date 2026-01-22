@@ -35,6 +35,7 @@ import { formatGeminiErrorForUi } from '@/gemini/utils/formatGeminiErrorForUi';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
 import { writeTerminalAttachmentInfo } from '@/terminal/terminalAttachmentInfo';
 import { buildTerminalFallbackMessage } from '@/terminal/terminalFallbackMessage';
+import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
 
 import { createGeminiBackend } from '@/agent/factories/gemini';
 import type { AgentBackend, AgentMessage } from '@/agent';
@@ -256,16 +257,19 @@ export async function runGemini(opts: {
     let messagePermissionMode = currentPermissionMode;
     if (message.meta?.permissionMode) {
       if (CODEX_GEMINI_PERMISSION_MODES.includes(message.meta.permissionMode as CodexGeminiPermissionMode)) {
-        messagePermissionMode = message.meta.permissionMode as PermissionMode;
-        currentPermissionMode = messagePermissionMode;
-        // Update permission handler with new mode
-        updatePermissionMode(messagePermissionMode);
-        logger.debug(`[Gemini] Permission mode updated from user message to: ${currentPermissionMode}`);
-        session.updateMetadata((current) => ({
-          ...current,
-          permissionMode: currentPermissionMode,
-          permissionModeUpdatedAt: Date.now(),
-        }));
+        const nextPermissionMode = message.meta.permissionMode as PermissionMode;
+        const res = maybeUpdatePermissionModeMetadata({
+          currentPermissionMode,
+          nextPermissionMode,
+          updateMetadata: (updater) => session.updateMetadata(updater),
+        });
+        currentPermissionMode = res.currentPermissionMode;
+        messagePermissionMode = currentPermissionMode;
+        if (res.didChange) {
+          // Update permission handler with new mode
+          updatePermissionMode(messagePermissionMode);
+          logger.debug(`[Gemini] Permission mode updated from user message to: ${currentPermissionMode}`);
+        }
       } else {
         logger.debug(`[Gemini] Invalid permission mode received: ${message.meta.permissionMode}`);
       }
