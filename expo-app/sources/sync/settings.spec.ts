@@ -145,6 +145,32 @@ describe('settings', () => {
             expect((parsed as any).expZen).toBe(true);
             expect((parsed as any).expVoiceAuthFlow).toBe(false);
         });
+
+        it('should keep valid secrets when one secret entry is invalid', () => {
+            const validSecret = {
+                id: 'secret-1',
+                name: 'My Secret',
+                kind: 'apiKey',
+                encryptedValue: { _isSecretValue: true, value: 'abc' },
+                createdAt: 1,
+                updatedAt: 1,
+            };
+            const invalidSecret = {
+                id: '',
+                name: '',
+                kind: 'apiKey',
+                encryptedValue: { _isSecretValue: true, value: 'def' },
+                createdAt: 2,
+                updatedAt: 2,
+            };
+            const parsed = settingsParse({
+                viewInline: true,
+                secrets: [validSecret, invalidSecret],
+            } as any);
+
+            expect(parsed.viewInline).toBe(true);
+            expect(parsed.secrets).toEqual([validSecret]);
+        });
     });
 
     describe('applySettings', () => {

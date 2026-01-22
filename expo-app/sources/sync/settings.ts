@@ -424,6 +424,24 @@ export function settingsParse(settings: unknown): Settings {
             return;
         }
 
+        // Special-case secrets: validate per secret entry, keep valid ones.
+        if (key === 'secrets') {
+            const secretsValue = input[key];
+            if (Array.isArray(secretsValue)) {
+                const parsedSecrets: SavedSecret[] = [];
+                for (const rawSecret of secretsValue) {
+                    const parsedSecret = SavedSecretSchema.safeParse(rawSecret);
+                    if (parsedSecret.success) {
+                        parsedSecrets.push(parsedSecret.data);
+                    } else if (isDev || debug) {
+                        console.warn('[settingsParse] Dropping invalid secret entry', parsedSecret.error.issues);
+                    }
+                }
+                result.secrets = parsedSecrets;
+            }
+            return;
+        }
+
         const schema = SettingsSchema.shape[key];
         const parsedField = schema.safeParse(input[key]);
         if (parsedField.success) {
