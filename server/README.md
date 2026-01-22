@@ -47,6 +47,7 @@ For local development, `yarn dev:light` is the easiest entrypoint for the light 
 #### Prerequisites
 
 - Node.js + Yarn
+- Docker (required only for the full flavor local deps)
 
 #### Full flavor (Postgres + Redis + S3/Minio)
 
@@ -120,6 +121,7 @@ Practical safety notes for the light flavor:
 - The light flavor uses Prisma Migrate (`migrate deploy`) to apply a deterministic, reviewable migration history.
 - Avoid destructive migrations for user data. Prefer an expand/contract approach (add + backfill + switch code) over drops.
 - Treat renames as potentially dangerous: if you only want to rename the Prisma Client API, prefer `@map` / `@@map` instead of renaming the underlying DB objects.
+- Review generated SQL carefully for the light flavor. SQLite has limited `ALTER TABLE` support, so some changes are implemented via table redefinition (create new table → copy data → drop old table).
 - Before upgrading a long-lived self-hosted light instance, back up the SQLite file (copy `~/.happy/server-light/happy-server-light.sqlite`) so you can roll back if needed.
 
 The full (Postgres) flavor uses migrations:
@@ -133,7 +135,29 @@ The light (SQLite) flavor uses migrations as well:
   - Applies migrations under `prisma/sqlite/migrations/*`
 - Create a new SQLite migration from schema changes (writes to `prisma/sqlite/migrations/*`): `yarn migrate:light:new -- --name <name>`
   - Uses an isolated temp SQLite file so it never touches a user's real light database.
+  - For non-trivial changes (renames, type changes, making a column required, adding uniques), you may need to edit the generated `migration.sql` or use an expand/contract sequence instead of a single-step migration.
 - If you are upgrading an existing light database that was created before SQLite migrations existed, run the one-time baselining command (after making a backup): `yarn migrate:light:resolve-baseline`
+- `yarn db:push:light` is for fast local prototyping only. Prefer migrations for anything you want users to upgrade without surprises.
+
+### Schema changes (developer workflow)
+
+When you change the data model, you must update both migration histories:
+
+1. Edit `prisma/schema.prisma`
+2. Regenerate the SQLite schema and commit the result:
+   - `yarn schema:sqlite`
+3. Create/update the **full (Postgres)** migration:
+   - `yarn migrate --name <name>` (writes to `prisma/migrations/*`)
+4. Create/update the **light (SQLite)** migration:
+   - `yarn migrate:light:new -- --name <name>` (writes to `prisma/sqlite/migrations/*`)
+5. Validate:
+   - `yarn test`
+   - Smoke test both flavors (`yarn dev` and `yarn dev:light`)
+
+No-data-loss guidelines:
+
+- Prefer “expand/contract”: add new columns/tables, backfill, switch code, and only remove old fields in a major version (or never).
+- Be careful with renames. If you only need to rename the Prisma Client API, prefer `@map` / `@@map`.
 
 Light defaults (when env vars are missing):
 

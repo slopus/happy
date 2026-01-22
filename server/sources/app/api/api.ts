@@ -21,9 +21,7 @@ import { enableAuthentication } from "./utils/enableAuthentication";
 import { userRoutes } from "./routes/userRoutes";
 import { feedRoutes } from "./routes/feedRoutes";
 import { kvRoutes } from "./routes/kvRoutes";
-import { resolveUiConfig } from "@/app/api/uiConfig";
-import { enableServeUi } from "./utils/enableServeUi";
-import { enablePublicFiles } from "./utils/enablePublicFiles";
+import { enableOptionalStatics } from "./utils/enableOptionalStatics";
 
 export async function startApi() {
 
@@ -41,20 +39,7 @@ export async function startApi() {
         methods: ['GET', 'POST', 'DELETE']
     });
 
-    // Optional: serve a prebuilt web UI bundle (static directory).
-    const ui = resolveUiConfig(process.env);
-    const { dir: uiDir, mountRoot } = ui;
-    if (!uiDir || !mountRoot) {
-        app.get('/', function (_request, reply) {
-            reply.send('Welcome to Happy Server!');
-        });
-    }
-
-    enableServeUi(app, ui);
-
-    // Local file serving for the light flavor (avatars/images/etc).
-    // Enabled only when the selected files backend supports public reads.
-    enablePublicFiles(app);
+    enableOptionalStatics(app);
 
     // Create typed provider
     app.setValidatorCompiler(validatorCompiler);
