@@ -101,7 +101,8 @@ curl http://127.0.0.1:3005/health
 
 Notes:
 
-- `yarn dev:light` runs `prisma db push` against the SQLite database. If you already have a local SQLite DB with data and the schema changed, Prisma may prompt about potential data loss. In that case, either delete your local light data dir (default: `~/.happy/server-light`) or point the light flavor at a fresh dir via `HAPPY_SERVER_LIGHT_DATA_DIR=/tmp/happy-server-light`.
+- `yarn dev:light` runs `prisma db push` against the SQLite database. If the schema change is destructive (drop table/column), Prisma will warn about potential data loss and ask for confirmation. If you accept, Prisma will apply the schema change and any dropped tables/columns will be removed (data loss).
+- If you want a clean slate for local dev/testing, delete the light data dir (default: `~/.happy/server-light`) or point the light flavor at a fresh dir via `HAPPY_SERVER_LIGHT_DATA_DIR=/tmp/happy-server-light`.
 
 ### Prisma schema (full vs light)
 
