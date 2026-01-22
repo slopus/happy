@@ -409,12 +409,14 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
         };
     }, [getBoundaryDomElement, open, recompute]);
 
+    const fixedPositionOnWeb = (Platform.OS === 'web' ? ('fixed' as any) : 'absolute') as ViewStyle['position'];
+
     const placementStyle: ViewStyle = (() => {
         // On web, optional: render as a viewport-fixed overlay so it can escape any overflow:hidden ancestors.
         // This is especially important for headers/sidebars which often clip overflow.
         if (shouldPortal && anchorRectState) {
             const boundaryRect = boundaryRectState ?? getFallbackBoundaryRect({ windowWidth, windowHeight });
-            const position = Platform.OS === 'web' ? 'fixed' : 'absolute';
+            const position = fixedPositionOnWeb;
             const desiredWidth = (() => {
                 // Preserve historical sizing: for top/bottom, the popover was anchored to the
                 // container width (left:0,right:0) and capped by maxWidth. The closest equivalent
@@ -573,7 +575,7 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
             {backdropEnabled && backdropEffect !== 'none' ? (() => {
                 // On web, use fixed positioning even when not in portal mode to avoid contributing
                 // to scrollHeight/scrollWidth (e.g. inside Radix Dialog/Expo Router modals).
-                const position = Platform.OS === 'web' ? 'fixed' : 'absolute';
+                const position = fixedPositionOnWeb;
                 const zIndex = shouldPortal ? portalZ : 998;
                 const edge = Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000);
 
@@ -709,7 +711,7 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
                     style={[
                         // Default is deliberately "oversized" so it can capture taps outside the anchor area.
                         {
-                            position: Platform.OS === 'web' ? 'fixed' : (shouldPortalWeb ? 'fixed' : 'absolute'),
+                            position: fixedPositionOnWeb,
                             top: Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000),
                             left: Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000),
                             right: Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000),
@@ -728,7 +730,7 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
                     pointerEvents="none"
                     style={[
                         {
-                            position: shouldPortalWeb ? 'fixed' : 'absolute',
+                            position: shouldPortalWeb ? fixedPositionOnWeb : 'absolute',
                             left: Math.max(0, Math.floor(anchorRectState.x)),
                             top: Math.max(0, Math.floor(anchorRectState.y)),
                             width: Math.max(0, Math.min(windowWidth - Math.max(0, Math.floor(anchorRectState.x)), Math.ceil(anchorRectState.width))),
