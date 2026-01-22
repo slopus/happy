@@ -766,7 +766,7 @@ export default function MachineDetailScreen() {
                             showChevron={false}
                         />
                         <Item
-                            title="Resume Codex"
+                            title="Codex resume server"
                             subtitle={
                                 codexResumeStatusState === 'loading'
                                     ? 'Loading…'
