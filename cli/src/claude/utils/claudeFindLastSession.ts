@@ -13,9 +13,9 @@ import { logger } from '@/ui/logger';
  * Note: Agent sessions (agent-*) are excluded because --resume only accepts UUID format.
  * Returns the session ID (filename without .jsonl extension) or null if no valid sessions found.
  */
-export function claudeFindLastSession(workingDirectory: string): string | null {
+export function claudeFindLastSession(workingDirectory: string, claudeConfigDirOverride?: string | null): string | null {
     try {
-        const projectDir = getProjectPath(workingDirectory);
+        const projectDir = getProjectPath(workingDirectory, claudeConfigDirOverride);
 
         // UUID format pattern (8-4-4-4-12 hex digits)
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -32,7 +32,8 @@ export function claudeFindLastSession(workingDirectory: string): string | null {
                 }
 
                 // Check if this is a valid session (has messages with uuid field)
-                if (claudeCheckSession(sessionId, workingDirectory)) {
+                const transcriptPath = join(projectDir, f);
+                if (claudeCheckSession(sessionId, workingDirectory, transcriptPath)) {
                     return {
                         name: f,
                         sessionId: sessionId,

@@ -54,6 +54,13 @@ describe('getProjectPath', () => {
     });
 
     describe('CLAUDE_CONFIG_DIR support', () => {
+        it('should prefer explicit claudeConfigDir argument over process.env.CLAUDE_CONFIG_DIR', () => {
+            process.env.CLAUDE_CONFIG_DIR = '/env/claude/config';
+            const workingDir = '/Users/steve/projects/my-app';
+            const result = (getProjectPath as any)(workingDir, '/override/claude/config');
+            expect(result).toBe(join('/override/claude/config', 'projects', '-Users-steve-projects-my-app'));
+        });
+
         it('should use default .claude directory when CLAUDE_CONFIG_DIR is not set', () => {
             // When CLAUDE_CONFIG_DIR is not set, it uses homedir()/.claude
             const workingDir = '/Users/steve/projects/my-app';

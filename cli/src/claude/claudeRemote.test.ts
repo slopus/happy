@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockQuery = vi.fn()
 
@@ -15,6 +15,14 @@ vi.mock('@/modules/watcher/awaitFileExist', () => ({
   }),
 }))
 
+vi.mock('./utils/claudeCheckSession', () => ({
+  claudeCheckSession: vi.fn(() => false),
+}))
+
+vi.mock('./utils/claudeFindLastSession', () => ({
+  claudeFindLastSession: vi.fn(() => 'last-session-id'),
+}))
+
 vi.mock('@/lib', () => ({
   logger: {
     debug: vi.fn(),
@@ -23,6 +31,110 @@ vi.mock('@/lib', () => ({
 }))
 
 describe('claudeRemote', () => {
+  beforeEach(() => {
+    mockQuery.mockReset()
+  })
+
+  it('keeps resume sessionId even if claudeCheckSession returns false (avoid false-negative context loss)', async () => {
+    mockQuery.mockReturnValue(
+      (async function* () {
+        yield { type: 'result' } as any
+      })(),
+    )
+
+    const { claudeRemote } = await import('./claudeRemote')
+
+    const onSessionFound = vi.fn()
+    const onReady = vi.fn()
+    const onMessage = vi.fn()
+    const canCallTool = vi.fn()
+
+    const nextMessage = vi.fn(async () => ({ message: 'hello', mode: { permissionMode: 'default' } as any }))
+
+    await claudeRemote({
+      sessionId: 'sess_should_resume',
+      transcriptPath: null,
+      path: '/tmp',
+      allowedTools: [],
+      mcpServers: {},
+      hookSettingsPath: '/tmp/hooks.json',
+      canCallTool,
+      isAborted: () => false,
+      nextMessage,
+      onReady,
+      onSessionFound,
+      onMessage,
+    } as any)
+
+    expect(mockQuery).toHaveBeenCalledTimes(1)
+    const call = mockQuery.mock.calls[0]?.[0]
+    expect(call?.options?.resume).toBe('sess_should_resume')
+  })
+
+  it('honors --continue in remote mode by passing continue=true to the SDK', async () => {
+    mockQuery.mockReturnValue(
+      (async function* () {
+        yield { type: 'result' } as any
+      })(),
+    )
+
+    const { claudeRemote } = await import('./claudeRemote')
+
+    const nextMessage = vi.fn(async () => ({ message: 'hello', mode: { permissionMode: 'default' } as any }))
+
+    await claudeRemote({
+      sessionId: null,
+      transcriptPath: null,
+      path: '/tmp',
+      allowedTools: [],
+      mcpServers: {},
+      hookSettingsPath: '/tmp/hooks.json',
+      claudeArgs: ['--continue'],
+      canCallTool: vi.fn(),
+      isAborted: () => false,
+      nextMessage,
+      onReady: vi.fn(),
+      onSessionFound: vi.fn(),
+      onMessage: vi.fn(),
+    } as any)
+
+    expect(mockQuery).toHaveBeenCalledTimes(1)
+    const call = mockQuery.mock.calls[0]?.[0]
+    expect(call?.options?.continue).toBe(true)
+  })
+
+  it('treats --resume (no id) as resume-last-session in remote mode', async () => {
+    mockQuery.mockReturnValue(
+      (async function* () {
+        yield { type: 'result' } as any
+      })(),
+    )
+
+    const { claudeRemote } = await import('./claudeRemote')
+
+    const nextMessage = vi.fn(async () => ({ message: 'hello', mode: { permissionMode: 'default' } as any }))
+
+    await claudeRemote({
+      sessionId: null,
+      transcriptPath: null,
+      path: '/tmp',
+      allowedTools: [],
+      mcpServers: {},
+      hookSettingsPath: '/tmp/hooks.json',
+      claudeArgs: ['--resume'],
+      canCallTool: vi.fn(),
+      isAborted: () => false,
+      nextMessage,
+      onReady: vi.fn(),
+      onSessionFound: vi.fn(),
+      onMessage: vi.fn(),
+    } as any)
+
+    expect(mockQuery).toHaveBeenCalledTimes(1)
+    const call = mockQuery.mock.calls[0]?.[0]
+    expect(call?.options?.resume).toBe('last-session-id')
+  })
+
   it('calls onSessionFound from system init without waiting for transcript file', async () => {
     mockQuery.mockReturnValue(
       (async function* () {
@@ -65,4 +177,3 @@ describe('claudeRemote', () => {
     expect(onSessionFound).toHaveBeenCalledWith('sess_1')
   })
 })
-

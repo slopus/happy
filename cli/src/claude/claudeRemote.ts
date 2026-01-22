@@ -2,6 +2,7 @@ import { EnhancedMode } from "./loop";
 import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import { mapToClaudeMode } from "./utils/permissionMode";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
+import { claudeFindLastSession } from "./utils/claudeFindLastSession";
 import { join, resolve } from 'node:path';
 import { projectPath } from "@/projectPath";
 import { parseSpecialCommand } from "@/parsers/specialCommands";
@@ -41,35 +42,49 @@ export async function claudeRemote(opts: {
     onSessionReset?: () => void
 }) {
 
-    // Check if session is valid
+    // Determine how we should (re)start the Claude session.
+    //
+    // IMPORTANT: do not "fail closed" to a fresh session just because our local transcript check
+    // can't validate the session yet. That can cause context loss during fast local↔remote switching
+    // (the session file may exist but not contain "uuid/messageId" lines yet).
     let startFrom = opts.sessionId;
+    let shouldContinue = false;
     if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path, opts.transcriptPath)) {
-        startFrom = null;
+        logger.debug(`[claudeRemote] Session ${opts.sessionId} did not pass transcript validation yet; attempting resume anyway`);
     }
     
-    // Extract --resume from claudeArgs if present (for first spawn)
+    // If we don't have an explicit sessionId to resume from, honor one-time session flags.
+    // (These are consumed by Session.consumeOneTimeFlags() after the first successful spawn.)
     if (!startFrom && opts.claudeArgs) {
+        // --continue / -c: let Claude pick the last session, but still run in SDK mode
+        if (opts.claudeArgs.includes('--continue') || opts.claudeArgs.includes('-c')) {
+            shouldContinue = true;
+        }
+
+        // --resume / -r: in remote mode we can't show the interactive picker, so:
+        // - `--resume <id>` / `-r <id>` resumes that id
+        // - `--resume` / `-r` resumes the most recent valid UUID session in this project
         for (let i = 0; i < opts.claudeArgs.length; i++) {
-            if (opts.claudeArgs[i] === '--resume') {
-                // Check if next arg exists and looks like a session ID
-                if (i + 1 < opts.claudeArgs.length) {
-                    const nextArg = opts.claudeArgs[i + 1];
-                    // If next arg doesn't start with dash and contains dashes, it's likely a UUID
-                    if (!nextArg.startsWith('-') && nextArg.includes('-')) {
-                        startFrom = nextArg;
-                        logger.debug(`[claudeRemote] Found --resume with session ID: ${startFrom}`);
-                        break;
-                    } else {
-                        // Just --resume without UUID - SDK doesn't support this
-                        logger.debug('[claudeRemote] Found --resume without session ID - not supported in remote mode');
-                        break;
-                    }
+            const arg = opts.claudeArgs[i];
+            if (arg !== '--resume' && arg !== '-r') continue;
+
+            const maybeValue = i + 1 < opts.claudeArgs.length ? opts.claudeArgs[i + 1] : undefined;
+            if (maybeValue && !maybeValue.startsWith('-')) {
+                startFrom = maybeValue;
+                logger.debug(`[claudeRemote] Found ${arg} with session ID: ${startFrom}`);
+            } else {
+                const lastSession = claudeFindLastSession(opts.path, opts.claudeEnvVars?.CLAUDE_CONFIG_DIR ?? null);
+                if (lastSession) {
+                    startFrom = lastSession;
+                    logger.debug(`[claudeRemote] Found ${arg} without id; using last session: ${startFrom}`);
                 } else {
-                    // --resume at end of args - SDK doesn't support this
-                    logger.debug('[claudeRemote] Found --resume without session ID - not supported in remote mode');
-                    break;
+                    logger.debug(`[claudeRemote] Found ${arg} without id but no valid last session was found`);
                 }
             }
+
+            // Explicit resume overrides --continue semantics.
+            shouldContinue = false;
+            break;
         }
     }
 
@@ -114,6 +129,7 @@ export async function claudeRemote(opts: {
     let mode = initial.mode;
     const sdkOptions: QueryOptions = {
         cwd: opts.path,
+        continue: shouldContinue || undefined,
         resume: startFrom ?? undefined,
         mcpServers: opts.mcpServers,
         permissionMode: mapToClaudeMode(initial.mode.permissionMode),

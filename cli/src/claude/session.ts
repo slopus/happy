@@ -214,6 +214,7 @@ export class Session {
      */
     clearSessionId = (): void => {
         this.sessionId = null;
+        this.transcriptPath = null;
         logger.debug('[Session] Session ID cleared');
     }
 
@@ -228,7 +229,7 @@ export class Session {
         for (let i = 0; i < this.claudeArgs.length; i++) {
             const arg = this.claudeArgs[i];
             
-            if (arg === '--continue') {
+            if (arg === '--continue' || arg === '-c') {
                 logger.debug('[Session] Consumed --continue flag');
                 continue;
             }
@@ -248,22 +249,13 @@ export class Session {
                 continue;
             }
             
-            if (arg === '--resume') {
-                // Check if next arg looks like a UUID (contains dashes and alphanumeric)
-                if (i + 1 < this.claudeArgs.length) {
-                    const nextArg = this.claudeArgs[i + 1];
-                    // Simple UUID pattern check - contains dashes and is not another flag
-                    if (!nextArg.startsWith('-') && nextArg.includes('-')) {
-                        // Skip both --resume and the UUID
-                        i++; // Skip the UUID
-                        logger.debug(`[Session] Consumed --resume flag with session ID: ${nextArg}`);
-                    } else {
-                        // Just --resume without UUID
-                        logger.debug('[Session] Consumed --resume flag (no session ID)');
-                    }
+            if (arg === '--resume' || arg === '-r') {
+                const nextArg = i + 1 < this.claudeArgs.length ? this.claudeArgs[i + 1] : undefined;
+                if (nextArg && !nextArg.startsWith('-')) {
+                    i++; // Skip the value
+                    logger.debug(`[Session] Consumed ${arg} flag with session ID: ${nextArg}`);
                 } else {
-                    // --resume at the end of args
-                    logger.debug('[Session] Consumed --resume flag (no session ID)');
+                    logger.debug(`[Session] Consumed ${arg} flag (no session ID)`);
                 }
                 continue;
             }

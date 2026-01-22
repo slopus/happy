@@ -78,4 +78,63 @@ describe('Session', () => {
             session.cleanup();
         }
     });
+
+    it('clearSessionId clears transcriptPath as well', () => {
+        const client = {
+            keepAlive: vi.fn(),
+            updateMetadata: vi.fn(),
+        } as any;
+
+        const session = new Session({
+            api: {} as any,
+            client,
+            path: '/tmp',
+            logPath: '/tmp/log',
+            sessionId: null,
+            mcpServers: {},
+            messageQueue: new MessageQueue2<any>(() => 'mode'),
+            onModeChange: () => { },
+            hookSettingsPath: '/tmp/hooks.json',
+        });
+
+        try {
+            session.onSessionFound('sess_1', { transcript_path: '/tmp/sess_1.jsonl' } as any);
+            expect(session.sessionId).toBe('sess_1');
+            expect(session.transcriptPath).toBe('/tmp/sess_1.jsonl');
+
+            session.clearSessionId();
+
+            expect(session.sessionId).toBeNull();
+            expect(session.transcriptPath).toBeNull();
+        } finally {
+            session.cleanup();
+        }
+    });
+
+    it('consumeOneTimeFlags consumes short -c and -r flags', () => {
+        const client = {
+            keepAlive: vi.fn(),
+            updateMetadata: vi.fn(),
+        } as any;
+
+        const session = new Session({
+            api: {} as any,
+            client,
+            path: '/tmp',
+            logPath: '/tmp/log',
+            sessionId: null,
+            claudeArgs: ['-c', '-r', 'abc-123', '--foo', 'bar'],
+            mcpServers: {},
+            messageQueue: new MessageQueue2<any>(() => 'mode'),
+            onModeChange: () => { },
+            hookSettingsPath: '/tmp/hooks.json',
+        });
+
+        try {
+            session.consumeOneTimeFlags();
+            expect(session.claudeArgs).toEqual(['--foo', 'bar']);
+        } finally {
+            session.cleanup();
+        }
+    });
 });

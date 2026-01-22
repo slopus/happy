@@ -29,6 +29,11 @@ export async function createSessionScanner(opts: {
      * When provided, it is used instead of the `getProjectPath()` heuristic.
      */
     transcriptPath?: string | null,
+    /**
+     * Optional Claude config dir override (e.g., when the child process runs with CLAUDE_CONFIG_DIR set).
+     * Used only for the heuristic project-dir fallback when transcriptPath is not available.
+     */
+    claudeConfigDir?: string | null,
     workingDirectory: string
     onMessage: (message: RawJSONLines) => void
     onTranscriptMissing?: (info: { sessionId: string; filePath: string }) => void
@@ -38,7 +43,7 @@ export async function createSessionScanner(opts: {
 
     // Best-effort project directory resolution (fallback).
     // When available, we prefer the Claude hook's transcriptPath-derived directory instead.
-    const initialProjectDir = getProjectPath(opts.workingDirectory);
+    const initialProjectDir = getProjectPath(opts.workingDirectory, opts.claudeConfigDir ?? null);
     let projectDirOverride: string | null = null;
     const sessionFileOverrides = new Map<string, string>();
 
@@ -179,13 +184,6 @@ export async function createSessionScanner(opts: {
                 watchers.set(p, { filePath: desiredPath, stop: startFileWatcher(desiredPath, () => { sync.invalidate(); }) });
             }
         }
-    }, {
-        onError: (e, failuresCount) => {
-            // Avoid spamming logs on repeated failures. Capture early failures for debugging.
-            if (failuresCount === 1) {
-                logger.debug(`[SESSION_SCANNER] Sync failed (attempt ${failuresCount})`, e);
-            }
-        },
     });
     await sync.invalidateAndAwait();
 

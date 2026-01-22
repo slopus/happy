@@ -327,18 +327,20 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         // without starting a new session. Only reset parent chain when session ID
         // actually changes (e.g., new session started or /clear command used).
         // See: https://github.com/anthropics/happy-cli/issues/143
-        let previousSessionId: string | null = null;
+        let previousSessionId: string | null | undefined = undefined;
+        let forceNewSession = false;
         while (!exitReason) {
             logger.debug('[remote]: launch');
             messageBuffer.addMessage('═'.repeat(40), 'status');
 
             // Only reset parent chain and show "new session" message when session ID actually changes
-            const isNewSession = session.sessionId !== previousSessionId;
+            const isNewSession = forceNewSession || session.sessionId !== previousSessionId;
             if (isNewSession) {
                 messageBuffer.addMessage('Starting new Claude session...', 'status');
                 permissionHandler.reset(); // Reset permissions before starting new session
                 sdkToLogConverter.resetParentChain(); // Reset parent chain for new conversation
                 logger.debug(`[remote]: New session detected (previous: ${previousSessionId}, current: ${session.sessionId})`);
+                forceNewSession = false;
             } else {
                 messageBuffer.addMessage('Continuing Claude session...', 'status');
                 logger.debug(`[remote]: Continuing existing session: ${session.sessionId}`);
@@ -407,6 +409,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     },
                     onSessionReset: () => {
                         logger.debug('[remote]: Session reset');
+                        forceNewSession = true;
                         session.clearSessionId();
                     },
                     onReady: () => {
@@ -462,6 +465,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 permissionHandler.reset();
                 modeHash = null;
                 mode = null;
+                // Session IDs can change during a remote run (system init / resume / fork / compact).
+                // Keep previousSessionId in sync so we don't treat the same session as "new" again
+                // on the next outer loop iteration.
+                previousSessionId = session.sessionId;
             }
         }
     } finally {

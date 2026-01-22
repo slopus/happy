@@ -164,6 +164,87 @@ describe('claudeLocalLauncher', () => {
     session.cleanup();
   });
 
+  it('clears sessionId and transcriptPath before spawning a local resume session', async () => {
+    const sendSessionEvent = vi.fn();
+    const handlersByMethod: Record<string, any[]> = {};
+    const client = {
+      keepAlive: vi.fn(),
+      updateMetadata: vi.fn(),
+      rpcHandlerManager: {
+        registerHandler: vi.fn((method: string, handler: any) => {
+          handlersByMethod[method] = handlersByMethod[method] || [];
+          handlersByMethod[method].push(handler);
+        }),
+      },
+      sendClaudeSessionMessage: vi.fn(),
+      sendSessionEvent,
+    } as any;
+
+    const session = new Session({
+      api: {} as any,
+      client,
+      path: '/tmp',
+      logPath: '/tmp/log',
+      sessionId: null,
+      mcpServers: {},
+      messageQueue: new MessageQueue2<any>(() => 'mode'),
+      onModeChange: () => { },
+      hookSettingsPath: '/tmp/hooks.json',
+    });
+
+    // Simulate an existing session we are about to resume locally.
+    session.onSessionFound('sess_0', { transcript_path: '/tmp/sess_0.jsonl' } as any);
+
+    mockCreateSessionScanner.mockResolvedValue({
+      cleanup: vi.fn(async () => { }),
+      onNewSession: vi.fn(),
+    });
+
+    let optsSessionId: string | null | undefined;
+    let sessionIdAtSpawn: string | null | undefined;
+    let transcriptPathAtSpawn: string | null | undefined;
+
+    mockClaudeLocal.mockImplementationOnce(async (opts: any) => {
+      optsSessionId = opts.sessionId;
+      sessionIdAtSpawn = session.sessionId;
+      transcriptPathAtSpawn = session.transcriptPath;
+
+      await new Promise<void>((resolve) => {
+        if (opts.abort?.aborted) return resolve();
+        opts.abort?.addEventListener('abort', () => resolve(), { once: true });
+      });
+    });
+
+    const { claudeLocalLauncher } = await import('./claudeLocalLauncher');
+
+    const launcherPromise = claudeLocalLauncher(session);
+
+    // Wait for handlers to register
+    while (!handlersByMethod.switch?.length) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    // Hook reports the real active session shortly after spawn (resume forks).
+    session.onSessionFound('sess_1', { transcript_path: '/tmp/sess_1.jsonl' } as any);
+
+    const switchHandler = handlersByMethod.switch[0];
+    expect(await switchHandler({ to: 'remote' })).toBe(true);
+    await expect(launcherPromise).resolves.toBe('switch');
+
+    expect(optsSessionId).toBe('sess_0');
+    expect(sessionIdAtSpawn).toBeNull();
+    expect(transcriptPathAtSpawn).toBeNull();
+
+    expect(mockCreateSessionScanner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'sess_0',
+        transcriptPath: '/tmp/sess_0.jsonl',
+      }),
+    );
+
+    session.cleanup();
+  });
+
   it('respects switch RPC params and returns boolean', async () => {
     const sendSessionEvent = vi.fn();
     const handlersByMethod: Record<string, any[]> = {};

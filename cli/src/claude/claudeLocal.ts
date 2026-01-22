@@ -28,8 +28,10 @@ export async function claudeLocal(opts: {
     hookSettingsPath?: string
 }) {
 
+    const claudeConfigDir = opts.claudeEnvVars?.CLAUDE_CONFIG_DIR ?? null;
+
     // Ensure project directory exists
-    const projectDir = getProjectPath(opts.path);
+    const projectDir = getProjectPath(opts.path, claudeConfigDir);
     mkdirSync(projectDir, { recursive: true });
 
     // Check if claudeArgs contains --continue or --resume (user passed these flags)
@@ -98,7 +100,7 @@ export async function claudeLocal(opts: {
                     logger.debug(`[ClaudeLocal] Using provided session ID from --resume: ${startFrom}`);
                 } else {
                     // --resume without value: find last session
-                    const lastSession = claudeFindLastSession(opts.path);
+                    const lastSession = claudeFindLastSession(opts.path, claudeConfigDir);
                     if (lastSession) {
                         startFrom = lastSession;
                         logger.debug(`[ClaudeLocal] --resume: Found last session: ${lastSession}`);
@@ -111,7 +113,7 @@ export async function claudeLocal(opts: {
         if (!startFrom && !sessionIdFlag.value) {
             const continueFlag = extractFlag(['--continue', '-c'], false);
             if (continueFlag.found) {
-                const lastSession = claudeFindLastSession(opts.path);
+                const lastSession = claudeFindLastSession(opts.path, claudeConfigDir);
                 if (lastSession) {
                     startFrom = lastSession;
                     logger.debug(`[ClaudeLocal] --continue: Found last session: ${lastSession}`);

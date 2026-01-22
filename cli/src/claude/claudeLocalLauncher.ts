@@ -11,6 +11,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
     const scanner = await createSessionScanner({
         sessionId: session.sessionId,
         transcriptPath: session.transcriptPath,
+        claudeConfigDir: session.claudeEnvVars?.CLAUDE_CONFIG_DIR ?? null,
         workingDirectory: session.path,
         onMessage: (message) => { 
             // Block SDK summary messages - we generate our own
@@ -130,12 +131,23 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
                 return exitReason;
             }
 
+            const resumeFromSessionId = session.sessionId;
+            const resumeFromTranscriptPath = session.transcriptPath;
+            const expectsFork = resumeFromSessionId !== null;
+            if (expectsFork) {
+                // Starting local mode from an existing session uses `--resume`, which forks
+                // to a new Claude session ID and transcript file. Clear the current
+                // session info so a fast local→remote switch waits for the new hook data,
+                // instead of resuming the stale pre-fork sessionId/transcriptPath.
+                session.clearSessionId();
+            }
+
             // Launch
             logger.debug('[local]: launch');
             try {
                 await claudeLocal({
                     path: session.path,
-                    sessionId: session.sessionId,
+                    sessionId: resumeFromSessionId,
                     onSessionFound: handleSessionStart,
                     onThinkingChange: session.onThinkingChange,
                     abort: processAbortController.signal,
@@ -157,6 +169,12 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
                 }
             } catch (e) {
                 logger.debug('[local]: launch error', e);
+                if (expectsFork && session.sessionId === null) {
+                    // If the local spawn failed before Claude reported the forked session,
+                    // restore the previous session info so remote mode can still resume it.
+                    session.sessionId = resumeFromSessionId;
+                    session.transcriptPath = resumeFromTranscriptPath;
+                }
                 if (!exitReason) {
                     session.client.sendSessionEvent({ type: 'message', message: `Claude process error: ${formatErrorForUi(e)}` });
                     continue;
