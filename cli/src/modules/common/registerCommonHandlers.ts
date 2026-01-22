@@ -721,7 +721,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
             const { stdout, stderr } = await execFileAsync(
                 'npm',
                 ['install', '--no-audit', '--no-fund', '--prefix', installDir, installSpec],
-                { timeout: 15 * 60_000, windowsHide: true },
+                { timeout: 15 * 60_000, windowsHide: true, maxBuffer: 50 * 1024 * 1024 },
             );
 
             await writeFile(
