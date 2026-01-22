@@ -40,7 +40,7 @@ Happy Server supports two flavors that share the same API + internal logic. The 
 - **full**: run `yarn start` (uses `sources/main.ts` → `startServer('full')`)
 - **light**: run `yarn start:light` (uses `sources/main.light.ts` → `startServer('light')`)
 
-For local development, `yarn dev:light` is the easiest entrypoint for the light flavor (it creates the local dirs and runs `prisma db push` for the SQLite database file before starting).
+For local development, `yarn dev:light` is the easiest entrypoint for the light flavor (it creates the local dirs and runs `prisma migrate deploy` for the SQLite database before starting).
 
 ### Local development
 
@@ -88,7 +88,7 @@ Notes:
 ```bash
 yarn install
 
-# Runs `prisma db push` for SQLite before starting
+# Runs `prisma migrate deploy` for SQLite before starting
 PORT=3005 yarn dev:light
 ```
 
@@ -100,29 +100,40 @@ curl http://127.0.0.1:3005/health
 
 Notes:
 
-- `yarn dev:light` runs `prisma db push` against the SQLite database. If the schema change is destructive (drop table/column), Prisma will warn about potential data loss and ask for confirmation. If you accept, Prisma will apply the schema change and any dropped tables/columns will be removed (data loss).
+- `yarn dev:light` runs `prisma migrate deploy` against the SQLite database (using the checked-in migration history under `prisma/sqlite/migrations/*`).
+- If you are upgrading an existing light DB that was created before SQLite migrations existed, run `yarn migrate:light:resolve-baseline` once (after making a backup).
 - If you want a clean slate for local dev/testing, delete the light data dir (default: `~/.happy/server-light`) or point the light flavor at a fresh dir via `HAPPY_SERVER_LIGHT_DATA_DIR=/tmp/happy-server-light`.
 
 ### Prisma schema (full vs light)
 
 - `prisma/schema.prisma` is the **source of truth** (the full flavor uses it directly).
-- `prisma/schema.sqlite.prisma` is **auto-generated** from `schema.prisma` (do not edit).
+- `prisma/sqlite/schema.prisma` is **auto-generated** from `schema.prisma` (do not edit).
 - Regenerate with `yarn schema:sqlite` (or verify with `yarn schema:sqlite:check`).
 
-SQLite uses `prisma db push` (schema sync) instead of migrations:
+Migrations directories are flavor-specific:
 
-- Create/update the SQLite DB schema: `yarn db:push:light`
-- The `yarn dev:light` script also runs `prisma db push` automatically.
+- **full (Postgres)** migrations: `prisma/migrations/*`
+- **light (SQLite)** migrations: `prisma/sqlite/migrations/*`
 
 Practical safety notes for the light flavor:
 
-- `db push` targets the desired **end-state** schema and does not generate a migration history. If you need guaranteed, reviewable upgrades that preserve data across all changes, use the full flavor and Prisma Migrate.
-- Avoid “renames” in the Prisma schema for the light flavor unless you understand the impact: changing a model/field name without `@@map` / `@map` can look like “drop + create” to Prisma and can lead to data loss prompts.
+- The light flavor uses Prisma Migrate (`migrate deploy`) to apply a deterministic, reviewable migration history.
+- Avoid destructive migrations for user data. Prefer an expand/contract approach (add + backfill + switch code) over drops.
+- Treat renames as potentially dangerous: if you only want to rename the Prisma Client API, prefer `@map` / `@@map` instead of renaming the underlying DB objects.
 - Before upgrading a long-lived self-hosted light instance, back up the SQLite file (copy `~/.happy/server-light/happy-server-light.sqlite`) so you can roll back if needed.
 
 The full (Postgres) flavor uses migrations:
 
 - Dev migrations: `yarn migrate` / `yarn migrate:reset` (uses `.env.dev`)
+  - Applies/creates migrations under `prisma/migrations/*`
+
+The light (SQLite) flavor uses migrations as well:
+
+- Apply checked-in migrations (recommended for self-hosting upgrades): `yarn migrate:light:deploy`
+  - Applies migrations under `prisma/sqlite/migrations/*`
+- Create a new SQLite migration from schema changes (writes to `prisma/sqlite/migrations/*`): `yarn migrate:light:new -- --name <name>`
+  - Uses an isolated temp SQLite file so it never touches a user's real light database.
+- If you are upgrading an existing light database that was created before SQLite migrations existed, run the one-time baselining command (after making a backup): `yarn migrate:light:resolve-baseline`
 
 Light defaults (when env vars are missing):
 
