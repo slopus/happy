@@ -74,13 +74,15 @@ export async function userRoutes(app: Fastify) {
     }, async (request, reply) => {
         const { query } = request.query;
 
+        const username =
+            process.env.HAPPY_SERVER_FLAVOR === 'light'
+                ? { startsWith: query }
+                : { startsWith: query, mode: 'insensitive' as const };
+
         // Search for users by username, first 10 matches
         const users = await db.account.findMany({
             where: {
-                username: {
-                    startsWith: query,
-                    mode: 'insensitive'
-                }
+                username
             },
             include: {
                 githubUser: true

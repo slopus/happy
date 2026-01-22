@@ -1,5 +1,8 @@
 import { log } from "@/utils/log";
 import { Fastify } from "../types";
+import { readFile, stat } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { resolveUiConfig } from "@/app/api/uiConfig";
 
 export function enableErrorHandlers(app: Fastify) {
     // Global error handler
@@ -42,10 +45,62 @@ export function enableErrorHandlers(app: Fastify) {
         }
     });
 
-    // Catch-all route for debugging 404s
-    app.setNotFoundHandler((request, reply) => {
+    const ui = resolveUiConfig(process.env);
+    const uiDirRaw = ui.dir ?? '';
+    const uiMountedAtRoot = ui.mountRoot;
+
+    let cachedIndexHtml: { html: string; mtimeMs: number } | null = null;
+    const rootDir = uiDirRaw ? resolve(uiDirRaw) : '';
+
+    async function serveSpaIndex(reply: any): Promise<any> {
+        if (!uiDirRaw) {
+            return reply.code(404).send({ error: 'Not found' });
+        }
+
+        const indexPath = join(rootDir, 'index.html');
+        const st = await stat(indexPath);
+        const mtimeMs = typeof st.mtimeMs === 'number' ? st.mtimeMs : st.mtime.getTime();
+        if (!cachedIndexHtml || cachedIndexHtml.mtimeMs !== mtimeMs) {
+            cachedIndexHtml = {
+                html: (await readFile(indexPath, 'utf-8')) + '\n<!-- Welcome to Happy Server! -->\n',
+                mtimeMs,
+            };
+        }
+        reply.header('content-type', 'text/html; charset=utf-8');
+        reply.header('cache-control', 'no-cache');
+        return reply.send(cachedIndexHtml.html);
+    }
+
+    // Catch-all route: in UI-root mode, SPA fallback for unknown GET routes.
+    // Otherwise keep strict 404 with extra logging.
+    app.setNotFoundHandler(async (request, reply) => {
+        const url = request.url || '';
+
+        if (uiDirRaw && uiMountedAtRoot && request.method === 'GET') {
+            // Don't SPA-fallback for API and asset paths.
+            if (
+                url.startsWith('/v1/') ||
+                url === '/v1' ||
+                url.startsWith('/files/') ||
+                url === '/files' ||
+                url.startsWith('/_expo/') ||
+                url.startsWith('/assets/') ||
+                url.startsWith('/.well-known/') ||
+                url === '/favicon.ico' ||
+                url === '/favicon-active.ico' ||
+                url === '/canvaskit.wasm' ||
+                url === '/metadata.json' ||
+                url === '/health' ||
+                url.startsWith('/metrics')
+            ) {
+                // Fall through to 404 logging below
+            } else {
+                return await serveSpaIndex(reply);
+            }
+        }
+
         log({ module: '404-handler' }, `404 - Method: ${request.method}, Path: ${request.url}, Headers: ${JSON.stringify(request.headers)}`);
-        reply.code(404).send({ error: 'Not found', path: request.url, method: request.method });
+        return reply.code(404).send({ error: 'Not found', path: request.url, method: request.method });
     });
 
     // Error hook for additional logging

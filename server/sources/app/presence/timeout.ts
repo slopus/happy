@@ -17,16 +17,16 @@ export function startTimeout() {
                 }
             });
             for (const session of sessions) {
-                const updated = await db.session.updateManyAndReturn({
+                const { count } = await db.session.updateMany({
                     where: { id: session.id, active: true },
                     data: { active: false }
                 });
-                if (updated.length === 0) {
+                if (count === 0) {
                     continue;
                 }
                 eventRouter.emitEphemeral({
                     userId: session.accountId,
-                    payload: buildSessionActivityEphemeral(session.id, false, updated[0].lastActiveAt.getTime(), false),
+                    payload: buildSessionActivityEphemeral(session.id, false, session.lastActiveAt.getTime(), false),
                     recipientFilter: { type: 'user-scoped-only' }
                 });
             }
@@ -41,16 +41,16 @@ export function startTimeout() {
                 }
             });
             for (const machine of machines) {
-                const updated = await db.machine.updateManyAndReturn({
+                const { count } = await db.machine.updateMany({
                     where: { id: machine.id, active: true },
                     data: { active: false }
                 });
-                if (updated.length === 0) {
+                if (count === 0) {
                     continue;
                 }
                 eventRouter.emitEphemeral({
                     userId: machine.accountId,
-                    payload: buildMachineActivityEphemeral(machine.id, false, updated[0].lastActiveAt.getTime()),
+                    payload: buildMachineActivityEphemeral(machine.id, false, machine.lastActiveAt.getTime()),
                     recipientFilter: { type: 'user-scoped-only' }
                 });
             }

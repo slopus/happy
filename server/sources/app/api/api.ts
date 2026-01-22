@@ -21,6 +21,7 @@ import { enableAuthentication } from "./utils/enableAuthentication";
 import { userRoutes } from "./routes/userRoutes";
 import { feedRoutes } from "./routes/feedRoutes";
 import { kvRoutes } from "./routes/kvRoutes";
+import { enableOptionalStatics } from "./utils/enableOptionalStatics";
 
 export async function startApi() {
 
@@ -37,9 +38,8 @@ export async function startApi() {
         allowedHeaders: '*',
         methods: ['GET', 'POST', 'DELETE']
     });
-    app.get('/', function (request, reply) {
-        reply.send('Welcome to Happy Server!');
-    });
+
+    enableOptionalStatics(app);
 
     // Create typed provider
     app.setValidatorCompiler(validatorCompiler);
