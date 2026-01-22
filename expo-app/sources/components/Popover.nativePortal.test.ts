@@ -41,6 +41,15 @@ vi.mock('expo-blur', () => {
     };
 });
 
+vi.mock('@/utils/reactNativeScreensCjs', () => {
+    const React = require('react');
+    return {
+        requireReactNativeScreens: () => ({
+            FullWindowOverlay: (props: any) => React.createElement('FullWindowOverlay', props, props.children),
+        }),
+    };
+});
+
 vi.mock('react-native', () => {
     const React = require('react');
     return {
@@ -304,5 +313,86 @@ describe('Popover (native portal)', () => {
         expect(overlayStyle.top).toBe(120);
         expect(overlayStyle.width).toBe(28);
         expect(overlayStyle.height).toBe(28);
+    });
+
+    it('wraps portal content in FullWindowOverlay that intercepts touches when backdrop is enabled', async () => {
+        const { OverlayPortalHost, OverlayPortalProvider } = await import('./OverlayPortal');
+        const { Popover } = await import('./Popover');
+
+        const anchorRef = {
+            current: {
+                measureInWindow: (cb: any) => {
+                    queueMicrotask(() => cb(100, 100, 20, 20));
+                },
+            },
+        } as any;
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        await act(async () => {
+            tree = renderer.create(
+                React.createElement(
+                    OverlayPortalProvider,
+                    null,
+                    React.createElement(Popover, {
+                        open: true,
+                        anchorRef,
+                        placement: 'bottom',
+                        portal: { native: true },
+                        onRequestClose: () => {},
+                        backdrop: { effect: 'blur' },
+                        children: () => React.createElement(PopoverChild),
+                    } as any),
+                    React.createElement(OverlayPortalHost),
+                ),
+            );
+        });
+
+        await act(async () => {
+            await flushMicrotasks(3);
+        });
+
+        const overlays = tree?.root.findAllByType('FullWindowOverlay' as any) ?? [];
+        expect(overlays.length).toBe(1);
+        expect(overlays[0]?.props?.pointerEvents).toBe('auto');
+    });
+
+    it('keeps FullWindowOverlay non-interactive when backdrop is disabled', async () => {
+        const { OverlayPortalHost, OverlayPortalProvider } = await import('./OverlayPortal');
+        const { Popover } = await import('./Popover');
+
+        const anchorRef = {
+            current: {
+                measureInWindow: (cb: any) => {
+                    queueMicrotask(() => cb(100, 100, 20, 20));
+                },
+            },
+        } as any;
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        await act(async () => {
+            tree = renderer.create(
+                React.createElement(
+                    OverlayPortalProvider,
+                    null,
+                    React.createElement(Popover, {
+                        open: true,
+                        anchorRef,
+                        placement: 'bottom',
+                        portal: { native: true },
+                        backdrop: false,
+                        children: () => React.createElement(PopoverChild),
+                    } as any),
+                    React.createElement(OverlayPortalHost),
+                ),
+            );
+        });
+
+        await act(async () => {
+            await flushMicrotasks(3);
+        });
+
+        const overlays = tree?.root.findAllByType('FullWindowOverlay' as any) ?? [];
+        expect(overlays.length).toBe(1);
+        expect(overlays[0]?.props?.pointerEvents).toBe('box-none');
     });
 });

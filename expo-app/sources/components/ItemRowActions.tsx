@@ -77,11 +77,24 @@ export function ItemRowActions(props: ItemRowActionsProps) {
 
     const closeThen = React.useCallback((fn: () => void) => {
         setShowOverflow(false);
-        // On iOS, navigation actions fired immediately after closing an overlay can feel flaky.
-        // Run after interactions/animations settle.
-        InteractionManager.runAfterInteractions(() => {
+        let didRun = false;
+        const runOnce = () => {
+            if (didRun) return;
+            didRun = true;
             fn();
-        });
+        };
+
+        // InteractionManager can be delayed by long/continuous interactions (scroll, gestures).
+        // Use a fast timeout fallback so the action still runs promptly.
+        const fallback = setTimeout(runOnce, 0);
+        try {
+            InteractionManager.runAfterInteractions(() => {
+                clearTimeout(fallback);
+                runOnce();
+            });
+        } catch {
+            // If InteractionManager isn't available, rely on the fallback.
+        }
     }, []);
 
     const overflowActionItems = React.useMemo((): ActionListItem[] => {

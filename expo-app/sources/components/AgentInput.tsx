@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
-import { getNextPermissionModeForAgentFlavor, normalizePermissionModeForAgentFlavor, type PermissionMode, type ModelMode } from '@/sync/permissionTypes';
+import { normalizePermissionModeForAgentFlavor, type PermissionMode, type ModelMode } from '@/sync/permissionTypes';
 import { getModelOptionsForAgentType } from '@/sync/modelOptions';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
@@ -843,15 +843,21 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             }
             // Handle Shift+Tab for permission mode switching
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
-                const flavor = isCodex ? 'codex' : isGemini ? 'gemini' : 'claude';
-                props.onPermissionModeChange(getNextPermissionModeForAgentFlavor(normalizedPermissionMode, flavor));
+                const modeOrder: PermissionMode[] = isCodex
+                    ? ['default', 'read-only', 'safe-yolo', 'yolo']
+                    : isGemini
+                        ? ['default', 'read-only', 'safe-yolo', 'yolo']
+                        : ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+                const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
+                const nextIndex = (currentIndex + 1) % modeOrder.length;
+                props.onPermissionModeChange(modeOrder[nextIndex]);
                 hapticsLight();
                 return true; // Key was handled, prevent default tab behavior
             }
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, normalizedPermissionMode, props.onPermissionModeChange, isCodex, isGemini]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange, isCodex, isGemini]);
 
 
 
@@ -901,6 +907,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         placement="top"
                         gap={8}
                         maxHeightCap={400}
+                        portal={{ web: true }}
                         edgePadding={{
                             horizontal: Platform.OS === 'web' ? (screenWidth > 700 ? 12 : 16) : 0,
                             vertical: 12,

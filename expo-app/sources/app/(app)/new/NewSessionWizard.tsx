@@ -908,6 +908,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                 agentType={agentType}
                                 onAgentClick={handleAgentInputAgentClick}
                                 permissionMode={permissionMode}
+                                onPermissionModeChange={handlePermissionModeChange}
                                 onPermissionClick={handleAgentInputPermissionClick}
                                 modelMode={modelMode}
                                 onModelModeChange={setModelMode}
