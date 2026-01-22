@@ -91,6 +91,34 @@ type ReviewDecision =
  */
 type ElicitationResponseStyle = 'decision' | 'both';
 
+export function getCodexElicitationToolCallId(params: Record<string, unknown>): string | undefined {
+    const mcpToolCallId = params.codex_mcp_tool_call_id;
+    if (typeof mcpToolCallId === 'string') {
+        return mcpToolCallId;
+    }
+
+    const callId = params.codex_call_id;
+    if (typeof callId === 'string') {
+        return callId;
+    }
+
+    return undefined;
+}
+
+function getCodexEventToolCallId(msg: Record<string, unknown>): string | undefined {
+    const mcpToolCallId = msg.mcp_tool_call_id ?? msg.codex_mcp_tool_call_id;
+    if (typeof mcpToolCallId === 'string') {
+        return mcpToolCallId;
+    }
+
+    const callId = msg.call_id ?? msg.codex_call_id;
+    if (typeof callId === 'string') {
+        return callId;
+    }
+
+    return undefined;
+}
+
 // ============================================================================
 // Version Detection
 // ============================================================================
@@ -286,8 +314,8 @@ export class CodexMcpClient {
             this.handler?.(msg);
 
             // Cache proposed_execpolicy_amendment for later use in elicitation request
-            if (msg?.type === 'exec_approval_request') {
-                const callId = msg.call_id;
+            if (msg && msg.type === 'exec_approval_request') {
+                const callId = getCodexEventToolCallId(msg);
                 const amendment = msg.proposed_execpolicy_amendment;
                 if (typeof callId === 'string' && Array.isArray(amendment)) {
                     this.pendingAmendments.set(callId, amendment.filter((p): p is string => typeof p === 'string'));
@@ -370,7 +398,7 @@ export class CodexMcpClient {
                 logger.debugLargeJson('[CodexMCP] Received elicitation request', params);
 
                 // Extract fields using stable codex_* field names (since v0.9)
-                const toolCallId = this.extractString(params, 'codex_call_id') ?? randomUUID();
+                const toolCallId = getCodexElicitationToolCallId(params) ?? randomUUID();
                 const elicitationType = this.extractString(params, 'codex_elicitation');
                 const message = this.extractString(params, 'message') ?? '';
 

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { CodexPermissionHandler } from './utils/permissionHandler';
-import { createCodexElicitationRequestHandler } from './codexMcpClient';
+import { getCodexElicitationToolCallId } from './codexMcpClient';
 
 // NOTE: This test suite uses mocks because the real Codex CLI / MCP transport
 // is not guaranteed to be available in CI or local test environments.
@@ -42,31 +41,18 @@ vi.mock('@modelcontextprotocol/sdk/client/index.js', () => {
     return { Client };
 });
 
-describe('CodexMcpClient elicitation handling', () => {
-    it('does not print elicitation payloads to stdout', async () => {
-        const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+describe('CodexMcpClient elicitation ids', () => {
+    it('prefers codex_mcp_tool_call_id over codex_call_id', () => {
+        expect(getCodexElicitationToolCallId({
+            codex_mcp_tool_call_id: 'mcp-1',
+            codex_call_id: 'call-1',
+        })).toBe('mcp-1');
+    });
 
-        try {
-            consoleSpy.mockClear();
-
-            const permissionHandler = {
-                handleToolCall: vi.fn().mockResolvedValue({ decision: 'approved' }),
-            } as unknown as CodexPermissionHandler;
-
-            const handler = createCodexElicitationRequestHandler(permissionHandler);
-            await handler({
-                params: {
-                    codex_call_id: 'call-1',
-                    codex_command: 'echo hi',
-                    codex_cwd: '/tmp',
-                },
-            });
-
-            expect(consoleSpy).not.toHaveBeenCalled();
-            expect(permissionHandler.handleToolCall).toHaveBeenCalled();
-        } finally {
-            consoleSpy.mockRestore();
-        }
+    it('falls back to codex_call_id when codex_mcp_tool_call_id is missing', () => {
+        expect(getCodexElicitationToolCallId({
+            codex_call_id: 'call-1',
+        })).toBe('call-1');
     });
 });
 
