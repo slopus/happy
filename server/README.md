@@ -47,7 +47,6 @@ For local development, `yarn dev:light` is the easiest entrypoint for the light 
 #### Prerequisites
 
 - Node.js + Yarn
-- Docker (required for the **full** flavor dependencies: Postgres, Redis, Minio). The **light** flavor does not require Docker.
 
 #### Full flavor (Postgres + Redis + S3/Minio)
 
@@ -78,13 +77,13 @@ curl http://127.0.0.1:3005/health
 Notes:
 
 - If port `3005` is already in use, choose another: `PORT=3007 ...`.
-- `yarn dev` does **not** kill anything by default. If you prefer the old behavior that force-kills whatever is listening on the port, use: `PORT=3005 yarn dev -- --kill-port` (or `yarn dev:kill-port`).
+- `yarn dev` does **not** kill anything by default. You can force-kills whatever is listening on the port by using: `PORT=3005 yarn dev -- --kill-port` (or `yarn dev:kill-port`).
 - `yarn start` is production-style (it expects env vars already set in your environment).
 - Minio cleanup: `yarn s3:down`.
 
 #### Light flavor (SQLite + local files)
 
-The light flavor does not require Docker. It uses a local SQLite database file and serves public files from disk under `GET /files/*`.
+*The light flavor does not require Docker.* It uses a local SQLite database file and serves public files from disk under `GET /files/*`.
 
 ```bash
 yarn install
@@ -121,7 +120,7 @@ Practical safety notes for the light flavor:
 - Avoid “renames” in the Prisma schema for the light flavor unless you understand the impact: changing a model/field name without `@@map` / `@map` can look like “drop + create” to Prisma and can lead to data loss prompts.
 - Before upgrading a long-lived self-hosted light instance, back up the SQLite file (copy `~/.happy/server-light/happy-server-light.sqlite`) so you can roll back if needed.
 
-The full (Postgres) flavor uses migrations as usual:
+The full (Postgres) flavor uses migrations:
 
 - Dev migrations: `yarn migrate` / `yarn migrate:reset` (uses `.env.dev`)
 
