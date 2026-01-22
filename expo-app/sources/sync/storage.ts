@@ -24,7 +24,7 @@ import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
 import { nowServerMs } from "./time";
 import { buildSessionListViewData, type SessionListViewItem } from './sessionListViewData';
-import { hasUnreadMessages as computeHasUnreadMessages } from './unread';
+import { computeHasUnreadActivity, computePendingActivityAt } from './unread';
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1406,9 +1406,16 @@ export function useSessionMessages(sessionId: string): { messages: Message[], is
 
 export function useHasUnreadMessages(sessionId: string): boolean {
     return storage((state) => {
-        const lastViewedAt = state.sessionLastViewed[sessionId];
-        const messages = state.sessionMessages[sessionId]?.messages;
-        return computeHasUnreadMessages({ lastViewedAt, messages });
+        const session = state.sessions[sessionId];
+        if (!session) return false;
+        const pendingActivityAt = computePendingActivityAt(session.metadata);
+        const readState = session.metadata?.readStateV1;
+        return computeHasUnreadActivity({
+            sessionSeq: session.seq ?? 0,
+            pendingActivityAt,
+            lastViewedSessionSeq: readState?.sessionSeq,
+            lastViewedPendingActivityAt: readState?.pendingActivityAt,
+        });
     });
 }
 

@@ -32,6 +32,7 @@ import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
 import { systemPrompt } from './prompt/systemPrompt';
 import { nowServerMs } from './time';
+import { computePendingActivityAt } from './unread';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
 import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
 import { ArtifactEncryption } from './encryption/artifactEncryption';
@@ -488,6 +489,34 @@ class Sync {
             throw new Error('Session metadata not available');
         }
         await attempt(refreshed.metadataVersion, refreshed.metadata);
+    }
+
+    async markSessionViewed(sessionId: string, opts?: { sessionSeq?: number; pendingActivityAt?: number }): Promise<void> {
+        const session = storage.getState().sessions[sessionId];
+        if (!session?.metadata) return;
+
+        const sessionSeq = opts?.sessionSeq ?? session.seq ?? 0;
+        const pendingActivityAt = opts?.pendingActivityAt ?? computePendingActivityAt(session.metadata);
+
+        const existing = session.metadata.readStateV1;
+        const existingSeq = existing?.sessionSeq ?? 0;
+        const existingPendingAt = existing?.pendingActivityAt ?? 0;
+        if (existing && existingSeq >= sessionSeq && existingPendingAt >= pendingActivityAt) return;
+
+        await this.updateSessionMetadataWithRetry(sessionId, (metadata) => {
+            const prev = metadata.readStateV1;
+            const prevSeq = prev?.sessionSeq ?? 0;
+            const prevPendingAt = prev?.pendingActivityAt ?? 0;
+            return {
+                ...metadata,
+                readStateV1: {
+                    v: 1,
+                    sessionSeq: Math.max(prevSeq, sessionSeq),
+                    pendingActivityAt: Math.max(prevPendingAt, pendingActivityAt),
+                    updatedAt: nowServerMs(),
+                },
+            };
+        });
     }
 
     async fetchPendingMessages(sessionId: string): Promise<void> {

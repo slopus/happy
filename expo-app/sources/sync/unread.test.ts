@@ -1,41 +1,67 @@
 import { describe, expect, it } from 'vitest';
-import { hasUnreadMessages } from './unread';
+import { computeHasUnreadActivity } from './unread';
 
-describe('hasUnreadMessages', () => {
-    it('returns false when lastViewedAt is missing', () => {
-        expect(hasUnreadMessages({ lastViewedAt: undefined, messages: [{ createdAt: 10 }] })).toBe(false);
-    });
-
-    it('returns false when there are no messages', () => {
-        expect(hasUnreadMessages({ lastViewedAt: 10, messages: [] })).toBe(false);
-        expect(hasUnreadMessages({ lastViewedAt: 10, messages: null })).toBe(false);
-    });
-
-    it('returns true when newest message is after lastViewedAt (ascending)', () => {
+describe('computeHasUnreadActivity', () => {
+    it('returns false when there is no activity', () => {
         expect(
-            hasUnreadMessages({
-                lastViewedAt: 10,
-                messages: [{ createdAt: 5 }, { createdAt: 11 }],
-            }),
+            computeHasUnreadActivity({
+                sessionSeq: 0,
+                pendingActivityAt: 0,
+                lastViewedSessionSeq: undefined,
+                lastViewedPendingActivityAt: undefined,
+            })
+        ).toBe(false);
+    });
+
+    it('treats missing read marker as unread when there is activity', () => {
+        expect(
+            computeHasUnreadActivity({
+                sessionSeq: 1,
+                pendingActivityAt: 0,
+                lastViewedSessionSeq: undefined,
+                lastViewedPendingActivityAt: undefined,
+            })
+        ).toBe(true);
+        expect(
+            computeHasUnreadActivity({
+                sessionSeq: 0,
+                pendingActivityAt: 123,
+                lastViewedSessionSeq: undefined,
+                lastViewedPendingActivityAt: undefined,
+            })
         ).toBe(true);
     });
 
-    it('returns true when newest message is after lastViewedAt (descending)', () => {
+    it('returns true when sessionSeq advanced beyond marker', () => {
         expect(
-            hasUnreadMessages({
-                lastViewedAt: 10,
-                messages: [{ createdAt: 11 }, { createdAt: 5 }],
-            }),
+            computeHasUnreadActivity({
+                sessionSeq: 11,
+                pendingActivityAt: 0,
+                lastViewedSessionSeq: 10,
+                lastViewedPendingActivityAt: 0,
+            })
         ).toBe(true);
     });
 
-    it('returns false when newest message is not after lastViewedAt', () => {
+    it('returns true when pending activity advanced beyond marker', () => {
         expect(
-            hasUnreadMessages({
-                lastViewedAt: 11,
-                messages: [{ createdAt: 11 }, { createdAt: 5 }],
-            }),
+            computeHasUnreadActivity({
+                sessionSeq: 0,
+                pendingActivityAt: 11,
+                lastViewedSessionSeq: 0,
+                lastViewedPendingActivityAt: 10,
+            })
+        ).toBe(true);
+    });
+
+    it('returns false when activity is not beyond marker', () => {
+        expect(
+            computeHasUnreadActivity({
+                sessionSeq: 11,
+                pendingActivityAt: 11,
+                lastViewedSessionSeq: 11,
+                lastViewedPendingActivityAt: 11,
+            })
         ).toBe(false);
     });
 });
-

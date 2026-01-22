@@ -67,6 +67,12 @@ export const MetadataSchema = z.object({
      * (e.g. when the user switches to terminal control and abandons unprocessed remote messages).
      */
     discardedCommittedMessageLocalIds: z.array(z.string()).optional(),
+    readStateV1: z.object({
+        v: z.literal(1),
+        sessionSeq: z.number(),
+        pendingActivityAt: z.number(),
+        updatedAt: z.number(),
+    }).optional(),
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;

@@ -25,7 +25,9 @@ import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/u
 import { formatPathRelativeToHome, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import type { ModelMode, PermissionMode } from '@/sync/permissionTypes';
+import { computePendingActivityAt } from '@/sync/unread';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
@@ -203,9 +205,49 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
 
-    React.useEffect(() => {
-        storage.getState().markSessionViewed(sessionId);
+    const pendingActivityAt = computePendingActivityAt(session.metadata);
+    const isFocusedRef = React.useRef(false);
+    const markViewedTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastMarkedRef = React.useRef<{ sessionSeq: number; pendingActivityAt: number } | null>(null);
+
+    const markSessionViewed = React.useCallback(() => {
+        void sync.markSessionViewed(sessionId).catch(() => { });
     }, [sessionId]);
+
+    useFocusEffect(React.useCallback(() => {
+        isFocusedRef.current = true;
+        {
+            const current = storage.getState().sessions[sessionId];
+            lastMarkedRef.current = {
+                sessionSeq: current?.seq ?? 0,
+                pendingActivityAt: computePendingActivityAt(current?.metadata),
+            };
+        }
+        markSessionViewed();
+        return () => {
+            isFocusedRef.current = false;
+            if (markViewedTimeoutRef.current) {
+                clearTimeout(markViewedTimeoutRef.current);
+                markViewedTimeoutRef.current = null;
+            }
+            markSessionViewed();
+        };
+    }, [markSessionViewed, sessionId]));
+
+    React.useEffect(() => {
+        if (!isFocusedRef.current) return;
+
+        const sessionSeq = session.seq ?? 0;
+        const last = lastMarkedRef.current;
+        if (last && last.sessionSeq >= sessionSeq && last.pendingActivityAt >= pendingActivityAt) return;
+
+        lastMarkedRef.current = { sessionSeq, pendingActivityAt };
+        if (markViewedTimeoutRef.current) clearTimeout(markViewedTimeoutRef.current);
+        markViewedTimeoutRef.current = setTimeout(() => {
+            markViewedTimeoutRef.current = null;
+            markSessionViewed();
+        }, 250);
+    }, [markSessionViewed, pendingActivityAt, session.seq]);
 
     React.useEffect(() => {
         void sync.fetchPendingMessages(sessionId).catch(() => { });
