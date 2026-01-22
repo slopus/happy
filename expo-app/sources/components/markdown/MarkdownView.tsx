@@ -228,9 +228,9 @@ function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
     </>)
 }
 
-// TODO: Table rendering has layout issues on mobile - cells don't resize together when content varies.
-// See https://github.com/slopus/happy/issues/294 for details and potential fixes.
-// To repro: Navigate to dev/messages-demo and observe tables with long cell content.
+// Table rendering uses column-first layout to ensure consistent column widths.
+// Each column is rendered as a vertical container with all its cells (header + data).
+// This ensures that cells in the same column have the same width, determined by the widest content.
 function RenderTableBlock(props: {
     headers: string[],
     rows: string[][],
@@ -238,9 +238,8 @@ function RenderTableBlock(props: {
     last: boolean
 }) {
     const columnCount = props.headers.length;
-    // Calculate cell width: minimum 100px per cell, but expand to fill if fewer columns
-    const cellMinWidth = Math.max(100, Math.floor(300 / columnCount));
-    const isLastRow = (rowIndex: number) => rowIndex === props.rows.length - 1;
+    const rowCount = props.rows.length;
+    const isLastRow = (rowIndex: number) => rowIndex === rowCount - 1;
 
     return (
         <View style={[style.tableContainer, props.first && style.first, props.last && style.last]}>
@@ -251,20 +250,29 @@ function RenderTableBlock(props: {
                 style={style.tableScrollView}
             >
                 <View style={style.tableContent}>
-                    {/* Header row */}
-                    <View style={style.tableRow}>
-                        {props.headers.map((header, index) => (
-                            <View key={`header-${index}`} style={[style.tableCell, style.tableHeaderCell, { minWidth: cellMinWidth }]}>
+                    {/* Render each column as a vertical container */}
+                    {props.headers.map((header, colIndex) => (
+                        <View
+                            key={`column-${colIndex}`}
+                            style={[
+                                style.tableColumn,
+                                colIndex === columnCount - 1 && style.tableColumnLast
+                            ]}
+                        >
+                            {/* Header cell for this column */}
+                            <View style={[style.tableCell, style.tableHeaderCell, style.tableCellFirst]}>
                                 <Text style={style.tableHeaderText}>{header}</Text>
                             </View>
-                        ))}
-                    </View>
-                    {/* Data rows */}
-                    {props.rows.map((row, rowIndex) => (
-                        <View key={`row-${rowIndex}`} style={[style.tableRow, isLastRow(rowIndex) && style.tableRowLast]}>
-                            {props.headers.map((_, cellIndex) => (
-                                <View key={`cell-${rowIndex}-${cellIndex}`} style={[style.tableCell, { minWidth: cellMinWidth }]}>
-                                    <Text style={style.tableCellText}>{row[cellIndex] ?? ''}</Text>
+                            {/* Data cells for this column */}
+                            {props.rows.map((row, rowIndex) => (
+                                <View
+                                    key={`cell-${rowIndex}-${colIndex}`}
+                                    style={[
+                                        style.tableCell,
+                                        isLastRow(rowIndex) && style.tableCellLast
+                                    ]}
+                                >
+                                    <Text style={style.tableCellText}>{row[colIndex] ?? ''}</Text>
                                 </View>
                             ))}
                         </View>
@@ -502,19 +510,28 @@ const style = StyleSheet.create((theme) => ({
         flexGrow: 0,
     },
     tableContent: {
-        flexDirection: 'column',
-    },
-    tableRow: {
         flexDirection: 'row',
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.divider,
     },
-    tableRowLast: {
-        borderBottomWidth: 0,
+    tableColumn: {
+        flexDirection: 'column',
+        borderRightWidth: 1,
+        borderRightColor: theme.colors.divider,
+    },
+    tableColumnLast: {
+        borderRightWidth: 0,
     },
     tableCell: {
         paddingHorizontal: 12,
         paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
+        alignItems: 'flex-start',
+    },
+    tableCellFirst: {
+        borderTopWidth: 0,
+    },
+    tableCellLast: {
+        borderBottomWidth: 0,
     },
     tableHeaderCell: {
         backgroundColor: theme.colors.surfaceHigh,
