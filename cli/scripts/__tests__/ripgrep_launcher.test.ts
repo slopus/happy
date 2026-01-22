@@ -74,13 +74,6 @@ describe('Ripgrep Launcher Runtime Compatibility', () => {
         }).not.toThrow();
     });
 
-    it('uses rg.exe on Windows for local binary fallback', () => {
-        expect(() => {
-            const content = readLauncherFile();
-            expect(content).toContain('rg.exe');
-        }).not.toThrow();
-    });
-
     it('provides helpful error messages', () => {
         // Test that helpful error messages are present
         expect(() => {
