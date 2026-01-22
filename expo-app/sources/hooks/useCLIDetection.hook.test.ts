@@ -4,7 +4,7 @@ import renderer, { act } from 'react-test-renderer';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
-const useMachineDetectCliCacheMock = vi.fn();
+const useMachineCapabilitiesCacheMock = vi.fn();
 
 vi.mock('@/sync/storage', () => {
     return {
@@ -18,33 +18,27 @@ vi.mock('@/utils/machineUtils', () => {
     };
 });
 
-vi.mock('@/hooks/useMachineDetectCliCache', () => {
+vi.mock('@/hooks/useMachineCapabilitiesCache', () => {
     return {
-        useMachineDetectCliCache: (...args: any[]) => useMachineDetectCliCacheMock(...args),
-    };
-});
-
-vi.mock('@/sync/ops', () => {
-    return {
-        machineBash: vi.fn(async () => {
-            return { success: false, exitCode: 1, stdout: '', stderr: '' };
-        }),
+        useMachineCapabilitiesCache: (...args: any[]) => useMachineCapabilitiesCacheMock(...args),
     };
 });
 
 describe('useCLIDetection (hook)', () => {
-    it('includes tmux availability from detect-cli response when present', async () => {
-        useMachineDetectCliCacheMock.mockReturnValue({
+    it('includes tmux availability from capabilities results when present', async () => {
+        useMachineCapabilitiesCacheMock.mockReturnValue({
             state: {
                 status: 'loaded',
-                response: {
-                    path: null,
-                    clis: {
-                        claude: { available: true },
-                        codex: { available: true },
-                        gemini: { available: true },
+                snapshot: {
+                    response: {
+                        protocolVersion: 1,
+                        results: {
+                            'cli.claude': { ok: true, checkedAt: 1, data: { available: true } },
+                            'cli.codex': { ok: true, checkedAt: 1, data: { available: true } },
+                            'cli.gemini': { ok: true, checkedAt: 1, data: { available: true } },
+                            'tool.tmux': { ok: true, checkedAt: 1, data: { available: true } },
+                        },
                     },
-                    tmux: { available: true },
                 },
             },
             refresh: vi.fn(),
@@ -66,15 +60,17 @@ describe('useCLIDetection (hook)', () => {
     });
 
     it('treats missing tmux field as unknown (null) for older daemons', async () => {
-        useMachineDetectCliCacheMock.mockReturnValue({
+        useMachineCapabilitiesCacheMock.mockReturnValue({
             state: {
                 status: 'loaded',
-                response: {
-                    path: null,
-                    clis: {
-                        claude: { available: true },
-                        codex: { available: true },
-                        gemini: { available: true },
+                snapshot: {
+                    response: {
+                        protocolVersion: 1,
+                        results: {
+                            'cli.claude': { ok: true, checkedAt: 1, data: { available: true } },
+                            'cli.codex': { ok: true, checkedAt: 1, data: { available: true } },
+                            'cli.gemini': { ok: true, checkedAt: 1, data: { available: true } },
+                        },
                     },
                 },
             },
