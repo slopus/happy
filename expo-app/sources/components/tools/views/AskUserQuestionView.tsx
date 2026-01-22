@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ToolViewProps } from './_all';
 import { ToolSectionView } from '../ToolSectionView';
-import { sessionDeny } from '@/sync/ops';
+import { sessionDeny, sessionInteractionRespond } from '@/sync/ops';
+import { isRpcMethodNotAvailableError } from '@/sync/rpcErrors';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
@@ -234,13 +235,21 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
         const responseText = responseLines.join('\n');
 
         try {
-            // TODO: The proper fix is to update happy-cli to not require permission for AskUserQuestion,
-            // or to accept answers via the permission RPC. For now, we deny the permission (which cancels
-            // the tool without side effects) and send answers as a regular user message.
-            if (tool.permission?.id) {
-                await sessionDeny(sessionId, tool.permission.id);
+            const toolCallId = tool.permission?.id;
+            if (!toolCallId) {
+                throw new Error('AskUserQuestion is missing tool.permission.id');
             }
-            await sync.sendMessage(sessionId, responseText);
+
+            try {
+                await sessionInteractionRespond(sessionId, { toolCallId, responseText });
+            } catch (err) {
+                if (!isRpcMethodNotAvailableError(err as any)) {
+                    throw err;
+                }
+                // Back-compat for older daemons: cancel the tool (no side effects) and send answers as a normal user message.
+                await sessionDeny(sessionId, toolCallId);
+                await sync.sendMessage(sessionId, responseText);
+            }
             setIsSubmitted(true);
         } catch (error) {
             console.error('Failed to submit answer:', error);

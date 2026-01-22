@@ -41,6 +41,15 @@ interface SessionPermissionRequest {
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
 }
 
+interface SessionInteractionRespondRequest {
+    toolCallId: string;
+    responseText: string;
+}
+
+interface SessionInteractionRespondResponse {
+    ok: true;
+}
+
 // Mode change operation types
 interface SessionModeChangeRequest {
     to: 'remote' | 'local';
@@ -586,6 +595,21 @@ export async function sessionAllow(sessionId: string, id: string, mode?: 'defaul
 export async function sessionDeny(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[], decision?: 'denied' | 'abort'): Promise<void> {
     const request: SessionPermissionRequest = { id, approved: false, mode, allowTools: allowedTools, decision };
     await apiSocket.sessionRPC(sessionId, 'permission', request);
+}
+
+/**
+ * Respond to an in-session interaction that expects a model-native continuation
+ * (e.g. answering AskUserQuestion without aborting the turn).
+ */
+export async function sessionInteractionRespond(
+    sessionId: string,
+    request: SessionInteractionRespondRequest,
+): Promise<void> {
+    await apiSocket.sessionRPC<SessionInteractionRespondResponse, SessionInteractionRespondRequest>(
+        sessionId,
+        'interaction.respond',
+        request,
+    );
 }
 
 /**

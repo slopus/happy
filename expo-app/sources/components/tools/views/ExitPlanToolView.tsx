@@ -5,8 +5,7 @@ import { ToolViewProps } from './_all';
 import { ToolSectionView } from '../../tools/ToolSectionView';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { knownTools } from '../../tools/knownTools';
-import { sessionDeny } from '@/sync/ops';
-import { sync } from '@/sync/sync';
+import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -30,11 +29,9 @@ export const ExitPlanToolView = React.memo<ToolViewProps>(({ tool, sessionId }) 
 
         setIsApproving(true);
         try {
-            // Deny the permission (to complete the tool call) and send approval message
             if (tool.permission?.id) {
-                await sessionDeny(sessionId, tool.permission.id);
+                await sessionAllow(sessionId, tool.permission.id);
             }
-            await sync.sendMessage(sessionId, t('tools.exitPlanMode.approvalMessage'));
             setIsResponded(true);
         } catch (error) {
             console.error('Failed to approve plan:', error);
@@ -48,11 +45,9 @@ export const ExitPlanToolView = React.memo<ToolViewProps>(({ tool, sessionId }) 
 
         setIsRejecting(true);
         try {
-            // Deny the permission and send rejection message
             if (tool.permission?.id) {
                 await sessionDeny(sessionId, tool.permission.id);
             }
-            await sync.sendMessage(sessionId, t('tools.exitPlanMode.rejectionMessage'));
             setIsResponded(true);
         } catch (error) {
             console.error('Failed to reject plan:', error);
