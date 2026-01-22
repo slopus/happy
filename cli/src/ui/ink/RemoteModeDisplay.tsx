@@ -2,6 +2,47 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Box, Text, useStdout, useInput } from 'ink'
 import { MessageBuffer, type BufferedMessage } from './messageBuffer'
 
+export type RemoteModeConfirmation = 'exit' | 'switch' | null;
+export type RemoteModeActionInProgress = 'exiting' | 'switching' | null;
+
+export type RemoteModeKeypressAction =
+    | 'none'
+    | 'reset'
+    | 'confirm-exit'
+    | 'confirm-switch'
+    | 'exit'
+    | 'switch';
+
+export function interpretRemoteModeKeypress(
+    state: { confirmationMode: RemoteModeConfirmation; actionInProgress: RemoteModeActionInProgress },
+    input: string,
+    key: { ctrl?: boolean; meta?: boolean; shift?: boolean } = {},
+): { action: RemoteModeKeypressAction } {
+    if (state.actionInProgress) return { action: 'none' };
+
+    // Ctrl-C handling
+    if (key.ctrl && input === 'c') {
+        return { action: state.confirmationMode === 'exit' ? 'exit' : 'confirm-exit' };
+    }
+
+    // Ctrl-T: immediate switch to terminal (avoids “space spam” → buffered spaces)
+    if (key.ctrl && input === 't') {
+        return { action: 'switch' };
+    }
+
+    // Double-space confirmation for switching
+    if (input === ' ') {
+        return { action: state.confirmationMode === 'switch' ? 'switch' : 'confirm-switch' };
+    }
+
+    // Any other key cancels confirmation
+    if (state.confirmationMode) {
+        return { action: 'reset' };
+    }
+
+    return { action: 'none' };
+}
+
 interface RemoteModeDisplayProps {
     messageBuffer: MessageBuffer
     logPath?: string
@@ -11,8 +52,8 @@ interface RemoteModeDisplayProps {
 
 export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuffer, logPath, onExit, onSwitchToLocal }) => {
     const [messages, setMessages] = useState<BufferedMessage[]>([])
-    const [confirmationMode, setConfirmationMode] = useState<'exit' | 'switch' | null>(null)
-    const [actionInProgress, setActionInProgress] = useState<'exiting' | 'switching' | null>(null)
+    const [confirmationMode, setConfirmationMode] = useState<RemoteModeConfirmation>(null)
+    const [actionInProgress, setActionInProgress] = useState<RemoteModeActionInProgress>(null)
     const confirmationTimeoutRef = useRef<NodeJS.Timeout | null>(null)
     const { stdout } = useStdout()
     const terminalWidth = stdout.columns || 80
@@ -41,7 +82,7 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
         }
     }, [])
 
-    const setConfirmationWithTimeout = useCallback((mode: 'exit' | 'switch') => {
+    const setConfirmationWithTimeout = useCallback((mode: Exclude<RemoteModeConfirmation, null>) => {
         setConfirmationMode(mode)
         if (confirmationTimeoutRef.current) {
             clearTimeout(confirmationTimeoutRef.current)
@@ -52,44 +93,32 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
     }, [resetConfirmation])
 
     useInput(useCallback(async (input, key) => {
-        // Don't process input if action is in progress
-        if (actionInProgress) return
-        
-        // Handle Ctrl-C
-        if (key.ctrl && input === 'c') {
-            if (confirmationMode === 'exit') {
-                // Second Ctrl-C, exit
-                resetConfirmation()
-                setActionInProgress('exiting')
-                // Small delay to show the status message
-                await new Promise(resolve => setTimeout(resolve, 100))
-                onExit?.()
-            } else {
-                // First Ctrl-C, show confirmation
-                setConfirmationWithTimeout('exit')
-            }
-            return
+        const { action } = interpretRemoteModeKeypress({ confirmationMode, actionInProgress }, input, key as any);
+        if (action === 'none') return;
+        if (action === 'reset') {
+            resetConfirmation();
+            return;
         }
-
-        // Handle double space
-        if (input === ' ') {
-            if (confirmationMode === 'switch') {
-                // Second space, switch to local
-                resetConfirmation()
-                setActionInProgress('switching')
-                // Small delay to show the status message
-                await new Promise(resolve => setTimeout(resolve, 100))
-                onSwitchToLocal?.()
-            } else {
-                // First space, show confirmation
-                setConfirmationWithTimeout('switch')
-            }
-            return
+        if (action === 'confirm-exit') {
+            setConfirmationWithTimeout('exit');
+            return;
         }
-
-        // Any other key cancels confirmation
-        if (confirmationMode) {
-            resetConfirmation()
+        if (action === 'confirm-switch') {
+            setConfirmationWithTimeout('switch');
+            return;
+        }
+        if (action === 'exit') {
+            resetConfirmation();
+            setActionInProgress('exiting');
+            await new Promise(resolve => setTimeout(resolve, 100));
+            onExit?.();
+            return;
+        }
+        if (action === 'switch') {
+            resetConfirmation();
+            setActionInProgress('switching');
+            await new Promise(resolve => setTimeout(resolve, 100));
+            onSwitchToLocal?.();
         }
     }, [confirmationMode, actionInProgress, onExit, onSwitchToLocal, setConfirmationWithTimeout, resetConfirmation]))
 
@@ -181,12 +210,12 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
                         </Text>
                     ) : confirmationMode === 'switch' ? (
                         <Text color="yellow" bold>
-                            ⏸️  Press space again to switch to local mode
+                            ⏸️  Press space again (or Ctrl-T) to switch to local mode
                         </Text>
                     ) : (
                         <>
                             <Text color="green" bold>
-                                📱 Press space to switch to local mode • Ctrl-C to exit
+                                📱 Press space (or Ctrl-T) to switch to local mode • Ctrl-C to exit
                             </Text>
                         </>
                     )}
