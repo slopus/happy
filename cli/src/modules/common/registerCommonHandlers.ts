@@ -773,14 +773,15 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         const primaryBinPath = codexResumeBinPath();
         const legacyBinPath = codexResumeLegacyBinPath();
         const state = await readCodexResumeStateWithFallback();
+        const accessMode = process.platform === 'win32' ? fsConstants.F_OK : fsConstants.X_OK;
 
         const installed = await (async () => {
             try {
-                await access(primaryBinPath, fsConstants.X_OK);
+                await access(primaryBinPath, accessMode);
                 return true;
             } catch {
                 try {
-                    await access(legacyBinPath, fsConstants.X_OK);
+                    await access(legacyBinPath, accessMode);
                     return true;
                 } catch {
                     return false;
@@ -791,7 +792,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         const binPath = installed
             ? await (async () => {
                 try {
-                    await access(primaryBinPath, fsConstants.X_OK);
+                    await access(primaryBinPath, accessMode);
                     return primaryBinPath;
                 } catch {
                     return legacyBinPath;
