@@ -16,6 +16,8 @@ import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import { formatErrorForUi } from "@/utils/formatErrorForUi";
+import { waitForMessagesOrPending } from "@/utils/waitForMessagesOrPending";
+import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
 
 interface PermissionsField {
     date: number;
@@ -60,11 +62,12 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     }
 
     if (hasTTY) {
+        // Ensure we can capture keypresses for the remote-mode UI.
+        // Avoid forcing stdin encoding here; Ink (and Node) should handle key decoding safely.
         process.stdin.resume();
         if (process.stdin.isTTY) {
             process.stdin.setRawMode(true);
         }
-        process.stdin.setEncoding("utf8");
     }
 
     // Handle abort
@@ -365,27 +368,30 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     isAborted: (toolCallId: string) => {
                         return permissionHandler.isAborted(toolCallId);
                     },
-                    nextMessage: async () => {
-                        if (pending) {
-                            let p = pending;
-                            pending = null;
-                            permissionHandler.handleModeChange(p.mode.permissionMode);
-                            return p;
-                        }
+	                    nextMessage: async () => {
+	                        if (pending) {
+	                            let p = pending;
+	                            pending = null;
+	                            permissionHandler.handleModeChange(p.mode.permissionMode);
+	                            return p;
+	                        }
 
-                        // If the queue is empty, try to materialize one server-side pending item into the transcript.
-                        // This allows the mobile/web UI to enqueue messages without immediately committing them to the
-                        // transcript; the agent will pull them when ready for the next turn.
-                        if (session.queue.size() === 0) {
-                            await session.client.popPendingMessage();
-                        }
+	                        const msg = await waitForMessagesOrPending({
+	                            messageQueue: session.queue,
+	                            abortSignal: controller.signal,
+	                            popPendingMessage: async () => {
+	                                // Only materialize pending items when there are no committed transcript messages
+	                                // queued locally; committed messages must be processed first.
+	                                if (session.queue.size() > 0) return false;
+	                                return await session.client.popPendingMessage();
+	                            },
+	                            waitForMetadataUpdate: (signal) => session.client.waitForMetadataUpdate(signal),
+	                        });
 
-                        let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
-
-                        // Check if mode has changed
-                        if (msg) {
-                            if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
-                                logger.debug('[remote]: mode has changed, pending message');
+	                        // Check if mode has changed
+	                        if (msg) {
+	                            if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
+	                                logger.debug('[remote]: mode has changed, pending message');
                                 pending = msg;
                                 return null;
                             }
@@ -484,13 +490,17 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         permissionHandler.reset();
 
         // Reset Terminal
-        process.stdin.off('data', abort);
         if (process.stdin.isTTY) {
             process.stdin.setRawMode(false);
         }
         if (inkInstance) {
             inkInstance.unmount();
         }
+
+        // Give Ink a brief moment to release stdin/tty state, then drain any buffered input
+        // (e.g. “double space” spam) so it doesn't leak into the next interactive process.
+        await cleanupStdinAfterInk({ stdin: process.stdin as any, drainMs: 75 });
+
         messageBuffer.clear();
 
         // Resolve abort future

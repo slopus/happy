@@ -430,6 +430,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug('[start] Detected /compact command');
             const enhancedMode: EnhancedMode = {
                 permissionMode: messagePermissionMode || 'default',
+                localId: message.localId ?? null,
                 model: messageModel,
                 fallbackModel: messageFallbackModel,
                 customSystemPrompt: messageCustomSystemPrompt,
@@ -446,6 +447,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug('[start] Detected /clear command');
             const enhancedMode: EnhancedMode = {
                 permissionMode: messagePermissionMode || 'default',
+                localId: message.localId ?? null,
                 model: messageModel,
                 fallbackModel: messageFallbackModel,
                 customSystemPrompt: messageCustomSystemPrompt,
@@ -461,6 +463,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // Push with resolved permission mode, model, system prompts, and tools
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode || 'default',
+            localId: message.localId ?? null,
             model: messageModel,
             fallbackModel: messageFallbackModel,
             customSystemPrompt: messageCustomSystemPrompt,

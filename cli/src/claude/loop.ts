@@ -14,6 +14,11 @@ import type { PermissionMode } from "@/api/types"
 
 export interface EnhancedMode {
     permissionMode: PermissionMode;
+    /**
+     * Stable id for the originating user message (when provided by the app),
+     * used for discard markers and reconciliation.
+     */
+    localId?: string | null;
     model?: string;
     fallbackModel?: string;
     customSystemPrompt?: string;

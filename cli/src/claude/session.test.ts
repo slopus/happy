@@ -137,4 +137,44 @@ describe('Session', () => {
             session.cleanup();
         }
     });
+
+    it('emits ACP task lifecycle events when thinking toggles', () => {
+        const client = {
+            keepAlive: vi.fn(),
+            updateMetadata: vi.fn(),
+            sendAgentMessage: vi.fn(),
+        } as any;
+
+        const session = new Session({
+            api: {} as any,
+            client,
+            path: '/tmp',
+            logPath: '/tmp/log',
+            sessionId: null,
+            mcpServers: {},
+            messageQueue: new MessageQueue2<any>(() => 'mode'),
+            onModeChange: () => { },
+            hookSettingsPath: '/tmp/hooks.json',
+        });
+
+        try {
+            session.onThinkingChange(true);
+            expect(client.sendAgentMessage).toHaveBeenCalledTimes(1);
+            const [provider1, payload1] = client.sendAgentMessage.mock.calls[0];
+            expect(provider1).toBe('claude');
+            expect(payload1?.type).toBe('task_started');
+            expect(typeof payload1?.id).toBe('string');
+
+            session.onThinkingChange(true);
+            expect(client.sendAgentMessage).toHaveBeenCalledTimes(1);
+
+            session.onThinkingChange(false);
+            expect(client.sendAgentMessage).toHaveBeenCalledTimes(2);
+            const [provider2, payload2] = client.sendAgentMessage.mock.calls[1];
+            expect(provider2).toBe('claude');
+            expect(payload2).toEqual({ type: 'task_complete', id: payload1.id });
+        } finally {
+            session.cleanup();
+        }
+    });
 });

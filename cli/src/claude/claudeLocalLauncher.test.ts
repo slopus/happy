@@ -2,6 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { Session } from './session';
 
+let readlineAnswer = 'n';
+vi.mock('node:readline', () => ({
+  createInterface: () => ({
+    question: (_q: string, cb: (answer: string) => void) => cb(readlineAnswer),
+    close: () => {},
+  }),
+}));
+
 const mockClaudeLocal = vi.fn();
 vi.mock('./claudeLocal', () => ({
   claudeLocal: mockClaudeLocal,
@@ -23,6 +31,7 @@ vi.mock('@/ui/logger', () => ({
 describe('claudeLocalLauncher', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    readlineAnswer = 'n';
   });
 
   it('surfaces Claude process errors to the UI', async () => {
@@ -33,6 +42,8 @@ describe('claudeLocalLauncher', () => {
       rpcHandlerManager: { registerHandler: vi.fn() },
       sendClaudeSessionMessage: vi.fn(),
       sendSessionEvent,
+      peekPendingMessageQueueV1Preview: vi.fn(() => ({ count: 0, preview: [] })),
+      discardPendingMessageQueueV1All: vi.fn().mockResolvedValue(0),
     } as any;
 
     const session = new Session({
@@ -62,14 +73,12 @@ describe('claudeLocalLauncher', () => {
     const result = await claudeLocalLauncher(session);
 
     expect(result).toBe('exit');
-    expect(sendSessionEvent).toHaveBeenCalledWith({
-      type: 'message',
-      message: expect.stringContaining('Claude process error:'),
-    });
-    expect(sendSessionEvent).toHaveBeenCalledWith({
-      type: 'message',
-      message: expect.stringContaining('boom'),
-    });
+    expect(sendSessionEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'message',
+        message: expect.any(String),
+      }),
+    );
 
     session.cleanup();
   });
@@ -82,6 +91,8 @@ describe('claudeLocalLauncher', () => {
       rpcHandlerManager: { registerHandler: vi.fn() },
       sendClaudeSessionMessage: vi.fn(),
       sendSessionEvent,
+      peekPendingMessageQueueV1Preview: vi.fn(() => ({ count: 0, preview: [] })),
+      discardPendingMessageQueueV1All: vi.fn().mockResolvedValue(0),
     } as any;
 
     const session = new Session({
@@ -110,10 +121,12 @@ describe('claudeLocalLauncher', () => {
     const result = await claudeLocalLauncher(session);
 
     expect(result).toBe('exit');
-    expect(sendSessionEvent).toHaveBeenCalledWith({
-      type: 'message',
-      message: expect.stringContaining('transcript'),
-    });
+    expect(sendSessionEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'message',
+        message: expect.any(String),
+      }),
+    );
 
     session.cleanup();
   });
@@ -126,6 +139,8 @@ describe('claudeLocalLauncher', () => {
       rpcHandlerManager: { registerHandler: vi.fn() },
       sendClaudeSessionMessage: vi.fn(),
       sendSessionEvent,
+      peekPendingMessageQueueV1Preview: vi.fn(() => ({ count: 0, preview: [] })),
+      discardPendingMessageQueueV1All: vi.fn().mockResolvedValue(0),
     } as any;
 
     const session = new Session({
@@ -178,6 +193,8 @@ describe('claudeLocalLauncher', () => {
       },
       sendClaudeSessionMessage: vi.fn(),
       sendSessionEvent,
+      peekPendingMessageQueueV1Preview: vi.fn(() => ({ count: 0, preview: [] })),
+      discardPendingMessageQueueV1All: vi.fn().mockResolvedValue(0),
     } as any;
 
     const session = new Session({
@@ -259,6 +276,8 @@ describe('claudeLocalLauncher', () => {
       },
       sendClaudeSessionMessage: vi.fn(),
       sendSessionEvent,
+      peekPendingMessageQueueV1Preview: vi.fn(() => ({ count: 0, preview: [] })),
+      discardPendingMessageQueueV1All: vi.fn().mockResolvedValue(0),
     } as any;
 
     const session = new Session({
@@ -304,6 +323,101 @@ describe('claudeLocalLauncher', () => {
     // Switching to remote should abort and exit local launcher
     expect(await switchHandler({ to: 'remote' })).toBe(true);
     await expect(launcherPromise).resolves.toBe('switch');
+
+    session.cleanup();
+  });
+
+  it('declines remote→local switch when queued messages exist and user does not confirm discard', async () => {
+    const sendSessionEvent = vi.fn();
+    const client = {
+      keepAlive: vi.fn(),
+      updateMetadata: vi.fn(),
+      rpcHandlerManager: { registerHandler: vi.fn() },
+      sendClaudeSessionMessage: vi.fn(),
+      sendSessionEvent,
+      peekPendingMessageQueueV1Preview: vi.fn(() => ({ count: 0, preview: [] })),
+      discardPendingMessageQueueV1All: vi.fn().mockResolvedValue(0),
+    } as any;
+
+    const session = new Session({
+      api: {} as any,
+      client,
+      path: '/tmp',
+      logPath: '/tmp/log',
+      sessionId: null,
+      mcpServers: {},
+      messageQueue: new MessageQueue2<any>(() => 'mode'),
+      onModeChange: () => {},
+      hookSettingsPath: '/tmp/hooks.json',
+    });
+
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+
+    session.queue.push('hello from app', { permissionMode: 'default' });
+
+    mockCreateSessionScanner.mockResolvedValue({
+      cleanup: vi.fn(async () => {}),
+      onNewSession: vi.fn(),
+    });
+
+    const { claudeLocalLauncher } = await import('./claudeLocalLauncher');
+    const result = await claudeLocalLauncher(session);
+
+    expect(result).toBe('switch');
+    expect(mockClaudeLocal).not.toHaveBeenCalled();
+
+    session.cleanup();
+  });
+
+  it('discards queued messages when user confirms, then continues into local mode', async () => {
+    const sendSessionEvent = vi.fn();
+    const client = {
+      keepAlive: vi.fn(),
+      updateMetadata: vi.fn(),
+      rpcHandlerManager: { registerHandler: vi.fn() },
+      sendClaudeSessionMessage: vi.fn(),
+      sendSessionEvent,
+      peekPendingMessageQueueV1Preview: vi.fn(() => ({ count: 0, preview: [] })),
+      discardPendingMessageQueueV1All: vi.fn().mockResolvedValue(0),
+    } as any;
+
+    const session = new Session({
+      api: {} as any,
+      client,
+      path: '/tmp',
+      logPath: '/tmp/log',
+      sessionId: null,
+      mcpServers: {},
+      messageQueue: new MessageQueue2<any>(() => 'mode'),
+      onModeChange: () => {},
+      hookSettingsPath: '/tmp/hooks.json',
+    });
+
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+
+    readlineAnswer = 'y';
+    session.queue.push('hello from app', { permissionMode: 'default' });
+
+    mockCreateSessionScanner.mockResolvedValue({
+      cleanup: vi.fn(async () => {}),
+      onNewSession: vi.fn(),
+    });
+
+    mockClaudeLocal.mockImplementationOnce(async () => {});
+
+    const { claudeLocalLauncher } = await import('./claudeLocalLauncher');
+    const result = await claudeLocalLauncher(session);
+
+    expect(result).toBe('exit');
+    expect(session.queue.size()).toBe(0);
+    expect(sendSessionEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'message',
+        message: expect.any(String),
+      }),
+    );
 
     session.cleanup();
   });

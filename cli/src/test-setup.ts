@@ -10,8 +10,16 @@ export function setup() {
   // Extend test timeout for integration tests
   process.env.VITEST_POOL_TIMEOUT = '60000'
 
-  // Make sure to build the project before running tests
-  // We rely on the dist files to spawn our CLI in integration tests
+  const skipBuild = (() => {
+    const raw = process.env.HAPPY_CLI_TEST_SKIP_BUILD
+    if (typeof raw !== 'string') return false
+    return ['1', 'true', 'yes'].includes(raw.trim().toLowerCase())
+  })()
+
+  // Make sure to build the project before running tests (opt-out).
+  // We rely on the dist files to spawn our CLI in some integration tests.
+  if (skipBuild) return
+
   const buildResult = spawnSync('yarn', ['build'], { stdio: 'pipe' })
 
   if (buildResult.stderr && buildResult.stderr.length > 0) {

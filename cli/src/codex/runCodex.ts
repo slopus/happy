@@ -4,6 +4,7 @@ import { ApiClient } from '@/api/api';
 import { CodexMcpClient } from './codexMcpClient';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { formatCodexEventForUi } from './utils/formatCodexEventForUi';
+import { nextCodexLifecycleAcpMessages } from './utils/codexAcpLifecycle';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
@@ -30,6 +31,7 @@ import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler"
 import { delay } from "@/utils/time";
 import { stopCaffeinate } from "@/utils/caffeinate";
 import { formatErrorForUi } from "@/utils/formatErrorForUi";
+import { waitForMessagesOrPending } from "@/utils/waitForMessagesOrPending";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
@@ -309,6 +311,7 @@ export async function runCodex(opts: {
     });
 
     let thinking = false;
+    let currentTaskId: string | null = null;
     session.keepAlive(thinking, 'remote');
     // Periodic keep-alive; store handle so we can clear on exit
     const keepAliveInterval = setInterval(() => {
@@ -545,6 +548,12 @@ export async function runCodex(opts: {
     client.setHandler((msg) => {
         logger.debug(`[Codex] MCP message: ${JSON.stringify(msg)}`);
 
+        const lifecycle = nextCodexLifecycleAcpMessages({ currentTaskId, msg });
+        currentTaskId = lifecycle.currentTaskId;
+        for (const event of lifecycle.messages) {
+            session.sendAgentMessage('codex', event);
+        }
+
         const uiText = formatCodexEventForUi(msg);
         if (uiText) {
             forwardCodexStatusToUi(uiText);
@@ -732,19 +741,21 @@ export async function runCodex(opts: {
             logActiveHandles('loop-top');
             // Get next batch; respect mode boundaries like Claude
             let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = pending;
-            pending = null;
-            if (!message) {
-                // Capture the current signal to distinguish idle-abort from queue close
-                const waitSignal = abortController.signal;
-                // If there are server-side pending messages, materialize one into the transcript now.
-                // This ensures sessions remain responsive even when the UI defers message creation.
-                await session.popPendingMessage();
-                const batch = await messageQueue.waitForMessagesAndGetAsString(waitSignal);
-                if (!batch) {
-                    // If wait was aborted (e.g., remote abort with no active inference), ignore and continue
-                    if (waitSignal.aborted && !shouldExit) {
-                        logger.debug('[codex]: Wait aborted while idle; ignoring and continuing');
-                        continue;
+	            pending = null;
+	            if (!message) {
+	                // Capture the current signal to distinguish idle-abort from queue close
+	                const waitSignal = abortController.signal;
+	                const batch = await waitForMessagesOrPending({
+	                    messageQueue,
+	                    abortSignal: waitSignal,
+	                    popPendingMessage: () => session.popPendingMessage(),
+	                    waitForMetadataUpdate: (signal) => session.waitForMetadataUpdate(signal),
+	                });
+	                if (!batch) {
+	                    // If wait was aborted (e.g., remote abort with no active inference), ignore and continue
+	                    if (waitSignal.aborted && !shouldExit) {
+	                        logger.debug('[codex]: Wait aborted while idle; ignoring and continuing');
+	                        continue;
                     }
                     logger.debug(`[codex]: batch=${!!batch}, shouldExit=${shouldExit}`);
                     break;

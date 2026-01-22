@@ -98,6 +98,9 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         flavor: opts.flavor,
         ...(opts.permissionMode && { permissionMode: opts.permissionMode }),
         ...(typeof opts.permissionModeUpdatedAt === 'number' && { permissionModeUpdatedAt: opts.permissionModeUpdatedAt }),
+        // Seed messageQueueV1 so the app can detect queue support without relying on machine capabilities.
+        // Older CLIs won't write this field, so the app will fall back to direct send.
+        messageQueueV1: { v: 1, queue: [] },
     };
 
     return { state, metadata };

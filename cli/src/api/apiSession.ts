@@ -10,6 +10,8 @@ import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
+import { claimMessageQueueV1Next, clearMessageQueueV1InFlight, discardMessageQueueV1All, parseMessageQueueV1 } from './messageQueueV1';
+import { addDiscardedCommittedMessageLocalIds } from './discardedCommittedMessageLocalIds';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -141,11 +143,18 @@ export class ApiSessionClient extends EventEmitter {
 
                 if (data.body.t === 'new-message' && data.body.message.content.t === 'encrypted') {
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
+                    const bodyWithLocalId =
+                        data.body.message.localId === undefined
+                            ? body
+                            : {
+                                ...(body as any),
+                                localId: data.body.message.localId,
+                            };
 
-                    logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
+                    logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', bodyWithLocalId)
 
                     // Try to parse as user message first
-                    const userResult = UserMessageSchema.safeParse(body);
+                    const userResult = UserMessageSchema.safeParse(bodyWithLocalId);
                     if (userResult.success) {
                         // Server already filtered to only our session
                         if (this.pendingMessageCallback) {
@@ -153,6 +162,8 @@ export class ApiSessionClient extends EventEmitter {
                         } else {
                             this.pendingMessages.push(userResult.data);
                         }
+                        this.emit('user-message', userResult.data);
+                        void this.maybeClearPendingInFlight(userResult.data.localId ?? null);
                     } else {
                         // If not a user message, it might be a permission response or other message type
                         this.emit('message', body);
@@ -161,6 +172,7 @@ export class ApiSessionClient extends EventEmitter {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
                         this.metadata = decrypt(this.encryptionKey, this.encryptionVariant,decodeBase64(data.body.metadata.value));
                         this.metadataVersion = data.body.metadata.version;
+                        this.emit('metadata-updated');
                     }
                     if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
                         this.agentState = data.body.agentState.value ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.agentState.value)) : null;
@@ -194,6 +206,73 @@ export class ApiSessionClient extends EventEmitter {
         this.pendingMessageCallback = callback;
         while (this.pendingMessages.length > 0) {
             callback(this.pendingMessages.shift()!);
+        }
+    }
+
+    waitForMetadataUpdate(abortSignal?: AbortSignal): Promise<boolean> {
+        if (abortSignal?.aborted) {
+            return Promise.resolve(false);
+        }
+        return new Promise((resolve) => {
+            const onUpdate = () => {
+                cleanup();
+                resolve(true);
+            };
+            const onAbort = () => {
+                cleanup();
+                resolve(false);
+            };
+            const cleanup = () => {
+                this.off('metadata-updated', onUpdate);
+                abortSignal?.removeEventListener('abort', onAbort);
+            };
+
+            this.on('metadata-updated', onUpdate);
+            abortSignal?.addEventListener('abort', onAbort, { once: true });
+        });
+    }
+
+    private async maybeClearPendingInFlight(localId: string | null): Promise<void> {
+        if (!localId) return;
+        if (!this.socket.connected) return;
+        if (!this.metadata) return;
+
+        try {
+            await this.metadataLock.inLock(async () => {
+                await backoff(async () => {
+                    const current = this.metadata as unknown as Record<string, unknown>;
+                    const mq = parseMessageQueueV1((current as any).messageQueueV1);
+                    const inFlightLocalId = mq?.inFlight?.localId ?? null;
+                    if (inFlightLocalId !== localId) {
+                        return;
+                    }
+
+                    const cleared = clearMessageQueueV1InFlight(current, localId);
+                    if (cleared === current) {
+                        return;
+                    }
+
+                    const answer = await this.socket.emitWithAck('update-metadata', {
+                        sid: this.sessionId,
+                        expectedVersion: this.metadataVersion,
+                        metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, cleared)),
+                    });
+                    if (answer.result === 'success') {
+                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
+                        this.metadataVersion = answer.version;
+                        return;
+                    }
+                    if (answer.result === 'version-mismatch') {
+                        if (answer.version > this.metadataVersion) {
+                            this.metadataVersion = answer.version;
+                            this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
+                        }
+                        throw new Error('Metadata version mismatch');
+                    }
+                });
+            });
+        } catch (error) {
+            logger.debug('[API] failed to clear messageQueueV1 inFlight', { error });
         }
     }
 
@@ -467,22 +546,206 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.close();
     }
 
+    peekPendingMessageQueueV1Preview(opts?: { maxPreview?: number }): { count: number; preview: string[] } {
+        const maxPreview = opts?.maxPreview ?? 3;
+        if (!this.metadata) return { count: 0, preview: [] };
+        const mq = parseMessageQueueV1((this.metadata as any).messageQueueV1);
+        if (!mq) return { count: 0, preview: [] };
+
+        const items = [
+            ...(mq.inFlight ? [mq.inFlight] : []),
+            ...mq.queue,
+        ];
+
+        const preview: string[] = [];
+        for (const item of items.slice(0, maxPreview)) {
+            try {
+                const raw = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(item.message)) as any;
+                const displayText = raw?.meta?.displayText;
+                const text = raw?.content?.text;
+                const resolved = typeof displayText === 'string' ? displayText : typeof text === 'string' ? text : null;
+                preview.push(resolved ? resolved : '<unable to decode queued message>');
+            } catch {
+                preview.push('<unable to decode queued message>');
+            }
+        }
+
+        return { count: items.length, preview };
+    }
+
+    async discardPendingMessageQueueV1All(opts: { reason: 'switch_to_local' | 'manual' }): Promise<number> {
+        if (!this.socket.connected) {
+            return 0;
+        }
+        if (!this.metadata) {
+            return 0;
+        }
+
+        let discardedCount = 0;
+
+        await this.metadataLock.inLock(async () => {
+            await backoff(async () => {
+                const current = this.metadata as unknown as Record<string, unknown>;
+                const result = discardMessageQueueV1All(current, { now: Date.now(), reason: opts.reason });
+                if (!result || result.discarded.length === 0) {
+                    discardedCount = 0;
+                    return;
+                }
+
+                const answer = await this.socket.emitWithAck('update-metadata', {
+                    sid: this.sessionId,
+                    expectedVersion: this.metadataVersion,
+                    metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, result.metadata)),
+                });
+
+                if (answer.result === 'success') {
+                    this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
+                    this.metadataVersion = answer.version;
+                    discardedCount = result.discarded.length;
+                    return;
+                }
+
+                if (answer.result === 'version-mismatch') {
+                    if (answer.version > this.metadataVersion) {
+                        this.metadataVersion = answer.version;
+                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
+                    }
+                    throw new Error('Metadata version mismatch');
+                }
+
+                // Hard error - ignore
+                discardedCount = 0;
+            });
+        });
+
+        return discardedCount;
+    }
+
+    async discardCommittedMessageLocalIds(opts: { localIds: string[]; reason: 'switch_to_local' | 'manual' }): Promise<number> {
+        if (!this.socket.connected) {
+            return 0;
+        }
+        if (!this.metadata) {
+            return 0;
+        }
+
+        const localIds = opts.localIds.filter((id) => typeof id === 'string' && id.length > 0);
+        if (localIds.length === 0) {
+            return 0;
+        }
+
+        let addedCount = 0;
+
+        await this.metadataLock.inLock(async () => {
+            await backoff(async () => {
+                const current = this.metadata as unknown as Record<string, unknown>;
+
+                const existingRaw = (current as any).discardedCommittedMessageLocalIds;
+                const existing = Array.isArray(existingRaw) ? existingRaw.filter((v) => typeof v === 'string') : [];
+                const existingSet = new Set(existing);
+                const uniqueNew = localIds.filter((id) => !existingSet.has(id));
+                if (uniqueNew.length === 0) {
+                    addedCount = 0;
+                    return;
+                }
+
+                const nextMetadata = addDiscardedCommittedMessageLocalIds(current, uniqueNew);
+                const answer = await this.socket.emitWithAck('update-metadata', {
+                    sid: this.sessionId,
+                    expectedVersion: this.metadataVersion,
+                    metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, nextMetadata)),
+                });
+
+                if (answer.result === 'success') {
+                    this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
+                    this.metadataVersion = answer.version;
+                    addedCount = uniqueNew.length;
+                    return;
+                }
+
+                if (answer.result === 'version-mismatch') {
+                    if (answer.version > this.metadataVersion) {
+                        this.metadataVersion = answer.version;
+                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
+                    }
+                    throw new Error('Metadata version mismatch');
+                }
+
+                // Hard error - ignore
+                addedCount = 0;
+            });
+        });
+
+        return addedCount;
+    }
+
     /**
-     * Materialize one server-side pending message into the normal session transcript.
+     * Materialize one metadata-backed queued message (messageQueueV1) into the normal session transcript.
      *
-     * The server will atomically dequeue the oldest pending item, write it as a
-     * normal session message, and broadcast it to all interested clients
-     * (including this session-scoped agent connection).
+     * We claim the oldest queued item in encrypted session metadata, then emit it through
+     * the normal transcript message pipeline (idempotent via (sessionId, localId)).
+     *
+     * The inFlight marker is cleared only after we observe the materialized user message
+     * coming back from the server (to avoid losing messages on crashes between emit and persist).
      */
     async popPendingMessage(): Promise<boolean> {
         if (!this.socket.connected) {
             return false;
         }
+        if (!this.metadata) {
+            return false;
+        }
         try {
-            const result = await this.socket.emitWithAck('pending-pop', { sid: this.sessionId });
-            return !!result?.ok && !!result?.popped;
+            const inFlight = await this.metadataLock.inLock<{ localId: string; message: string } | null>(async () => {
+                let claimedInFlight: { localId: string; message: string } | null = null;
+                await backoff(async () => {
+                    const current = this.metadata as unknown as Record<string, unknown>;
+                    const claimed = claimMessageQueueV1Next(current, Date.now());
+                    if (!claimed) {
+                        claimedInFlight = null;
+                        return;
+                    }
+
+                    // Persist claim (if needed) so other agents don't process the same queued item.
+                    if (claimed.metadata !== current) {
+                        const answer = await this.socket.emitWithAck('update-metadata', {
+                            sid: this.sessionId,
+                            expectedVersion: this.metadataVersion,
+                            metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, claimed.metadata)),
+                        });
+                        if (answer.result === 'success') {
+                            this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
+                            this.metadataVersion = answer.version;
+                        } else if (answer.result === 'version-mismatch') {
+                            if (answer.version > this.metadataVersion) {
+                                this.metadataVersion = answer.version;
+                                this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
+                            }
+                            throw new Error('Metadata version mismatch');
+                        }
+                    }
+
+                    claimedInFlight = { localId: claimed.inFlight.localId, message: claimed.inFlight.message };
+                });
+                return claimedInFlight;
+            });
+
+            if (!inFlight) {
+                return false;
+            }
+            const inFlightLocalId = inFlight.localId;
+
+            // Materialize the pending item into the transcript via the normal message pipeline.
+            // This is idempotent because SessionMessage has a unique (sessionId, localId) constraint.
+            this.socket.emit('message', {
+                sid: this.sessionId,
+                message: inFlight.message,
+                localId: inFlightLocalId,
+            });
+
+            return true;
         } catch (error) {
-            logger.debug('[API] pending-pop failed', { error });
+            logger.debug('[API] popPendingMessage failed', { error });
             return false;
         }
     }

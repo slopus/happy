@@ -6,6 +6,7 @@ import { createSessionScanner } from "./utils/sessionScanner";
 import { formatErrorForUi } from "@/utils/formatErrorForUi";
 import type { PermissionMode } from "@/api/types";
 import { mapToClaudeMode } from "./utils/permissionMode";
+import { createInterface } from "node:readline";
 
 function upsertClaudePermissionModeArgs(args: string[] | undefined, mode: PermissionMode): string[] | undefined {
     const filtered: string[] = [];
@@ -145,9 +146,69 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
             void doSwitch();
         }); // When any message is received, abort current process, clean queue and switch to remote mode
 
-        // Exit if there are messages in the queue
-        if (session.queue.size() > 0) {
-            return 'switch';
+        const queued = session.queue.queue.map((item) => item.message);
+        const queuedCount = session.queue.size();
+        const queuedLocalIds = session.queue.queue
+            .map((item) => item.mode?.localId)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0);
+        const serverPending = session.client.peekPendingMessageQueueV1Preview({ maxPreview: 3 });
+
+        if (queuedCount > 0 || serverPending.count > 0) {
+            const confirmed = await confirmDiscardQueuedMessages({
+                queuedCount,
+                queuedPreview: queued,
+                serverCount: serverPending.count,
+                serverPreview: serverPending.preview,
+            });
+            if (!confirmed) {
+                return 'switch';
+            }
+
+            // Discard server-side pending messages first, so remote mode does not replay them later.
+            let discardedServerCount = 0;
+            try {
+                if (serverPending.count > 0) {
+                    discardedServerCount = await session.client.discardPendingMessageQueueV1All({ reason: 'switch_to_local' });
+                }
+            } catch (e) {
+                session.client.sendSessionEvent({
+                    type: 'message',
+                    message: `Failed to discard pending messages before switching to local mode: ${formatErrorForUi(e)}`,
+                });
+                return 'switch';
+            }
+
+            // Mark committed queued remote messages as discarded in session metadata so the UI can render them correctly.
+            try {
+                if (queuedLocalIds.length > 0) {
+                    await session.client.discardCommittedMessageLocalIds({ localIds: queuedLocalIds, reason: 'switch_to_local' });
+                }
+            } catch (e) {
+                session.client.sendSessionEvent({
+                    type: 'message',
+                    message: `Failed to mark queued messages as discarded before switching to local mode: ${formatErrorForUi(e)}`,
+                });
+                return 'switch';
+            }
+
+            if (queuedCount > 0) {
+                session.queue.reset();
+            }
+
+            const parts: string[] = [];
+            if (discardedServerCount > 0) {
+                parts.push(`${discardedServerCount} pending UI message${discardedServerCount === 1 ? '' : 's'}`);
+            }
+            if (queuedCount > 0) {
+                parts.push(`${queuedCount} queued remote message${queuedCount === 1 ? '' : 's'}`);
+            }
+
+            if (parts.length > 0) {
+                session.client.sendSessionEvent({
+                    type: 'message',
+                    message: `Discarded ${parts.join(' and ')} to switch to local mode. Please resend them from this terminal if needed.`,
+                });
+            }
         }
 
         // Handle session start
@@ -240,3 +301,40 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
     // Return
     return exitReason || 'exit';
 }
+    async function confirmDiscardQueuedMessages(opts: { queuedCount: number; queuedPreview: string[]; serverCount: number; serverPreview: string[] }): Promise<boolean> {
+        if (!process.stdin.isTTY || !process.stdout.isTTY) {
+            return false;
+        }
+
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        const question = (text: string) => new Promise<string>((resolve) => rl.question(text, resolve));
+
+        const renderPreview = (messages: string[]) =>
+            messages
+            .filter((m) => m.trim().length > 0)
+            .slice(0, 3)
+            .map((m, i) => `  ${i + 1}. ${m.length > 120 ? `${m.slice(0, 120)}…` : m}`)
+            .join('\n');
+
+        const blocks: string[] = [];
+        if (opts.serverCount > 0) {
+            const preview = renderPreview(opts.serverPreview);
+            blocks.push(preview
+                ? `Pending UI messages (${opts.serverCount}):\n${preview}`
+                : `Pending UI messages (${opts.serverCount}).`);
+        }
+        if (opts.queuedCount > 0) {
+            const preview = renderPreview(opts.queuedPreview);
+            blocks.push(preview
+                ? `Queued remote messages (${opts.queuedCount}):\n${preview}`
+                : `Queued remote messages (${opts.queuedCount}).`);
+        }
+
+        process.stdout.write(`\n${blocks.join('\n\n')}\n\n`);
+
+        const answer = await question('Discard these messages and switch to local mode? (y/N) ');
+        rl.close();
+
+        const normalized = answer.trim().toLowerCase();
+        return normalized === 'y' || normalized === 'yes';
+    }

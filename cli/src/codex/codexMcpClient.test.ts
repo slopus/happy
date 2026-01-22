@@ -5,7 +5,7 @@ import { createCodexElicitationRequestHandler } from './codexMcpClient';
 // NOTE: This test suite uses mocks because the real Codex CLI / MCP transport
 // is not guaranteed to be available in CI or local test environments.
 vi.mock('child_process', () => ({
-    execSync: vi.fn(),
+    execFileSync: vi.fn(),
 }));
 
 vi.mock('@modelcontextprotocol/sdk/types.js', () => ({
@@ -74,8 +74,8 @@ describe('CodexMcpClient command detection', () => {
     it('does not treat "codex <version>" output as "not installed"', async () => {
         vi.resetModules();
 
-        const { execSync } = await import('child_process');
-        (execSync as any).mockReturnValue('codex 0.43.0-alpha.5\n');
+        const { execFileSync } = await import('child_process');
+        (execFileSync as any).mockReturnValue('codex 0.43.0-alpha.5\n');
 
         const stdioModule = (await import('@modelcontextprotocol/sdk/client/stdio.js')) as any;
         const __transportInstances = stdioModule.__transportInstances as any[];

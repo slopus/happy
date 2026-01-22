@@ -6,6 +6,7 @@ import type { JsRuntime } from "./runClaude";
 import type { SessionHookData } from "./utils/startHookServer";
 import type { PermissionMode } from "@/api/types";
 import { updatePersistedHappySessionVendorResumeId } from "@/daemon/persistedHappySession";
+import { randomUUID } from "node:crypto";
 
 export type SessionFoundInfo = {
     sessionId: string;
@@ -32,6 +33,7 @@ export class Session {
     transcriptPath: string | null = null;
     mode: 'local' | 'remote' = 'local';
     thinking: boolean = false;
+    private currentTaskId: string | null = null;
 
     /**
      * Last known permission mode for this session, derived from message metadata / permission responses.
@@ -104,8 +106,24 @@ export class Session {
     }
 
     onThinkingChange = (thinking: boolean) => {
+        const wasThinking = this.thinking;
         this.thinking = thinking;
         this.client.keepAlive(thinking, this.mode);
+
+        if (wasThinking === thinking) {
+            return;
+        }
+
+        if (thinking) {
+            const id = randomUUID();
+            this.currentTaskId = id;
+            this.client.sendAgentMessage('claude', { type: 'task_started', id });
+            return;
+        }
+
+        const id = this.currentTaskId ?? randomUUID();
+        this.currentTaskId = null;
+        this.client.sendAgentMessage('claude', { type: 'task_complete', id });
     }
 
     onModeChange = (mode: 'local' | 'remote') => {

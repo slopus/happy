@@ -29,6 +29,7 @@ import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler'
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
+import { waitForMessagesOrPending } from '@/utils/waitForMessagesOrPending';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { formatGeminiErrorForUi } from '@/gemini/utils/formatGeminiErrorForUi';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
@@ -936,10 +937,12 @@ export async function runGemini(opts: {
       if (!message) {
         logger.debug('[gemini] Main loop: waiting for messages from queue...');
         const waitSignal = abortController.signal;
-        // If there are server-side pending messages, materialize one into the transcript now.
-        // This keeps the agent responsive even when the UI defers message creation.
-        await session.popPendingMessage();
-        const batch = await messageQueue.waitForMessagesAndGetAsString(waitSignal);
+        const batch = await waitForMessagesOrPending({
+          messageQueue,
+          abortSignal: waitSignal,
+          popPendingMessage: () => session.popPendingMessage(),
+          waitForMetadataUpdate: (signal) => session.waitForMetadataUpdate(signal),
+        });
         if (!batch) {
           if (waitSignal.aborted && !shouldExit) {
             logger.debug('[gemini] Main loop: wait aborted, continuing...');

@@ -75,6 +75,7 @@ export const UpdateBodySchema = z.object({
   message: z.object({
     id: z.string(),
     seq: z.number(),
+    localId: z.string().nullish().optional(),
     content: SessionMessageContentSchema
   }),
   sid: z.string(), // Session ID
@@ -151,16 +152,7 @@ export interface ServerToClientEvents {
  * Socket events from client to server
  */
 export interface ClientToServerEvents {
-  message: (data: { sid: string, message: any }) => void
-  'pending-enqueue': (data: { sid: string, message: string, localId?: string | null }, cb: (response: { ok: boolean, id?: string, error?: string }) => void) => void
-  'pending-list': (data: { sid: string, limit?: number }, cb: (response: {
-    ok: boolean,
-    error?: string,
-    messages?: Array<{ id: string, localId: string | null, message: string, createdAt: number, updatedAt: number }>
-  }) => void) => void
-  'pending-update': (data: { sid: string, id: string, message: string }, cb: (response: { ok: boolean, error?: string }) => void) => void
-  'pending-delete': (data: { sid: string, id: string }, cb: (response: { ok: boolean, error?: string }) => void) => void
-  'pending-pop': (data: { sid: string }, cb: (response: { ok: boolean, popped?: boolean, error?: string }) => void) => void
+  message: (data: { sid: string, message: any, localId?: string | null }) => void
   'session-alive': (data: {
     sid: string;
     time: number;
@@ -325,6 +317,7 @@ export const UserMessageSchema = z.object({
     type: z.literal('text'),
     text: z.string()
   }),
+  localId: z.string().nullish().optional(),
   localKey: z.string().optional(), // Mobile messages include this
   meta: MessageMetaSchema.optional()
 })
@@ -399,7 +392,29 @@ export type Metadata = {
    */
   permissionMode?: PermissionMode,
   /** Timestamp (ms) for permissionMode, used for "latest wins" arbitration across devices. */
-  permissionModeUpdatedAt?: number
+  permissionModeUpdatedAt?: number,
+  /**
+   * Encrypted, session-scoped pending queue (v1) stored in session metadata.
+   *
+   * This queue is consumed by agents on the machine to materialize user messages into the
+   * server transcript when the user has chosen a "pending queue" send mode.
+   */
+  messageQueueV1?: {
+    v: 1,
+    queue: Array<{
+      localId: string,
+      message: string,
+      createdAt: number,
+      updatedAt: number
+    }>,
+    inFlight?: {
+      localId: string,
+      message: string,
+      createdAt: number,
+      updatedAt: number,
+      claimedAt: number
+    } | null
+  }
 };
 
 export type AgentState = {
