@@ -115,6 +115,12 @@ SQLite uses `prisma db push` (schema sync) instead of migrations:
 - Create/update the SQLite DB schema: `yarn db:push:light`
 - The `yarn dev:light` script also runs `prisma db push` automatically.
 
+Practical safety notes for the light flavor:
+
+- `db push` targets the desired **end-state** schema and does not generate a migration history. If you need guaranteed, reviewable upgrades that preserve data across all changes, use the full flavor and Prisma Migrate.
+- Avoid “renames” in the Prisma schema for the light flavor unless you understand the impact: changing a model/field name without `@@map` / `@map` can look like “drop + create” to Prisma and can lead to data loss prompts.
+- Before upgrading a long-lived self-hosted light instance, back up the SQLite file (copy `~/.happy/server-light/happy-server-light.sqlite`) so you can roll back if needed.
+
 The full (Postgres) flavor uses migrations as usual:
 
 - Dev migrations: `yarn migrate` / `yarn migrate:reset` (uses `.env.dev`)
