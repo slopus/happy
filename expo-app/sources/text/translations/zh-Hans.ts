@@ -1302,6 +1302,7 @@ export const zhHans: TranslationStructure = {
                 secretToggleLabel: '在 UI 中隐藏值',
                 secretToggleSubtitle: '在 UI 中隐藏该值，并避免为预览从机器获取它。',
                 secretToggleEnforcedByDaemon: '由守护进程强制',
+                secretToggleEnforcedByVault: '由机密保管库强制',
                 secretToggleResetToAuto: '重置为自动',
                 requirementRequiredLabel: '必需',
                 requirementRequiredSubtitle: '当变量缺失时，阻止创建会话。',

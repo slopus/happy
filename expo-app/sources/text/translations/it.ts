@@ -274,6 +274,7 @@ export const it: TranslationStructure = {
                 secretToggleLabel: 'Nascondi il valore nella UI',
                 secretToggleSubtitle: 'Nasconde il valore nella UI ed evita di recuperarlo dalla macchina per l\'anteprima.',
                 secretToggleEnforcedByDaemon: 'Imposto dal daemon',
+                secretToggleEnforcedByVault: 'Imposto dal vault dei segreti',
                 secretToggleResetToAuto: 'Ripristina su automatico',
                 requirementRequiredLabel: 'Obbligatorio',
                 requirementRequiredSubtitle: 'Blocca la creazione della sessione quando la variabile manca.',

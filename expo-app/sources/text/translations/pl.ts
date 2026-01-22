@@ -1376,6 +1376,7 @@ export const pl: TranslationStructure = {
                 secretToggleLabel: 'Ukryj wartość w UI',
                 secretToggleSubtitle: 'Ukrywa wartość w UI i nie pobiera jej z maszyny na potrzeby podglądu.',
                 secretToggleEnforcedByDaemon: 'Wymuszone przez daemon',
+                secretToggleEnforcedByVault: 'Wymuszone przez sejf sekretów',
                 secretToggleResetToAuto: 'Przywróć automatyczne',
                 requirementRequiredLabel: 'Wymagane',
                 requirementRequiredSubtitle: 'Blokuje tworzenie sesji, jeśli zmienna jest brakująca.',

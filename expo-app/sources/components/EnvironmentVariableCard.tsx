@@ -125,6 +125,7 @@ export function EnvironmentVariableCard({
         ? (sourceRequirement ?? { required: false, useSecretVault: false })
         : null;
     const useSecretVault = Boolean(effectiveSourceRequirement?.useSecretVault);
+    const hideValueInUi = Boolean(isSecret) || useSecretVault;
 
     // Vault-enforced secrets must not persist plaintext or fallbacks.
     React.useEffect(() => {
@@ -133,6 +134,16 @@ export function EnvironmentVariableCard({
             setDefaultValue('');
         }
     }, [defaultValue, useSecretVault]);
+
+    // If the user opts into the secret vault, we must enforce hiding the value in the UI.
+    // This is treated similarly to daemon-enforced sensitivity: the user cannot disable it while vault is enabled.
+    React.useEffect(() => {
+        if (!useSecretVault) return;
+        if (!onUpdateSecretOverride) return;
+        if (isForcedSensitive) return;
+        if (Boolean(isSecret) === true) return;
+        onUpdateSecretOverride(index, true);
+    }, [index, isForcedSensitive, isSecret, onUpdateSecretOverride, useSecretVault]);
 
     const remoteEntry = remoteVariableName ? machineEnv?.[remoteVariableName] : undefined;
     const remoteValue = remoteEntry?.value;
@@ -144,7 +155,7 @@ export function EnvironmentVariableCard({
 
     const emptyValue = t('profiles.environmentVariables.preview.emptyValue');
 
-    const canEditSecret = Boolean(onUpdateSecretOverride) && !isForcedSensitive;
+    const canEditSecret = Boolean(onUpdateSecretOverride) && !isForcedSensitive && !useSecretVault;
     const showResetToAuto = canEditSecret && secretOverride !== undefined;
 
     // Update parent when local state changes
@@ -188,7 +199,7 @@ export function EnvironmentVariableCard({
         }
 
         // Fallback (no machine context / older daemon): best-effort preview.
-        if (isSecret) {
+        if (hideValueInUi) {
             // If daemon policy is known and allows showing secrets, targetEntry would have handled it above.
             // Otherwise, keep secrets hidden in UI.
             if (useRemoteVariable && remoteVariableName) {
@@ -221,7 +232,7 @@ export function EnvironmentVariableCard({
             <View style={styles.headerRow}>
                 <Text style={styles.nameText}>
                     {variable.name}
-                    {isSecret && (
+                    {hideValueInUi && (
                         <Ionicons
                             name="lock-closed"
                             size={theme.iconSize.small}
@@ -276,7 +287,7 @@ export function EnvironmentVariableCard({
                 onChangeText={setDefaultValue}
                 autoCapitalize="none"
                 autoCorrect={false}
-                secureTextEntry={isSecret}
+                secureTextEntry={hideValueInUi}
                 editable={!useSecretVault}
                 selectTextOnFocus={!useSecretVault}
             />
@@ -295,7 +306,9 @@ export function EnvironmentVariableCard({
                     <Text style={[styles.secondaryText, styles.secretSubtitleText]}>
                         {isForcedSensitive
                             ? t('profiles.environmentVariables.card.secretToggleEnforcedByDaemon')
-                            : t('profiles.environmentVariables.card.secretToggleSubtitle')}
+                            : useSecretVault
+                                ? t('profiles.environmentVariables.card.secretToggleEnforcedByVault')
+                                : t('profiles.environmentVariables.card.secretToggleSubtitle')}
                     </Text>
                 </View>
                 <View style={styles.secretRowRight}>
@@ -311,7 +324,7 @@ export function EnvironmentVariableCard({
                         </Pressable>
                     )}
                     <Switch
-                        value={Boolean(isSecret)}
+                        value={hideValueInUi}
                         onValueChange={(next) => {
                             if (!canEditSecret) return;
                             onUpdateSecretOverride?.(index, next);
@@ -322,14 +335,14 @@ export function EnvironmentVariableCard({
             </View>
 
             {/* Security message for secrets */}
-            {isSecret && (machineEnvPolicy === null || machineEnvPolicy === 'none') && (
+            {hideValueInUi && (machineEnvPolicy === null || machineEnvPolicy === 'none') && (
                 <Text style={[styles.secondaryText, styles.secretMessage]}>
                     {t('profiles.environmentVariables.card.secretNotRetrieved')}
                 </Text>
             )}
 
             {/* Default override warning */}
-            {showDefaultOverrideWarning && !isSecret && (
+            {showDefaultOverrideWarning && !hideValueInUi && (
                 <Text style={[styles.secondaryText, styles.defaultOverrideWarning]}>
                     {t('profiles.environmentVariables.card.overridingDefault', { expectedValue })}
                 </Text>
@@ -441,7 +454,7 @@ export function EnvironmentVariableCard({
             )}
 
             {/* Machine environment status (only with machine context) */}
-            {useRemoteVariable && !isSecret && machineId && remoteVariableName.trim() !== '' && (
+            {useRemoteVariable && !hideValueInUi && machineId && remoteVariableName.trim() !== '' && (
                 <View style={styles.machineStatusContainer}>
                     {isMachineEnvLoading || remoteEntry === undefined ? (
                         <Text style={[styles.secondaryText, styles.machineStatusLoading]}>

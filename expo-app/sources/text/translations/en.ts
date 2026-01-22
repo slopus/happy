@@ -1366,6 +1366,7 @@ export const en = {
                 secretToggleLabel: 'Hide value in UI',
                 secretToggleSubtitle: 'Hide the value in the UI and avoid fetching it from the machine for preview.',
                 secretToggleEnforcedByDaemon: 'Enforced by daemon',
+                secretToggleEnforcedByVault: 'Enforced by secret vault',
                 secretToggleResetToAuto: 'Reset to auto',
                 requirementRequiredLabel: 'Required',
                 requirementRequiredSubtitle: 'Block session creation when this variable is missing.',

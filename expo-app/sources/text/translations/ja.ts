@@ -267,6 +267,7 @@ export const ja: TranslationStructure = {
                 secretToggleLabel: 'UIで値を隠す',
                 secretToggleSubtitle: 'UIで値を非表示にし、プレビューのためにマシンから取得しません。',
                 secretToggleEnforcedByDaemon: 'デーモンで強制',
+                secretToggleEnforcedByVault: 'シークレット保管庫で強制',
                 secretToggleResetToAuto: '自動に戻す',
                 requirementRequiredLabel: '必須',
                 requirementRequiredSubtitle: '変数が不足している場合、セッション作成をブロックします。',

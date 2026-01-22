@@ -1300,6 +1300,7 @@ export const ca: TranslationStructure = {
                 secretToggleLabel: 'Amaga el valor a la UI',
                 secretToggleSubtitle: 'Amaga el valor a la UI i evita obtenir-lo de la màquina per a la previsualització.',
                 secretToggleEnforcedByDaemon: 'Imposat pel dimoni',
+                secretToggleEnforcedByVault: 'Imposat pel cofre de secrets',
                 secretToggleResetToAuto: 'Restablir a automàtic',
                 requirementRequiredLabel: 'Obligatori',
                 requirementRequiredSubtitle: 'Bloqueja la creació de la sessió si falta la variable.',

@@ -1375,6 +1375,7 @@ export const ru: TranslationStructure = {
                 secretToggleLabel: 'Скрыть значение в UI',
                 secretToggleSubtitle: 'Скрывает значение в UI и не извлекает его с машины для предварительного просмотра.',
                 secretToggleEnforcedByDaemon: 'Принудительно демоном',
+                secretToggleEnforcedByVault: 'Принудительно хранилищем секретов',
                 secretToggleResetToAuto: 'Сбросить на авто',
                 requirementRequiredLabel: 'Обязательно',
                 requirementRequiredSubtitle: 'Блокирует создание сессии, если переменная отсутствует.',
