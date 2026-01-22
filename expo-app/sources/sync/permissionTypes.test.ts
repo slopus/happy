@@ -3,6 +3,7 @@ import type { PermissionMode } from './permissionTypes';
 import {
     isModelMode,
     isPermissionMode,
+    getNextPermissionModeForAgentFlavor,
     normalizePermissionModeForAgentFlavor,
     normalizeProfileDefaultPermissionMode,
 } from './permissionTypes';
@@ -40,6 +41,28 @@ describe('isPermissionMode', () => {
         expect(isPermissionMode('bogus')).toBe(false);
         expect(isPermissionMode(null)).toBe(false);
         expect(isPermissionMode(123)).toBe(false);
+    });
+});
+
+describe('getNextPermissionModeForAgentFlavor', () => {
+    it('cycles through codex-like modes and clamps invalid current modes', () => {
+        expect(getNextPermissionModeForAgentFlavor('default', 'codex')).toBe('read-only');
+        expect(getNextPermissionModeForAgentFlavor('read-only', 'codex')).toBe('safe-yolo');
+        expect(getNextPermissionModeForAgentFlavor('safe-yolo', 'codex')).toBe('yolo');
+        expect(getNextPermissionModeForAgentFlavor('yolo', 'codex')).toBe('default');
+
+        // If a claude-only mode slips in, treat it as default before cycling.
+        expect(getNextPermissionModeForAgentFlavor('plan', 'codex')).toBe('read-only');
+    });
+
+    it('cycles through claude modes and clamps invalid current modes', () => {
+        expect(getNextPermissionModeForAgentFlavor('default', 'claude')).toBe('acceptEdits');
+        expect(getNextPermissionModeForAgentFlavor('acceptEdits', 'claude')).toBe('plan');
+        expect(getNextPermissionModeForAgentFlavor('plan', 'claude')).toBe('bypassPermissions');
+        expect(getNextPermissionModeForAgentFlavor('bypassPermissions', 'claude')).toBe('default');
+
+        // If a codex-like mode slips in, treat it as default before cycling.
+        expect(getNextPermissionModeForAgentFlavor('read-only', 'claude')).toBe('acceptEdits');
     });
 });
 

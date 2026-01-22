@@ -33,6 +33,22 @@ export function normalizePermissionModeForAgentFlavor(mode: PermissionMode, flav
     return (CLAUDE_PERMISSION_MODES as readonly string[]).includes(mode) ? mode : 'default';
 }
 
+export function getNextPermissionModeForAgentFlavor(mode: PermissionMode, flavor: AgentFlavor): PermissionMode {
+    if (flavor === 'codex' || flavor === 'gemini') {
+        const normalized = normalizePermissionModeForAgentFlavor(mode, flavor) as (typeof CODEX_LIKE_PERMISSION_MODES)[number];
+        const currentIndex = CODEX_LIKE_PERMISSION_MODES.indexOf(normalized);
+        const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+        const nextIndex = (safeIndex + 1) % CODEX_LIKE_PERMISSION_MODES.length;
+        return CODEX_LIKE_PERMISSION_MODES[nextIndex];
+    }
+
+    const normalized = normalizePermissionModeForAgentFlavor(mode, flavor) as (typeof CLAUDE_PERMISSION_MODES)[number];
+    const currentIndex = CLAUDE_PERMISSION_MODES.indexOf(normalized);
+    const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+    const nextIndex = (safeIndex + 1) % CLAUDE_PERMISSION_MODES.length;
+    return CLAUDE_PERMISSION_MODES[nextIndex];
+}
+
 export function normalizeProfileDefaultPermissionMode(mode: PermissionMode | null | undefined): PermissionMode {
     if (!mode) return 'default';
     return (CLAUDE_PERMISSION_MODES as readonly string[]).includes(mode) ? mode : 'default';
