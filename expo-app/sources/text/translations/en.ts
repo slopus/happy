@@ -259,6 +259,8 @@ export const en = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
+        expCodexResume: 'Codex resume',
+        expCodexResumeSubtitle: 'Enable Codex session resume using a separate Codex install (experimental)',
         webFeatures: 'Web Features',
         webFeaturesDescription: 'Features available only in the web version of the app.',
         enterToSend: 'Enter to Send',

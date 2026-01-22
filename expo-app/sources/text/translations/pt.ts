@@ -246,6 +246,8 @@ export const pt: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
+        expCodexResume: 'Retomar Codex',
+        expCodexResumeSubtitle: 'Permite retomar sessões do Codex usando uma instalação separada (experimental)',
         webFeatures: 'Recursos web',
         webFeaturesDescription: 'Recursos disponíveis apenas na versão web do aplicativo.',
         enterToSend: 'Enter para enviar',

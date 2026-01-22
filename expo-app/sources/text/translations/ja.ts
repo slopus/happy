@@ -484,6 +484,8 @@ export const ja: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
+        expCodexResume: 'Codexの再開',
+        expCodexResumeSubtitle: '再開操作専用のCodexを別途インストールして使用（実験的）',
         webFeatures: 'Web機能',
         webFeaturesDescription: 'Webバージョンでのみ利用可能な機能。',
         enterToSend: 'Enterで送信',

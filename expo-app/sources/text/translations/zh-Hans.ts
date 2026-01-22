@@ -248,6 +248,8 @@ export const zhHans: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
+        expCodexResume: '恢复 Codex',
+        expCodexResumeSubtitle: '启用使用单独安装的 Codex 来恢复会话（实验性）',
         webFeatures: 'Web 功能',
         webFeaturesDescription: '仅在应用的 Web 版本中可用的功能。',
         enterToSend: '回车发送',

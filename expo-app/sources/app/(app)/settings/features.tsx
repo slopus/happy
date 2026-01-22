@@ -17,6 +17,7 @@ export default React.memo(function FeaturesSettingsScreen() {
     const [expSessionType, setExpSessionType] = useSettingMutable('expSessionType');
     const [expZen, setExpZen] = useSettingMutable('expZen');
     const [expVoiceAuthFlow, setExpVoiceAuthFlow] = useSettingMutable('expVoiceAuthFlow');
+    const [expCodexResume, setExpCodexResume] = useSettingMutable('expCodexResume');
     const [useProfiles, setUseProfiles] = useSettingMutable('useProfiles');
     const [agentInputEnterToSend, setAgentInputEnterToSend] = useSettingMutable('agentInputEnterToSend');
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
@@ -202,6 +203,13 @@ export default React.memo(function FeaturesSettingsScreen() {
                         subtitle={t('settingsFeatures.expVoiceAuthFlowSubtitle')}
                         icon={<Ionicons name="mic-outline" size={29} color="#FF3B30" />}
                         rightElement={<Switch value={expVoiceAuthFlow} onValueChange={setExpVoiceAuthFlow} />}
+                        showChevron={false}
+                    />
+                    <Item
+                        title={t('settingsFeatures.expCodexResume')}
+                        subtitle={t('settingsFeatures.expCodexResumeSubtitle')}
+                        icon={<Ionicons name="sparkles-outline" size={29} color="#007AFF" />}
+                        rightElement={<Switch value={expCodexResume} onValueChange={setExpCodexResume} />}
                         showChevron={false}
                     />
                 </ItemGroup>

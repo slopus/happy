@@ -246,6 +246,8 @@ export const ca: TranslationStructure = {
         expZenSubtitle: 'Activa l’entrada de navegació Zen',
         expVoiceAuthFlow: 'Flux d’autenticació de veu',
         expVoiceAuthFlowSubtitle: 'Utilitza el flux autenticat de tokens de veu (amb paywall)',
+        expCodexResume: 'Reprendre Codex',
+        expCodexResumeSubtitle: 'Permet reprendre sessions de Codex mitjançant una instal·lació separada (experimental)',
         webFeatures: 'Funcions web',
         webFeaturesDescription: 'Funcions disponibles només a la versió web de l\'app.',
         enterToSend: 'Enter per enviar',

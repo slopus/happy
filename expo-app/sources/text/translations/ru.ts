@@ -228,6 +228,8 @@ export const ru: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
+        expCodexResume: 'Возобновление Codex',
+        expCodexResumeSubtitle: 'Разрешить возобновление сессий Codex через отдельную установку (экспериментально)',
         webFeatures: 'Веб-функции',
         webFeaturesDescription: 'Функции, доступные только в веб-версии приложения.',
         enterToSend: 'Enter для отправки',
