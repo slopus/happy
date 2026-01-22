@@ -473,8 +473,10 @@ class Sync {
         }
 
         const permissionMode = session.permissionMode || 'default';
-        const model: string | null = null;
-        const fallbackModel: string | null = null;
+        const flavor = session.metadata?.flavor;
+        const isGemini = flavor === 'gemini';
+        const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
+        const model = isGemini && modelMode !== 'default' ? modelMode : undefined;
 
         const localId = randomUUID();
 
@@ -495,14 +497,13 @@ class Sync {
                 type: 'text',
                 text
             },
-            meta: {
+            meta: buildOutgoingMessageMeta({
                 sentFrom,
                 permissionMode: permissionMode || 'default',
                 model,
-                fallbackModel,
                 appendSystemPrompt: systemPrompt,
-                ...(displayText && { displayText }),
-            }
+                displayText,
+            }),
         };
 
         const encryptedRawRecord = await encryption.encryptRawRecord(content);
