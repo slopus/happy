@@ -14,7 +14,7 @@
     "ota": "APP_ENV=preview NODE_ENV=preview tsx sources/scripts/parseChangelog.ts && yarn typecheck && eas update --branch preview",
     "ota:production": "npx eas-cli@latest workflow:run ota.yaml",
     "typecheck": "tsc --noEmit",
-    "postinstall": "patch-package && npx setup-skia-web public",
+    "postinstall": "node ./tools/postinstall.mjs",
     "generate-theme": "tsx sources/theme.gen.ts",
     "// ==== Development/Preview/Production Variants ====": "",
     "ios:dev": "cross-env APP_ENV=development expo run:ios",

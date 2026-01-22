@@ -1,0 +1,7 @@
+diff --git a/node_modules/libsodium-wrappers/dist/modules-esm/libsodium.mjs b/node_modules/libsodium-wrappers/dist/modules-esm/libsodium.mjs
+new file mode 100644
+index 0000000..38e9e4a
+--- /dev/null
++++ b/node_modules/libsodium-wrappers/dist/modules-esm/libsodium.mjs
+@@ -0,0 +1 @@
++export { default } from "libsodium";
