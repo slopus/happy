@@ -17,6 +17,7 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { resolve, join } from 'node:path';
+import { existsSync } from 'node:fs';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
@@ -36,6 +37,7 @@ import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetada
 import { writeTerminalAttachmentInfo } from '@/terminal/terminalAttachmentInfo';
 import { buildTerminalFallbackMessage } from '@/terminal/terminalFallbackMessage';
 import { readPersistedHappySession, writePersistedHappySession, updatePersistedHappySessionVendorResumeId } from "@/daemon/persistedHappySession";
+import { isExperimentalCodexVendorResumeEnabled } from '@/utils/agentCapabilities';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -306,16 +308,6 @@ export async function runCodex(opts: {
         messageQueue.push(message.content.text, enhancedMode);
     });
 
-    // Queue initial message if provided (for inactive session resume)
-    const initialMessage = process.env.HAPPY_INITIAL_MESSAGE;
-    if (initialMessage) {
-        logger.debug(`[codex] Queuing initial message for resumed session: ${initialMessage.substring(0, 50)}...`);
-        const initialEnhancedMode: EnhancedMode = {
-            permissionMode: currentPermissionMode || 'default',
-        };
-        messageQueue.push(initialMessage, initialEnhancedMode);
-    }
-
     let thinking = false;
     session.keepAlive(thinking, 'remote');
     // Periodic keep-alive; store handle so we can clear on exit
@@ -484,7 +476,28 @@ export async function runCodex(opts: {
     // Start Context 
     //
 
-    const client = new CodexMcpClient();
+    const isVendorResumeRequested = typeof opts.resume === 'string' && opts.resume.trim().length > 0;
+    const codexCommand = (() => {
+        if (!isVendorResumeRequested) return 'codex';
+        if (!isExperimentalCodexVendorResumeEnabled()) {
+            throw new Error('Codex resume is experimental and is disabled on this machine.');
+        }
+
+        const fromEnv = typeof process.env.HAPPY_CODEX_RESUME_BIN === 'string' ? process.env.HAPPY_CODEX_RESUME_BIN.trim() : '';
+        if (fromEnv && existsSync(fromEnv)) return fromEnv;
+
+        const binName = process.platform === 'win32' ? 'codex.cmd' : 'codex';
+        const defaultPath = join(configuration.happyHomeDir, 'tools', 'codex-resume', 'node_modules', '.bin', binName);
+        if (existsSync(defaultPath)) return defaultPath;
+
+        throw new Error(
+            `Codex resume tool is not installed.\n` +
+            `Install it from the Happy app (Machine details → Codex resume), or set HAPPY_CODEX_RESUME_BIN.\n` +
+            `Expected: ${defaultPath}`,
+        );
+    })();
+
+    const client = new CodexMcpClient({ command: codexCommand });
 
     // NOTE: Codex resume support varies by build; forks may seed `codex-reply` with a stored session id.
     permissionHandler = new CodexPermissionHandler(session);

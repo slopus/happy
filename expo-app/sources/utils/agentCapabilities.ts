@@ -10,13 +10,20 @@ export type AgentType = 'claude' | 'codex' | 'gemini';
 /**
  * Agents that support vendor resume IDs (e.g. Claude Code session ID) for resume-from-UI.
  */
-export const RESUMABLE_AGENTS: AgentType[] = [
-    'claude',
-    'codex', // Fork: Codex resume enabled (requires custom Codex build with MCP resume)
-];
+export const RESUMABLE_AGENTS: AgentType[] = ['claude'];
 
-export function canAgentResume(agent: string | null | undefined): boolean {
+export type ResumeCapabilityOptions = {
+    /**
+     * Experimental: allow Codex vendor resume.
+     *
+     * Default is false to keep upstream behavior (Claude-only).
+     */
+    allowCodexResume?: boolean;
+};
+
+export function canAgentResume(agent: string | null | undefined, options?: ResumeCapabilityOptions): boolean {
     if (typeof agent !== 'string') return false;
+    if (agent === 'codex') return options?.allowCodexResume === true;
     return RESUMABLE_AGENTS.includes(agent as AgentType);
 }
 
@@ -51,6 +58,16 @@ export function canResumeSession(metadata: SessionMetadata | null | undefined): 
     const field = getAgentSessionIdField(agent);
     if (!field) return false;
 
+    const agentSessionId = metadata[field];
+    return typeof agentSessionId === 'string' && agentSessionId.length > 0;
+}
+
+export function canResumeSessionWithOptions(metadata: SessionMetadata | null | undefined, options?: ResumeCapabilityOptions): boolean {
+    if (!metadata) return false;
+    const agent = metadata.flavor;
+    if (!canAgentResume(agent, options)) return false;
+    const field = getAgentSessionIdField(agent);
+    if (!field) return false;
     const agentSessionId = metadata[field];
     return typeof agentSessionId === 'string' && agentSessionId.length > 0;
 }

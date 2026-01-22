@@ -20,6 +20,11 @@ export interface SpawnSessionOptions {
     // - Custom variables (DEEPSEEK_*, Z_AI_*, etc.)
     environmentVariables?: Record<string, string>;
     resume?: string;
+    /**
+     * Experimental: allow Codex vendor resume.
+     * Only relevant when agent === 'codex' and resume is set.
+     */
+    experimentalCodexResume?: boolean;
     terminal?: TerminalSpawnOptions | null;
 }
 
@@ -32,11 +37,12 @@ export type SpawnHappySessionRpcParams = {
     profileId?: string
     environmentVariables?: Record<string, string>
     resume?: string
+    experimentalCodexResume?: boolean
     terminal?: TerminalSpawnOptions
 };
 
 export function buildSpawnHappySessionRpcParams(options: SpawnSessionOptions): SpawnHappySessionRpcParams {
-    const { directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables, profileId, resume, terminal } = options;
+    const { directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables, profileId, resume, experimentalCodexResume, terminal } = options;
 
     const params: SpawnHappySessionRpcParams = {
         type: 'spawn-in-directory',
@@ -47,6 +53,7 @@ export function buildSpawnHappySessionRpcParams(options: SpawnSessionOptions): S
         profileId,
         environmentVariables,
         resume,
+        experimentalCodexResume,
     };
 
     if (terminal) {

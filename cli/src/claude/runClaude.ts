@@ -531,22 +531,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     registerKillSessionHandler(session.rpcHandlerManager, cleanup);
 
-    // Queue initial message if provided (for inactive session resume)
-    const initialMessage = process.env.HAPPY_INITIAL_MESSAGE;
-    if (initialMessage) {
-        logger.debug(`[START] Queuing initial message for resumed session: ${initialMessage.substring(0, 50)}...`);
-        const initialEnhancedMode: EnhancedMode = {
-            permissionMode: currentPermissionMode,
-            model: currentModel,
-            fallbackModel: currentFallbackModel,
-            customSystemPrompt: currentCustomSystemPrompt,
-            appendSystemPrompt: currentAppendSystemPrompt,
-            allowedTools: currentAllowedTools,
-            disallowedTools: currentDisallowedTools
-        };
-        messageQueue.push(initialMessage, initialEnhancedMode);
-    }
-
     // Create claude loop
     await loop({
         path: workingDirectory,

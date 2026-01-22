@@ -347,7 +347,7 @@ export async function startDaemon(): Promise<void> {
 	        environmentVariableKeys: envKeys,
 	      });
 
-	      const { directory, sessionId, machineId, approvedNewDirectoryCreation = true, resume, existingSessionId, initialMessage } = options;
+	      const { directory, sessionId, machineId, approvedNewDirectoryCreation = true, resume, existingSessionId, experimentalCodexResume } = options;
 	      const normalizedResume = typeof resume === 'string' ? resume.trim() : '';
 	      const normalizedExistingSessionId = typeof existingSessionId === 'string' ? existingSessionId.trim() : '';
 	      // If resuming an existing Happy session and no resume id was provided, derive it from local persisted session state.
@@ -363,7 +363,7 @@ export async function startDaemon(): Promise<void> {
 	        }
 	      }
 
-	      if ((effectiveResume || normalizedExistingSessionId) && !supportsVendorResume(options.agent)) {
+	      if ((effectiveResume || normalizedExistingSessionId) && !supportsVendorResume(options.agent, { allowExperimentalCodex: experimentalCodexResume === true })) {
 	        return {
 	          type: 'error',
 	          errorMessage: `Resume is not supported for agent '${options.agent ?? 'claude'}'. (Upstream supports Claude vendor resume only.)`,
@@ -516,9 +516,10 @@ export async function startDaemon(): Promise<void> {
 	        const extraEnvForChild = { ...extraEnv };
 	        delete extraEnvForChild.TMUX_SESSION_NAME;
 	        delete extraEnvForChild.TMUX_TMPDIR;
-	        const extraEnvForChildWithMessage = typeof initialMessage === 'string' && initialMessage.trim().length > 0
-	          ? { ...extraEnvForChild, HAPPY_INITIAL_MESSAGE: initialMessage }
-	          : extraEnvForChild;
+	        if (options.agent === 'codex' && experimentalCodexResume === true) {
+	          extraEnvForChild.HAPPY_EXPERIMENTAL_CODEX_RESUME = '1';
+	        }
+	        const extraEnvForChildWithMessage = extraEnvForChild;
 
 	        // Check if tmux is available and should be used
 	        const tmuxAvailable = await isTmuxAvailable();

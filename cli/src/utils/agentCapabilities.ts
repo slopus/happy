@@ -8,13 +8,19 @@ export type AgentType = 'claude' | 'codex' | 'gemini';
  * Upstream policy (slopus): Claude only.
  * Forks can extend this list (e.g. Codex if/when a custom build supports it).
  */
-export const VENDOR_RESUME_SUPPORTED_AGENTS: AgentType[] = [
-  'claude',
-  'codex', // Fork: Codex resume enabled (requires custom Codex build / MCP resume support)
-];
+export const VENDOR_RESUME_SUPPORTED_AGENTS: AgentType[] = ['claude'];
 
-export function supportsVendorResume(agent: AgentType | undefined): boolean {
+export function isExperimentalCodexVendorResumeEnabled(): boolean {
+  const raw = process.env.HAPPY_EXPERIMENTAL_CODEX_RESUME;
+  return typeof raw === 'string' && ['true', '1', 'yes'].includes(raw.trim().toLowerCase());
+}
+
+export function supportsVendorResume(
+  agent: AgentType | undefined,
+  options?: { allowExperimentalCodex?: boolean },
+): boolean {
   // Undefined agent means "default agent" which is Claude in this CLI.
-  if (!agent) return VENDOR_RESUME_SUPPORTED_AGENTS.includes('claude');
+  if (!agent) return true;
+  if (agent === 'codex') return options?.allowExperimentalCodex === true || isExperimentalCodexVendorResumeEnabled();
   return VENDOR_RESUME_SUPPORTED_AGENTS.includes(agent);
 }

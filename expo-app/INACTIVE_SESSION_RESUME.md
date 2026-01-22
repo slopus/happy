@@ -41,10 +41,10 @@ User types message and presses send
 UI checks: canResumeSession(metadata)?
   ↓
 ┌─────────────────────────────────────────────┐
-│ YES: Send "resume-session" event            │
-│   - sessionId (existing Happy session)      │
-│   - message (user's new message)            │
-│   - machineId (for RPC routing)             │
+│ YES: Enqueue message as server-pending      │
+│   - pending-enqueue (preserves history)     │
+│   - then send "resume-session" RPC          │
+│     (spawns agent, no message payload)      │
 └─────────────────────────────────────────────┘
   ↓
 Server receives "resume-session"
@@ -66,9 +66,7 @@ CLI connects WebSocket to existing session
   ↓
 CLI updates session.active = true
   ↓
-Server queues user message to session
-  ↓
-CLI pops message and delivers to agent
+Agent pops pending message and delivers to agent
   ↓
 Conversation continues in same session
 ```

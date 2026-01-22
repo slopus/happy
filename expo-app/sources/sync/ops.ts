@@ -178,8 +178,11 @@ export interface ResumeSessionOptions {
     directory: string;
     /** The agent type (claude, codex, gemini) */
     agent: 'codex' | 'claude' | 'gemini';
-    /** The initial message to send after resuming */
-    message: string;
+    /**
+     * Experimental: allow Codex vendor resume when agent === 'codex'.
+     * Ignored for other agents.
+     */
+    experimentalCodexResume?: boolean;
 }
 
 /**
@@ -187,7 +190,7 @@ export interface ResumeSessionOptions {
  * to the existing Happy session and resumes the agent.
  */
 export async function resumeSession(options: ResumeSessionOptions): Promise<ResumeSessionResult> {
-    const { sessionId, machineId, directory, agent, message } = options;
+    const { sessionId, machineId, directory, agent, experimentalCodexResume } = options;
 
     try {
         const result = await apiSocket.machineRPC<ResumeSessionResult, {
@@ -195,7 +198,7 @@ export async function resumeSession(options: ResumeSessionOptions): Promise<Resu
             sessionId: string;
             directory: string;
             agent: 'codex' | 'claude' | 'gemini';
-            message: string;
+            experimentalCodexResume?: boolean;
         }>(
             machineId,
             'spawn-happy-session',
@@ -204,7 +207,7 @@ export async function resumeSession(options: ResumeSessionOptions): Promise<Resu
                 sessionId,
                 directory,
                 agent,
-                message
+                experimentalCodexResume,
             }
         );
         return result;
@@ -214,6 +217,36 @@ export async function resumeSession(options: ResumeSessionOptions): Promise<Resu
             errorMessage: error instanceof Error ? error.message : 'Failed to resume session'
         };
     }
+}
+
+export type CodexResumeStatus = {
+    installed: boolean;
+    installDir: string;
+    binPath: string | null;
+    version: string | null;
+    lastInstallLogPath: string | null;
+};
+
+export async function machineCodexResumeStatus(machineId: string): Promise<CodexResumeStatus> {
+    const result = await apiSocket.machineRPC<CodexResumeStatus, {}>(
+        machineId,
+        'codex-resume-status',
+        {},
+    );
+    return result;
+}
+
+export type CodexResumeInstallResult =
+    | { type: 'success'; logPath: string; version: string | null }
+    | { type: 'error'; errorMessage: string; logPath?: string };
+
+export async function machineCodexResumeInstall(machineId: string, options: { installSpec?: string }): Promise<CodexResumeInstallResult> {
+    const result = await apiSocket.machineRPC<CodexResumeInstallResult, { installSpec?: string }>(
+        machineId,
+        'codex-resume-install',
+        { installSpec: options.installSpec },
+    );
+    return result;
 }
 
 /**

@@ -102,7 +102,7 @@ export class ApiMachineClient {
     }: MachineRpcHandlers) {
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId, terminal, resume } = params || {};
+            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId, terminal, resume, experimentalCodexResume } = params || {};
             const envKeys = environmentVariables && typeof environmentVariables === 'object'
                 ? Object.keys(environmentVariables as Record<string, unknown>)
                 : [];
@@ -125,7 +125,7 @@ export class ApiMachineClient {
 
             // Handle resume-session type for inactive session resumption
             if (params?.type === 'resume-session') {
-                const { sessionId: existingSessionId, directory, agent, agentSessionId, message } = params;
+                const { sessionId: existingSessionId, directory, agent, experimentalCodexResume } = params;
                 logger.debug(`[API MACHINE] Resuming inactive session ${existingSessionId}`);
 
                 if (!directory) {
@@ -138,10 +138,9 @@ export class ApiMachineClient {
                 const result = await spawnSession({
                     directory,
                     agent,
-                    resume: typeof agentSessionId === 'string' && agentSessionId.trim() ? agentSessionId : undefined,
                     existingSessionId,
-                    initialMessage: message,
-                    approvedNewDirectoryCreation: true
+                    approvedNewDirectoryCreation: true,
+                    experimentalCodexResume: Boolean(experimentalCodexResume),
                 });
 
                 if (result.type === 'error') {
@@ -156,7 +155,7 @@ export class ApiMachineClient {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId, terminal, resume });
+            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId, terminal, resume, experimentalCodexResume });
 
             switch (result.type) {
                 case 'success':

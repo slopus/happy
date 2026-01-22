@@ -14,7 +14,7 @@ import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSe
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort, resumeSession } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionPendingMessages, useSessionUsage, useSetting } from '@/sync/storage';
-import { canResumeSession, getAgentSessionId } from '@/utils/agentCapabilities';
+import { canResumeSessionWithOptions } from '@/utils/agentCapabilities';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -192,10 +192,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const { messages: pendingMessages, isLoaded: pendingLoaded } = useSessionPendingMessages(sessionId);
     const experiments = useSetting('experiments');
     const expFileViewer = useSetting('expFileViewer');
+    const expCodexResume = useSetting('expCodexResume');
 
     // Inactive session resume state
     const isSessionActive = session.presence === 'online';
-    const isResumable = canResumeSession(session.metadata);
+    const allowCodexResume = experiments && expCodexResume;
+    const isResumable = canResumeSessionWithOptions(session.metadata, { allowCodexResume });
     const [isResuming, setIsResuming] = React.useState(false);
 
     // Use draft hook for auto-saving message drafts
@@ -237,13 +239,17 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, [sessionId]);
 
     // Handle resuming an inactive session
-    const handleResumeSession = React.useCallback(async (messageToSend: string) => {
+    const handleResumeSession = React.useCallback(async () => {
         if (!session.metadata?.machineId || !session.metadata?.path || !session.metadata?.flavor) {
             Modal.alert(t('common.error'), t('session.resumeFailed'));
             return;
         }
 
         if (session.metadata.flavor !== 'claude' && session.metadata.flavor !== 'codex' && session.metadata.flavor !== 'gemini') {
+            Modal.alert(t('common.error'), t('session.resumeFailed'));
+            return;
+        }
+        if (session.metadata.flavor === 'codex' && !allowCodexResume) {
             Modal.alert(t('common.error'), t('session.resumeFailed'));
             return;
         }
@@ -255,7 +261,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 machineId: session.metadata.machineId,
                 directory: session.metadata.path,
                 agent: session.metadata.flavor,
-                message: messageToSend
+                experimentalCodexResume: allowCodexResume,
             });
 
             if (result.type === 'error') {
@@ -267,7 +273,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         } finally {
             setIsResuming(false);
         }
-    }, [sessionId, session.metadata]);
+    }, [allowCodexResume, sessionId, session.metadata]);
 
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
@@ -387,7 +393,18 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
                     // If session is inactive but resumable, resume it and send the message through the agent.
                     if (!isSessionActive && isResumable) {
-                        void handleResumeSession(text);
+                        void (async () => {
+                            try {
+                                // Always enqueue as a server-side pending message first so:
+                                // - the user message is preserved in history even if spawn fails
+                                // - the agent can pull it when it is ready (via pending-pop)
+                                await sync.enqueuePendingMessage(sessionId, text);
+                                await handleResumeSession();
+                            } catch (e) {
+                                setMessage(text);
+                                Modal.alert('Error', e instanceof Error ? e.message : 'Failed to resume session');
+                            }
+                        })();
                         return;
                     }
 

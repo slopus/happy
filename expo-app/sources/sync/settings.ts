@@ -251,6 +251,10 @@ export const SettingsSchema = z.object({
     expSessionType: z.boolean().describe('Experimental: show session type selector (simple vs worktree)'),
     expZen: z.boolean().describe('Experimental: enable Zen navigation/experience'),
     expVoiceAuthFlow: z.boolean().describe('Experimental: enable authenticated voice token flow'),
+    // Intentionally NOT auto-enabled when `experiments` is enabled; this toggles extra local installation + security surface area.
+    expCodexResume: z.boolean().describe('Experimental: enable Codex vendor-resume and resume-codex installer UI'),
+    // Experimental configuration for the Codex resume installer (used only when expCodexResume is enabled).
+    codexResumeInstallSpec: z.string().describe('Codex resume installer spec (npm/git/file); empty uses daemon default'),
     useProfiles: z.boolean().describe('Whether to enable AI backend profiles feature'),
     useEnhancedSessionWizard: z.boolean().describe('A/B test flag: Use enhanced profile-based session wizard UI'),
     terminalUseTmux: z.boolean().describe('Whether new sessions should start in tmux by default'),
@@ -345,6 +349,8 @@ export const settingsDefaults: Settings = {
     expSessionType: false,
     expZen: false,
     expVoiceAuthFlow: false,
+    expCodexResume: false,
+    codexResumeInstallSpec: '',
     useProfiles: false,
     terminalUseTmux: false,
     terminalTmuxSessionName: 'happy',

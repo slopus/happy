@@ -294,6 +294,7 @@ function NewSessionScreen() {
     const experimentsEnabled = useSetting('experiments');
     const expGemini = useSetting('expGemini');
     const expSessionType = useSetting('expSessionType');
+    const expCodexResume = useSetting('expCodexResume');
     const useMachinePickerSearch = useSetting('useMachinePickerSearch');
     const usePathPickerSearch = useSetting('usePathPickerSearch');
     const [profiles, setProfiles] = useSettingMutable('profiles');
@@ -1743,7 +1744,10 @@ function NewSessionScreen() {
                 agent: agentType,
                 profileId: profilesActive ? (selectedProfileId ?? '') : undefined,
                 environmentVariables,
-                resume: canAgentResume(agentType) ? (resumeSessionId.trim() || undefined) : undefined,
+                resume: canAgentResume(agentType, { allowCodexResume: experimentsEnabled && expCodexResume })
+                    ? (resumeSessionId.trim() || undefined)
+                    : undefined,
+                experimentalCodexResume: experimentsEnabled && expCodexResume && agentType === 'codex' && resumeSessionId.trim().length > 0,
                 terminal,
             });
 
@@ -1977,8 +1981,8 @@ function NewSessionScreen() {
                                             onMachineClick={handleMachineClick}
                                             currentPath={selectedPath}
                                             onPathClick={handlePathClick}
-                                            resumeSessionId={canAgentResume(agentType) ? resumeSessionId : undefined}
-                                            onResumeClick={canAgentResume(agentType) ? handleResumeClick : undefined}
+                                            resumeSessionId={canAgentResume(agentType, { allowCodexResume: experimentsEnabled && expCodexResume }) ? resumeSessionId : undefined}
+                                            onResumeClick={canAgentResume(agentType, { allowCodexResume: experimentsEnabled && expCodexResume }) ? handleResumeClick : undefined}
                                             contentPaddingHorizontal={0}
                                             {...(useProfiles
                                                 ? {
@@ -2204,12 +2208,14 @@ function NewSessionScreen() {
             selectedProfileEnvVarsCount,
             handleEnvVarsClick,
             resumeSessionId,
-            onResumeClick: canAgentResume(agentType) ? handleResumeClick : undefined,
+            onResumeClick: canAgentResume(agentType, { allowCodexResume: experimentsEnabled && expCodexResume }) ? handleResumeClick : undefined,
         };
     }, [
         agentType,
         canCreate,
         connectionStatus,
+        expCodexResume,
+        experimentsEnabled,
         emptyAutocompletePrefixes,
         emptyAutocompleteSuggestions,
         handleCreateSession,

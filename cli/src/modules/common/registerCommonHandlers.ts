@@ -1,13 +1,14 @@
 import { logger } from '@/ui/logger';
 import { exec, execFile, ExecOptions } from 'child_process';
 import { promisify } from 'util';
-import { readFile, writeFile, readdir, stat, access } from 'fs/promises';
+import { readFile, writeFile, readdir, stat, access, mkdir } from 'fs/promises';
 import { constants as fsConstants } from 'fs';
 import { createHash } from 'crypto';
 import { join, delimiter as PATH_DELIMITER } from 'path';
 import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
+import { configuration } from '@/configuration';
 import type { TerminalSpawnOptions } from '@/terminal/terminalConfig';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath } from './pathSecurity';
@@ -57,6 +58,22 @@ interface DetectCliResponse {
     clis: Record<DetectCliName, DetectCliEntry>;
     tmux: DetectTmuxEntry;
 }
+
+type CodexResumeStatusResponse = {
+    installed: boolean;
+    installDir: string;
+    binPath: string | null;
+    version: string | null;
+    lastInstallLogPath: string | null;
+};
+
+type CodexResumeInstallRequest = {
+    installSpec?: string;
+};
+
+type CodexResumeInstallResponse =
+    | { type: 'success'; logPath: string; version: string | null }
+    | { type: 'error'; errorMessage: string; logPath?: string };
 
 type EnvPreviewSecretsPolicy = 'none' | 'redacted' | 'full';
 
@@ -394,14 +411,15 @@ export interface SpawnSessionOptions {
      */
     resume?: string;
     /**
+     * Experimental: allow Codex vendor resume for this spawn.
+     * This is evaluated by the daemon BEFORE spawning the child process.
+     */
+    experimentalCodexResume?: boolean;
+    /**
      * Existing Happy session ID to reconnect to (for inactive session resume).
      * When set, the CLI will connect to this session instead of creating a new one.
      */
     existingSessionId?: string;
-    /**
-     * Initial message to send after resuming an inactive session.
-     */
-    initialMessage?: string;
     approvedNewDirectoryCreation?: boolean;
     agent?: 'claude' | 'codex' | 'gemini';
     token?: string;
@@ -617,6 +635,122 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
             clis: Object.fromEntries(pairs) as Record<DetectCliName, DetectCliEntry>,
             tmux,
         };
+    });
+
+    // Codex resume installer (experimental).
+    //
+    // Installs an alternate Codex CLI into a Happy-owned prefix so:
+    // - the user keeps their system Codex for normal sessions
+    // - Happy can use the alternate build only when `--resume` is requested
+    const codexResumeInstallDir = () => join(configuration.happyHomeDir, 'tools', 'codex-resume');
+    const codexResumeBinPath = () => {
+        const binName = process.platform === 'win32' ? 'codex.cmd' : 'codex';
+        return join(codexResumeInstallDir(), 'node_modules', '.bin', binName);
+    };
+    const codexResumeStatePath = () => join(codexResumeInstallDir(), 'install-state.json');
+
+    async function readCodexResumeState(): Promise<{ lastInstallLogPath: string | null } | null> {
+        try {
+            const raw = await readFile(codexResumeStatePath(), 'utf8');
+            const parsed = JSON.parse(raw);
+            const lastInstallLogPath = typeof parsed?.lastInstallLogPath === 'string' ? parsed.lastInstallLogPath : null;
+            return { lastInstallLogPath };
+        } catch {
+            return null;
+        }
+    }
+
+    async function writeCodexResumeState(next: { lastInstallLogPath: string | null }): Promise<void> {
+        await mkdir(codexResumeInstallDir(), { recursive: true });
+        await writeFile(codexResumeStatePath(), JSON.stringify(next, null, 2), 'utf8');
+    }
+
+    rpcHandlerManager.registerHandler<{}, CodexResumeStatusResponse>('codex-resume-status', async () => {
+        const binPath = codexResumeBinPath();
+        const state = await readCodexResumeState();
+
+        const installed = await (async () => {
+            try {
+                await access(binPath, fsConstants.X_OK);
+                return true;
+            } catch {
+                return false;
+            }
+        })();
+
+        const version = installed
+            ? await (async () => {
+                try {
+                    const { stdout } = await execFileAsync(binPath, ['--version'], { timeout: 10_000, windowsHide: true });
+                    const text = typeof stdout === 'string' ? stdout.trim() : '';
+                    return text || null;
+                } catch {
+                    return null;
+                }
+            })()
+            : null;
+
+        return {
+            installed,
+            installDir: codexResumeInstallDir(),
+            binPath: installed ? binPath : null,
+            version,
+            lastInstallLogPath: state?.lastInstallLogPath ?? null,
+        };
+    });
+
+    rpcHandlerManager.registerHandler<CodexResumeInstallRequest, CodexResumeInstallResponse>('codex-resume-install', async (data) => {
+        const installDir = codexResumeInstallDir();
+        const binPath = codexResumeBinPath();
+        const logPath = join(configuration.logsDir, `codex-resume-install-${Date.now()}.log`);
+
+        const installSpecRaw = typeof data?.installSpec === 'string' ? data.installSpec.trim() : '';
+        const installSpec =
+            installSpecRaw ||
+            (typeof process.env.HAPPY_CODEX_RESUME_INSTALL_SPEC === 'string' ? process.env.HAPPY_CODEX_RESUME_INSTALL_SPEC.trim() : '');
+
+        if (!installSpec) {
+            return {
+                type: 'error',
+                errorMessage: 'Missing install spec. Set it in the app (Machine details → Codex resume) or via HAPPY_CODEX_RESUME_INSTALL_SPEC.',
+            };
+        }
+
+        try {
+            await mkdir(installDir, { recursive: true });
+            const { stdout, stderr } = await execFileAsync(
+                'npm',
+                ['install', '--no-audit', '--no-fund', '--prefix', installDir, installSpec],
+                { timeout: 15 * 60_000, windowsHide: true },
+            );
+
+            await writeFile(
+                logPath,
+                [`# installSpec: ${installSpec}`, '', '## stdout', stdout ?? '', '', '## stderr', stderr ?? ''].join('\n'),
+                'utf8',
+            );
+
+            await writeCodexResumeState({ lastInstallLogPath: logPath });
+
+            const version = await (async () => {
+                try {
+                    const { stdout: v } = await execFileAsync(binPath, ['--version'], { timeout: 10_000, windowsHide: true });
+                    const text = typeof v === 'string' ? v.trim() : '';
+                    return text || null;
+                } catch {
+                    return null;
+                }
+            })();
+
+            return { type: 'success', logPath, version };
+        } catch (e) {
+            const message = e instanceof Error ? e.message : 'Install failed';
+            try {
+                await writeFile(logPath, `# installSpec: ${installSpec}\n\n${message}\n`, 'utf8');
+                await writeCodexResumeState({ lastInstallLogPath: logPath });
+            } catch { }
+            return { type: 'error', errorMessage: message, logPath };
+        }
     });
 
     // Environment preview handler - returns daemon-effective env values with secret policy applied.

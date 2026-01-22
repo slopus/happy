@@ -8,7 +8,16 @@ import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines, useMachine, storage, useSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { machineDetectCli, type DetectCliResponse, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
+import {
+    machineCodexResumeInstall,
+    machineCodexResumeStatus,
+    machineDetectCli,
+    machineSpawnNewSession,
+    machineStopDaemon,
+    machineUpdateMetadata,
+    type CodexResumeStatus,
+    type DetectCliResponse,
+} from '@/sync/ops';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -16,7 +25,6 @@ import { sync } from '@/sync/sync';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { machineSpawnNewSession } from '@/sync/ops';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
 import { DetectedClisList } from '@/components/machine/DetectedClisList';
@@ -127,6 +135,13 @@ export default function MachineDetailScreen() {
     const terminalTmuxIsolated = useSetting('terminalTmuxIsolated');
     const terminalTmuxTmpDir = useSetting('terminalTmuxTmpDir');
     const [terminalTmuxByMachineId, setTerminalTmuxByMachineId] = useSettingMutable('terminalTmuxByMachineId');
+    const experimentsEnabled = useSetting('experiments');
+    const expCodexResume = useSetting('expCodexResume');
+    const [codexResumeInstallSpec, setCodexResumeInstallSpec] = useSettingMutable('codexResumeInstallSpec');
+
+    const [codexResumeStatus, setCodexResumeStatus] = useState<CodexResumeStatus | null>(null);
+    const [codexResumeStatusState, setCodexResumeStatusState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
+    const [isInstallingCodexResume, setIsInstallingCodexResume] = useState(false);
 
     const tmuxOverride = machineId ? terminalTmuxByMachineId?.[machineId] : undefined;
     const tmuxOverrideEnabled = Boolean(tmuxOverride);
@@ -306,9 +321,26 @@ export default function MachineDetailScreen() {
         }
     }, [machineId]);
 
+    const refreshCodexResumeStatus = useCallback(async () => {
+        if (!machineId) return;
+        if (!experimentsEnabled || !expCodexResume) return;
+        try {
+            setCodexResumeStatusState('loading');
+            const status = await machineCodexResumeStatus(machineId);
+            setCodexResumeStatus(status);
+            setCodexResumeStatusState('loaded');
+        } catch {
+            setCodexResumeStatusState('error');
+        }
+    }, [expCodexResume, experimentsEnabled, machineId]);
+
     React.useEffect(() => {
         void refreshDetectedClis();
     }, [refreshDetectedClis]);
+
+    React.useEffect(() => {
+        void refreshCodexResumeStatus();
+    }, [refreshCodexResumeStatus]);
 
     const detectedClisState: MachineDetectCliCacheState = useMemo(() => {
         if (!detectedClis) return { status: 'idle' };
@@ -317,6 +349,13 @@ export default function MachineDetailScreen() {
         if (detectedClis.status === 'not-supported') return { status: 'not-supported' };
         return { status: 'error' };
     }, [detectedClis]);
+
+    const systemCodexVersion = useMemo(() => {
+        if (detectedClisState.status !== 'loaded') return null;
+        const entry = detectedClisState.response?.clis?.codex;
+        if (!entry?.available) return null;
+        return typeof entry.version === 'string' ? entry.version : null;
+    }, [detectedClisState]);
 
     const detectedClisTitle = useMemo(() => {
         const headerTextStyle = [
@@ -708,6 +747,102 @@ export default function MachineDetailScreen() {
                 <ItemGroup title={detectedClisTitle}>
                     <DetectedClisList state={detectedClisState} />
                 </ItemGroup>
+
+                {/* Codex resume installer (experimental) */}
+                {experimentsEnabled && expCodexResume && (
+                    <ItemGroup title="Codex resume (experimental)">
+                        <Item
+                            title="System Codex"
+                            subtitle={systemCodexVersion ? `Version: ${systemCodexVersion}` : 'Not detected (run refresh above)'}
+                            icon={<Ionicons name="sparkles-outline" size={22} color={theme.colors.textSecondary} />}
+                            showChevron={false}
+                        />
+                        <Item
+                            title="Resume Codex"
+                            subtitle={
+                                codexResumeStatusState === 'loading'
+                                    ? 'Loading…'
+                                    : codexResumeStatus?.installed
+                                        ? `Installed${codexResumeStatus.version ? ` (v${codexResumeStatus.version})` : ''}`
+                                        : 'Not installed'
+                            }
+                            icon={<Ionicons name="refresh-circle-outline" size={22} color={theme.colors.textSecondary} />}
+                            showChevron={false}
+                            onPress={() => refreshCodexResumeStatus()}
+                        />
+                        <Item
+                            title="Install source"
+                            subtitle={codexResumeInstallSpec?.trim() ? codexResumeInstallSpec.trim() : '(default)'}
+                            icon={<Ionicons name="link-outline" size={22} color={theme.colors.textSecondary} />}
+                            onPress={async () => {
+                                const next = await Modal.prompt(
+                                    'Codex resume install source',
+                                    'NPM/Git/file spec passed to `npm install` (experimental). Leave empty to use daemon default.',
+                                    {
+                                        defaultValue: codexResumeInstallSpec ?? '',
+                                        placeholder: 'e.g. file:/path/to/codex-cli or github:owner/repo#branch',
+                                        confirmText: t('common.save'),
+                                        cancelText: t('common.cancel'),
+                                    },
+                                );
+                                if (typeof next === 'string') {
+                                    setCodexResumeInstallSpec(next);
+                                }
+                            }}
+                        />
+                        <Item
+                            title={codexResumeStatus?.installed ? 'Reinstall / update' : 'Install'}
+                            subtitle="Installs a separate Codex build used only for resume operations."
+                            icon={<Ionicons name="download-outline" size={22} color={theme.colors.textSecondary} />}
+                            disabled={isInstallingCodexResume || codexResumeStatusState === 'loading'}
+                            onPress={async () => {
+                                if (!machineId) return;
+                                Modal.alert(
+                                    'Install resume Codex?',
+                                    'This will run an experimental installer on your machine.',
+                                    [
+                                        { text: t('common.cancel'), style: 'cancel' },
+                                        {
+                                            text: 'Install',
+                                            onPress: async () => {
+                                                setIsInstallingCodexResume(true);
+                                                try {
+                                                    const result = await machineCodexResumeInstall(machineId, {
+                                                        installSpec: codexResumeInstallSpec?.trim() ? codexResumeInstallSpec.trim() : undefined,
+                                                    });
+                                                    if (result.type === 'error') {
+                                                        Modal.alert('Error', result.errorMessage);
+                                                    } else {
+                                                        Modal.alert('Success', `Install log: ${result.logPath}`);
+                                                    }
+                                                    await refreshCodexResumeStatus();
+                                                } catch (e) {
+                                                    Modal.alert('Error', e instanceof Error ? e.message : 'Install failed');
+                                                } finally {
+                                                    setIsInstallingCodexResume(false);
+                                                }
+                                            },
+                                        },
+                                    ],
+                                );
+                            }}
+                            rightElement={
+                                isInstallingCodexResume ? (
+                                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                                ) : undefined
+                            }
+                        />
+                        {codexResumeStatus?.lastInstallLogPath && (
+                            <Item
+                                title="Last install log"
+                                subtitle={codexResumeStatus.lastInstallLogPath}
+                                icon={<Ionicons name="document-text-outline" size={22} color={theme.colors.textSecondary} />}
+                                showChevron={false}
+                                onPress={() => Modal.alert('Codex resume install log', codexResumeStatus.lastInstallLogPath ?? '')}
+                            />
+                        )}
+                    </ItemGroup>
+                )}
 
                 {/* Daemon */}
                 <ItemGroup title={t('machine.daemon')}>
