@@ -1,6 +1,10 @@
 {
     "name": "monorepo",
     "private": true,
+    "scripts": {
+        "test": "yarn --cwd expo-app test",
+        "typecheck": "yarn --cwd expo-app typecheck"
+    },
     "workspaces": {
         "packages": [
             "expo-app",

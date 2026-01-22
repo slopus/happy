@@ -703,6 +703,34 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
+        it('accepts usage.service_tier null (does not drop message)', () => {
+            const message = {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: {
+                        type: 'assistant',
+                        message: {
+                            role: 'assistant',
+                            model: 'claude-sonnet-4-5-20250929',
+                            content: [{ type: 'text', text: 'Hello' }],
+                            usage: {
+                                input_tokens: 1,
+                                output_tokens: 1,
+                                service_tier: null,
+                            },
+                        },
+                        uuid: 'real-assistant-uuid',
+                        parentUuid: null,
+                    },
+                },
+                meta: { sentFrom: 'cli' },
+            };
+
+            const result = RawRecordSchema.safeParse(message);
+            expect(result.success).toBe(true);
+        });
+
         it('handles real user message with tool_result', () => {
             const realMessage = {
                 role: 'agent',

@@ -12,7 +12,9 @@ const usageDataSchema = z.object({
     cache_creation_input_tokens: z.number().optional(),
     cache_read_input_tokens: z.number().optional(),
     output_tokens: z.number(),
-    service_tier: z.string().optional(),
+    // Some upstream error payloads can include `service_tier: null`.
+    // Treat null as “unknown” so we don't drop the whole message.
+    service_tier: z.string().nullish(),
 });
 
 export type UsageData = z.infer<typeof usageDataSchema>;

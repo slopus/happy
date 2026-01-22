@@ -1,4 +1,4 @@
-import { Stack, router } from 'expo-router';
+import { Stack, router, useSegments } from 'expo-router';
 import 'react-native-reanimated';
 import * as React from 'react';
 import { Typography } from '@/constants/Typography';
@@ -8,12 +8,28 @@ import { Ionicons } from '@expo/vector-icons';
 import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { useAuth } from '@/auth/AuthContext';
+import { isPublicRouteForUnauthenticated } from '@/auth/authRouting';
 
 export const unstable_settings = {
     initialRouteName: 'index',
 };
 
 export default function RootLayout() {
+    const auth = useAuth();
+    const segments = useSegments();
+
+    const shouldRedirect = !auth.isAuthenticated && !isPublicRouteForUnauthenticated(segments);
+    React.useEffect(() => {
+        if (!shouldRedirect) return;
+        router.replace('/');
+    }, [shouldRedirect]);
+
+    // Avoid rendering protected screens for a frame during redirect.
+    if (shouldRedirect) {
+        return null;
+    }
+
     // Use custom header on Android and Mac Catalyst, native header on iOS (non-Catalyst)
     const shouldUseCustomHeader = Platform.OS === 'android' || isRunningOnMac() || Platform.OS === 'web';
     const { theme } = useUnistyles();
