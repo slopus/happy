@@ -179,6 +179,13 @@ export async function createSessionScanner(opts: {
                 watchers.set(p, { filePath: desiredPath, stop: startFileWatcher(desiredPath, () => { sync.invalidate(); }) });
             }
         }
+    }, {
+        onError: (e, failuresCount) => {
+            // Avoid spamming logs on repeated failures. Capture early failures for debugging.
+            if (failuresCount === 1) {
+                logger.debug(`[SESSION_SCANNER] Sync failed (attempt ${failuresCount})`, e);
+            }
+        },
     });
     await sync.invalidateAndAwait();
 
