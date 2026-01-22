@@ -35,7 +35,7 @@ export async function claudeLocal(opts: {
     mkdirSync(projectDir, { recursive: true });
 
     // Check if claudeArgs contains --continue or --resume (user passed these flags)
-    const hasContinueFlag = opts.claudeArgs?.includes('--continue');
+    const hasContinueFlag = opts.claudeArgs?.includes('--continue') || opts.claudeArgs?.includes('-c');
     const hasResumeFlag = opts.claudeArgs?.includes('--resume') || opts.claudeArgs?.includes('-r');
     const hasUserSessionControl = hasContinueFlag || hasResumeFlag;
 
