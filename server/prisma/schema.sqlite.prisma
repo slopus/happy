@@ -107,7 +107,6 @@ model Session {
     createdAt         DateTime         @default(now())
     updatedAt         DateTime         @updatedAt
     messages          SessionMessage[]
-    pendingMessages   SessionPendingMessage[]
     usageReports      UsageReport[]
     accessKeys        AccessKey[]
 
@@ -128,20 +127,6 @@ model SessionMessage {
 
     @@unique([sessionId, localId])
     @@index([sessionId, seq])
-}
-
-model SessionPendingMessage {
-    id        String   @id @default(cuid())
-    sessionId String
-    session   Session  @relation(fields: [sessionId], references: [id])
-    localId   String?
-    /// [SessionMessageContent]
-    content   Json
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-
-    @@unique([sessionId, localId])
-    @@index([sessionId, createdAt])
 }
 
 //
