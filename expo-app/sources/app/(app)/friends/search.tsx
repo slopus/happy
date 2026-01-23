@@ -66,6 +66,8 @@ export default function SearchFriendsScreen() {
     );
     
     const hasSearched = searchQuery.trim().length > 0;
+    const searchErrorText =
+        searchError === 'searchFailed' ? t('errors.searchFailed') : null;
 
     return (
         <KeyboardAvoidingView
@@ -99,8 +101,8 @@ export default function SearchFriendsScreen() {
                             </View>
                         )}
                     </View>
-                    {searchError ? (
-                        <Text style={styles.errorText}>{searchError}</Text>
+                    {searchErrorText ? (
+                        <Text style={styles.errorText}>{searchErrorText}</Text>
                     ) : null}
                 </ItemGroup>
 

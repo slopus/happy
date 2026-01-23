@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
+export type UseSearchError = 'searchFailed';
+
 /**
  * Production-ready search hook with automatic debouncing, caching, and retry logic.
  * 
@@ -12,15 +14,15 @@ import { useEffect, useRef, useState, useCallback } from 'react';
  * 
  * @param query - The search query string
  * @param searchFn - The async function to perform the search
- * @returns Object with results array, isSearching boolean, and error string (if any)
+ * @returns Object with results array, isSearching boolean, and a stable error code (if any)
  */
 export function useSearch<T>(
     query: string,
     searchFn: (query: string) => Promise<T[]>
-): { results: T[]; isSearching: boolean; error: string | null } {
+): { results: T[]; isSearching: boolean; error: UseSearchError | null } {
     const [results, setResults] = useState<T[]>([]);
     const [isSearching, setIsSearching] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<UseSearchError | null>(null);
     
     // Permanent cache for search results
     const cacheRef = useRef<Map<string, T[]>>(new Map());
@@ -69,7 +71,7 @@ export function useSearch<T>(
             } catch (error) {
                 if (attempt >= maxAttempts) {
                     setResults([]);
-                    setError('Search failed. Please try again.');
+                    setError('searchFailed');
                     return;
                 }
                 // Wait before retrying (bounded)
