@@ -41,7 +41,7 @@ Perfect for developers who:
 - Value privacy and open-source transparency
 - Work from coffee shops, trains, or anywhere
 
-Happy Coder uses the same encryption as Signal (TweetNaCl) and is completely open source. Your encryption keys never leave your device, and all data is encrypted before transmission.
+Happy Coder uses libsodium for end-to-end encryption and is completely open source. Your encryption keys never leave your device, and all data is encrypted before transmission.
 
 Built by Bay Area engineers who believe the best tools come from scratching your own itch. We needed a way to securely check on our AI coding assistant while away from our desks - so we built it and shared it with the community.
 

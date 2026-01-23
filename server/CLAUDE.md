@@ -1,234 +1,285 @@
-# Handy Server - Development Guidelines
+# CLAUDE.md
 
-This document contains the development guidelines and instructions for the Happy Server project. This guide OVERRIDES any default behaviors and MUST be followed exactly.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+**For shared development principles and mono-repo overview, see [CLAUDE.md](../CLAUDE.md)**
 
-**Name**: happy-server  
-**Repository**: https://github.com/slopus/happy-server.git  
-**License**: MIT  
-**Language**: TypeScript  
-**Runtime**: Node.js 20  
-**Framework**: Fastify with opinionated architecture  
+## Component Overview
+
+Happy Server - Minimal, end-to-end encrypted synchronization backend for AI coding clients, enabling secure multi-device sync while maintaining zero-knowledge privacy (server stores encrypted data but cannot read it).
 
 ## Core Technology Stack
 
-- **Runtime**: Node.js 20
-- **Language**: TypeScript (strict mode enabled)
-- **Web Framework**: Fastify 5
+- **Web Framework**: Fastify 5 with fastify-type-provider-zod for type safety
 - **Database**: PostgreSQL with Prisma ORM
-- **Validation**: Zod
-- **HTTP Client**: Axios
-- **Real-time**: Socket.io
-- **Cache/Pub-Sub**: Redis (via ioredis)
+- **Validation**: Zod for runtime and compile-time type checking
+- **Real-time**: Socket.io with Redis adapter for horizontal scaling
+- **Cache/Pub-Sub**: Redis (ioredis)
+- **Object Storage**: Minio (S3-compatible)
+- **Cryptography**: privacy-kit, tweetnacl
 - **Testing**: Vitest
+- **Metrics**: Prometheus (prom-client)
 - **Package Manager**: Yarn (not npm)
 
-## Development Environment
+## Development Commands
 
-### Commands
-- `yarn build` - TypeScript type checking
-- `yarn start` - Start the server
-- `yarn test` - Run tests
-- `yarn migrate` - Run Prisma migrations
-- `yarn generate` - Generate Prisma client
+### Essential Commands
+- `yarn build` - TypeScript type checking (no emit)
+- `yarn start` - Start production server
+- `yarn dev` - Start development server with hot reload (kills process on port 3005)
+- `yarn test` - Run Vitest test suite
+- `yarn generate` - Generate Prisma client (run after schema changes)
+- `yarn migrate` - Run Prisma migrations (dev only)
+- `yarn migrate:reset` - Reset database and re-run migrations
+
+### Infrastructure Commands
 - `yarn db` - Start local PostgreSQL in Docker
+- `yarn redis` - Start local Redis in Docker
+- `yarn s3` - Start local Minio in Docker
+- `yarn s3:down` - Stop Minio container
+- `yarn s3:init` - Initialize Minio buckets
 
 ### Environment Requirements
-- FFmpeg installed (for media processing)
-- Python3 installed
-- PostgreSQL database
-- Redis (for event bus and caching)
+- **FFmpeg** - Required for media processing
+- **Python3** - Required for certain operations
+- **PostgreSQL** - Database (use `yarn db` for local)
+- **Redis** - Required for event bus and caching (use `yarn redis` for local)
+- **Minio** - Object storage (use `yarn s3` for local)
+
+### Environment Files
+- `.env` - Base environment configuration
+- `.env.dev` - Development overrides
+- Server uses `.env` and `.env.dev` when running `yarn dev`
 
 ## Code Style and Structure
 
-### General Principles
-- Use 4 spaces for tabs (not 2 spaces)
-- Write concise, technical TypeScript code with accurate examples
-- Use functional and declarative programming patterns; avoid classes
-- Prefer iteration and modularization over code duplication
-- Use descriptive variable names with auxiliary verbs (e.g., isLoading, hasError)
-- All sources must be imported using "@/" prefix (e.g., `import "@/utils/log"`)
-- Always use absolute imports
-- Prefer interfaces over types
-- Avoid enums; use maps instead
-- Use strict mode in TypeScript for better type safety
-
-### Folder Structure
-```
-/sources                    # Root of the sources
-├── /app                   # Application entry points
-│   ├── api.ts            # API server setup
-│   └── timeout.ts        # Timeout handling
-├── /apps                  # Applications directory
-│   └── /api              # API server application
-│       └── /routes       # API routes
-├── /modules              # Reusable modules (non-application logic)
-├── /utils                # Low level or abstract utilities
-├── /recipes              # Scripts to run outside of the server
-├── /services             # Core services
-│   └── pubsub.ts        # Pub/sub service
-├── /storage              # Database and storage utilities
-│   ├── db.ts            # Database client
-│   ├── inTx.ts          # Transaction wrapper
-│   ├── repeatKey.ts     # Key utilities
-│   ├── simpleCache.ts   # Caching utility
-│   └── types.ts         # Storage types
-└── main.ts               # Main entry point
-```
-
 ### Naming Conventions
-- Use lowercase with dashes for directories (e.g., components/auth-wizard)
-- When writing utility functions, always name file and function the same way
-- Test files should have ".spec.ts" suffix
+- Directories: lowercase with dashes (e.g., `components/auth-wizard`)
+- Utility files: name file and function the same way for easy discovery
+- Test files: same name as source with `.spec.ts` suffix (e.g., `lru.spec.ts`)
+- Action files: prefix with entity type then action (e.g., `sessionAdd.ts`, `friendRemove.ts`)
 
-## Tool Usage
+### Directory Structure
+```
+/sources/                           # Source root
+├── main.ts                         # Application entry point
+├── context.ts                      # User context wrapper
+├── /app                            # Application-specific logic
+│   ├── /api                       # API server application
+│   │   ├── api.ts                 # Fastify server setup
+│   │   ├── socket.ts              # Socket.io setup
+│   │   ├── /routes                # HTTP route handlers (15 routes)
+│   │   ├── /socket                # WebSocket handlers (7 handlers)
+│   │   ├── /utils                 # API middleware (auth, monitoring, errors)
+│   │   └── types.ts               # TypeScript types
+│   ├── /auth                      # Cryptographic authentication
+│   ├── /events                    # Event router for real-time updates
+│   ├── /feed                      # User activity feed
+│   ├── /github                    # GitHub OAuth integration
+│   ├── /kv                        # Encrypted key-value storage
+│   ├── /monitoring                # Prometheus metrics
+│   ├── /presence                  # Session/machine presence tracking
+│   ├── /session                   # Session management
+│   └── /social                    # Friends and relationships
+├── /modules                        # Reusable modules (non-application)
+│   ├── encrypt.ts                 # Encryption utilities (privacy-kit wrapper)
+│   └── github.ts                  # GitHub integration module
+├── /storage                        # Database and storage abstractions
+│   ├── db.ts                      # Prisma client
+│   ├── inTx.ts                    # Transaction wrapper with retry
+│   ├── redis.ts                   # Redis client
+│   ├── files.ts                   # S3/Minio client
+│   ├── repeatKey.ts               # Idempotency keys
+│   ├── seq.ts                     # Sequence allocation
+│   └── simpleCache.ts             # Caching utilities
+└── /utils                          # Low-level utilities
+    ├── log.ts                     # Logging
+    ├── delay.ts                   # Delays
+    ├── lock.ts                    # Lock utilities
+    ├── shutdown.ts                # Graceful shutdown
+    └── ...
+```
 
-### Web Search and Fetching
-- When in doubt, use web tool to get answers from the web
-- Search web when you have some failures
+## Core Architecture
 
-### File Operations
-- NEVER create files unless they're absolutely necessary
-- ALWAYS prefer editing existing files to creating new ones
-- NEVER proactively create documentation files (*.md) or README files unless explicitly requested
+### Application Startup Flow (`sources/main.ts`)
 
-## Utilities
+The server follows a clean initialization sequence:
 
-### Writing Utility Functions
-1. Always name file and function the same way for easy discovery
-2. Utility functions should be modular and not too complex
-3. Always write tests for utility functions BEFORE writing the code
-4. Iterate implementation and tests until the function works as expected
-5. Always write documentation for utility functions
+1. **Storage Initialization** - Connect to PostgreSQL and Redis
+2. **Module Initialization** - Initialize encryption (privacy-kit), GitHub integration, load S3 files, initialize auth
+3. **Server Startup** - Start Fastify API server (port 3005), Prometheus metrics server, timeout monitor, Socket.io server
+4. **Graceful Shutdown** - All components register cleanup handlers via `onShutdown()`
 
-## Modules
+### API Server (`sources/app/api/api.ts`)
 
-### Module Guidelines
-- Modules are bigger than utility functions and abstract away complexity
-- Each module should have a dedicated directory
-- Modules usually don't have application-specific logic
-- Modules can depend on other modules, but not on application-specific logic
-- Prefer to write code as modules instead of application-specific code
+**Fastify 5** with type-safe routing:
+- **Type Safety**: `fastify-type-provider-zod` for compile-time and runtime validation
+- **Body Limit**: 100MB for file uploads
+- **Middleware**: Authentication (Bearer token), error handling, Prometheus metrics
+- **15 Route Modules**: `/v1/auth`, `/v1/sessions`, `/v1/machines`, `/v1/artifacts`, `/v1/access-keys`, `/v1/account`, `/v1/connect`, `/v1/push`, `/v1/voice`, `/v1/users`, `/v1/feed`, `/v1/kv`, `/v1/version`, `/dev`
+- **Port**: 3005 (configurable via `PORT` env var)
 
-### When to Use Modules
-- When integrating with external services
-- When abstracting complexity of some library
-- When implementing related groups of functions (math, date, etc.)
+### Real-time Communication (`sources/app/api/socket.ts`)
 
-### Known Modules
-- **ai**: AI wrappers to interact with AI services
-- **eventbus**: Event bus to send and receive events between modules and applications
-- **lock**: Simple lock to synchronize access to resources in the whole cluster
-- **media**: Tools to work with media files
+**Socket.io** with sophisticated connection scoping:
 
-## Applications
+**Three Connection Types:**
+1. **User-scoped** - Receives all updates for a user (mobile/web apps)
+2. **Session-scoped** - Receives updates for a specific session (dedicated views)
+3. **Machine-scoped** - Receives updates for a specific machine/daemon
 
-- Applications contain application-specific logic
-- Applications have the most complexity; other parts should assist by reducing complexity
-- When using prompts, write them to "_prompts.ts" file relative to the application
+**Socket Handlers** (7 specialized handlers):
+- `sessionUpdateHandler` - Session updates
+- `machineUpdateHandler` - Machine state sync
+- `artifactUpdateHandler` - Artifact updates
+- `accessKeyHandler` - Access key management
+- `rpcHandler` - Remote procedure calls
+- `usageHandler` - Usage reporting
+- `pingHandler` - Keepalive
 
-## Database
+### Event Router (`sources/app/events/eventRouter.ts`)
 
-### Prisma Usage
-- Prisma is used as ORM
-- Use "inTx" to wrap database operations in transactions
-- Do not update schema without absolute necessity
-- For complex fields, use "Json" type
-- NEVER DO MIGRATION YOURSELF. Only run yarn generate when new types needed
+Sophisticated event routing system with two event types:
 
-### Current Schema Status
-The project has pending Prisma migrations that need to be applied:
-- Migration: `20250715012822_add_metadata_version_agent_state`
+**1. Persistent Updates** (`emitUpdate`): Stored in database changes
+- Event types: `new-session`, `update-session`, `delete-session`, `new-message`, `new-machine`, `update-machine`, `new-artifact`, `update-artifact`, `delete-artifact`, `update-account`, `relationship-updated`, `new-feed-post`, `kv-batch-update`
 
-## Events
+**2. Ephemeral Events** (`emitEphemeral`): Transient status updates
+- Event types: `activity`, `machine-activity`, `usage`, `machine-status`
 
-### Event Bus
-- eventbus allows sending and receiving events inside the process and between different processes
-- eventbus is local or redis based
-- Use "afterTx" to send events after transaction is committed successfully instead of directly emitting events
+**Recipient Filters:**
+- `all-user-authenticated-connections` - Default (all connection types)
+- `user-scoped-only` - Mobile/web only
+- `session-scoped` - Specific session + user-scoped
+- `machine-scoped-only` - Specific machine + user-scoped
 
-## Testing
+### Database Architecture (`prisma/schema.prisma`)
 
-- Write tests using Vitest
-- Test files should be named the same as source files with ".spec.ts" suffix
-- For utility functions, write tests BEFORE implementation
+**Core Entities:**
+- **Account** - User accounts with public key auth, GitHub integration, profile
+- **Session** - Encrypted chat sessions with metadata, agent state, encryption keys
+- **SessionMessage** - Messages within sessions with sequencing
+- **Machine** - Daemon instances with encrypted metadata and state
+- **Artifact** - End-to-end encrypted artifacts with header/body separation
+- **UserRelationship** - Friend relationships with status tracking
+- **UserFeedItem** - Activity feed with sequence-based ordering
+- **UserKVStore** - Encrypted key-value storage
+- **AccessKey** - Shared access keys for sessions
 
-## API Development
+**Key Patterns:**
+- **Versioned Fields**: `metadataVersion`, `agentStateVersion` for optimistic locking
+- **Encrypted Storage**: Sensitive data stored as encrypted strings/bytes
+- **Indexes**: Strategic indexes on `accountId`, `updatedAt`, `seq` for performance
 
-- API server is in `/sources/apps/api`
-- Routes are in `/sources/apps/api/routes`
-- Use Fastify with Zod for type-safe route definitions
-- Always validate inputs using Zod
-- **Idempotency**: Design all operations to be idempotent - clients may retry requests automatically and the backend must handle multiple invocations of the same operation gracefully, producing the same result as a single invocation
+### Transaction Management (`sources/storage/inTx.ts`)
+
+**`inTx()` wrapper** provides:
+- **Serializable Isolation Level** - Prevents race conditions
+- **Automatic Retry** - Up to 3 retries with exponential backoff for serialization failures
+- **After-commit Callbacks** - `afterTx()` for events that fire only after successful commit
+
+**CRITICAL**: Always use `inTx()` for database operations. Never run non-transactional operations (like file uploads) inside transactions.
+
+### Cryptographic Authentication (`sources/app/auth/auth.ts`)
+
+**Privacy-kit based authentication:**
+- **No Passwords** - Public key signature verification only
+- **Token Types**:
+  - Persistent tokens for API authentication
+  - Ephemeral 5-minute tokens for GitHub OAuth flow
+- **Token Caching** - In-memory cache for verified tokens
+- **User Invalidation** - Can invalidate all user's tokens
+
+### Security Model
+
+**End-to-End Encryption:**
+- Encryption keys generated on client
+- Server stores encrypted data only
+- Data encryption keys stored encrypted with server-side keys
+- Server cannot read user messages, metadata, or state
+
+**Authentication:**
+- Public key cryptography (NaCl)
+- No passwords stored
+- Challenge-response signature verification
+- Persistent tokens for API access
+
+## Development Guidelines
+
+For detailed server development rules, see @../.claude/rules/server.md
+
+Key points:
+- **Always use `inTx()`** for database operations
+- **Never run non-transactional operations** (like file uploads) inside transactions
+- **CRITICAL**: NEVER create migrations yourself - only run `yarn generate` when new types are needed
+- **Always use `privacyKit.decodeBase64` and `privacyKit.encodeBase64`** from privacy-kit instead of Buffer
+- **Action Files**: Create dedicated files in relevant `sources/app/` subfolders (e.g., `sessionAdd.ts`, `friendRemove.ts`)
+- **Return Values**: Only return essential data from action functions, not "just in case" values
+
+For shared code style guidelines, see @../.claude/rules/code-style.md
+For testing guidelines, see @../.claude/rules/testing.md
+For TypeScript rules, see @../.claude/rules/typescript.md
 
 ## Docker Deployment
 
-The project includes a multi-stage Dockerfile:
-1. Builder stage: Installs dependencies and builds the application
-2. Runner stage: Minimal runtime with only necessary files
-3. Exposes port 3000
-4. Requires FFmpeg and Python3 in the runtime
+**Multi-stage Dockerfile:**
+1. **Builder Stage** - Node.js 20 with dependencies and build
+2. **Runner Stage** - Minimal Node.js 20 runtime with FFmpeg and Python3
+3. **Exposed Port**: 3000
+4. **Command**: `yarn start`
 
-## Important Reminders
-
-1. Do what has been asked; nothing more, nothing less
-2. NEVER create files unless they're absolutely necessary for achieving your goal
-3. ALWAYS prefer editing an existing file to creating a new one
-4. NEVER proactively create documentation files (*.md) or README files unless explicitly requested
-5. Use 4 spaces for tabs (not 2 spaces)
-6. Use yarn instead of npm for all package management
+**Deployment Configs:**
+- `deploy/handy.yaml` - Kubernetes/main deployment
+- `deploy/happy-redis.yaml` - Redis deployment
 
 ## Debugging Notes
 
 ### Remote Logging Setup
-- Use `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING=true` env var to enable
+- Enable with `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING=true` env var
 - Server logs to `.logs/` directory with timestamped files (format: `MM-DD-HH-MM-SS.log`)
 - Mobile and CLI send logs to `/logs-combined-from-cli-and-mobile-for-simple-ai-debugging` endpoint
 
 ### Common Issues & Tells
 
-#### Socket/Connection Issues
-- **Tell**: "Sending update to user-scoped connection" but mobile not updating
-- **Tell**: Multiple "User disconnected" messages indicate socket instability
-- **Tell**: "Response from the Engine was empty" = Prisma database connection lost
+**Socket/Connection Issues:**
+- "Sending update to user-scoped connection" but mobile not updating
+- Multiple "User disconnected" messages indicate socket instability
+- "Response from the Engine was empty" = Prisma database connection lost
 
-#### Auth Flow Debugging
-- CLI must hit `/v1/auth/request` to create auth request
+**Auth Flow:**
+- CLI hits `/v1/auth/request` to create auth request
 - Mobile scans QR and hits `/v1/auth/response` to approve
-- **Tell**: 404 on `/v1/auth/response` = server likely restarted/crashed
-- **Tell**: "Auth failed - user not found" = token issue or user doesn't exist
+- 404 on `/v1/auth/response` = server likely restarted/crashed
+- "Auth failed - user not found" = token issue or user doesn't exist
 
-#### Session Creation Flow
+**Session Creation:**
 - Sessions created via POST `/v1/sessions` with tag-based deduplication
 - Server emits "new-session" update to all user connections
-- **Tell**: Sessions created but not showing = mobile app not processing updates
-- **Tell**: "pathname /" in mobile logs = app stuck at root screen
+- Sessions created but not showing = mobile app not processing updates
+- "pathname /" in mobile logs = app stuck at root screen
 
-#### Environment Variables
-- CLI: Use `yarn dev:local-server` (NOT `yarn dev`) to load `.env.dev-local-server`
+**Environment Variables:**
 - Server: Use `yarn dev` to start with proper env files
-- **Tell**: Wrong server URL = check `HAPPY_SERVER_URL` env var
-- **Tell**: Wrong home dir = check `HAPPY_HOME_DIR` (should be `~/.happy-dev` for local)
+- Wrong server URL = check `HAPPY_SERVER_URL` env var
+- Wrong home dir = check `HAPPY_HOME_DIR` (should be `~/.happy-dev` for local)
 
 ### Quick Diagnostic Commands
 
-#### IMPORTANT: Always Start Debugging With These
+**Always Start Debugging With These:**
 ```bash
-# 1. CHECK CURRENT TIME - Logs use local time, know what's current!
+# Check current time - logs use local time
 date
 
-# 2. CHECK LATEST LOG FILES - Server creates new logs on restart
+# Check latest log files - server creates new logs on restart
 ls -la .logs/*.log | tail -5
 
-# 3. VERIFY YOU'RE LOOKING AT CURRENT LOGS
-# Server logs are named: MM-DD-HH-MM-SS.log (month-day-hour-min-sec)
-# If current time is 13:45 and latest log is 08-15-10-57-02.log from 10:57,
-# that log started 3 hours ago but may still be active!
-tail -1 .logs/[LATEST_LOG_FILE]  # Check last entry timestamp
+# Verify you're looking at current logs
+# Logs named: MM-DD-HH-MM-SS.log (month-day-hour-min-sec)
+tail -1 .logs/[LATEST_LOG_FILE]
 ```
 
-#### Common Debugging Patterns
+**Common Debugging Patterns:**
 ```bash
 # Check server logs for errors
 tail -100 .logs/*.log | grep -E "(error|Error|ERROR|failed|Failed)"
@@ -249,33 +300,16 @@ tail -200 .logs/*.log | grep -E "(websocket|Socket.*connected|Sending update)" |
 # Track socket events from mobile client
 tail -300 .logs/*.log | grep "remote-log.*mobile" | grep -E "(SyncSocket|handleUpdate)" | tail -20
 
-# Monitor session creation flow end-to-end
+# Monitor session creation flow
 tail -500 .logs/*.log | grep "session-create" | tail -20
-tail -500 .logs/*.log | grep "cmed556s4002bvb2020igg8jf" -A 3 -B 3  # Replace with actual session ID
-
-# Check auth flow for sessions API
-tail -300 .logs/*.log | grep "auth-decorator.*sessions" | tail -10
+tail -500 .logs/*.log | grep "[SESSION_ID]" -A 3 -B 3
 
 # Debug machine registration and online status
 tail -500 .logs/*.log | grep -E "(machine-alive|machine-register|update-machine)" | tail -20
-tail -500 .logs/*.log | grep "GET /v1/machines" | tail -10
-tail -500 .logs/*.log | grep "POST /v1/machines" | tail -10
-
-# Check what mobile app is seeing
-tail -500 .logs/*.log | grep "📊 Storage" | tail -20
-tail -500 .logs/*.log | grep "applySessions.*active" | tail -10
 ```
 
-#### Time Format Reference
+### Time Format Reference
 - **CLI logs**: `[HH:MM:SS.mmm]` in local time (e.g., `[13:45:23.738]`)
 - **Server logs**: Include both `time` (Unix ms) and `localTime` (HH:MM:ss.mmm)
 - **Mobile logs**: Sent with `timestamp` in UTC, converted to `localTime` on server
 - **All consolidated logs**: Have `localTime` field for easy correlation
-- When writing a some operations on db, like adding friend, sending a notification - always create a dedicated file in relevant subfolder of the @sources/app/ folder. Good example is "friendAdd", always prefix with an entity type, then action that should be performed.
-- Never create migrations yourself, it is can be done only by human
-- Do not return stuff from action functions "just in case", only essential
-- Do not add logging when not asked
-- do not run non-transactional things (like uploadign files) in transactions
-- After writing an action - add a documentation comment that explains logic, also keep it in sync.
-- always use github usernames
-- Always use privacyKit.decodeBase64 and privacyKit.encodeBase64 from privacy-kit instead of using buffer

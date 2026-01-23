@@ -58,7 +58,7 @@ Push notifications are sent directly from your devices to each other, not from o
 
 ## Data Security
 
-- **End-to-End Encryption**: Using TweetNaCl (same as Signal) for all sensitive data
+- **End-to-End Encryption**: Using libsodium for all sensitive data
 - **Zero-Knowledge**: We cannot decrypt your data even if compelled
 - **Secure Key Exchange**: Encryption keys are transmitted between your devices only in encrypted form that we cannot access
 - **Open Source**: Our encryption implementation is publicly auditable
