@@ -54,17 +54,26 @@ export function enableErrorHandlers(app: Fastify) {
 
     async function serveSpaIndex(reply: any): Promise<any> {
         if (!uiDirRaw) {
+            reply.header('cache-control', 'no-cache');
             return reply.code(404).send({ error: 'Not found' });
         }
 
         const indexPath = join(rootDir, 'index.html');
-        const st = await stat(indexPath);
-        const mtimeMs = typeof st.mtimeMs === 'number' ? st.mtimeMs : st.mtime.getTime();
-        if (!cachedIndexHtml || cachedIndexHtml.mtimeMs !== mtimeMs) {
-            cachedIndexHtml = {
-                html: (await readFile(indexPath, 'utf-8')) + '\n<!-- Welcome to Happy Server! -->\n',
-                mtimeMs,
-            };
+        try {
+            const st = await stat(indexPath);
+            const mtimeMs = typeof st.mtimeMs === 'number' ? st.mtimeMs : st.mtime.getTime();
+            if (!cachedIndexHtml || cachedIndexHtml.mtimeMs !== mtimeMs) {
+                cachedIndexHtml = {
+                    html: (await readFile(indexPath, 'utf-8')) + '\n<!-- Welcome to Happy Server! -->\n',
+                    mtimeMs,
+                };
+            }
+        } catch (err: any) {
+            if (err?.code === 'ENOENT' || err?.code === 'ENOTDIR') {
+                reply.header('cache-control', 'no-cache');
+                return reply.code(404).send({ error: 'Not found' });
+            }
+            throw err;
         }
         reply.header('content-type', 'text/html; charset=utf-8');
         reply.header('cache-control', 'no-cache');
