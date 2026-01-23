@@ -495,10 +495,6 @@ export async function clearMachineId(): Promise<void> {
  * Read daemon state from local file
  */
 export async function readDaemonState(): Promise<DaemonLocallyPersistedState | null> {
-  if (!existsSync(configuration.daemonStateFile)) {
-    return null;
-  }
-
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       // Note: daemon state is written atomically via rename; retry helps if the reader races with filesystem.
@@ -515,6 +511,12 @@ export async function readDaemonState(): Promise<DaemonLocallyPersistedState | n
       if (error instanceof SyntaxError) {
         logger.warn(`[PERSISTENCE] Daemon state file is corrupt and could not be parsed: ${configuration.daemonStateFile}`, error);
         return null;
+      }
+      const err = error as NodeJS.ErrnoException;
+      if (err?.code === 'ENOENT') {
+        if (attempt === 3) return null;
+        await new Promise((resolve) => setTimeout(resolve, 15));
+        continue;
       }
       if (attempt === 3) {
         logger.warn(`[PERSISTENCE] Failed to read daemon state file after 3 attempts: ${configuration.daemonStateFile}`, error);
