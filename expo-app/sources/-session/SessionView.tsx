@@ -412,17 +412,17 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 modelMode={modelMode}
                 onModelModeChange={updateModelMode}
                 metadata={session.metadata}
-                profileId={session.metadata?.profileId ?? undefined}
-                onProfileClick={session.metadata?.profileId !== undefined ? () => {
-                    const profileId = session.metadata?.profileId;
-                    const profileInfo = (profileId === null || (typeof profileId === 'string' && profileId.trim() === ''))
-                        ? t('profiles.noProfile')
-                        : (typeof profileId === 'string' ? profileId : t('status.unknown'));
-                    Modal.alert(
-                        t('profiles.title'),
-                        `This session uses: ${profileInfo}\n\nProfiles are fixed per session. To use a different profile, start a new session.`,
-                    );
-                } : undefined}
+                    profileId={session.metadata?.profileId ?? undefined}
+                    onProfileClick={session.metadata?.profileId !== undefined ? () => {
+                        const profileId = session.metadata?.profileId;
+                        const profileInfo = (profileId === null || (typeof profileId === 'string' && profileId.trim() === ''))
+                            ? t('profiles.noProfile')
+                            : (typeof profileId === 'string' ? profileId : t('status.unknown'));
+                        Modal.alert(
+                            t('profiles.title'),
+                            `${t('profiles.sessionUses', { profile: profileInfo })}\n\n${t('profiles.profilesFixedPerSession')}`,
+                        );
+                    } : undefined}
                 connectionStatus={{
                     text: isResuming ? t('session.resuming') : (inactiveStatusText || sessionStatus.statusText),
                     color: sessionStatus.statusColor,
@@ -447,7 +447,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                                 await handleResumeSession();
                             } catch (e) {
                                 setMessage(text);
-                                Modal.alert('Error', e instanceof Error ? e.message : 'Failed to resume session');
+                                Modal.alert(t('common.error'), e instanceof Error ? e.message : t('errors.failedToResumeSession'));
                             }
                         })();
                         return;
@@ -458,7 +458,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                             await sync.submitMessage(sessionId, text);
                         } catch (e) {
                             setMessage(text);
-                            Modal.alert('Error', e instanceof Error ? e.message : 'Failed to send message');
+                            Modal.alert(t('common.error'), e instanceof Error ? e.message : t('errors.failedToSendMessage'));
                         }
                     })();
                 }}

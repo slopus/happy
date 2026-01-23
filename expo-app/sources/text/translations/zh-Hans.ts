@@ -252,6 +252,8 @@ export const zhHans: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
+        expInboxFriends: '收件箱与好友',
+        expInboxFriendsSubtitle: '启用收件箱标签页和好友功能',
         expCodexResume: '恢复 Codex',
         expCodexResumeSubtitle: '启用使用单独安装的 Codex 来恢复会话（实验性）',
         webFeatures: 'Web 功能',
@@ -327,6 +329,8 @@ export const zhHans: TranslationStructure = {
         failedToRemoveFriend: '删除好友失败',
         searchFailed: '搜索失败。请重试。',
         failedToSendRequest: '发送好友请求失败',
+        failedToResumeSession: '恢复会话失败',
+        failedToSendMessage: '发送消息失败',
         codexResumeNotInstalledTitle: '此机器未安装 Codex resume',
         codexResumeNotInstalledMessage:
             '要恢复 Codex 对话，请在目标机器上安装 Codex resume 服务器（机器详情 → Codex resume）。',
@@ -1156,6 +1160,8 @@ export const zhHans: TranslationStructure = {
     profiles: {
         title: '配置文件',
         subtitle: '管理您的配置文件',
+        sessionUses: ({ profile }: { profile: string }) => `此会话使用：${profile}`,
+        profilesFixedPerSession: '配置文件在每个会话中是固定的。要使用不同的配置文件，请启动新会话。',
         noProfile: '无配置文件',
         noProfileDescription: '创建配置文件以管理您的环境设置',
         addProfile: '添加配置文件',

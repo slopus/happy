@@ -84,6 +84,8 @@ export const it: TranslationStructure = {
     profiles: {
         title: 'Profili',
         subtitle: 'Gestisci i profili delle variabili ambiente per le sessioni',
+        sessionUses: ({ profile }: { profile: string }) => `Questa sessione usa: ${profile}`,
+        profilesFixedPerSession: 'I profili sono fissi per sessione. Per usare un profilo diverso, avvia una nuova sessione.',
         noProfile: 'Nessun profilo',
         noProfileDescription: 'Usa le impostazioni ambiente predefinite',
         defaultModel: 'Modello predefinito',
@@ -495,6 +497,8 @@ export const it: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
+        expInboxFriends: 'Posta in arrivo e amici',
+        expInboxFriendsSubtitle: 'Abilita la scheda Posta in arrivo e le funzionalità Amici',
         expCodexResume: 'Riprendi Codex',
         expCodexResumeSubtitle: 'Abilita la ripresa delle sessioni Codex usando un\'installazione separata (sperimentale)',
         webFeatures: 'Funzionalità web',
@@ -570,6 +574,8 @@ export const it: TranslationStructure = {
         failedToRemoveFriend: 'Impossibile rimuovere l\'amico',
         searchFailed: 'Ricerca non riuscita. Riprova.',
         failedToSendRequest: 'Impossibile inviare la richiesta di amicizia',
+        failedToResumeSession: 'Impossibile riprendere la sessione',
+        failedToSendMessage: 'Impossibile inviare il messaggio',
         codexResumeNotInstalledTitle: 'Codex resume non è installato su questa macchina',
         codexResumeNotInstalledMessage:
             'Per riprendere una conversazione di Codex, installa il server di ripresa di Codex sulla macchina di destinazione (Dettagli macchina → Ripresa Codex).',

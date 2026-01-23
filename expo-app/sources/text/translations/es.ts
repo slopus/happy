@@ -250,6 +250,8 @@ export const es: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
+        expInboxFriends: 'Bandeja de entrada y amigos',
+        expInboxFriendsSubtitle: 'Habilitar la pestaña de Bandeja de entrada y las funciones de amigos',
         expCodexResume: 'Codex resume',
         expCodexResumeSubtitle: 'Enable Codex session resume using a separate Codex install (experimental)',
         webFeatures: 'Características web',
@@ -325,6 +327,8 @@ export const es: TranslationStructure = {
         failedToRemoveFriend: 'No se pudo eliminar al amigo',
         searchFailed: 'La búsqueda falló. Por favor, intenta de nuevo.',
         failedToSendRequest: 'No se pudo enviar la solicitud de amistad',
+        failedToResumeSession: 'No se pudo reanudar la sesión',
+        failedToSendMessage: 'No se pudo enviar el mensaje',
         codexResumeNotInstalledTitle: 'Codex resume no está instalado en esta máquina',
         codexResumeNotInstalledMessage:
             'Para reanudar una conversación de Codex, instala el servidor de reanudación de Codex en la máquina de destino (Detalles de la máquina → Reanudación de Codex).',
@@ -1207,6 +1211,8 @@ export const es: TranslationStructure = {
         // Profile management feature
         title: 'Perfiles',
         subtitle: 'Gestionar perfiles de variables de entorno para sesiones',
+        sessionUses: ({ profile }: { profile: string }) => `Esta sesión usa: ${profile}`,
+        profilesFixedPerSession: 'Los perfiles son fijos por sesión. Para usar un perfil diferente, inicia una nueva sesión.',
         noProfile: 'Sin Perfil',
         noProfileDescription: 'Usar configuración de entorno predeterminada',
         defaultModel: 'Modelo Predeterminado',

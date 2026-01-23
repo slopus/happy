@@ -77,6 +77,8 @@ export const ja: TranslationStructure = {
     profiles: {
         title: 'プロファイル',
         subtitle: 'セッション用の環境変数プロファイルを管理',
+        sessionUses: ({ profile }: { profile: string }) => `このセッションは次を使用しています: ${profile}`,
+        profilesFixedPerSession: 'プロファイルはセッションごとに固定です。別のプロファイルを使うには新しいセッションを開始してください。',
         noProfile: 'プロファイルなし',
         noProfileDescription: 'デフォルトの環境設定を使用',
         defaultModel: 'デフォルトモデル',
@@ -488,6 +490,8 @@ export const ja: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
+        expInboxFriends: '受信箱と友だち',
+        expInboxFriendsSubtitle: '受信箱タブと友だち機能を有効化',
         expCodexResume: 'Codexの再開',
         expCodexResumeSubtitle: '再開操作専用のCodexを別途インストールして使用（実験的）',
         webFeatures: 'Web機能',
@@ -563,6 +567,8 @@ export const ja: TranslationStructure = {
         failedToRemoveFriend: '友達の削除に失敗しました',
         searchFailed: '検索に失敗しました。再試行してください。',
         failedToSendRequest: '友達リクエストの送信に失敗しました',
+        failedToResumeSession: 'セッションの再開に失敗しました',
+        failedToSendMessage: 'メッセージの送信に失敗しました',
         codexResumeNotInstalledTitle: 'このマシンには Codex resume がインストールされていません',
         codexResumeNotInstalledMessage:
             'Codex の会話を再開するには、対象のマシンに Codex resume サーバーをインストールしてください（マシン詳細 → Codex resume）。',

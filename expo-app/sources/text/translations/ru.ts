@@ -232,6 +232,8 @@ export const ru: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
+        expInboxFriends: 'Входящие и друзья',
+        expInboxFriendsSubtitle: 'Включить вкладку «Входящие» и функции друзей',
         expCodexResume: 'Возобновление Codex',
         expCodexResumeSubtitle: 'Разрешить возобновление сессий Codex через отдельную установку (экспериментально)',
         webFeatures: 'Веб-функции',
@@ -307,6 +309,8 @@ export const ru: TranslationStructure = {
         failedToRemoveFriend: 'Не удалось удалить друга',
         searchFailed: 'Поиск не удался. Пожалуйста, попробуйте снова.',
         failedToSendRequest: 'Не удалось отправить запрос в друзья',
+        failedToResumeSession: 'Не удалось возобновить сессию',
+        failedToSendMessage: 'Не удалось отправить сообщение',
         codexResumeNotInstalledTitle: 'Codex resume не установлен на этой машине',
         codexResumeNotInstalledMessage:
             'Чтобы возобновить разговор Codex, установите сервер возобновления Codex на целевой машине (Детали машины → Возобновление Codex).',
@@ -1229,6 +1233,8 @@ export const ru: TranslationStructure = {
         // Profile management feature
         title: 'Профили',
         subtitle: 'Управление профилями переменных окружения для сессий',
+        sessionUses: ({ profile }: { profile: string }) => `Эта сессия использует: ${profile}`,
+        profilesFixedPerSession: 'Профили фиксированы для каждой сессии. Чтобы использовать другой профиль, начните новую сессию.',
         noProfile: 'Без Профиля',
         noProfileDescription: 'Использовать настройки окружения по умолчанию',
         defaultModel: 'Модель по Умолчанию',

@@ -250,6 +250,8 @@ export const ca: TranslationStructure = {
         expZenSubtitle: 'Activa l’entrada de navegació Zen',
         expVoiceAuthFlow: 'Flux d’autenticació de veu',
         expVoiceAuthFlowSubtitle: 'Utilitza el flux autenticat de tokens de veu (amb paywall)',
+        expInboxFriends: 'Safata d’entrada i amics',
+        expInboxFriendsSubtitle: 'Activa la pestanya de Safata d’entrada i les funcions d’amics',
         expCodexResume: 'Reprendre Codex',
         expCodexResumeSubtitle: 'Permet reprendre sessions de Codex mitjançant una instal·lació separada (experimental)',
         webFeatures: 'Funcions web',
@@ -325,6 +327,8 @@ export const ca: TranslationStructure = {
         failedToRemoveFriend: 'No s\'ha pogut eliminar l\'amic',
         searchFailed: 'La cerca ha fallat. Si us plau, torna-ho a provar.',
         failedToSendRequest: 'No s\'ha pogut enviar la sol·licitud d\'amistat',
+        failedToResumeSession: 'No s’ha pogut reprendre la sessió',
+        failedToSendMessage: 'No s’ha pogut enviar el missatge',
         codexResumeNotInstalledTitle: 'Codex resume no està instal·lat en aquesta màquina',
         codexResumeNotInstalledMessage:
             'Per reprendre una conversa de Codex, instal·la el servidor de represa de Codex a la màquina de destinació (Detalls de la màquina → Represa de Codex).',
@@ -1154,6 +1158,8 @@ export const ca: TranslationStructure = {
     profiles: {
         title: 'Perfils',
         subtitle: 'Gestiona els teus perfils de configuració',
+        sessionUses: ({ profile }: { profile: string }) => `Aquesta sessió utilitza: ${profile}`,
+        profilesFixedPerSession: 'Els perfils són fixos per sessió. Per utilitzar un perfil diferent, inicia una sessió nova.',
         noProfile: 'Cap perfil',
         noProfileDescription: 'Crea un perfil per gestionar la teva configuració d\'entorn',
         addProfile: 'Afegeix un perfil',

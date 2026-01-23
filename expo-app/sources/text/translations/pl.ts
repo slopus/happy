@@ -261,6 +261,8 @@ export const pl: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
+        expInboxFriends: 'Skrzynka odbiorcza i znajomi',
+        expInboxFriendsSubtitle: 'Włącz kartę Skrzynka odbiorcza oraz funkcje znajomych',
         expCodexResume: 'Wznawianie Codex',
         expCodexResumeSubtitle: 'Umożliwia wznawianie sesji Codex przy użyciu osobnej instalacji (eksperymentalne)',
         webFeatures: 'Funkcje webowe',
@@ -336,6 +338,8 @@ export const pl: TranslationStructure = {
         failedToRemoveFriend: 'Nie udało się usunąć przyjaciela',
         searchFailed: 'Wyszukiwanie nie powiodło się. Spróbuj ponownie.',
         failedToSendRequest: 'Nie udało się wysłać zaproszenia do znajomych',
+        failedToResumeSession: 'Nie udało się wznowić sesji',
+        failedToSendMessage: 'Nie udało się wysłać wiadomości',
         codexResumeNotInstalledTitle: 'Codex resume nie jest zainstalowane na tej maszynie',
         codexResumeNotInstalledMessage:
             'Aby wznowić rozmowę Codex, zainstaluj serwer wznawiania Codex na maszynie docelowej (Szczegóły maszyny → Wznawianie Codex).',
@@ -1230,6 +1234,8 @@ export const pl: TranslationStructure = {
         // Profile management feature
         title: 'Profile',
         subtitle: 'Zarządzaj profilami zmiennych środowiskowych dla sesji',
+        sessionUses: ({ profile }: { profile: string }) => `Ta sesja używa: ${profile}`,
+        profilesFixedPerSession: 'Profile są stałe dla sesji. Aby użyć innego profilu, rozpocznij nową sesję.',
         noProfile: 'Brak Profilu',
         noProfileDescription: 'Użyj domyślnych ustawień środowiska',
         defaultModel: 'Domyślny Model',

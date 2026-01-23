@@ -250,6 +250,8 @@ export const pt: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
+        expInboxFriends: 'Caixa de entrada e amigos',
+        expInboxFriendsSubtitle: 'Ativar a aba Caixa de entrada e os recursos de amigos',
         expCodexResume: 'Retomar Codex',
         expCodexResumeSubtitle: 'Permite retomar sessões do Codex usando uma instalação separada (experimental)',
         webFeatures: 'Recursos web',
@@ -325,6 +327,8 @@ export const pt: TranslationStructure = {
         failedToRemoveFriend: 'Falha ao remover amigo',
         searchFailed: 'A busca falhou. Por favor, tente novamente.',
         failedToSendRequest: 'Falha ao enviar solicitação de amizade',
+        failedToResumeSession: 'Falha ao retomar a sessão',
+        failedToSendMessage: 'Falha ao enviar a mensagem',
         codexResumeNotInstalledTitle: 'O Codex resume não está instalado nesta máquina',
         codexResumeNotInstalledMessage:
             'Para retomar uma conversa do Codex, instale o servidor de retomada do Codex na máquina de destino (Detalhes da máquina → Retomada do Codex).',
@@ -1154,6 +1158,8 @@ export const pt: TranslationStructure = {
     profiles: {
         title: 'Perfis',
         subtitle: 'Gerencie seus perfis de configuração',
+        sessionUses: ({ profile }: { profile: string }) => `Esta sessão usa: ${profile}`,
+        profilesFixedPerSession: 'Os perfis são fixos por sessão. Para usar um perfil diferente, inicie uma nova sessão.',
         noProfile: 'Nenhum perfil',
         noProfileDescription: 'Crie um perfil para gerenciar sua configuração de ambiente',
         addProfile: 'Adicionar perfil',

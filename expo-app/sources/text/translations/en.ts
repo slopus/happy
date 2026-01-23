@@ -263,6 +263,8 @@ export const en = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
+        expInboxFriends: 'Inbox & Friends',
+        expInboxFriendsSubtitle: 'Enable the Inbox tab and Friends features',
         expCodexResume: 'Codex resume',
         expCodexResumeSubtitle: 'Enable Codex session resume using a separate Codex install (experimental)',
         webFeatures: 'Web Features',
@@ -338,6 +340,8 @@ export const en = {
         failedToRemoveFriend: 'Failed to remove friend',
         searchFailed: 'Search failed. Please try again.',
         failedToSendRequest: 'Failed to send friend request',
+        failedToResumeSession: 'Failed to resume session',
+        failedToSendMessage: 'Failed to send message',
         codexResumeNotInstalledTitle: 'Codex resume is not installed on this machine',
         codexResumeNotInstalledMessage:
             'To resume a Codex conversation, install the Codex resume server on the target machine (Machine Details → Codex resume).',
@@ -1220,6 +1224,8 @@ export const en = {
         // Profile management feature
         title: 'Profiles',
         subtitle: 'Manage environment variable profiles for sessions',
+        sessionUses: ({ profile }: { profile: string }) => `This session uses: ${profile}`,
+        profilesFixedPerSession: 'Profiles are fixed per session. To use a different profile, start a new session.',
         noProfile: 'Default Environment',
         noProfileDescription: 'Use the machine environment without profile variables',
         defaultModel: 'Default Model',
