@@ -10,6 +10,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { MachineSelector } from '@/components/newSession/MachineSelector';
 import { PathSelector } from '@/components/newSession/PathSelector';
+import { WizardSectionHeaderRow } from '@/components/newSession/WizardSectionHeaderRow';
 import { ProfilesList } from '@/components/profiles/ProfilesList';
 import { SessionTypeSelectorRows } from '@/components/SessionTypeSelector';
 import { layout } from '@/components/layout';
@@ -20,6 +21,7 @@ import { getProfileEnvironmentVariables, type AIBackendProfile } from '@/sync/se
 import { useSetting } from '@/sync/storage';
 import type { Machine } from '@/sync/storageTypes';
 import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
+import { getPermissionModeOptionsForAgentType } from '@/sync/permissionModeOptions';
 import type { SecretSatisfactionResult } from '@/utils/secretSatisfaction';
 
 type CLIAvailability = {
@@ -390,21 +392,21 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                         borderColor: theme.colors.box.warning.border,
                                     }}>
                                         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-                                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
-                                                <Ionicons
-                                                    name={codexResumeBanner.updateAvailable ? 'alert-circle-outline' : codexResumeBanner.installed ? 'checkmark-circle-outline' : 'warning'}
-                                                    size={16}
-                                                    color={codexResumeBanner.updateAvailable ? theme.colors.warning : theme.colors.textSecondary}
-                                                />
-                                                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                    Codex resume
-                                                </Text>
-                                                {codexResumeBanner.updateAvailable ? (
-                                                    <Text style={{ fontSize: 11, color: theme.colors.warning, ...Typography.default() }}>
-                                                        Update available
-                                                    </Text>
-                                                ) : null}
-                                            </View>
+	                                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
+	                                                <Ionicons
+	                                                    name={codexResumeBanner.updateAvailable ? 'alert-circle-outline' : codexResumeBanner.installed ? 'checkmark-circle-outline' : 'warning'}
+	                                                    size={16}
+	                                                    color={codexResumeBanner.updateAvailable ? theme.colors.warning : theme.colors.textSecondary}
+	                                                />
+	                                                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
+	                                                    {t('newSession.codexResumeBanner.title')}
+	                                                </Text>
+	                                                {codexResumeBanner.updateAvailable ? (
+	                                                    <Text style={{ fontSize: 11, color: theme.colors.warning, ...Typography.default() }}>
+	                                                        {t('newSession.codexResumeBanner.updateAvailable')}
+	                                                    </Text>
+	                                                ) : null}
+	                                            </View>
                                             <Pressable
                                                 onPress={codexResumeBanner.onCheckUpdates}
                                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -418,17 +420,19 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                             </Pressable>
                                         </View>
 
-                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            System codex: {codexResumeBanner.systemCodexVersion ?? 'unknown'}{'\n'}
-                                            codex-mcp-resume: {codexResumeBanner.installedVersion ?? (codexResumeBanner.installed === false ? 'not installed' : 'unknown')}
-                                            {codexResumeBanner.latestVersion ? ` (latest ${codexResumeBanner.latestVersion})` : ''}
-                                        </Text>
+	                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+	                                            {t('newSession.codexResumeBanner.systemCodexVersion', { version: codexResumeBanner.systemCodexVersion ?? t('status.unknown') })}{'\n'}
+	                                            {t('newSession.codexResumeBanner.resumeServerVersion', {
+	                                                version: codexResumeBanner.installedVersion ?? (codexResumeBanner.installed === false ? t('newSession.codexResumeBanner.notInstalled') : t('status.unknown'))
+	                                            })}
+	                                            {codexResumeBanner.latestVersion ? ` ${t('newSession.codexResumeBanner.latestVersion', { version: codexResumeBanner.latestVersion })}` : ''}
+	                                        </Text>
 
-                                        {codexResumeBanner.registryError ? (
-                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginTop: 6, ...Typography.default() }}>
-                                                Registry check failed: {codexResumeBanner.registryError}
-                                            </Text>
-                                        ) : null}
+	                                        {codexResumeBanner.registryError ? (
+	                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginTop: 6, ...Typography.default() }}>
+	                                                {t('newSession.codexResumeBanner.registryCheckFailed', { error: codexResumeBanner.registryError })}
+	                                            </Text>
+	                                        ) : null}
 
                                         <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
                                             <Pressable
@@ -441,16 +445,16 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                                     backgroundColor: theme.colors.button.primary.background,
                                                     opacity: codexResumeBanner.isInstalling ? 0.6 : 1,
                                                 }}
-                                            >
-                                                <Text style={{ color: theme.colors.button.primary.text, fontSize: 12, ...Typography.default('semiBold') }}>
-                                                    {codexResumeBanner.installed === false
-                                                        ? 'Install'
-                                                        : codexResumeBanner.updateAvailable
-                                                            ? 'Update'
-                                                            : 'Reinstall'}
-                                                </Text>
-                                            </Pressable>
-                                        </View>
+	                                            >
+	                                                <Text style={{ color: theme.colors.button.primary.text, fontSize: 12, ...Typography.default('semiBold') }}>
+	                                                    {codexResumeBanner.installed === false
+	                                                        ? t('newSession.codexResumeBanner.install')
+	                                                        : codexResumeBanner.updateAvailable
+	                                                            ? t('newSession.codexResumeBanner.update')
+	                                                            : t('newSession.codexResumeBanner.reinstall')}
+	                                                </Text>
+	                                            </Pressable>
+	                                        </View>
                                     </View>
                                 )}
 
@@ -785,23 +789,19 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
 
                                 {/* Section 2: Machine Selection */}
                                 <View onLayout={registerWizardSectionOffset('machine')}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <View style={styles.wizardSectionHeaderRow}>
-                                            <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
-                                            <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>{t('newSession.selectMachineTitle')}</Text>
-                                        </View>
-                                        {onRefreshMachines ? (
-                                            <Pressable
-                                                onPress={onRefreshMachines}
-                                                hitSlop={10}
-                                                style={{ padding: 2 }}
-                                                accessibilityRole="button"
-                                                accessibilityLabel={t('common.refresh')}
-                                            >
-                                                <Ionicons name="refresh-outline" size={18} color={theme.colors.textSecondary} />
-                                            </Pressable>
-                                        ) : null}
-                                    </View>
+                                    <WizardSectionHeaderRow
+                                        rowStyle={styles.wizardSectionHeaderRow}
+                                        iconName="desktop-outline"
+                                        iconColor={theme.colors.text}
+                                        title={t('newSession.selectMachineTitle')}
+                                        titleStyle={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}
+                                        action={onRefreshMachines ? {
+                                            accessibilityLabel: t('common.refresh'),
+                                            iconName: 'refresh-outline',
+                                            iconColor: theme.colors.textSecondary,
+                                            onPress: onRefreshMachines,
+                                        } : undefined}
+                                    />
                                 </View>
                                 <Text style={styles.sectionDescription}>
                                     {t('newSession.selectMachineDescription')}
@@ -873,20 +873,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                     {t('newSession.selectPermissionModeDescription')}
                                 </Text>
                                 <ItemGroup title="">
-                                    {(agentType === 'codex' || agentType === 'gemini'
-                                        ? [
-                                            { value: 'default' as PermissionMode, label: t(agentType === 'codex' ? 'agentInput.codexPermissionMode.default' : 'agentInput.geminiPermissionMode.default'), description: 'Use CLI permission settings', icon: 'shield-outline' },
-                                            { value: 'read-only' as PermissionMode, label: t(agentType === 'codex' ? 'agentInput.codexPermissionMode.readOnly' : 'agentInput.geminiPermissionMode.readOnly'), description: 'Read-only mode', icon: 'eye-outline' },
-                                            { value: 'safe-yolo' as PermissionMode, label: t(agentType === 'codex' ? 'agentInput.codexPermissionMode.safeYolo' : 'agentInput.geminiPermissionMode.safeYolo'), description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
-                                            { value: 'yolo' as PermissionMode, label: t(agentType === 'codex' ? 'agentInput.codexPermissionMode.yolo' : 'agentInput.geminiPermissionMode.yolo'), description: 'Full access, skip permissions', icon: 'flash-outline' },
-                                        ]
-                                        : [
-                                            { value: 'default' as PermissionMode, label: t('agentInput.permissionMode.default'), description: 'Ask for permissions', icon: 'shield-outline' },
-                                            { value: 'acceptEdits' as PermissionMode, label: t('agentInput.permissionMode.acceptEdits'), description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                                            { value: 'plan' as PermissionMode, label: t('agentInput.permissionMode.plan'), description: 'Plan before executing', icon: 'list-outline' },
-                                            { value: 'bypassPermissions' as PermissionMode, label: t('agentInput.permissionMode.bypassPermissions'), description: 'Skip all permissions', icon: 'flash-outline' },
-                                        ]
-                                    ).map((option, index, array) => (
+                                    {getPermissionModeOptionsForAgentType(agentType).map((option, index, array) => (
                                         <Item
                                             key={option.value}
                                             title={option.label}

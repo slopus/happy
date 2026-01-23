@@ -433,6 +433,18 @@ export const zhHans: TranslationStructure = {
             clearAndRemove: '清除',
             helpText: '你可以在“会话信息”页面找到会话 ID。',
         },
+        codexResumeBanner: {
+            title: 'Codex resume',
+            updateAvailable: '有可用更新',
+            systemCodexVersion: ({ version }: { version: string }) => `系统 codex：${version}`,
+            resumeServerVersion: ({ version }: { version: string }) => `Codex resume 服务器：${version}`,
+            notInstalled: '未安装',
+            latestVersion: ({ version }: { version: string }) => `(最新 ${version})`,
+            registryCheckFailed: ({ error }: { error: string }) => `注册表检查失败：${error}`,
+            install: '安装',
+            update: '更新',
+            reinstall: '重新安装',
+        },
     },
 
     sessionHistory: {

@@ -431,6 +431,18 @@ export const pt: TranslationStructure = {
             clearAndRemove: 'Limpar',
             helpText: 'Você pode encontrar os IDs de sessão na tela de informações da sessão.',
         },
+        codexResumeBanner: {
+            title: 'Codex resume',
+            updateAvailable: 'Atualização disponível',
+            systemCodexVersion: ({ version }: { version: string }) => `Codex do sistema: ${version}`,
+            resumeServerVersion: ({ version }: { version: string }) => `Servidor do Codex resume: ${version}`,
+            notInstalled: 'não instalado',
+            latestVersion: ({ version }: { version: string }) => `(mais recente ${version})`,
+            registryCheckFailed: ({ error }: { error: string }) => `Falha na verificação do registro: ${error}`,
+            install: 'Instalar',
+            update: 'Atualizar',
+            reinstall: 'Reinstalar',
+        },
     },
 
     sessionHistory: {

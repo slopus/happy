@@ -413,6 +413,18 @@ export const ru: TranslationStructure = {
             clearAndRemove: 'Очистить',
             helpText: 'ID сессии можно найти на экране информации о сессии.',
         },
+        codexResumeBanner: {
+            title: 'Codex resume',
+            updateAvailable: 'Доступно обновление',
+            systemCodexVersion: ({ version }: { version: string }) => `Системный Codex: ${version}`,
+            resumeServerVersion: ({ version }: { version: string }) => `Сервер Codex resume: ${version}`,
+            notInstalled: 'не установлен',
+            latestVersion: ({ version }: { version: string }) => `(последняя ${version})`,
+            registryCheckFailed: ({ error }: { error: string }) => `Проверка реестра не удалась: ${error}`,
+            install: 'Установить',
+            update: 'Обновить',
+            reinstall: 'Переустановить',
+        },
     },
 
     sessionHistory: {

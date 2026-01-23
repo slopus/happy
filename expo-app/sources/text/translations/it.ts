@@ -678,6 +678,18 @@ export const it: TranslationStructure = {
             clearAndRemove: 'Cancella',
             helpText: 'Puoi trovare gli ID sessione nella schermata Info sessione.',
         },
+        codexResumeBanner: {
+            title: 'Codex resume',
+            updateAvailable: 'Aggiornamento disponibile',
+            systemCodexVersion: ({ version }: { version: string }) => `Codex di sistema: ${version}`,
+            resumeServerVersion: ({ version }: { version: string }) => `Server Codex resume: ${version}`,
+            notInstalled: 'non installato',
+            latestVersion: ({ version }: { version: string }) => `(più recente ${version})`,
+            registryCheckFailed: ({ error }: { error: string }) => `Controllo del registro non riuscito: ${error}`,
+            install: 'Installa',
+            update: 'Aggiorna',
+            reinstall: 'Reinstalla',
+        },
     },
 
     sessionHistory: {

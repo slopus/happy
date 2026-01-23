@@ -671,6 +671,18 @@ export const ja: TranslationStructure = {
             clearAndRemove: 'クリア',
             helpText: 'セッションIDは「セッション情報」画面で確認できます。',
         },
+        codexResumeBanner: {
+            title: 'Codex resume',
+            updateAvailable: '更新があります',
+            systemCodexVersion: ({ version }: { version: string }) => `システム Codex: ${version}`,
+            resumeServerVersion: ({ version }: { version: string }) => `Codex resume サーバー: ${version}`,
+            notInstalled: '未インストール',
+            latestVersion: ({ version }: { version: string }) => `(最新 ${version})`,
+            registryCheckFailed: ({ error }: { error: string }) => `レジストリの確認に失敗しました: ${error}`,
+            install: 'インストール',
+            update: '更新',
+            reinstall: '再インストール',
+        },
     },
 
     sessionHistory: {

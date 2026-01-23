@@ -444,6 +444,18 @@ export const en = {
             clearAndRemove: 'Clear',
             helpText: 'You can find session IDs in the Session Info screen.',
         },
+        codexResumeBanner: {
+            title: 'Codex resume',
+            updateAvailable: 'Update available',
+            systemCodexVersion: ({ version }: { version: string }) => `System codex: ${version}`,
+            resumeServerVersion: ({ version }: { version: string }) => `Codex resume server: ${version}`,
+            notInstalled: 'not installed',
+            latestVersion: ({ version }: { version: string }) => `(latest ${version})`,
+            registryCheckFailed: ({ error }: { error: string }) => `Registry check failed: ${error}`,
+            install: 'Install',
+            update: 'Update',
+            reinstall: 'Reinstall',
+        },
     },
 
     sessionHistory: {
