@@ -79,4 +79,27 @@ describe('terminalAttachmentInfo', () => {
       dir.removeCallback();
     }
   });
+
+  it('does not read legacy files when sessionId contains path separators', async () => {
+    const dir = tmp.dirSync({ unsafeCleanup: true });
+    try {
+      const sessionId = '../../pwned';
+      await mkdir(join(dir.name, 'terminal', 'sessions'), { recursive: true });
+
+      // If the legacy path fallback were used for this sessionId, it would resolve outside the sessions dir.
+      // Ensure we don't read it even if such a file exists.
+      const traversedPath = join(dir.name, 'terminal', 'sessions', `${sessionId}.json`);
+      await writeFile(traversedPath, JSON.stringify({
+        version: 1,
+        sessionId,
+        terminal: { mode: 'plain', plain: { command: 'echo hi', cwd: '/tmp' } },
+        updatedAt: Date.now(),
+      }, null, 2), 'utf8');
+
+      const info = await readTerminalAttachmentInfo({ happyHomeDir: dir.name, sessionId });
+      expect(info).toBeNull();
+    } finally {
+      dir.removeCallback();
+    }
+  });
 });
