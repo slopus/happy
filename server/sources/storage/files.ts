@@ -42,7 +42,7 @@ export function initFilesS3FromEnv(env: NodeJS.ProcessEnv = process.env): void {
             return `${s3public}/${path}`;
         },
         async writePublicFile(path: string, data: Uint8Array) {
-            await s3client.putObject(s3bucket, path, data);
+            await s3client.putObject(s3bucket, path, Buffer.from(data));
         },
     };
 }
