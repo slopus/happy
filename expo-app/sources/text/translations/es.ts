@@ -435,7 +435,7 @@ export const es: TranslationStructure = {
         inputPlaceholder: 'Escriba un mensaje ...',
         resuming: 'Reanudando...',
         resumeFailed: 'No se pudo reanudar la sesión',
-        inactiveResumable: 'Inactiva (reanundable)',
+        inactiveResumable: 'Inactiva (reanudable)',
         inactiveNotResumable: 'Inactiva',
     },
 
