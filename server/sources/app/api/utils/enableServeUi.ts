@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { UiConfig } from "@/app/api/uiConfig";
 import { extname, resolve, sep } from "node:path";
 import { readFile, stat } from "node:fs/promises";
+import { warn } from "@/utils/log";
 
 type AnyFastifyInstance = FastifyInstance<any, any, any, any, any>;
 
@@ -74,7 +75,14 @@ export function enableServeUi(app: AnyFastifyInstance, ui: UiConfig) {
 
     async function sendIndexHtml(reply: any) {
         const indexPath = resolve(root, 'index.html');
-        const html = (await readFile(indexPath, 'utf-8')) + '\n<!-- Welcome to Happy Server! -->\n';
+        let html: string;
+        try {
+            html = (await readFile(indexPath, 'utf-8')) + '\n<!-- Welcome to Happy Server! -->\n';
+        } catch (err) {
+            warn({ err, indexPath }, 'UI index.html not found (check UI build dir configuration)');
+            reply.header('cache-control', 'no-cache');
+            return reply.code(404).send({ error: 'Not found' });
+        }
         reply.header('content-type', 'text/html; charset=utf-8');
         reply.header('cache-control', 'no-cache');
         return reply.send(html);
