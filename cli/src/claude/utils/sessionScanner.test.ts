@@ -188,9 +188,8 @@ describe('sessionScanner', () => {
       message: { content: 'hello from alt dir' }
     }) + '\n')
 
-    // Intentionally pass a "future" API shape to force a RED test:
-    // current implementation only accepts a string sessionId and will watch the wrong path.
-    ;(scanner as any).onNewSession({ sessionId, transcriptPath })
+    if (!scanner) throw new Error('scanner is not initialized')
+    scanner.onNewSession({ sessionId, transcriptPath })
 
     await waitFor(() => collectedMessages.length >= 1, 500)
 
@@ -220,11 +219,10 @@ describe('sessionScanner', () => {
 
     scanner = await createSessionScanner({
       sessionId,
-      // Force a RED test: current implementation ignores this and will watch the wrong path
       transcriptPath,
       workingDirectory: testDir,
       onMessage: (msg: RawJSONLines) => collectedMessages.push(msg),
-    } as any)
+    })
 
     // Should not emit existing history on startup
     expect(collectedMessages).toHaveLength(0)
