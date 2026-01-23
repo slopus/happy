@@ -4,7 +4,6 @@
     "appVersionSource": "remote"
   },
   "build": {
-    "base": "expo-app",
     "development": {
       "autoIncrement": true,
       "developmentClient": true,
@@ -50,9 +49,9 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "steve@bulkovo.com",
-        "ascAppId": "126165711",
-        "appleTeamId": "466DQWDR8C"
+        "appleId": "aipaw@live.cn",
+        "ascAppId": "6758196715",
+        "appleTeamId": "G365J5PZA2"
       }
     }
   }

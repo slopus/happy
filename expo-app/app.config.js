@@ -1,13 +1,13 @@
 const variant = process.env.APP_ENV || 'development';
 const name = {
-    development: "Happy (dev)",
-    preview: "Happy (preview)",
-    production: "Happy"
+    development: "Happy Code (dev)",
+    preview: "Happy Code (preview)",
+    production: "Happy Code"
 }[variant];
 const bundleId = {
-    development: "com.slopus.happy.dev",
-    preview: "com.slopus.happy.preview",
-    production: "com.ex3ndr.happy"
+    development: "com.hitosea.happy.dev",
+    preview: "com.hitosea.happy.preview",
+    production: "com.hitosea.happy"
 }[variant];
 
 export default {
@@ -150,7 +150,7 @@ export default {
             ]
         ],
         updates: {
-            url: "https://u.expo.dev/4558dd3d-cd5a-47cd-bad9-e591a241cc06",
+            url: "https://u.expo.dev/c25469ee-cbd3-483f-b673-d3538c469d9e",
             requestHeaders: {
                 "expo-channel-name": "production"
             }
@@ -163,7 +163,7 @@ export default {
                 root: "./sources/app"
             },
             eas: {
-                projectId: "4558dd3d-cd5a-47cd-bad9-e591a241cc06"
+                projectId: "c25469ee-cbd3-483f-b673-d3538c469d9e"
             },
             app: {
                 postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
@@ -172,6 +172,6 @@ export default {
                 revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE
             }
         },
-        owner: "bulkacorp"
+        owner: "hitosea"
     }
 };

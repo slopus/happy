@@ -7,7 +7,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>Happy (dev)</string>
+    <string>Happy Code (dev)</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -28,7 +28,7 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>happy</string>
-          <string>com.slopus.happy.dev</string>
+          <string>com.hitosea.happy.dev</string>
         </array>
       </dict>
       <dict>
