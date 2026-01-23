@@ -70,6 +70,23 @@ describe('registerCommonHandlers preview-env', () => {
         expect(result.values.PATH.value).toBe('/opt/bin:/usr/bin');
     });
 
+    it('accepts lowercase env var keys', async () => {
+        process.env.npm_config_registry = 'https://example.test';
+        process.env.HAPPY_ENV_PREVIEW_SECRETS = 'none';
+
+        const { call } = createTestRpcManager();
+
+        const result = await call<{ policy: string; values: Record<string, { display: string; value: string | null }> }, {
+            keys: string[];
+        }>('preview-env', {
+            keys: ['npm_config_registry'],
+        });
+
+        expect(result.policy).toBe('none');
+        expect(result.values.npm_config_registry.display).toBe('full');
+        expect(result.values.npm_config_registry.value).toBe('https://example.test');
+    });
+
     it('hides sensitive values when HAPPY_ENV_PREVIEW_SECRETS=none', async () => {
         process.env.SECRET_TOKEN = 'sk-1234567890';
         process.env.HAPPY_ENV_PREVIEW_SECRETS = 'none';
