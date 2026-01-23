@@ -158,6 +158,9 @@ export const ca: TranslationStructure = {
         secrets: 'Secrets',
         secretsSubtitle: 'Gestiona els secrets desats (no es tornaran a mostrar després d’introduir-los)',
         terminal: 'Terminal',
+        session: 'Sessió',
+        sessionSubtitleTmuxEnabled: 'Tmux activat',
+        sessionSubtitleMessageSendingAndTmux: 'Enviament de missatges i tmux',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Compte de ${service} connectat`,

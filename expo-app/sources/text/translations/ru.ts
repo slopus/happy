@@ -140,6 +140,9 @@ export const ru: TranslationStructure = {
         secrets: 'Секреты',
         secretsSubtitle: 'Управление сохранёнными секретами (после ввода больше не показываются)',
         terminal: 'Терминал',
+        session: 'Сессия',
+        sessionSubtitleTmuxEnabled: 'Tmux включён',
+        sessionSubtitleMessageSendingAndTmux: 'Отправка сообщений и tmux',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,

@@ -405,8 +405,8 @@ export const SettingsView = React.memo(function SettingsView() {
                     onPress={() => router.push('/(app)/settings/features')}
                 />
                 <Item
-                    title="Session"
-                    subtitle={terminalUseTmux ? 'Tmux enabled' : 'Message sending and tmux'}
+                    title={t('settings.session')}
+                    subtitle={terminalUseTmux ? t('settings.sessionSubtitleTmuxEnabled') : t('settings.sessionSubtitleMessageSendingAndTmux')}
                     icon={<Ionicons name="terminal-outline" size={29} color="#5856D6" />}
                     onPress={() => router.push('/(app)/settings/session')}
                 />

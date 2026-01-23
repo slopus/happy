@@ -160,6 +160,9 @@ export const zhHans: TranslationStructure = {
         secrets: '机密',
         secretsSubtitle: '管理已保存的机密（输入后将不再显示）',
         terminal: '终端',
+        session: '会话',
+        sessionSubtitleTmuxEnabled: '已启用 Tmux',
+        sessionSubtitleMessageSendingAndTmux: '消息发送与 tmux',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已连接 ${service} 账户`,

@@ -396,6 +396,9 @@ export const ja: TranslationStructure = {
         secrets: 'シークレット',
         secretsSubtitle: '保存したシークレットを管理（入力後は再表示されません）',
         terminal: 'ターミナル',
+        session: 'セッション',
+        sessionSubtitleTmuxEnabled: 'Tmux 有効',
+        sessionSubtitleMessageSendingAndTmux: 'メッセージ送信と tmux',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service}アカウントが接続されました`,

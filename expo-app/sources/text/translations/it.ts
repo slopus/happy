@@ -403,6 +403,9 @@ export const it: TranslationStructure = {
         secrets: 'Segreti',
         secretsSubtitle: 'Gestisci i segreti salvati (non verranno più mostrati dopo l’inserimento)',
         terminal: 'Terminale',
+        session: 'Sessione',
+        sessionSubtitleTmuxEnabled: 'Tmux abilitato',
+        sessionSubtitleMessageSendingAndTmux: 'Invio messaggi e tmux',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Account ${service} collegato`,

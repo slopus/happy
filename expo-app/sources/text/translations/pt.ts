@@ -158,6 +158,9 @@ export const pt: TranslationStructure = {
         secrets: 'Segredos',
         secretsSubtitle: 'Gerencie os segredos salvos (não serão exibidos novamente após o envio)',
         terminal: 'Terminal',
+        session: 'Sessão',
+        sessionSubtitleTmuxEnabled: 'Tmux ativado',
+        sessionSubtitleMessageSendingAndTmux: 'Envio de mensagens e tmux',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Conta ${service} conectada`,

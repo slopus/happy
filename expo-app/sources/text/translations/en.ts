@@ -171,6 +171,9 @@ export const en = {
         secrets: 'Secrets',
         secretsSubtitle: 'Manage saved secrets (never shown again after entry)',
         terminal: 'Terminal',
+        session: 'Session',
+        sessionSubtitleTmuxEnabled: 'Tmux enabled',
+        sessionSubtitleMessageSendingAndTmux: 'Message sending and tmux',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service} account connected`,
