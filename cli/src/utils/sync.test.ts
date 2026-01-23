@@ -41,5 +41,36 @@ describe('InvalidateSync', () => {
         await first;
         expect(runs).toEqual([1, 2]);
     });
-});
 
+    it('reports increasing failuresCount even when using a custom backoff', async () => {
+        const failuresCounts: number[] = [];
+        const errors: unknown[] = [];
+
+        const backoff = async <T>(cb: () => Promise<T>): Promise<T> => {
+            let lastError: unknown;
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    return await cb();
+                } catch (e) {
+                    lastError = e;
+                }
+            }
+            throw lastError;
+        };
+
+        const sync = new InvalidateSync(async () => {
+            throw new Error('boom');
+        }, {
+            backoff,
+            onError: (e, failuresCount) => {
+                errors.push(e);
+                failuresCounts.push(failuresCount);
+            },
+        });
+
+        await sync.invalidateAndAwait();
+
+        expect(errors).toHaveLength(3);
+        expect(failuresCounts).toEqual([1, 2, 3]);
+    });
+});
