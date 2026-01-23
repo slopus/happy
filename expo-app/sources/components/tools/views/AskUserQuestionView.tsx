@@ -6,6 +6,7 @@ import { ToolSectionView } from '../ToolSectionView';
 import { sessionDeny, sessionInteractionRespond } from '@/sync/ops';
 import { isRpcMethodNotAvailableError } from '@/sync/rpcErrors';
 import { sync } from '@/sync/sync';
+import { Modal } from '@/modal';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -237,7 +238,8 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
         try {
             const toolCallId = tool.permission?.id;
             if (!toolCallId) {
-                throw new Error('AskUserQuestion is missing tool.permission.id');
+                Modal.alert(t('common.error'), t('errors.missingPermissionId'));
+                return;
             }
 
             try {

@@ -8,9 +8,16 @@ import type { ToolCall } from '@/sync/typesMessage';
 const sessionDeny = vi.fn();
 const sendMessage = vi.fn();
 const sessionInteractionRespond = vi.fn();
+const modalAlert = vi.fn();
 
 vi.mock('@/text', () => ({
     t: (key: string) => key,
+}));
+
+vi.mock('@/modal', () => ({
+    Modal: {
+        alert: (...args: any[]) => modalAlert(...args),
+    },
 }));
 
 vi.mock('react-native', () => ({
@@ -60,6 +67,7 @@ describe('AskUserQuestionView', () => {
         sessionDeny.mockReset();
         sendMessage.mockReset();
         sessionInteractionRespond.mockReset();
+        modalAlert.mockReset();
     });
 
     it('submits answers via interaction RPC without sending a follow-up user message', async () => {
@@ -109,5 +117,53 @@ describe('AskUserQuestionView', () => {
         expect(sessionInteractionRespond).toHaveBeenCalledTimes(1);
         expect(sessionDeny).toHaveBeenCalledTimes(0);
         expect(sendMessage).toHaveBeenCalledTimes(0);
+    });
+
+    it('shows an error when permission id is missing and does not submit', async () => {
+        const { AskUserQuestionView } = await import('./AskUserQuestionView');
+
+        const tool: ToolCall = {
+            name: 'AskUserQuestion',
+            state: 'running',
+            input: {
+                questions: [
+                    {
+                        header: 'Q1',
+                        question: 'Pick one',
+                        multiSelect: false,
+                        options: [{ label: 'A', description: '' }, { label: 'B', description: '' }],
+                    },
+                ],
+            },
+            createdAt: Date.now(),
+            startedAt: Date.now(),
+            completedAt: null,
+            description: null,
+            permission: undefined,
+        };
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        await act(async () => {
+            tree = renderer.create(
+                React.createElement(AskUserQuestionView, { tool, sessionId: 's1', metadata: null, messages: [] }),
+            );
+        });
+
+        // Select the first option so submit becomes enabled.
+        await act(async () => {
+            const touchables = tree!.root.findAllByType('TouchableOpacity' as any);
+            await touchables[0].props.onPress();
+        });
+
+        // Press submit (last touchable in this view).
+        await act(async () => {
+            const touchables = tree!.root.findAllByType('TouchableOpacity' as any);
+            await touchables[touchables.length - 1].props.onPress();
+        });
+
+        expect(sessionInteractionRespond).toHaveBeenCalledTimes(0);
+        expect(sessionDeny).toHaveBeenCalledTimes(0);
+        expect(sendMessage).toHaveBeenCalledTimes(0);
+        expect(modalAlert).toHaveBeenCalledWith('common.error', 'errors.missingPermissionId');
     });
 });
