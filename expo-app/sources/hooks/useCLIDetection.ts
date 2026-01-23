@@ -3,6 +3,7 @@ import { useMachine } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import type { CapabilityDetectResult, CliCapabilityData, TmuxCapabilityData } from '@/sync/capabilitiesProtocol';
+import { CAPABILITIES_REQUEST_NEW_SESSION, CAPABILITIES_REQUEST_NEW_SESSION_WITH_LOGIN_STATUS } from '@/capabilities/requests';
 
 interface CLIAvailability {
     claude: boolean | null; // null = unknown/loading, true = installed, false = not installed
@@ -57,17 +58,9 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
     }, [machine, machineId]);
 
     const includeLoginStatus = Boolean(options?.includeLoginStatus);
-    const request = useMemo(() => {
-        if (!includeLoginStatus) return { checklistId: 'new-session' as const };
-        return {
-            checklistId: 'new-session' as const,
-            overrides: {
-                'cli.codex': { params: { includeLoginStatus: true } },
-                'cli.claude': { params: { includeLoginStatus: true } },
-                'cli.gemini': { params: { includeLoginStatus: true } },
-            },
-        };
-    }, [includeLoginStatus]);
+    const request = includeLoginStatus
+        ? CAPABILITIES_REQUEST_NEW_SESSION_WITH_LOGIN_STATUS
+        : CAPABILITIES_REQUEST_NEW_SESSION;
 
     const { state: cached } = useMachineCapabilitiesCache({
         machineId,
@@ -76,6 +69,7 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
     });
 
     const lastSuccessfulDetectAtRef = useRef<number>(0);
+    const fallbackDetectAtRef = useRef<number>(0);
 
     return useMemo((): CLIAvailability => {
         if (!machineId || !isOnline) {
@@ -109,6 +103,11 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
 
         if (cached.status === 'loaded' && latestCheckedAt > 0) {
             lastSuccessfulDetectAtRef.current = latestCheckedAt;
+            fallbackDetectAtRef.current = 0;
+        } else if (cached.status === 'loaded' && latestCheckedAt === 0 && lastSuccessfulDetectAtRef.current === 0 && fallbackDetectAtRef.current === 0) {
+            // Older/broken snapshots could omit checkedAt values; keep a stable "loaded" timestamp
+            // rather than flapping Date.now() on re-renders.
+            fallbackDetectAtRef.current = now;
         }
 
         if (!snapshot) {
@@ -135,7 +134,7 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
                 gemini: includeLoginStatus ? readCliLogin(results['cli.gemini']) : null,
             },
             isDetecting: cached.status === 'loading',
-            timestamp: lastSuccessfulDetectAtRef.current || latestCheckedAt || now,
+            timestamp: lastSuccessfulDetectAtRef.current || latestCheckedAt || fallbackDetectAtRef.current || 0,
         };
     }, [cached, includeLoginStatus, isOnline, machineId]);
 }
