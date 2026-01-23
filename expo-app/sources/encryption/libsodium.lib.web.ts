@@ -12,4 +12,4 @@ import type sodiumType from 'libsodium-wrappers';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const sodium = require('libsodium-wrappers/dist/modules/libsodium-wrappers.js');
 
-export default sodium as unknown as sodiumType;
+export default sodium as typeof sodiumType;
