@@ -54,7 +54,7 @@ describe('logger.debugLargeJson', () => {
         const { logger } = (await import('@/ui/logger')) as typeof import('@/ui/logger');
 
         expect(() => {
-            logger.debug('[TEST] log write should not throw');
+            logger.debugLargeJson('[TEST] debugLargeJson write should not throw', { secret: 'value' });
         }).not.toThrow();
     });
 });

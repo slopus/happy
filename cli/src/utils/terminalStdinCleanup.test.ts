@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanupStdinAfterInk } from './terminalStdinCleanup';
 
 function createFakeStdin() {
@@ -36,6 +36,10 @@ function createFakeStdin() {
 }
 
 describe('cleanupStdinAfterInk', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('drains buffered input and pauses stdin', async () => {
     vi.useFakeTimers();
     const stdin = createFakeStdin();
@@ -57,4 +61,3 @@ describe('cleanupStdinAfterInk', () => {
     expect(stdin.__calls.length).toBe(0);
   });
 });
-

@@ -7,9 +7,14 @@ vi.mock('child_process', () => ({
     execFileSync: vi.fn(),
 }));
 
-vi.mock('@modelcontextprotocol/sdk/types.js', () => ({
-    ElicitRequestSchema: {},
-}));
+vi.mock('@modelcontextprotocol/sdk/types.js', async () => {
+    const { z } = await import('zod');
+    return {
+        RequestSchema: z.object({}).passthrough(),
+        ElicitRequestParamsSchema: z.object({}).passthrough(),
+        ElicitRequestSchema: z.object({}).passthrough(),
+    };
+});
 
 vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => {
     const instances: any[] = [];
