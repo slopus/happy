@@ -1,10 +1,14 @@
 /**
  * Tests for building happy-cli subprocess invocations across runtimes (node/bun).
  */
-import { afterEach, describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
 describe('happy-cli subprocess invocation', () => {
     const originalRuntimeOverride = process.env.HAPPY_CLI_SUBPROCESS_RUNTIME;
+
+    beforeEach(() => {
+        vi.resetModules();
+    });
 
     afterEach(() => {
         if (originalRuntimeOverride === undefined) {
