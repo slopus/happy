@@ -1896,7 +1896,7 @@ function NewSessionScreen() {
                     const openMachine = await Modal.confirm(
                         t('errors.codexResumeNotInstalledTitle'),
                         t('errors.codexResumeNotInstalledMessage'),
-                        { confirmText: t('common.openMachine') }
+                        { confirmText: t('connect.openMachine') }
                     );
                     if (openMachine) {
                         router.push(`/machine/${selectedMachineId}` as any);
