@@ -141,8 +141,9 @@ async function detectCliVersion(params: { name: DetectCliName; resolvedPath: str
                 timeout: timeoutMs,
                 windowsHide: true,
             });
-            const firstLine = getFirstLine(`${stdout}\n${stderr}`);
-            const semver = extractSemver(firstLine);
+            const combined = `${stdout}\n${stderr}`;
+            const firstLine = getFirstLine(combined);
+            const semver = extractSemver(firstLine) ?? extractSemver(combined);
             if (semver) return semver;
         }
 
@@ -289,4 +290,3 @@ export async function detectCliSnapshotOnDaemonPath(data: DetectCliRequest): Pro
         tmux,
     };
 }
-
