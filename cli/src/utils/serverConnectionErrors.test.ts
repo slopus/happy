@@ -189,6 +189,7 @@ describe('startOfflineReconnection', () => {
         }, 20000);
 
         it('should increment failure count on each retry', async () => {
+            const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
             let attemptCount = 0;
             const healthCheck = async () => {
                 attemptCount++;
@@ -197,13 +198,14 @@ describe('startOfflineReconnection', () => {
 
             const { handle } = createTestHandle({ healthCheck });
 
-            // With real exponential backoff (5s + 10s delays with jitter),
-            // we need ~20s to reach attempt 3
-            await waitForReconnection(handle, 25000);
-
-            expect(attemptCount).toBe(3);
-
-            handle.cancel();
+            try {
+                // With jittered backoff, this can be non-deterministic. Use a deterministic RNG here so the test is stable.
+                await waitForReconnection(handle, 25000);
+                expect(attemptCount).toBe(3);
+            } finally {
+                handle.cancel();
+                randomSpy.mockRestore();
+            }
         }, 30000);
     });
 
