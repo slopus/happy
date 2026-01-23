@@ -214,6 +214,7 @@ export class ApiSessionClient extends EventEmitter {
             return Promise.resolve(false);
         }
         return new Promise((resolve) => {
+            let cleanedUp = false;
             const onUpdate = () => {
                 cleanup();
                 resolve(true);
@@ -222,13 +223,21 @@ export class ApiSessionClient extends EventEmitter {
                 cleanup();
                 resolve(false);
             };
+            const onDisconnect = () => {
+                cleanup();
+                resolve(false);
+            };
             const cleanup = () => {
+                if (cleanedUp) return;
+                cleanedUp = true;
                 this.off('metadata-updated', onUpdate);
                 abortSignal?.removeEventListener('abort', onAbort);
+                this.socket.off('disconnect', onDisconnect);
             };
 
             this.on('metadata-updated', onUpdate);
             abortSignal?.addEventListener('abort', onAbort, { once: true });
+            this.socket.on('disconnect', onDisconnect);
         });
     }
 

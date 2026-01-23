@@ -133,10 +133,10 @@ describe('ApiSessionClient connection handling', () => {
 	        );
 	    });
 
-	    it('waitForMetadataUpdate resolves when session metadata updates', async () => {
-	        const client = new ApiSessionClient('fake-token', mockSession);
+		    it('waitForMetadataUpdate resolves when session metadata updates', async () => {
+		        const client = new ApiSessionClient('fake-token', mockSession);
 
-	        const waitPromise = client.waitForMetadataUpdate();
+		        const waitPromise = client.waitForMetadataUpdate();
 
 	        const updateHandler = (mockSocket.on.mock.calls.find((call: any[]) => call[0] === 'update') ?? [])[1];
 	        expect(typeof updateHandler).toBe('function');
@@ -158,11 +158,26 @@ describe('ApiSessionClient connection handling', () => {
 	            },
 	        } as any);
 
-	        await expect(waitPromise).resolves.toBe(true);
-	    });
+		        await expect(waitPromise).resolves.toBe(true);
+		    });
 
-	    it('clears messageQueueV1 inFlight only after observing the materialized user message', async () => {
-	        mockSocket.connected = true;
+            it('waitForMetadataUpdate resolves false when socket disconnects', async () => {
+                const client = new ApiSessionClient('fake-token', mockSession);
+
+                const waitPromise = client.waitForMetadataUpdate();
+
+                const disconnectHandlers = mockSocket.on.mock.calls
+                    .filter((call: any[]) => call[0] === 'disconnect')
+                    .map((call: any[]) => call[1]);
+                const lastDisconnectHandler = disconnectHandlers[disconnectHandlers.length - 1];
+                expect(typeof lastDisconnectHandler).toBe('function');
+
+                lastDisconnectHandler();
+                await expect(waitPromise).resolves.toBe(false);
+            });
+
+		    it('clears messageQueueV1 inFlight only after observing the materialized user message', async () => {
+		        mockSocket.connected = true;
 
 	        const metadataBase = {
 	            ...mockSession.metadata,
