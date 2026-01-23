@@ -48,10 +48,40 @@ happy connect gemini
 ### Utility Commands
 
 - `happy auth` – Manage authentication
+- `happy config` – Manage settings (attribution, etc.)
 - `happy connect` – Store AI vendor API keys in Happy cloud
 - `happy notify` – Send a push notification to your devices
 - `happy daemon` – Manage background service
 - `happy doctor` – System diagnostics & troubleshooting
+
+### Config Subcommands
+
+```bash
+happy config get <key>          # Get a configuration value
+happy config set <key> <value>  # Set a configuration value
+happy config list               # List all configuration values
+```
+
+**Available settings:**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `attribution` | `false` | Include Happy co-author credits in git commits |
+
+**Example:**
+```bash
+# Enable commit attribution
+happy config set attribution true
+
+# Check current setting
+happy config get attribution
+```
+
+When attribution is enabled, git commits will include:
+```
+Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: Happy <yesreply@happy.engineering>
+```
 
 ### Connect Subcommands
 

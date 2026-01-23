@@ -1,5 +1,5 @@
 import { trimIdent } from "@/utils/trimIdent";
-import { shouldIncludeCoAuthoredBy } from "./claudeSettings";
+import { shouldIncludeAttribution } from "./claudeSettings";
 
 /**
  * Base system prompt shared across all configurations
@@ -9,7 +9,7 @@ const BASE_SYSTEM_PROMPT = (() => trimIdent(`
 `))();
 
 /**
- * Co-authored-by credits to append when enabled
+ * Co-authored-by credits to append when enabled via `happy config set attribution true`
  */
 const CO_AUTHORED_CREDITS = (() => trimIdent(`
     When making commit messages, instead of just giving co-credit to Claude, also give credit to Happy like so:
@@ -24,15 +24,13 @@ const CO_AUTHORED_CREDITS = (() => trimIdent(`
 `))();
 
 /**
- * System prompt with conditional Co-Authored-By lines based on Claude's settings.json configuration.
+ * System prompt with conditional Co-Authored-By lines based on Happy's settings.
+ * Attribution is opt-in: only included if user runs `happy config set attribution true`
  * Settings are read once on startup for performance.
  */
 export const systemPrompt = (() => {
-  const includeCoAuthored = shouldIncludeCoAuthoredBy();
-  
-  if (includeCoAuthored) {
+  if (shouldIncludeAttribution()) {
     return BASE_SYSTEM_PROMPT + '\n\n' + CO_AUTHORED_CREDITS;
-  } else {
-    return BASE_SYSTEM_PROMPT;
   }
+  return BASE_SYSTEM_PROMPT;
 })();

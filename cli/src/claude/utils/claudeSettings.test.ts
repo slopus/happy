@@ -1,95 +1,92 @@
 /**
- * Tests for Claude settings reading functionality
- * 
- * Tests reading Claude's settings.json file and respecting the includeCoAuthoredBy setting
+ * Tests for Happy attribution settings
+ *
+ * Tests reading Happy's settings.json file for includeAttribution setting
+ * Attribution is opt-in: defaults to false
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, writeFileSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readClaudeSettings, shouldIncludeCoAuthoredBy } from './claudeSettings';
+import { shouldIncludeAttribution, shouldIncludeCoAuthoredBy } from './claudeSettings';
 
-describe('Claude Settings', () => {
-  let testClaudeDir: string;
-  let originalClaudeConfigDir: string | undefined;
+describe('Happy Attribution Settings', () => {
+  let testHappyDir: string;
+  let originalHappyHomeDir: string | undefined;
 
   beforeEach(() => {
     // Create a temporary directory for testing
-    testClaudeDir = join(tmpdir(), `test-claude-${Date.now()}`);
-    mkdirSync(testClaudeDir, { recursive: true });
-    
+    testHappyDir = join(tmpdir(), `test-happy-${Date.now()}`);
+    mkdirSync(testHappyDir, { recursive: true });
+
     // Set environment variable to point to test directory
-    originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
-    process.env.CLAUDE_CONFIG_DIR = testClaudeDir;
+    originalHappyHomeDir = process.env.HAPPY_HOME_DIR;
+    process.env.HAPPY_HOME_DIR = testHappyDir;
   });
 
   afterEach(() => {
     // Restore original environment variable
-    if (originalClaudeConfigDir !== undefined) {
-      process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+    if (originalHappyHomeDir !== undefined) {
+      process.env.HAPPY_HOME_DIR = originalHappyHomeDir;
     } else {
-      delete process.env.CLAUDE_CONFIG_DIR;
+      delete process.env.HAPPY_HOME_DIR;
     }
-    
+
     // Clean up test directory
-    if (existsSync(testClaudeDir)) {
-      rmSync(testClaudeDir, { recursive: true, force: true });
+    if (existsSync(testHappyDir)) {
+      rmSync(testHappyDir, { recursive: true, force: true });
     }
   });
 
-  describe('readClaudeSettings', () => {
-    it('returns null when settings file does not exist', () => {
-      const settings = readClaudeSettings();
-      expect(settings).toBe(null);
-    });
-
-    it('reads settings when file exists', () => {
-      const settingsPath = join(testClaudeDir, 'settings.json');
-      const testSettings = { includeCoAuthoredBy: false, otherSetting: 'value' };
-      writeFileSync(settingsPath, JSON.stringify(testSettings));
-
-      const settings = readClaudeSettings();
-      expect(settings).toEqual(testSettings);
-    });
-
-    it('returns null when settings file is invalid JSON', () => {
-      const settingsPath = join(testClaudeDir, 'settings.json');
-      writeFileSync(settingsPath, 'invalid json');
-
-      const settings = readClaudeSettings();
-      expect(settings).toBe(null);
-    });
-  });
-
-  describe('shouldIncludeCoAuthoredBy', () => {
-    it('returns true when no settings file exists (default behavior)', () => {
-      const result = shouldIncludeCoAuthoredBy();
-      expect(result).toBe(true);
-    });
-
-    it('returns true when includeCoAuthoredBy is not set (default behavior)', () => {
-      const settingsPath = join(testClaudeDir, 'settings.json');
-      writeFileSync(settingsPath, JSON.stringify({ otherSetting: 'value' }));
-
-      const result = shouldIncludeCoAuthoredBy();
-      expect(result).toBe(true);
-    });
-
-    it('returns false when includeCoAuthoredBy is explicitly set to false', () => {
-      const settingsPath = join(testClaudeDir, 'settings.json');
-      writeFileSync(settingsPath, JSON.stringify({ includeCoAuthoredBy: false }));
-
-      const result = shouldIncludeCoAuthoredBy();
+  describe('shouldIncludeAttribution', () => {
+    it('returns false when no settings file exists (opt-in default)', () => {
+      const result = shouldIncludeAttribution();
       expect(result).toBe(false);
     });
 
-    it('returns true when includeCoAuthoredBy is explicitly set to true', () => {
-      const settingsPath = join(testClaudeDir, 'settings.json');
-      writeFileSync(settingsPath, JSON.stringify({ includeCoAuthoredBy: true }));
+    it('returns false when includeAttribution is not set (opt-in default)', () => {
+      const settingsPath = join(testHappyDir, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({ otherSetting: 'value' }));
 
-      const result = shouldIncludeCoAuthoredBy();
+      const result = shouldIncludeAttribution();
+      expect(result).toBe(false);
+    });
+
+    it('returns false when includeAttribution is explicitly set to false', () => {
+      const settingsPath = join(testHappyDir, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({ includeAttribution: false }));
+
+      const result = shouldIncludeAttribution();
+      expect(result).toBe(false);
+    });
+
+    it('returns true when includeAttribution is explicitly set to true', () => {
+      const settingsPath = join(testHappyDir, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({ includeAttribution: true }));
+
+      const result = shouldIncludeAttribution();
       expect(result).toBe(true);
+    });
+
+    it('returns false for invalid JSON settings file', () => {
+      const settingsPath = join(testHappyDir, 'settings.json');
+      writeFileSync(settingsPath, 'invalid json');
+
+      const result = shouldIncludeAttribution();
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('shouldIncludeCoAuthoredBy (legacy alias)', () => {
+    it('returns same value as shouldIncludeAttribution', () => {
+      // Default case
+      expect(shouldIncludeCoAuthoredBy()).toBe(shouldIncludeAttribution());
+
+      // With explicit true
+      const settingsPath = join(testHappyDir, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({ includeAttribution: true }));
+      expect(shouldIncludeCoAuthoredBy()).toBe(true);
     });
   });
 });
