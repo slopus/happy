@@ -19,5 +19,8 @@
             "**/react-native-incall-manager/**"
         ]
     },
+    "resolutions": {
+        "expo-router": "6.0.22"
+    },
     "packageManager": "yarn@1.22.22"
 }

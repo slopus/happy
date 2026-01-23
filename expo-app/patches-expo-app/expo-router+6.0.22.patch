@@ -1,0 +1,14 @@
+diff --git a/node_modules/expo-router/build/layouts/_web-modal.js b/node_modules/expo-router/build/layouts/_web-modal.js
+--- a/node_modules/expo-router/build/layouts/_web-modal.js
++++ b/node_modules/expo-router/build/layouts/_web-modal.js
+@@ -1,8 +1,8 @@
+ "use strict";
+ var __importDefault = (this && this.__importDefault) || function (mod) {
+     return (mod && mod.__esModule) ? mod : { "default": mod };
+ };
+ Object.defineProperty(exports, "__esModule", { value: true });
+-const BaseStack_1 = __importDefault(require("./BaseStack"));
+-exports.default = BaseStack_1.default;
++const ExperimentalModalStack_1 = __importDefault(require("./ExperimentalModalStack"));
++exports.default = ExperimentalModalStack_1.default;
+ //# sourceMappingURL=_web-modal.js.map

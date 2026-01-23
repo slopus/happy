@@ -73,6 +73,7 @@ function SessionInfoContent({ session }: { session: Session }) {
     const profiles = useSetting('profiles');
     const experimentsEnabled = useSetting('experiments');
     const expCodexResume = useSetting('expCodexResume');
+    const expCodexAcp = useSetting('expCodexAcp');
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
 
@@ -284,7 +285,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             }}
                         />
                     )}
-                    {experimentsEnabled && expCodexResume && session.metadata?.codexSessionId && (
+                    {experimentsEnabled && (expCodexResume || expCodexAcp) && session.metadata?.codexSessionId && (
                         <Item
                             title={t('sessionInfo.codexSessionId')}
                             subtitle={`${session.metadata.codexSessionId.substring(0, 8)}...${session.metadata.codexSessionId.substring(session.metadata.codexSessionId.length - 8)}`}
@@ -333,7 +334,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         icon={<Ionicons name="pencil-outline" size={29} color="#007AFF" />}
                         onPress={handleRenameSession}
                     />
-                    {!session.active && (session.metadata?.claudeSessionId || (experimentsEnabled && expCodexResume && session.metadata?.codexSessionId)) && (
+                    {!session.active && (session.metadata?.claudeSessionId || (experimentsEnabled && (expCodexResume || expCodexAcp) && session.metadata?.codexSessionId)) && (
                         <Item
                             title={t('sessionInfo.copyResumeCommand')}
                             subtitle={`happy resume ${session.id}`}
