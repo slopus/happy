@@ -20,7 +20,14 @@ let backend: PublicFilesBackend | null = null;
 export function initFilesS3FromEnv(env: NodeJS.ProcessEnv = process.env): void {
     const s3Host = requiredEnv(env, 'S3_HOST');
     const s3PortRaw = env.S3_PORT?.trim();
-    const s3Port = s3PortRaw ? parseInt(s3PortRaw, 10) : undefined;
+    let s3Port: number | undefined;
+    if (s3PortRaw) {
+        const parsed = parseInt(s3PortRaw, 10);
+        if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) {
+            throw new Error(`Invalid S3_PORT: ${s3PortRaw}`);
+        }
+        s3Port = parsed;
+    }
     const s3UseSSL = env.S3_USE_SSL ? env.S3_USE_SSL === 'true' : true;
 
     const s3bucket = requiredEnv(env, 'S3_BUCKET');
@@ -36,7 +43,10 @@ export function initFilesS3FromEnv(env: NodeJS.ProcessEnv = process.env): void {
 
     backend = {
         async init() {
-            await s3client.bucketExists(s3bucket);
+            const exists = await s3client.bucketExists(s3bucket);
+            if (!exists) {
+                throw new Error(`S3 bucket does not exist: ${s3bucket}`);
+            }
         },
         getPublicUrl(path: string) {
             return `${s3public}/${path}`;
