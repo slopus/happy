@@ -411,6 +411,8 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                                 onPress={codexResumeBanner.onCheckUpdates}
                                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                                 disabled={codexResumeBanner.isChecking || codexResumeBanner.isInstalling}
+                                                accessibilityRole="button"
+                                                accessibilityLabel={t('common.refresh')}
                                             >
                                                 <Ionicons
                                                     name={codexResumeBanner.isChecking ? 'time-outline' : 'refresh'}
@@ -438,6 +440,14 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                             <Pressable
                                                 onPress={codexResumeBanner.onInstallOrUpdate}
                                                 disabled={codexResumeBanner.isInstalling}
+                                                accessibilityRole="button"
+                                                accessibilityLabel={
+                                                    codexResumeBanner.installed === false
+                                                        ? t('newSession.codexResumeBanner.install')
+                                                        : codexResumeBanner.updateAvailable
+                                                            ? t('newSession.codexResumeBanner.update')
+                                                            : t('newSession.codexResumeBanner.reinstall')
+                                                }
                                                 style={{
                                                     borderRadius: 8,
                                                     paddingHorizontal: 12,
