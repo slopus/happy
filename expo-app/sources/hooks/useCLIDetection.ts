@@ -3,7 +3,6 @@ import { useMachine } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import type { CapabilityDetectResult, CliCapabilityData, TmuxCapabilityData } from '@/sync/capabilitiesProtocol';
-import { CAPABILITIES_REQUEST_NEW_SESSION, CAPABILITIES_REQUEST_NEW_SESSION_WITH_LOGIN_STATUS } from '@/capabilities/requests';
 
 interface CLIAvailability {
     claude: boolean | null; // null = unknown/loading, true = installed, false = not installed
@@ -58,9 +57,17 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
     }, [machine, machineId]);
 
     const includeLoginStatus = Boolean(options?.includeLoginStatus);
-    const request = includeLoginStatus
-        ? CAPABILITIES_REQUEST_NEW_SESSION_WITH_LOGIN_STATUS
-        : CAPABILITIES_REQUEST_NEW_SESSION;
+    const request = useMemo(() => {
+        if (!includeLoginStatus) return { checklistId: 'new-session' as const };
+        return {
+            checklistId: 'new-session' as const,
+            overrides: {
+                'cli.codex': { params: { includeLoginStatus: true } },
+                'cli.claude': { params: { includeLoginStatus: true } },
+                'cli.gemini': { params: { includeLoginStatus: true } },
+            },
+        };
+    }, [includeLoginStatus]);
 
     const { state: cached } = useMachineCapabilitiesCache({
         machineId,
