@@ -277,7 +277,7 @@ describe('settings', () => {
                 useMachinePickerSearch: false,
                 usePathPickerSearch: false,
                 avatarStyle: 'brutalist',
-                codexResumeInstallSpec: '@leeroy/codex-mcp-resume@happy-codex-resume',
+                codexResumeInstallSpec: '',
                 showFlavorIcons: false,
                 compactSessionView: false,
                 agentInputEnterToSend: true,

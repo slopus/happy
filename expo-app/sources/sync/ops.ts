@@ -886,15 +886,6 @@ export async function sessionRename(sessionId: string, title: string): Promise<S
             };
         }
 
-        // Get current session to get current metadata version
-        const session = sync.encryption.getSessionEncryption(sessionId);
-        if (!session) {
-            return {
-                success: false,
-                message: 'Session not found'
-            };
-        }
-
         // Get the current session from storage
         const { storage } = await import('./storage');
         const currentSession = storage.getState().sessions[sessionId];
