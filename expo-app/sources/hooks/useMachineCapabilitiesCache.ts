@@ -129,8 +129,7 @@ async function fetchAndMerge(params: {
         result = await machineCapabilitiesDetect(params.machineId, params.request, { timeoutMs });
     } catch {
         const current = getEntry(cacheKey);
-        const stillInFlight = current?.inFlightToken !== token && typeof current?.inFlightToken === 'number';
-        if (stillInFlight) {
+        if (!current || current.inFlightToken !== token) {
             return;
         }
 
@@ -142,6 +141,9 @@ async function fetchAndMerge(params: {
     }
 
     const current = getEntry(cacheKey);
+    if (!current || current.inFlightToken !== token) {
+        return;
+    }
     const baseResponse = prevSnapshot?.response ?? null;
 
     const nextState = (() => {
@@ -163,11 +165,9 @@ async function fetchAndMerge(params: {
             : ({ status: 'error' } as const);
     })();
 
-    // Preserve in-flight token if a newer request started.
     setEntry(cacheKey, {
         state: nextState,
         updatedAt: Date.now(),
-        ...(current?.inFlightToken && current.inFlightToken !== token ? { inFlightToken: current.inFlightToken } : {}),
     });
 }
 
