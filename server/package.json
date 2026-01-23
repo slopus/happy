@@ -8,6 +8,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit",
+    "typecheck": "yarn -s build",
     "start": "tsx ./sources/main.ts",
     "start:light": "tsx ./sources/main.light.ts",
     "dev": "tsx ./scripts/dev.full.ts",

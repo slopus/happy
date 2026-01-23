@@ -1,4 +1,5 @@
 import { normalizePublicPath } from './files';
+import { describe, expect, it } from 'vitest';
 
 describe('normalizePublicPath', () => {
     it('normalizes paths and strips leading slashes', () => {
