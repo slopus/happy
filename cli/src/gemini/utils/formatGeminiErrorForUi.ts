@@ -96,8 +96,6 @@ export function formatGeminiErrorForUi(error: unknown, displayedModel?: string |
                 errorMsg = errorDetails || errorMessage || errObj.message;
             }
         }
-    } else if (isErrorInstance) {
-        errorMsg = formatErrorForUi(error);
     }
 
     return errorMsg;
