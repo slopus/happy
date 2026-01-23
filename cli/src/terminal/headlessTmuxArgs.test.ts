@@ -23,5 +23,8 @@ describe('ensureRemoteStartingModeArgs', () => {
       'Headless tmux sessions require remote mode',
     );
   });
-});
 
+  it('throws a helpful error when --happy-starting-mode is missing a value', () => {
+    expect(() => ensureRemoteStartingModeArgs(['--happy-starting-mode'])).toThrow(/--happy-starting-mode/);
+  });
+});
