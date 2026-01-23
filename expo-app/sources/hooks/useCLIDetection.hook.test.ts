@@ -91,4 +91,56 @@ describe('useCLIDetection (hook)', () => {
 
         expect(latest?.tmux).toBe(null);
     });
+
+    it('keeps timestamp stable when results have no checkedAt values', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(1000);
+
+        useMachineCapabilitiesCacheMock.mockReturnValueOnce({
+            state: {
+                status: 'loaded',
+                snapshot: {
+                    response: {
+                        protocolVersion: 1,
+                        results: {},
+                    },
+                },
+            },
+            refresh: vi.fn(),
+        });
+
+        const { useCLIDetection } = await import('./useCLIDetection');
+
+        let latest: any = null;
+        function Test() {
+            latest = useCLIDetection('m1', { autoDetect: false });
+            return React.createElement('View');
+        }
+
+        const root = renderer.create(React.createElement(Test));
+        expect(latest?.timestamp).toBe(1000);
+
+        vi.setSystemTime(2000);
+
+        useMachineCapabilitiesCacheMock.mockReturnValueOnce({
+            state: {
+                status: 'loaded',
+                snapshot: {
+                    response: {
+                        protocolVersion: 1,
+                        results: {},
+                    },
+                },
+            },
+            refresh: vi.fn(),
+        });
+
+        act(() => {
+            root.update(React.createElement(Test));
+        });
+
+        expect(latest?.timestamp).toBe(1000);
+
+        vi.useRealTimers();
+    });
 });
