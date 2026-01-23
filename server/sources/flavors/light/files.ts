@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
 import { homedir } from 'node:os';
+import { resolveLightPublicUrl } from './env';
 
 /**
  * Lightweight file storage for happy-server "light" flavor.
@@ -20,15 +21,11 @@ export async function ensureLightFilesDir(env: NodeJS.ProcessEnv): Promise<void>
 }
 
 export function getLightPublicBaseUrl(env: NodeJS.ProcessEnv): string {
-    if (env.PUBLIC_URL && env.PUBLIC_URL.trim()) {
-        return env.PUBLIC_URL.trim().replace(/\/+$/, '');
-    }
-    const port = env.PORT ? parseInt(env.PORT, 10) : 3005;
-    return `http://localhost:${port}`;
+    return resolveLightPublicUrl(env);
 }
 
 export function normalizePublicPath(path: string): string {
-    const p = normalize(path).replace(/\\\\/g, '/').replace(/^\/+/, '');
+    const p = normalize(path).replace(/\\/g, '/').replace(/^\/+/, '');
     const parts = p.split('/').filter(Boolean);
     if (parts.some((part: string) => part === '..')) {
         throw new Error('Invalid path');

@@ -36,7 +36,8 @@ export function resolveLightPublicUrl(env: LightEnv): string {
     if (fromEnv) {
         return fromEnv.replace(/\/+$/, '');
     }
-    const port = env.PORT ? parseInt(env.PORT, 10) : 3005;
+    const parsed = env.PORT ? parseInt(env.PORT, 10) : NaN;
+    const port = Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : 3005;
     return `http://localhost:${port}`;
 }
 

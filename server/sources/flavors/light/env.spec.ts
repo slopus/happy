@@ -31,6 +31,12 @@ describe('light env helpers', () => {
         expect(env.PUBLIC_URL).toBe('http://localhost:4000');
     });
 
+    it('applyLightDefaultEnv falls back to default port when PORT is invalid', () => {
+        const env: NodeJS.ProcessEnv = { PORT: 'oops' };
+        applyLightDefaultEnv(env, { homedir: '/home/test' });
+        expect(env.PUBLIC_URL).toBe('http://localhost:3005');
+    });
+
     it('ensureHandyMasterSecret persists a generated secret and reuses it', async () => {
         const dir = await mkdtemp(join(tmpdir(), 'happy-server-light-'));
         try {
