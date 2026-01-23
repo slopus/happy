@@ -10,7 +10,7 @@ describe('generateSqliteSchemaFromPostgres', () => {
         expect(generated).toContain('provider = "sqlite"');
         expect(generated).toContain('output          = "../../generated/sqlite-client"');
         expect(generated).not.toContain('generator json');
-        expect(generated).not.toMatch(/sort\\s*:\\s*(Asc|Desc)/);
+        expect(generated).not.toMatch(/sort\s*:\s*(Asc|Desc)/);
     });
 
     it('keeps prisma/sqlite/schema.prisma in sync with prisma/schema.prisma', async () => {
