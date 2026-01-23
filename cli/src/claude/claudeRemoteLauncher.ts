@@ -35,6 +35,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     let inkInstance: any = null;
 
     if (hasTTY) {
+        // Render Ink - let Ink handle all stdin management via stdin.ref()
+        // Ink will register its own readable listener and manage ref/unref
         console.clear();
         inkInstance = render(React.createElement(RemoteModeDisplay, {
             messageBuffer,
@@ -56,14 +58,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             exitOnCtrlC: false,
             patchConsole: false
         });
-    }
-
-    if (hasTTY) {
-        process.stdin.resume();
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(true);
-        }
-        process.stdin.setEncoding("utf8");
     }
 
     // Handle abort
@@ -441,14 +435,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         // Clean up permission handler
         permissionHandler.reset();
 
-        // Reset Terminal
-        process.stdin.off('data', abort);
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(false);
-        }
+        // Cleanup: Let Ink handle stdin management completely
+        // Ink 6.5.1+ uses stdin.ref()/unref() to properly manage stdin lifecycle
         if (inkInstance) {
             inkInstance.unmount();
+            await new Promise(resolve => setTimeout(resolve, 100));
         }
+
         messageBuffer.clear();
 
         // Resolve abort future

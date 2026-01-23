@@ -19,6 +19,36 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
     const terminalHeight = stdout.rows || 24
 
     useEffect(() => {
+        // Force raw mode after component mount to ensure terminal driver is properly initialized
+        // This fixes issues where orphaned processes from local mode leave terminal in inconsistent state
+        const checkAndForceRawMode = () => {
+            const wasRaw = process.stdin.isRaw;
+
+            if (wasRaw) {
+                // Already in raw mode according to Node.js, but terminal driver might be out of sync
+                // Force reset by toggling
+                process.stdin.setRawMode(false);
+                // Small delay to ensure the toggle takes effect at terminal driver level
+                setTimeout(() => {
+                    process.stdin.setRawMode(true);
+                }, 10);
+            } else {
+                // Not in raw mode, enable it
+                process.stdin.setRawMode(true);
+            }
+        };
+
+        // Wait for Ink to fully set up raw mode before forcing
+        const forceTimer = setTimeout(() => {
+            checkAndForceRawMode();
+        }, 100);
+
+        return () => {
+            clearTimeout(forceTimer);
+        };
+    }, []);
+
+    useEffect(() => {
         setMessages(messageBuffer.getMessages())
         
         const unsubscribe = messageBuffer.onUpdate((newMessages) => {
