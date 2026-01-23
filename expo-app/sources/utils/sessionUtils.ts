@@ -26,7 +26,6 @@ export function getSessionStatus(session: Session, nowMs: number = Date.now(), v
 
     const optimisticThinkingAt = session.optimisticThinkingAt ?? null;
     const isOptimisticThinking = typeof optimisticThinkingAt === 'number' && nowMs - optimisticThinkingAt < OPTIMISTIC_SESSION_THINKING_TIMEOUT_MS;
-    const isOptimisticOnly = isOptimisticThinking && session.thinking !== true;
     const isThinking = session.thinking === true || isOptimisticThinking;
 
     const vibingMessage = (() => {
