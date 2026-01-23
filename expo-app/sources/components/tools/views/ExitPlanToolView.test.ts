@@ -157,7 +157,7 @@ describe('ExitPlanToolView', () => {
             startedAt: Date.now(),
             completedAt: null,
             description: null,
-            permission: null,
+            permission: undefined,
         };
 
         let tree: ReturnType<typeof renderer.create> | undefined;
@@ -192,7 +192,7 @@ describe('ExitPlanToolView', () => {
             startedAt: Date.now(),
             completedAt: null,
             description: null,
-            permission: null,
+            permission: undefined,
         };
 
         let tree: ReturnType<typeof renderer.create> | undefined;
