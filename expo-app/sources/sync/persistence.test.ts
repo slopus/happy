@@ -147,6 +147,27 @@ describe('persistence', () => {
             expect(draft?.modelMode).toBe('adaptiveUsage');
         });
 
+        it('roundtrips resumeSessionId when persisted', () => {
+            store.set(
+                'new-session-draft-v1',
+                JSON.stringify({
+                    input: '',
+                    selectedMachineId: null,
+                    selectedPath: null,
+                    selectedProfileId: null,
+                    agentType: 'claude',
+                    permissionMode: 'default',
+                    modelMode: 'default',
+                    sessionType: 'simple',
+                    resumeSessionId: 'abc123',
+                    updatedAt: Date.now(),
+                }),
+            );
+
+            const draft = loadNewSessionDraft();
+            expect(draft?.resumeSessionId).toBe('abc123');
+        });
+
         it('clamps invalid permissionMode to default', () => {
             store.set(
                 'new-session-draft-v1',

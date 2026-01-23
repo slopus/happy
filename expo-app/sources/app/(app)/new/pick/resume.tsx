@@ -10,8 +10,8 @@ import { t } from '@/text';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { MultiTextInput } from '@/components/MultiTextInput';
-import * as Clipboard from 'expo-clipboard';
 import { AgentType } from '@/utils/agentCapabilities';
+import { getClipboardStringTrimmedSafe } from '@/utils/clipboard';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -139,7 +139,7 @@ export default function ResumePickerScreen() {
     };
 
     const handlePaste = async () => {
-        const text = (await Clipboard.getStringAsync()).trim();
+        const text = await getClipboardStringTrimmedSafe();
         if (text) {
             setInputValue(text);
         }
@@ -229,4 +229,3 @@ export default function ResumePickerScreen() {
         </>
     );
 }
-

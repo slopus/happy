@@ -282,6 +282,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             ? parsed.modelMode
             : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
+        const resumeSessionId = typeof parsed.resumeSessionId === 'string' ? parsed.resumeSessionId : undefined;
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
 
         return {
@@ -296,6 +297,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             permissionMode,
             modelMode,
             sessionType,
+            ...(resumeSessionId ? { resumeSessionId } : {}),
             updatedAt,
         };
     } catch (e) {
