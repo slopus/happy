@@ -582,6 +582,13 @@ export const it: TranslationStructure = {
             'Per riprendere una conversazione di Codex, installa il server di ripresa di Codex sulla macchina di destinazione (Dettagli macchina → Ripresa Codex).',
     },
 
+    deps: {
+        installNotSupported: 'Aggiorna Happy CLI per installare questa dipendenza.',
+        installFailed: 'Installazione non riuscita',
+        installed: 'Installato',
+        installLog: ({ path }: { path: string }) => `Log di installazione: ${path}`,
+    },
+
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Avvia nuova sessione',
@@ -689,6 +696,12 @@ export const it: TranslationStructure = {
             install: 'Installa',
             update: 'Aggiorna',
             reinstall: 'Reinstalla',
+        },
+        codexResumeInstallModal: {
+            installTitle: 'Installare Codex resume?',
+            updateTitle: 'Aggiornare Codex resume?',
+            reinstallTitle: 'Reinstallare Codex resume?',
+            description: 'Questo installa un wrapper sperimentale del server MCP di Codex usato solo per operazioni di ripresa.',
         },
     },
 

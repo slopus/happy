@@ -335,6 +335,13 @@ export const ca: TranslationStructure = {
             'Per reprendre una conversa de Codex, instal·la el servidor de represa de Codex a la màquina de destinació (Detalls de la màquina → Represa de Codex).',
     },
 
+    deps: {
+        installNotSupported: 'Actualitza Happy CLI per instal·lar aquesta dependència.',
+        installFailed: 'La instal·lació ha fallat',
+        installed: 'Instal·lat',
+        installLog: ({ path }: { path: string }) => `Registre d'instal·lació: ${path}`,
+    },
+
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Inicia una nova sessió',
@@ -442,6 +449,12 @@ export const ca: TranslationStructure = {
             install: 'Instal·lar',
             update: 'Actualitzar',
             reinstall: 'Reinstal·lar',
+        },
+        codexResumeInstallModal: {
+            installTitle: 'Instal·lar Codex resume?',
+            updateTitle: 'Actualitzar Codex resume?',
+            reinstallTitle: 'Reinstal·lar Codex resume?',
+            description: 'Això instal·la un wrapper experimental del servidor MCP de Codex usat només per a operacions de represa.',
         },
     },
 

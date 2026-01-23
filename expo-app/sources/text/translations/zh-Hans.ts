@@ -337,6 +337,13 @@ export const zhHans: TranslationStructure = {
             '要恢复 Codex 对话，请在目标机器上安装 Codex resume 服务器（机器详情 → Codex resume）。',
     },
 
+    deps: {
+        installNotSupported: '请更新 Happy CLI 以安装此依赖项。',
+        installFailed: '安装失败',
+        installed: '已安装',
+        installLog: ({ path }: { path: string }) => `安装日志：${path}`,
+    },
+
     newSession: {
         // Used by new-session screen and launch flows
         title: '启动新会话',
@@ -444,6 +451,12 @@ export const zhHans: TranslationStructure = {
             install: '安装',
             update: '更新',
             reinstall: '重新安装',
+        },
+        codexResumeInstallModal: {
+            installTitle: '安装 Codex resume？',
+            updateTitle: '更新 Codex resume？',
+            reinstallTitle: '重新安装 Codex resume？',
+            description: '这将安装一个仅用于恢复操作的实验性 Codex MCP 服务器封装。',
         },
     },
 

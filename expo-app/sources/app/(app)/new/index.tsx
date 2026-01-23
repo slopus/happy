@@ -878,12 +878,16 @@ function NewSessionScreen() {
         if (!wantsCodexResume) return;
 
         Modal.alert(
-            codexResumeDep?.installed ? (codexResumeUpdateAvailable ? 'Update Codex resume?' : 'Reinstall Codex resume?') : 'Install Codex resume?',
-            'This installs an experimental Codex MCP server wrapper used only for resume operations.',
+            codexResumeDep?.installed
+                ? (codexResumeUpdateAvailable ? t('common.codexResumeInstallModal.updateTitle') : t('common.codexResumeInstallModal.reinstallTitle'))
+                : t('common.codexResumeInstallModal.installTitle'),
+            t('common.codexResumeInstallModal.description'),
             [
                 { text: t('common.cancel'), style: 'cancel' },
                 {
-                    text: codexResumeDep?.installed ? (codexResumeUpdateAvailable ? 'Update' : 'Reinstall') : 'Install',
+                    text: codexResumeDep?.installed
+                        ? (codexResumeUpdateAvailable ? t('common.codexResumeBanner.update') : t('common.codexResumeBanner.reinstall'))
+                        : t('common.codexResumeBanner.install'),
                     onPress: async () => {
                         setIsInstallingCodexResume(true);
                         try {
@@ -894,18 +898,18 @@ function NewSessionScreen() {
                                 { timeoutMs: 5 * 60_000 },
                             );
                             if (!invoke.supported) {
-                                Modal.alert('Error', invoke.reason === 'not-supported' ? 'Update Happy CLI to install this dependency.' : 'Install failed');
+                                Modal.alert(t('common.error'), invoke.reason === 'not-supported' ? t('deps.installNotSupported') : t('deps.installFailed'));
                                 return;
                             }
                             if (!invoke.response.ok) {
-                                Modal.alert('Error', invoke.response.error.message);
+                                Modal.alert(t('common.error'), invoke.response.error.message);
                                 return;
                             }
                             const logPath = (invoke.response.result as any)?.logPath;
-                            Modal.alert('Success', typeof logPath === 'string' ? `Install log: ${logPath}` : 'Installed');
+                            Modal.alert(t('common.success'), typeof logPath === 'string' ? t('deps.installLog', { path: logPath }) : t('deps.installed'));
                             checkCodexResumeUpdates();
                         } catch (e) {
-                            Modal.alert('Error', e instanceof Error ? e.message : 'Install failed');
+                            Modal.alert(t('common.error'), e instanceof Error ? e.message : t('deps.installFailed'));
                         } finally {
                             setIsInstallingCodexResume(false);
                         }

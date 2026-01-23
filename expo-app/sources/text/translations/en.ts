@@ -348,6 +348,13 @@ export const en = {
             'To resume a Codex conversation, install the Codex resume server on the target machine (Machine Details → Codex resume).',
     },
 
+    deps: {
+        installNotSupported: 'Update Happy CLI to install this dependency.',
+        installFailed: 'Install failed',
+        installed: 'Installed',
+        installLog: ({ path }: { path: string }) => `Install log: ${path}`,
+    },
+
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Start New Session',
@@ -455,6 +462,12 @@ export const en = {
             install: 'Install',
             update: 'Update',
             reinstall: 'Reinstall',
+        },
+        codexResumeInstallModal: {
+            installTitle: 'Install Codex resume?',
+            updateTitle: 'Update Codex resume?',
+            reinstallTitle: 'Reinstall Codex resume?',
+            description: 'This installs an experimental Codex MCP server wrapper used only for resume operations.',
         },
     },
 

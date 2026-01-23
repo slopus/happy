@@ -335,6 +335,13 @@ export const es: TranslationStructure = {
             'Para reanudar una conversación de Codex, instala el servidor de reanudación de Codex en la máquina de destino (Detalles de la máquina → Reanudación de Codex).',
     },
 
+    deps: {
+        installNotSupported: 'Actualiza Happy CLI para instalar esta dependencia.',
+        installFailed: 'Instalación fallida',
+        installed: 'Instalado',
+        installLog: ({ path }: { path: string }) => `Registro de instalación: ${path}`,
+    },
+
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Iniciar nueva sesión',
@@ -442,6 +449,12 @@ export const es: TranslationStructure = {
             install: 'Instalar',
             update: 'Actualizar',
             reinstall: 'Reinstalar',
+        },
+        codexResumeInstallModal: {
+            installTitle: '¿Instalar Codex resume?',
+            updateTitle: '¿Actualizar Codex resume?',
+            reinstallTitle: '¿Reinstalar Codex resume?',
+            description: 'Esto instala un wrapper experimental de servidor MCP de Codex usado solo para operaciones de reanudación.',
         },
     },
 

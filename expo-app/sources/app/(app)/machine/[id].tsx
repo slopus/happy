@@ -827,19 +827,25 @@ export default function MachineDetailScreen() {
                             }}
                         />
                         <Item
-                            title={codexResumeStatus?.installed ? (codexResumeUpdateAvailable ? 'Update' : 'Reinstall') : 'Install'}
-                            subtitle="Installs a forked Codex MCP server used only for resume operations."
+                            title={codexResumeStatus?.installed
+                                ? (codexResumeUpdateAvailable ? t('common.codexResumeBanner.update') : t('common.codexResumeBanner.reinstall'))
+                                : t('common.codexResumeBanner.install')}
+                            subtitle={t('common.codexResumeInstallModal.description')}
                             icon={<Ionicons name="download-outline" size={22} color={theme.colors.textSecondary} />}
                             disabled={isInstallingCodexResume || detectedCapabilities.status === 'loading'}
                             onPress={async () => {
                                 if (!machineId) return;
                                 Modal.alert(
-                                    'Install resume Codex?',
-                                    'This will run an experimental installer on your machine.',
+                                    codexResumeStatus?.installed
+                                        ? (codexResumeUpdateAvailable ? t('common.codexResumeInstallModal.updateTitle') : t('common.codexResumeInstallModal.reinstallTitle'))
+                                        : t('common.codexResumeInstallModal.installTitle'),
+                                    t('common.codexResumeInstallModal.description'),
                                     [
                                         { text: t('common.cancel'), style: 'cancel' },
                                         {
-                                            text: 'Install',
+                                            text: codexResumeStatus?.installed
+                                                ? (codexResumeUpdateAvailable ? t('common.codexResumeBanner.update') : t('common.codexResumeBanner.reinstall'))
+                                                : t('common.codexResumeBanner.install'),
                                             onPress: async () => {
                                                 setIsInstallingCodexResume(true);
                                                 try {
@@ -855,12 +861,12 @@ export default function MachineDetailScreen() {
                                                         { timeoutMs: 5 * 60_000 },
                                                     );
                                                     if (!invoke.supported) {
-                                                        Modal.alert('Error', invoke.reason === 'not-supported' ? 'Update Happy CLI to install this dependency.' : 'Install failed');
+                                                        Modal.alert(t('common.error'), invoke.reason === 'not-supported' ? t('deps.installNotSupported') : t('deps.installFailed'));
                                                     } else if (!invoke.response.ok) {
-                                                        Modal.alert('Error', invoke.response.error.message);
+                                                        Modal.alert(t('common.error'), invoke.response.error.message);
                                                     } else {
                                                         const logPath = (invoke.response.result as any)?.logPath;
-                                                        Modal.alert('Success', typeof logPath === 'string' ? `Install log: ${logPath}` : 'Installed');
+                                                        Modal.alert(t('common.success'), typeof logPath === 'string' ? t('deps.installLog', { path: logPath }) : t('deps.installed'));
                                                     }
                                                     await refreshCapabilities();
                                                     refreshDetectedCapabilities({
@@ -872,7 +878,7 @@ export default function MachineDetailScreen() {
                                                         timeoutMs: 12_000,
                                                     });
                                                 } catch (e) {
-                                                    Modal.alert('Error', e instanceof Error ? e.message : 'Install failed');
+                                                    Modal.alert(t('common.error'), e instanceof Error ? e.message : t('deps.installFailed'));
                                                 } finally {
                                                     setIsInstallingCodexResume(false);
                                                 }

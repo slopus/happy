@@ -317,6 +317,13 @@ export const ru: TranslationStructure = {
             'Чтобы возобновить разговор Codex, установите сервер возобновления Codex на целевой машине (Детали машины → Возобновление Codex).',
     },
 
+    deps: {
+        installNotSupported: 'Обновите Happy CLI, чтобы установить эту зависимость.',
+        installFailed: 'Не удалось установить',
+        installed: 'Установлено',
+        installLog: ({ path }: { path: string }) => `Лог установки: ${path}`,
+    },
+
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Начать новую сессию',
@@ -424,6 +431,12 @@ export const ru: TranslationStructure = {
             install: 'Установить',
             update: 'Обновить',
             reinstall: 'Переустановить',
+        },
+        codexResumeInstallModal: {
+            installTitle: 'Установить Codex resume?',
+            updateTitle: 'Обновить Codex resume?',
+            reinstallTitle: 'Переустановить Codex resume?',
+            description: 'Это установит экспериментальный wrapper MCP-сервера Codex, используемый только для операций возобновления.',
         },
     },
 

@@ -346,6 +346,13 @@ export const pl: TranslationStructure = {
             'Aby wznowić rozmowę Codex, zainstaluj serwer wznawiania Codex na maszynie docelowej (Szczegóły maszyny → Wznawianie Codex).',
     },
 
+    deps: {
+        installNotSupported: 'Zaktualizuj Happy CLI, aby zainstalować tę zależność.',
+        installFailed: 'Instalacja nie powiodła się',
+        installed: 'Zainstalowano',
+        installLog: ({ path }: { path: string }) => `Log instalacji: ${path}`,
+    },
+
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Rozpocznij nową sesję',
@@ -453,6 +460,12 @@ export const pl: TranslationStructure = {
             install: 'Zainstaluj',
             update: 'Zaktualizuj',
             reinstall: 'Zainstaluj ponownie',
+        },
+        codexResumeInstallModal: {
+            installTitle: 'Zainstalować Codex resume?',
+            updateTitle: 'Zaktualizować Codex resume?',
+            reinstallTitle: 'Zainstalować ponownie Codex resume?',
+            description: 'To instaluje eksperymentalny wrapper serwera MCP Codex używany wyłącznie do operacji wznawiania.',
         },
     },
 

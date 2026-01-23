@@ -575,6 +575,13 @@ export const ja: TranslationStructure = {
             'Codex の会話を再開するには、対象のマシンに Codex resume サーバーをインストールしてください（マシン詳細 → Codex resume）。',
     },
 
+    deps: {
+        installNotSupported: 'この依存関係をインストールするには Happy CLI を更新してください。',
+        installFailed: 'インストールに失敗しました',
+        installed: 'インストールしました',
+        installLog: ({ path }: { path: string }) => `インストールログ: ${path}`,
+    },
+
     newSession: {
         // Used by new-session screen and launch flows
         title: '新しいセッションを開始',
@@ -682,6 +689,12 @@ export const ja: TranslationStructure = {
             install: 'インストール',
             update: '更新',
             reinstall: '再インストール',
+        },
+        codexResumeInstallModal: {
+            installTitle: 'Codex resume をインストールしますか？',
+            updateTitle: 'Codex resume を更新しますか？',
+            reinstallTitle: 'Codex resume を再インストールしますか？',
+            description: 'これは再開操作にのみ使用する、実験的な Codex MCP サーバーラッパーをインストールします。',
         },
     },
 
