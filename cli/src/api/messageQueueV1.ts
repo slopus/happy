@@ -119,12 +119,7 @@ export function claimMessageQueueV1Next(metadata: Record<string, unknown>, now: 
         // move it back to the front of the queue and re-claim it with a fresh claimedAt.
         const { claimedAt: _claimedAt, ...item } = mq.inFlight;
         const recoveredQueue = [item, ...mq.queue];
-        const firstRecovered = recoveredQueue[0];
-        if (!firstRecovered) {
-            return { metadata, inFlight: mq.inFlight };
-        }
-
-        const inFlight: MessageQueueV1InFlight = { ...firstRecovered, claimedAt: now };
+        const inFlight: MessageQueueV1InFlight = { ...item, claimedAt: now };
         const nextMq: MessageQueueV1 = {
             ...mq,
             queue: recoveredQueue.slice(1),
