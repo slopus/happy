@@ -83,6 +83,19 @@ export function extractCodexToolErrorText(response: CodexToolResponse): string |
     return text || 'Codex error';
 }
 
+export function extractMcpToolCallResultOutput(result: unknown): unknown {
+    if (result && typeof result === 'object') {
+        const record = result as Record<string, unknown>;
+        if (Object.prototype.hasOwnProperty.call(record, 'Ok')) {
+            return (record as any).Ok;
+        }
+        if (Object.prototype.hasOwnProperty.call(record, 'Err')) {
+            return (record as any).Err;
+        }
+    }
+    return result;
+}
+
 /**
  * Main entry point for the codex command with ink UI
  */
@@ -741,7 +754,7 @@ export async function runCodex(opts: {
         }
         if (msg.type === 'mcp_tool_call_end') {
             const { call_id, result } = msg;
-            const output = result?.Ok || result?.Err || result;
+            const output = extractMcpToolCallResultOutput(result);
             session.sendCodexMessage({
                 type: 'tool-call-result',
                 callId: call_id,
