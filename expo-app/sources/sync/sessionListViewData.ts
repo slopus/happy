@@ -24,13 +24,7 @@ function formatPathRelativeToHome(path: string, homeDir?: string | null): string
     }
 
     const relativePath = path.slice(normalizedHome.length);
-    if (relativePath.startsWith('/')) {
-        return `~${relativePath}`;
-    }
-    if (relativePath === '') {
-        return '~';
-    }
-    return `~/${relativePath}`;
+    return relativePath ? `~${relativePath}` : '~';
 }
 
 function makeUnknownMachine(id: string): Machine {
