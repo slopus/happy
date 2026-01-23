@@ -98,5 +98,12 @@ describe('getProjectPath', () => {
             const result = getProjectPath(workingDir);
             expect(result).toBe(join('/custom/claude/config/', 'projects', '-Users-steve-projects-my-app'));
         });
+
+        it('should trim whitespace in CLAUDE_CONFIG_DIR', () => {
+            process.env.CLAUDE_CONFIG_DIR = '  /custom/claude/config  ';
+            const workingDir = '/Users/steve/projects/my-app';
+            const result = getProjectPath(workingDir);
+            expect(result).toBe(join('/custom/claude/config', 'projects', '-Users-steve-projects-my-app'));
+        });
     });
 });
