@@ -55,6 +55,7 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
     const [confirmationMode, setConfirmationMode] = useState<RemoteModeConfirmation>(null)
     const [actionInProgress, setActionInProgress] = useState<RemoteModeActionInProgress>(null)
     const confirmationTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+    const actionTimeoutRef = useRef<NodeJS.Timeout | null>(null)
     const { stdout } = useStdout()
     const terminalWidth = stdout.columns || 80
     const terminalHeight = stdout.rows || 24
@@ -70,6 +71,9 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
             unsubscribe()
             if (confirmationTimeoutRef.current) {
                 clearTimeout(confirmationTimeoutRef.current)
+            }
+            if (actionTimeoutRef.current) {
+                clearTimeout(actionTimeoutRef.current)
             }
         }
     }, [messageBuffer])
@@ -92,7 +96,7 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
         }, 15000) // 15 seconds timeout
     }, [resetConfirmation])
 
-    useInput(useCallback(async (input, key) => {
+    useInput(useCallback((input, key) => {
         const { action } = interpretRemoteModeKeypress({ confirmationMode, actionInProgress }, input, key as any);
         if (action === 'none') return;
         if (action === 'reset') {
@@ -110,15 +114,19 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
         if (action === 'exit') {
             resetConfirmation();
             setActionInProgress('exiting');
-            await new Promise(resolve => setTimeout(resolve, 100));
-            onExit?.();
+            if (actionTimeoutRef.current) {
+                clearTimeout(actionTimeoutRef.current)
+            }
+            actionTimeoutRef.current = setTimeout(() => onExit?.(), 100);
             return;
         }
         if (action === 'switch') {
             resetConfirmation();
             setActionInProgress('switching');
-            await new Promise(resolve => setTimeout(resolve, 100));
-            onSwitchToLocal?.();
+            if (actionTimeoutRef.current) {
+                clearTimeout(actionTimeoutRef.current)
+            }
+            actionTimeoutRef.current = setTimeout(() => onSwitchToLocal?.(), 100);
         }
     }, [confirmationMode, actionInProgress, onExit, onSwitchToLocal, setConfirmationWithTimeout, resetConfirmation]))
 
