@@ -18,7 +18,8 @@ function formatPathRelativeToHome(path: string, homeDir?: string | null): string
     if (!homeDir) return path;
 
     const normalizedHome = homeDir.endsWith('/') ? homeDir.slice(0, -1) : homeDir;
-    if (!path.startsWith(normalizedHome)) {
+    const isInHome = path === normalizedHome || path.startsWith(`${normalizedHome}/`);
+    if (!isInHome) {
         return path;
     }
 
@@ -190,4 +191,3 @@ export function buildSessionListViewData(
 
     return listData;
 }
-

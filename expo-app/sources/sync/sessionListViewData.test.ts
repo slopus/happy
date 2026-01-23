@@ -110,4 +110,21 @@ describe('buildSessionListViewData', () => {
             'session:b1:no-path',
         ]);
     });
+
+    it('does not treat /home/userfoo as inside /home/user', () => {
+        const machine = makeMachine({ id: 'm1', metadata: { host: 'm1', platform: 'darwin', happyCliVersion: '0.0.0', happyHomeDir: '/h', homeDir: '/home/user' } });
+
+        const sessions: Record<string, Session> = {
+            s1: makeSession({
+                id: 's1',
+                createdAt: 1,
+                updatedAt: 2,
+                metadata: { machineId: 'm1', path: '/home/userfoo/repo', homeDir: '/home/user', host: 'm1', version: '0.0.0', flavor: 'claude' },
+            }),
+        };
+
+        const data = buildSessionListViewData(sessions, { [machine.id]: machine }, { groupInactiveSessionsByProject: true });
+        const group = data.find((i) => i.type === 'project-group') as any;
+        expect(group?.displayPath).toBe('/home/userfoo/repo');
+    });
 });
