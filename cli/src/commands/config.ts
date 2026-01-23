@@ -141,7 +141,7 @@ async function handleConfigList(): Promise<void> {
 }
 
 function isValidConfigKey(key: string): key is ConfigKey {
-  return key in CONFIG_KEYS;
+  return Object.hasOwn(CONFIG_KEYS, key);
 }
 
 function getConfigValue(settings: Awaited<ReturnType<typeof readSettings>>, key: ConfigKey): boolean {
