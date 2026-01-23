@@ -124,7 +124,22 @@ async function fetchAndMerge(params: {
         ? params.timeoutMs
         : getTimeoutMsForRequest(params.request, DEFAULT_FETCH_TIMEOUT_MS);
 
-    const result: MachineCapabilitiesDetectResult = await machineCapabilitiesDetect(params.machineId, params.request, { timeoutMs });
+    let result: MachineCapabilitiesDetectResult;
+    try {
+        result = await machineCapabilitiesDetect(params.machineId, params.request, { timeoutMs });
+    } catch {
+        const current = getEntry(cacheKey);
+        const stillInFlight = current?.inFlightToken !== token && typeof current?.inFlightToken === 'number';
+        if (stillInFlight) {
+            return;
+        }
+
+        setEntry(cacheKey, {
+            state: prevSnapshot ? ({ status: 'error', snapshot: prevSnapshot } as const) : ({ status: 'error' } as const),
+            updatedAt: Date.now(),
+        });
+        return;
+    }
 
     const current = getEntry(cacheKey);
     const baseResponse = prevSnapshot?.response ?? null;
