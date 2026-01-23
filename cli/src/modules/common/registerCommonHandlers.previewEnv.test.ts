@@ -87,6 +87,18 @@ describe('registerCommonHandlers preview-env', () => {
         expect(result.values.npm_config_registry.value).toBe('https://example.test');
     });
 
+    it('rejects dangerous prototype keys', async () => {
+        process.env.HAPPY_ENV_PREVIEW_SECRETS = 'none';
+
+        const { call } = createTestRpcManager();
+
+        const result = await call<{ error: string }, { keys: string[] }>('preview-env', {
+            keys: ['__proto__'],
+        });
+
+        expect(result.error).toMatch(/Invalid env var key/);
+    });
+
     it('hides sensitive values when HAPPY_ENV_PREVIEW_SECRETS=none', async () => {
         process.env.SECRET_TOKEN = 'sk-1234567890';
         process.env.HAPPY_ENV_PREVIEW_SECRETS = 'none';

@@ -86,23 +86,25 @@ export function registerPreviewEnvHandler(rpcHandlerManager: RpcHandlerManager):
         const maxKeys = 200;
         const trimmedKeys = keys.slice(0, maxKeys);
 
-        const validNameRegex = /^[A-Z_][A-Z0-9_]*$/;
+        const validNameRegex = /^[A-Za-z_][A-Za-z0-9_]*$/;
+        const forbiddenKeys = new Set(['__proto__', 'constructor', 'prototype']);
+        const isValidEnvVarKey = (key: string) => validNameRegex.test(key) && !forbiddenKeys.has(key);
         for (const key of trimmedKeys) {
-            if (typeof key !== 'string' || !validNameRegex.test(key)) {
+            if (typeof key !== 'string' || !isValidEnvVarKey(key)) {
                 throw new Error(`Invalid env var key: "${String(key)}"`);
             }
         }
 
         const policy = normalizeSecretsPolicy(process.env.HAPPY_ENV_PREVIEW_SECRETS);
         const sensitiveKeys = Array.isArray(data?.sensitiveKeys)
-            ? data.sensitiveKeys.filter((k): k is string => typeof k === 'string' && validNameRegex.test(k))
+            ? data.sensitiveKeys.filter((k): k is string => typeof k === 'string' && isValidEnvVarKey(k))
             : [];
         const sensitiveKeySet = new Set(sensitiveKeys);
 
         const extraEnvRaw = data?.extraEnv && typeof data.extraEnv === 'object' ? data.extraEnv : {};
-        const extraEnv: Record<string, string> = {};
+        const extraEnv: Record<string, string> = Object.create(null);
         for (const [k, v] of Object.entries(extraEnvRaw)) {
-            if (typeof k !== 'string' || !validNameRegex.test(k)) continue;
+            if (typeof k !== 'string' || !isValidEnvVarKey(k)) continue;
             if (typeof v !== 'string') continue;
             extraEnv[k] = v;
         }
@@ -195,4 +197,3 @@ export function registerPreviewEnvHandler(rpcHandlerManager: RpcHandlerManager):
         return { policy, values };
     });
 }
-
