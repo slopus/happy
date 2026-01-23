@@ -18,7 +18,7 @@ import packageJson from '../../package.json';
 /**
  * Backend flavor identifier for session metadata.
  */
-export type BackendFlavor = 'claude' | 'codex' | 'gemini';
+export type BackendFlavor = 'claude' | 'codex' | 'gemini' | 'opencode';
 
 /**
  * Options for creating session metadata.
