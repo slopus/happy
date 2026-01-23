@@ -123,6 +123,60 @@ export function discardMessageQueueV1All(
     };
 }
 
+export function discardMessageQueueV1Item(
+    metadata: Metadata,
+    opts: { localId: string; discardedAt: number; discardedReason: MessageQueueV1DiscardedReason; maxDiscarded?: number }
+): Metadata {
+    const mq = ensureQueue(metadata);
+    const existingDiscarded = metadata.messageQueueV1Discarded ?? [];
+    const maxDiscarded = opts.maxDiscarded ?? 50;
+
+    const queueIndex = mq.queue.findIndex((q) => q.localId === opts.localId);
+    const queueItem = queueIndex >= 0 ? mq.queue[queueIndex] : null;
+
+    const inFlightItem = mq.inFlight && mq.inFlight.localId === opts.localId
+        ? mq.inFlight
+        : null;
+
+    if (!queueItem && !inFlightItem) {
+        return metadata;
+    }
+
+    const item: MessageQueueV1Item = queueItem
+        ? queueItem
+        : {
+            localId: inFlightItem!.localId,
+            message: inFlightItem!.message,
+            createdAt: inFlightItem!.createdAt,
+            updatedAt: inFlightItem!.updatedAt,
+        };
+
+    const discardedItem: MessageQueueV1DiscardedItem = {
+        ...item,
+        discardedAt: opts.discardedAt,
+        discardedReason: opts.discardedReason,
+    };
+
+    const nextQueue = queueItem
+        ? [...mq.queue.slice(0, queueIndex), ...mq.queue.slice(queueIndex + 1)]
+        : mq.queue;
+
+    const next: MessageQueueV1 = {
+        ...mq,
+        v: 1,
+        queue: nextQueue,
+    };
+    if (mq.inFlight !== undefined) {
+        next.inFlight = inFlightItem ? null : mq.inFlight;
+    }
+
+    return {
+        ...metadata,
+        messageQueueV1: next,
+        messageQueueV1Discarded: [...existingDiscarded, discardedItem].slice(-maxDiscarded),
+    };
+}
+
 export function restoreMessageQueueV1DiscardedItem(
     metadata: Metadata,
     opts: { localId: string; now: number }

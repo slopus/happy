@@ -56,7 +56,15 @@ export function PendingMessagesModal(props: { sessionId: string; onClose: () => 
         try {
             await sessionAbort(props.sessionId);
             await sync.sendMessage(props.sessionId, text);
-            await sync.deletePendingMessage(props.sessionId, pendingId);
+            try {
+                await sync.deletePendingMessage(props.sessionId, pendingId);
+            } catch (deleteError) {
+                try {
+                    await sync.discardPendingMessage(props.sessionId, pendingId);
+                } catch {
+                    throw deleteError;
+                }
+            }
             props.onClose();
         } catch (e) {
             Modal.alert('Error', e instanceof Error ? e.message : 'Failed to send pending message');

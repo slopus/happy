@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Metadata } from './storageTypes';
-import { deleteMessageQueueV1DiscardedItem, deleteMessageQueueV1Item, discardMessageQueueV1All, enqueueMessageQueueV1Item, restoreMessageQueueV1DiscardedItem, updateMessageQueueV1Item } from './messageQueueV1';
+import { deleteMessageQueueV1DiscardedItem, deleteMessageQueueV1Item, discardMessageQueueV1All, discardMessageQueueV1Item, enqueueMessageQueueV1Item, restoreMessageQueueV1DiscardedItem, updateMessageQueueV1Item } from './messageQueueV1';
 
 function baseMetadata(): Metadata {
     return { path: '/tmp', host: 'host' };
@@ -98,6 +98,33 @@ describe('messageQueueV1 helpers', () => {
         expect(next.messageQueueV1?.queue).toEqual([]);
         expect(next.messageQueueV1?.inFlight).toBe(null);
         expect(next.messageQueueV1Discarded?.map((d) => d.localId)).toEqual(['x', 'a']);
+    });
+
+    it('moves a queued item into messageQueueV1Discarded', () => {
+        const metadata: Metadata = {
+            ...baseMetadata(),
+            messageQueueV1: {
+                v: 1,
+                queue: [{ localId: 'a', message: 'm1', createdAt: 1, updatedAt: 1 }],
+                inFlight: null,
+            },
+        };
+
+        const next = discardMessageQueueV1Item(metadata, {
+            localId: 'a',
+            discardedAt: 10,
+            discardedReason: 'manual',
+        });
+
+        expect(next.messageQueueV1?.queue).toEqual([]);
+        expect(next.messageQueueV1Discarded).toEqual([{
+            localId: 'a',
+            message: 'm1',
+            createdAt: 1,
+            updatedAt: 1,
+            discardedAt: 10,
+            discardedReason: 'manual',
+        }]);
     });
 
     it('restores a discarded item back into the queue', () => {

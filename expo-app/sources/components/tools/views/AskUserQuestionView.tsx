@@ -254,7 +254,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
             }
             setIsSubmitted(true);
         } catch (error) {
-            console.error('Failed to submit answer:', error);
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : t('errors.failedToSendMessage'));
         } finally {
             setIsSubmitting(false);
         }

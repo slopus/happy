@@ -45,7 +45,7 @@ import { buildOutgoingMessageMeta } from './messageMeta';
 import { HappyError } from '@/utils/errors';
 import { dbgSettings, isSettingsSyncDebugEnabled, summarizeSettings, summarizeSettingsDelta } from './debugSettings';
 import { deriveSettingsSecretsKey, decryptSecretValue, encryptSecretString, sealSecretsDeep } from './secretSettings';
-import { deleteMessageQueueV1DiscardedItem, deleteMessageQueueV1Item, enqueueMessageQueueV1Item, restoreMessageQueueV1DiscardedItem, updateMessageQueueV1Item } from './messageQueueV1';
+import { deleteMessageQueueV1DiscardedItem, deleteMessageQueueV1Item, discardMessageQueueV1Item, enqueueMessageQueueV1Item, restoreMessageQueueV1DiscardedItem, updateMessageQueueV1Item } from './messageQueueV1';
 import { didControlReturnToMobile } from './controlledByUserTransitions';
 import { chooseSubmitMode } from './submitMode';
 import type { SavedSecret } from './settings';
@@ -698,6 +698,20 @@ class Sync {
     async deletePendingMessage(sessionId: string, pendingId: string): Promise<void> {
         await this.updateSessionMetadataWithRetry(sessionId, (metadata) => deleteMessageQueueV1Item(metadata, pendingId));
         storage.getState().removePendingMessage(sessionId, pendingId);
+    }
+
+    async discardPendingMessage(
+        sessionId: string,
+        pendingId: string,
+        opts?: { reason?: 'switch_to_local' | 'manual' }
+    ): Promise<void> {
+        const discardedAt = nowServerMs();
+        await this.updateSessionMetadataWithRetry(sessionId, (metadata) => discardMessageQueueV1Item(metadata, {
+            localId: pendingId,
+            discardedAt,
+            discardedReason: opts?.reason ?? 'manual',
+        }));
+        await this.fetchPendingMessages(sessionId);
     }
 
     async restoreDiscardedPendingMessage(sessionId: string, pendingId: string): Promise<void> {

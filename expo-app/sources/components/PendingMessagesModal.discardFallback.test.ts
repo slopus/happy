@@ -8,7 +8,6 @@ const fetchPendingMessages = vi.fn();
 const sendMessage = vi.fn();
 const deletePendingMessage = vi.fn();
 const discardPendingMessage = vi.fn();
-const deleteDiscardedPendingMessage = vi.fn();
 const sessionAbort = vi.fn();
 const modalConfirm = vi.fn();
 const modalAlert = vi.fn();
@@ -37,7 +36,7 @@ vi.mock('@/sync/sync', () => ({
         discardPendingMessage: (...args: any[]) => discardPendingMessage(...args),
         updatePendingMessage: vi.fn(),
         restoreDiscardedPendingMessage: vi.fn(),
-        deleteDiscardedPendingMessage: (...args: any[]) => deleteDiscardedPendingMessage(...args),
+        deleteDiscardedPendingMessage: vi.fn(),
     },
 }));
 
@@ -67,14 +66,9 @@ vi.mock('react-native-unistyles', () => ({
             colors: {
                 text: '#000',
                 textSecondary: '#666',
-                surfaceHighest: '#eee',
                 input: { background: '#fff' },
-                button: {
-                    secondary: { background: '#eee', tint: '#000' },
-                },
-                box: {
-                    danger: { background: '#fdd', text: '#a00' },
-                },
+                button: { secondary: { background: '#eee', tint: '#000' } },
+                box: { danger: { background: '#fdd', text: '#a00' } },
             },
         },
     }),
@@ -84,23 +78,23 @@ vi.mock('@expo/vector-icons', () => ({
     Ionicons: 'Ionicons',
 }));
 
-describe('PendingMessagesModal', () => {
+describe('PendingMessagesModal discard fallback', () => {
     beforeEach(() => {
         fetchPendingMessages.mockReset();
         sendMessage.mockReset();
         deletePendingMessage.mockReset();
         discardPendingMessage.mockReset();
-        deleteDiscardedPendingMessage.mockReset();
         sessionAbort.mockReset();
         modalConfirm.mockReset();
         modalAlert.mockReset();
     });
 
-    it('does not close the modal until abort+send+delete succeed', async () => {
+    it('falls back to discarding when delete fails after send', async () => {
         modalConfirm.mockResolvedValueOnce(true);
         sessionAbort.mockResolvedValueOnce(undefined);
         sendMessage.mockResolvedValueOnce(undefined);
-        deletePendingMessage.mockResolvedValueOnce(undefined);
+        deletePendingMessage.mockRejectedValueOnce(new Error('delete failed'));
+        discardPendingMessage.mockResolvedValueOnce(undefined);
 
         const onClose = vi.fn();
         const { PendingMessagesModal } = await import('./PendingMessagesModal');
@@ -119,45 +113,10 @@ describe('PendingMessagesModal', () => {
             await sendNow!.props.onPress();
         });
 
-        expect(sessionAbort).toHaveBeenCalledTimes(1);
-        expect(sendMessage).toHaveBeenCalledTimes(1);
         expect(deletePendingMessage).toHaveBeenCalledTimes(1);
+        expect(discardPendingMessage).toHaveBeenCalledTimes(1);
         expect(onClose).toHaveBeenCalledTimes(1);
-
-        const abortOrder = sessionAbort.mock.invocationCallOrder[0]!;
-        const sendOrder = sendMessage.mock.invocationCallOrder[0]!;
-        const deleteOrder = deletePendingMessage.mock.invocationCallOrder[0]!;
-        const closeOrder = onClose.mock.invocationCallOrder[0]!;
-
-        expect(abortOrder).toBeLessThan(sendOrder);
-        expect(sendOrder).toBeLessThan(deleteOrder);
-        expect(deleteOrder).toBeLessThan(closeOrder);
-    });
-
-    it('does not delete or close when send fails', async () => {
-        modalConfirm.mockResolvedValueOnce(true);
-        sessionAbort.mockResolvedValueOnce(undefined);
-        sendMessage.mockRejectedValueOnce(new Error('send failed'));
-
-        const onClose = vi.fn();
-        const { PendingMessagesModal } = await import('./PendingMessagesModal');
-
-        let tree: ReturnType<typeof renderer.create> | undefined;
-        await act(async () => {
-            tree = renderer.create(React.createElement(PendingMessagesModal, { sessionId: 's1', onClose }));
-        });
-
-        const sendNow = tree!.root
-            .findAllByType('Pressable' as any)
-            .find((p) => p.props.testID === 'pendingMessages.sendNow:p1');
-        expect(sendNow).toBeTruthy();
-
-        await act(async () => {
-            await sendNow!.props.onPress();
-        });
-
-        expect(deletePendingMessage).toHaveBeenCalledTimes(0);
-        expect(onClose).toHaveBeenCalledTimes(0);
-        expect(modalAlert).toHaveBeenCalledTimes(1);
+        expect(modalAlert).toHaveBeenCalledTimes(0);
     });
 });
+
