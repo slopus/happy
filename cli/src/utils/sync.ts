@@ -40,12 +40,7 @@ export class InvalidateSync {
     constructor(command: () => Promise<void>, opts: InvalidateSyncOptions = {}) {
         this._command = command;
         this._onError = opts.onError;
-        this._backoff = opts.backoff ?? createBackoff({
-            onError: (e, failuresCount) => {
-                this._lastFailureCount = failuresCount;
-                this._onError?.(e, failuresCount);
-            },
-        });
+        this._backoff = opts.backoff ?? createBackoff();
     }
 
     invalidate() {
@@ -96,11 +91,21 @@ export class InvalidateSync {
                 if (this._stopped) {
                     return;
                 }
-                await this._command();
+                try {
+                    await this._command();
+                } catch (e) {
+                    this._lastFailureCount++;
+                    this._onError?.(e, this._lastFailureCount);
+                    throw e;
+                }
             });
         } catch (e) {
             // Always resolve pending awaiters even on failure; otherwise invalidateAndAwait() can hang forever.
-            this._onError?.(e, this._lastFailureCount + 1);
+            // Note: `_onError` is called on every failed attempt inside the callback above, even with custom backoffs.
+            // If the backoff throws before any attempt runs, report a single failure.
+            if (this._lastFailureCount === 0) {
+                this._onError?.(e, 1);
+            }
         }
         if (this._stopped) {
             this._notifyPendings();
