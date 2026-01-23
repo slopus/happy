@@ -36,7 +36,9 @@ export default React.memo(function FeaturesSettingsScreen() {
         setExpSessionType(enabled);
         setExpZen(enabled);
         setExpVoiceAuthFlow(enabled);
+        setExpCodexResume(enabled);
     }, [
+        setExpCodexResume,
         setExpFileViewer,
         setExpGemini,
         setExpSessionType,
