@@ -54,10 +54,10 @@ export function PendingMessagesModal(props: { sessionId: string; onClose: () => 
         if (!confirmed) return;
 
         try {
-            await sync.deletePendingMessage(props.sessionId, pendingId);
-            props.onClose();
             await sessionAbort(props.sessionId);
             await sync.sendMessage(props.sessionId, text);
+            await sync.deletePendingMessage(props.sessionId, pendingId);
+            props.onClose();
         } catch (e) {
             Modal.alert('Error', e instanceof Error ? e.message : 'Failed to send pending message');
         }
@@ -94,10 +94,10 @@ export function PendingMessagesModal(props: { sessionId: string; onClose: () => 
         if (!confirmed) return;
 
         try {
-            await sync.deleteDiscardedPendingMessage(props.sessionId, pendingId);
-            props.onClose();
             await sessionAbort(props.sessionId);
             await sync.sendMessage(props.sessionId, text);
+            await sync.deleteDiscardedPendingMessage(props.sessionId, pendingId);
+            props.onClose();
         } catch (e) {
             Modal.alert('Error', e instanceof Error ? e.message : 'Failed to send discarded message');
         }
@@ -161,17 +161,20 @@ export function PendingMessagesModal(props: { sessionId: string; onClose: () => 
                                     title="Edit"
                                     onPress={() => handleEdit(m.id, m.text)}
                                     theme={theme}
+                                    testID={`pendingMessages.edit:${m.id}`}
                                 />
                                 <ActionButton
                                     title="Remove"
                                     onPress={() => handleRemove(m.id)}
                                     theme={theme}
                                     destructive
+                                    testID={`pendingMessages.remove:${m.id}`}
                                 />
                                 <ActionButton
                                     title="Send now"
                                     onPress={() => handleSendNow(m.id, m.text)}
                                     theme={theme}
+                                    testID={`pendingMessages.sendNow:${m.id}`}
                                 />
                             </View>
                         </View>
@@ -222,17 +225,20 @@ export function PendingMessagesModal(props: { sessionId: string; onClose: () => 
                                             title="Re-queue"
                                             onPress={() => handleRequeueDiscarded(m.id)}
                                             theme={theme}
+                                            testID={`pendingMessages.discarded.requeue:${m.id}`}
                                         />
                                         <ActionButton
                                             title="Remove"
                                             onPress={() => handleRemoveDiscarded(m.id)}
                                             theme={theme}
                                             destructive
+                                            testID={`pendingMessages.discarded.remove:${m.id}`}
                                         />
                                         <ActionButton
                                             title="Send now"
                                             onPress={() => handleSendDiscardedNow(m.id, m.text)}
                                             theme={theme}
+                                            testID={`pendingMessages.discarded.sendNow:${m.id}`}
                                         />
                                     </View>
                                 </View>
@@ -249,6 +255,7 @@ function ActionButton(props: {
     onPress: () => void;
     theme: any;
     destructive?: boolean;
+    testID?: string;
 }) {
     const backgroundColor = props.destructive
         ? props.theme.colors.box.danger.background
@@ -256,6 +263,7 @@ function ActionButton(props: {
     return (
         <Pressable
             onPress={props.onPress}
+            testID={props.testID}
             style={(p) => ({
                 paddingHorizontal: 12,
                 paddingVertical: 8,
