@@ -14,6 +14,15 @@ describe('messageQueueV1', () => {
         expect(parsed?.inFlight).toBe(null);
     });
 
+    it('rejects invalid inFlight objects', () => {
+        const parsed = parseMessageQueueV1({
+            v: 1,
+            queue: [],
+            inFlight: { localId: 'x', message: 'mx', createdAt: 0, updatedAt: 0 },
+        });
+        expect(parsed).toBe(null);
+    });
+
     it('claims the first queue item into inFlight', () => {
         const result = claimMessageQueueV1Next({
             messageQueueV1: {

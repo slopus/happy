@@ -74,8 +74,16 @@ export function parseMessageQueueV1(raw: unknown): MessageQueueV1 | null {
     }
 
     const inFlightRaw = (raw as any).inFlight;
-    const inFlight = inFlightRaw === null || inFlightRaw === undefined ? inFlightRaw : parseInFlight(inFlightRaw);
-    if (!(inFlight === null || inFlight === undefined || inFlight)) return null;
+    let inFlight: MessageQueueV1InFlight | null | undefined;
+    if (inFlightRaw === undefined) {
+        inFlight = undefined;
+    } else if (inFlightRaw === null) {
+        inFlight = null;
+    } else {
+        const parsed = parseInFlight(inFlightRaw);
+        if (!parsed) return null;
+        inFlight = parsed;
+    }
 
     return {
         v: 1,
