@@ -67,6 +67,7 @@ export const it: TranslationStructure = {
         noMatches: 'Nessuna corrispondenza',
         all: 'Tutti',
         machine: 'macchina',
+        openMachine: 'Apri macchina',
         clearSearch: 'Cancella ricerca',
         refresh: 'Aggiorna',
         saveAs: 'Salva con nome',
@@ -569,6 +570,9 @@ export const it: TranslationStructure = {
         failedToRemoveFriend: 'Impossibile rimuovere l\'amico',
         searchFailed: 'Ricerca non riuscita. Riprova.',
         failedToSendRequest: 'Impossibile inviare la richiesta di amicizia',
+        codexResumeNotInstalledTitle: 'Codex resume non è installato su questa macchina',
+        codexResumeNotInstalledMessage:
+            'Per riprendere una conversazione di Codex, installa il server di ripresa di Codex sulla macchina di destinazione (Dettagli macchina → Ripresa Codex).',
     },
 
     newSession: {

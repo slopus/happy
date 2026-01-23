@@ -68,6 +68,7 @@ export const es: TranslationStructure = {
         noMatches: 'Sin coincidencias',
         all: 'Todo',
         machine: 'máquina',
+        openMachine: 'Abrir máquina',
         clearSearch: 'Limpiar búsqueda',
         refresh: 'Actualizar',
     },
@@ -324,6 +325,9 @@ export const es: TranslationStructure = {
         failedToRemoveFriend: 'No se pudo eliminar al amigo',
         searchFailed: 'La búsqueda falló. Por favor, intenta de nuevo.',
         failedToSendRequest: 'No se pudo enviar la solicitud de amistad',
+        codexResumeNotInstalledTitle: 'Codex resume no está instalado en esta máquina',
+        codexResumeNotInstalledMessage:
+            'Para reanudar una conversación de Codex, instala el servidor de reanudación de Codex en la máquina de destino (Detalles de la máquina → Reanudación de Codex).',
     },
 
     newSession: {

@@ -70,6 +70,7 @@ export const zhHans: TranslationStructure = {
         noMatches: '无匹配结果',
         all: '全部',
         machine: '机器',
+        openMachine: '打开机器',
         clearSearch: '清除搜索',
         refresh: '刷新',
     },
@@ -326,6 +327,9 @@ export const zhHans: TranslationStructure = {
         failedToRemoveFriend: '删除好友失败',
         searchFailed: '搜索失败。请重试。',
         failedToSendRequest: '发送好友请求失败',
+        codexResumeNotInstalledTitle: '此机器未安装 Codex resume',
+        codexResumeNotInstalledMessage:
+            '要恢复 Codex 对话，请在目标机器上安装 Codex resume 服务器（机器详情 → Codex resume）。',
     },
 
     newSession: {

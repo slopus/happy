@@ -119,6 +119,7 @@ export const en = {
         enterSecretKey: 'Please enter a secret key',
         invalidSecretKey: 'Invalid secret key. Please check and try again.',
         enterUrlManually: 'Enter URL manually',
+        openMachine: 'Open machine',
         terminalUrlPlaceholder: 'happy://terminal?...',
         restoreQrInstructions: '1. Open Happy on your mobile device\n2. Go to Settings → Account\n3. Tap "Link New Device"\n4. Scan this QR code',
         restoreWithSecretKeyInstead: 'Restore with Secret Key Instead',
@@ -337,6 +338,9 @@ export const en = {
         failedToRemoveFriend: 'Failed to remove friend',
         searchFailed: 'Search failed. Please try again.',
         failedToSendRequest: 'Failed to send friend request',
+        codexResumeNotInstalledTitle: 'Codex resume is not installed on this machine',
+        codexResumeNotInstalledMessage:
+            'To resume a Codex conversation, install the Codex resume server on the target machine (Machine Details → Codex resume).',
     },
 
     newSession: {

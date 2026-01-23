@@ -60,6 +60,7 @@ export const ja: TranslationStructure = {
         noMatches: '一致するものがありません',
         all: 'すべて',
         machine: 'マシン',
+        openMachine: 'マシンを開く',
         clearSearch: '検索をクリア',
         refresh: '更新',
         saveAs: '名前を付けて保存',
@@ -562,6 +563,9 @@ export const ja: TranslationStructure = {
         failedToRemoveFriend: '友達の削除に失敗しました',
         searchFailed: '検索に失敗しました。再試行してください。',
         failedToSendRequest: '友達リクエストの送信に失敗しました',
+        codexResumeNotInstalledTitle: 'このマシンには Codex resume がインストールされていません',
+        codexResumeNotInstalledMessage:
+            'Codex の会話を再開するには、対象のマシンに Codex resume サーバーをインストールしてください（マシン詳細 → Codex resume）。',
     },
 
     newSession: {
@@ -729,9 +733,9 @@ export const ja: TranslationStructure = {
         aiProfile: 'AIプロファイル',
         aiProvider: 'AIプロバイダー',
         failedToCopyClaudeCodeSessionId: 'Claude Code セッション ID のコピーに失敗しました',
-        codexSessionId: 'Codex Session ID',
-        codexSessionIdCopied: 'Codex Session IDがクリップボードにコピーされました',
-        failedToCopyCodexSessionId: 'Codex Session IDのコピーに失敗しました',
+        codexSessionId: 'Codex セッション ID',
+        codexSessionIdCopied: 'Codex セッション ID をクリップボードにコピーしました',
+        failedToCopyCodexSessionId: 'Codex セッション ID のコピーに失敗しました',
         metadataCopied: 'メタデータがクリップボードにコピーされました',
         failedToCopyMetadata: 'メタデータのコピーに失敗しました',
         failedToKillSession: 'セッションの終了に失敗しました',

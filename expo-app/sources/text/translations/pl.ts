@@ -79,6 +79,7 @@ export const pl: TranslationStructure = {
         noMatches: 'Brak dopasowań',
         all: 'Wszystko',
         machine: 'maszyna',
+        openMachine: 'Otwórz maszynę',
         clearSearch: 'Wyczyść wyszukiwanie',
         refresh: 'Odśwież',
     },
@@ -335,6 +336,9 @@ export const pl: TranslationStructure = {
         failedToRemoveFriend: 'Nie udało się usunąć przyjaciela',
         searchFailed: 'Wyszukiwanie nie powiodło się. Spróbuj ponownie.',
         failedToSendRequest: 'Nie udało się wysłać zaproszenia do znajomych',
+        codexResumeNotInstalledTitle: 'Codex resume nie jest zainstalowane na tej maszynie',
+        codexResumeNotInstalledMessage:
+            'Aby wznowić rozmowę Codex, zainstaluj serwer wznawiania Codex na maszynie docelowej (Szczegóły maszyny → Wznawianie Codex).',
     },
 
     newSession: {

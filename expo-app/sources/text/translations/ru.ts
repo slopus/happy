@@ -79,6 +79,7 @@ export const ru: TranslationStructure = {
         noMatches: 'Нет совпадений',
         all: 'Все',
         machine: 'машина',
+        openMachine: 'Открыть машину',
         clearSearch: 'Очистить поиск',
         refresh: 'Обновить',
     },
@@ -306,6 +307,9 @@ export const ru: TranslationStructure = {
         failedToRemoveFriend: 'Не удалось удалить друга',
         searchFailed: 'Поиск не удался. Пожалуйста, попробуйте снова.',
         failedToSendRequest: 'Не удалось отправить запрос в друзья',
+        codexResumeNotInstalledTitle: 'Codex resume не установлен на этой машине',
+        codexResumeNotInstalledMessage:
+            'Чтобы возобновить разговор Codex, установите сервер возобновления Codex на целевой машине (Детали машины → Возобновление Codex).',
     },
 
     newSession: {

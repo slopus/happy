@@ -68,6 +68,7 @@ export const ca: TranslationStructure = {
         noMatches: 'Sense coincidències',
         all: 'Tots',
         machine: 'màquina',
+        openMachine: 'Obrir màquina',
         clearSearch: 'Neteja la cerca',
         refresh: 'Actualitza',
     },
@@ -324,6 +325,9 @@ export const ca: TranslationStructure = {
         failedToRemoveFriend: 'No s\'ha pogut eliminar l\'amic',
         searchFailed: 'La cerca ha fallat. Si us plau, torna-ho a provar.',
         failedToSendRequest: 'No s\'ha pogut enviar la sol·licitud d\'amistat',
+        codexResumeNotInstalledTitle: 'Codex resume no està instal·lat en aquesta màquina',
+        codexResumeNotInstalledMessage:
+            'Per reprendre una conversa de Codex, instal·la el servidor de represa de Codex a la màquina de destinació (Detalls de la màquina → Represa de Codex).',
     },
 
     newSession: {

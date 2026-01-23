@@ -14,6 +14,7 @@ import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { machineCapabilitiesInvoke, machineSpawnNewSession } from '@/sync/ops';
 import { Modal } from '@/modal';
+import { BaseModal } from '@/modal/components/BaseModal';
 import { sync } from '@/sync/sync';
 import { SessionTypeSelectorRows } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
@@ -232,7 +233,7 @@ function NewSessionScreen() {
     const navigation = useNavigation();
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
-    const { width: screenWidth } = useWindowDimensions();
+    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const popoverBoundaryRef = React.useRef<View>(null!);
 
@@ -1893,9 +1894,9 @@ function NewSessionScreen() {
 
                 if (installed === false) {
                     const openMachine = await Modal.confirm(
-                        'Codex resume is not installed on this machine',
-                        'To resume a Codex conversation, install @leeroy/codex-mcp-resume on the target machine (Machine Details → Codex resume).',
-                        { confirmText: 'Open machine' }
+                        t('errors.codexResumeNotInstalledTitle'),
+                        t('errors.codexResumeNotInstalledMessage'),
+                        { confirmText: t('common.openMachine') }
                     );
                     if (openMachine) {
                         router.push(`/machine/${selectedMachineId}` as any);
@@ -2440,17 +2441,81 @@ function NewSessionScreen() {
     ]);
 
     return (
-        <View ref={popoverBoundaryRef} style={{ flex: 1, width: '100%' }}>
-            <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
-                <NewSessionWizard
-                    layout={wizardLayoutProps}
-                    profiles={wizardProfilesProps}
-                    agent={wizardAgentProps}
-                    machine={wizardMachineProps}
-                    footer={wizardFooterProps}
-                />
-            </PopoverBoundaryProvider>
-        </View>
+        Platform.OS === 'web' ? (
+            <BaseModal
+                visible={true}
+                onClose={() => router.back()}
+                closeOnBackdrop={true}
+                showBackdrop={true}
+            >
+                <View
+                    style={[
+                        {
+                            width: '100%',
+                            maxWidth: Math.min(layout.maxWidth ?? 920, screenWidth - 24),
+                            maxHeight: screenHeight - 24,
+                            borderRadius: 16,
+                            overflow: 'hidden',
+                            backgroundColor: theme.colors.surface,
+                            borderWidth: StyleSheet.hairlineWidth,
+                            borderColor: theme.colors.divider,
+                        } as any,
+                    ]}
+                >
+                    <View
+                        style={{
+                            height: 52,
+                            paddingHorizontal: 16,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            borderBottomWidth: StyleSheet.hairlineWidth,
+                            borderBottomColor: theme.colors.divider,
+                            backgroundColor: theme.colors.surface,
+                        }}
+                    >
+                        <Text style={{ fontSize: 17, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
+                            {t('newSession.title')}
+                        </Text>
+                        <Pressable
+                            onPress={() => router.back()}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('common.cancel')}
+                        >
+                            <Ionicons name="close" size={22} color={theme.colors.textSecondary} />
+                        </Pressable>
+                    </View>
+
+                    <View
+                        ref={popoverBoundaryRef}
+                        style={{ flex: 1, width: '100%', minHeight: 0 } as any}
+                    >
+                        <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
+                            <NewSessionWizard
+                                layout={wizardLayoutProps}
+                                profiles={wizardProfilesProps}
+                                agent={wizardAgentProps}
+                                machine={wizardMachineProps}
+                                footer={wizardFooterProps}
+                            />
+                        </PopoverBoundaryProvider>
+                    </View>
+                </View>
+            </BaseModal>
+        ) : (
+            <View ref={popoverBoundaryRef} style={{ flex: 1, width: '100%' }}>
+                <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
+                    <NewSessionWizard
+                        layout={wizardLayoutProps}
+                        profiles={wizardProfilesProps}
+                        agent={wizardAgentProps}
+                        machine={wizardMachineProps}
+                        footer={wizardFooterProps}
+                    />
+                </PopoverBoundaryProvider>
+            </View>
+        )
     );
 }
 
