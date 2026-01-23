@@ -18,6 +18,7 @@ export const unstable_settings = {
 export default function RootLayout() {
     const auth = useAuth();
     const segments = useSegments();
+    const { theme } = useUnistyles();
 
     const shouldRedirect = !auth.isAuthenticated && !isPublicRouteForUnauthenticated(segments);
     React.useEffect(() => {
@@ -32,7 +33,6 @@ export default function RootLayout() {
 
     // Use custom header on Android and Mac Catalyst, native header on iOS (non-Catalyst)
     const shouldUseCustomHeader = Platform.OS === 'android' || isRunningOnMac() || Platform.OS === 'web';
-    const { theme } = useUnistyles();
 
     return (
         <Stack
