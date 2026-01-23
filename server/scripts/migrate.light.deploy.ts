@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { applyLightDefaultEnv } from '@/flavors/light/env';
+import { buildLightMigrateDeployPlan } from './migrate.light.deployPlan';
 
 function run(cmd: string, args: string[], env: NodeJS.ProcessEnv): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -21,15 +22,14 @@ async function main() {
     const env: NodeJS.ProcessEnv = { ...process.env };
     applyLightDefaultEnv(env);
 
-    const dataDir = env.HAPPY_SERVER_LIGHT_DATA_DIR!;
-    await mkdir(dataDir, { recursive: true });
+    const plan = buildLightMigrateDeployPlan(env);
+    await mkdir(plan.dataDir, { recursive: true });
 
-    await run('yarn', ['-s', 'schema:sqlite', '--quiet'], env);
-    await run('yarn', ['-s', 'prisma', 'migrate', 'deploy', '--schema', 'prisma/sqlite/schema.prisma'], env);
+    await run('yarn', plan.schemaGenerateArgs, env);
+    await run('yarn', plan.prismaDeployArgs, env);
 }
 
 main().catch((err) => {
     console.error(err);
     process.exit(1);
 });
-
