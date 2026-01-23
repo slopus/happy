@@ -33,8 +33,9 @@ describe('logger.debugLargeJson', () => {
     });
 
     it('writes to log file when DEBUG is set', async () => {
-        const { logger } = (await import('@/ui/logger')) as typeof import('@/ui/logger');
         process.env.DEBUG = '1';
+
+        const { logger } = (await import('@/ui/logger')) as typeof import('@/ui/logger');
 
         logger.debugLargeJson('[TEST] debugLargeJson', { secret: 'value' });
 
