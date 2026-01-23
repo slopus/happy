@@ -1,7 +1,6 @@
-import { Prisma } from "@prisma/client";
-import { RelationshipStatus } from "@prisma/client";
+import { RelationshipStatus, type RelationshipStatus as RelationshipStatusType, type TransactionClient } from "@/storage/prisma";
 
-export async function relationshipSet(tx: Prisma.TransactionClient, from: string, to: string, status: RelationshipStatus, lastNotifiedAt?: Date) {
+export async function relationshipSet(tx: TransactionClient, from: string, to: string, status: RelationshipStatusType, lastNotifiedAt?: Date) {
     // Get existing relationship to preserve lastNotifiedAt
     const existing = await tx.userRelationship.findUnique({
         where: {

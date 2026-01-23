@@ -1,7 +1,6 @@
-import { Prisma, PrismaClient } from "@prisma/client";
-import { RelationshipStatus } from "@prisma/client";
+import { RelationshipStatus, type PrismaClientType, type TransactionClient, type RelationshipStatus as RelationshipStatusType } from "@/storage/prisma";
 
-export async function relationshipGet(tx: Prisma.TransactionClient | PrismaClient, from: string, to: string): Promise<RelationshipStatus> {
+export async function relationshipGet(tx: TransactionClient | PrismaClientType, from: string, to: string): Promise<RelationshipStatusType> {
     const relationship = await tx.userRelationship.findFirst({
         where: {
             fromUserId: from,

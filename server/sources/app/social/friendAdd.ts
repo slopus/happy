@@ -1,10 +1,10 @@
 import { Context } from "@/context";
 import { buildUserProfile, UserProfile } from "./type";
 import { inTx } from "@/storage/inTx";
-import { RelationshipStatus } from "@prisma/client";
 import { relationshipSet } from "./relationshipSet";
 import { relationshipGet } from "./relationshipGet";
 import { sendFriendRequestNotification, sendFriendshipEstablishedNotification } from "./friendNotification";
+import { RelationshipStatus } from "@/storage/prisma";
 
 /**
  * Add a friend or accept a friend request.

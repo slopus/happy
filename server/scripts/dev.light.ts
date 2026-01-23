@@ -31,7 +31,7 @@ async function main() {
     await mkdir(filesDir, { recursive: true });
 
     // Ensure sqlite schema is present, then apply migrations (idempotent).
-    await run('yarn', ['-s', 'schema:sqlite', '--quiet'], env);
+    await run('yarn', ['-s', 'schema:sync', '--quiet'], env);
     await run('yarn', plan.prismaDeployArgs, env);
 
     // Run the light flavor.

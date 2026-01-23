@@ -5267,10 +5267,10 @@ expo-print@~15.0.7:
   resolved "https://registry.yarnpkg.com/expo-print/-/expo-print-15.0.8.tgz#596c9f2302fb68d2db682f6f3e0c6596930b59dc"
   integrity sha512-4O0Qzm0On5AmJIl9d+BT+ieTipFp658nHI4aX7vKEFPfj3dfQxG6rDJJpca+rrc9c4Ha8ZFYGvxJG5+4lFq2Pw==
 
-expo-router@~6.0.7:
-  version "6.0.21"
-  resolved "https://registry.yarnpkg.com/expo-router/-/expo-router-6.0.21.tgz#5920269224c7817f23a55df43ea01d1f7cba9172"
-  integrity sha512-wjTUjrnWj6gRYjaYl1kYfcRnNE4ZAQ0kz0+sQf6/mzBd/OU6pnOdD7WrdAW3pTTpm52Q8sMoeX98tNQEddg2uA==
+expo-router@6.0.22:
+  version "6.0.22"
+  resolved "https://registry.yarnpkg.com/expo-router/-/expo-router-6.0.22.tgz#d77b5af4ddfbd742375cca1f23b080c69e69841d"
+  integrity sha512-6eOwobaVZQRsSQv0IoWwVlPbJru1zbreVsuPFIWwk7HApENStU2MggrceHXJqXjGho+FKeXxUop/gqOFDzpOMg==
   dependencies:
     "@expo/metro-runtime" "^6.1.2"
     "@expo/schema-utils" "^0.1.8"

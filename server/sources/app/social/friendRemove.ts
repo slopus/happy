@@ -1,9 +1,9 @@
 import { Context } from "@/context";
 import { buildUserProfile, UserProfile } from "./type";
 import { inTx } from "@/storage/inTx";
-import { RelationshipStatus } from "@prisma/client";
 import { relationshipSet } from "./relationshipSet";
 import { relationshipGet } from "./relationshipGet";
+import { RelationshipStatus } from "@/storage/prisma";
 
 export async function friendRemove(ctx: Context, uid: string): Promise<UserProfile | null> {
     return await inTx(async (tx) => {

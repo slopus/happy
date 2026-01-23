@@ -37,7 +37,7 @@ async function main() {
     const dataDir = env.HAPPY_SERVER_LIGHT_DATA_DIR!;
     await mkdir(dataDir, { recursive: true });
 
-    await run('yarn', ['-s', 'schema:sqlite', '--quiet'], env);
+    await run('yarn', ['-s', 'schema:sync', '--quiet'], env);
 
     const baseline = await findBaselineMigrationDir();
     await run(
@@ -51,4 +51,3 @@ main().catch((err) => {
     console.error(err);
     process.exit(1);
 });
-

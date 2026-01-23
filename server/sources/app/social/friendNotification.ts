@@ -1,4 +1,4 @@
-import { Prisma, RelationshipStatus } from "@prisma/client";
+import { RelationshipStatus, type RelationshipStatus as RelationshipStatusType, type TransactionClient } from "@/storage/prisma";
 import { feedPost } from "@/app/feed/feedPost";
 import { Context } from "@/context";
 import { afterTx } from "@/storage/inTx";
@@ -12,7 +12,7 @@ import { afterTx } from "@/storage/inTx";
  */
 export function shouldSendNotification(
     lastNotifiedAt: Date | null,
-    status: RelationshipStatus
+    status: RelationshipStatusType
 ): boolean {
     // Don't send notifications for rejected relationships
     if (status === RelationshipStatus.rejected) {
@@ -34,7 +34,7 @@ export function shouldSendNotification(
  * This creates a feed item for the receiver about the incoming friend request.
  */
 export async function sendFriendRequestNotification(
-    tx: Prisma.TransactionClient,
+    tx: TransactionClient,
     receiverUserId: string,
     senderUserId: string
 ): Promise<void> {
@@ -86,7 +86,7 @@ export async function sendFriendRequestNotification(
  * This creates feed items for both users about the new friendship.
  */
 export async function sendFriendshipEstablishedNotification(
-    tx: Prisma.TransactionClient,
+    tx: TransactionClient,
     user1Id: string,
     user2Id: string
 ): Promise<void> {

@@ -2,7 +2,7 @@ import { eventRouter, buildNewSessionUpdate } from "@/app/events/eventRouter";
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";

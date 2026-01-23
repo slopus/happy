@@ -1,7 +1,7 @@
 import { Context } from "@/context";
 import { buildUserProfile, UserProfile } from "./type";
 import { db } from "@/storage/db";
-import { RelationshipStatus } from "@prisma/client";
+import { RelationshipStatus } from "@/storage/prisma";
 
 export async function friendList(ctx: Context): Promise<UserProfile[]> {
     // Query all relationships where current user is fromUserId with friend, pending, or requested status

@@ -1,8 +1,8 @@
-import { Prisma } from "@prisma/client";
 import { delay } from "@/utils/delay";
 import { db } from "@/storage/db";
+import { isPrismaErrorCode, type TransactionClient } from "@/storage/prisma";
 
-export type Tx = Prisma.TransactionClient;
+export type Tx = TransactionClient;
 
 const symbol = Symbol();
 
@@ -31,12 +31,10 @@ export async function inTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
             }
             return result.result;
         } catch (e) {
-            if (e instanceof Prisma.PrismaClientKnownRequestError) {
-                if (e.code === 'P2034' && counter < 3) {
-                    counter++;
-                    await delay(counter * 100);
-                    continue;
-                }
+            if (isPrismaErrorCode(e, "P2034") && counter < 3) {
+                counter++;
+                await delay(counter * 100);
+                continue;
             }
             throw e;
         }

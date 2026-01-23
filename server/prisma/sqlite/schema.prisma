@@ -1,6 +1,6 @@
 // AUTO-GENERATED FILE - DO NOT EDIT.
 // Source: prisma/schema.prisma
-// Regenerate: yarn schema:sqlite
+// Regenerate: yarn schema:sync
 
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema

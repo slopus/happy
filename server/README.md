@@ -109,7 +109,7 @@ Notes:
 
 - `prisma/schema.prisma` is the **source of truth** (the full flavor uses it directly).
 - `prisma/sqlite/schema.prisma` is **auto-generated** from `schema.prisma` (do not edit).
-- Regenerate with `yarn schema:sqlite` (or verify with `yarn schema:sqlite:check`).
+- Regenerate with `yarn schema:sync` (or verify with `yarn schema:sync:check`).
 
 Migrations directories are flavor-specific:
 
@@ -145,7 +145,7 @@ When you change the data model, you must update both migration histories:
 
 1. Edit `prisma/schema.prisma`
 2. Regenerate the SQLite schema and commit the result:
-   - `yarn schema:sqlite`
+   - `yarn schema:sync`
 3. Create/update the **full (Postgres)** migration:
    - `yarn migrate --name <name>` (writes to `prisma/migrations/*`)
 4. Create/update the **light (SQLite)** migration:

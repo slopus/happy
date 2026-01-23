@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Fastify } from "../types";
 import { db } from "@/storage/db";
-import { RelationshipStatus } from "@prisma/client";
+import { RelationshipStatus, type RelationshipStatus as RelationshipStatusType } from "@/storage/prisma";
 import { friendAdd } from "@/app/social/friendAdd";
 import { Context } from "@/context";
 import { friendRemove } from "@/app/social/friendRemove";
@@ -50,7 +50,7 @@ export async function userRoutes(app: Fastify) {
                 toUserId: id
             }
         });
-        const status: RelationshipStatus = relationship?.status || RelationshipStatus.none;
+        const status: RelationshipStatusType = relationship?.status || RelationshipStatus.none;
 
         // Build user profile
         return reply.send({
@@ -101,7 +101,7 @@ export async function userRoutes(app: Fastify) {
                     toUserId: user.id
                 }
             });
-            const status: RelationshipStatus = relationship?.status || RelationshipStatus.none;
+            const status: RelationshipStatusType = relationship?.status || RelationshipStatus.none;
             return buildUserProfile(user, status);
         }));
 

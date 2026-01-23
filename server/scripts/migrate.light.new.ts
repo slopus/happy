@@ -53,7 +53,7 @@ async function main() {
     const dbFile = tmp.fileSync({ prefix: 'happy-server-light-migrate-', postfix: '.sqlite' }).name;
     env.DATABASE_URL = `file:${dbFile}`;
 
-    await run('yarn', ['-s', 'schema:sqlite', '--quiet'], env);
+    await run('yarn', ['-s', 'schema:sync', '--quiet'], env);
     await run(
         'yarn',
         [
@@ -78,4 +78,3 @@ main().catch((err) => {
     console.error(err);
     process.exit(1);
 });
-
