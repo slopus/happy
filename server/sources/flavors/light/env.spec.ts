@@ -28,7 +28,7 @@ describe('light env helpers', () => {
 
         expect(env.HAPPY_SERVER_LIGHT_DATA_DIR).toBe('/home/test/.happy/server-light');
         expect(env.HAPPY_SERVER_LIGHT_FILES_DIR).toBe('/home/test/.happy/server-light/files');
-        expect(env.DATABASE_URL).toBe('file:/home/test/.happy/server-light/happy-server-light.sqlite');
+        expect(env.DATABASE_URL).toBe('file:///home/test/.happy/server-light/happy-server-light.sqlite');
         expect(env.PUBLIC_URL).toBe('http://localhost:4000');
     });
 

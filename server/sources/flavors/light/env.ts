@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { homedir as defaultHomedir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 
 export type LightEnv = NodeJS.ProcessEnv;
 
@@ -28,7 +29,7 @@ export function resolveLightDatabaseUrl(env: LightEnv, dataDir: string): string 
         return fromEnv;
     }
     const dbPath = join(dataDir, 'happy-server-light.sqlite');
-    return `file:${dbPath}`;
+    return pathToFileURL(dbPath).toString();
 }
 
 export function resolveLightPublicUrl(env: LightEnv): string {
