@@ -94,53 +94,58 @@ describe('useCLIDetection (hook)', () => {
 
     it('keeps timestamp stable when results have no checkedAt values', async () => {
         vi.useFakeTimers();
-        vi.setSystemTime(1000);
+        try {
+            vi.setSystemTime(1000);
 
-        useMachineCapabilitiesCacheMock.mockReturnValueOnce({
-            state: {
-                status: 'loaded',
-                snapshot: {
-                    response: {
-                        protocolVersion: 1,
-                        results: {},
+            useMachineCapabilitiesCacheMock.mockReturnValueOnce({
+                state: {
+                    status: 'loaded',
+                    snapshot: {
+                        response: {
+                            protocolVersion: 1,
+                            results: {},
+                        },
                     },
                 },
-            },
-            refresh: vi.fn(),
-        });
+                refresh: vi.fn(),
+            });
 
-        const { useCLIDetection } = await import('./useCLIDetection');
+            const { useCLIDetection } = await import('./useCLIDetection');
 
-        let latest: any = null;
-        function Test() {
-            latest = useCLIDetection('m1', { autoDetect: false });
-            return React.createElement('View');
+            let latest: any = null;
+            function Test() {
+                latest = useCLIDetection('m1', { autoDetect: false });
+                return React.createElement('View');
+            }
+
+            let root: any = null;
+            act(() => {
+                root = renderer.create(React.createElement(Test));
+            });
+            expect(latest?.timestamp).toBe(1000);
+
+            vi.setSystemTime(2000);
+
+            useMachineCapabilitiesCacheMock.mockReturnValueOnce({
+                state: {
+                    status: 'loaded',
+                    snapshot: {
+                        response: {
+                            protocolVersion: 1,
+                            results: {},
+                        },
+                    },
+                },
+                refresh: vi.fn(),
+            });
+
+            act(() => {
+                root.update(React.createElement(Test));
+            });
+
+            expect(latest?.timestamp).toBe(1000);
+        } finally {
+            vi.useRealTimers();
         }
-
-        const root = renderer.create(React.createElement(Test));
-        expect(latest?.timestamp).toBe(1000);
-
-        vi.setSystemTime(2000);
-
-        useMachineCapabilitiesCacheMock.mockReturnValueOnce({
-            state: {
-                status: 'loaded',
-                snapshot: {
-                    response: {
-                        protocolVersion: 1,
-                        results: {},
-                    },
-                },
-            },
-            refresh: vi.fn(),
-        });
-
-        act(() => {
-            root.update(React.createElement(Test));
-        });
-
-        expect(latest?.timestamp).toBe(1000);
-
-        vi.useRealTimers();
     });
 });
