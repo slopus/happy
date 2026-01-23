@@ -569,6 +569,7 @@ export const ja: TranslationStructure = {
         failedToSendRequest: '友達リクエストの送信に失敗しました',
         failedToResumeSession: 'セッションの再開に失敗しました',
         failedToSendMessage: 'メッセージの送信に失敗しました',
+        missingPermissionId: '権限リクエストIDがありません',
         codexResumeNotInstalledTitle: 'このマシンには Codex resume がインストールされていません',
         codexResumeNotInstalledMessage:
             'Codex の会話を再開するには、対象のマシンに Codex resume サーバーをインストールしてください（マシン詳細 → Codex resume）。',

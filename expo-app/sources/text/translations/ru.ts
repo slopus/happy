@@ -311,6 +311,7 @@ export const ru: TranslationStructure = {
         failedToSendRequest: 'Не удалось отправить запрос в друзья',
         failedToResumeSession: 'Не удалось возобновить сессию',
         failedToSendMessage: 'Не удалось отправить сообщение',
+        missingPermissionId: 'Отсутствует идентификатор запроса разрешения',
         codexResumeNotInstalledTitle: 'Codex resume не установлен на этой машине',
         codexResumeNotInstalledMessage:
             'Чтобы возобновить разговор Codex, установите сервер возобновления Codex на целевой машине (Детали машины → Возобновление Codex).',

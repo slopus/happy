@@ -329,6 +329,7 @@ export const ca: TranslationStructure = {
         failedToSendRequest: 'No s\'ha pogut enviar la sol·licitud d\'amistat',
         failedToResumeSession: 'No s’ha pogut reprendre la sessió',
         failedToSendMessage: 'No s’ha pogut enviar el missatge',
+        missingPermissionId: 'Falta l’identificador de permís',
         codexResumeNotInstalledTitle: 'Codex resume no està instal·lat en aquesta màquina',
         codexResumeNotInstalledMessage:
             'Per reprendre una conversa de Codex, instal·la el servidor de represa de Codex a la màquina de destinació (Detalls de la màquina → Represa de Codex).',

@@ -6,6 +6,7 @@ import { ToolSectionView } from '../../tools/ToolSectionView';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { knownTools } from '../../tools/knownTools';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
+import { Modal } from '@/modal';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -26,12 +27,15 @@ export const ExitPlanToolView = React.memo<ToolViewProps>(({ tool, sessionId }) 
 
     const handleApprove = React.useCallback(async () => {
         if (!sessionId || isApproving || isRejecting || !canInteract) return;
+        const permissionId = tool.permission?.id;
+        if (!permissionId) {
+            Modal.alert(t('common.error'), t('errors.missingPermissionId'));
+            return;
+        }
 
         setIsApproving(true);
         try {
-            if (tool.permission?.id) {
-                await sessionAllow(sessionId, tool.permission.id);
-            }
+            await sessionAllow(sessionId, permissionId);
             setIsResponded(true);
         } catch (error) {
             console.error('Failed to approve plan:', error);
@@ -42,12 +46,15 @@ export const ExitPlanToolView = React.memo<ToolViewProps>(({ tool, sessionId }) 
 
     const handleReject = React.useCallback(async () => {
         if (!sessionId || isApproving || isRejecting || !canInteract) return;
+        const permissionId = tool.permission?.id;
+        if (!permissionId) {
+            Modal.alert(t('common.error'), t('errors.missingPermissionId'));
+            return;
+        }
 
         setIsRejecting(true);
         try {
-            if (tool.permission?.id) {
-                await sessionDeny(sessionId, tool.permission.id);
-            }
+            await sessionDeny(sessionId, permissionId);
             setIsResponded(true);
         } catch (error) {
             console.error('Failed to reject plan:', error);

@@ -329,6 +329,7 @@ export const es: TranslationStructure = {
         failedToSendRequest: 'No se pudo enviar la solicitud de amistad',
         failedToResumeSession: 'No se pudo reanudar la sesión',
         failedToSendMessage: 'No se pudo enviar el mensaje',
+        missingPermissionId: 'Falta el id de permiso',
         codexResumeNotInstalledTitle: 'Codex resume no está instalado en esta máquina',
         codexResumeNotInstalledMessage:
             'Para reanudar una conversación de Codex, instala el servidor de reanudación de Codex en la máquina de destino (Detalles de la máquina → Reanudación de Codex).',

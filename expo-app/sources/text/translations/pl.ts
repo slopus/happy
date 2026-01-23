@@ -340,6 +340,7 @@ export const pl: TranslationStructure = {
         failedToSendRequest: 'Nie udało się wysłać zaproszenia do znajomych',
         failedToResumeSession: 'Nie udało się wznowić sesji',
         failedToSendMessage: 'Nie udało się wysłać wiadomości',
+        missingPermissionId: 'Brak identyfikatora prośby o uprawnienie',
         codexResumeNotInstalledTitle: 'Codex resume nie jest zainstalowane na tej maszynie',
         codexResumeNotInstalledMessage:
             'Aby wznowić rozmowę Codex, zainstaluj serwer wznawiania Codex na maszynie docelowej (Szczegóły maszyny → Wznawianie Codex).',

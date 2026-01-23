@@ -342,6 +342,7 @@ export const en = {
         failedToSendRequest: 'Failed to send friend request',
         failedToResumeSession: 'Failed to resume session',
         failedToSendMessage: 'Failed to send message',
+        missingPermissionId: 'Missing permission request id',
         codexResumeNotInstalledTitle: 'Codex resume is not installed on this machine',
         codexResumeNotInstalledMessage:
             'To resume a Codex conversation, install the Codex resume server on the target machine (Machine Details → Codex resume).',

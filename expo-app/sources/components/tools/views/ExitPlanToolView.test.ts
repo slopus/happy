@@ -8,9 +8,16 @@ import type { ToolCall } from '@/sync/typesMessage';
 const sessionAllow = vi.fn();
 const sessionDeny = vi.fn();
 const sendMessage = vi.fn();
+const modalAlert = vi.fn();
 
 vi.mock('@/text', () => ({
     t: (key: string) => key,
+}));
+
+vi.mock('@/modal', () => ({
+    Modal: {
+        alert: (...args: any[]) => modalAlert(...args),
+    },
 }));
 
 vi.mock('react-native', () => ({
@@ -72,6 +79,7 @@ describe('ExitPlanToolView', () => {
         sessionAllow.mockReset();
         sessionDeny.mockReset();
         sendMessage.mockReset();
+        modalAlert.mockReset();
     });
 
     it('approves via permission RPC and does not send a follow-up user message', async () => {
@@ -136,5 +144,75 @@ describe('ExitPlanToolView', () => {
 
         expect(sessionDeny).toHaveBeenCalledTimes(1);
         expect(sendMessage).toHaveBeenCalledTimes(0);
+    });
+
+    it('does not mark as responded when approve is pressed without a permission id', async () => {
+        const { ExitPlanToolView } = await import('./ExitPlanToolView');
+
+        const tool: ToolCall = {
+            name: 'ExitPlanMode',
+            state: 'running',
+            input: { plan: 'plan' },
+            createdAt: Date.now(),
+            startedAt: Date.now(),
+            completedAt: null,
+            description: null,
+            permission: null,
+        };
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        await act(async () => {
+            tree = renderer.create(
+                React.createElement(ExitPlanToolView, { tool, sessionId: 's1', metadata: null, messages: [] }),
+            );
+        });
+
+        const buttons = tree!.root.findAllByType('TouchableOpacity' as any);
+        expect(buttons.length).toBeGreaterThanOrEqual(2);
+
+        await act(async () => {
+            await buttons[1].props.onPress();
+        });
+
+        expect(sessionAllow).toHaveBeenCalledTimes(0);
+        expect(modalAlert).toHaveBeenCalledWith('common.error', 'errors.missingPermissionId');
+
+        const buttonsAfter = tree!.root.findAllByType('TouchableOpacity' as any);
+        expect(buttonsAfter.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('does not mark as responded when reject is pressed without a permission id', async () => {
+        const { ExitPlanToolView } = await import('./ExitPlanToolView');
+
+        const tool: ToolCall = {
+            name: 'ExitPlanMode',
+            state: 'running',
+            input: { plan: 'plan' },
+            createdAt: Date.now(),
+            startedAt: Date.now(),
+            completedAt: null,
+            description: null,
+            permission: null,
+        };
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        await act(async () => {
+            tree = renderer.create(
+                React.createElement(ExitPlanToolView, { tool, sessionId: 's1', metadata: null, messages: [] }),
+            );
+        });
+
+        const buttons = tree!.root.findAllByType('TouchableOpacity' as any);
+        expect(buttons.length).toBeGreaterThanOrEqual(2);
+
+        await act(async () => {
+            await buttons[0].props.onPress();
+        });
+
+        expect(sessionDeny).toHaveBeenCalledTimes(0);
+        expect(modalAlert).toHaveBeenCalledWith('common.error', 'errors.missingPermissionId');
+
+        const buttonsAfter = tree!.root.findAllByType('TouchableOpacity' as any);
+        expect(buttonsAfter.length).toBeGreaterThanOrEqual(2);
     });
 });

@@ -331,6 +331,7 @@ export const zhHans: TranslationStructure = {
         failedToSendRequest: '发送好友请求失败',
         failedToResumeSession: '恢复会话失败',
         failedToSendMessage: '发送消息失败',
+        missingPermissionId: '缺少权限请求 ID',
         codexResumeNotInstalledTitle: '此机器未安装 Codex resume',
         codexResumeNotInstalledMessage:
             '要恢复 Codex 对话，请在目标机器上安装 Codex resume 服务器（机器详情 → Codex resume）。',
