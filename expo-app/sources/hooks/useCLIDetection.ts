@@ -136,7 +136,6 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
             },
             isDetecting: cached.status === 'loading',
             timestamp: lastSuccessfulDetectAtRef.current || latestCheckedAt || now,
-            ...(!snapshot && cached.status === 'error' ? { error: 'Detection error' } : {}),
         };
     }, [cached, includeLoginStatus, isOnline, machineId]);
 }

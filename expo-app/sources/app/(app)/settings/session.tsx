@@ -11,8 +11,7 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { useSettingMutable } from '@/sync/storage';
-
-type MessageSendMode = 'agent_queue' | 'interrupt' | 'server_pending';
+import type { MessageSendMode } from '@/sync/submitMode';
 
 export default React.memo(function SessionSettingsScreen() {
     const { theme } = useUnistyles();
@@ -150,4 +149,3 @@ const styles = StyleSheet.create((theme) => ({
         }) as object),
     },
 }));
-

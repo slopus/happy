@@ -250,6 +250,9 @@ function ActionButton(props: {
     theme: any;
     destructive?: boolean;
 }) {
+    const backgroundColor = props.destructive
+        ? props.theme.colors.box.danger.background
+        : props.theme.colors.button.secondary.background;
     return (
         <Pressable
             onPress={props.onPress}
@@ -257,9 +260,7 @@ function ActionButton(props: {
                 paddingHorizontal: 12,
                 paddingVertical: 8,
                 borderRadius: 10,
-                backgroundColor: props.destructive
-                    ? (p.pressed ? props.theme.colors.box.danger.background : props.theme.colors.box.danger.background)
-                    : (p.pressed ? props.theme.colors.button.secondary.background : props.theme.colors.button.secondary.background),
+                backgroundColor,
                 opacity: p.pressed ? 0.85 : 1
             })}
         >
