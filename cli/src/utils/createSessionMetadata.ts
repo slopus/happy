@@ -24,7 +24,7 @@ export type BackendFlavor = 'claude' | 'codex' | 'gemini' | 'opencode';
  * Options for creating session metadata.
  */
 export interface CreateSessionMetadataOptions {
-    /** Backend flavor (claude, codex, gemini) */
+    /** Backend flavor (claude, codex, gemini, opencode) */
     flavor: BackendFlavor;
     /** Machine ID for server identification */
     machineId: string;

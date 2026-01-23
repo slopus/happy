@@ -12,7 +12,7 @@ interface CLIAvailability {
 }
 
 /**
- * Detects which CLI tools (claude, codex, gemini) are installed on a remote machine.
+ * Detects which CLI tools (claude, codex, gemini, opencode) are installed on a remote machine.
  *
  * NON-BLOCKING: Detection runs asynchronously in useEffect. UI shows all profiles
  * while detection is in progress, then updates when results arrive.
@@ -25,7 +25,7 @@ interface CLIAvailability {
  * User discovers CLI availability when attempting to spawn.
  *
  * @param machineId - The machine to detect CLIs on (null = no detection)
- * @returns CLI availability status for claude, codex, and gemini
+ * @returns CLI availability status for claude, codex, gemini, and opencode
  *
  * @example
  * const cliAvailability = useCLIDetection(selectedMachineId);
@@ -72,7 +72,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                 console.log('[useCLIDetection] Result:', { success: result.success, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr });
 
                 if (result.success && result.exitCode === 0) {
-                    // Parse output: "claude:true\ncodex:false\ngemini:false"
+                    // Parse output: "claude:true\ncodex:false\ngemini:false\nopencode:true"
                     const lines = result.stdout.trim().split('\n');
                     const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean; opencode?: boolean } = {};
 

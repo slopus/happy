@@ -484,7 +484,7 @@ function NewSessionWizard() {
             console.warn(`[AgentSelection] ${agentType} not available, switching to ${availableAgent}`);
             setAgentType(availableAgent);
         }
-    }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, agentType, experimentsEnabled]);
+    }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, cliAvailability.opencode, agentType, experimentsEnabled]);
 
     // Extract all ${VAR} references from profiles to query daemon environment
     const envVarRefs = React.useMemo(() => {
@@ -710,7 +710,7 @@ function NewSessionWizard() {
                 setPermissionMode(profile.defaultPermissionMode as PermissionMode);
             }
         }
-    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, experimentsEnabled]);
+    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, cliAvailability.opencode, experimentsEnabled]);
 
     // Reset permission mode to 'default' when agent type changes and current mode is invalid for new agent
     React.useEffect(() => {
