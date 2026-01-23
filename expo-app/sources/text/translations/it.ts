@@ -954,11 +954,11 @@ export const it: TranslationStructure = {
             multipleQuestions: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'domanda', plural: 'domande' })}`,
         },
         exitPlanMode: {
-            approve: 'Approve Plan',
-            reject: 'Reject',
-            responded: 'Response sent',
-            approvalMessage: 'I approve this plan. Please proceed with the implementation.',
-            rejectionMessage: 'I do not approve this plan. Please revise it or ask me what changes I would like.',
+            approve: 'Approva piano',
+            reject: 'Rifiuta',
+            responded: 'Risposta inviata',
+            approvalMessage: 'Approvo questo piano. Procedi con l’implementazione.',
+            rejectionMessage: 'Non approvo questo piano. Rivedilo o chiedimi quali modifiche desidero.',
         },
         multiEdit: {
             editNumber: ({ index, total }: { index: number; total: number }) => `Modifica ${index} di ${total}`,

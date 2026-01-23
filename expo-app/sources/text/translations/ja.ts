@@ -947,11 +947,11 @@ export const ja: TranslationStructure = {
             multipleQuestions: ({ count }: { count: number }) => `${count}件の質問`,
         },
         exitPlanMode: {
-            approve: 'Approve Plan',
-            reject: 'Reject',
-            responded: 'Response sent',
-            approvalMessage: 'I approve this plan. Please proceed with the implementation.',
-            rejectionMessage: 'I do not approve this plan. Please revise it or ask me what changes I would like.',
+            approve: 'プランを承認',
+            reject: '拒否',
+            responded: '送信しました',
+            approvalMessage: 'このプランを承認します。実装を進めてください。',
+            rejectionMessage: 'このプランを承認しません。修正するか、希望する変更点を確認してください。',
         },
         multiEdit: {
             editNumber: ({ index, total }: { index: number; total: number }) => `編集 ${index}/${total}`,

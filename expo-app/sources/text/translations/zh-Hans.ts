@@ -757,11 +757,11 @@ export const zhHans: TranslationStructure = {
             multipleQuestions: ({ count }: { count: number }) => `${count} 个问题`,
         },
         exitPlanMode: {
-            approve: 'Approve Plan',
-            reject: 'Reject',
-            responded: 'Response sent',
-            approvalMessage: 'I approve this plan. Please proceed with the implementation.',
-            rejectionMessage: 'I do not approve this plan. Please revise it or ask me what changes I would like.',
+            approve: '批准计划',
+            reject: '拒绝',
+            responded: '已发送回复',
+            approvalMessage: '我批准这个计划。请继续实现。',
+            rejectionMessage: '我不批准这个计划。请修改它，或问我希望做哪些更改。',
         },
     },
 

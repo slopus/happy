@@ -765,11 +765,11 @@ export const pl: TranslationStructure = {
             multipleQuestions: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'pytanie', few: 'pytania', many: 'pytań' })}`,
         },
         exitPlanMode: {
-            approve: 'Approve Plan',
-            reject: 'Reject',
-            responded: 'Response sent',
-            approvalMessage: 'I approve this plan. Please proceed with the implementation.',
-            rejectionMessage: 'I do not approve this plan. Please revise it or ask me what changes I would like.',
+            approve: 'Zatwierdź plan',
+            reject: 'Odrzuć',
+            responded: 'Odpowiedź wysłana',
+            approvalMessage: 'Zatwierdzam ten plan. Proszę kontynuować implementację.',
+            rejectionMessage: 'Nie zatwierdzam tego planu. Proszę go poprawić lub zapytać mnie, jakie zmiany chciałbym wprowadzić.',
         },
     },
 
