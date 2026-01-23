@@ -74,6 +74,20 @@ export async function ensureHandyMasterSecret(env: LightEnv, opts?: { dataDir?: 
 
     await mkdir(dirname(secretPath), { recursive: true });
     const generated = randomBytes(32).toString('base64url');
-    await writeFile(secretPath, generated, { encoding: 'utf-8', mode: 0o600 });
-    env.HANDY_MASTER_SECRET = generated;
+    try {
+        await writeFile(secretPath, generated, { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
+        env.HANDY_MASTER_SECRET = generated;
+        return;
+    } catch (err: any) {
+        if (err?.code !== 'EEXIST') {
+            throw err;
+        }
+    }
+
+    // Another process likely created the file while we were racing to initialize it.
+    const existing = (await readFile(secretPath, 'utf-8')).trim();
+    if (!existing) {
+        throw new Error(`handy-master-secret.txt exists but is empty: ${secretPath}`);
+    }
+    env.HANDY_MASTER_SECRET = existing;
 }
