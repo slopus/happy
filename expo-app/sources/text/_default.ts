@@ -403,6 +403,7 @@ export const en = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            opencode: 'OpenCode',
         },
         model: {
             title: 'MODEL',
@@ -437,6 +438,12 @@ export const en = {
             badgeReadOnly: 'Read Only',
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
+        },
+        opencodePermissionMode: {
+            title: 'OPENCODE PERMISSION MODE',
+            default: 'Default',
+            build: 'Build',
+            plan: 'Plan',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% left`,

@@ -404,6 +404,7 @@ export const ca: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            opencode: 'OpenCode',
         },
         model: {
             title: 'MODEL',
@@ -438,6 +439,12 @@ export const ca: TranslationStructure = {
             badgeReadOnly: 'Només lectura',
             badgeSafeYolo: 'YOLO segur',
             badgeYolo: 'YOLO',
+        },
+        opencodePermissionMode: {
+            title: 'OPENCODE PERMISSION MODE',
+            default: 'Predeterminat',
+            build: 'Construir',
+            plan: 'Pla',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restant`,

@@ -49,6 +49,7 @@ interface AgentInputProps {
             claude: boolean | null;
             codex: boolean | null;
             gemini?: boolean | null;
+            opencode?: boolean | null;
         };
     };
     autocompletePrefixes: string[];
@@ -62,7 +63,7 @@ interface AgentInputProps {
     };
     alwaysShowContextSize?: boolean;
     onFileViewerPress?: () => void;
-    agentType?: 'claude' | 'codex' | 'gemini';
+    agentType?: 'claude' | 'codex' | 'gemini' | 'opencode';
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;
@@ -299,10 +300,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     const hasText = props.value.trim().length > 0;
 
-    // Check if this is a Codex or Gemini session
+    // Check if this is a Codex, Gemini, or OpenCode session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
     const isCodex = props.metadata?.flavor === 'codex' || props.agentType === 'codex';
     const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
+    const isOpencode = props.metadata?.flavor === 'opencode' || props.agentType === 'opencode';
 
     // Profile data
     const profiles = useSetting('profiles');
@@ -474,9 +476,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             }
             // Handle Shift+Tab for permission mode switching
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
-                const modeOrder: PermissionMode[] = isCodex
-                    ? ['default', 'read-only', 'safe-yolo', 'yolo']
-                    : ['default', 'acceptEdits', 'plan', 'bypassPermissions']; // Claude and Gemini share same modes
+                const modeOrder: PermissionMode[] = isOpencode
+                    ? ['default', 'build', 'plan']
+                    : isCodex
+                        ? ['default', 'read-only', 'safe-yolo', 'yolo']
+                        : ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
                 const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
                 const nextIndex = (currentIndex + 1) % modeOrder.length;
                 props.onPermissionModeChange(modeOrder[nextIndex]);
@@ -532,13 +536,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 {/* Permission Mode Section */}
                                 <View style={styles.overlaySection}>
                                     <Text style={styles.overlaySectionTitle}>
-                                        {isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title')}
+                                        {isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : isOpencode ? t('agentInput.opencodePermissionMode.title') : t('agentInput.permissionMode.title')}
                                     </Text>
-                                    {((isCodex || isGemini)
-                                        ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
-                                        : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
+                                    {(isOpencode
+                                        ? (['default', 'build', 'plan'] as const)
+                                        : (isCodex || isGemini)
+                                            ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
+                                            : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
                                     ).map((mode) => {
-                                        const modeConfig = isCodex ? {
+                                        const modeConfig = isOpencode ? {
+                                            'default': { label: t('agentInput.opencodePermissionMode.default') },
+                                            'build': { label: t('agentInput.opencodePermissionMode.build') },
+                                            'plan': { label: t('agentInput.opencodePermissionMode.plan') },
+                                        } : isCodex ? {
                                             'default': { label: t('agentInput.codexPermissionMode.default') },
                                             'read-only': { label: t('agentInput.codexPermissionMode.readOnly') },
                                             'safe-yolo': { label: t('agentInput.codexPermissionMode.safeYolo') },
@@ -825,7 +835,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                             theme.colors.textSecondary, // Use secondary text color for default
                                     ...Typography.default()
                                 }}>
-                                    {isCodex ? (
+                                    {isOpencode ? (
+                                        props.permissionMode === 'default' ? t('agentInput.opencodePermissionMode.default') :
+                                            props.permissionMode === 'build' ? t('agentInput.opencodePermissionMode.build') :
+                                                props.permissionMode === 'plan' ? t('agentInput.opencodePermissionMode.plan') : ''
+                                    ) : isCodex ? (
                                         props.permissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
                                             props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
                                                 props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
@@ -1043,7 +1057,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             fontWeight: '600',
                                             ...Typography.default('semiBold'),
                                         }}>
-                                            {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : t('agentInput.agent.gemini')}
+                                            {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : props.agentType === 'opencode' ? t('agentInput.agent.opencode') : t('agentInput.agent.gemini')}
                                         </Text>
                                     </Pressable>
                                 )}

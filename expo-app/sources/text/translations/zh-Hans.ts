@@ -406,6 +406,7 @@ export const zhHans: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            opencode: 'OpenCode',
         },
         model: {
             title: '模型',
@@ -440,6 +441,12 @@ export const zhHans: TranslationStructure = {
             badgeReadOnly: '只读',
             badgeSafeYolo: '安全 YOLO',
             badgeYolo: 'YOLO',
+        },
+        opencodePermissionMode: {
+            title: 'OPENCODE PERMISSION MODE',
+            default: '默认',
+            build: '构建',
+            plan: '计划',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,

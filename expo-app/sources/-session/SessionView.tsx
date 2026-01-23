@@ -1,5 +1,6 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { AgentInput } from '@/components/AgentInput';
+import type { PermissionMode } from '@/components/PermissionModeSelector';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
@@ -192,7 +193,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, [machineId, cliVersion, acknowledgedCliVersions]);
 
     // Function to update permission mode
-    const updatePermissionMode = React.useCallback((mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => {
+    const updatePermissionMode = React.useCallback((mode: PermissionMode) => {
         storage.getState().updateSessionPermissionMode(sessionId, mode);
     }, [sessionId]);
 

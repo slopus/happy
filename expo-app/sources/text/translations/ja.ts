@@ -436,6 +436,7 @@ export const ja: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            opencode: 'OpenCode',
         },
         model: {
             title: 'モデル',
@@ -470,6 +471,12 @@ export const ja: TranslationStructure = {
             badgeReadOnly: '読み取り専用',
             badgeSafeYolo: '安全YOLO',
             badgeYolo: 'YOLO',
+        },
+        opencodePermissionMode: {
+            title: 'OPENCODE PERMISSION MODE',
+            default: 'デフォルト',
+            build: 'ビルド',
+            plan: 'プラン',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `残り ${percent}%`,
