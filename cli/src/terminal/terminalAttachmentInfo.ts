@@ -14,7 +14,15 @@ function sessionsDir(happyHomeDir: string): string {
   return join(happyHomeDir, 'terminal', 'sessions');
 }
 
+function sessionIdToFilename(sessionId: string): string {
+  return encodeURIComponent(sessionId);
+}
+
 function sessionFilePath(happyHomeDir: string, sessionId: string): string {
+  return join(sessionsDir(happyHomeDir), `${sessionIdToFilename(sessionId)}.json`);
+}
+
+function legacySessionFilePath(happyHomeDir: string, sessionId: string): string {
   return join(sessionsDir(happyHomeDir), `${sessionId}.json`);
 }
 
@@ -44,9 +52,18 @@ export async function readTerminalAttachmentInfo(params: {
   happyHomeDir: string;
   sessionId: string;
 }): Promise<TerminalAttachmentInfo | null> {
-  const path = sessionFilePath(params.happyHomeDir, params.sessionId);
   try {
-    const raw = await readFile(path, 'utf8');
+    const encodedPath = sessionFilePath(params.happyHomeDir, params.sessionId);
+    let raw: string;
+    try {
+      raw = await readFile(encodedPath, 'utf8');
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException;
+      if (err?.code !== 'ENOENT') throw e;
+      const legacyPath = legacySessionFilePath(params.happyHomeDir, params.sessionId);
+      if (legacyPath === encodedPath) throw e;
+      raw = await readFile(legacyPath, 'utf8');
+    }
     const parsed = JSON.parse(raw) as Partial<TerminalAttachmentInfo> | null;
     if (!parsed || typeof parsed !== 'object') return null;
     if (parsed.version !== 1) return null;
@@ -58,4 +75,3 @@ export async function readTerminalAttachmentInfo(params: {
     return null;
   }
 }
-
