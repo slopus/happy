@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, normalize } from 'node:path';
+import { dirname, join, posix } from 'node:path';
 import { homedir } from 'node:os';
 import { resolveLightPublicUrl } from './env';
 
@@ -25,12 +25,27 @@ export function getLightPublicBaseUrl(env: NodeJS.ProcessEnv): string {
 }
 
 export function normalizePublicPath(path: string): string {
-    const p = normalize(path).replace(/\\/g, '/').replace(/^\/+/, '');
-    const parts = p.split('/').filter(Boolean);
+    if (path.includes('\0')) {
+        throw new Error('Invalid path');
+    }
+
+    const raw = path.replace(/\\/g, '/');
+    const rawParts = raw.split('/').filter(Boolean);
+    if (raw.startsWith('/')) {
+        throw new Error('Invalid path');
+    }
+    if (rawParts.some((part) => part === '..')) {
+        throw new Error('Invalid path');
+    }
+    const normalized = posix.normalize(raw).replace(/^\/+/, '');
+    const parts = normalized.split('/').filter(Boolean);
     if (parts.some((part: string) => part === '..')) {
         throw new Error('Invalid path');
     }
-    if (p.includes(':') || p.startsWith('/')) {
+    if (normalized.includes(':') || normalized.startsWith('/')) {
+        throw new Error('Invalid path');
+    }
+    if (parts.length === 0) {
         throw new Error('Invalid path');
     }
     return parts.join('/');
@@ -38,7 +53,8 @@ export function normalizePublicPath(path: string): string {
 
 export function getLightPublicUrl(env: NodeJS.ProcessEnv, path: string): string {
     const safe = normalizePublicPath(path);
-    return `${getLightPublicBaseUrl(env)}/files/${encodeURI(safe)}`;
+    const encoded = safe.split('/').map(encodeURIComponent).join('/');
+    return `${getLightPublicBaseUrl(env)}/files/${encoded}`;
 }
 
 export async function writeLightPublicFile(env: NodeJS.ProcessEnv, path: string, data: Uint8Array): Promise<void> {

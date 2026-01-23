@@ -1,20 +1,28 @@
-import { normalizePublicPath } from './files';
 import { describe, expect, it } from 'vitest';
+import { getLightPublicUrl, normalizePublicPath } from './files';
 
 describe('normalizePublicPath', () => {
-    it('normalizes paths and strips leading slashes', () => {
-        expect(normalizePublicPath('/public/users/u1/a.png')).toBe('public/users/u1/a.png');
-        expect(normalizePublicPath('public//users//u1//a.png')).toBe('public/users/u1/a.png');
-        expect(normalizePublicPath('public\\users\\u1\\a.png')).toBe('public/users/u1/a.png');
-    });
+  it('rejects path traversal and absolute paths', () => {
+    expect(() => normalizePublicPath('../x')).toThrow();
+    expect(() => normalizePublicPath('a/../x')).toThrow();
+    expect(() => normalizePublicPath('..\\x')).toThrow();
+    expect(() => normalizePublicPath('/x')).toThrow();
+    expect(() => normalizePublicPath('\\x')).toThrow();
+    expect(() => normalizePublicPath('C:\\x')).toThrow();
+    expect(() => normalizePublicPath('C:/x')).toThrow();
+  });
 
-    it('rejects path traversal', () => {
-        expect(() => normalizePublicPath('../secret.txt')).toThrow('Invalid path');
-    });
+  it('returns a normalized relative path', () => {
+    expect(normalizePublicPath('foo//bar')).toBe('foo/bar');
+    expect(normalizePublicPath('foo/./bar')).toBe('foo/bar');
+    expect(normalizePublicPath('foo\\bar\\baz.txt')).toBe('foo/bar/baz.txt');
+  });
+});
 
-    it('sanitizes absolute paths and rejects drive letters', () => {
-        expect(normalizePublicPath('/etc/passwd')).toBe('etc/passwd');
-        expect(() => normalizePublicPath('C:\\\\windows\\\\system32')).toThrow('Invalid path');
-        expect(() => normalizePublicPath('C:windows/system32')).toThrow('Invalid path');
-    });
+describe('getLightPublicUrl', () => {
+  it('encodes each path segment (so # and ? are not treated as URL fragment/query)', () => {
+    const env = { PUBLIC_URL: 'http://localhost:3005' } as NodeJS.ProcessEnv;
+    const url = getLightPublicUrl(env, 'foo/bar baz#qux?zap');
+    expect(url).toBe('http://localhost:3005/files/foo/bar%20baz%23qux%3Fzap');
+  });
 });
