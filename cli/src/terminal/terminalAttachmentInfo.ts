@@ -60,6 +60,10 @@ export async function readTerminalAttachmentInfo(params: {
     } catch (e) {
       const err = e as NodeJS.ErrnoException;
       if (err?.code !== 'ENOENT') throw e;
+      // Only allow legacy fallback for filename-safe session ids. The legacy filename
+      // used the raw sessionId, so path separators would allow traversal outside the
+      // intended sessions directory.
+      if (params.sessionId.includes('/') || params.sessionId.includes('\\')) throw e;
       const legacyPath = legacySessionFilePath(params.happyHomeDir, params.sessionId);
       if (legacyPath === encodedPath) throw e;
       raw = await readFile(legacyPath, 'utf8');
