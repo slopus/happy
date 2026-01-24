@@ -6,7 +6,7 @@
  */
 
 import * as React from 'react';
-import { createContext, useContext, useCallback, useMemo, useRef } from 'react';
+import { createContext, useContext, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   ArcConfig,
   AgentConfigState,
@@ -17,6 +17,7 @@ import {
   getAgentAvatarUrl,
   getAgentVoiceId,
 } from './types';
+import { apiSocket } from '@/sync/apiSocket';
 
 // =============================================================================
 // Configuration
@@ -118,6 +119,13 @@ export function AgentConfigProvider({ children }: AgentConfigProviderProps) {
   // Set RPC function
   const setSessionRPC = useCallback((rpc: SessionRPCFunction) => {
     rpcRef.current = rpc;
+  }, []);
+
+  // Auto-wire apiSocket.sessionRPC
+  useEffect(() => {
+    rpcRef.current = (sessionId, method, params) => {
+      return apiSocket.sessionRPC(sessionId, method, params);
+    };
   }, []);
 
   // Load config for a session

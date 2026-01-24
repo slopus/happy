@@ -37,3 +37,6 @@ export {
   useAgentDisplayName,
   useAgentVoiceId,
 } from './useAgentConfig';
+
+// RPC wiring
+export { useAgentConfigRPC } from './useAgentConfigRPC';

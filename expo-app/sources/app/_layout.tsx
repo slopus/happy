@@ -20,6 +20,7 @@ import { tracking } from '@/track/tracking';
 import { syncRestore } from '@/sync/sync';
 import { useTrackScreens } from '@/track/useTrackScreens';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
+import { AgentConfigProvider } from '@/arc/agent';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
 import { StatusBarProvider } from '@/components/StatusBarProvider';
@@ -228,9 +229,11 @@ export default function RootLayout() {
                             <ModalProvider>
                                 <CommandPaletteProvider>
                                     <RealtimeProvider>
-                                        <HorizontalSafeAreaWrapper>
-                                            <SidebarNavigator />
-                                        </HorizontalSafeAreaWrapper>
+                                        <AgentConfigProvider>
+                                            <HorizontalSafeAreaWrapper>
+                                                <SidebarNavigator />
+                                            </HorizontalSafeAreaWrapper>
+                                        </AgentConfigProvider>
                                     </RealtimeProvider>
                                 </CommandPaletteProvider>
                             </ModalProvider>
