@@ -1,8 +1,14 @@
-# Arc
+# Runline
 
 **Agent Runner Command** — Runline's secured agentic runtime.
 
-Arc is a fork of [Happy](https://github.com/slopus/happy) that provides a mobile interface for AI agents running on Claude Code. The app is a **window into agents that live in repositories**.
+Runline is a fork of [Happy](https://github.com/slopus/happy) that provides a mobile interface for AI agents running on Claude Code. The app is a **window into agents that live in repositories**.
+
+While largely dependent on core Happy functionality, Runline extends the platform with enterprise-focused features:
+- **Agents** — Repository-defined agent identity via `.arc.yaml`
+- **Organization structure** — Team and enterprise agent management
+- **SOPs** — Standard operating procedures for agent workflows
+- **Platform-aware capabilities** — Features beyond Happy's scope
 
 > **Note:** Arc is built on Happy's excellent open-source foundation. See [Happy's documentation](https://happy.engineering/docs/) for base functionality.
 

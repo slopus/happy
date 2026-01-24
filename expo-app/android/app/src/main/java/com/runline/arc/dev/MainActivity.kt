@@ -1,4 +1,4 @@
-package com.slopus.happy.dev
+package com.runline.arc.dev
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

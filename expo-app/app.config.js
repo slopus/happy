@@ -1,8 +1,8 @@
 const variant = process.env.APP_ENV || 'development';
 const name = {
-    development: "Arc (dev)",
-    preview: "Arc (preview)",
-    production: "Arc"
+    development: "Runline (dev)",
+    preview: "Runline (preview)",
+    production: "Runline"
 }[variant];
 const bundleId = {
     development: "com.runline.arc.dev",
@@ -13,12 +13,12 @@ const bundleId = {
 export default {
     expo: {
         name,
-        slug: "arc",
+        slug: "runline",
         version: "0.1.0",
         runtimeVersion: "1",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
-        scheme: "arc",
+        scheme: "runline",
         userInterfaceStyle: "automatic",
         newArchEnabled: true,
         notification: {
@@ -163,15 +163,13 @@ export default {
             router: {
                 root: "./sources/app"
             },
-            // TODO: Set after running `eas build:configure`
-            // eas: {
-            //     projectId: "YOUR_PROJECT_ID"
-            // },
+            eas: {
+                projectId: "cdbf75d0-33e5-4874-a238-e8c65281c100"
+            },
             app: {
                 postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY
             }
-        }
-        // TODO: Set your Expo account owner
-        // owner: "runline"
+        },
+        owner: "runline"
     }
 };

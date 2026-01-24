@@ -1,10 +1,10 @@
-# Agents in Arc
+# Agents in Runline Arc
 
-How AI agents work in the Arc ecosystem.
+How AI agents work in the Runline Arc ecosystem.
 
 ## What is an Agent?
 
-In Arc, an agent is a Claude Code session running in a specific repository. The agent's identity, behavior, and personality are defined by the repository itself — not by the mobile app.
+In Runline Arc, an agent is a Claude Code session running in a specific repository. The agent's identity, behavior, and personality are defined by the repository itself — not by the mobile app.
 
 ```
 Agent = Repository + Claude Code Session
@@ -48,7 +48,7 @@ You are Emila, Sean Hsieh's executive assistant.
 
 ### 2. Display (`.arc.yaml`)
 
-The `.arc.yaml` file defines how the agent appears in Arc mobile:
+The `.arc.yaml` file defines how the agent appears in Runline mobile:
 
 ```yaml
 agent:
@@ -134,7 +134,7 @@ claude-code
 happy --yolo
 ```
 
-The agent is now running and will appear in Arc mobile.
+The agent is now running and will appear in Runline mobile.
 
 ## Agent Lifecycle
 
@@ -180,7 +180,7 @@ voice:
   elevenlabs_agent_id: "your-agent-id"
 ```
 
-When the user taps the microphone in Arc, the ElevenLabs agent handles voice interaction, with personality aligned to the repo's agent definition.
+When the user taps the microphone in Runline, the ElevenLabs agent handles voice interaction, with personality aligned to the repo's agent definition.
 
 ## Multi-Agent Setup
 
@@ -194,7 +194,7 @@ A user can have multiple agents, each in their own repository:
 └── debug-helper/   # Coding assistant
 ```
 
-Each appears as a separate session in Arc mobile, with its own identity and voice.
+Each appears as a separate session in Runline mobile, with its own identity and voice.
 
 ## Enterprise Agents
 
@@ -232,10 +232,10 @@ This enables:
 - Keep decisions/ log current
 - Archive completed projects
 
-## Comparison: Arc vs Traditional AI Apps
+## Comparison: Runline Arc vs Traditional AI Apps
 
-| Aspect | Traditional AI App | Arc |
-|--------|-------------------|-----|
+| Aspect | Traditional AI App | Runline Arc |
+|--------|-------------------|-------------|
 | Agent definition | In app code | In repository |
 | Personality | Static per app | Per repo (AGENTS.md) |
 | Memory | Cloud storage | Local (memory-bank/) |
@@ -243,7 +243,7 @@ This enables:
 | Updates | App update needed | Edit AGENTS.md |
 | Portability | Locked to app | Git-based, portable |
 
-Arc's approach means:
+Runline Arc's approach means:
 - Agents evolve with their repositories
 - No vendor lock-in
 - Full control over agent behavior

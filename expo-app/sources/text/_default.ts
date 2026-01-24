@@ -456,7 +456,7 @@ export const en = {
     },
 
     sidebar: {
-        sessionsTitle: 'Happy',
+        sessionsTitle: 'Runline',
     },
 
     toolView: {

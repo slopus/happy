@@ -6,17 +6,20 @@
  */
 
 // Types and schemas
-export {
+export type {
   ArcConfig,
-  ArcConfigSchema,
   AgentDisplay,
-  AgentDisplaySchema,
   VoiceConfig,
-  VoiceConfigSchema,
   OrgConfig,
-  OrgConfigSchema,
   AgentConfigStatus,
   AgentConfigState,
+} from './types';
+
+export {
+  ArcConfigSchema,
+  AgentDisplaySchema,
+  VoiceConfigSchema,
+  OrgConfigSchema,
   DEFAULT_AGENT_CONFIG,
   parseArcConfig,
   getAgentDisplayName,

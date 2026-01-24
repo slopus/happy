@@ -1,6 +1,6 @@
-# Arc Architecture
+# Runline Arc Architecture
 
-Technical deep-dive into how Arc works.
+Technical deep-dive into how Runline Arc works.
 
 ## Core Principle
 
@@ -10,7 +10,7 @@ The mobile app is a *viewing layer* that connects to running agents, not a conta
 
 ## Repository Structure
 
-Arc is a fork of Happy with isolated customizations:
+Runline Arc is a fork of Happy with isolated customizations:
 
 ```
 arc/                              # Fork of slopus/happy
@@ -69,7 +69,7 @@ arc/                              # Fork of slopus/happy
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Arc Mobile App                             │
+│                    Runline Mobile App                           │
 │  ├── Session List                                               │
 │  ├── sources/arc/agent/   ← Loads .arc.yaml per session        │
 │  ├── sources/arc/voice/   ← Binds ElevenLabs agent             │
@@ -117,7 +117,7 @@ org:                               # Future: enterprise
 
 ## Integration Points
 
-Arc integrates with Happy at these points:
+Runline Arc integrates with Happy at these points:
 
 | Integration | Location | Method |
 |-------------|----------|--------|
@@ -148,7 +148,7 @@ Agent configs cached in-memory:
 
 ## Merging Upstream
 
-Since Arc is a fork:
+Since Runline Arc is a fork:
 
 ```bash
 git remote add upstream https://github.com/slopus/happy.git

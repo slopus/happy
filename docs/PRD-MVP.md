@@ -1,6 +1,6 @@
-# Arc MVP PRD
+# Runline MVP PRD
 
-**Goal:** Deploy Arc to Sean's phone for dogfooding with Emila.
+**Goal:** Deploy Runline to Sean's phone for dogfooding with Emila.
 
 ## Current State
 
@@ -16,9 +16,9 @@
 | Documentation | ✅ | README, ARCHITECTURE, AGENTS, SETUP |
 | Emila `.arc.yaml` | ✅ | In emila repo |
 | App icon | ✅ | Runline icon copied |
-| App name | ✅ | "Arc" in app.config.js |
+| App name | ✅ | "Runline" in app.config.js |
 | Bundle ID | ✅ | com.runline.arc.* |
-| URL scheme | ✅ | arc:// |
+| URL scheme | ✅ | runline:// |
 
 ### Remaining ❌
 
@@ -129,7 +129,7 @@ eas submit --platform ios
 ## Known Issues / Risks
 
 1. **Relay compatibility**
-   - Arc uses Happy's relay (no changes needed)
+   - Runline uses Happy's relay (no changes needed)
    - Same account works on both apps
 
 2. **Code signing**
@@ -145,7 +145,7 @@ eas submit --platform ios
 
 MVP is complete when:
 1. ✅ App rebranded (icon, name, bundle ID)
-2. ⏳ Arc installed on Sean's iPhone via TestFlight
+2. ⏳ Runline installed on Sean's iPhone via TestFlight
 3. ⏳ Can connect to Emila running on laptop
 4. ⏳ Can send/receive messages
 5. Bonus: Shows "Emila" as session name (P1)
