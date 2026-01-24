@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Happy",
+  "productName": "Arc",
   "version": "0.1.0",
-  "identifier": "com.slopus.happy",
+  "identifier": "com.runline.arc",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:8081",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Happy",
+        "title": "Arc",
         "width": 800,
         "height": 600,
         "resizable": true,
