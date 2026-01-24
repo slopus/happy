@@ -1,86 +1,104 @@
-<div align="center"><img src="/.github/logotype-dark.png" width="400" title="Happy Coder" alt="Happy Coder"/></div>
+# Arc
 
-<h1 align="center">
-  Mobile and Web Client for Claude Code & Codex
-</h1>
+**Agent Runner Command** — Runline's secured agentic runtime.
 
-<h4 align="center">
-Use Claude Code or Codex from anywhere with end-to-end encryption.
-</h4>
+Arc is a fork of [Happy](https://github.com/slopus/happy) that provides a mobile interface for AI agents running on Claude Code. The app is a **window into agents that live in repositories**.
 
-<div align="center">
-  
-[📱 **iOS App**](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) • [🌐 **Web App**](https://app.happy.engineering) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [📚 **Documentation**](https://happy.engineering/docs/) • [💬 **Discord**](https://discord.gg/fX9WBAhyfD)
+> **Note:** Arc is built on Happy's excellent open-source foundation. See [Happy's documentation](https://happy.engineering/docs/) for base functionality.
 
-</div>
-
-<img width="5178" height="2364" alt="github" src="/.github/header.png" />
-
-
-<h3 align="center">
-Step 1: Download App
-</h3>
-
-<div align="center">
-<a href="https://apps.apple.com/us/app/happy-claude-code-client/id6748571505"><img width="135" height="39" alt="appstore" src="https://github.com/user-attachments/assets/45e31a11-cf6b-40a2-a083-6dc8d1f01291" /></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://play.google.com/store/apps/details?id=com.ex3ndr.happy"><img width="135" height="39" alt="googleplay" src="https://github.com/user-attachments/assets/acbba639-858f-4c74-85c7-92a4096efbf5" /></a>
-</div>
-
-<h3 align="center">
-Step 2: Install CLI on your computer
-</h3>
-
-```bash
-npm install -g happy-coder
-```
-
-<h3 align="center">
-Step 3: Start using `happy` instead of `claude` or `codex`
-</h3>
-
-```bash
-
-# Instead of: claude
-# Use: happy
-
-happy
-
-# Instead of: codex
-# Use: happy codex
-
-happy codex
+## Philosophy
 
 ```
+Agent identity lives in the repo, not the app.
+```
 
-<div align="center"><img src="/.github/mascot.png" width="200" title="Happy Coder" alt="Happy Coder"/></div>
+Every agent repository contains:
+- `AGENTS.md` / `CLAUDE.md` — Defines behavior, personality, capabilities
+- `.arc.yaml` — Display metadata (name, avatar, voice binding)
 
-## How does it work?
+The mobile app:
+- Connects to running Claude Code sessions
+- Reads `.arc.yaml` via RPC to customize display
+- Binds voice agents (ElevenLabs) per session
 
-On your computer, run `happy` instead of `claude` or `happy codex` instead of `codex` to start your AI through our wrapper. When you want to control your coding agent from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
+## What Arc Adds
 
-## 🔥 Why Happy Coder?
+| Feature | Happy | Arc |
+|---------|-------|-----|
+| Agent display name | Path-based | From `.arc.yaml` |
+| Agent avatar | Generated | Configurable |
+| Voice binding | Single agent | Per-session |
+| Enterprise auth | — | Planned |
 
-- 📱 **Mobile access to Claude Code and Codex** - Check what your AI is building while away from your desk
-- 🔔 **Push notifications** - Get alerted when Claude Code and Codex needs permission or encounters errors  
-- ⚡ **Switch devices instantly** - Take control from phone or desktop with one keypress
-- 🔐 **End-to-end encrypted** - Your code never leaves your devices unencrypted
-- 🛠️ **Open source** - Audit the code yourself. No telemetry, no tracking
+## .arc.yaml
 
-## 📦 Project Components
+Agents configure their display via `.arc.yaml` in their repo:
 
-- **[happy UI](https://github.com/slopus/happy/tree/main/expo-app)** - Web UI + mobile client (Expo)
-- **[happy-cli](https://github.com/slopus/happy/tree/main/cli)** - Command-line interface for Claude Code and Codex
-- **[happy-server](https://github.com/slopus/happy/tree/main/server)** - Backend server for encrypted sync
+```yaml
+agent:
+  name: "Emila"
+  tagline: "Executive assistant"
+  avatar: generated
 
-## 🏠 Who We Are
+voice:
+  elevenlabs_agent_id: "agent-id-here"
+```
 
-We're engineers scattered across Bay Area coffee shops and hacker houses, constantly checking how our AI coding agents are progressing on our pet projects during lunch breaks. Happy Coder was born from the frustration of not being able to peek at our AI coding tools building our side hustles while we're away from our keyboards. We believe the best tools come from scratching your own itch and sharing with the community.
+## Repository Structure
 
-## 📚 Documentation & Contributing
+Arc customizations are isolated in `expo-app/sources/arc/`:
 
-- **[Documentation Website](https://happy.engineering/docs/)** - Learn how to use Happy Coder effectively
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development setup including iOS, Android, and macOS desktop variant builds
-- **[Edit docs at github.com/slopus/slopus.github.io](https://github.com/slopus/slopus.github.io)** - Help improve our documentation and guides
+```
+arc/
+├── cli/                      # Happy CLI (unmodified)
+├── expo-app/
+│   ├── sources/
+│   │   ├── arc/              # ← ALL ARC CUSTOMIZATION
+│   │   │   ├── agent/        # .arc.yaml loading
+│   │   │   ├── voice/        # Voice binding
+│   │   │   └── ui/           # Custom components
+│   │   └── ...               # Happy sources (unmodified)
+│   └── ...
+├── server/                   # Happy relay (unmodified)
+└── docs/                     # Arc documentation
+```
+
+**Key principle:** Minimize modifications to Happy files. Use `sources/arc/` for customization.
+
+## Quick Start
+
+```bash
+# Clone
+git clone https://github.com/Runline-AI/arc.git
+cd arc
+
+# Install
+yarn install
+
+# Run iOS
+cd expo-app
+yarn ios
+```
+
+## Syncing Upstream
+
+Pull Happy updates:
+
+```bash
+git fetch upstream
+git merge upstream/main
+```
+
+## Documentation
+
+- [SETUP.md](./SETUP.md) — Development setup
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) — Technical deep-dive
+- [docs/AGENTS.md](./docs/AGENTS.md) — How agents work
+
+## Credits
+
+Arc is built on [Happy](https://github.com/slopus/happy) by the Happy Engineering team. Thank you for the open-source foundation.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT (inherits from Happy)
