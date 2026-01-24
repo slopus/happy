@@ -1,24 +1,24 @@
 const variant = process.env.APP_ENV || 'development';
 const name = {
-    development: "Happy (dev)",
-    preview: "Happy (preview)",
-    production: "Happy"
+    development: "Arc (dev)",
+    preview: "Arc (preview)",
+    production: "Arc"
 }[variant];
 const bundleId = {
-    development: "com.slopus.happy.dev",
-    preview: "com.slopus.happy.preview",
-    production: "com.ex3ndr.happy"
+    development: "com.runline.arc.dev",
+    preview: "com.runline.arc.preview",
+    production: "com.runline.arc"
 }[variant];
 
 export default {
     expo: {
         name,
-        slug: "happy",
-        version: "1.6.2",
-        runtimeVersion: "18",
+        slug: "arc",
+        version: "0.1.0",
+        runtimeVersion: "1",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
-        scheme: "happy",
+        scheme: "arc",
         userInterfaceStyle: "automatic",
         newArchEnabled: true,
         notification: {
@@ -36,7 +36,7 @@ export default {
                 NSLocalNetworkUsageDescription: "Allow $(PRODUCT_NAME) to find and connect to local devices on your network.",
                 NSBonjourServices: ["_http._tcp", "_https._tcp"]
             },
-            associatedDomains: variant === 'production' ? ["applinks:app.happy.engineering"] : []
+            associatedDomains: variant === 'production' ? ["applinks:arc.runline.ai"] : []
         },
         android: {
             adaptiveIcon: {
@@ -63,7 +63,7 @@ export default {
                     "data": [
                         {
                             "scheme": "https",
-                            "host": "app.happy.engineering",
+                            "host": "arc.runline.ai",
                             "pathPrefix": "/"
                         }
                     ],
@@ -149,12 +149,13 @@ export default {
                 }
             ]
         ],
-        updates: {
-            url: "https://u.expo.dev/4558dd3d-cd5a-47cd-bad9-e591a241cc06",
-            requestHeaders: {
-                "expo-channel-name": "production"
-            }
-        },
+        // TODO: Configure EAS updates after running `eas build:configure`
+        // updates: {
+        //     url: "https://u.expo.dev/YOUR_PROJECT_ID",
+        //     requestHeaders: {
+        //         "expo-channel-name": "production"
+        //     }
+        // },
         experiments: {
             typedRoutes: true
         },
@@ -162,16 +163,15 @@ export default {
             router: {
                 root: "./sources/app"
             },
-            eas: {
-                projectId: "4558dd3d-cd5a-47cd-bad9-e591a241cc06"
-            },
+            // TODO: Set after running `eas build:configure`
+            // eas: {
+            //     projectId: "YOUR_PROJECT_ID"
+            // },
             app: {
-                postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
-                revenueCatAppleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_APPLE,
-                revenueCatGoogleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE,
-                revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE
+                postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY
             }
-        },
-        owner: "bulkacorp"
+        }
+        // TODO: Set your Expo account owner
+        // owner: "runline"
     }
 };
