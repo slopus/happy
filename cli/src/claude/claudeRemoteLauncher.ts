@@ -3,14 +3,14 @@ import { Session } from "./session";
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import React from "react";
-import { claudeRemote } from "./claudeRemote";
+import { claudeRemote, type InterruptState } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
-import { PLAN_FAKE_REJECT } from "./sdk/prompts";
+import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "./sdk/prompts";
 import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
@@ -103,6 +103,25 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     const messageQueue = new OutgoingMessageQueue(
         (logMessage) => session.client.sendClaudeSessionMessage(logMessage)
     );
+
+    // Track user messages that arrive while Claude is thinking (for soft interrupt at tool boundaries)
+    const interruptState: InterruptState = {
+        pendingUserMessage: false,
+        interruptRequested: false
+    };
+
+    session.queue.setOnMessage((message: string) => {
+        if (!session.thinking) {
+            return;
+        }
+        if (message === PLAN_FAKE_RESTART) {
+            return;
+        }
+        if (!interruptState.pendingUserMessage) {
+            logger.debug('[remote]: user message queued during active response; will interrupt after next tool result');
+        }
+        interruptState.pendingUserMessage = true;
+    });
 
     // Set up callback to release delayed messages when permission is requested
     permissionHandler.setOnPermissionRequest((toolCallId: string) => {
@@ -392,6 +411,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         }
                     },
                     signal: abortController.signal,
+                    interruptState,
                 });
                 
                 // Consume one-time Claude flags after spawn
@@ -450,6 +470,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             inkInstance.unmount();
         }
         messageBuffer.clear();
+        session.queue.setOnMessage(null);
 
         // Resolve abort future
         if (abortFuture) { // Just in case of error

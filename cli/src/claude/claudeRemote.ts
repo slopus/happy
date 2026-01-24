@@ -13,6 +13,11 @@ import { systemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
 
+export type InterruptState = {
+    pendingUserMessage: boolean;
+    interruptRequested: boolean;
+};
+
 export async function claudeRemote(opts: {
 
     // Fixed parameters
@@ -39,7 +44,8 @@ export async function claudeRemote(opts: {
     onThinkingChange?: (thinking: boolean) => void,
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
-    onSessionReset?: () => void
+    onSessionReset?: () => void,
+    interruptState?: InterruptState
 }) {
 
     // Check if session is valid
@@ -155,6 +161,12 @@ export async function claudeRemote(opts: {
         },
     });
 
+    // Reset interrupt state for this run
+    if (opts.interruptState) {
+        opts.interruptState.pendingUserMessage = false;
+        opts.interruptState.interruptRequested = false;
+    }
+
     // Start the loop
     const response = query({
         prompt: messages,
@@ -194,6 +206,11 @@ export async function claudeRemote(opts: {
                 updateThinking(false);
                 logger.debug('[claudeRemote] Result received, exiting claudeRemote');
 
+                if (opts.interruptState) {
+                    opts.interruptState.pendingUserMessage = false;
+                    opts.interruptState.interruptRequested = false;
+                }
+
                 // Send completion messages
                 if (isCompactCommand) {
                     logger.debug('[claudeRemote] Compaction completed');
@@ -221,6 +238,18 @@ export async function claudeRemote(opts: {
                 const msg = message as SDKUserMessage;
                 if (msg.message.role === 'user' && Array.isArray(msg.message.content)) {
                     for (let c of msg.message.content) {
+                        if (c.type === 'tool_result' && opts.interruptState?.pendingUserMessage && !opts.interruptState.interruptRequested) {
+                            opts.interruptState.interruptRequested = true;
+                            opts.interruptState.pendingUserMessage = false;
+                            logger.debug('[claudeRemote] Pending user message detected at tool boundary - interrupting current response');
+                            void response.interrupt().catch((error) => {
+                                logger.debug('[claudeRemote] Interrupt failed', error);
+                                if (opts.interruptState) {
+                                    opts.interruptState.interruptRequested = false;
+                                    opts.interruptState.pendingUserMessage = true;
+                                }
+                            });
+                        }
                         if (c.type === 'tool_result' && c.tool_use_id && opts.isAborted(c.tool_use_id)) {
                             logger.debug('[claudeRemote] Tool aborted, exiting claudeRemote');
                             return;
