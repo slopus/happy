@@ -1,19 +1,28 @@
 {
-    "name": "monorepo",
-    "private": true,
-    "workspaces": {
-        "packages": [
-            "expo-app",
-            "hello-world"
-        ],
-        "nohoist": [
-           "**/react",
-           "**/react-dom",
-           "**/react-native",
-           "**/react-native/**",
-           "**/react-native-edge-to-edge/**",
-           "**/react-native-incall-manager/**"
-     ]
-    },
-    "packageManager": "yarn@1.22.22"
+  "name": "monorepo",
+  "private": true,
+  "workspaces": {
+    "packages": [
+      "expo-app"
+    ],
+    "nohoist": [
+      "**/react",
+      "**/react-dom",
+      "**/react-native",
+      "**/react-native/**",
+      "**/react-native-edge-to-edge/**",
+      "**/react-native-incall-manager/**"
+    ]
+  },
+  "packageManager": "yarn@1.22.22",
+  "version": "1.0.0",
+  "scripts": {
+    "android": "expo run:android",
+    "ios": "expo run:ios"
+  },
+  "dependencies": {
+    "expo": "~54.0.31",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  }
 }
