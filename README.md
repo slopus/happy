@@ -101,4 +101,4 @@ Arc is built on [Happy](https://github.com/slopus/happy) by the Happy Engineerin
 
 ## License
 
-MIT (inherits from Happy)
+Apache 2.0 — See [LICENSE](./LICENSE) and [NOTICE](./NOTICE)
