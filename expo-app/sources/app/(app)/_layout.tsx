@@ -346,11 +346,15 @@ export default function RootLayout() {
                 options={{
                     headerTitle: '',
                     headerBackTitle: t('common.back'),
-                    // When /new is presented as `containedModal` on iOS, pushing a default "card" screen
-                    // from within it can end up behind the modal (increasing the back stack without
-                    // becoming visible). Present profile-edit as `containedModal` too so it always
-                    // shows above the wizard.
-                    presentation: Platform.OS === 'ios' ? 'containedModal' : undefined,
+                }}
+            />
+            <Stack.Screen
+                name="new/pick/secret-requirement"
+                options={{
+                    headerShown: false,
+                    // /new is presented modally on iOS. Ensure this overlay screen is too,
+                    // otherwise it can end up pushed "behind" the modal (invisible but on the back stack).
+                    presentation: Platform.OS === 'ios' ? 'containedModal' : 'modal',
                 }}
             />
             <Stack.Screen
@@ -359,14 +363,10 @@ export default function RootLayout() {
                     headerTitle: t('newSession.title'),
                     headerShown: true,
                     headerBackTitle: t('common.cancel'),
-                    // On iOS, presenting this as a native "modal" can cause React Native <Modal>
-                    // (used by our in-app modal system) to appear behind it and block touches.
-                    // `containedModal` keeps presentation within the stack so overlays work reliably.
-                    presentation: Platform.OS === 'ios' ? 'containedModal' : 'modal',
+                    presentation: 'modal',
                     gestureEnabled: true,
                     fullScreenGestureEnabled: true,
-                    // `containedModal` is reliable for stacking in-app modals above this screen on iOS,
-                    // but swipe-to-dismiss is not consistently available. Always provide a close button.
+                    // Swipe-to-dismiss is not consistently available across platforms; always provide a close button.
                     headerBackVisible: false,
                     headerLeft: () => null,
                     headerRight: () => (

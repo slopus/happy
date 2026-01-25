@@ -43,6 +43,11 @@
         max-height: min(820px, calc(100vh - 96px)) !important;
         min-height: min(820px, calc(100vh - 96px)) !important;
     }
+
+    html[data-happy-route="new"] [data-vaul-drawer][data-vaul-drawer-direction="bottom"] [data-presentation="modal"] {
+        height: auto !important;
+        min-height: 0 !important;
+    }
 }
 
 /* Ensure scrollbars are visible on hover for macOS */
