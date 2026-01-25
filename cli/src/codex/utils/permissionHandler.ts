@@ -20,8 +20,11 @@ export type { PermissionResult, PendingRequest };
  * Codex-specific permission handler.
  */
 export class CodexPermissionHandler extends BasePermissionHandler {
-    constructor(session: ApiSessionClient) {
-        super(session);
+    constructor(
+        session: ApiSessionClient,
+        opts?: { onAbortRequested?: (() => void | Promise<void>) | null },
+    ) {
+        super(session, opts);
     }
 
     protected getLogPrefix(): string {
@@ -40,6 +43,13 @@ export class CodexPermissionHandler extends BasePermissionHandler {
         toolName: string,
         input: unknown
     ): Promise<PermissionResult> {
+        // Respect user "don't ask again for session" choices captured via our permission UI.
+        if (this.isAllowedForSession(toolName, input)) {
+            logger.debug(`${this.getLogPrefix()} Auto-approving (allowed for session) tool ${toolName} (${toolCallId})`);
+            this.recordAutoDecision(toolCallId, toolName, input, 'approved_for_session');
+            return { decision: 'approved_for_session' };
+        }
+
         return new Promise<PermissionResult>((resolve, reject) => {
             // Store the pending request
             this.pendingRequests.set(toolCallId, {

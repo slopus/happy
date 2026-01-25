@@ -10,6 +10,7 @@
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { AgentState } from "@/api/types";
+import { isToolAllowedForSession, makeToolIdentifier } from "@/utils/permissionToolIdentifier";
 
 /**
  * Permission response from the mobile app.
@@ -18,6 +19,9 @@ export interface PermissionResponse {
     id: string;
     approved: boolean;
     decision?: 'approved' | 'approved_for_session' | 'approved_execpolicy_amendment' | 'denied' | 'abort';
+    // When the user chooses "don't ask again (session)", the UI may send a tool allowlist.
+    allowedTools?: string[];
+    allowTools?: string[]; // legacy alias
     execPolicyAmendment?: {
         command: string[];
     };
@@ -53,15 +57,24 @@ export abstract class BasePermissionHandler {
     protected pendingRequests = new Map<string, PendingRequest>();
     protected session: ApiSessionClient;
     private isResetting = false;
+    private allowedToolIdentifiers = new Set<string>();
+    private readonly onAbortRequested: (() => void | Promise<void>) | null;
 
     /**
      * Returns the log prefix for this handler.
      */
     protected abstract getLogPrefix(): string;
 
-    constructor(session: ApiSessionClient) {
+    constructor(
+        session: ApiSessionClient,
+        opts?: {
+            onAbortRequested?: (() => void | Promise<void>) | null;
+        }
+    ) {
         this.session = session;
+        this.onAbortRequested = typeof opts?.onAbortRequested === 'function' ? opts.onAbortRequested : null;
         this.setupRpcHandler();
+        this.seedAllowedToolsFromAgentState();
     }
 
     /**
@@ -73,6 +86,29 @@ export abstract class BasePermissionHandler {
         this.session = newSession;
         // Re-setup RPC handler with new session
         this.setupRpcHandler();
+        this.seedAllowedToolsFromAgentState();
+    }
+
+    private seedAllowedToolsFromAgentState(): void {
+        try {
+            const snapshot = this.session.getAgentStateSnapshot?.() ?? null;
+            const completed = snapshot?.completedRequests;
+            if (!completed) return;
+
+            for (const entry of Object.values(completed)) {
+                if (!entry || entry.status !== 'approved') continue;
+                // Legacy sessions may still have `allowTools`; prefer canonical `allowedTools`.
+                const list = (entry as any).allowedTools ?? (entry as any).allowTools;
+                if (!Array.isArray(list)) continue;
+                for (const item of list) {
+                    if (typeof item === 'string' && item.trim().length > 0) {
+                        this.allowedToolIdentifiers.add(item.trim());
+                    }
+                }
+            }
+        } catch (error) {
+            logger.debug(`${this.getLogPrefix()} Failed to seed allowlist from agentState`, error);
+        }
     }
 
     /**
@@ -112,7 +148,42 @@ export abstract class BasePermissionHandler {
                     result = { decision: response.decision === 'denied' ? 'denied' : 'abort' };
                 }
 
+                // Per-session allowlist: if user chooses "approved_for_session", remember this tool (and for
+                // shell/exec tools, remember the exact command) so future prompts can auto-approve.
+                const responseAllowedTools = response.allowedTools ?? response.allowTools;
+                if (response.approved) {
+                    if (Array.isArray(responseAllowedTools)) {
+                        for (const item of responseAllowedTools) {
+                            if (typeof item === 'string' && item.trim().length > 0) {
+                                this.allowedToolIdentifiers.add(item.trim());
+                            }
+                        }
+                    } else if (result.decision === 'approved_for_session') {
+                        this.allowedToolIdentifiers.add(makeToolIdentifier(pending.toolName, pending.input));
+                    }
+                }
+
                 pending.resolve(result);
+
+                if (result.decision === 'abort') {
+                    try {
+                        const cb = this.onAbortRequested;
+                        if (cb) {
+                            Promise.resolve(cb()).catch((error) => {
+                                logger.debug(`${this.getLogPrefix()} onAbortRequested failed (non-fatal)`, error);
+                            });
+                        }
+                    } catch (error) {
+                        logger.debug(`${this.getLogPrefix()} onAbortRequested threw (non-fatal)`, error);
+                    }
+                }
+
+                const derivedAllowTools =
+                    Array.isArray(responseAllowedTools)
+                        ? responseAllowedTools
+                        : (result.decision === 'approved_for_session'
+                            ? [makeToolIdentifier(pending.toolName, pending.input)]
+                            : undefined);
 
                 // Move request to completed in agent state
                 this.session.updateAgentState((currentState) => {
@@ -130,7 +201,9 @@ export abstract class BasePermissionHandler {
                                 ...request,
                                 completedAt: Date.now(),
                                 status: response.approved ? 'approved' : 'denied',
-                                decision: result.decision
+                                decision: result.decision,
+                                // Persist allowlist for the UI and for future CLI reconnects.
+                                ...(derivedAllowTools ? { allowedTools: derivedAllowTools } : null),
                             }
                         }
                     } satisfies AgentState;
@@ -140,6 +213,36 @@ export abstract class BasePermissionHandler {
                 logger.debug(`${this.getLogPrefix()} Permission ${response.approved ? 'approved' : 'denied'} for ${pending.toolName}`);
             }
         );
+    }
+
+    protected isAllowedForSession(toolName: string, input: unknown): boolean {
+        return isToolAllowedForSession(this.allowedToolIdentifiers, toolName, input);
+    }
+
+    protected recordAutoDecision(
+        toolCallId: string,
+        toolName: string,
+        input: unknown,
+        decision: PermissionResult['decision']
+    ): void {
+        const allowedTools = decision === 'approved_for_session'
+            ? [makeToolIdentifier(toolName, input)]
+            : undefined;
+        this.session.updateAgentState((currentState) => ({
+            ...currentState,
+            completedRequests: {
+                ...currentState.completedRequests,
+                [toolCallId]: {
+                    tool: toolName,
+                    arguments: input,
+                    createdAt: Date.now(),
+                    completedAt: Date.now(),
+                    status: decision === 'denied' || decision === 'abort' ? 'denied' : 'approved',
+                    decision,
+                    ...(allowedTools ? { allowedTools } : null),
+                },
+            },
+        }));
     }
 
     /**
@@ -207,6 +310,7 @@ export abstract class BasePermissionHandler {
                 };
             });
 
+            this.allowedToolIdentifiers.clear();
             logger.debug(`${this.getLogPrefix()} Permission handler reset`);
         } finally {
             this.isResetting = false;

@@ -23,8 +23,11 @@ export type { PermissionResult, PendingRequest };
 export class GeminiPermissionHandler extends BasePermissionHandler {
     private currentPermissionMode: PermissionMode = 'default';
 
-    constructor(session: ApiSessionClient) {
-        super(session);
+    constructor(
+        session: ApiSessionClient,
+        opts?: { onAbortRequested?: (() => void | Promise<void>) | null },
+    ) {
+        super(session, opts);
     }
 
     protected getLogPrefix(): string {
@@ -51,6 +54,11 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
      * Check if a tool should be auto-approved based on permission mode
      */
     private shouldAutoApprove(toolName: string, toolCallId: string, input: unknown): boolean {
+        // Never auto-approve internal app prompts that must remain user-controlled.
+        if (toolName === 'AcpHistoryImport') {
+            return false;
+        }
+
         // Always auto-approve these tools regardless of permission mode:
         // - change_title: Changing chat title is safe and should be automatic
         // - GeminiReasoning: Reasoning is just display of thinking process, not an action
@@ -102,30 +110,21 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
         toolName: string,
         input: unknown
     ): Promise<PermissionResult> {
+        // Respect user "don't ask again for session" choices captured via our permission UI.
+        if (this.isAllowedForSession(toolName, input)) {
+            logger.debug(`${this.getLogPrefix()} Auto-approving (allowed for session) tool ${toolName} (${toolCallId})`);
+            this.recordAutoDecision(toolCallId, toolName, input, 'approved_for_session');
+            return { decision: 'approved_for_session' };
+        }
+
         // Check if we should auto-approve based on permission mode
         // Pass toolCallId to check by ID (e.g., change_title-* even if toolName is "other")
         if (this.shouldAutoApprove(toolName, toolCallId, input)) {
             logger.debug(`${this.getLogPrefix()} Auto-approving tool ${toolName} (${toolCallId}) in ${this.currentPermissionMode} mode`);
-
-            // Update agent state with auto-approved request
-            this.session.updateAgentState((currentState) => ({
-                ...currentState,
-                completedRequests: {
-                    ...currentState.completedRequests,
-                    [toolCallId]: {
-                        tool: toolName,
-                        arguments: input,
-                        createdAt: Date.now(),
-                        completedAt: Date.now(),
-                        status: 'approved',
-                        decision: this.currentPermissionMode === 'yolo' ? 'approved_for_session' : 'approved'
-                    }
-                }
-            }));
-
-            return {
-                decision: this.currentPermissionMode === 'yolo' ? 'approved_for_session' : 'approved'
-            };
+            const decision: PermissionResult['decision'] =
+                this.currentPermissionMode === 'yolo' ? 'approved_for_session' : 'approved';
+            this.recordAutoDecision(toolCallId, toolName, input, decision);
+            return { decision };
         }
 
         // Otherwise, ask for permission
@@ -145,4 +144,3 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
         });
     }
 }
-
