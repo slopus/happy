@@ -3,12 +3,13 @@ import { buildCliCapabilityData } from './cliBase';
 import { probeAcpAgentCapabilities } from './acpProbe';
 import { DefaultTransport } from '@/agent/transport';
 import { resolveCodexAcpCommand } from '@/codex/acp/resolveCodexAcpCommand';
+import { normalizeCapabilityProbeError } from './normalizeCapabilityProbeError';
 
 export const cliCodexCapability: Capability = {
     descriptor: { id: 'cli.codex', kind: 'cli', title: 'Codex CLI' },
     detect: async ({ request, context }) => {
         const entry = context.cliSnapshot?.clis?.codex;
-        const base = buildCliCapabilityData({ request, name: 'codex', entry });
+        const base = buildCliCapabilityData({ request, entry });
 
         const includeAcpCapabilities = Boolean((request.params ?? {}).includeAcpCapabilities);
         if (!includeAcpCapabilities) {
@@ -34,10 +35,9 @@ export const cliCodexCapability: Capability = {
 
                 return probe.ok
                     ? { ok: true as const, checkedAt: probe.checkedAt, loadSession: probe.agentCapabilities?.loadSession === true }
-                    : { ok: false as const, checkedAt: probe.checkedAt, error: probe.error };
+                    : { ok: false as const, checkedAt: probe.checkedAt, error: normalizeCapabilityProbeError(probe.error) };
             } catch (e) {
-                const msg = e instanceof Error ? e.message : String(e);
-                return { ok: false as const, checkedAt: Date.now(), error: { message: msg } };
+                return { ok: false as const, checkedAt: Date.now(), error: normalizeCapabilityProbeError(e) };
             }
         })();
 

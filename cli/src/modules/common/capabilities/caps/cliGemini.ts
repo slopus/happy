@@ -2,12 +2,13 @@ import type { Capability } from '../service';
 import { buildCliCapabilityData } from './cliBase';
 import { probeAcpAgentCapabilities } from './acpProbe';
 import { geminiTransport } from '@/agent/transport';
+import { normalizeCapabilityProbeError } from './normalizeCapabilityProbeError';
 
 export const cliGeminiCapability: Capability = {
     descriptor: { id: 'cli.gemini', kind: 'cli', title: 'Gemini CLI' },
     detect: async ({ request, context }) => {
         const entry = context.cliSnapshot?.clis?.gemini;
-        const base = buildCliCapabilityData({ request, name: 'gemini', entry });
+        const base = buildCliCapabilityData({ request, entry });
 
         const includeAcpCapabilities = Boolean((request.params ?? {}).includeAcpCapabilities);
         if (!includeAcpCapabilities || base.available !== true || !base.resolvedPath) {
@@ -29,7 +30,7 @@ export const cliGeminiCapability: Capability = {
 
         const acp = probe.ok
             ? { ok: true, checkedAt: probe.checkedAt, loadSession: probe.agentCapabilities?.loadSession === true }
-            : { ok: false, checkedAt: probe.checkedAt, error: probe.error };
+            : { ok: false, checkedAt: probe.checkedAt, error: normalizeCapabilityProbeError(probe.error) };
 
         return { ...base, acp };
     },

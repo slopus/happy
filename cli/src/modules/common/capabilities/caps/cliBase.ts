@@ -1,9 +1,8 @@
 import type { CapabilityDetectRequest } from '../types';
-import type { DetectCliEntry, DetectCliName } from '../snapshots/cliSnapshot';
+import type { DetectCliEntry } from '../snapshots/cliSnapshot';
 
 export function buildCliCapabilityData(opts: {
     request: CapabilityDetectRequest;
-    name: DetectCliName;
     entry: DetectCliEntry | undefined;
 }): DetectCliEntry {
     const includeLoginStatus = Boolean((opts.request.params ?? {}).includeLoginStatus);
@@ -18,4 +17,3 @@ export function buildCliCapabilityData(opts: {
 
     return out;
 }
-
