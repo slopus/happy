@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Text, View, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons, Octicons } from '@expo/vector-icons';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming, interpolate } from 'react-native-reanimated';
 import { getToolViewComponent } from './views/_all';
 import { Message, ToolCall } from '@/sync/typesMessage';
 import { CodeView } from '../CodeView';
@@ -15,6 +16,7 @@ import { PermissionFooter } from './PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
 import { formatMCPTitle } from './views/MCPToolView';
 import { t } from '@/text';
+import { useCollapsedTool } from '@/hooks/useCollapsedTools';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -29,6 +31,22 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress, sessionId, messageId } = props;
     const router = useRouter();
     const { theme } = useUnistyles();
+
+    // Use persistent collapsed state that survives FlatList re-mounts
+    // Use messageId + tool name as unique identifier
+    const toolId = messageId ? `${messageId}-${tool.name}` : `${sessionId}-${tool.name}-${tool.createdAt}`;
+    const [collapsed, toggleCollapsed] = useCollapsedTool(toolId);
+
+    const chevronRotation = useSharedValue(collapsed ? 1 : 0);
+
+    // Update chevron animation when collapsed changes
+    React.useEffect(() => {
+        chevronRotation.value = withTiming(collapsed ? 1 : 0, { duration: 200 });
+    }, [collapsed, chevronRotation]);
+
+    const chevronStyle = useAnimatedStyle(() => ({
+        transform: [{ rotate: `${interpolate(chevronRotation.value, [0, 1], [0, -90])}deg` }],
+    }));
 
     // Create default onPress handler for navigation
     const handlePress = React.useCallback(() => {
@@ -123,7 +141,6 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     let isToolUseError = false;
     if (tool.state === 'error' && tool.result && parseToolUseError(tool.result).isToolUseError) {
         isToolUseError = true;
-        console.log('isToolUseError', tool.result);
     }
 
     // Check permission status first for denied/canceled states
@@ -151,16 +168,117 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         }
     }
 
+    // Check if there's content to show (determines if chevron should be visible)
+    const hasContent = !minimal;
+
+    // Debug log
+    // console.log('[ToolView] render:', tool.name, 'collapsed:', collapsed, 'hasContent:', hasContent, 'minimal:', minimal, 'isPressable:', isPressable);
+
+    // Render the collapsible content
+    const renderContent = () => {
+        // console.log('[ToolView] renderContent:', tool.name, 'collapsed:', collapsed, 'minimal:', minimal);
+        if (collapsed || minimal) {
+            // console.log('[ToolView] renderContent returning null');
+            return null;
+        }
+
+        // Try to use a specific tool view component first
+        const SpecificToolView = getToolViewComponent(tool.name);
+        if (SpecificToolView) {
+            return (
+                <View style={styles.content}>
+                    <SpecificToolView tool={tool} metadata={props.metadata} messages={props.messages ?? []} sessionId={sessionId} />
+                    {tool.state === 'error' && tool.result &&
+                        !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
+                        !hideDefaultError && (
+                            <ToolError message={String(tool.result)} />
+                        )}
+                </View>
+            );
+        }
+
+        // Show error state if present (but not for denied/canceled permissions and not when hideDefaultError is true)
+        if (tool.state === 'error' && tool.result &&
+            !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
+            !isToolUseError) {
+            return (
+                <View style={styles.content}>
+                    <ToolError message={String(tool.result)} />
+                </View>
+            );
+        }
+
+        // Fall back to default view
+        return (
+            <View style={styles.content}>
+                {/* Default content when no custom view available */}
+                {tool.input && (
+                    <ToolSectionView title={t('toolView.input')}>
+                        <CodeView code={JSON.stringify(tool.input, null, 2)} />
+                    </ToolSectionView>
+                )}
+
+                {tool.state === 'completed' && tool.result && (
+                    <ToolSectionView title={t('toolView.output')}>
+                        <CodeView
+                            code={typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
+                        />
+                    </ToolSectionView>
+                )}
+            </View>
+        );
+    };
+
     return (
         <View style={styles.container}>
-            {isPressable ? (
-                <TouchableOpacity style={styles.header} onPress={handlePress} activeOpacity={0.8}>
-                    <View style={styles.headerLeft}>
-                        <View style={styles.iconContainer}>
-                            {icon}
-                        </View>
+            <View style={styles.header}>
+                {/* Chevron button - separate from the rest of the header to avoid touch conflicts */}
+                {hasContent && (
+                    <TouchableOpacity
+                        onPress={toggleCollapsed}
+                        activeOpacity={0.6}
+                        style={styles.chevronButton}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                        <Animated.View style={chevronStyle}>
+                            <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
+                        </Animated.View>
+                    </TouchableOpacity>
+                )}
+                {/* Title area - handles navigation */}
+                {isPressable ? (
+                    <TouchableOpacity
+                        style={[styles.headerContent, !hasContent && styles.headerContentNoChevron]}
+                        onPress={handlePress}
+                        activeOpacity={0.8}
+                    >
+                        <View style={styles.iconContainer}>{icon}</View>
                         <View style={styles.titleContainer}>
-                            <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
+                            <Text style={styles.toolName} numberOfLines={1}>
+                                {toolTitle}
+                                {status ? <Text style={styles.status}>{` ${status}`}</Text> : null}
+                            </Text>
+                            {description && (
+                                <Text style={styles.toolDescription} numberOfLines={1}>
+                                    {description}
+                                </Text>
+                            )}
+                        </View>
+                        {tool.state === 'running' && (
+                            <View style={styles.elapsedContainer}>
+                                <ElapsedView from={tool.createdAt} />
+                            </View>
+                        )}
+                        {statusIcon}
+                    </TouchableOpacity>
+                ) : (
+                    <View style={[styles.headerContent, !hasContent && styles.headerContentNoChevron]}>
+                        <View style={styles.iconContainer}>{icon}</View>
+                        <View style={styles.titleContainer}>
+                            <Text style={styles.toolName} numberOfLines={1}>
+                                {toolTitle}
+                                {status ? <Text style={styles.status}>{` ${status}`}</Text> : null}
+                            </Text>
                             {description && (
                                 <Text style={styles.toolDescription} numberOfLines={1}>
                                     {description}
@@ -174,84 +292,11 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                         )}
                         {statusIcon}
                     </View>
-                </TouchableOpacity>
-            ) : (
-                <View style={styles.header}>
-                    <View style={styles.headerLeft}>
-                        <View style={styles.iconContainer}>
-                            {icon}
-                        </View>
-                        <View style={styles.titleContainer}>
-                            <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
-                            {description && (
-                                <Text style={styles.toolDescription} numberOfLines={1}>
-                                    {description}
-                                </Text>
-                            )}
-                        </View>
-                        {tool.state === 'running' && (
-                            <View style={styles.elapsedContainer}>
-                                <ElapsedView from={tool.createdAt} />
-                            </View>
-                        )}
-                        {statusIcon}
-                    </View>
-                </View>
-            )}
+                )}
+            </View>
 
-            {/* Content area - either custom children or tool-specific view */}
-            {(() => {
-                // Check if minimal first - minimal tools don't show content
-                if (minimal) {
-                    return null;
-                }
-
-                // Try to use a specific tool view component first
-                const SpecificToolView = getToolViewComponent(tool.name);
-                if (SpecificToolView) {
-                    return (
-                        <View style={styles.content}>
-                            <SpecificToolView tool={tool} metadata={props.metadata} messages={props.messages ?? []} sessionId={sessionId} />
-                            {tool.state === 'error' && tool.result &&
-                                !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
-                                !hideDefaultError && (
-                                    <ToolError message={String(tool.result)} />
-                                )}
-                        </View>
-                    );
-                }
-
-                // Show error state if present (but not for denied/canceled permissions and not when hideDefaultError is true)
-                if (tool.state === 'error' && tool.result &&
-                    !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
-                    !isToolUseError) {
-                    return (
-                        <View style={styles.content}>
-                            <ToolError message={String(tool.result)} />
-                        </View>
-                    );
-                }
-
-                // Fall back to default view
-                return (
-                    <View style={styles.content}>
-                        {/* Default content when no custom view available */}
-                        {tool.input && (
-                            <ToolSectionView title={t('toolView.input')}>
-                                <CodeView code={JSON.stringify(tool.input, null, 2)} />
-                            </ToolSectionView>
-                        )}
-
-                        {tool.state === 'completed' && tool.result && (
-                            <ToolSectionView title={t('toolView.output')}>
-                                <CodeView
-                                    code={typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
-                                />
-                            </ToolSectionView>
-                        )}
-                    </View>
-                );
-            })()}
+            {/* Content area */}
+            {renderContent()}
 
             {/* Permission footer - always renders when permission exists to maintain consistent height */}
             {/* AskUserQuestion has its own Submit button UI - no permission footer needed */}
@@ -278,15 +323,24 @@ const styles = StyleSheet.create((theme) => ({
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: 12,
         backgroundColor: theme.colors.surfaceHighest,
     },
-    headerLeft: {
+    chevronButton: {
+        width: 44,
+        height: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    headerContent: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
         flex: 1,
+        paddingVertical: 12,
+        paddingRight: 12,
+        gap: 8,
+    },
+    headerContentNoChevron: {
+        paddingLeft: 12,
     },
     iconContainer: {
         width: 24,
