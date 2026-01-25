@@ -280,7 +280,7 @@ export default function MachineDetailScreen() {
                 options={{
                     headerShown: true,
                     headerTitle: () => (
-                        <View style={{ alignItems: 'center' }}>
+                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                 <Ionicons
                                     name="desktop-outline"
