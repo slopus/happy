@@ -41,7 +41,7 @@ export async function waitForMessagesOrPending<T>(opts: {
                 opts.waitForMetadataUpdate(controller.signal).then((ok) => ({ kind: 'meta' as const, ok })),
             ]);
 
-            controller.abort();
+            controller.abort('waitForMessagesOrPending');
 
             if (winner.kind === 'batch') {
                 return winner.batch;

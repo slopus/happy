@@ -1,5 +1,6 @@
 import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
+import axios from 'axios';
 import { io, Socket } from 'socket.io-client'
 import { AgentState, ClientToServerEvents, MessageContent, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
@@ -12,6 +13,7 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { claimMessageQueueV1Next, clearMessageQueueV1InFlight, discardMessageQueueV1All, parseMessageQueueV1 } from './messageQueueV1';
 import { addDiscardedCommittedMessageLocalIds } from './discardedCommittedMessageLocalIds';
+import { recordToolTraceEvent } from '@/toolTrace/toolTrace';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -48,6 +50,7 @@ export class ApiSessionClient extends EventEmitter {
     private agentState: AgentState | null;
     private agentStateVersion: number;
     private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+    private userSocket: Socket<ServerToClientEvents, ClientToServerEvents>;
     private pendingMessages: UserMessage[] = [];
     private pendingMessageCallback: ((message: UserMessage) => void) | null = null;
     readonly rpcHandlerManager: RpcHandlerManager;
@@ -56,6 +59,18 @@ export class ApiSessionClient extends EventEmitter {
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
     private disconnectedSendLogged = false;
+    private readonly pendingMaterializedLocalIds = new Set<string>();
+    private userSocketDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    private closed = false;
+    private snapshotSyncInFlight: Promise<void> | null = null;
+
+    /**
+     * Returns the latest known agentState (may be stale if socket is disconnected).
+     * Useful for rebuilding in-memory caches (e.g. permission allowlists) without server changes.
+     */
+    getAgentStateSnapshot(): AgentState | null {
+        return this.agentState;
+    }
 
     private logSendWhileDisconnected(context: string, details?: Record<string, unknown>): void {
         if (this.socket.connected || this.disconnectedSendLogged) return;
@@ -106,6 +121,29 @@ export class ApiSessionClient extends EventEmitter {
             autoConnect: false
         });
 
+        // A user-scoped socket is used to observe our own materialized pending-queue messages.
+        //
+        // Server-side broadcasting skips the sender connection, so a session-scoped agent that emits a
+        // transcript message will not receive its own "new-message" update. Without observing the
+        // materialized message, the agent can't enqueue it for processing or clear messageQueueV1.inFlight.
+        //
+        // A second (user-scoped) connection will still receive the broadcast, letting us safely
+        // drive the normal update pipeline without server changes.
+        this.userSocket = io(configuration.serverUrl, {
+            auth: {
+                token: this.token,
+                clientType: 'user-scoped' as const,
+            },
+            path: '/v1/updates',
+            reconnection: true,
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            transports: ['websocket'],
+            withCredentials: true,
+            autoConnect: false,
+        });
+
         //
         // Handlers
         //
@@ -114,6 +152,14 @@ export class ApiSessionClient extends EventEmitter {
             logger.debug('Socket connected successfully');
             this.disconnectedSendLogged = false;
             this.rpcHandlerManager.onSocketConnect(this.socket);
+
+            // Resumed sessions (inactive-session-resume) start with metadataVersion/agentStateVersion = -1.
+            // If the user enqueued pending messages before this agent connected, the corresponding metadata
+            // update happened "in the past" and won't be replayed over the socket. Syncing a snapshot here
+            // ensures messageQueueV1 is visible so popPendingMessage() can materialize the first queued item.
+            if (this.metadataVersion < 0 || this.agentStateVersion < 0) {
+                void this.syncSessionSnapshotFromServer({ reason: 'connect' });
+            }
         })
 
         // Set up global RPC request handler
@@ -132,63 +178,9 @@ export class ApiSessionClient extends EventEmitter {
         })
 
         // Server events
-        this.socket.on('update', (data: Update) => {
-            try {
-                logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', data);
+        this.socket.on('update', (data: Update) => this.handleUpdate(data, { source: 'session-scoped' }));
 
-                if (!data.body) {
-                    logger.debug('[SOCKET] [UPDATE] [ERROR] No body in update!');
-                    return;
-                }
-
-                if (data.body.t === 'new-message' && data.body.message.content.t === 'encrypted') {
-                    const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
-                    const bodyWithLocalId =
-                        data.body.message.localId === undefined
-                            ? body
-                            : {
-                                ...(body as any),
-                                localId: data.body.message.localId,
-                            };
-
-                    logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', bodyWithLocalId)
-
-                    // Try to parse as user message first
-                    const userResult = UserMessageSchema.safeParse(bodyWithLocalId);
-                    if (userResult.success) {
-                        // Server already filtered to only our session
-                        if (this.pendingMessageCallback) {
-                            this.pendingMessageCallback(userResult.data);
-                        } else {
-                            this.pendingMessages.push(userResult.data);
-                        }
-                        this.emit('user-message', userResult.data);
-                        void this.maybeClearPendingInFlight(userResult.data.localId ?? null);
-                    } else {
-                        // If not a user message, it might be a permission response or other message type
-                        this.emit('message', body);
-                    }
-                } else if (data.body.t === 'update-session') {
-                    if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
-                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant,decodeBase64(data.body.metadata.value));
-                        this.metadataVersion = data.body.metadata.version;
-                        this.emit('metadata-updated');
-                    }
-                    if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
-                        this.agentState = data.body.agentState.value ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.agentState.value)) : null;
-                        this.agentStateVersion = data.body.agentState.version;
-                    }
-                } else if (data.body.t === 'update-machine') {
-                    // Session clients shouldn't receive machine updates - log warning
-                    logger.debug(`[SOCKET] WARNING: Session client received unexpected machine update - ignoring`);
-                } else {
-                    // If not a user message, it might be a permission response or other message type
-                    this.emit('message', data.body);
-                }
-            } catch (error) {
-                logger.debug('[SOCKET] [UPDATE] [ERROR] Error handling update', { error });
-            }
-        });
+        this.userSocket.on('update', (data: Update) => this.handleUpdate(data, { source: 'user-scoped' }));
 
         // DEATH
         this.socket.on('error', (error) => {
@@ -202,6 +194,261 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.connect();
     }
 
+    private syncSessionSnapshotFromServer(opts: { reason: 'connect' | 'waitForMetadataUpdate' }): Promise<void> {
+        if (this.closed) return Promise.resolve();
+        if (this.snapshotSyncInFlight) return this.snapshotSyncInFlight;
+
+        const p = (async () => {
+            try {
+                const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
+                    headers: {
+                        Authorization: `Bearer ${this.token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    timeout: 10_000,
+                });
+
+                const sessions = (response?.data as any)?.sessions;
+                if (!Array.isArray(sessions)) {
+                    return;
+                }
+
+                const raw = sessions.find((s: any) => s && typeof s === 'object' && s.id === this.sessionId);
+                if (!raw) {
+                    return;
+                }
+
+                // Sync metadata if it is newer than our local view.
+                const nextMetadataVersion = typeof raw.metadataVersion === 'number' ? raw.metadataVersion : null;
+                const rawMetadata = typeof raw.metadata === 'string' ? raw.metadata : null;
+                if (rawMetadata && nextMetadataVersion !== null && nextMetadataVersion > this.metadataVersion) {
+                    const decrypted = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(rawMetadata));
+                    if (decrypted) {
+                        this.metadata = decrypted;
+                        this.metadataVersion = nextMetadataVersion;
+                        this.emit('metadata-updated');
+                    }
+                }
+
+                // Sync agent state if it is newer than our local view.
+                const nextAgentStateVersion = typeof raw.agentStateVersion === 'number' ? raw.agentStateVersion : null;
+                const rawAgentState = typeof raw.agentState === 'string' ? raw.agentState : null;
+                if (nextAgentStateVersion !== null && nextAgentStateVersion > this.agentStateVersion) {
+                    this.agentState = rawAgentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(rawAgentState)) : null;
+                    this.agentStateVersion = nextAgentStateVersion;
+                }
+            } catch (error) {
+                logger.debug('[API] Failed to sync session snapshot from server', { reason: opts.reason, error });
+            }
+        })();
+
+        this.snapshotSyncInFlight = p.finally(() => {
+            if (this.snapshotSyncInFlight === p) {
+                this.snapshotSyncInFlight = null;
+            }
+        });
+
+        return this.snapshotSyncInFlight;
+    }
+
+    private kickUserSocketConnect(): void {
+        if (this.closed) return;
+        if (this.userSocketDisconnectTimer) {
+            clearTimeout(this.userSocketDisconnectTimer);
+            this.userSocketDisconnectTimer = null;
+        }
+        if (this.userSocket.connected) return;
+        try {
+            this.userSocket.connect();
+        } catch {
+            // ignore; transcript recovery will handle missed updates
+        }
+    }
+
+    private maybeScheduleUserSocketDisconnect(): void {
+        if (this.closed) return;
+        if (this.pendingMaterializedLocalIds.size > 0) return;
+        if (!this.userSocket.connected) return;
+        if (this.userSocketDisconnectTimer) return;
+
+        // Short idle grace to avoid thrashing if multiple pending items get materialized back-to-back.
+        this.userSocketDisconnectTimer = setTimeout(() => {
+            this.userSocketDisconnectTimer = null;
+            if (this.pendingMaterializedLocalIds.size > 0) return;
+            if (!this.userSocket.connected) return;
+            try {
+                this.userSocket.disconnect();
+            } catch {
+                // ignore
+            }
+        }, 2_000);
+        this.userSocketDisconnectTimer.unref?.();
+    }
+
+    private handleUpdate(data: Update, opts: { source: 'session-scoped' | 'user-scoped' }): void {
+        try {
+            logger.debugLargeJson(`[SOCKET] [UPDATE:${opts.source}] Received update:`, data);
+
+            if (!data.body) {
+                logger.debug('[SOCKET] [UPDATE] [ERROR] No body in update!');
+                return;
+            }
+
+            if (data.body.t === 'new-message') {
+                if (data.body.sid !== this.sessionId) return;
+                if (data.body.message.content.t !== 'encrypted') return;
+
+                const localId = data.body.message.localId ?? null;
+                if (opts.source === 'user-scoped') {
+                    if (!localId) return;
+                    if (!this.pendingMaterializedLocalIds.has(localId)) {
+                        return;
+                    }
+                    // Avoid double-processing if we get multiple copies.
+                    this.pendingMaterializedLocalIds.delete(localId);
+                    this.maybeScheduleUserSocketDisconnect();
+                }
+
+                const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
+                const bodyWithLocalId =
+                    data.body.message.localId === undefined
+                        ? body
+                        : {
+                            ...(body as any),
+                            localId: data.body.message.localId,
+                        };
+
+                logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', bodyWithLocalId)
+
+                // Try to parse as user message first
+                const userResult = UserMessageSchema.safeParse(bodyWithLocalId);
+                if (userResult.success) {
+                    if (this.pendingMessageCallback) {
+                        this.pendingMessageCallback(userResult.data);
+                    } else {
+                        this.pendingMessages.push(userResult.data);
+                    }
+                    this.emit('user-message', userResult.data);
+                    void this.maybeClearPendingInFlight(userResult.data.localId ?? null);
+                } else {
+                    // If not a user message, it might be a permission response or other message type
+                    this.emit('message', body);
+                }
+                return;
+            }
+
+            if (data.body.t === 'update-session') {
+                const sid = (data.body as any).sid ?? (data.body as any).id;
+                if (sid !== this.sessionId) return;
+                if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
+                    this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
+                    this.metadataVersion = data.body.metadata.version;
+                    this.emit('metadata-updated');
+                }
+                if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
+                    this.agentState = data.body.agentState.value ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.agentState.value)) : null;
+                    this.agentStateVersion = data.body.agentState.version;
+                }
+                return;
+            }
+
+            if (data.body.t === 'update-machine') {
+                // Session clients shouldn't receive machine updates - log warning
+                logger.debug(`[SOCKET] WARNING: Session client received unexpected machine update - ignoring`);
+                return;
+            }
+
+            // If not a user message, it might be a permission response or other message type
+            this.emit('message', data.body);
+        } catch (error) {
+            logger.debug('[SOCKET] [UPDATE] [ERROR] Error handling update', { error });
+        }
+    }
+
+    private async waitForTranscriptLocalId(localId: string, opts?: { maxWaitMs?: number }): Promise<{
+        id: string;
+        seq: number;
+        localId: string | null;
+        content: { t: 'encrypted'; c: string };
+    } | null> {
+        const maxWaitMs = opts?.maxWaitMs ?? 5_000;
+        const startedAt = Date.now();
+        while (Date.now() - startedAt < maxWaitMs) {
+            const found = await this.findTranscriptMessageByLocalId(localId);
+            if (found) return found;
+            await new Promise((r) => setTimeout(r, 150));
+        }
+        return null;
+    }
+
+    private async findTranscriptMessageByLocalId(localId: string): Promise<{
+        id: string;
+        seq: number;
+        localId: string | null;
+        content: { t: 'encrypted'; c: string };
+    } | null> {
+        try {
+            const response = await axios.get(`${configuration.serverUrl}/v1/sessions/${this.sessionId}/messages`, {
+                headers: {
+                    Authorization: `Bearer ${this.token}`,
+                    'Content-Type': 'application/json',
+                },
+                timeout: 10_000,
+            });
+            const messages = (response?.data as any)?.messages;
+            if (!Array.isArray(messages)) return null;
+            const found = messages.find((m: any) => m && typeof m === 'object' && m.localId === localId);
+            if (!found) return null;
+            const content = found.content;
+            if (!content || content.t !== 'encrypted' || typeof content.c !== 'string') return null;
+            if (typeof found.id !== 'string') return null;
+            if (typeof found.seq !== 'number') return null;
+            const foundLocalId = typeof found.localId === 'string' ? found.localId : null;
+            return { id: found.id, seq: found.seq, localId: foundLocalId, content: { t: 'encrypted', c: content.c } };
+        } catch (error) {
+            logger.debug('[API] Failed to fetch transcript messages for pending-queue recovery', { error });
+            return null;
+        }
+    }
+
+    private async recoverMaterializedLocalId(localId: string, opts?: { maxWaitMs?: number }): Promise<boolean> {
+        const found = await this.waitForTranscriptLocalId(localId, opts);
+        if (!found) return false;
+
+        // Prevent later user-scoped updates from double-processing this localId.
+        this.pendingMaterializedLocalIds.delete(localId);
+        this.maybeScheduleUserSocketDisconnect();
+
+        const update: Update = {
+            id: `recovered-${localId}`,
+            seq: 0,
+            createdAt: Date.now(),
+            body: {
+                t: 'new-message',
+                sid: this.sessionId,
+                message: {
+                    id: found.id,
+                    seq: found.seq,
+                    localId: found.localId ?? undefined,
+                    content: found.content,
+                },
+            },
+        } as Update;
+
+        this.handleUpdate(update, { source: 'session-scoped' });
+        return true;
+    }
+
+    private scheduleMaterializationRecovery(localId: string): void {
+        // Belt-and-suspenders: if we fail to observe the user-scoped update (connect race, brief disconnect),
+        // recover by scanning the transcript and re-injecting the message into the normal update pipeline.
+        const timer = setTimeout(() => {
+            if (!this.pendingMaterializedLocalIds.has(localId)) return;
+            void this.recoverMaterializedLocalId(localId, { maxWaitMs: 7_500 });
+        }, 500);
+        timer.unref?.();
+    }
+
     onUserMessage(callback: (data: UserMessage) => void) {
         this.pendingMessageCallback = callback;
         while (this.pendingMessages.length > 0) {
@@ -213,9 +460,20 @@ export class ApiSessionClient extends EventEmitter {
         if (abortSignal?.aborted) {
             return Promise.resolve(false);
         }
+        if (this.metadataVersion < 0 || this.agentStateVersion < 0) {
+            void this.syncSessionSnapshotFromServer({ reason: 'waitForMetadataUpdate' });
+        }
+        // Ensure we can observe metadata updates even when the server broadcasts them only to user-scoped clients.
+        // This keeps idle agents wakeable without requiring server changes.
+        this.kickUserSocketConnect();
         return new Promise((resolve) => {
             let cleanedUp = false;
+            const shouldWatchConnect = !this.socket.connected;
             const onUpdate = () => {
+                cleanup();
+                resolve(true);
+            };
+            const onConnect = () => {
                 cleanup();
                 resolve(true);
             };
@@ -232,10 +490,17 @@ export class ApiSessionClient extends EventEmitter {
                 cleanedUp = true;
                 this.off('metadata-updated', onUpdate);
                 abortSignal?.removeEventListener('abort', onAbort);
+                if (shouldWatchConnect) {
+                    this.socket.off('connect', onConnect);
+                }
                 this.socket.off('disconnect', onDisconnect);
+                this.maybeScheduleUserSocketDisconnect();
             };
 
             this.on('metadata-updated', onUpdate);
+            if (shouldWatchConnect) {
+                this.socket.on('connect', onConnect);
+            }
             abortSignal?.addEventListener('abort', onAbort, { once: true });
             this.socket.on('disconnect', onDisconnect);
         });
@@ -290,6 +555,88 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
+        const isToolTraceEnabled =
+            ['1', 'true', 'yes', 'on'].includes((process.env.HAPPY_STACKS_TOOL_TRACE ?? '').toLowerCase()) ||
+            ['1', 'true', 'yes', 'on'].includes((process.env.HAPPY_LOCAL_TOOL_TRACE ?? '').toLowerCase()) ||
+            ['1', 'true', 'yes', 'on'].includes((process.env.HAPPY_TOOL_TRACE ?? '').toLowerCase());
+
+        if (isToolTraceEnabled && body?.type === 'assistant') {
+            const redactClaudeToolPayload = (value: unknown, key?: string): unknown => {
+                const REDACT_KEYS = new Set([
+                    'content',
+                    'text',
+                    'old_string',
+                    'new_string',
+                    'oldContent',
+                    'newContent',
+                ]);
+
+                if (typeof value === 'string') {
+                    if (key && REDACT_KEYS.has(key)) return `[redacted ${value.length} chars]`;
+                    if (value.length <= 1_000) return value;
+                    return `${value.slice(0, 1_000)}…(truncated ${value.length - 1_000} chars)`;
+                }
+
+                if (typeof value !== 'object' || value === null) return value;
+
+                if (Array.isArray(value)) {
+                    const sliced = value.slice(0, 50).map((v) => redactClaudeToolPayload(v));
+                    if (value.length <= 50) return sliced;
+                    return [...sliced, `…(truncated ${value.length - 50} items)`];
+                }
+
+                const entries = Object.entries(value as Record<string, unknown>);
+                const out: Record<string, unknown> = {};
+                const sliced = entries.slice(0, 200);
+                for (const [k, v] of sliced) out[k] = redactClaudeToolPayload(v, k);
+                if (entries.length > 200) out._truncatedKeys = entries.length - 200;
+                return out;
+            };
+
+            // Claude tool calls/results are embedded inside assistant.message.content[] (tool_use/tool_result).
+            // Record only tool blocks (never user text).
+            const contentBlocks = (body as any)?.message?.content;
+            if (Array.isArray(contentBlocks)) {
+                for (const block of contentBlocks) {
+                    if (!block || typeof block !== 'object') continue;
+                    const type = (block as any)?.type;
+                    if (type === 'tool_use') {
+                        const id = (block as any)?.id;
+                        const name = (block as any)?.name;
+                        if (typeof id !== 'string' || typeof name !== 'string') continue;
+                        recordToolTraceEvent({
+                            direction: 'outbound',
+                            sessionId: this.sessionId,
+                            protocol: 'claude',
+                            provider: 'claude',
+                            kind: 'tool-call',
+                            payload: {
+                                type: 'tool_use',
+                                id,
+                                name,
+                                input: redactClaudeToolPayload((block as any)?.input),
+                            },
+                        });
+                    } else if (type === 'tool_result') {
+                        const toolUseId = (block as any)?.tool_use_id;
+                        if (typeof toolUseId !== 'string') continue;
+                        recordToolTraceEvent({
+                            direction: 'outbound',
+                            sessionId: this.sessionId,
+                            protocol: 'claude',
+                            provider: 'claude',
+                            kind: 'tool-result',
+                            payload: {
+                                type: 'tool_result',
+                                tool_use_id: toolUseId,
+                                content: redactClaudeToolPayload((block as any)?.content, 'content'),
+                            },
+                        });
+                    }
+                }
+            }
+        }
+
         let content: MessageContent;
 
         // Check if body is already a MessageContent (has role property)
@@ -360,6 +707,17 @@ export class ApiSessionClient extends EventEmitter {
                 sentFrom: 'cli'
             }
         };
+
+        if (body?.type === 'tool-call' || body?.type === 'tool-call-result') {
+            recordToolTraceEvent({
+                direction: 'outbound',
+                sessionId: this.sessionId,
+                protocol: 'codex',
+                provider: 'codex',
+                kind: body.type,
+                payload: body,
+            });
+        }
         
         this.logSendWhileDisconnected('Codex message', { type: body?.type });
 
@@ -378,7 +736,11 @@ export class ApiSessionClient extends EventEmitter {
      * @param provider - The agent provider sending the message (e.g., 'gemini', 'codex', 'claude')
      * @param body - The message payload (type: 'message' | 'reasoning' | 'tool-call' | 'tool-result')
      */
-    sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'opencode', body: ACPMessageData) {
+    sendAgentMessage(
+        provider: 'gemini' | 'codex' | 'claude' | 'opencode',
+        body: ACPMessageData,
+        opts?: { localId?: string; meta?: Record<string, unknown> },
+    ) {
         let content = {
             role: 'agent',
             content: {
@@ -387,9 +749,28 @@ export class ApiSessionClient extends EventEmitter {
                 data: body
             },
             meta: {
-                sentFrom: 'cli'
+                sentFrom: 'cli',
+                ...(opts?.meta && typeof opts.meta === 'object' ? opts.meta : {}),
             }
         };
+
+        if (
+            body.type === 'tool-call' ||
+            body.type === 'tool-result' ||
+            body.type === 'permission-request' ||
+            body.type === 'file-edit' ||
+            body.type === 'terminal-output'
+        ) {
+            recordToolTraceEvent({
+                direction: 'outbound',
+                sessionId: this.sessionId,
+                protocol: 'acp',
+                provider,
+                kind: body.type,
+                payload: body,
+                localId: opts?.localId,
+            });
+        }
         
         logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, { type: body.type, hasMessage: 'message' in body });
         this.logSendWhileDisconnected(`${provider} ACP message`, { type: body.type });
@@ -397,8 +778,86 @@ export class ApiSessionClient extends EventEmitter {
 
         this.socket.emit('message', {
             sid: this.sessionId,
-            message: encrypted
+            message: encrypted,
+            localId: opts?.localId,
         });
+    }
+
+    sendUserTextMessage(text: string, opts?: { localId?: string; meta?: Record<string, unknown> }) {
+        const content: MessageContent = {
+            role: 'user',
+            content: { type: 'text', text },
+            meta: {
+                sentFrom: 'cli',
+                ...(opts?.meta && typeof opts.meta === 'object' ? opts.meta : {}),
+            },
+        };
+
+        this.logSendWhileDisconnected('User text message', { length: text.length });
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+        this.socket.emit('message', {
+            sid: this.sessionId,
+            message: encrypted,
+            localId: opts?.localId,
+        });
+    }
+
+    async fetchRecentTranscriptTextItemsForAcpImport(opts?: { take?: number }): Promise<Array<{ role: 'user' | 'agent'; text: string }>> {
+        const take = typeof opts?.take === 'number' && opts.take > 0 ? Math.min(opts.take, 150) : 150;
+        try {
+            const response = await axios.get(`${configuration.serverUrl}/v1/sessions/${this.sessionId}/messages`, {
+                headers: {
+                    Authorization: `Bearer ${this.token}`,
+                    'Content-Type': 'application/json',
+                },
+                timeout: 10_000,
+            });
+            const raw = (response?.data as any)?.messages;
+            if (!Array.isArray(raw)) return [];
+            const sliced = raw.slice(0, take);
+
+            const items: Array<{ role: 'user' | 'agent'; text: string; createdAt: number }> = [];
+            for (const msg of sliced) {
+                const content = msg?.content;
+                if (!content || content.t !== 'encrypted' || typeof content.c !== 'string') continue;
+                const decrypted = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(content.c)) as any;
+                const role = decrypted?.role;
+                if (role !== 'user' && role !== 'agent') continue;
+
+                let text: string | null = null;
+                const body = decrypted?.content;
+                if (role === 'user') {
+                    if (body?.type === 'text' && typeof body.text === 'string') {
+                        text = body.text;
+                    }
+                } else {
+                    if (body?.type === 'text' && typeof body.text === 'string') {
+                        text = body.text;
+                    } else if (body?.type === 'acp') {
+                        const data = body?.data;
+                        if (data?.type === 'message' && typeof data.message === 'string') {
+                            text = data.message;
+                        } else if (data?.type === 'reasoning' && typeof data.message === 'string') {
+                            text = data.message;
+                        }
+                    }
+                }
+
+                if (!text || text.trim().length === 0) continue;
+                items.push({
+                    role,
+                    text,
+                    createdAt: typeof msg.createdAt === 'number' ? msg.createdAt : 0,
+                });
+            }
+
+            // API returns newest first; normalize to chronological.
+            items.sort((a, b) => a.createdAt - b.createdAt);
+            return items.map((v) => ({ role: v.role, text: v.text }));
+        } catch (error) {
+            logger.debug('[API] Failed to fetch transcript messages for ACP import', { error });
+            return [];
+        }
     }
 
     sendSessionEvent(event: {
@@ -487,6 +946,13 @@ export class ApiSessionClient extends EventEmitter {
     updateMetadata(handler: (metadata: Metadata) => Metadata) {
         this.metadataLock.inLock(async () => {
             await backoff(async () => {
+                if (this.metadataVersion < 0) {
+                    await this.syncSessionSnapshotFromServer({ reason: 'waitForMetadataUpdate' });
+                    if (this.metadataVersion < 0) {
+                        logger.debug('[API] updateMetadata skipped: metadataVersion is still unknown');
+                        return;
+                    }
+                }
                 let updated = handler(this.metadata!); // Weird state if metadata is null - should never happen but here we are
                 const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) });
                 if (answer.result === 'success') {
@@ -513,6 +979,13 @@ export class ApiSessionClient extends EventEmitter {
         logger.debugLargeJson('Updating agent state', this.agentState);
         this.agentStateLock.inLock(async () => {
             await backoff(async () => {
+                if (this.agentStateVersion < 0) {
+                    await this.syncSessionSnapshotFromServer({ reason: 'waitForMetadataUpdate' });
+                    if (this.agentStateVersion < 0) {
+                        logger.debug('[API] updateAgentState skipped: agentStateVersion is still unknown');
+                        return;
+                    }
+                }
                 let updated = handler(this.agentState || {});
                 const answer = await this.socket.emitWithAck('update-state', { sid: this.sessionId, expectedVersion: this.agentStateVersion, agentState: updated ? encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) : null });
                 if (answer.result === 'success') {
@@ -552,6 +1025,17 @@ export class ApiSessionClient extends EventEmitter {
 
     async close() {
         logger.debug('[API] socket.close() called');
+        this.closed = true;
+        if (this.userSocketDisconnectTimer) {
+            clearTimeout(this.userSocketDisconnectTimer);
+            this.userSocketDisconnectTimer = null;
+        }
+        this.pendingMaterializedLocalIds.clear();
+        try {
+            this.userSocket.close();
+        } catch {
+            // ignore
+        }
         this.socket.close();
     }
 
@@ -705,8 +1189,12 @@ export class ApiSessionClient extends EventEmitter {
             return false;
         }
         try {
-            const inFlight = await this.metadataLock.inLock<{ localId: string; message: string } | null>(async () => {
-                let claimedInFlight: { localId: string; message: string } | null = null;
+            // Start the user-scoped socket early so it has time to connect before we emit the materialized
+            // transcript message (otherwise we may miss the broadcast update and need transcript recovery).
+            this.kickUserSocketConnect();
+
+            const inFlight = await this.metadataLock.inLock<{ localId: string; message: string; wasExistingInFlight: boolean } | null>(async () => {
+                let claimedInFlight: { localId: string; message: string; wasExistingInFlight: boolean } | null = null;
                 await backoff(async () => {
                     const current = this.metadata as unknown as Record<string, unknown>;
                     const claimed = claimMessageQueueV1Next(current, Date.now());
@@ -716,6 +1204,7 @@ export class ApiSessionClient extends EventEmitter {
                     }
 
                     // Persist claim (if needed) so other agents don't process the same queued item.
+                    const wasExistingInFlight = claimed.metadata === current;
                     if (claimed.metadata !== current) {
                         const answer = await this.socket.emitWithAck('update-metadata', {
                             sid: this.sessionId,
@@ -734,7 +1223,7 @@ export class ApiSessionClient extends EventEmitter {
                         }
                     }
 
-                    claimedInFlight = { localId: claimed.inFlight.localId, message: claimed.inFlight.message };
+                    claimedInFlight = { localId: claimed.inFlight.localId, message: claimed.inFlight.message, wasExistingInFlight };
                 });
                 return claimedInFlight;
             });
@@ -744,13 +1233,25 @@ export class ApiSessionClient extends EventEmitter {
             }
             const inFlightLocalId = inFlight.localId;
 
+            // If the queue already had an inFlight item, we may have missed the socket update (or restarted)
+            // and re-emitting with the same localId will be idempotent server-side (no broadcast update).
+            // Recover by checking the transcript first.
+            if (inFlight.wasExistingInFlight) {
+                const recovered = await this.recoverMaterializedLocalId(inFlightLocalId, { maxWaitMs: 1_500 });
+                if (recovered) {
+                    return true;
+                }
+            }
+
             // Materialize the pending item into the transcript via the normal message pipeline.
             // This is idempotent because SessionMessage has a unique (sessionId, localId) constraint.
+            this.pendingMaterializedLocalIds.add(inFlightLocalId);
             this.socket.emit('message', {
                 sid: this.sessionId,
                 message: inFlight.message,
                 localId: inFlightLocalId,
             });
+            this.scheduleMaterializationRecovery(inFlightLocalId);
 
             return true;
         } catch (error) {

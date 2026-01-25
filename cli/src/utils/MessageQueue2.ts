@@ -17,6 +17,8 @@ export class MessageQueue2<T> {
     private closed = false;
     private onMessageHandler: ((message: string, mode: T) => void) | null = null;
     modeHasher: (mode: T) => string;
+    private lastWaitLogAt = 0;
+    private lastAbortLogAt = 0;
 
     constructor(
         modeHasher: (mode: T) => string,
@@ -293,7 +295,14 @@ export class MessageQueue2<T> {
             // Set up abort handler
             if (abortSignal) {
                 abortHandler = () => {
-                    logger.debug('[MessageQueue2] Wait aborted');
+                    const reason = (abortSignal as any)?.reason;
+                    if (reason !== 'waitForMessagesOrPending') {
+                        const now = Date.now();
+                        if (now - this.lastAbortLogAt > 2000) {
+                            this.lastAbortLogAt = now;
+                            logger.debug('[MessageQueue2] Wait aborted');
+                        }
+                    }
                     // Clear waiter if it's still set
                     if (this.waiter === waiterFunc) {
                         this.waiter = null;
@@ -330,7 +339,13 @@ export class MessageQueue2<T> {
 
             // Set the waiter
             this.waiter = waiterFunc;
-            logger.debug('[MessageQueue2] Waiting for messages...');
+            {
+                const now = Date.now();
+                if (now - this.lastWaitLogAt > 2000) {
+                    this.lastWaitLogAt = now;
+                    logger.debug('[MessageQueue2] Waiting for messages...');
+                }
+            }
         });
     }
 }
