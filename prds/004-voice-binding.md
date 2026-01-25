@@ -6,11 +6,11 @@
 
 ## Goal
 
-Bind ElevenLabs voice agents per-session based on `.arc.yaml` configuration.
+Bind ElevenLabs voice agents per-session based on `.arc.yaml` configuration, enabling each Runner to have its own voice identity.
 
 ## Background
 
-Currently Happy uses a single ElevenLabs agent for all sessions. Arc should read `voice.elevenlabs_agent_id` from `.arc.yaml` and use session-specific voice agents.
+Currently Arc uses a single ElevenLabs agent for all sessions. Arc should read `voice.elevenlabs_agent_id` from `.arc.yaml` and use session-specific voice agents, giving each Runner its own voice identity.
 
 ## Success Criteria (Programmatic)
 
@@ -97,8 +97,8 @@ To test properly:
 1. Create `.arc.yaml` in a repo with `voice.elevenlabs_agent_id: "your-agent-id"`
 2. Start Claude Code in that repo
 3. Connect Arc mobile
-4. Start voice - should use the specified agent
+4. Start voice - should use the Runner's specified voice agent
 
 ## Rollback
 
-Revert changes to realtime provider. Voice will use default agent.
+Revert changes to realtime provider. Voice will use default agent instead of per-Runner binding.

@@ -74,7 +74,7 @@ function SessionInfoContent({ session }: { session: Session }) {
         if (!session) return;
         try {
             await Clipboard.setStringAsync(session.id);
-            Modal.alert(t('common.success'), t('sessionInfo.happySessionIdCopied'));
+            Modal.alert(t('common.success'), t('sessionInfo.runlineSessionIdCopied'));
         } catch (error) {
             Modal.alert(t('common.error'), t('sessionInfo.failedToCopySessionId'));
         }
@@ -201,7 +201,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                 {/* Session Details */}
                 <ItemGroup>
                     <Item
-                        title={t('sessionInfo.happySessionId')}
+                        title={t('sessionInfo.runlineSessionId')}
                         subtitle={`${session.id.substring(0, 8)}...${session.id.substring(session.id.length - 8)}`}
                         icon={<Ionicons name="finger-print-outline" size={29} color="#007AFF" />}
                         onPress={handleCopySessionId}
@@ -329,7 +329,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         )}
                         {session.metadata.happyHomeDir && (
                             <Item
-                                title={t('sessionInfo.happyHome')}
+                                title={t('sessionInfo.runlineHome')}
                                 subtitle={formatPathRelativeToHome(session.metadata.happyHomeDir, session.metadata.homeDir)}
                                 icon={<Ionicons name="home-outline" size={29} color="#5856D6" />}
                                 showChevron={false}

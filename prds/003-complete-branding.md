@@ -3,20 +3,45 @@
 **Type:** Ralph-friendly (batch text replacement)
 **Complexity:** Low
 **Estimated iterations:** 2-3
+**Status:** ✅ COMPLETED
 
 ## Goal
 
 Complete the rebranding from "Happy" to "Runline" across all UI strings and translations.
 
-## Current State
+## Completed Work
 
-Partial changes exist (uncommitted) in:
-- `sources/components/HeaderLogo.tsx`
-- `sources/components/SettingsView.tsx`
-- `sources/components/SidebarView.tsx`
-- `sources/components/TabBar.tsx`
-- `sources/-zen/components/ZenHeader.tsx`
-- All translation files in `sources/text/translations/`
+### UI Components Updated
+- `sources/components/HeaderLogo.tsx` - Uses RunlineIcon
+- `sources/components/SettingsView.tsx` - Updated GitHub URLs, removed Support Us
+- `sources/components/SidebarView.tsx` - Uses RunlineIcon
+- `sources/components/TabBar.tsx` - Reordered tabs: Runners, Inbox, Settings
+- `sources/-zen/components/ZenHeader.tsx` - Uses RunlineIcon
+- `sources/components/RunlineLogo.tsx` - Created wordmark SVG
+- `sources/components/RunlineIcon.tsx` - Created "R" icon SVG
+
+### Terminology Changes
+| Old Term | New Term | Usage |
+|----------|----------|-------|
+| Terminals | Runners | Tab label, header title |
+| Happy Coder | Runline Arc | About footer, descriptions |
+| Happy | Runline | Throughout UI |
+| Happy Session ID | Runline Session ID | Session info screen |
+| Happy Home | Runline Home | Session metadata |
+
+### Translation Key Renames
+- `sessionInfo.happySessionId` → `sessionInfo.runlineSessionId`
+- `sessionInfo.happySessionIdCopied` → `sessionInfo.runlineSessionIdCopied`
+- `sessionInfo.happyHome` → `sessionInfo.runlineHome`
+- `server.notValidHappyServer` → `server.notValidRunlineServer`
+
+### All 10 Translation Files Updated
+- `_default.ts`, `en.ts`, `ru.ts`, `es.ts`, `ca.ts`, `it.ts`, `ja.ts`, `zh-Hans.ts`, `pl.ts`, `pt.ts`
+
+### GitHub URLs Updated
+- `slopus/happy` → `runline-ai/arc`
+- Issues URL updated
+- Terms of Service URL updated
 
 ## Success Criteria (Programmatic)
 

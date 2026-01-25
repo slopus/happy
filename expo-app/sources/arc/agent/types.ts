@@ -1,8 +1,16 @@
 /**
- * Arc Agent Configuration Types
+ * Arc Runner Configuration Types
  *
- * Defines the schema for .arc.yaml files that live in agent repositories.
- * These configs are read by the mobile app via RPC to customize display and voice.
+ * Defines the schema for .arc.yaml files that live in Runner repositories.
+ * These configs are read by Arc (mobile app) via RPC to customize display and voice.
+ *
+ * Terminology:
+ * - Runner: A purpose-built agent aligned to a team/domain. Runners have
+ *   Runline-hosted capabilities and SOPs for enterprises.
+ * - Arc: Runline's mobile interface into Runners.
+ *
+ * Note: The YAML schema uses `agent:` key for backwards compatibility,
+ * but conceptually these represent Runners.
  */
 
 import { z } from 'zod';
@@ -13,17 +21,18 @@ import { parse as parseYaml } from 'yaml';
 // =============================================================================
 
 /**
- * Agent display configuration
+ * Runner display configuration
+ * (Uses `agent:` key in YAML for backwards compatibility)
  */
 export const AgentDisplaySchema = z.object({
-  /** Display name for the agent (e.g., "Emila") */
+  /** Display name for the Runner (e.g., "Emila") */
   name: z.string(),
 
   /** Short tagline/description */
   tagline: z.string().optional(),
 
   /**
-   * Avatar URL or "generated" to use Happy's generated avatar.
+   * Avatar URL or "generated" to use Arc's generated avatar.
    * If URL, should be a publicly accessible image.
    */
   avatar: z.union([
@@ -73,7 +82,7 @@ export type OrgConfig = z.infer<typeof OrgConfigSchema>;
  * Complete .arc.yaml schema
  */
 export const ArcConfigSchema = z.object({
-  /** Agent display settings */
+  /** Runner display settings (key is 'agent' for backwards compat) */
   agent: AgentDisplaySchema.optional(),
 
   /** Voice configuration */
@@ -90,7 +99,7 @@ export type ArcConfig = z.infer<typeof ArcConfigSchema>;
 // =============================================================================
 
 /**
- * Loading states for agent config
+ * Loading states for Runner config
  */
 export type AgentConfigStatus =
   | 'idle'           // Not yet attempted
@@ -101,7 +110,7 @@ export type AgentConfigStatus =
   | 'timeout';       // RPC timed out
 
 /**
- * Agent config state for a session
+ * Runner config state for a session
  */
 export interface AgentConfigState {
   status: AgentConfigStatus;
@@ -145,7 +154,7 @@ export function parseArcConfig(content: string): ArcConfig | null {
 }
 
 /**
- * Get display name from config, with fallback
+ * Get Runner display name from config, with fallback
  */
 export function getAgentDisplayName(
   config: ArcConfig | null,
@@ -158,7 +167,7 @@ export function getAgentDisplayName(
 }
 
 /**
- * Get avatar URL from config, or null for generated
+ * Get Runner avatar URL from config, or null for generated
  */
 export function getAgentAvatarUrl(config: ArcConfig | null): string | null {
   if (!config?.agent?.avatar || config.agent.avatar === 'generated') {
@@ -168,7 +177,7 @@ export function getAgentAvatarUrl(config: ArcConfig | null): string | null {
 }
 
 /**
- * Get voice agent ID from config
+ * Get Runner voice agent ID from config
  */
 export function getAgentVoiceId(config: ArcConfig | null): string | null {
   return config?.voice?.elevenlabs_agent_id ?? null;

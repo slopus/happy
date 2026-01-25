@@ -19,16 +19,24 @@
 | App name | ✅ | "Runline" in app.config.js |
 | Bundle ID | ✅ | com.runline.arc.* |
 | URL scheme | ✅ | runline:// |
+| Complete branding | ✅ | All Happy→Runline, translations done |
+| Custom RunlineLogo SVG | ✅ | Wordmark component |
+| Custom RunlineIcon SVG | ✅ | "R" icon component |
+| Tab reordering | ✅ | Runners, Inbox, Settings |
+| Terminology update | ✅ | Terminals→Runners |
+| GitHub URLs | ✅ | runline-ai/arc |
+| Translation key renames | ✅ | happySessionId→runlineSessionId, etc. |
 
 ### Remaining ❌
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| EAS build setup | P0 | Run `eas build:configure` |
+| EAS build setup | P0 | Run `eas build:configure` (blocked on Apple Dev) |
 | TestFlight deploy | P0 | Build and upload |
 | Hook up display name | P1 | Patch session list |
 | Hook up avatar | P2 | Custom avatar from .arc.yaml |
 | Voice binding | P2 | Per-session ElevenLabs |
+| Privacy Policy URL | P1 | Still points to happy.engineering |
 
 ---
 
@@ -145,7 +153,8 @@ eas submit --platform ios
 
 MVP is complete when:
 1. ✅ App rebranded (icon, name, bundle ID)
-2. ⏳ Runline installed on Sean's iPhone via TestFlight
-3. ⏳ Can connect to Emila running on laptop
-4. ⏳ Can send/receive messages
-5. Bonus: Shows "Emila" as session name (P1)
+2. ✅ Complete UI branding (logo, translations, terminology)
+3. ⏳ Runline installed on Sean's iPhone via TestFlight
+4. ⏳ Can connect to Emila running on laptop
+5. ⏳ Can send/receive messages
+6. Bonus: Shows "Emila" as session name (P1)

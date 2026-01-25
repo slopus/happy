@@ -20,7 +20,7 @@ export const zhHans: TranslationStructure = {
     tabs: {
         // Tab navigation labels
         inbox: '收件箱',
-        sessions: '终端',
+        sessions: 'Runners',
         settings: '设置',
     },
 
@@ -119,7 +119,7 @@ export const zhHans: TranslationStructure = {
         developer: '开发者',
         developerTools: '开发者工具',
         about: '关于',
-        aboutFooter: 'Happy Coder 是一个 Codex 和 Claude Code 移动客户端。它采用端到端加密，您的账户仅存储在本地设备上。与 Anthropic 无关联。',
+        aboutFooter: 'Runline Arc 是一个 Codex 和 Claude Code 移动客户端。它采用端到端加密，您的账户仅存储在本地设备上。与 Anthropic 无关联。',
         whatsNew: '更新日志',
         whatsNewSubtitle: '查看最新更新和改进',
         reportIssue: '报告问题',
@@ -262,7 +262,7 @@ export const zhHans: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: '启动新会话',
-        noMachinesFound: '未找到设备。请先在您的计算机上启动 Happy 会话。',
+        noMachinesFound: '未找到设备。请先在您的计算机上启动 Runline Arc 会话。',
         allMachinesOffline: '所有设备似乎都已离线',
         machineDetails: '查看设备详情 →',
         directoryDoesNotExist: '目录不存在',
@@ -313,7 +313,7 @@ export const zhHans: TranslationStructure = {
         // Used by Server Configuration screen (app/(app)/server.tsx)
         serverConfiguration: '服务器配置',
         enterServerUrl: '请输入服务器 URL',
-        notValidHappyServer: '不是有效的 Happy 服务器',
+        notValidRunlineServer: '不是有效的 Runline 服务器',
         changeServer: '更改服务器',
         continueWithServer: '继续使用此服务器？',
         resetToDefault: '重置为默认',
@@ -333,9 +333,9 @@ export const zhHans: TranslationStructure = {
         killSessionConfirm: '您确定要终止此会话吗？',
         archiveSession: '归档会话',
         archiveSessionConfirm: '您确定要归档此会话吗？',
-        happySessionIdCopied: 'Happy 会话 ID 已复制到剪贴板',
-        failedToCopySessionId: '复制 Happy 会话 ID 失败',
-        happySessionId: 'Happy 会话 ID',
+        runlineSessionIdCopied: 'Runline 会话 ID 已复制到剪贴板',
+        failedToCopySessionId: '复制 Runline 会话 ID 失败',
+        runlineSessionId: 'Runline 会话 ID',
         claudeCodeSessionId: 'Claude Code 会话 ID',
         claudeCodeSessionIdCopied: 'Claude Code 会话 ID 已复制到剪贴板',
         aiProvider: 'AI 提供商',
@@ -358,7 +358,7 @@ export const zhHans: TranslationStructure = {
         path: '路径',
         operatingSystem: '操作系统',
         processId: '进程 ID',
-        happyHome: 'Happy 主目录',
+        runlineHome: 'Runline 主目录',
         copyMetadata: '复制元数据',
         agentState: 'Agent 状态',
         controlledByUser: '用户控制',
@@ -384,7 +384,7 @@ export const zhHans: TranslationStructure = {
         emptyMainScreen: {
             // Used by EmptyMainScreen component
             readyToCode: '准备开始编程？',
-            installCli: '安装 Happy CLI',
+            installCli: '安装 Runline CLI',
             runIt: '运行它',
             scanQrCode: '扫描二维码',
             openCamera: '打开相机',
@@ -645,7 +645,7 @@ export const zhHans: TranslationStructure = {
         invalidConnectionLink: '无效的连接链接',
         invalidConnectionLinkDescription: '连接链接缺失或无效。请检查 URL 并重试。',
         connectTerminal: '连接终端',
-        terminalRequestDescription: '有终端正在请求连接到您的 Happy Coder 账户。这将允许终端安全地发送和接收消息。',
+        terminalRequestDescription: '有终端正在请求连接到您的 Runline 账户。这将允许终端安全地发送和接收消息。',
         connectionDetails: '连接详情',
         publicKey: '公钥',
         encryption: '加密',

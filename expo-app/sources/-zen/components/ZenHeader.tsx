@@ -4,12 +4,12 @@ import { Typography } from '@/constants/Typography';
 import { useSocketStatus } from '@/sync/storage';
 import { t } from '@/text';
 import { useIsTablet } from '@/utils/responsive';
-import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { RunlineIcon } from '@/components/RunlineIcon';
 
 export const ZenHeader = React.memo(() => {
     const isTablet = useIsTablet();
@@ -131,12 +131,7 @@ function HeaderLeft() {
             alignItems: 'center',
             justifyContent: 'center',
         }}>
-            <Image
-                source={require('@/assets/images/logo-black.png')}
-                contentFit="contain"
-                style={[{ width: 24, height: 24 }]}
-                tintColor={theme.colors.header.tint}
-            />
+            <RunlineIcon size={24} color={theme.colors.header.tint} />
         </View>
     );
 }

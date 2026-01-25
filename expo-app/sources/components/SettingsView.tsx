@@ -1,6 +1,7 @@
 import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
 import { Image } from 'expo-image';
 import * as React from 'react';
+import { RunlineLogo } from './RunlineLogo';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -47,7 +48,7 @@ export const SettingsView = React.memo(function SettingsView() {
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
 
     const handleGitHub = async () => {
-        const url = 'https://github.com/slopus/happy';
+        const url = 'https://github.com/runline-ai/arc';
         const supported = await Linking.canOpenURL(url);
         if (supported) {
             await Linking.openURL(url);
@@ -55,7 +56,7 @@ export const SettingsView = React.memo(function SettingsView() {
     };
 
     const handleReportIssue = async () => {
-        const url = 'https://github.com/slopus/happy/issues';
+        const url = 'https://github.com/runline-ai/arc/issues';
         const supported = await Linking.canOpenURL(url);
         if (supported) {
             await Linking.openURL(url);
@@ -156,11 +157,8 @@ export const SettingsView = React.memo(function SettingsView() {
                     ) : (
                         // Logo view: Original logo + version
                         <>
-                            <Image
-                                source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
-                                contentFit="contain"
-                                style={{ width: 300, height: 90, marginBottom: 12 }}
-                            />
+                            <RunlineLogo width={300} height={90} />
+                            <View style={{ marginBottom: 12 }} />
                         </>
                     )}
                 </View>
@@ -196,17 +194,6 @@ export const SettingsView = React.memo(function SettingsView() {
                     />
                 </ItemGroup>
             )}
-
-            {/* Support Us */}
-            <ItemGroup>
-                <Item
-                    title={t('settings.supportUs')}
-                    subtitle={isPro ? t('settings.supportUsSubtitlePro') : t('settings.supportUsSubtitle')}
-                    icon={<Ionicons name="heart" size={29} color="#FF3B30" />}
-                    showChevron={false}
-                    onPress={isPro ? undefined : handleSubscribe}
-                />
-            </ItemGroup>
 
             <ItemGroup title={t('settings.connectedAccounts')}>
                 <Item
@@ -363,7 +350,7 @@ export const SettingsView = React.memo(function SettingsView() {
                 <Item
                     title={t('settings.github')}
                     icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
-                    detail="slopus/happy"
+                    detail="runline-ai/arc"
                     onPress={handleGitHub}
                 />
                 <Item
@@ -386,7 +373,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     title={t('settings.termsOfService')}
                     icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
                     onPress={async () => {
-                        const url = 'https://github.com/slopus/happy/blob/main/TERMS.md';
+                        const url = 'https://github.com/runline-ai/arc/blob/main/TERMS.md';
                         const supported = await Linking.canOpenURL(url);
                         if (supported) {
                             await Linking.openURL(url);

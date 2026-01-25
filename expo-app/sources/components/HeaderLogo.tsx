@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View } from 'react-native';
-import { Image } from 'expo-image';
 import { useUnistyles } from 'react-native-unistyles';
+import { RunlineIcon } from './RunlineIcon';
 
 /**
  * Shared header logo component used across all main tabs.
@@ -17,12 +17,7 @@ export const HeaderLogo = React.memo(() => {
             alignItems: 'center',
             justifyContent: 'center',
         }}>
-            <Image
-                source={require('@/assets/images/logo-black.png')}
-                contentFit="contain"
-                style={{ width: 24, height: 24 }}
-                tintColor={theme.colors.header.tint}
-            />
+            <RunlineIcon size={24} color={theme.colors.header.tint} />
         </View>
     );
 });

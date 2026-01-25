@@ -24,10 +24,11 @@ ralph --max-iterations 5 --prompt "$(cat prds/001-agent-display-name.md)"
 
 | PRD | Title | Complexity | Status |
 |-----|-------|------------|--------|
-| [001](./001-agent-display-name.md) | Agent Display Name Integration | Low | Ready |
-| [002](./002-libsodium-version-pin.md) | Pin libsodium-wrappers Version | Low | Ready |
-| [003](./003-complete-branding.md) | Complete Runline Branding | Low | Ready |
+| [001](./001-agent-display-name.md) | Runner Display Name Integration | Low | Ready |
+| [002](./002-libsodium-version-pin.md) | Pin libsodium-wrappers Version | Low | ✅ Done |
+| [003](./003-complete-branding.md) | Complete Runline Branding | Low | ✅ Done |
 | [004](./004-voice-binding.md) | Per-Session Voice Binding | Medium | Ready |
+| [005](./005-runner-ui-customization.md) | Runner UI Customization | Medium | Ready |
 
 ## PRD Template
 
