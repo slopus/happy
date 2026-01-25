@@ -66,6 +66,7 @@
     "prepublishOnly": "$npm_execpath run build && $npm_execpath test",
     "release": "$npm_execpath install && release-it",
     "postinstall": "node scripts/unpack-tools.cjs",
+    "tool:trace:extract": "tsx scripts/tool-trace-extract.ts",
     "// ==== Dev/Stable Variant Management ====": "",
     "stable": "node scripts/env-wrapper.cjs stable",
     "dev:variant": "node scripts/env-wrapper.cjs dev",
