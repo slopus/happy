@@ -139,6 +139,8 @@ export interface SpawnSessionOptions {
     approvedNewDirectoryCreation?: boolean;
     token?: string;
     agent?: 'codex' | 'claude' | 'gemini';
+    resumeSessionId?: string;
+    sessionTitle?: string;
     // Environment variables from AI backend profile
     // Accepts any environment variables - daemon will pass them to the agent process
     // Common variables include:
@@ -152,6 +154,14 @@ export interface SpawnSessionOptions {
     environmentVariables?: Record<string, string>;
 }
 
+export interface ClaudeSessionIndexEntry {
+    sessionId: string;
+    projectId: string;
+    originalPath: string | null;
+    title?: string | null;
+    updatedAt?: number;
+}
+
 // Exported session operation functions
 
 /**
@@ -159,7 +169,7 @@ export interface SpawnSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeSessionId, sessionTitle, environmentVariables } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -168,11 +178,12 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             approvedNewDirectoryCreation?: boolean,
             token?: string,
             agent?: 'codex' | 'claude' | 'gemini',
+            sessionTitle?: string,
             environmentVariables?: Record<string, string>;
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, environmentVariables }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeSessionId, sessionTitle, environmentVariables }
         );
         return result;
     } catch (error) {
@@ -194,6 +205,34 @@ export async function machineStopDaemon(machineId: string): Promise<{ message: s
         {}
     );
     return result;
+}
+
+/**
+ * List Claude sessions from local Claude index on a machine
+ */
+export async function machineListClaudeSessions(
+    machineId: string,
+    options?: { offset?: number; limit?: number }
+): Promise<{ sessions: ClaudeSessionIndexEntry[]; total: number }> {
+    const result = await apiSocket.machineRPC<any, { offset?: number; limit?: number }>(
+        machineId,
+        'claude-list-sessions',
+        {
+            offset: options?.offset,
+            limit: options?.limit
+        }
+    );
+    if (!result) {
+        throw new Error('RPC returned empty response');
+    }
+    if (result.error) {
+        throw new Error(result.error);
+    }
+    if (!Array.isArray(result.sessions)) {
+        return { sessions: [], total: 0 };
+    }
+    const total = typeof result.total === 'number' ? result.total : result.sessions.length;
+    return { sessions: result.sessions, total };
 }
 
 /**

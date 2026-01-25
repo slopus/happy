@@ -1,16 +1,19 @@
 import React from 'react';
-import { View, FlatList } from 'react-native';
+import { View, FlatList, Pressable, ActivityIndicator } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useAllSessions } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { Avatar } from '@/components/Avatar';
 import { getSessionName, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Modal } from '@/modal';
+import { machineSpawnNewSession } from '@/sync/ops';
+import { sync } from '@/sync/sync';
 import { t } from '@/text';
 
 interface SessionHistoryItem {
@@ -94,6 +97,17 @@ const styles = StyleSheet.create((theme) => ({
         textAlign: 'center',
         ...Typography.default(),
     },
+    rightSection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginLeft: 8,
+    },
+    playButton: {
+        width: 29,
+        height: 29,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
 }));
 
 function formatDateHeader(date: Date): string {
@@ -161,14 +175,69 @@ function groupSessionsByDate(sessions: Session[]): SessionHistoryItem[] {
 }
 
 export default function SessionHistory() {
+    const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const allSessions = useAllSessions();
     const navigateToSession = useNavigateToSession();
+    const [resumingSessionId, setResumingSessionId] = React.useState<string | null>(null);
     
     const groupedItems = React.useMemo(() => {
         return groupSessionsByDate(allSessions);
     }, [allSessions]);
     
+    const handleResume = React.useCallback(async (session: Session) => {
+        if (resumingSessionId) return;
+        const claudeSessionId = session.metadata?.claudeSessionId;
+        const machineId = session.metadata?.machineId;
+        const directory = session.metadata?.path;
+        if (!claudeSessionId) return;
+        if (!directory) {
+            Modal.alert(t('common.error'), t('claudeHistory.pathUnavailable'));
+            return;
+        }
+        if (!machineId) {
+            Modal.alert(t('common.error'), t('claudeHistory.noMachines'));
+            return;
+        }
+
+        const confirmed = await Modal.confirm(
+            t('sessionHistory.resumeConfirmTitle'),
+            t('sessionHistory.resumeConfirmMessage'),
+            { confirmText: t('common.continue'), cancelText: t('common.cancel') }
+        );
+        if (!confirmed) return;
+
+        setResumingSessionId(session.id);
+        try {
+            const sessionTitle = session.metadata?.summary?.text || getSessionName(session);
+            const result = await machineSpawnNewSession({
+                machineId,
+                directory,
+                approvedNewDirectoryCreation: false,
+                agent: 'claude',
+                resumeSessionId: claudeSessionId,
+                sessionTitle
+            });
+            if (result.type === 'requestToApproveDirectoryCreation') {
+                Modal.alert(t('common.error'), t('claudeHistory.directoryNotFound'));
+                return;
+            }
+            if (result.type === 'error') {
+                Modal.alert(t('common.error'), result.errorMessage || t('claudeHistory.resumeFailed'));
+                return;
+            }
+            if (result.type === 'success') {
+                await sync.refreshSessions();
+                navigateToSession(result.sessionId);
+            }
+        } catch (error) {
+            console.error('Failed to resume session', error);
+            Modal.alert(t('common.error'), t('claudeHistory.resumeFailed'));
+        } finally {
+            setResumingSessionId(null);
+        }
+    }, [navigateToSession, resumingSessionId]);
+
     const renderItem = React.useCallback(({ item, index }: { item: SessionHistoryItem, index: number }) => {
         if (item.type === 'date-header') {
             return (
@@ -185,6 +254,8 @@ export default function SessionHistory() {
             const sessionName = getSessionName(session);
             const sessionSubtitle = getSessionSubtitle(session);
             const avatarId = getSessionAvatarId(session);
+            const canResume = Boolean(session.metadata?.claudeSessionId);
+            const isResuming = resumingSessionId === session.id;
             
             // Determine card styling based on position within date group
             const prevItem = index > 0 ? groupedItems[index - 1] : null;
@@ -213,12 +284,30 @@ export default function SessionHistory() {
                             {sessionSubtitle}
                         </Text>
                     </View>
+                    <View style={styles.rightSection}>
+                        {canResume && !isResuming && (
+                            <Pressable
+                                style={styles.playButton}
+                                onPress={(event) => {
+                                    event.stopPropagation?.();
+                                    handleResume(session);
+                                }}
+                            >
+                                <Ionicons name="play-circle-outline" size={29} color={theme.colors.groupped.chevron} />
+                            </Pressable>
+                        )}
+                        {isResuming && (
+                            <View style={styles.playButton}>
+                                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                            </View>
+                        )}
+                    </View>
                 </Pressable>
             );
         }
         
         return null;
-    }, [groupedItems, navigateToSession]);
+    }, [groupedItems, navigateToSession, handleResume, resumingSessionId, theme.colors.groupped.chevron, theme.colors.textSecondary]);
     
     const keyExtractor = React.useCallback((item: SessionHistoryItem, index: number) => {
         if (item.type === 'date-header') {

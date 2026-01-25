@@ -186,11 +186,15 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    isConnected(): boolean {
+        return this.socket.connected;
+    }
+
     /**
      * Send message to session
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
-    sendClaudeSessionMessage(body: RawJSONLines) {
+    sendClaudeSessionMessage(body: RawJSONLines, localId?: string) {
         let content: MessageContent;
 
         // Check if body is already a MessageContent (has role property)
@@ -230,7 +234,8 @@ export class ApiSessionClient extends EventEmitter {
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.socket.emit('message', {
             sid: this.sessionId,
-            message: encrypted
+            message: encrypted,
+            localId: localId ?? undefined
         });
 
         // Track usage from assistant messages

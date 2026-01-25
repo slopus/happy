@@ -138,6 +138,9 @@ export const zhHans: TranslationStructure = {
         usageSubtitle: '查看 API 使用情况和费用',
         profiles: '配置文件',
         profilesSubtitle: '管理环境配置文件和变量',
+        history: '历史记录',
+        sessionHistorySubtitle: '查看过去的 Happy 会话',
+        claudeSessionsSubtitle: '浏览设备上的 Claude CLI 会话',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已连接 ${service} 账户`,
@@ -299,6 +302,19 @@ export const zhHans: TranslationStructure = {
         yesterday: '昨天',
         daysAgo: ({ count }: { count: number }) => `${count} 天前`,
         viewAll: '查看所有会话',
+        resumeConfirmTitle: '确认恢复该会话？',
+        resumeConfirmMessage: '这将恢复你已连接设备上的 Claude 会话。',
+    },
+
+    claudeHistory: {
+        // Used by Claude session history screen
+        title: 'Claude 会话',
+        loadFailed: '加载 Claude 会话失败',
+        empty: '未找到 Claude 会话',
+        noMachines: '未找到设备',
+        pathUnavailable: '此会话缺少原始路径',
+        directoryNotFound: '该会话的原始目录已不存在。',
+        resumeFailed: '恢复 Claude 会话失败',
     },
 
     session: {

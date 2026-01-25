@@ -168,6 +168,9 @@ export const ja: TranslationStructure = {
         usageSubtitle: 'API使用量とコストを確認',
         profiles: 'プロファイル',
         profilesSubtitle: 'セッション用の環境変数プロファイルを管理',
+        history: 'History',
+        sessionHistorySubtitle: 'View past Happy sessions',
+        claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service}アカウントが接続されました`,
@@ -329,6 +332,19 @@ export const ja: TranslationStructure = {
         yesterday: '昨日',
         daysAgo: ({ count }: { count: number }) => `${count}日前`,
         viewAll: 'すべてのセッションを表示',
+        resumeConfirmTitle: 'このセッションを再開しますか？',
+        resumeConfirmMessage: '接続済みのデバイス上のClaudeセッションを再開します。',
+    },
+
+    claudeHistory: {
+        // Used by Claude session history screen
+        title: 'Claude Sessions',
+        loadFailed: 'Failed to load Claude sessions',
+        empty: 'No Claude sessions found',
+        noMachines: 'No machines found',
+        pathUnavailable: 'Original path unavailable for this session',
+        directoryNotFound: 'The original directory no longer exists on this machine.',
+        resumeFailed: 'Failed to resume Claude session',
     },
 
     session: {

@@ -283,6 +283,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="session/claude"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('claudeHistory.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="settings/connect/claude"
                 options={{
                     headerShown: true,

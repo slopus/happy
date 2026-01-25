@@ -219,7 +219,8 @@ export async function startDaemon(): Promise<void> {
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
 
-      const { directory, sessionId, machineId, approvedNewDirectoryCreation = true } = options;
+      const { directory, sessionId, resumeSessionId, sessionTitle, machineId, approvedNewDirectoryCreation = true } = options;
+      const isClaudeAgent = !options.agent || options.agent === 'claude';
       let directoryCreated = false;
 
       try {
@@ -325,6 +326,15 @@ export async function startDaemon(): Promise<void> {
 
         // Final merge: Profile vars first, then auth (auth takes precedence to protect authentication)
         let extraEnv = { ...profileEnv, ...authEnv };
+        if (resumeSessionId && isClaudeAgent) {
+          extraEnv.HAPPY_CLAUDE_BACKFILL = '1';
+          extraEnv.HAPPY_CLAUDE_BACKFILL_MAX_MESSAGES = '200';
+          extraEnv.HAPPY_CLAUDE_BACKFILL_MAX_USER_MESSAGES = '20';
+          extraEnv.HAPPY_CLAUDE_RESUME_SESSION_ID = resumeSessionId;
+          if (sessionTitle) {
+            extraEnv.HAPPY_SESSION_TITLE = sessionTitle;
+          }
+        }
         logger.debug(`[DAEMON RUN] Final environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
 
         // Expand ${VAR} references from daemon's process.env
@@ -388,7 +398,8 @@ export async function startDaemon(): Promise<void> {
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
           // Determine agent command - support claude, codex, and gemini
           const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+          const resumeArgs = resumeSessionId && isClaudeAgent ? ` --resume ${resumeSessionId}` : '';
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeArgs}`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -494,6 +505,9 @@ export async function startDaemon(): Promise<void> {
             '--happy-starting-mode', 'remote',
             '--started-by', 'daemon'
           ];
+          if (resumeSessionId && isClaudeAgent) {
+            args.push('--resume', resumeSessionId);
+          }
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions
           // For now, we ignore it - each spawn creates a new session

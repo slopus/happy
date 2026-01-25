@@ -24,6 +24,7 @@ export interface ItemProps {
     icon?: React.ReactNode;
     leftElement?: React.ReactNode;
     rightElement?: React.ReactNode;
+    iconContainerStyle?: StyleProp<ViewStyle>;
     onPress?: () => void;
     onLongPress?: () => void;
     disabled?: boolean;
@@ -128,6 +129,7 @@ export const Item = React.memo<ItemProps>((props) => {
         icon,
         leftElement,
         rightElement,
+        iconContainerStyle,
         onPress,
         onLongPress,
         disabled,
@@ -209,7 +211,7 @@ export const Item = React.memo<ItemProps>((props) => {
             <View style={[styles.container, containerPadding, style]}>
                 {/* Left Section */}
                 {(icon || leftElement) && (
-                    <View style={styles.iconContainer}>
+                    <View style={[styles.iconContainer, iconContainerStyle]}>
                         {leftElement || icon}
                     </View>
                 )}

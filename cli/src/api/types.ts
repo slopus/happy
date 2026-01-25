@@ -113,7 +113,7 @@ export interface ServerToClientEvents {
  * Socket events from client to server
  */
 export interface ClientToServerEvents {
-  message: (data: { sid: string, message: any }) => void
+  message: (data: { sid: string, message: any, localId?: string }) => void
   'session-alive': (data: {
     sid: string;
     time: number;

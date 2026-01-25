@@ -147,6 +147,9 @@ export const pl: TranslationStructure = {
         usageSubtitle: 'Zobacz użycie API i koszty',
         profiles: 'Profile',
         profilesSubtitle: 'Zarządzaj profilami zmiennych środowiskowych dla sesji',
+        history: 'History',
+        sessionHistorySubtitle: 'View past Happy sessions',
+        claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Konto ${service} połączone`,
@@ -308,6 +311,19 @@ export const pl: TranslationStructure = {
         yesterday: 'Wczoraj',
         daysAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'dzień', few: 'dni', many: 'dni' })} temu`,
         viewAll: 'Zobacz wszystkie sesje',
+        resumeConfirmTitle: 'Wznowić tę sesję?',
+        resumeConfirmMessage: 'Spowoduje to wznowienie sesji Claude na twoim podłączonym urządzeniu.',
+    },
+
+    claudeHistory: {
+        // Used by Claude session history screen
+        title: 'Claude Sessions',
+        loadFailed: 'Failed to load Claude sessions',
+        empty: 'No Claude sessions found',
+        noMachines: 'No machines found',
+        pathUnavailable: 'Original path unavailable for this session',
+        directoryNotFound: 'The original directory no longer exists on this machine.',
+        resumeFailed: 'Failed to resume Claude session',
     },
 
     session: {

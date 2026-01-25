@@ -8,6 +8,7 @@ import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
+import { listClaudeSessionsFromIndex } from '@/claude/utils/claudeSessionIndex';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -102,14 +103,14 @@ export class ApiMachineClient {
     }: MachineRpcHandlers) {
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables } = params || {};
+            const { directory, sessionId, resumeSessionId, sessionTitle, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables } = params || {};
             logger.debug(`[API MACHINE] Spawning session with params: ${JSON.stringify(params)}`);
 
             if (!directory) {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables });
+            const result = await spawnSession({ directory, sessionId, resumeSessionId, sessionTitle, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables });
 
             switch (result.type) {
                 case 'success':
@@ -153,6 +154,16 @@ export class ApiMachineClient {
             }, 100);
 
             return { message: 'Daemon stop request acknowledged, starting shutdown sequence...' };
+        });
+
+        // List Claude sessions from local index
+        this.rpcHandlerManager.registerHandler('claude-list-sessions', async (params: any) => {
+            const offset = typeof params?.offset === 'number' && params.offset >= 0 ? Math.floor(params.offset) : 0;
+            const limit = typeof params?.limit === 'number' && params.limit > 0 ? Math.floor(params.limit) : 50;
+            const sessions = await listClaudeSessionsFromIndex();
+            const total = sessions.length;
+            const paged = sessions.slice(offset, offset + limit);
+            return { sessions: paged, total, offset, limit };
         });
     }
 

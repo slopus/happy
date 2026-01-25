@@ -119,6 +119,8 @@ export interface SpawnSessionOptions {
     machineId?: string;
     directory: string;
     sessionId?: string;
+    resumeSessionId?: string;
+    sessionTitle?: string;
     approvedNewDirectoryCreation?: boolean;
     agent?: 'claude' | 'codex' | 'gemini';
     token?: string;

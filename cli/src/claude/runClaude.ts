@@ -19,6 +19,7 @@ import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
+import { backfillClaudeSessionHistory } from '@/claude/utils/claudeBackfill';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/utils/generateHookSettings';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { projectPath } from '../projectPath';
@@ -180,6 +181,16 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Create realtime session
     const session = api.sessionSyncClient(response);
+    const sessionTitle = process.env.HAPPY_SESSION_TITLE?.trim();
+    if (sessionTitle) {
+        session.updateMetadata((currentMetadata) => ({
+            ...currentMetadata,
+            summary: {
+                text: sessionTitle,
+                updatedAt: Date.now()
+            }
+        }));
+    }
 
     // Start Happy MCP server
     const happyServer = await startHappyServer(session);
@@ -188,6 +199,50 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Variable to track current session instance (updated via onSessionReady callback)
     // Used by hook server to notify Session when Claude changes session ID
     let currentSession: Session | null = null;
+
+    const shouldBackfill = ['1', 'true', 'yes'].includes(String(process.env.HAPPY_CLAUDE_BACKFILL).toLowerCase());
+    const backfillMaxMessages = Number(process.env.HAPPY_CLAUDE_BACKFILL_MAX_MESSAGES) || 200;
+    const backfillMaxUserMessages = Number(process.env.HAPPY_CLAUDE_BACKFILL_MAX_USER_MESSAGES) || 20;
+    const resumeSessionId = process.env.HAPPY_CLAUDE_RESUME_SESSION_ID || undefined;
+    const backfilledSessions = new Set<string>();
+    const backfillInFlight = new Set<string>();
+
+    const runBackfill = async (sessionId: string) => {
+        if (!shouldBackfill) return;
+        if (backfilledSessions.has(sessionId)) return;
+        if (backfillInFlight.has(sessionId)) return;
+        backfillInFlight.add(sessionId);
+
+        // Wait briefly for socket connection to avoid dropping backfill messages
+        for (let i = 0; i < 15 && !session.isConnected(); i++) {
+            await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+        if (!session.isConnected()) {
+            logger.debug('[START] Backfill skipped: session socket not connected');
+            backfillInFlight.delete(sessionId);
+            return;
+        }
+
+        try {
+            await backfillClaudeSessionHistory({
+                workingDirectory,
+                sessionId,
+                send: (message, localId) => session.sendClaudeSessionMessage(message, localId),
+                maxMessages: backfillMaxMessages,
+                maxUserMessages: backfillMaxUserMessages
+            });
+            backfilledSessions.add(sessionId);
+        } finally {
+            backfillInFlight.delete(sessionId);
+        }
+    };
+
+    // If we already know the resume session ID, backfill immediately (don't wait for hook)
+    if (resumeSessionId) {
+        runBackfill(resumeSessionId).catch((error) => {
+            logger.debug('[START] Backfill failed:', error);
+        });
+    }
 
     // Start Hook server for receiving Claude session notifications
     const hookServer = await startHookServer({
@@ -202,6 +257,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                     currentSession.onSessionFound(sessionId);
                 }
             }
+
+            // Backfill history for resumed sessions (once per session ID)
+            runBackfill(sessionId).catch((error) => {
+                logger.debug('[START] Backfill failed:', error);
+            });
         }
     });
     logger.debug(`[START] Hook server started on port ${hookServer.port}`);

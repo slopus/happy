@@ -296,6 +296,28 @@ export const SettingsView = React.memo(function SettingsView() {
                 </ItemGroup>
             )}
 
+            {/* History */}
+            <ItemGroup title={t('settings.history')}>
+                <Item
+                    title={t('sessionHistory.title')}
+                    subtitle={t('settings.sessionHistorySubtitle')}
+                    icon={<Ionicons name="time-outline" size={29} color="#007AFF" />}
+                    onPress={() => router.push('/session/recent')}
+                />
+                <Item
+                    title={t('claudeHistory.title')}
+                    subtitle={t('settings.claudeSessionsSubtitle')}
+                    icon={(
+                        <Image
+                            source={require('@/assets/images/icon-claude.png')}
+                            style={{ width: 29, height: 29 }}
+                            contentFit="contain"
+                        />
+                    )}
+                    onPress={() => router.push('/session/claude')}
+                />
+            </ItemGroup>
+
             {/* Features */}
             <ItemGroup title={t('settings.features')}>
                 <Item
