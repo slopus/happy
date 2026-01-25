@@ -15,17 +15,28 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { buildHappyCliSubprocessInvocation, spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings } from '@/persistence';
+import {
+  writeDaemonState,
+  DaemonLocallyPersistedState,
+  readDaemonState,
+  acquireDaemonLock,
+  releaseDaemonLock,
+  readSettings,
+  readCredentials,
+} from '@/persistence';
 import { supportsVendorResume } from '@/utils/agentCapabilities';
-import { readPersistedHappySessionFile } from './persistedHappySession';
+import { createSessionAttachFile } from './sessionAttachFile';
+import { getCodexAcpDepStatus } from '@/modules/common/capabilities/deps/codexAcp';
+import { getDaemonShutdownExitCode, getDaemonShutdownWatchdogTimeoutMs } from './shutdownPolicy';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
 import { findAllHappyProcesses, findHappyProcessByPid } from './doctor';
 import { hashProcessCommand, listSessionMarkers, removeSessionMarker, writeSessionMarker } from './sessionRegistry';
+import { findRunningTrackedSessionById } from './findRunningTrackedSessionById';
 import { isPidSafeHappySessionProcess } from './pidSafety';
 import { adoptSessionsFromMarkers } from './reattach';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { TmuxUtilities, isTmuxAvailable } from '@/utils/tmux';
@@ -80,7 +91,7 @@ export function buildTmuxWindowEnv(
 }
 
 export function buildTmuxSpawnConfig(params: {
-  agent: 'claude' | 'codex' | 'gemini';
+  agent: 'claude' | 'codex' | 'gemini' | 'opencode';
   directory: string;
   extraEnv: Record<string, string>;
   tmuxCommandEnv?: Record<string, string>;
@@ -127,27 +138,17 @@ export async function startDaemon(): Promise<void> {
   // 3. Once our setup is complete - if all goes well - we await this promise
   // 4. When it resolves we can cleanup and exit
   //
-  // In case the setup malfunctions - our signal handlers will not properly
-  // shut down. We will force exit the process with code 1.
-  let requestShutdown: (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => void;
-  let resolvesWhenShutdownRequested = new Promise<({ source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string })>((resolve) => {
-    requestShutdown = (source, errorMessage) => {
-      logger.debug(`[DAEMON RUN] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
+	  // In case the setup malfunctions - our signal handlers will not properly
+	  // shut down. We will force exit the process with code 1.
+	  let requestShutdown: (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => void;
+	  let resolvesWhenShutdownRequested = new Promise<({ source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string })>((resolve) => {
+	    requestShutdown = (source, errorMessage) => {
+	      logger.debug(`[DAEMON RUN] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
 
-      // Fallback - in case startup malfunctions - we will force exit the process with code 1
-      setTimeout(async () => {
-        logger.debug('[DAEMON RUN] Startup malfunctioned, forcing exit with code 1');
-
-        // Give time for logs to be flushed
-        await new Promise(resolve => setTimeout(resolve, 100))
-
-        process.exit(1);
-      }, 1_000);
-
-      // Start graceful shutdown
-      resolve({ source, errorMessage });
-    };
-  });
+	      // Start graceful shutdown
+	      resolve({ source, errorMessage });
+	    };
+	  });
 
   // Setup signal handlers
   process.on('SIGINT', () => {
@@ -185,6 +186,8 @@ export async function startDaemon(): Promise<void> {
   logger.debug('[DAEMON RUN] Starting daemon process...');
   logger.debugLargeJson('[DAEMON RUN] Environment', getEnvironmentInfo());
 
+  const isInteractive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+
   // Check if already running
   // Check if running daemon version matches current CLI version
   const runningDaemonVersionMatches = await isDaemonRunningCurrentlyInstalledHappyVersion();
@@ -197,31 +200,43 @@ export async function startDaemon(): Promise<void> {
     process.exit(0);
   }
 
-  // Acquire exclusive lock (proves daemon is running)
-  const daemonLockHandle = await acquireDaemonLock(5, 200);
-  if (!daemonLockHandle) {
-    logger.debug('[DAEMON RUN] Daemon lock file already held, another daemon is running');
-    process.exit(0);
+  // If this daemon is started detached (no TTY) and credentials are missing, we cannot safely
+  // run the interactive auth selector UI. In that case, fail fast and let the parent/orchestrator
+  // run `happy auth login` in an interactive terminal.
+  if (!isInteractive) {
+    const credentials = await readCredentials();
+    if (!credentials) {
+      logger.debug('[AUTH] No credentials found');
+      logger.debug('[DAEMON RUN] Non-interactive mode: refusing to start auth UI. Run: happy auth login');
+      process.exit(1);
+    }
   }
 
-  // At this point we should be safe to startup the daemon:
-  // 1. Not have a stale daemon state
-  // 2. Should not have another daemon process running
+  let daemonLockHandle: Awaited<ReturnType<typeof acquireDaemonLock>> = null;
 
   try {
+    // Ensure auth and machine registration BEFORE we take the daemon lock.
+    // This prevents stuck lock files when auth is interrupted or cannot proceed.
+    const { credentials, machineId } = await authAndSetupMachineIfNeeded();
+    logger.debug('[DAEMON RUN] Auth and machine setup complete');
+
+    // Acquire exclusive lock (proves daemon is running)
+    daemonLockHandle = await acquireDaemonLock(5, 200);
+    if (!daemonLockHandle) {
+      logger.debug('[DAEMON RUN] Daemon lock file already held, another daemon is running');
+      process.exit(0);
+    }
+
     // Start caffeinate
     const caffeinateStarted = startCaffeinate();
     if (caffeinateStarted) {
       logger.debug('[DAEMON RUN] Sleep prevention enabled');
     }
 
-    // Ensure auth and machine registration BEFORE anything else
-    const { credentials, machineId } = await authAndSetupMachineIfNeeded();
-    logger.debug('[DAEMON RUN] Auth and machine setup complete');
-
-    // Setup state - key by PID
-    const pidToTrackedSession = new Map<number, TrackedSession>();
-    const codexHomeDirCleanupByPid = new Map<number, () => void>();
+	    // Setup state - key by PID
+	    const pidToTrackedSession = new Map<number, TrackedSession>();
+	    const codexHomeDirCleanupByPid = new Map<number, () => void>();
+	    const sessionAttachCleanupByPid = new Map<number, () => Promise<void>>();
 
     // Session spawning awaiter system
     const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
@@ -271,15 +286,15 @@ export async function startDaemon(): Promise<void> {
       // Check if we already have this PID (daemon-spawned)
       const existingSession = pidToTrackedSession.get(pid);
 
-      if (existingSession && existingSession.startedBy === 'daemon') {
-        // Update daemon-spawned session with reported data
-        existingSession.happySessionId = sessionId;
-        existingSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
-        logger.debug(`[DAEMON RUN] Updated daemon-spawned session ${sessionId} with metadata`);
+	      if (existingSession && existingSession.startedBy === 'daemon') {
+	        // Update daemon-spawned session with reported data
+	        existingSession.happySessionId = sessionId;
+	        existingSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
+	        logger.debug(`[DAEMON RUN] Updated daemon-spawned session ${sessionId} with metadata`);
 
-        // Resolve any awaiter for this PID
-        const awaiter = pidToAwaiter.get(pid);
-        if (awaiter) {
+	        // Resolve any awaiter for this PID
+	        const awaiter = pidToAwaiter.get(pid);
+	        if (awaiter) {
           pidToAwaiter.delete(pid);
           awaiter(existingSession);
           logger.debug(`[DAEMON RUN] Resolved session awaiter for PID ${pid}`);
@@ -294,12 +309,12 @@ export async function startDaemon(): Promise<void> {
         };
         pidToTrackedSession.set(pid, trackedSession);
         logger.debug(`[DAEMON RUN] Registered externally-started session ${sessionId}`);
-      } else if (existingSession?.reattachedFromDiskMarker) {
-        // Reattached sessions remain kill-protected (PID reuse safety), but we still keep metadata up to date.
-        existingSession.startedBy = sessionMetadata.startedBy ?? existingSession.startedBy;
-        existingSession.happySessionId = sessionId;
-        existingSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
-      }
+	      } else if (existingSession?.reattachedFromDiskMarker) {
+	        // Reattached sessions remain kill-protected (PID reuse safety), but we still keep metadata up to date.
+	        existingSession.startedBy = sessionMetadata.startedBy ?? existingSession.startedBy;
+	        existingSession.happySessionId = sessionId;
+	        existingSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
+	      }
 
       // Best-effort: write/update marker so future daemon restarts can reattach.
       // Also capture a process command hash so reattach/stop can be PID-reuse-safe.
@@ -347,36 +362,77 @@ export async function startDaemon(): Promise<void> {
 	        environmentVariableKeys: envKeys,
 	      });
 
-	      const { directory, sessionId, machineId, approvedNewDirectoryCreation = true, resume, existingSessionId, experimentalCodexResume } = options;
-	      const normalizedResume = typeof resume === 'string' ? resume.trim() : '';
-	      const normalizedExistingSessionId = typeof existingSessionId === 'string' ? existingSessionId.trim() : '';
-	      // If resuming an existing Happy session and no resume id was provided, derive it from local persisted session state.
-	      let effectiveResume = normalizedResume;
-	      if (!effectiveResume && normalizedExistingSessionId) {
-	        const persisted = await readPersistedHappySessionFile(normalizedExistingSessionId);
-	        const next =
-	          (persisted?.vendorResumeId && typeof persisted.vendorResumeId === 'string' ? persisted.vendorResumeId : undefined)
-	          ?? (typeof (persisted?.metadata as any)?.claudeSessionId === 'string' ? (persisted?.metadata as any).claudeSessionId : undefined)
-	          ?? (typeof (persisted?.metadata as any)?.codexSessionId === 'string' ? (persisted?.metadata as any).codexSessionId : undefined);
-	        if (typeof next === 'string' && next.trim().length > 0) {
-	          effectiveResume = next.trim();
-	        }
-	      }
+			      const {
+			        directory,
+			        sessionId,
+			        machineId,
+			        approvedNewDirectoryCreation = true,
+			        resume,
+			        existingSessionId,
+			        sessionEncryptionKeyBase64,
+			        sessionEncryptionVariant,
+			        permissionMode,
+			        permissionModeUpdatedAt,
+			        experimentalCodexResume,
+			        experimentalCodexAcp
+			      } = options;
+		      const normalizedResume = typeof resume === 'string' ? resume.trim() : '';
+		      const normalizedExistingSessionId = typeof existingSessionId === 'string' ? existingSessionId.trim() : '';
 
-	      if ((effectiveResume || normalizedExistingSessionId) && !supportsVendorResume(options.agent, { allowExperimentalCodex: experimentalCodexResume === true })) {
-	        return {
-	          type: 'error',
-	          errorMessage: `Resume is not supported for agent '${options.agent ?? 'claude'}'. (Upstream supports Claude vendor resume only.)`,
-	        };
-	      }
-	      let directoryCreated = false;
+	      // Idempotency: a resume request should not spawn a duplicate process when the session is already running.
+	      // This is especially important for pending-queue wake-ups, where the UI may attempt a best-effort wake
+	      // even if a session is already attached.
+		      if (normalizedExistingSessionId) {
+		        const existingTracked = await findRunningTrackedSessionById({
+		          sessions: pidToTrackedSession.values(),
+		          happySessionId: normalizedExistingSessionId,
+	          isPidAlive: async (pid) => {
+	            try {
+	              process.kill(pid, 0);
+	              return true;
+	            } catch {
+	              return false;
+	            }
+	          },
+	          getProcessCommandHash: async (pid) => {
+	            const proc = await findHappyProcessByPid(pid);
+	            return proc?.command ? hashProcessCommand(proc.command) : null;
+	          },
+	        });
+	        if (existingTracked) {
+	          logger.debug(`[DAEMON RUN] Resume requested for ${normalizedExistingSessionId}, but session is already running (pid=${existingTracked.pid})`);
+		          return { type: 'success', sessionId: normalizedExistingSessionId };
+		        }
+		      }
+		      const effectiveResume = normalizedResume;
 
-	      let codexHomeDirCleanup: (() => void) | null = null;
-	      let codexHomeDirCleanupArmed = false;
+		      // Only gate vendor resume. Happy-session reconnect (existingSessionId) is supported for all agents.
+		      if (effectiveResume && !supportsVendorResume(options.agent, { allowExperimentalCodex: experimentalCodexResume === true, allowExperimentalCodexAcp: experimentalCodexAcp === true })) {
+		        return {
+		          type: 'error',
+		          errorMessage: `Resume is not supported for agent '${options.agent ?? 'claude'}'. (Upstream supports Claude vendor resume only.)`,
+		        };
+		      }
 
-      try {
-        await fs.access(directory);
-        logger.debug(`[DAEMON RUN] Directory exists: ${directory}`);
+		      const normalizedSessionEncryptionKeyBase64 =
+		        typeof sessionEncryptionKeyBase64 === 'string' ? sessionEncryptionKeyBase64.trim() : '';
+		      if (normalizedExistingSessionId) {
+		        if (!normalizedSessionEncryptionKeyBase64) {
+		          return { type: 'error', errorMessage: 'Missing session encryption key for resume' };
+		        }
+		        if (sessionEncryptionVariant !== 'dataKey') {
+		          return { type: 'error', errorMessage: 'Unsupported session encryption variant for resume' };
+		        }
+		      }
+		      let directoryCreated = false;
+
+		      let codexHomeDirCleanup: (() => void) | null = null;
+		      let codexHomeDirCleanupArmed = false;
+		      let sessionAttachCleanup: (() => Promise<void>) | null = null;
+
+	      try {
+	        await fs.access(directory);
+	        logger.debug(`[DAEMON RUN] Directory exists: ${directory}`);
       } catch (error) {
         logger.debug(`[DAEMON RUN] Directory doesn't exist, creating: ${directory}`);
 
@@ -505,6 +561,44 @@ export async function startDaemon(): Promise<void> {
           };
         }
 
+        const cleanupCodexHomeDir = () => {
+          if (codexHomeDirCleanup && !codexHomeDirCleanupArmed) {
+            codexHomeDirCleanup();
+            codexHomeDirCleanup = null;
+          }
+        };
+
+        // Experimental Codex ACP (codex-acp) must be installed before we spawn a Codex session.
+        if (options.agent === 'codex' && experimentalCodexAcp === true) {
+          if (experimentalCodexResume === true) {
+            cleanupCodexHomeDir();
+            return {
+              type: 'error',
+              errorMessage: 'Invalid spawn options: Codex ACP and Codex resume MCP cannot both be enabled.',
+            };
+          }
+
+          const envOverride = typeof process.env.HAPPY_CODEX_ACP_BIN === 'string' ? process.env.HAPPY_CODEX_ACP_BIN.trim() : '';
+          if (envOverride) {
+            if (!existsSync(envOverride)) {
+              cleanupCodexHomeDir();
+              return {
+                type: 'error',
+                errorMessage: `Codex ACP is enabled, but HAPPY_CODEX_ACP_BIN does not exist: ${envOverride}`,
+              };
+            }
+          } else {
+            const status = await getCodexAcpDepStatus({ onlyIfInstalled: true });
+            if (!status.installed || !status.binPath) {
+              cleanupCodexHomeDir();
+              return {
+                type: 'error',
+                errorMessage: 'Codex ACP is enabled, but codex-acp is not installed. Install it from the Happy app (Machine details → Codex ACP) or disable the experiment.',
+              };
+            }
+          }
+        }
+
 	        const terminalRequest = resolveTerminalRequestFromSpawnOptions({
 	          happyHomeDir: configuration.happyHomeDir,
 	          terminal: options.terminal,
@@ -519,7 +613,25 @@ export async function startDaemon(): Promise<void> {
 	        if (options.agent === 'codex' && experimentalCodexResume === true) {
 	          extraEnvForChild.HAPPY_EXPERIMENTAL_CODEX_RESUME = '1';
 	        }
-	        const extraEnvForChildWithMessage = extraEnvForChild;
+	        if (options.agent === 'codex' && experimentalCodexAcp === true) {
+	          extraEnvForChild.HAPPY_EXPERIMENTAL_CODEX_ACP = '1';
+	        }
+	        let sessionAttachFilePath: string | null = null;
+	        if (normalizedExistingSessionId) {
+	          const attach = await createSessionAttachFile({
+	            happySessionId: normalizedExistingSessionId,
+	            payload: {
+	              encryptionKeyBase64: normalizedSessionEncryptionKeyBase64,
+	              encryptionVariant: 'dataKey',
+	            },
+	          });
+	          sessionAttachFilePath = attach.filePath;
+	          sessionAttachCleanup = attach.cleanup;
+	        }
+
+	        const extraEnvForChildWithMessage = sessionAttachFilePath
+	          ? { ...extraEnvForChild, HAPPY_SESSION_ATTACH_FILE: sessionAttachFilePath }
+	          : extraEnvForChild;
 
 	        // Check if tmux is available and should be used
 	        const tmuxAvailable = await isTmuxAvailable();
@@ -563,8 +675,15 @@ export async function startDaemon(): Promise<void> {
 	          const sessionDesc = resolvedTmuxSessionName || 'current/most recent session';
 	          logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
 
-	          // Determine agent command - support claude, codex, and gemini
-	          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
+          // Determine agent command - support claude, codex, gemini, and opencode
+	          const agent =
+              options.agent === 'gemini'
+                ? 'gemini'
+                : options.agent === 'codex'
+                  ? 'codex'
+                  : options.agent === 'opencode'
+                    ? 'opencode'
+                    : 'claude';
 	          const windowName = `happy-${Date.now()}-${agent}`;
 	          const tmuxTarget = `${resolvedTmuxSessionName}:${windowName}`;
 
@@ -578,17 +697,21 @@ export async function startDaemon(): Promise<void> {
 	            ...(tmuxTmpDir ? ['--happy-tmux-tmpdir', tmuxTmpDir] : []),
 	          ];
 
-	          const { commandTokens, tmuxEnv } = buildTmuxSpawnConfig({
-	            agent,
-	            directory,
-	            extraEnv: extraEnvForChildWithMessage,
-	            tmuxCommandEnv,
-	            extraArgs: [
-	              ...terminalRuntimeArgs,
-	              ...(effectiveResume ? ['--resume', effectiveResume] : []),
-	              ...(normalizedExistingSessionId ? ['--existing-session', normalizedExistingSessionId] : []),
-	            ],
-	          });
+		          const { commandTokens, tmuxEnv } = buildTmuxSpawnConfig({
+		            agent,
+		            directory,
+		            extraEnv: extraEnvForChildWithMessage,
+		            tmuxCommandEnv,
+		            extraArgs: [
+		              ...terminalRuntimeArgs,
+		              ...(permissionMode ? ['--permission-mode', permissionMode] : []),
+		              ...(typeof permissionModeUpdatedAt === 'number'
+		                ? ['--permission-mode-updated-at', `${permissionModeUpdatedAt}`]
+		                : []),
+		              ...(effectiveResume ? ['--resume', effectiveResume] : []),
+		              ...(normalizedExistingSessionId ? ['--existing-session', normalizedExistingSessionId] : []),
+		            ],
+		          });
 	          const tmux = new TmuxUtilities(resolvedTmuxSessionName, tmuxCommandEnv);
 
           // Spawn in tmux with environment variables
@@ -621,23 +744,28 @@ export async function startDaemon(): Promise<void> {
             // Resolve the actual tmux session name used (important when sessionName was empty/undefined)
             const tmuxSession = tmuxResult.sessionName ?? (resolvedTmuxSessionName || 'happy');
 
-            // Create a tracked session for tmux windows - now we have the real PID!
-            const trackedSession: TrackedSession = {
-              startedBy: 'daemon',
-              pid: tmuxResult.pid, // Real PID from tmux -P flag
-              tmuxSessionId: tmuxResult.sessionId,
-              directoryCreated,
-              message: directoryCreated
-                ? `The path '${directory}' did not exist. We created a new folder and spawned a new session in tmux session '${tmuxSession}'. Use 'tmux attach -t ${tmuxSession}' to view the session.`
-                : `Spawned new session in tmux session '${tmuxSession}'. Use 'tmux attach -t ${tmuxSession}' to view the session.`
-            };
+	            // Create a tracked session for tmux windows - now we have the real PID!
+	            const trackedSession: TrackedSession = {
+	              startedBy: 'daemon',
+	              pid: tmuxResult.pid, // Real PID from tmux -P flag
+	              tmuxSessionId: tmuxResult.sessionId,
+	              vendorResumeId: effectiveResume || undefined,
+	              directoryCreated,
+	              message: directoryCreated
+	                ? `The path '${directory}' did not exist. We created a new folder and spawned a new session in tmux session '${tmuxSession}'. Use 'tmux attach -t ${tmuxSession}' to view the session.`
+	                : `Spawned new session in tmux session '${tmuxSession}'. Use 'tmux attach -t ${tmuxSession}' to view the session.`
+	            };
 
-            // Add to tracking map so webhook can find it later
-            pidToTrackedSession.set(tmuxResult.pid, trackedSession);
-            if (codexHomeDirCleanup) {
-              codexHomeDirCleanupByPid.set(tmuxResult.pid, codexHomeDirCleanup);
-              codexHomeDirCleanupArmed = true;
-            }
+	            // Add to tracking map so webhook can find it later
+	            pidToTrackedSession.set(tmuxResult.pid, trackedSession);
+	            if (codexHomeDirCleanup) {
+	              codexHomeDirCleanupByPid.set(tmuxResult.pid, codexHomeDirCleanup);
+	              codexHomeDirCleanupArmed = true;
+	            }
+	            if (sessionAttachCleanup) {
+	              sessionAttachCleanupByPid.set(tmuxResult.pid, sessionAttachCleanup);
+	              sessionAttachCleanup = null;
+	            }
 
             // Wait for webhook to populate session with happySessionId (exact same as regular flow)
             logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${tmuxResult.pid} (tmux)`);
@@ -674,7 +802,7 @@ export async function startDaemon(): Promise<void> {
 	        if (!useTmux) {
 	          logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
-          // Construct arguments for the CLI - support claude, codex, and gemini
+          // Construct arguments for the CLI - support claude, codex, gemini, and opencode
           let agentCommand: string;
           switch (options.agent) {
             case 'claude':
@@ -686,6 +814,9 @@ export async function startDaemon(): Promise<void> {
               break;
             case 'gemini':
               agentCommand = 'gemini';
+              break;
+            case 'opencode':
+              agentCommand = 'opencode';
               break;
             default:
               return {
@@ -711,12 +842,18 @@ export async function startDaemon(): Promise<void> {
 	            );
 	          }
 
-	          if (effectiveResume) {
-	            args.push('--resume', effectiveResume);
-	          }
-	          if (normalizedExistingSessionId) {
-	            args.push('--existing-session', normalizedExistingSessionId);
-	          }
+		          if (effectiveResume) {
+		            args.push('--resume', effectiveResume);
+		          }
+		          if (normalizedExistingSessionId) {
+		            args.push('--existing-session', normalizedExistingSessionId);
+		          }
+		          if (permissionMode) {
+		            args.push('--permission-mode', permissionMode);
+		          }
+		          if (typeof permissionModeUpdatedAt === 'number') {
+		            args.push('--permission-mode-updated-at', `${permissionModeUpdatedAt}`);
+		          }
 
 	          // NOTE: sessionId is reserved for future Happy session resume; we currently ignore it.
 	          const happyProcess = spawnHappyCLI(args, {
@@ -739,27 +876,36 @@ export async function startDaemon(): Promise<void> {
             });
           }
 
-          if (!happyProcess.pid) {
-            logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
-            if (codexHomeDirCleanup && !codexHomeDirCleanupArmed) {
-              codexHomeDirCleanup();
-              codexHomeDirCleanup = null;
-            }
-            return {
-              type: 'error',
-              errorMessage: 'Failed to spawn Happy process - no PID returned'
-            };
-          }
+	          if (!happyProcess.pid) {
+	            logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
+	            if (codexHomeDirCleanup && !codexHomeDirCleanupArmed) {
+	              codexHomeDirCleanup();
+	              codexHomeDirCleanup = null;
+	            }
+	            if (sessionAttachCleanup) {
+	              await sessionAttachCleanup();
+	              sessionAttachCleanup = null;
+	            }
+	            return {
+	              type: 'error',
+	              errorMessage: 'Failed to spawn Happy process - no PID returned'
+	            };
+	          }
 
-          logger.debug(`[DAEMON RUN] Spawned process with PID ${happyProcess.pid}`);
+	          logger.debug(`[DAEMON RUN] Spawned process with PID ${happyProcess.pid}`);
+	          if (sessionAttachCleanup) {
+	            sessionAttachCleanupByPid.set(happyProcess.pid, sessionAttachCleanup);
+	            sessionAttachCleanup = null;
+	          }
 
-          const trackedSession: TrackedSession = {
-            startedBy: 'daemon',
-            pid: happyProcess.pid,
-            childProcess: happyProcess,
-            directoryCreated,
-            message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined
-          };
+	          const trackedSession: TrackedSession = {
+	            startedBy: 'daemon',
+	            pid: happyProcess.pid,
+	            childProcess: happyProcess,
+	            vendorResumeId: effectiveResume || undefined,
+	            directoryCreated,
+	            message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined
+	          };
 
           pidToTrackedSession.set(happyProcess.pid, trackedSession);
           if (codexHomeDirCleanup) {
@@ -814,16 +960,20 @@ export async function startDaemon(): Promise<void> {
           type: 'error',
           errorMessage: 'Unexpected error in session spawning'
         };
-      } catch (error) {
-        if (codexHomeDirCleanup && !codexHomeDirCleanupArmed) {
-          codexHomeDirCleanup();
-          codexHomeDirCleanup = null;
-        }
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.debug('[DAEMON RUN] Failed to spawn session:', error);
-        return {
-          type: 'error',
-          errorMessage: `Failed to spawn session: ${errorMessage}`
+	      } catch (error) {
+	        if (codexHomeDirCleanup && !codexHomeDirCleanupArmed) {
+	          codexHomeDirCleanup();
+	          codexHomeDirCleanup = null;
+	        }
+	        if (sessionAttachCleanup) {
+	          await sessionAttachCleanup();
+	          sessionAttachCleanup = null;
+	        }
+	        const errorMessage = error instanceof Error ? error.message : String(error);
+	        logger.debug('[DAEMON RUN] Failed to spawn session:', error);
+	        return {
+	          type: 'error',
+	          errorMessage: `Failed to spawn session: ${errorMessage}`
         };
       }
     };
@@ -871,20 +1021,27 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Handle child process exit
-    const onChildExited = (pid: number) => {
-      logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
-      const cleanup = codexHomeDirCleanupByPid.get(pid);
-      if (cleanup) {
-        codexHomeDirCleanupByPid.delete(pid);
+	    const onChildExited = (pid: number) => {
+	      logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
+	      const cleanup = codexHomeDirCleanupByPid.get(pid);
+	      if (cleanup) {
+	        codexHomeDirCleanupByPid.delete(pid);
         try {
           cleanup();
         } catch (error) {
           logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', error);
-        }
-      }
-      pidToTrackedSession.delete(pid);
-      void removeSessionMarker(pid);
-    };
+	        }
+	      }
+	      const attachCleanup = sessionAttachCleanupByPid.get(pid);
+	      if (attachCleanup) {
+	        sessionAttachCleanupByPid.delete(pid);
+	        void attachCleanup().catch((error) => {
+	          logger.debug('[DAEMON RUN] Failed to cleanup session attach file', error);
+	        });
+	      }
+	      pidToTrackedSession.delete(pid);
+	      void removeSessionMarker(pid);
+	    };
 
     // Start control server
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
@@ -1003,34 +1160,57 @@ export async function startDaemon(): Promise<void> {
         } catch (error) {
           // Process is dead, remove from tracking
           logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
-          const cleanup = codexHomeDirCleanupByPid.get(pid);
-          if (cleanup) {
-            codexHomeDirCleanupByPid.delete(pid);
-            try {
-              cleanup();
-            } catch (cleanupError) {
-              logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', cleanupError);
-            }
-          }
-          pidToTrackedSession.delete(pid);
-          void removeSessionMarker(pid);
-        }
-      }
+	          const cleanup = codexHomeDirCleanupByPid.get(pid);
+	          if (cleanup) {
+	            codexHomeDirCleanupByPid.delete(pid);
+	            try {
+	              cleanup();
+	            } catch (cleanupError) {
+	              logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', cleanupError);
+	            }
+	          }
+	          const attachCleanup = sessionAttachCleanupByPid.get(pid);
+	          if (attachCleanup) {
+	            sessionAttachCleanupByPid.delete(pid);
+	            try {
+	              await attachCleanup();
+	            } catch (cleanupError) {
+	              logger.debug('[DAEMON RUN] Failed to cleanup session attach file', cleanupError);
+	            }
+	          }
+	          pidToTrackedSession.delete(pid);
+	          void removeSessionMarker(pid);
+	        }
+	      }
 
       // Cleanup any CODEX_HOME temp dirs for sessions no longer tracked (e.g. stopSession removed them).
-      for (const [pid, cleanup] of codexHomeDirCleanupByPid.entries()) {
-        if (pidToTrackedSession.has(pid)) continue;
-        try {
-          process.kill(pid, 0);
-        } catch {
-          codexHomeDirCleanupByPid.delete(pid);
-          try {
-            cleanup();
-          } catch (cleanupError) {
-            logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', cleanupError);
-          }
-        }
-      }
+	      for (const [pid, cleanup] of codexHomeDirCleanupByPid.entries()) {
+	        if (pidToTrackedSession.has(pid)) continue;
+	        try {
+	          process.kill(pid, 0);
+	        } catch {
+	          codexHomeDirCleanupByPid.delete(pid);
+	          try {
+	            cleanup();
+	          } catch (cleanupError) {
+	            logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', cleanupError);
+	          }
+	        }
+	      }
+
+	      for (const [pid, cleanup] of sessionAttachCleanupByPid.entries()) {
+	        if (pidToTrackedSession.has(pid)) continue;
+	        try {
+	          process.kill(pid, 0);
+	        } catch {
+	          sessionAttachCleanupByPid.delete(pid);
+	          try {
+	            await cleanup();
+	          } catch (cleanupError) {
+	            logger.debug('[DAEMON RUN] Failed to cleanup session attach file', cleanupError);
+	          }
+	        }
+	      }
 
       // Check if daemon needs update
       // If version on disk is different from the one in package.json - we need to restart
@@ -1092,13 +1272,21 @@ export async function startDaemon(): Promise<void> {
       heartbeatRunning = false;
     }, heartbeatIntervalMs); // Every 60 seconds in production
 
-    // Setup signal handlers
-    const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
-      logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
+	    // Setup signal handlers
+	    const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
+	      const exitCode = getDaemonShutdownExitCode(source);
+	      const shutdownWatchdog = setTimeout(async () => {
+	        logger.debug(`[DAEMON RUN] Shutdown timed out, forcing exit with code ${exitCode}`);
+	        await new Promise((resolve) => setTimeout(resolve, 100));
+	        process.exit(exitCode);
+	      }, getDaemonShutdownWatchdogTimeoutMs());
+	      shutdownWatchdog.unref?.();
 
-      // Clear health check interval
-      if (restartOnStaleVersionAndHeartbeat) {
-        clearInterval(restartOnStaleVersionAndHeartbeat);
+	      logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
+
+	      // Clear health check interval
+	      if (restartOnStaleVersionAndHeartbeat) {
+	        clearInterval(restartOnStaleVersionAndHeartbeat);
         logger.debug('[DAEMON RUN] Health check interval cleared');
       }
 
@@ -1115,13 +1303,16 @@ export async function startDaemon(): Promise<void> {
 
       apiMachine.shutdown();
       await stopControlServer();
-      await cleanupDaemonState();
-      await stopCaffeinate();
-      await releaseDaemonLock(daemonLockHandle);
+	      await cleanupDaemonState();
+	      await stopCaffeinate();
+	      if (daemonLockHandle) {
+	        await releaseDaemonLock(daemonLockHandle);
+	      }
 
-      logger.debug('[DAEMON RUN] Cleanup completed, exiting process');
-      process.exit(0);
-    };
+	      logger.debug('[DAEMON RUN] Cleanup completed, exiting process');
+	      clearTimeout(shutdownWatchdog);
+	      process.exit(exitCode);
+	    };
 
     logger.debug('[DAEMON RUN] Daemon started successfully, waiting for shutdown request');
 
@@ -1129,6 +1320,13 @@ export async function startDaemon(): Promise<void> {
     const shutdownRequest = await resolvesWhenShutdownRequested;
     await cleanupAndShutdown(shutdownRequest.source, shutdownRequest.errorMessage);
   } catch (error) {
+    try {
+      if (daemonLockHandle) {
+        await releaseDaemonLock(daemonLockHandle);
+      }
+    } catch {
+      // ignore
+    }
     logger.debug('[DAEMON RUN][FATAL] Failed somewhere unexpectedly - exiting with code 1', error);
     process.exit(1);
   }

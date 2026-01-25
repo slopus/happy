@@ -15,7 +15,6 @@ import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
-import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
@@ -29,9 +28,10 @@ import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import type { TerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
-import { writeTerminalAttachmentInfo } from '@/terminal/terminalAttachmentInfo';
-import { buildTerminalFallbackMessage } from '@/terminal/terminalFallbackMessage';
-import { readPersistedHappySession, writePersistedHappySession } from '@/daemon/persistedHappySession';
+import { persistTerminalAttachmentInfoIfNeeded, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/utils/sessionStartup/startupSideEffects';
+import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/utils/sessionStartup/startupMetadataUpdate';
+import { createBaseSessionForAttach } from '@/utils/sessionStartup/createBaseSessionForAttach';
+import { createSessionMetadata } from '@/utils/createSessionMetadata';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -48,6 +48,11 @@ export interface StartOptions {
     jsRuntime?: JsRuntime
     /** Internal terminal runtime flags passed by the spawner (daemon/tmux wrapper). */
     terminalRuntime?: TerminalRuntimeFlags | null
+    /**
+     * Optional timestamp for permissionMode (ms). Used to order explicit UI selections across devices.
+     * When omitted, the runner falls back to local time when publishing a mode.
+     */
+    permissionModeUpdatedAt?: number
     /**
      * Existing Happy session ID to reconnect to.
      * When set, the CLI will connect to this session instead of creating a new one.
@@ -105,9 +110,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Create session service
     const api = await ApiClient.create(credentials);
 
-    // Create a new session
-    let state: AgentState = {};
-
     // Get machine ID from settings (should already be set up)
     const settings = await readSettings();
     let machineId = settings?.machineId
@@ -123,46 +125,33 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         metadata: initialMachineMetadata
     });
 
-    const profileIdEnv = process.env.HAPPY_SESSION_PROFILE_ID;
-    const profileId = profileIdEnv === undefined ? undefined : (profileIdEnv.trim() || null);
     const terminal = buildTerminalMetadataFromRuntimeFlags(options.terminalRuntime ?? null);
     // Resolve initial permission mode for sessions that start in terminal local mode.
     // This is important because there may be no app-sent user messages yet (no meta.permissionMode to infer from).
+    const explicitPermissionMode = options.permissionMode;
+    const explicitPermissionModeUpdatedAt = options.permissionModeUpdatedAt;
     const initialPermissionMode = options.permissionMode ?? inferPermissionModeFromClaudeArgs(options.claudeArgs) ?? 'default';
     options.permissionMode = initialPermissionMode;
 
-    let metadata: Metadata = {
-        path: workingDirectory,
-        host: os.hostname(),
-        version: packageJson.version,
-        os: os.platform(),
-        ...(terminal ? { terminal } : {}),
-        ...(profileIdEnv !== undefined ? { profileId } : {}),
-        machineId: machineId,
-        homeDir: os.homedir(),
-        happyHomeDir: configuration.happyHomeDir,
-        happyLibDir: projectPath(),
-        happyToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
-        startedFromDaemon: options.startedBy === 'daemon',
-        hostPid: process.pid,
-        startedBy: options.startedBy || 'terminal',
-        // Initialize lifecycle state
-        lifecycleState: 'running',
-        lifecycleStateSince: Date.now(),
+    const { state, metadata } = createSessionMetadata({
         flavor: 'claude',
+        machineId,
+        directory: workingDirectory,
+        startedBy: options.startedBy,
+        terminalRuntime: options.terminalRuntime ?? null,
         permissionMode: initialPermissionMode,
-        permissionModeUpdatedAt: Date.now(),
-    };
+        permissionModeUpdatedAt: typeof explicitPermissionModeUpdatedAt === 'number' ? explicitPermissionModeUpdatedAt : Date.now(),
+    });
 
     // Handle existing session (for inactive session resume) vs new session.
     let baseSession: ApiSession;
     if (options.existingSessionId) {
         logger.debug(`[START] Resuming existing session: ${options.existingSessionId}`);
-        const attached = await readPersistedHappySession(options.existingSessionId);
-        if (!attached) {
-            throw new Error(`Cannot resume session ${options.existingSessionId}: no local persisted session state found`);
-        }
-        baseSession = attached;
+        baseSession = await createBaseSessionForAttach({
+            existingSessionId: options.existingSessionId,
+            metadata,
+            state,
+        });
     } else {
         const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 
@@ -221,53 +210,22 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         logger.debug(`Session created: ${baseSession.id}`);
     }
 
-    // Persist session state locally so we can attach later (inactive session resume).
-    await writePersistedHappySession(baseSession);
-
-    // Mark the session as active and refresh metadata on startup.
-    api.sessionSyncClient(baseSession).updateMetadata((currentMetadata) => ({
-        ...currentMetadata,
-        ...metadata,
-        lifecycleState: 'running',
-        lifecycleStateSince: Date.now(),
-    }));
-
     // Create realtime session
     const session = api.sessionSyncClient(baseSession);
+    // Mark the session as active and refresh metadata on startup.
+    applyStartupMetadataUpdateToSession({
+        session,
+        next: metadata,
+        nowMs: Date.now(),
+        permissionModeOverride: buildPermissionModeOverride({
+            permissionMode: explicitPermissionMode,
+            permissionModeUpdatedAt: explicitPermissionModeUpdatedAt,
+        }),
+    });
 
-    // Persist terminal attachment info locally (best-effort).
-    if (terminal) {
-        try {
-            await writeTerminalAttachmentInfo({
-                happyHomeDir: configuration.happyHomeDir,
-                sessionId: baseSession.id,
-                terminal,
-            });
-        } catch (error) {
-            logger.debug('[START] Failed to persist terminal attachment info', error);
-        }
-    }
-
-    // If tmux was requested but unavailable, surface the reason in the session chat (UI-facing).
-    if (terminal) {
-        const fallbackMessage = buildTerminalFallbackMessage(terminal);
-        if (fallbackMessage) {
-            session.sendSessionEvent({ type: 'message', message: fallbackMessage });
-        }
-    }
-
-    // Always report to daemon if it exists
-    try {
-        logger.debug(`[START] Reporting session ${baseSession.id} to daemon`);
-        const result = await notifyDaemonSessionStarted(baseSession.id, metadata);
-        if (result.error) {
-            logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
-        } else {
-            logger.debug(`[START] Reported session ${baseSession.id} to daemon`);
-        }
-    } catch (error) {
-        logger.debug('[START] Failed to report to daemon (may not be running):', error);
-    }
+    await persistTerminalAttachmentInfoIfNeeded({ sessionId: baseSession.id, terminal });
+    sendTerminalFallbackMessageIfNeeded({ session, terminal });
+    await reportSessionToDaemonIfRunning({ sessionId: baseSession.id, metadata });
 
     // Extract SDK metadata in background and update session when ready
     extractSDKMetadataAsync(async (sdkMetadata) => {
@@ -322,7 +280,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Set initial agent state
     session.updateAgentState((currentState) => ({
         ...currentState,
-        controlledByUser: options.startingMode !== 'remote'
+        controlledByUser: options.startingMode !== 'remote',
+        capabilities: {
+            ...(currentState.capabilities && typeof currentState.capabilities === 'object' ? currentState.capabilities : {}),
+            askUserQuestionAnswersInPermission: true,
+        },
     }));
 
     // Start caffeinate to prevent sleep on macOS

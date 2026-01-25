@@ -12,6 +12,8 @@ export interface TrackedSession {
   startedBy: 'daemon' | string;
   happySessionId?: string;
   happySessionMetadataFromLocalWebhook?: Metadata;
+  /** Vendor resume id (e.g. Claude/Codex session id) supplied/derived at spawn time. */
+  vendorResumeId?: string;
   pid: number;
   /**
    * Hash of the observed process command line for PID reuse safety.

@@ -102,7 +102,22 @@ export class ApiMachineClient {
     }: MachineRpcHandlers) {
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId, terminal, resume, experimentalCodexResume } = params || {};
+            const {
+                directory,
+                sessionId,
+                machineId,
+                approvedNewDirectoryCreation,
+                agent,
+                token,
+                environmentVariables,
+                profileId,
+                terminal,
+                resume,
+                permissionMode,
+                permissionModeUpdatedAt,
+                experimentalCodexResume,
+                experimentalCodexAcp
+            } = params || {};
             const envKeys = environmentVariables && typeof environmentVariables === 'object'
                 ? Object.keys(environmentVariables as Record<string, unknown>)
                 : [];
@@ -117,15 +132,28 @@ export class ApiMachineClient {
                 profileId,
                 hasToken: !!token,
                 terminal,
+                permissionMode,
+                permissionModeUpdatedAt: typeof permissionModeUpdatedAt === 'number' ? permissionModeUpdatedAt : undefined,
                 environmentVariableCount: envKeys.length,
                 environmentVariableKeySample: envKeySample,
                 environmentVariableKeysTruncated: envKeys.length > maxEnvKeysToLog,
                 hasResume: typeof resume === 'string' && resume.trim().length > 0,
+                experimentalCodexResume: experimentalCodexResume === true,
+                experimentalCodexAcp: experimentalCodexAcp === true,
             });
 
             // Handle resume-session type for inactive session resumption
             if (params?.type === 'resume-session') {
-                const { sessionId: existingSessionId, directory, agent, experimentalCodexResume } = params;
+                const {
+                    sessionId: existingSessionId,
+                    directory,
+                    agent,
+                    resume,
+                    sessionEncryptionKeyBase64,
+                    sessionEncryptionVariant,
+                    experimentalCodexResume,
+                    experimentalCodexAcp
+                } = params;
                 logger.debug(`[API MACHINE] Resuming inactive session ${existingSessionId}`);
 
                 if (!directory) {
@@ -134,13 +162,25 @@ export class ApiMachineClient {
                 if (!existingSessionId) {
                     throw new Error('Session ID is required for resume');
                 }
+                if (!sessionEncryptionKeyBase64) {
+                    throw new Error('Session encryption key is required for resume');
+                }
+                if (sessionEncryptionVariant !== 'dataKey') {
+                    throw new Error('Unsupported session encryption variant for resume');
+                }
 
                 const result = await spawnSession({
                     directory,
                     agent,
                     existingSessionId,
                     approvedNewDirectoryCreation: true,
+                    resume: typeof resume === 'string' ? resume : undefined,
+                    sessionEncryptionKeyBase64,
+                    sessionEncryptionVariant,
+                    permissionMode,
+                    permissionModeUpdatedAt,
                     experimentalCodexResume: Boolean(experimentalCodexResume),
+                    experimentalCodexAcp: Boolean(experimentalCodexAcp),
                 });
 
                 if (result.type === 'error') {
@@ -155,7 +195,22 @@ export class ApiMachineClient {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, profileId, terminal, resume, experimentalCodexResume });
+            const result = await spawnSession({
+                directory,
+                sessionId,
+                machineId,
+                approvedNewDirectoryCreation,
+                agent,
+                token,
+                environmentVariables,
+                profileId,
+                terminal,
+                resume,
+                permissionMode,
+                permissionModeUpdatedAt,
+                experimentalCodexResume,
+                experimentalCodexAcp
+            });
 
             switch (result.type) {
                 case 'success':

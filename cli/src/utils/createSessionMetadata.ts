@@ -20,7 +20,7 @@ import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetada
 /**
  * Backend flavor identifier for session metadata.
  */
-export type BackendFlavor = 'claude' | 'codex' | 'gemini';
+export type BackendFlavor = 'claude' | 'codex' | 'gemini' | 'opencode';
 
 /**
  * Options for creating session metadata.
@@ -30,6 +30,8 @@ export interface CreateSessionMetadataOptions {
     flavor: BackendFlavor;
     /** Machine ID for server identification */
     machineId: string;
+    /** Working directory for the session (defaults to process.cwd()). */
+    directory?: string;
     /** How the session was started */
     startedBy?: 'daemon' | 'terminal';
     /** Internal terminal runtime flags passed by the spawner (daemon/tmux wrapper). */
@@ -79,7 +81,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
     const profileId = profileIdEnv === undefined ? undefined : (profileIdEnv.trim() || null);
 
     const metadata: Metadata = {
-        path: process.cwd(),
+        path: opts.directory ?? process.cwd(),
         host: os.hostname(),
         version: packageJson.version,
         os: os.platform(),
