@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, Text, View, Platform } from 'react-native';
+import { Pressable, Text, View, Platform } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { CommonActions } from '@react-navigation/native';
 import { Typography } from '@/constants/Typography';
@@ -13,6 +13,51 @@ import { Ionicons } from '@expo/vector-icons';
 import { sync } from '@/sync/sync';
 import { prefetchMachineCapabilities } from '@/hooks/useMachineCapabilitiesCache';
 import { invalidateMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
+import { CAPABILITIES_REQUEST_NEW_SESSION } from '@/capabilities/requests';
+import { HeaderTitleWithAction } from '@/components/navigation/HeaderTitleWithAction';
+
+function useMachinePickerScreenOptions(params: {
+    title: string;
+    onBack: () => void;
+    onRefresh: () => void;
+    isRefreshing: boolean;
+    theme: { colors: { header: { tint: string }; textSecondary: string } };
+}) {
+    const headerLeft = React.useCallback(() => (
+        <Pressable
+            onPress={params.onBack}
+            hitSlop={10}
+            style={({ pressed }) => ({ padding: 2, opacity: pressed ? 0.7 : 1 })}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.back')}
+        >
+            <Ionicons name="chevron-back" size={22} color={params.theme.colors.header.tint} />
+        </Pressable>
+    ), [params.onBack, params.theme.colors.header.tint]);
+
+    const headerTitle = React.useCallback(({ tintColor }: { children: string; tintColor?: string }) => (
+        <HeaderTitleWithAction
+            title={params.title}
+            tintColor={tintColor ?? params.theme.colors.header.tint}
+            actionLabel={t('common.refresh')}
+            actionIconName="refresh-outline"
+            actionColor={params.theme.colors.textSecondary}
+            actionDisabled={params.isRefreshing}
+            actionLoading={params.isRefreshing}
+            onActionPress={params.onRefresh}
+        />
+    ), [params.isRefreshing, params.onRefresh, params.theme.colors.header.tint, params.theme.colors.textSecondary, params.title]);
+
+    return React.useMemo(() => ({
+        headerShown: true,
+        headerTitle,
+        headerBackTitle: t('common.back'),
+        // /new is presented as `containedModal` on iOS. Ensure picker screens are too,
+        // otherwise they can be pushed "behind" the modal (invisible but on the back stack).
+        presentation: Platform.OS === 'ios' ? ('containedModal' as const) : undefined,
+        headerLeft,
+    }), [headerLeft, headerTitle]);
+}
 
 export default React.memo(function MachinePickerScreen() {
     const { theme } = useUnistyles();
@@ -41,13 +86,21 @@ export default React.memo(function MachinePickerScreen() {
             if (selectedMachineId) {
                 invalidateMachineEnvPresence({ machineId: selectedMachineId });
                 await Promise.all([
-                    prefetchMachineCapabilities({ machineId: selectedMachineId, request: { checklistId: 'new-session' } }),
+                    prefetchMachineCapabilities({ machineId: selectedMachineId, request: CAPABILITIES_REQUEST_NEW_SESSION }),
                 ]);
             }
         } finally {
             setIsRefreshing(false);
         }
     }, [isRefreshing, selectedMachineId]);
+
+    const screenOptions = useMachinePickerScreenOptions({
+        title: t('newSession.selectMachineTitle'),
+        onBack: () => router.back(),
+        onRefresh: () => { void handleRefresh(); },
+        isRefreshing,
+        theme,
+    });
 
     const handleSelectMachine = (machine: typeof machines[0]) => {
         // Support both callback pattern (feature branch wizard) and navigation params (main)
@@ -74,41 +127,7 @@ export default React.memo(function MachinePickerScreen() {
     if (machines.length === 0) {
         return (
             <>
-                <Stack.Screen
-                    options={{
-                        headerShown: true,
-                        headerTitle: t('newSession.selectMachineTitle'),
-                        headerBackTitle: t('common.back'),
-                        // /new is presented as `containedModal` on iOS. Ensure picker screens are too,
-                        // otherwise they can be pushed "behind" the modal (invisible but on the back stack).
-                        presentation: Platform.OS === 'ios' ? 'containedModal' : undefined,
-                        headerLeft: () => (
-                            <Pressable
-                                onPress={() => router.back()}
-                                hitSlop={10}
-                                style={({ pressed }) => ({ padding: 2, opacity: pressed ? 0.7 : 1 })}
-                                accessibilityRole="button"
-                                accessibilityLabel={t('common.back')}
-                            >
-                                <Ionicons name="chevron-back" size={22} color={theme.colors.header.tint} />
-                            </Pressable>
-                        ),
-                        headerRight: () => (
-                            <Pressable
-                                onPress={() => { void handleRefresh(); }}
-                                hitSlop={10}
-                                style={{ padding: 2 }}
-                                accessibilityRole="button"
-                                accessibilityLabel={t('common.refresh')}
-                                disabled={isRefreshing}
-                            >
-                                {isRefreshing
-                                    ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                                    : <Ionicons name="refresh-outline" size={20} color={theme.colors.textSecondary} />}
-                            </Pressable>
-                        ),
-                    }}
-                />
+                <Stack.Screen options={screenOptions} />
                 <View style={styles.container}>
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyText}>
@@ -122,39 +141,7 @@ export default React.memo(function MachinePickerScreen() {
 
     return (
         <>
-            <Stack.Screen
-                options={{
-                    headerShown: true,
-                    headerTitle: t('newSession.selectMachineTitle'),
-                    headerBackTitle: t('common.back'),
-                    presentation: Platform.OS === 'ios' ? 'containedModal' : undefined,
-                    headerLeft: () => (
-                        <Pressable
-                            onPress={() => router.back()}
-                            hitSlop={10}
-                            style={({ pressed }) => ({ padding: 2, opacity: pressed ? 0.7 : 1 })}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('common.back')}
-                        >
-                            <Ionicons name="chevron-back" size={22} color={theme.colors.header.tint} />
-                        </Pressable>
-                    ),
-                    headerRight: () => (
-                        <Pressable
-                            onPress={() => { void handleRefresh(); }}
-                            hitSlop={10}
-                            style={{ padding: 2 }}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('common.refresh')}
-                            disabled={isRefreshing}
-                        >
-                            {isRefreshing
-                                ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                                : <Ionicons name="refresh-outline" size={20} color={theme.colors.textSecondary} />}
-                        </Pressable>
-                    ),
-                }}
-            />
+            <Stack.Screen options={screenOptions} />
             <ItemList>
                 <MachineSelector
                     machines={machines}

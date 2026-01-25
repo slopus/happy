@@ -5,9 +5,10 @@ import { Typography } from '@/constants/Typography';
 import { Item } from '@/components/Item';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
-import { useSetting } from '@/sync/storage';
 import type { MachineCapabilitiesCacheState } from '@/hooks/useMachineCapabilitiesCache';
-import type { CapabilityDetectResult, CliCapabilityData, TmuxCapabilityData } from '@/sync/capabilitiesProtocol';
+import type { CapabilityDetectResult, CapabilityId, CliCapabilityData, TmuxCapabilityData } from '@/sync/capabilitiesProtocol';
+import { getAgentCore } from '@/agents/registryCore';
+import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
 
 type Props = {
     state: MachineCapabilitiesCacheState;
@@ -16,9 +17,7 @@ type Props = {
 
 export function DetectedClisList({ state, layout = 'inline' }: Props) {
     const { theme } = useUnistyles();
-    const experimentsEnabled = useSetting('experiments');
-    const expGemini = useSetting('expGemini');
-    const allowGemini = experimentsEnabled && expGemini;
+    const enabledAgents = useEnabledAgentIds();
 
     const extractSemver = React.useCallback((value: string | undefined): string | null => {
         if (!value) return null;
@@ -39,12 +38,14 @@ export function DetectedClisList({ state, layout = 'inline' }: Props) {
         ];
     }, [theme.colors.textSecondary]);
 
+    const snapshotForRender = React.useMemo(() => {
+        if (state.status === 'loaded') return state.snapshot;
+        if (state.status === 'error') return state.snapshot;
+        return undefined;
+    }, [state]);
+
     if (state.status === 'not-supported') {
         return <Item title={t('machine.detectedCliNotSupported')} showChevron={false} />;
-    }
-
-    if (state.status === 'error') {
-        return <Item title={t('machine.detectedCliUnknown')} showChevron={false} />;
     }
 
     if (state.status === 'loading' || state.status === 'idle') {
@@ -57,12 +58,11 @@ export function DetectedClisList({ state, layout = 'inline' }: Props) {
         );
     }
 
-    if (state.status !== 'loaded') {
+    if (!snapshotForRender) {
         return <Item title={t('machine.detectedCliUnknown')} showChevron={false} />;
     }
 
-    const snapshot = state.snapshot;
-    const results = snapshot?.response.results ?? {};
+    const results = snapshotForRender.response.results ?? {};
 
     function readCliResult(result: CapabilityDetectResult | undefined): { available: boolean | null; resolvedPath?: string; version?: string } {
         if (!result || !result.ok) return { available: null };
@@ -89,13 +89,12 @@ export function DetectedClisList({ state, layout = 'inline' }: Props) {
     }
 
     const entries: Array<[string, { available: boolean | null; resolvedPath?: string; version?: string }]> = [
-        ['claude', readCliResult(results['cli.claude'])],
-        ['codex', readCliResult(results['cli.codex'])],
+        ...enabledAgents.map((agentId): [string, { available: boolean | null; resolvedPath?: string; version?: string }] => {
+            const capId = `cli.${getAgentCore(agentId).cli.detectKey}` as CapabilityId;
+            return [t(getAgentCore(agentId).displayNameKey), readCliResult(results[capId])];
+        }),
+        ['tmux', readTmuxResult(results['tool.tmux'])],
     ];
-    if (allowGemini) {
-        entries.push(['gemini', readCliResult(results['cli.gemini'])]);
-    }
-    entries.push(['tmux', readTmuxResult(results['tool.tmux'])]);
 
     return (
         <>

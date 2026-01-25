@@ -17,23 +17,18 @@ import { layout } from '@/components/layout';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { getBuiltInProfile } from '@/sync/profileUtils';
-import { getProfileEnvironmentVariables, type AIBackendProfile } from '@/sync/settings';
+import { getProfileEnvironmentVariables, isProfileCompatibleWithAgent, type AIBackendProfile } from '@/sync/settings';
 import { useSetting } from '@/sync/storage';
 import type { Machine } from '@/sync/storageTypes';
 import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
 import { getPermissionModeOptionsForAgentType } from '@/sync/permissionModeOptions';
 import type { SecretSatisfactionResult } from '@/utils/secretSatisfaction';
-
-type CLIAvailability = {
-    claude: boolean | null;
-    codex: boolean | null;
-    gemini: boolean | null;
-    tmux: boolean | null;
-    login: { claude: boolean | null; codex: boolean | null; gemini: boolean | null };
-    isDetecting: boolean;
-    timestamp: number;
-    error?: string;
-};
+import type { CLIAvailability } from '@/hooks/useCLIDetection';
+import type { AgentId } from '@/agents/registryCore';
+import { getAgentCore } from '@/agents/registryCore';
+import { getAgentPickerOptions } from '@/agents/agentPickerOptions';
+import { CliNotDetectedBanner, type CliNotDetectedBannerDismissScope } from '@/components/newSession/CliNotDetectedBanner';
+import { InstallableDepInstaller, type InstallableDepInstallerProps } from '@/components/machine/InstallableDepInstaller';
 
 export interface NewSessionWizardLayoutProps {
     theme: any;
@@ -74,12 +69,11 @@ export interface NewSessionWizardProfilesProps {
 export interface NewSessionWizardAgentProps {
     cliAvailability: CLIAvailability;
     tmuxRequested: boolean;
-    allowGemini: boolean;
-    isWarningDismissed: (cli: 'claude' | 'codex' | 'gemini') => boolean;
-    hiddenBanners: { claude: boolean; codex: boolean; gemini: boolean };
-    handleCLIBannerDismiss: (cli: 'claude' | 'codex' | 'gemini', scope: 'machine' | 'global' | 'temporary') => void;
-    agentType: 'claude' | 'codex' | 'gemini';
-    setAgentType: (agent: 'claude' | 'codex' | 'gemini') => void;
+    enabledAgentIds: AgentId[];
+    isCliBannerDismissed: (agentId: AgentId) => boolean;
+    dismissCliBanner: (agentId: AgentId, scope: CliNotDetectedBannerDismissScope) => void;
+    agentType: AgentId;
+    setAgentType: (agent: AgentId) => void;
     modelOptions: ReadonlyArray<{ value: ModelMode; label: string; description: string }>;
     modelMode: ModelMode | undefined;
     setModelMode: (mode: ModelMode) => void;
@@ -89,18 +83,7 @@ export interface NewSessionWizardAgentProps {
     handlePermissionModeChange: (mode: PermissionMode) => void;
     sessionType: 'simple' | 'worktree';
     setSessionType: (t: 'simple' | 'worktree') => void;
-    codexResumeBanner?: null | {
-        installed: boolean | null;
-        installedVersion: string | null;
-        latestVersion: string | null;
-        updateAvailable: boolean;
-        systemCodexVersion: string | null;
-        registryError: string | null;
-        isChecking: boolean;
-        isInstalling: boolean;
-        onCheckUpdates: () => void;
-        onInstallOrUpdate: () => void;
-    };
+    installableDepInstallers?: InstallableDepInstallerProps[];
 }
 
 export interface NewSessionWizardMachineProps {
@@ -135,6 +118,7 @@ export interface NewSessionWizardFooterProps {
     onResumeClick?: () => void;
     selectedProfileEnvVarsCount: number;
     handleEnvVarsClick: () => void;
+    inputMaxHeight?: number;
 }
 
 export interface NewSessionWizardProps {
@@ -230,10 +214,9 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
     const {
         cliAvailability,
         tmuxRequested,
-        allowGemini,
-        isWarningDismissed,
-        hiddenBanners,
-        handleCLIBannerDismiss,
+        enabledAgentIds,
+        isCliBannerDismissed,
+        dismissCliBanner,
         agentType,
         setAgentType,
         modelOptions,
@@ -245,7 +228,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
         handlePermissionModeChange,
         sessionType,
         setSessionType,
-        codexResumeBanner,
+        installableDepInstallers,
     } = props.agent;
 
     const {
@@ -279,6 +262,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
         onResumeClick,
         selectedProfileEnvVarsCount,
         handleEnvVarsClick,
+        inputMaxHeight,
     } = props.footer;
 
     return (
@@ -382,307 +366,27 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                     </View>
                                 )}
 
-                                {codexResumeBanner && (
-                                    <View style={{
-                                        backgroundColor: theme.colors.box.warning.background,
-                                        borderRadius: 10,
-                                        padding: 12,
-                                        marginBottom: 12,
-                                        borderWidth: 1,
-                                        borderColor: theme.colors.box.warning.border,
-                                    }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-	                                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
-	                                                <Ionicons
-	                                                    name={codexResumeBanner.updateAvailable ? 'alert-circle-outline' : codexResumeBanner.installed ? 'checkmark-circle-outline' : 'warning'}
-	                                                    size={16}
-	                                                    color={codexResumeBanner.updateAvailable ? theme.colors.warning : theme.colors.textSecondary}
-	                                                />
-	                                                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-	                                                    {t('newSession.codexResumeBanner.title')}
-	                                                </Text>
-	                                                {codexResumeBanner.updateAvailable ? (
-	                                                    <Text style={{ fontSize: 11, color: theme.colors.warning, ...Typography.default() }}>
-	                                                        {t('newSession.codexResumeBanner.updateAvailable')}
-	                                                    </Text>
-	                                                ) : null}
-	                                            </View>
-                                            <Pressable
-                                                onPress={codexResumeBanner.onCheckUpdates}
-                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                                disabled={codexResumeBanner.isChecking || codexResumeBanner.isInstalling}
-                                                accessibilityRole="button"
-                                                accessibilityLabel={t('common.refresh')}
-                                            >
-                                                <Ionicons
-                                                    name={codexResumeBanner.isChecking ? 'time-outline' : 'refresh'}
-                                                    size={18}
-                                                    color={theme.colors.textSecondary}
-                                                />
-                                            </Pressable>
-                                        </View>
+                                {installableDepInstallers && installableDepInstallers.length > 0 ? (
+                                    <>
+                                        {installableDepInstallers.map((installer) => (
+                                            <InstallableDepInstaller key={installer.depId} {...installer} />
+                                        ))}
+                                    </>
+                                ) : null}
 
-	                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-	                                            {t('newSession.codexResumeBanner.systemCodexVersion', { version: codexResumeBanner.systemCodexVersion ?? t('status.unknown') })}{'\n'}
-	                                            {t('newSession.codexResumeBanner.resumeServerVersion', {
-	                                                version: codexResumeBanner.installedVersion ?? (codexResumeBanner.installed === false ? t('newSession.codexResumeBanner.notInstalled') : t('status.unknown'))
-	                                            })}
-	                                            {codexResumeBanner.latestVersion ? ` ${t('newSession.codexResumeBanner.latestVersion', { version: codexResumeBanner.latestVersion })}` : ''}
-	                                        </Text>
-
-	                                        {codexResumeBanner.registryError ? (
-	                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginTop: 6, ...Typography.default() }}>
-	                                                {t('newSession.codexResumeBanner.registryCheckFailed', { error: codexResumeBanner.registryError })}
-	                                            </Text>
-	                                        ) : null}
-
-                                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-                                            <Pressable
-                                                onPress={codexResumeBanner.onInstallOrUpdate}
-                                                disabled={codexResumeBanner.isInstalling}
-                                                accessibilityRole="button"
-                                                accessibilityLabel={
-                                                    codexResumeBanner.installed === false
-                                                        ? t('newSession.codexResumeBanner.install')
-                                                        : codexResumeBanner.updateAvailable
-                                                            ? t('newSession.codexResumeBanner.update')
-                                                            : t('newSession.codexResumeBanner.reinstall')
-                                                }
-                                                style={{
-                                                    borderRadius: 8,
-                                                    paddingHorizontal: 12,
-                                                    paddingVertical: 8,
-                                                    backgroundColor: theme.colors.button.primary.background,
-                                                    opacity: codexResumeBanner.isInstalling ? 0.6 : 1,
-                                                }}
-	                                            >
-	                                                <Text style={{ color: theme.colors.button.primary.text, fontSize: 12, ...Typography.default('semiBold') }}>
-	                                                    {codexResumeBanner.installed === false
-	                                                        ? t('newSession.codexResumeBanner.install')
-	                                                        : codexResumeBanner.updateAvailable
-	                                                            ? t('newSession.codexResumeBanner.update')
-	                                                            : t('newSession.codexResumeBanner.reinstall')}
-	                                                </Text>
-	                                            </Pressable>
-	                                        </View>
-                                    </View>
-                                )}
-
-                                {selectedMachineId && cliAvailability.claude === false && !isWarningDismissed('claude') && !hiddenBanners.claude && (
-                                    <View style={{
-                                        backgroundColor: theme.colors.box.warning.background,
-                                        borderRadius: 10,
-                                        padding: 12,
-                                        marginBottom: 12,
-                                        borderWidth: 1,
-                                        borderColor: theme.colors.box.warning.border,
-                                    }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-                                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
-                                                <Ionicons name="warning" size={16} color={theme.colors.warning} />
-                                                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                    {t('newSession.cliBanners.cliNotDetectedTitle', { cli: t('agentInput.agent.claude') })}
-                                                </Text>
-                                                <View style={{ flex: 1, minWidth: 20 }} />
-                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    {t('newSession.cliBanners.dontShowFor')}
-                                                </Text>
-                                                <Pressable
-                                                    onPress={() => handleCLIBannerDismiss('claude', 'machine')}
-                                                    style={{
-                                                        borderRadius: 4,
-                                                        borderWidth: 1,
-                                                        borderColor: theme.colors.textSecondary,
-                                                        paddingHorizontal: 8,
-                                                        paddingVertical: 3,
-                                                    }}
-                                                >
-                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                        {t('newSession.cliBanners.thisMachine')}
-                                                    </Text>
-                                                </Pressable>
-                                                <Pressable
-                                                    onPress={() => handleCLIBannerDismiss('claude', 'global')}
-                                                    style={{
-                                                        borderRadius: 4,
-                                                        borderWidth: 1,
-                                                        borderColor: theme.colors.textSecondary,
-                                                        paddingHorizontal: 8,
-                                                        paddingVertical: 3,
-                                                    }}
-                                                >
-                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                        {t('newSession.cliBanners.anyMachine')}
-                                                    </Text>
-                                                </Pressable>
-                                            </View>
-                                            <Pressable
-                                                onPress={() => handleCLIBannerDismiss('claude', 'temporary')}
-                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                            >
-                                                <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                                            </Pressable>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                {t('newSession.cliBanners.installCommand', { command: 'npm install -g @anthropic-ai/claude-code' })}
-                                            </Text>
-                                            <Pressable onPress={() => {
-                                                if (Platform.OS === 'web') {
-                                                    window.open('https://docs.anthropic.com/en/docs/claude-code/installation', '_blank');
-                                                }
-                                            }}>
-                                                <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                    {t('newSession.cliBanners.viewInstallationGuide')}
-                                                </Text>
-                                            </Pressable>
-                                        </View>
-                                    </View>
-                                )}
-
-                                {selectedMachineId && cliAvailability.codex === false && !isWarningDismissed('codex') && !hiddenBanners.codex && (
-                                    <View style={{
-                                        backgroundColor: theme.colors.box.warning.background,
-                                        borderRadius: 10,
-                                        padding: 12,
-                                        marginBottom: 12,
-                                        borderWidth: 1,
-                                        borderColor: theme.colors.box.warning.border,
-                                    }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-                                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
-                                                <Ionicons name="warning" size={16} color={theme.colors.warning} />
-                                                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                    {t('newSession.cliBanners.cliNotDetectedTitle', { cli: t('agentInput.agent.codex') })}
-                                                </Text>
-                                                <View style={{ flex: 1, minWidth: 20 }} />
-                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    {t('newSession.cliBanners.dontShowFor')}
-                                                </Text>
-                                                <Pressable
-                                                    onPress={() => handleCLIBannerDismiss('codex', 'machine')}
-                                                    style={{
-                                                        borderRadius: 4,
-                                                        borderWidth: 1,
-                                                        borderColor: theme.colors.textSecondary,
-                                                        paddingHorizontal: 8,
-                                                        paddingVertical: 3,
-                                                    }}
-                                                >
-                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                        {t('newSession.cliBanners.thisMachine')}
-                                                    </Text>
-                                                </Pressable>
-                                                <Pressable
-                                                    onPress={() => handleCLIBannerDismiss('codex', 'global')}
-                                                    style={{
-                                                        borderRadius: 4,
-                                                        borderWidth: 1,
-                                                        borderColor: theme.colors.textSecondary,
-                                                        paddingHorizontal: 8,
-                                                        paddingVertical: 3,
-                                                    }}
-                                                >
-                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                        {t('newSession.cliBanners.anyMachine')}
-                                                    </Text>
-                                                </Pressable>
-                                            </View>
-                                            <Pressable
-                                                onPress={() => handleCLIBannerDismiss('codex', 'temporary')}
-                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                            >
-                                                <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                                            </Pressable>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                {t('newSession.cliBanners.installCommand', { command: 'npm install -g codex-cli' })}
-                                            </Text>
-                                            <Pressable onPress={() => {
-                                                if (Platform.OS === 'web') {
-                                                    window.open('https://github.com/openai/openai-codex', '_blank');
-                                                }
-                                            }}>
-                                                <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                    {t('newSession.cliBanners.viewInstallationGuide')}
-                                                </Text>
-                                            </Pressable>
-                                        </View>
-                                    </View>
-                                )}
-
-                                {selectedMachineId && cliAvailability.gemini === false && allowGemini && !isWarningDismissed('gemini') && !hiddenBanners.gemini && (
-                                    <View style={{
-                                        backgroundColor: theme.colors.box.warning.background,
-                                        borderRadius: 10,
-                                        padding: 12,
-                                        marginBottom: 12,
-                                        borderWidth: 1,
-                                        borderColor: theme.colors.box.warning.border,
-                                    }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-                                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
-                                                <Ionicons name="warning" size={16} color={theme.colors.warning} />
-                                                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                    {t('newSession.cliBanners.cliNotDetectedTitle', { cli: t('agentInput.agent.gemini') })}
-                                                </Text>
-                                                <View style={{ flex: 1, minWidth: 20 }} />
-                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    {t('newSession.cliBanners.dontShowFor')}
-                                                </Text>
-                                                <Pressable
-                                                    onPress={() => handleCLIBannerDismiss('gemini', 'machine')}
-                                                    style={{
-                                                        borderRadius: 4,
-                                                        borderWidth: 1,
-                                                        borderColor: theme.colors.textSecondary,
-                                                        paddingHorizontal: 8,
-                                                        paddingVertical: 3,
-                                                    }}
-                                                >
-                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                        {t('newSession.cliBanners.thisMachine')}
-                                                    </Text>
-                                                </Pressable>
-                                                <Pressable
-                                                    onPress={() => handleCLIBannerDismiss('gemini', 'global')}
-                                                    style={{
-                                                        borderRadius: 4,
-                                                        borderWidth: 1,
-                                                        borderColor: theme.colors.textSecondary,
-                                                        paddingHorizontal: 8,
-                                                        paddingVertical: 3,
-                                                    }}
-                                                >
-                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                        {t('newSession.cliBanners.anyMachine')}
-                                                    </Text>
-                                                </Pressable>
-                                            </View>
-                                            <Pressable
-                                                onPress={() => handleCLIBannerDismiss('gemini', 'temporary')}
-                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                            >
-                                                <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                                            </Pressable>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                {t('newSession.cliBanners.installCliIfAvailable', { cli: t('agentInput.agent.gemini') })}
-                                            </Text>
-                                            <Pressable onPress={() => {
-                                                if (Platform.OS === 'web') {
-                                                    window.open('https://ai.google.dev/gemini-api/docs/get-started', '_blank');
-                                                }
-                                            }}>
-                                                <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                    {t('newSession.cliBanners.viewGeminiDocs')}
-                                                </Text>
-                                            </Pressable>
-                                        </View>
-                                    </View>
-                                )}
+                                {selectedMachineId ? (
+                                    enabledAgentIds
+                                        .filter((agentId) => cliAvailability.available[agentId] === false)
+                                        .filter((agentId) => !isCliBannerDismissed(agentId))
+                                        .map((agentId) => (
+                                            <CliNotDetectedBanner
+                                                key={agentId}
+                                                agentId={agentId}
+                                                theme={theme}
+                                                onDismiss={(scope) => dismissCliBanner(agentId, scope)}
+                                            />
+                                        ))
+                                ) : null}
 
                                 <ItemGroup title={<View />} headerStyle={{ paddingTop: 0, paddingBottom: 0 }}>
                                     {(() => {
@@ -690,34 +394,25 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                             ? (profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId))
                                             : null;
 
-                                        const options: Array<{
-                                            key: 'claude' | 'codex' | 'gemini';
-                                            title: string;
-                                            subtitle: string;
-                                            icon: React.ComponentProps<typeof Ionicons>['name'];
-                                        }> = [
-                                            { key: 'claude', title: t('agentInput.agent.claude'), subtitle: t('profiles.aiBackend.claudeSubtitle'), icon: 'sparkles-outline' },
-                                            { key: 'codex', title: t('agentInput.agent.codex'), subtitle: t('profiles.aiBackend.codexSubtitle'), icon: 'terminal-outline' },
-                                            ...(allowGemini ? [{ key: 'gemini' as const, title: t('agentInput.agent.gemini'), subtitle: t('profiles.aiBackend.geminiSubtitleExperimental'), icon: 'planet-outline' as const }] : []),
-                                        ];
+                                        const options = getAgentPickerOptions(enabledAgentIds);
 
                                         return options.map((option, index) => {
-                                            const compatible = !selectedProfile || !!selectedProfile.compatibility?.[option.key];
-                                            const cliOk = cliAvailability[option.key] !== false;
+                                            const compatible = !selectedProfile || isProfileCompatibleWithAgent(selectedProfile, option.agentId);
+                                            const cliOk = cliAvailability.available[option.agentId] !== false;
                                             const disabledReason = !compatible
                                                 ? t('newSession.aiBackendNotCompatibleWithSelectedProfile')
                                                 : !cliOk
-                                                    ? t('newSession.aiBackendCliNotDetectedOnMachine', { cli: option.title })
+                                                    ? t('newSession.aiBackendCliNotDetectedOnMachine', { cli: t(option.titleKey) })
                                                     : null;
 
-                                            const isSelected = agentType === option.key;
+                                            const isSelected = agentType === option.agentId;
 
                                             return (
                                                 <Item
-                                                    key={option.key}
-                                                    title={option.title}
-                                                    subtitle={disabledReason ?? option.subtitle}
-                                                    leftElement={<Ionicons name={option.icon} size={24} color={theme.colors.textSecondary} />}
+                                                    key={option.agentId}
+                                                    title={t(option.titleKey)}
+                                                    subtitle={disabledReason ?? t(option.subtitleKey)}
+                                                    leftElement={<Ionicons name={option.iconName as any} size={24} color={theme.colors.textSecondary} />}
                                                     selected={isSelected}
                                                     disabled={!!disabledReason}
                                                     onPress={() => {
@@ -734,7 +429,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                                             );
                                                             return;
                                                         }
-                                                        setAgentType(option.key);
+                                                        setAgentType(option.agentId);
                                                     }}
                                                     rightElement={(
                                                         <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
@@ -993,6 +688,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                 placeholder={t('session.inputPlaceholder')}
                                 autocompletePrefixes={emptyAutocompletePrefixes}
                                 autocompleteSuggestions={emptyAutocompleteSuggestions}
+                                inputMaxHeight={inputMaxHeight}
                                 agentType={agentType}
                                 onAgentClick={handleAgentInputAgentClick}
                                 permissionMode={permissionMode}

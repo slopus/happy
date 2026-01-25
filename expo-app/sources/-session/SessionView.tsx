@@ -1,6 +1,5 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { AgentInput } from '@/components/AgentInput';
-import { PendingQueueIndicator } from '@/components/PendingQueueIndicator';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
@@ -13,8 +12,11 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort, resumeSession } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionPendingMessages, useSessionUsage, useSetting } from '@/sync/storage';
-import { canResumeSessionWithOptions } from '@/utils/agentCapabilities';
+import { storage, useIsDataReady, useLocalSetting, useMachine, useRealtimeStatus, useSessionMessages, useSessionPendingMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { canResumeSessionWithOptions, getAgentVendorResumeId } from '@/utils/agentCapabilities';
+import { DEFAULT_AGENT_ID, getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
+import { buildResumeSessionExtrasFromUiState, getResumePreflightIssues } from '@/agents/registryUiBehavior';
+import { useResumeCapabilityOptions } from '@/agents/useResumeCapabilityOptions';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -24,8 +26,18 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { formatPathRelativeToHome, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import { CAPABILITIES_REQUEST_RESUME_CODEX } from '@/capabilities/requests';
+import { getCodexAcpDepData } from '@/capabilities/codexAcpDep';
+import { getCodexMcpResumeDepData } from '@/capabilities/codexMcpResume';
+import { getMachineCapabilitiesSnapshot, prefetchMachineCapabilities } from '@/hooks/useMachineCapabilitiesCache';
 import type { ModelMode, PermissionMode } from '@/sync/permissionTypes';
 import { computePendingActivityAt } from '@/sync/unread';
+import { getPendingQueueWakeResumeOptions } from '@/sync/pendingQueueWake';
+import { getPermissionModeOverrideForSpawn } from '@/sync/permissionModeOverride';
+import { buildResumeSessionBaseOptionsFromSession } from '@/sync/resumeSessionBase';
+import { chooseSubmitMode } from '@/sync/submitMode';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { getInactiveSessionUiState } from './sessionResumeUi';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -185,22 +197,41 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
     // Get permission mode from session object, default to 'default'
     const permissionMode = session.permissionMode || 'default';
-    // Get model mode from session object - for Gemini sessions use explicit model, default to gemini-2.5-pro
-    const isGeminiSession = session.metadata?.flavor === 'gemini';
-    const modelMode = session.modelMode || (isGeminiSession ? 'gemini-2.5-pro' : 'default');
+    // Get model mode from session object - default is agent-specific (Gemini needs an explicit default)
+    const agentId = resolveAgentIdFromFlavor(session.metadata?.flavor) ?? DEFAULT_AGENT_ID;
+    const modelMode = session.modelMode || getAgentCore(agentId).model.defaultMode;
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
-    const { messages: pendingMessages, isLoaded: pendingLoaded } = useSessionPendingMessages(sessionId);
+    const { messages: pendingMessages } = useSessionPendingMessages(sessionId);
     const experiments = useSetting('experiments');
     const expFileViewer = useSetting('expFileViewer');
     const expCodexResume = useSetting('expCodexResume');
+    const expCodexAcp = useSetting('expCodexAcp');
 
     // Inactive session resume state
     const isSessionActive = session.presence === 'online';
-    const allowCodexResume = experiments && expCodexResume;
-    const isResumable = canResumeSessionWithOptions(session.metadata, { allowCodexResume });
+    const { resumeCapabilityOptions } = useResumeCapabilityOptions({
+        agentId,
+        machineId: typeof machineId === 'string' ? machineId : null,
+        experimentsEnabled: experiments === true,
+        expCodexResume: expCodexResume === true,
+        expCodexAcp: expCodexAcp === true,
+        enabled: !isSessionActive,
+    });
+    const isResumable = canResumeSessionWithOptions(session.metadata, resumeCapabilityOptions);
     const [isResuming, setIsResuming] = React.useState(false);
+
+    const machine = useMachine(typeof machineId === 'string' ? machineId : '');
+    const isMachineReachable = Boolean(machine) && isMachineOnline(machine!);
+
+    const inactiveUi = React.useMemo(() => {
+        return getInactiveSessionUiState({
+            isSessionActive,
+            isResumable,
+            isMachineOnline: isMachineReachable,
+        });
+    }, [isMachineReachable, isResumable, isSessionActive]);
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
@@ -270,13 +301,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         storage.getState().updateSessionPermissionMode(sessionId, mode);
     }, [sessionId]);
 
-    // Function to update model mode (for Gemini sessions)
+    // Function to update model mode (only for agents that expose model selection in the UI)
     const updateModelMode = React.useCallback((mode: ModelMode) => {
-        // Only Gemini model modes are configurable from the UI today.
-        if (isConfigurableModelMode(mode)) {
-            storage.getState().updateSessionModelMode(sessionId, mode);
-        }
-    }, [sessionId]);
+        const core = getAgentCore(agentId);
+        if (core.model.supportsSelection !== true) return;
+        if (!core.model.allowedModes.includes(mode)) return;
+        storage.getState().updateSessionModelMode(sessionId, mode);
+    }, [agentId, sessionId]);
 
     // Handle resuming an inactive session
     const handleResumeSession = React.useCallback(async () => {
@@ -284,24 +315,85 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             Modal.alert(t('common.error'), t('session.resumeFailed'));
             return;
         }
-
-        if (session.metadata.flavor !== 'claude' && session.metadata.flavor !== 'codex' && session.metadata.flavor !== 'gemini') {
+        if (!canResumeSessionWithOptions(session.metadata, resumeCapabilityOptions)) {
             Modal.alert(t('common.error'), t('session.resumeFailed'));
             return;
         }
-        if (session.metadata.flavor === 'codex' && !allowCodexResume) {
+        if (!isMachineReachable) {
+            Modal.alert(t('common.error'), t('session.machineOfflineCannotResume'));
+            return;
+        }
+
+        const sessionEncryptionKeyBase64 = sync.getSessionEncryptionKeyBase64ForResume(sessionId);
+        if (!sessionEncryptionKeyBase64) {
             Modal.alert(t('common.error'), t('session.resumeFailed'));
             return;
         }
 
         setIsResuming(true);
         try {
-            const result = await resumeSession({
+            const permissionOverride = getPermissionModeOverrideForSpawn(session);
+            const base = buildResumeSessionBaseOptionsFromSession({
                 sessionId,
-                machineId: session.metadata.machineId,
-                directory: session.metadata.path,
-                agent: session.metadata.flavor,
-                experimentalCodexResume: allowCodexResume,
+                session,
+                resumeCapabilityOptions,
+                permissionOverride,
+            });
+            if (!base) {
+                Modal.alert(t('common.error'), t('session.resumeFailed'));
+                return;
+            }
+
+            if (agentId === 'codex' && experiments === true && (expCodexResume === true || expCodexAcp === true)) {
+                try {
+                    await prefetchMachineCapabilities({
+                        machineId: base.machineId,
+                        request: CAPABILITIES_REQUEST_RESUME_CODEX,
+                    });
+                } catch {
+                    // Non-blocking; fall back to attempting resume (pending queue preserves user message).
+                }
+
+                const snapshot = getMachineCapabilitiesSnapshot(base.machineId);
+                const results = snapshot?.response.results;
+                const codexAcpDep = getCodexAcpDepData(results);
+                const codexMcpResumeDep = getCodexMcpResumeDepData(results);
+
+                const issues = getResumePreflightIssues({
+                    agentId: 'codex',
+                    experimentsEnabled: true,
+                    expCodexResume: expCodexResume === true,
+                    expCodexAcp: expCodexAcp === true,
+                    deps: {
+                        codexAcpInstalled: typeof codexAcpDep?.installed === 'boolean' ? codexAcpDep.installed : null,
+                        codexMcpResumeInstalled: typeof codexMcpResumeDep?.installed === 'boolean' ? codexMcpResumeDep.installed : null,
+                    },
+                });
+
+                const blockingIssue = issues[0] ?? null;
+                if (blockingIssue) {
+                    const openMachine = await Modal.confirm(
+                        t(blockingIssue.titleKey),
+                        t(blockingIssue.messageKey),
+                        { confirmText: t(blockingIssue.confirmTextKey) }
+                    );
+                    if (openMachine && blockingIssue.action === 'openMachine') {
+                        router.push(`/machine/${base.machineId}` as any);
+                    }
+                    return;
+                }
+            }
+
+            const result = await resumeSession({
+                ...base,
+                sessionEncryptionKeyBase64,
+                sessionEncryptionVariant: 'dataKey',
+                ...buildResumeSessionExtrasFromUiState({
+                    agentId,
+                    experimentsEnabled: experiments === true,
+                    expCodexResume: expCodexResume === true,
+                    expCodexAcp: expCodexAcp === true,
+                }),
             });
 
             if (result.type === 'error') {
@@ -313,7 +405,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         } finally {
             setIsResuming(false);
         }
-    }, [allowCodexResume, sessionId, session.metadata]);
+    }, [agentId, experiments, expCodexAcp, expCodexResume, resumeCapabilityOptions, router, session, sessionId]);
 
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
@@ -367,16 +459,40 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         gitStatusSync.getSync(sessionId);
     }, [sessionId, realtimeStatus]);
 
+    const showInactiveNotResumableNotice = inactiveUi.noticeKind === 'not-resumable';
+    const showMachineOfflineNotice = inactiveUi.noticeKind === 'machine-offline';
+    const providerName = getAgentCore(agentId).connectedService?.name ?? t('status.unknown');
+    const machineName = machine?.metadata?.displayName ?? machine?.metadata?.host ?? t('status.unknown');
+
+    const bottomNotice = React.useMemo(() => {
+        if (showInactiveNotResumableNotice) {
+            return {
+                title: t('session.inactiveNotResumableNoticeTitle'),
+                body: t('session.inactiveNotResumableNoticeBody', { provider: providerName }),
+            };
+        }
+        if (showMachineOfflineNotice) {
+            return {
+                title: t('session.machineOfflineNoticeTitle'),
+                body: t('session.machineOfflineNoticeBody', { machine: machineName }),
+            };
+        }
+        return null;
+    }, [machineName, providerName, showInactiveNotResumableNotice, showMachineOfflineNotice]);
+
     let content = (
         <>
             <Deferred>
-                {messages.length > 0 && (
-                    <ChatList session={session} />
+                {(messages.length > 0 || pendingMessages.length > 0) && (
+                    <ChatList
+                        session={session}
+                        bottomNotice={bottomNotice}
+                    />
                 )}
             </Deferred>
         </>
     );
-    const placeholder = messages.length === 0 ? (
+    const placeholder = (messages.length === 0 && pendingMessages.length === 0) ? (
         <>
             {isLoaded ? (
                 <EmptyMessages session={session} />
@@ -387,21 +503,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     ) : null;
 
     // Determine the status text to show for inactive sessions
-    const inactiveStatusText = !isSessionActive
-        ? (isResumable ? t('session.inactiveResumable') : t('session.inactiveNotResumable'))
-        : null;
+    const inactiveStatusText = inactiveUi.inactiveStatusTextKey ? t(inactiveUi.inactiveStatusTextKey) : null;
 
-    const input = (
+    const shouldShowInput = inactiveUi.shouldShowInput;
+
+    const input = shouldShowInput ? (
         <View>
-            <PendingQueueIndicator
-                sessionId={sessionId}
-                count={
-                    pendingLoaded
-                        ? pendingMessages.length
-                        : ((session.metadata?.messageQueueV1?.queue?.length ?? 0) +
-                            (session.metadata?.messageQueueV1?.inFlight ? 1 : 0))
-                }
-            />
             <AgentInput
                 placeholder={t('session.inputPlaceholder')}
                 value={message}
@@ -436,6 +543,49 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     clearDraft();
                     trackMessageSent();
 
+                    const configuredMode = storage.getState().settings.sessionMessageSendMode;
+                    const submitMode = chooseSubmitMode({ configuredMode, session });
+
+                    if (submitMode === 'server_pending') {
+                        void (async () => {
+                            try {
+                                await sync.enqueuePendingMessage(sessionId, text);
+                            } catch (e) {
+                                setMessage(text);
+                                Modal.alert(t('common.error'), e instanceof Error ? e.message : t('errors.failedToSendMessage'));
+                                return;
+                            }
+
+                            const wakeOpts = getPendingQueueWakeResumeOptions({
+                                sessionId,
+                                session,
+                                resumeCapabilityOptions,
+                                permissionOverride: getPermissionModeOverrideForSpawn(session),
+                            });
+                            if (!wakeOpts) return;
+
+                            try {
+                                const sessionEncryptionKeyBase64 = sync.getSessionEncryptionKeyBase64ForResume(sessionId);
+                                if (!sessionEncryptionKeyBase64) {
+                                    Modal.alert(t('common.error'), t('session.resumeFailed'));
+                                    return;
+                                }
+
+                                const result = await resumeSession({
+                                    ...wakeOpts,
+                                    sessionEncryptionKeyBase64,
+                                    sessionEncryptionVariant: 'dataKey',
+                                });
+                                if (result.type === 'error') {
+                                    Modal.alert(t('common.error'), result.errorMessage);
+                                }
+                            } catch {
+                                Modal.alert(t('common.error'), t('session.resumeFailed'));
+                            }
+                        })();
+                        return;
+                    }
+
                     // If session is inactive but resumable, resume it and send the message through the agent.
                     if (!isSessionActive && isResumable) {
                         void (async () => {
@@ -462,7 +612,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                         }
                     })();
                 }}
-                isSendDisabled={(!isSessionActive && !isResumable) || isResuming}
+                isSendDisabled={!shouldShowInput || isResuming}
                 onMicPress={micButtonState.onMicPress}
                 isMicActive={micButtonState.isMicActive}
                 onAbort={() => sessionAbort(sessionId)}
@@ -487,7 +637,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 alwaysShowContextSize={alwaysShowContextSize}
             />
         </View>
-    );
+    ) : null;
 
 
     return (

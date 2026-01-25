@@ -94,18 +94,18 @@ export default React.memo(() => {
                 />
             )}
             <Deferred>
-                <FullView message={message} />
+                <FullView message={message} sessionId={sessionId!} metadata={(session as any)?.metadata ?? null} />
             </Deferred>
         </>
     );
 });
 
-function FullView(props: { message: Message }) {
+function FullView(props: { message: Message; sessionId: string; metadata: any }) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     
     if (props.message.kind === 'tool-call') {
-        return <ToolFullView tool={props.message.tool} messages={props.message.children} />
+        return <ToolFullView tool={props.message.tool} messages={props.message.children} sessionId={props.sessionId} metadata={props.metadata} />
     }
     if (props.message.kind === 'agent-text') {
         return (

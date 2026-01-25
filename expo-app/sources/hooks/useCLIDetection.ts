@@ -3,21 +3,16 @@ import { useMachine } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import type { CapabilityDetectResult, CliCapabilityData, TmuxCapabilityData } from '@/sync/capabilitiesProtocol';
+import { AGENT_IDS, type AgentId, getAgentCore } from '@/agents/registryCore';
 
-interface CLIAvailability {
-    claude: boolean | null; // null = unknown/loading, true = installed, false = not installed
-    codex: boolean | null;
-    gemini: boolean | null;
+export type CLIAvailability = Readonly<{
+    available: Readonly<Record<AgentId, boolean | null>>; // null = unknown/loading, true = installed, false = not installed
+    login: Readonly<Record<AgentId, boolean | null>>; // null = unknown/unsupported
     tmux: boolean | null;
-    login: {
-        claude: boolean | null; // null = unknown/unsupported
-        codex: boolean | null;
-        gemini: boolean | null;
-    };
     isDetecting: boolean; // Explicit loading state
     timestamp: number; // When detection completed
     error?: string; // Detection error message (for debugging)
-}
+}>;
 
 export interface UseCLIDetectionOptions {
     /**
@@ -59,13 +54,13 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
     const includeLoginStatus = Boolean(options?.includeLoginStatus);
     const request = useMemo(() => {
         if (!includeLoginStatus) return { checklistId: 'new-session' as const };
+        const overrides: Record<string, { params: { includeLoginStatus: true } }> = {};
+        for (const agentId of AGENT_IDS) {
+            overrides[`cli.${getAgentCore(agentId).cli.detectKey}`] = { params: { includeLoginStatus: true } };
+        }
         return {
             checklistId: 'new-session' as const,
-            overrides: {
-                'cli.codex': { params: { includeLoginStatus: true } },
-                'cli.claude': { params: { includeLoginStatus: true } },
-                'cli.gemini': { params: { includeLoginStatus: true } },
-            },
+            overrides: overrides as any,
         };
     }, [includeLoginStatus]);
 
@@ -80,12 +75,16 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
 
     return useMemo((): CLIAvailability => {
         if (!machineId || !isOnline) {
+            const available: Record<AgentId, boolean | null> = {} as any;
+            const login: Record<AgentId, boolean | null> = {} as any;
+            for (const agentId of AGENT_IDS) {
+                available[agentId] = null;
+                login[agentId] = null;
+            }
             return {
-                claude: null,
-                codex: null,
-                gemini: null,
+                available,
+                login,
                 tmux: null,
-                login: { claude: null, codex: null, gemini: null },
                 isDetecting: false,
                 timestamp: 0,
             };
@@ -101,6 +100,7 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
                         : undefined;
 
         const results = snapshot?.response.results ?? {};
+        const resultsById = results as Record<string, CapabilityDetectResult | undefined>;
         const now = Date.now();
         const latestCheckedAt = Math.max(
             0,
@@ -118,28 +118,34 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
         }
 
         if (!snapshot) {
+            const available: Record<AgentId, boolean | null> = {} as any;
+            const login: Record<AgentId, boolean | null> = {} as any;
+            for (const agentId of AGENT_IDS) {
+                available[agentId] = null;
+                login[agentId] = null;
+            }
             return {
-                claude: null,
-                codex: null,
-                gemini: null,
+                available,
+                login,
                 tmux: null,
-                login: { claude: null, codex: null, gemini: null },
                 isDetecting: cached.status === 'loading',
                 timestamp: 0,
                 ...(cached.status === 'error' ? { error: 'Detection error' } : {}),
             };
         }
 
+        const available: Record<AgentId, boolean | null> = {} as any;
+        const login: Record<AgentId, boolean | null> = {} as any;
+        for (const agentId of AGENT_IDS) {
+            const capId = `cli.${getAgentCore(agentId).cli.detectKey}`;
+            available[agentId] = readCliAvailable(resultsById[capId]);
+            login[agentId] = includeLoginStatus ? readCliLogin(resultsById[capId]) : null;
+        }
+
         return {
-            claude: readCliAvailable(results['cli.claude']),
-            codex: readCliAvailable(results['cli.codex']),
-            gemini: readCliAvailable(results['cli.gemini']),
+            available,
+            login,
             tmux: readTmuxAvailable(results['tool.tmux']),
-            login: {
-                claude: includeLoginStatus ? readCliLogin(results['cli.claude']) : null,
-                codex: includeLoginStatus ? readCliLogin(results['cli.codex']) : null,
-                gemini: includeLoginStatus ? readCliLogin(results['cli.gemini']) : null,
-            },
             isDetecting: cached.status === 'loading',
             timestamp: lastSuccessfulDetectAtRef.current || latestCheckedAt || fallbackDetectAtRef.current || 0,
         };

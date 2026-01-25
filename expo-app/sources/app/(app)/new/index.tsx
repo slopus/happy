@@ -5,16 +5,15 @@ import { useAllMachines, storage, useSetting, useSettingMutable } from '@/sync/s
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useRouter, useLocalSearchParams, useNavigation, usePathname } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { machineCapabilitiesInvoke, machineSpawnNewSession } from '@/sync/ops';
+import { machineSpawnNewSession } from '@/sync/ops';
 import { Modal } from '@/modal';
-import { BaseModal } from '@/modal/components/BaseModal';
 import { sync } from '@/sync/sync';
 import { SessionTypeSelectorRows } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
@@ -22,12 +21,16 @@ import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
 import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
 import { mapPermissionModeAcrossAgents } from '@/sync/permissionMapping';
-import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
-import { getBuiltInProfile, DEFAULT_PROFILES, getProfilePrimaryCli } from '@/sync/profileUtils';
+import { readAccountPermissionDefaults, resolveNewSessionDefaultPermissionMode } from '@/sync/permissionDefaults';
+import { AIBackendProfile, getProfileEnvironmentVariables, isProfileCompatibleWithAgent } from '@/sync/settings';
+import { getBuiltInProfile, DEFAULT_PROFILES, getProfilePrimaryCli, getProfileSupportedAgentIds, isProfileCompatibleWithAnyAgent } from '@/sync/profileUtils';
 import { AgentInput } from '@/components/AgentInput';
 import { StyleSheet } from 'react-native-unistyles';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
 import { getRequiredSecretEnvVarNames } from '@/sync/profileSecrets';
+import { DEFAULT_AGENT_ID, getAgentCore, isAgentId, resolveAgentIdFromCliDetectKey, type AgentId } from '@/agents/registryCore';
+import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
+import { applyCliWarningDismissal, isCliWarningDismissed } from '@/agents/cliWarnings';
 
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
@@ -44,12 +47,23 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getRecentPathsForMachine } from '@/utils/recentPaths';
 import { useMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
 import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
+import { getMissingRequiredConfigEnvVarNames } from '@/utils/profileConfigRequirements';
 import { InteractionManager } from 'react-native';
 import { NewSessionWizard } from './NewSessionWizard';
 import { prefetchMachineCapabilities, prefetchMachineCapabilitiesIfStale, useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
+import { CAPABILITIES_REQUEST_NEW_SESSION } from '@/capabilities/requests';
+import { getCodexMcpResumeDepData } from '@/capabilities/codexMcpResume';
+import { getCodexAcpDepData } from '@/capabilities/codexAcpDep';
+import { getInstallableDepRegistryEntries } from '@/capabilities/installableDepsRegistry';
 import { PopoverBoundaryProvider } from '@/components/PopoverBoundary';
 import { resolveTerminalSpawnOptions } from '@/sync/terminalSettings';
 import { canAgentResume } from '@/utils/agentCapabilities';
+import type { CapabilityId } from '@/sync/capabilitiesProtocol';
+import { buildResumeCapabilityOptionsFromUiState, buildSpawnSessionExtrasFromUiState, getNewSessionPreflightIssues, getNewSessionRelevantInstallableDepKeys, getResumeRuntimeSupportPrefetchPlan } from '@/agents/registryUiBehavior';
+import { buildAcpLoadSessionPrefetchRequest, shouldPrefetchAcpCapabilities } from '@/agents/acpRuntimeResume';
+import { applySecretRequirementResult } from '@/utils/secretRequirementApply';
+import type { SecretChoiceByProfileIdByEnvVarName } from '@/utils/secretRequirementApply';
+import { shouldAutoPromptSecretRequirement } from '@/utils/secretRequirementPromptEligibility';
 
 // Optimized profile lookup utility
 const useProfileMap = (profiles: AIBackendProfile[]) => {
@@ -231,6 +245,7 @@ function NewSessionScreen() {
     const { theme, rt } = useUnistyles();
     const router = useRouter();
     const navigation = useNavigation();
+    const pathname = usePathname();
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -248,6 +263,7 @@ function NewSessionScreen() {
         resumeSessionId: resumeSessionIdParam,
         secretId: secretIdParam,
         secretSessionOnlyId,
+        secretRequirementResultId,
     } = useLocalSearchParams<{
         prompt?: string;
         dataId?: string;
@@ -257,6 +273,7 @@ function NewSessionScreen() {
         resumeSessionId?: string;
         secretId?: string;
         secretSessionOnlyId?: string;
+        secretRequirementResultId?: string;
     }>();
 
     // Try to get data from temporary store first
@@ -283,19 +300,70 @@ function NewSessionScreen() {
     // Settings and state
     const recentMachinePaths = useSetting('recentMachinePaths');
     const lastUsedAgent = useSetting('lastUsedAgent');
+    const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
 
     // A/B Test Flag - determines which wizard UI to show
     // Control A (false): Simpler AgentInput-driven layout
     // Variant B (true): Enhanced profile-first wizard with sections
     const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
+
+    const previousHappyRouteRef = React.useRef<string | undefined>(undefined);
+    const hasCapturedPreviousHappyRouteRef = React.useRef(false);
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        if (typeof document === 'undefined') return;
+
+        const root = document.documentElement;
+        if (!hasCapturedPreviousHappyRouteRef.current) {
+            previousHappyRouteRef.current = root.dataset.happyRoute;
+            hasCapturedPreviousHappyRouteRef.current = true;
+        }
+
+        const previous = previousHappyRouteRef.current;
+        if (pathname === '/new') {
+            root.dataset.happyRoute = 'new';
+        } else {
+            if (previous === undefined) {
+                delete root.dataset.happyRoute;
+            } else {
+                root.dataset.happyRoute = previous;
+            }
+        }
+        return () => {
+            if (pathname !== '/new') return;
+            if (root.dataset.happyRoute !== 'new') return;
+            if (previous === undefined) {
+                delete root.dataset.happyRoute;
+            } else {
+                root.dataset.happyRoute = previous;
+            }
+        };
+    }, [pathname]);
+
+    const sessionPromptInputMaxHeight = React.useMemo(() => {
+        if (Platform.OS !== 'web') return undefined;
+
+        const ratio = useEnhancedSessionWizard ? 0.25 : 0.35;
+        const cap = useEnhancedSessionWizard ? 240 : 340;
+        return Math.max(120, Math.min(cap, Math.round(screenHeight * ratio)));
+    }, [screenHeight, useEnhancedSessionWizard]);
     const useProfiles = useSetting('useProfiles');
     const [secrets, setSecrets] = useSettingMutable('secrets');
     const [secretBindingsByProfileId, setSecretBindingsByProfileId] = useSettingMutable('secretBindingsByProfileId');
-    const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
+    const sessionDefaultPermissionModeByAgent = useSetting('sessionDefaultPermissionModeByAgent');
     const experimentsEnabled = useSetting('experiments');
-    const expGemini = useSetting('expGemini');
+    const experimentalAgents = useSetting('experimentalAgents');
     const expSessionType = useSetting('expSessionType');
     const expCodexResume = useSetting('expCodexResume');
+    const expCodexAcp = useSetting('expCodexAcp');
+    const resumeCapabilityOptions = React.useMemo(() => {
+        return buildResumeCapabilityOptionsFromUiState({
+            experimentsEnabled: experimentsEnabled === true,
+            expCodexResume: expCodexResume === true,
+            expCodexAcp: expCodexAcp === true,
+            results: undefined,
+        });
+    }, [expCodexAcp, expCodexResume, experimentsEnabled]);
     const useMachinePickerSearch = useSetting('useMachinePickerSearch');
     const usePathPickerSearch = useSetting('usePathPickerSearch');
     const [profiles, setProfiles] = useSettingMutable('profiles');
@@ -306,6 +374,8 @@ function NewSessionScreen() {
     const [dismissedCLIWarnings, setDismissedCLIWarnings] = useSettingMutable('dismissedCLIWarnings');
     const terminalUseTmux = useSetting('sessionUseTmux');
     const terminalTmuxByMachineId = useSetting('sessionTmuxByMachineId');
+
+    const enabledAgentIds = useEnabledAgentIds();
 
     useFocusEffect(
         React.useCallback(() => {
@@ -353,10 +423,10 @@ function NewSessionScreen() {
      * - value === savedSecretId means “use saved secret”
      * - null/undefined means “no explicit choice yet”
      */
-    const [selectedSecretIdByProfileIdByEnvVarName, setSelectedSecretIdByProfileIdByEnvVarName] = React.useState<Record<string, Record<string, string | null>>>(() => {
+    const [selectedSecretIdByProfileIdByEnvVarName, setSelectedSecretIdByProfileIdByEnvVarName] = React.useState<SecretChoiceByProfileIdByEnvVarName>(() => {
         const raw = persistedDraft?.selectedSecretIdByProfileIdByEnvVarName;
         if (!raw || typeof raw !== 'object') return {};
-        const out: Record<string, Record<string, string | null>> = {};
+        const out: SecretChoiceByProfileIdByEnvVarName = {};
         for (const [profileId, byEnv] of Object.entries(raw)) {
             if (!byEnv || typeof byEnv !== 'object') continue;
             const inner: Record<string, string | null> = {};
@@ -371,10 +441,10 @@ function NewSessionScreen() {
     /**
      * Session-only secrets (never persisted in plaintext), keyed by profileId then env var name.
      */
-    const [sessionOnlySecretValueByProfileIdByEnvVarName, setSessionOnlySecretValueByProfileIdByEnvVarName] = React.useState<Record<string, Record<string, string | null>>>(() => {
+    const [sessionOnlySecretValueByProfileIdByEnvVarName, setSessionOnlySecretValueByProfileIdByEnvVarName] = React.useState<SecretChoiceByProfileIdByEnvVarName>(() => {
         const raw = persistedDraft?.sessionOnlySecretValueEncByProfileIdByEnvVarName;
         if (!raw || typeof raw !== 'object') return {};
-        const out: Record<string, Record<string, string | null>> = {};
+        const out: SecretChoiceByProfileIdByEnvVarName = {};
         for (const [profileId, byEnv] of Object.entries(raw)) {
             if (!byEnv || typeof byEnv !== 'object') continue;
             const inner: Record<string, string | null> = {};
@@ -416,7 +486,17 @@ function NewSessionScreen() {
         }
     }, [useProfiles, selectedProfileId]);
 
-    const allowGemini = experimentsEnabled && expGemini;
+    React.useEffect(() => {
+        if (!useProfiles) return;
+        if (!selectedProfileId) return;
+        const selected = profileMap.get(selectedProfileId) ?? getBuiltInProfile(selectedProfileId);
+        if (!selected) {
+            setSelectedProfileId(null);
+            return;
+        }
+        if (isProfileCompatibleWithAnyAgent(selected, enabledAgentIds)) return;
+        setSelectedProfileId(null);
+    }, [enabledAgentIds, profileMap, selectedProfileId, useProfiles]);
 
     // AgentInput autocomplete is unused on this screen today, but passing a new
     // function/array each render forces autocomplete hooks to re-sync.
@@ -424,33 +504,33 @@ function NewSessionScreen() {
     const emptyAutocompletePrefixes = React.useMemo(() => [], []);
     const emptyAutocompleteSuggestions = React.useCallback(async () => [], []);
 
-    const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
-        // Check if agent type was provided in temp data
-        if (tempSessionData?.agentType) {
-            if (tempSessionData.agentType === 'gemini' && !allowGemini) {
-                return 'claude';
-            }
-            return tempSessionData.agentType;
+    const [agentType, setAgentType] = React.useState<AgentId>(() => {
+        const fromTemp = tempSessionData?.agentType;
+        if (isAgentId(fromTemp) && enabledAgentIds.includes(fromTemp)) {
+            return fromTemp;
         }
-        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex' || lastUsedAgent === 'gemini') {
-            if (lastUsedAgent === 'gemini' && !allowGemini) {
-                return 'claude';
-            }
+        if (isAgentId(lastUsedAgent) && enabledAgentIds.includes(lastUsedAgent)) {
             return lastUsedAgent;
         }
-        return 'claude';
+        return enabledAgentIds[0] ?? DEFAULT_AGENT_ID;
     });
 
-    // Agent cycling handler (for cycling through claude -> codex -> gemini)
+    React.useEffect(() => {
+        if (enabledAgentIds.includes(agentType)) return;
+        setAgentType(enabledAgentIds[0] ?? DEFAULT_AGENT_ID);
+    }, [agentType, enabledAgentIds]);
+
+    // Agent cycling handler (cycles through enabled agents)
     // Note: Does NOT persist immediately - persistence is handled by useEffect below
     const handleAgentCycle = React.useCallback(() => {
         setAgentType(prev => {
-            // Cycle: claude -> codex -> (gemini?) -> claude
-            if (prev === 'claude') return 'codex';
-            if (prev === 'codex') return allowGemini ? 'gemini' : 'claude';
-            return 'claude';
+            const enabled = enabledAgentIds;
+            if (enabled.length === 0) return prev;
+            const idx = enabled.indexOf(prev);
+            if (idx < 0) return enabled[0] ?? prev;
+            return enabled[(idx + 1) % enabled.length] ?? prev;
         });
-    }, [allowGemini]);
+    }, [enabledAgentIds]);
 
     // Persist agent selection changes, but avoid no-op writes (especially on initial mount).
     // `sync.applySettings()` triggers a server POST, so only write when it actually changed.
@@ -461,18 +541,17 @@ function NewSessionScreen() {
 
     const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
-        // Initialize with last used permission mode if valid, otherwise default to 'default'
-        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-        const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+        const accountDefaults = readAccountPermissionDefaults(sessionDefaultPermissionModeByAgent, enabledAgentIds);
 
-        if (lastUsedPermissionMode) {
-            if ((agentType === 'codex' || agentType === 'gemini') && validCodexGeminiModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
-            }
-        }
-        return 'default';
+        // If a profile is pre-selected (e.g. from draft), use its override; otherwise fall back to account defaults.
+        const profile = selectedProfileId ? (profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId)) : null;
+
+        return resolveNewSessionDefaultPermissionMode({
+            agentType,
+            accountDefaults,
+            profileDefaults: profile ? profile.defaultPermissionModeByAgent : null,
+            legacyProfileDefaultPermissionMode: (profile?.defaultPermissionMode as PermissionMode | undefined) ?? undefined,
+        });
     });
 
     // NOTE: Permission mode reset on agentType change is handled by the validation useEffect below (lines ~670-681)
@@ -480,22 +559,12 @@ function NewSessionScreen() {
     // A duplicate unconditional reset here was removed to prevent race conditions.
 
     const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
-    const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
-    const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
-    // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-    const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-
-    if (persistedDraft?.modelMode) {
-        const draftMode = persistedDraft.modelMode as ModelMode;
-        if (agentType === 'codex' && validCodexModes.includes(draftMode)) {
-            return draftMode;
-        } else if (agentType === 'claude' && validClaudeModes.includes(draftMode)) {
-            return draftMode;
-        } else if (agentType === 'gemini' && validGeminiModes.includes(draftMode)) {
-            return draftMode;
+        const core = getAgentCore(agentType);
+        const draftMode = typeof persistedDraft?.modelMode === 'string' ? persistedDraft.modelMode : null;
+        if (draftMode && (core.model.allowedModes as readonly string[]).includes(draftMode)) {
+            return draftMode as ModelMode;
         }
-    }
-        return agentType === 'codex' ? 'gpt-5-codex-high' : agentType === 'gemini' ? 'gemini-2.5-pro' : 'default';
+        return core.model.defaultMode;
     });
     const modelOptions = React.useMemo(() => getModelOptionsForAgentType(agentType), [agentType]);
 
@@ -568,6 +637,25 @@ function NewSessionScreen() {
             return;
         }
         isSecretRequirementModalOpenRef.current = true;
+
+        if (Platform.OS !== 'web') {
+            // On iOS, /new is presented as a navigation modal. Rendering portal-style overlays from the
+            // app root (ModalProvider) can appear behind the navigation modal while still blocking touches.
+            // Present the secret requirement UI as a navigation modal screen within the same stack instead.
+            const secretEnvVarNames = satisfaction.items.map((i) => i.envVarName).filter(Boolean);
+            router.push({
+                pathname: '/new/pick/secret-requirement',
+                params: {
+                    profileId: profile.id,
+                    machineId: selectedMachineId ?? '',
+                    secretEnvVarName: targetEnvVarName,
+                    secretEnvVarNames: secretEnvVarNames.join(','),
+                    revertOnCancel: options.revertOnCancel ? '1' : '0',
+                    selectedSecretIdByEnvVarName: encodeURIComponent(JSON.stringify(selectedSecretIdByEnvVarName)),
+                },
+            } as any);
+            return;
+        }
 
         const selectedRaw = selectedSecretIdByEnvVarName[targetEnvVarName];
         const selectedSavedSecretIdForProfile =
@@ -692,6 +780,7 @@ function NewSessionScreen() {
         selectedProfileId,
         sessionOnlySecretValueByProfileIdByEnvVarName,
         setSecretBindingsByProfileId,
+        router,
     ]);
 
     const hasUserSelectedPermissionModeRef = React.useRef(false);
@@ -701,9 +790,9 @@ function NewSessionScreen() {
     }, [permissionMode]);
 
     const applyPermissionMode = React.useCallback((mode: PermissionMode, source: 'user' | 'auto') => {
-        setPermissionMode(mode);
-        sync.applySettings({ lastUsedPermissionMode: mode });
+        setPermissionMode((prev) => (prev === mode ? prev : mode));
         if (source === 'user') {
+            sync.applySettings({ lastUsedPermissionMode: mode });
             hasUserSelectedPermissionModeRef.current = true;
         }
     }, []);
@@ -791,7 +880,7 @@ function NewSessionScreen() {
     const { state: selectedMachineCapabilities } = useMachineCapabilitiesCache({
         machineId: selectedMachineId,
         enabled: false,
-        request: { checklistId: 'new-session' },
+        request: CAPABILITIES_REQUEST_NEW_SESSION,
     });
 
     const tmuxRequested = React.useMemo(() => {
@@ -800,18 +889,6 @@ function NewSessionScreen() {
             machineId: selectedMachineId,
         }));
     }, [selectedMachineId, terminalTmuxByMachineId, terminalUseTmux]);
-
-    const wantsCodexResume = React.useMemo(() => {
-        return (
-            experimentsEnabled &&
-            expCodexResume &&
-            agentType === 'codex' &&
-            resumeSessionId.trim().length > 0 &&
-            canAgentResume(agentType, { allowCodexResume: true })
-        );
-    }, [agentType, canAgentResume, expCodexResume, experimentsEnabled, resumeSessionId]);
-
-    const [isInstallingCodexResume, setIsInstallingCodexResume] = React.useState(false);
 
     const selectedMachineCapabilitiesSnapshot = React.useMemo(() => {
         return selectedMachineCapabilities.status === 'loaded'
@@ -823,108 +900,102 @@ function NewSessionScreen() {
                     : undefined;
     }, [selectedMachineCapabilities]);
 
-    const systemCodexVersion = React.useMemo(() => {
-        const result = selectedMachineCapabilitiesSnapshot?.response.results['cli.codex'];
-        if (!result || !result.ok) return null;
-        const data = result.data as any;
-        if (data?.available !== true) return null;
-        return typeof data.version === 'string' ? data.version : null;
-    }, [selectedMachineCapabilitiesSnapshot]);
-
-    const codexResumeDep = React.useMemo(() => {
-        const result = selectedMachineCapabilitiesSnapshot?.response.results['dep.codex-mcp-resume'];
-        if (!result || !result.ok) return null;
-        const data = result.data as any;
-        return data && typeof data === 'object' ? data : null;
-    }, [selectedMachineCapabilitiesSnapshot]);
-
-    const codexResumeLatestVersion = React.useMemo(() => {
-        const registry = codexResumeDep?.registry;
-        if (!registry || typeof registry !== 'object') return null;
-        if (registry.ok !== true) return null;
-        return typeof registry.latestVersion === 'string' ? registry.latestVersion : null;
-    }, [codexResumeDep]);
-
-    const codexResumeUpdateAvailable = React.useMemo(() => {
-        if (codexResumeDep?.installed !== true) return false;
-        const installed = typeof codexResumeDep.installedVersion === 'string' ? codexResumeDep.installedVersion : null;
-        const latest = codexResumeLatestVersion;
-        if (!installed || !latest) return false;
-        return installed !== latest;
-    }, [codexResumeDep, codexResumeLatestVersion]);
-
-    const checkCodexResumeUpdates = React.useCallback(() => {
-        if (!selectedMachineId) return;
-        void prefetchMachineCapabilities({
-            machineId: selectedMachineId,
-            request: { checklistId: 'resume.codex' },
-            timeoutMs: 12_000,
+    const resumeCapabilityOptionsResolved = React.useMemo(() => {
+        return buildResumeCapabilityOptionsFromUiState({
+            experimentsEnabled: experimentsEnabled === true,
+            expCodexResume: expCodexResume === true,
+            expCodexAcp: expCodexAcp === true,
+            results: selectedMachineCapabilitiesSnapshot?.response.results as any,
         });
-    }, [selectedMachineId]);
+    }, [experimentsEnabled, expCodexAcp, expCodexResume, selectedMachineCapabilitiesSnapshot]);
+
+    const codexMcpResumeDep = React.useMemo(() => {
+        return getCodexMcpResumeDepData(selectedMachineCapabilitiesSnapshot?.response.results);
+    }, [selectedMachineCapabilitiesSnapshot]);
+
+    const codexAcpDep = React.useMemo(() => {
+        return getCodexAcpDepData(selectedMachineCapabilitiesSnapshot?.response.results);
+    }, [selectedMachineCapabilitiesSnapshot]);
+
+    const wizardInstallableDeps = React.useMemo(() => {
+        if (!selectedMachineId) return [];
+        if (experimentsEnabled !== true) return [];
+        if (cliAvailability.available[agentType] !== true) return [];
+
+        const relevantKeys = getNewSessionRelevantInstallableDepKeys({
+            agentId: agentType,
+            experimentsEnabled: true,
+            expCodexResume: expCodexResume === true,
+            expCodexAcp: expCodexAcp === true,
+            resumeSessionId,
+        });
+        if (relevantKeys.length === 0) return [];
+
+        const entries = getInstallableDepRegistryEntries().filter((e) => relevantKeys.includes(e.key));
+        const results = selectedMachineCapabilitiesSnapshot?.response.results;
+        return entries.map((entry) => {
+            const depStatus = entry.getDepStatus(results);
+            const detectResult = entry.getDetectResult(results);
+            return { entry, depStatus, detectResult };
+        });
+    }, [
+        agentType,
+        cliAvailability.available,
+        expCodexAcp,
+        expCodexResume,
+        experimentsEnabled,
+        resumeSessionId,
+        selectedMachineCapabilitiesSnapshot,
+        selectedMachineId,
+    ]);
 
     React.useEffect(() => {
-        if (!wantsCodexResume) return;
+        if (!selectedMachineId) return;
+        if (!experimentsEnabled) return;
+        if (wizardInstallableDeps.length === 0) return;
+
+        const machine = machines.find((m) => m.id === selectedMachineId);
+        if (!machine || !isMachineOnline(machine)) return;
+
+        const requests = wizardInstallableDeps
+            .filter((d) =>
+                d.entry.shouldPrefetchRegistry({ requireExistingResult: true, result: d.detectResult, data: d.depStatus }),
+            )
+            .flatMap((d) => d.entry.buildRegistryDetectRequest().requests ?? []);
+
+        if (requests.length === 0) return;
+
+        InteractionManager.runAfterInteractions(() => {
+            void prefetchMachineCapabilities({
+                machineId: selectedMachineId,
+                request: { requests },
+                timeoutMs: 12_000,
+            });
+        });
+    }, [experimentsEnabled, machines, selectedMachineId, wizardInstallableDeps]);
+
+    React.useEffect(() => {
+        const results = selectedMachineCapabilitiesSnapshot?.response.results as any;
+        const plan =
+            agentType === 'codex' && experimentsEnabled && expCodexAcp === true
+                ? (() => {
+                    if (!shouldPrefetchAcpCapabilities('codex', results)) return null;
+                    return { request: buildAcpLoadSessionPrefetchRequest('codex'), timeoutMs: 8_000 };
+                })()
+                : getResumeRuntimeSupportPrefetchPlan(agentType, results);
+        if (!plan) return;
         if (!selectedMachineId) return;
         const machine = machines.find((m) => m.id === selectedMachineId);
         if (!machine || !isMachineOnline(machine)) return;
 
         InteractionManager.runAfterInteractions(() => {
-            checkCodexResumeUpdates();
+            void prefetchMachineCapabilities({
+                machineId: selectedMachineId,
+                request: plan.request,
+                timeoutMs: plan.timeoutMs,
+            });
         });
-    }, [checkCodexResumeUpdates, machines, selectedMachineId, wantsCodexResume]);
-
-    const handleInstallOrUpdateCodexResume = React.useCallback(() => {
-        if (!selectedMachineId) return;
-        if (!wantsCodexResume) return;
-
-        Modal.alert(
-            codexResumeDep?.installed
-                ? (codexResumeUpdateAvailable ? t('common.codexResumeInstallModal.updateTitle') : t('common.codexResumeInstallModal.reinstallTitle'))
-                : t('common.codexResumeInstallModal.installTitle'),
-            t('common.codexResumeInstallModal.description'),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: codexResumeDep?.installed
-                        ? (codexResumeUpdateAvailable ? t('common.codexResumeBanner.update') : t('common.codexResumeBanner.reinstall'))
-                        : t('common.codexResumeBanner.install'),
-                    onPress: async () => {
-                        setIsInstallingCodexResume(true);
-                        try {
-                            const method = codexResumeDep?.installed ? (codexResumeUpdateAvailable ? 'upgrade' : 'install') : 'install';
-                            const invoke = await machineCapabilitiesInvoke(
-                                selectedMachineId,
-                                { id: 'dep.codex-mcp-resume', method },
-                                { timeoutMs: 5 * 60_000 },
-                            );
-                            if (!invoke.supported) {
-                                Modal.alert(t('common.error'), invoke.reason === 'not-supported' ? t('deps.installNotSupported') : t('deps.installFailed'));
-                                return;
-                            }
-                            if (!invoke.response.ok) {
-                                Modal.alert(t('common.error'), invoke.response.error.message);
-                                return;
-                            }
-                            const logPath = (invoke.response.result as any)?.logPath;
-                            Modal.alert(t('common.success'), typeof logPath === 'string' ? t('deps.installLog', { path: logPath }) : t('deps.installed'));
-                            checkCodexResumeUpdates();
-                        } catch (e) {
-                            Modal.alert(t('common.error'), e instanceof Error ? e.message : t('deps.installFailed'));
-                        } finally {
-                            setIsInstallingCodexResume(false);
-                        }
-                    },
-                },
-            ],
-        );
-    }, [
-        checkCodexResumeUpdates,
-        codexResumeDep,
-        codexResumeUpdateAvailable,
-        selectedMachineId,
-        t,
-        wantsCodexResume,
-    ]);
+    }, [agentType, expCodexAcp, experimentsEnabled, machines, selectedMachineCapabilitiesSnapshot, selectedMachineId]);
 
     // Auto-correct invalid agent selection after CLI detection completes
     // This handles the case where lastUsedAgent was 'codex' but codex is not installed
@@ -932,72 +1003,48 @@ function NewSessionScreen() {
         // Only act when detection has completed (timestamp > 0)
         if (cliAvailability.timestamp === 0) return;
 
-        // Check if currently selected agent is available
-        const agentAvailable = cliAvailability[agentType];
+        const agentAvailable = cliAvailability.available[agentType];
 
-        if (agentAvailable === false) {
-            // Current agent not available - find first available
-            const availableAgent: 'claude' | 'codex' | 'gemini' =
-                cliAvailability.claude === true ? 'claude' :
-                cliAvailability.codex === true ? 'codex' :
-                (cliAvailability.gemini === true && experimentsEnabled) ? 'gemini' :
-                'claude'; // Fallback to claude (will fail at spawn with clear error)
+        if (agentAvailable !== false) return;
 
-            console.warn(`[AgentSelection] ${agentType} not available, switching to ${availableAgent}`);
-            setAgentType(availableAgent);
+        const firstInstalled = enabledAgentIds.find((id) => cliAvailability.available[id] === true);
+        const fallback = enabledAgentIds[0] ?? DEFAULT_AGENT_ID;
+        const nextAgent = firstInstalled ?? fallback;
+        setAgentType(nextAgent);
+    }, [
+        cliAvailability.timestamp,
+        cliAvailability.available,
+        agentType,
+        enabledAgentIds,
+    ]);
+
+    const [hiddenCliWarningKeys, setHiddenCliWarningKeys] = React.useState<Record<string, boolean>>({});
+
+    const isCliBannerDismissed = React.useCallback((agentId: AgentId): boolean => {
+        const warningKey = getAgentCore(agentId).cli.detectKey;
+        if (hiddenCliWarningKeys[warningKey] === true) return true;
+        return isCliWarningDismissed({ dismissed: dismissedCLIWarnings as any, machineId: selectedMachineId, warningKey });
+    }, [dismissedCLIWarnings, hiddenCliWarningKeys, selectedMachineId]);
+
+    const dismissCliBanner = React.useCallback((agentId: AgentId, scope: 'machine' | 'global' | 'temporary') => {
+        const warningKey = getAgentCore(agentId).cli.detectKey;
+        if (scope === 'temporary') {
+            setHiddenCliWarningKeys((prev) => ({ ...prev, [warningKey]: true }));
+            return;
         }
-    }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, agentType, experimentsEnabled]);
-
-    // Temporary banner dismissal (X button) - resets when component unmounts or machine changes
-    const [hiddenBanners, setHiddenBanners] = React.useState<{ claude: boolean; codex: boolean; gemini: boolean }>({ claude: false, codex: false, gemini: false });
-
-    // Helper to check if CLI warning has been dismissed (checks both global and per-machine)
-    const isWarningDismissed = React.useCallback((cli: 'claude' | 'codex' | 'gemini'): boolean => {
-        // Check global dismissal first
-        if (dismissedCLIWarnings.global?.[cli] === true) return true;
-        // Check per-machine dismissal
-        if (!selectedMachineId) return false;
-        return dismissedCLIWarnings.perMachine?.[selectedMachineId]?.[cli] === true;
-    }, [selectedMachineId, dismissedCLIWarnings]);
-
-    // Unified dismiss handler for all three button types (easy to use correctly, hard to use incorrectly)
-    const handleCLIBannerDismiss = React.useCallback((cli: 'claude' | 'codex' | 'gemini', type: 'temporary' | 'machine' | 'global') => {
-        if (type === 'temporary') {
-            // X button: Hide for current session only (not persisted)
-            setHiddenBanners(prev => ({ ...prev, [cli]: true }));
-        } else if (type === 'global') {
-            // [any machine] button: Permanent dismissal across all machines
-            setDismissedCLIWarnings({
-                ...dismissedCLIWarnings,
-                global: {
-                    ...dismissedCLIWarnings.global,
-                    [cli]: true,
-                },
-            });
-        } else {
-            // [this machine] button: Permanent dismissal for current machine only
-            if (!selectedMachineId) return;
-            const machineWarnings = dismissedCLIWarnings.perMachine?.[selectedMachineId] || {};
-            setDismissedCLIWarnings({
-                ...dismissedCLIWarnings,
-                perMachine: {
-                    ...dismissedCLIWarnings.perMachine,
-                    [selectedMachineId]: {
-                        ...machineWarnings,
-                        [cli]: true,
-                    },
-                },
-            });
-        }
-    }, [selectedMachineId, dismissedCLIWarnings, setDismissedCLIWarnings]);
+        setDismissedCLIWarnings(
+            applyCliWarningDismissal({
+                dismissed: dismissedCLIWarnings as any,
+                machineId: selectedMachineId,
+                warningKey,
+                scope,
+            }) as any,
+        );
+    }, [dismissedCLIWarnings, selectedMachineId, setDismissedCLIWarnings]);
 
     // Helper to check if profile is available (CLI detected + experiments gating)
     const isProfileAvailable = React.useCallback((profile: AIBackendProfile): { available: boolean; reason?: string } => {
-        const supportedCLIs = (Object.entries(profile.compatibility) as [string, boolean][])
-            .filter(([, supported]) => supported)
-            .map(([agent]) => agent as 'claude' | 'codex' | 'gemini');
-
-        const allowedCLIs = supportedCLIs.filter((cli) => cli !== 'gemini' || experimentsEnabled);
+        const allowedCLIs = getProfileSupportedAgentIds(profile).filter((agentId) => enabledAgentIds.includes(agentId));
 
         if (allowedCLIs.length === 0) {
             return {
@@ -1009,7 +1056,7 @@ function NewSessionScreen() {
         // If a profile requires exactly one CLI, enforce that one.
         if (allowedCLIs.length === 1) {
             const requiredCLI = allowedCLIs[0];
-            if (cliAvailability[requiredCLI] === false) {
+            if (cliAvailability.available[requiredCLI] === false) {
                 return {
                     available: false,
                     reason: `cli-not-detected:${requiredCLI}`,
@@ -1019,7 +1066,7 @@ function NewSessionScreen() {
         }
 
         // Multi-CLI profiles: available if *any* supported CLI is available (or detection not finished).
-        const anyAvailable = allowedCLIs.some((cli) => cliAvailability[cli] !== false);
+        const anyAvailable = allowedCLIs.some((cli) => cliAvailability.available[cli] !== false);
         if (!anyAvailable) {
             return {
                 available: false,
@@ -1027,7 +1074,7 @@ function NewSessionScreen() {
             };
         }
         return { available: true };
-    }, [cliAvailability, experimentsEnabled]);
+    }, [cliAvailability, enabledAgentIds]);
 
     const profileAvailabilityById = React.useMemo(() => {
         const map = new Map<string, { available: boolean; reason?: string }>();
@@ -1039,7 +1086,7 @@ function NewSessionScreen() {
 
     // Computed values
     const compatibleProfiles = React.useMemo(() => {
-        return allProfiles.filter(profile => validateProfileForAgent(profile, agentType));
+        return allProfiles.filter((profile) => isProfileCompatibleWithAgent(profile, agentType));
     }, [allProfiles, agentType]);
 
     const selectedProfile = React.useMemo(() => {
@@ -1126,7 +1173,7 @@ function NewSessionScreen() {
         refreshMachineEnvPresence();
 
         if (selectedMachineId) {
-            void prefetchMachineCapabilities({ machineId: selectedMachineId, request: { checklistId: 'new-session' } });
+            void prefetchMachineCapabilities({ machineId: selectedMachineId, request: CAPABILITIES_REQUEST_NEW_SESSION });
         }
     }, [refreshMachineEnvPresence, selectedMachineId, sync]);
 
@@ -1284,7 +1331,7 @@ function NewSessionScreen() {
                     void prefetchMachineCapabilitiesIfStale({
                         machineId,
                         staleMs: CLI_DETECT_REVALIDATE_STALE_MS,
-                        request: { checklistId: 'new-session' },
+                        request: CAPABILITIES_REQUEST_NEW_SESSION,
                     });
                 }
             } catch {
@@ -1306,7 +1353,7 @@ function NewSessionScreen() {
             void prefetchMachineCapabilitiesIfStale({
                 machineId: selectedMachineId,
                 staleMs: CLI_DETECT_REVALIDATE_STALE_MS,
-                request: { checklistId: 'new-session' },
+                request: CAPABILITIES_REQUEST_NEW_SESSION,
             });
         });
     }, [machines, selectedMachineId]);
@@ -1351,28 +1398,36 @@ function NewSessionScreen() {
             const profile = profileMap.get(pending.profileId) || getBuiltInProfile(pending.profileId);
             if (!profile) return;
 
-            const supportedAgents = (Object.entries(profile.compatibility) as Array<[string, boolean]>)
-                .filter(([, supported]) => supported)
-                .map(([agent]) => agent as 'claude' | 'codex' | 'gemini')
-                .filter((agent) => agent !== 'gemini' || allowGemini);
+            const supportedAgents = getProfileSupportedAgentIds(profile).filter((agentId) => enabledAgentIds.includes(agentId));
 
             if (supportedAgents.length > 0 && !supportedAgents.includes(agentType)) {
-                setAgentType(supportedAgents[0] ?? 'claude');
+                setAgentType(supportedAgents[0] ?? (enabledAgentIds[0] ?? agentType));
             }
 
             if (profile.defaultSessionType) {
                 setSessionType(profile.defaultSessionType);
             }
 
-            if (!hasUserSelectedPermissionModeRef.current && profile.defaultPermissionMode) {
-                const nextMode = profile.defaultPermissionMode as PermissionMode;
-                const isInitialProfileSelection = pending.prevProfileId === null;
-                if (isInitialProfileSelection) {
-                    applyPermissionMode(nextMode, 'auto');
-                }
+            if (!hasUserSelectedPermissionModeRef.current) {
+                const accountDefaults = readAccountPermissionDefaults(sessionDefaultPermissionModeByAgent, enabledAgentIds);
+                const nextMode = resolveNewSessionDefaultPermissionMode({
+                    agentType,
+                    accountDefaults,
+                    profileDefaults: profile.defaultPermissionModeByAgent,
+                    legacyProfileDefaultPermissionMode: (profile.defaultPermissionMode as PermissionMode | undefined) ?? undefined,
+                });
+                applyPermissionMode(nextMode, 'auto');
             }
         });
-    }, [agentType, allowGemini, applyPermissionMode, profileMap, selectedProfileId]);
+    }, [
+        agentType,
+        applyPermissionMode,
+        experimentsEnabled,
+        experimentalAgents,
+        profileMap,
+        selectedProfileId,
+        sessionDefaultPermissionModeByAgent,
+    ]);
 
     // Keep ProfilesList props stable to avoid rerendering the whole list on
     // unrelated state updates (iOS perf).
@@ -1393,24 +1448,13 @@ function NewSessionScreen() {
         if (availability.available || !availability.reason) return null;
         if (availability.reason.startsWith('requires-agent:')) {
             const required = availability.reason.split(':')[1];
-            const agentLabel = required === 'claude'
-                ? t('agentInput.agent.claude')
-                : required === 'codex'
-                    ? t('agentInput.agent.codex')
-                    : required === 'gemini'
-                        ? t('agentInput.agent.gemini')
-                        : required;
+            const agentLabel = isAgentId(required) ? t(getAgentCore(required).displayNameKey) : required;
             return t('newSession.profileAvailability.requiresAgent', { agent: agentLabel });
         }
         if (availability.reason.startsWith('cli-not-detected:')) {
             const cli = availability.reason.split(':')[1];
-            const cliLabel = cli === 'claude'
-                ? t('agentInput.agent.claude')
-                : cli === 'codex'
-                    ? t('agentInput.agent.codex')
-                    : cli === 'gemini'
-                        ? t('agentInput.agent.gemini')
-                        : cli;
+            const agentFromCli = resolveAgentIdFromCliDetectKey(cli);
+            const cliLabel = agentFromCli ? t(getAgentCore(agentFromCli).displayNameKey) : cli;
             return t('newSession.profileAvailability.cliNotDetected', { cli: cliLabel });
         }
         return availability.reason;
@@ -1429,23 +1473,27 @@ function NewSessionScreen() {
     // If a selected profile requires an API key and the key isn't available on the selected machine,
     // prompt immediately and revert selection on cancel (so the profile isn't "selected" without a key).
     React.useEffect(() => {
-        if (!useProfiles) return;
-        if (!selectedMachineId) return;
-        if (!shouldShowSecretSection) return;
-        if (!selectedProfileId) return;
-        if (isSecretRequirementModalOpenRef.current) return;
+        const isEligible = shouldAutoPromptSecretRequirement({
+            useProfiles,
+            selectedProfileId,
+            shouldShowSecretSection,
+            isModalOpen: isSecretRequirementModalOpenRef.current,
+            machineEnvPresenceIsLoading: machineEnvPresence.isLoading,
+            selectedMachineId,
+        });
+        if (!isEligible) return;
 
-        // Wait for the machine env check to complete. Otherwise we can briefly treat
-        // a configured machine as "missing" and incorrectly pop the modal.
-        if (machineEnvPresence.isLoading) return;
-
-        const selectedSecretIdByEnvVarName = selectedSecretIdByProfileIdByEnvVarName[selectedProfileId] ?? {};
-        const sessionOnlySecretValueByEnvVarName = sessionOnlySecretValueByProfileIdByEnvVarName[selectedProfileId] ?? {};
+        const selectedSecretIdByEnvVarName = selectedProfileId
+            ? (selectedSecretIdByProfileIdByEnvVarName[selectedProfileId] ?? {})
+            : {};
+        const sessionOnlySecretValueByEnvVarName = selectedProfileId
+            ? (sessionOnlySecretValueByProfileIdByEnvVarName[selectedProfileId] ?? {})
+            : {};
 
         const satisfaction = getSecretSatisfaction({
             profile: selectedProfile ?? null,
             secrets,
-            defaultBindings: secretBindingsByProfileId[selectedProfileId] ?? null,
+            defaultBindings: selectedProfileId ? (secretBindingsByProfileId[selectedProfileId] ?? null) : null,
             selectedSecretIds: selectedSecretIdByEnvVarName,
             sessionOnlyValues: sessionOnlySecretValueByEnvVarName,
             machineEnvReadyByName: Object.fromEntries(
@@ -1460,7 +1508,7 @@ function NewSessionScreen() {
         }
 
         const missing = satisfaction.items.find((i) => i.required && !i.isSatisfied) ?? null;
-        const promptKey = `${selectedMachineId}:${selectedProfileId}:${missing?.envVarName ?? 'unknown'}`;
+        const promptKey = `${selectedMachineId ?? 'no-machine'}:${selectedProfileId}:${missing?.envVarName ?? 'unknown'}`;
         if (suppressNextSecretAutoPromptKeyRef.current === promptKey) {
             // One-shot suppression (used when the user explicitly opened the modal via the badge).
             suppressNextSecretAutoPromptKeyRef.current = null;
@@ -1574,6 +1622,79 @@ function NewSessionScreen() {
         }
     }, [navigation, secretSessionOnlyId]);
 
+    // Handle secret requirement results from the native modal route (value stored in-memory only).
+    React.useEffect(() => {
+        if (typeof secretRequirementResultId !== 'string' || secretRequirementResultId.length === 0) {
+            return;
+        }
+
+        const entry = getTempData<{
+            profileId: string;
+            revertOnCancel: boolean;
+            result: SecretRequirementModalResult;
+        }>(secretRequirementResultId);
+
+        // Always unlock the guard so follow-up prompts can show.
+        isSecretRequirementModalOpenRef.current = false;
+
+        if (!entry) {
+            const setParams = (navigation as any)?.setParams;
+            if (typeof setParams === 'function') {
+                setParams({ secretRequirementResultId: undefined });
+            } else {
+                navigation.dispatch({
+                    type: 'SET_PARAMS',
+                    payload: { params: { secretRequirementResultId: undefined } },
+                } as never);
+            }
+            return;
+        }
+
+        const result = entry?.result;
+        if (result?.action === 'cancel') {
+            // Allow future prompts for this profile.
+            lastSecretPromptKeyRef.current = null;
+            suppressNextSecretAutoPromptKeyRef.current = null;
+            if (entry?.revertOnCancel) {
+                const prev = prevProfileIdBeforeSecretPromptRef.current;
+                setSelectedProfileId(prev);
+            }
+        } else if (result) {
+            const profileId = entry.profileId;
+            const applied = applySecretRequirementResult({
+                profileId,
+                result,
+                selectedSecretIdByProfileIdByEnvVarName,
+                sessionOnlySecretValueByProfileIdByEnvVarName,
+                secretBindingsByProfileId,
+            });
+            setSelectedSecretIdByProfileIdByEnvVarName(applied.nextSelectedSecretIdByProfileIdByEnvVarName);
+            setSessionOnlySecretValueByProfileIdByEnvVarName(applied.nextSessionOnlySecretValueByProfileIdByEnvVarName);
+            if (applied.nextSecretBindingsByProfileId !== secretBindingsByProfileId) {
+                setSecretBindingsByProfileId(applied.nextSecretBindingsByProfileId);
+            }
+        }
+
+        const setParams = (navigation as any)?.setParams;
+        if (typeof setParams === 'function') {
+            setParams({ secretRequirementResultId: undefined });
+        } else {
+            navigation.dispatch({
+                type: 'SET_PARAMS',
+                payload: { params: { secretRequirementResultId: undefined } },
+            } as never);
+        }
+    }, [
+        navigation,
+        secretBindingsByProfileId,
+        secretRequirementResultId,
+        selectedSecretIdByProfileIdByEnvVarName,
+        sessionOnlySecretValueByProfileIdByEnvVarName,
+        setSecretBindingsByProfileId,
+        setSelectedSecretIdByProfileIdByEnvVarName,
+        setSessionOnlySecretValueByProfileIdByEnvVarName,
+    ]);
+
     // Keep agentType compatible with the currently selected profile.
     React.useEffect(() => {
         if (!useProfiles || selectedProfileId === null) {
@@ -1585,15 +1706,12 @@ function NewSessionScreen() {
             return;
         }
 
-        const supportedAgents = (Object.entries(profile.compatibility) as Array<[string, boolean]>)
-            .filter(([, supported]) => supported)
-            .map(([agent]) => agent as 'claude' | 'codex' | 'gemini')
-            .filter((agent) => agent !== 'gemini' || allowGemini);
+        const supportedAgents = getProfileSupportedAgentIds(profile).filter((agentId) => enabledAgentIds.includes(agentId));
 
         if (supportedAgents.length > 0 && !supportedAgents.includes(agentType)) {
-            setAgentType(supportedAgents[0] ?? 'claude');
+            setAgentType(supportedAgents[0]!);
         }
-    }, [agentType, allowGemini, profileMap, selectedProfileId, useProfiles]);
+    }, [agentType, enabledAgentIds, profileMap, selectedProfileId, useProfiles]);
 
     const prevAgentTypeRef = React.useRef(agentType);
 
@@ -1605,48 +1723,37 @@ function NewSessionScreen() {
         }
         prevAgentTypeRef.current = agentType;
 
-        const current = permissionModeRef.current;
-        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-        const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
-
-        const isValidForNewAgent = (agentType === 'codex' || agentType === 'gemini')
-            ? validCodexGeminiModes.includes(current)
-            : validClaudeModes.includes(current);
-
-        if (isValidForNewAgent) {
+        // Defaults should only apply in the new-session flow (not in existing sessions),
+        // and only if the user hasn't explicitly chosen a mode on this screen.
+        if (!hasUserSelectedPermissionModeRef.current) {
+            const profile = selectedProfileId ? (profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId)) : null;
+            const accountDefaults = readAccountPermissionDefaults(sessionDefaultPermissionModeByAgent, enabledAgentIds);
+            const nextMode = resolveNewSessionDefaultPermissionMode({
+                agentType,
+                accountDefaults,
+                profileDefaults: profile ? profile.defaultPermissionModeByAgent : null,
+                legacyProfileDefaultPermissionMode: (profile?.defaultPermissionMode as PermissionMode | undefined) ?? undefined,
+            });
+            applyPermissionMode(nextMode, 'auto');
             return;
         }
 
+        const current = permissionModeRef.current;
         const mapped = mapPermissionModeAcrossAgents(current, prev, agentType);
         applyPermissionMode(mapped, 'auto');
-    }, [agentType, applyPermissionMode]);
+    }, [
+        agentType,
+        applyPermissionMode,
+        profileMap,
+        selectedProfileId,
+        sessionDefaultPermissionModeByAgent,
+    ]);
 
     // Reset model mode when agent type changes to appropriate default
     React.useEffect(() => {
-        const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
-        const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
-        // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-        const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-
-        let isValidForCurrentAgent = false;
-        if (agentType === 'codex') {
-            isValidForCurrentAgent = validCodexModes.includes(modelMode);
-        } else if (agentType === 'gemini') {
-            isValidForCurrentAgent = validGeminiModes.includes(modelMode);
-        } else {
-            isValidForCurrentAgent = validClaudeModes.includes(modelMode);
-        }
-
-        if (!isValidForCurrentAgent) {
-            // Set appropriate default for each agent type
-            if (agentType === 'codex') {
-                setModelMode('gpt-5-codex-high');
-            } else if (agentType === 'gemini') {
-                setModelMode('gemini-2.5-pro');
-            } else {
-                setModelMode('default');
-            }
-        }
+        const core = getAgentCore(agentType);
+        if ((core.model.allowedModes as readonly ModelMode[]).includes(modelMode)) return;
+        setModelMode(core.model.defaultMode);
     }, [agentType, modelMode]);
 
     const openProfileEnvVarsPreview = React.useCallback((profile: AIBackendProfile) => {
@@ -1682,10 +1789,7 @@ function NewSessionScreen() {
         if (useProfiles && selectedProfileId !== null) {
             const profile = profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId);
             const supportedAgents = profile
-                ? (Object.entries(profile.compatibility) as Array<[string, boolean]>)
-                    .filter(([, supported]) => supported)
-                    .map(([agent]) => agent as 'claude' | 'codex' | 'gemini')
-                    .filter((agent) => agent !== 'gemini' || allowGemini)
+                ? getProfileSupportedAgentIds(profile).filter((agentId) => enabledAgentIds.includes(agentId))
                 : [];
 
             if (supportedAgents.length <= 1) {
@@ -1702,12 +1806,21 @@ function NewSessionScreen() {
 
             const currentIndex = supportedAgents.indexOf(agentType);
             const nextIndex = (currentIndex + 1) % supportedAgents.length;
-            setAgentType(supportedAgents[nextIndex] ?? supportedAgents[0] ?? 'claude');
+            setAgentType(supportedAgents[nextIndex] ?? supportedAgents[0] ?? DEFAULT_AGENT_ID);
             return;
         }
 
         handleAgentCycle();
-    }, [agentType, allowGemini, handleAgentCycle, handleProfileClick, profileMap, selectedProfileId, setAgentType, useProfiles]);
+    }, [
+        agentType,
+        enabledAgentIds,
+        handleAgentCycle,
+        handleProfileClick,
+        profileMap,
+        selectedProfileId,
+        setAgentType,
+        useProfiles,
+    ]);
 
     const handlePathClick = React.useCallback(() => {
         if (selectedMachineId) {
@@ -1820,6 +1933,19 @@ function NewSessionScreen() {
                     const machineEnvReadyByName = Object.fromEntries(
                         Object.entries(machineEnvPresence.meta ?? {}).map(([k, v]) => [k, Boolean(v?.isSet)]),
                     );
+
+	                    if (machineEnvPresence.isPreviewEnvSupported && !machineEnvPresence.isLoading) {
+	                        const missingConfig = getMissingRequiredConfigEnvVarNames(selectedProfile, machineEnvReadyByName);
+	                        if (missingConfig.length > 0) {
+	                            Modal.alert(
+	                                t('common.error'),
+                                t('profiles.requirements.missingConfigForProfile', { env: missingConfig[0]! }),
+                            );
+                            setIsCreating(false);
+                            return;
+                        }
+                    }
+
                     const satisfaction = getSecretSatisfaction({
                         profile: selectedProfile,
                         secrets,
@@ -1872,42 +1998,29 @@ function NewSessionScreen() {
                 machineId: selectedMachineId,
             });
 
-            const wantsCodexResume =
-                experimentsEnabled &&
-                expCodexResume &&
-                agentType === 'codex' &&
-                resumeSessionId.trim().length > 0 &&
-                canAgentResume(agentType, { allowCodexResume: true });
-
-            if (wantsCodexResume) {
-                const installed =
-                    (() => {
-                        const snapshot =
-                            selectedMachineCapabilities.status === 'loaded'
-                                ? selectedMachineCapabilities.snapshot
-                                : selectedMachineCapabilities.status === 'loading'
-                                    ? selectedMachineCapabilities.snapshot
-                                    : selectedMachineCapabilities.status === 'error'
-                                        ? selectedMachineCapabilities.snapshot
-                                        : undefined;
-                        const dep = snapshot?.response.results['dep.codex-mcp-resume'];
-                        if (!dep || !dep.ok) return null;
-                        const data = dep.data as any;
-                        return typeof data?.installed === 'boolean' ? data.installed : null;
-                    })();
-
-                if (installed === false) {
-                    const openMachine = await Modal.confirm(
-                        t('errors.codexResumeNotInstalledTitle'),
-                        t('errors.codexResumeNotInstalledMessage'),
-                        { confirmText: t('connect.openMachine') }
-                    );
-                    if (openMachine) {
-                        router.push(`/machine/${selectedMachineId}` as any);
-                    }
-                    setIsCreating(false);
-                    return;
+            const preflightIssues = getNewSessionPreflightIssues({
+                agentId: agentType,
+                experimentsEnabled: experimentsEnabled === true,
+                expCodexResume: expCodexResume === true,
+                expCodexAcp: expCodexAcp === true,
+                resumeSessionId,
+                deps: {
+                    codexAcpInstalled: typeof codexAcpDep?.installed === 'boolean' ? codexAcpDep.installed : null,
+                    codexMcpResumeInstalled: typeof codexMcpResumeDep?.installed === 'boolean' ? codexMcpResumeDep.installed : null,
+                },
+            });
+            const blockingIssue = preflightIssues[0] ?? null;
+            if (blockingIssue) {
+                const openMachine = await Modal.confirm(
+                    t(blockingIssue.titleKey),
+                    t(blockingIssue.messageKey),
+                    { confirmText: t(blockingIssue.confirmTextKey) }
+                );
+                if (openMachine && blockingIssue.action === 'openMachine') {
+                    router.push(`/machine/${selectedMachineId}` as any);
                 }
+                setIsCreating(false);
+                return;
             }
 
             const result = await machineSpawnNewSession({
@@ -1917,10 +2030,16 @@ function NewSessionScreen() {
                 agent: agentType,
                 profileId: profilesActive ? (selectedProfileId ?? '') : undefined,
                 environmentVariables,
-                resume: canAgentResume(agentType, { allowCodexResume: experimentsEnabled && expCodexResume })
+                resume: canAgentResume(agentType, resumeCapabilityOptionsResolved)
                     ? (resumeSessionId.trim() || undefined)
                     : undefined,
-                experimentalCodexResume: experimentsEnabled && expCodexResume && agentType === 'codex' && resumeSessionId.trim().length > 0,
+                ...buildSpawnSessionExtrasFromUiState({
+                    agentId: agentType,
+                    experimentsEnabled: experimentsEnabled === true,
+                    expCodexResume: expCodexResume === true,
+                    expCodexAcp: expCodexAcp === true,
+                    resumeSessionId,
+                }),
                 terminal,
             });
 
@@ -1932,8 +2051,8 @@ function NewSessionScreen() {
 
                 // Set permission mode and model mode on the session
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
-                if (agentType === 'gemini' && modelMode && modelMode !== 'default') {
-                    storage.getState().updateSessionModelMode(result.sessionId, modelMode as 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite');
+                if (getAgentCore(agentType).model.supportsSelection && modelMode && modelMode !== 'default') {
+                    storage.getState().updateSessionModelMode(result.sessionId, modelMode);
                 }
 
                 // Send initial message if provided
@@ -2156,8 +2275,8 @@ function NewSessionScreen() {
                                             onMachineClick={handleMachineClick}
                                             currentPath={selectedPath}
                                             onPathClick={handlePathClick}
-                                            resumeSessionId={canAgentResume(agentType, { allowCodexResume: experimentsEnabled && expCodexResume }) ? resumeSessionId : undefined}
-                                            onResumeClick={canAgentResume(agentType, { allowCodexResume: experimentsEnabled && expCodexResume }) ? handleResumeClick : undefined}
+                                            resumeSessionId={canAgentResume(agentType, resumeCapabilityOptionsResolved) ? resumeSessionId : undefined}
+                                            onResumeClick={canAgentResume(agentType, resumeCapabilityOptionsResolved) ? handleResumeClick : undefined}
                                             contentPaddingHorizontal={0}
                                             {...(useProfiles
                                                 ? {
@@ -2292,53 +2411,49 @@ function NewSessionScreen() {
         useProfiles,
     ]);
 
-    const codexResumeBanner = React.useMemo(() => {
-        if (!selectedMachineId) return null;
-        if (!wantsCodexResume) return null;
-        if (cliAvailability.codex !== true) return null;
+    const installableDepInstallers = React.useMemo(() => {
+        if (!selectedMachineId) return [];
+        if (wizardInstallableDeps.length === 0) return [];
 
-        const installed = typeof codexResumeDep?.installed === 'boolean' ? codexResumeDep.installed : null;
-        const installedVersion = typeof codexResumeDep?.installedVersion === 'string' ? codexResumeDep.installedVersion : null;
-        const registry = codexResumeDep?.registry;
-        const registryError =
-            registry && typeof registry === 'object' && registry.ok === false && typeof (registry as any).errorMessage === 'string'
-                ? String((registry as any).errorMessage)
-                : null;
-
-        return {
-            installed,
-            installedVersion,
-            latestVersion: codexResumeLatestVersion,
-            updateAvailable: codexResumeUpdateAvailable,
-            systemCodexVersion,
-            registryError,
-            isChecking: selectedMachineCapabilities.status === 'loading',
-            isInstalling: isInstallingCodexResume,
-            onCheckUpdates: checkCodexResumeUpdates,
-            onInstallOrUpdate: handleInstallOrUpdateCodexResume,
-        };
-    }, [
-        checkCodexResumeUpdates,
-        cliAvailability.codex,
-        codexResumeDep,
-        codexResumeLatestVersion,
-        codexResumeUpdateAvailable,
-        handleInstallOrUpdateCodexResume,
-        isInstallingCodexResume,
-        selectedMachineCapabilities.status,
-        selectedMachineId,
-        systemCodexVersion,
-        wantsCodexResume,
-    ]);
+        return wizardInstallableDeps.map(({ entry, depStatus }) => ({
+            machineId: selectedMachineId,
+            enabled: true,
+            groupTitle: `${t(entry.groupTitleKey)}${entry.experimental ? ' (experimental)' : ''}`,
+            depId: entry.depId,
+            depTitle: entry.depTitle,
+            depIconName: entry.depIconName as any,
+            depStatus,
+            capabilitiesStatus: selectedMachineCapabilities.status,
+            installSpecSettingKey: entry.installSpecSettingKey,
+            installSpecTitle: entry.installSpecTitle,
+            installSpecDescription: entry.installSpecDescription,
+            installLabels: {
+                install: t(entry.installLabels.installKey),
+                update: t(entry.installLabels.updateKey),
+                reinstall: t(entry.installLabels.reinstallKey),
+            },
+            installModal: {
+                installTitle: t(entry.installModal.installTitleKey),
+                updateTitle: t(entry.installModal.updateTitleKey),
+                reinstallTitle: t(entry.installModal.reinstallTitleKey),
+                description: t(entry.installModal.descriptionKey),
+            },
+            refreshStatus: () => {
+                void prefetchMachineCapabilities({ machineId: selectedMachineId, request: CAPABILITIES_REQUEST_NEW_SESSION });
+            },
+            refreshRegistry: () => {
+                void prefetchMachineCapabilities({ machineId: selectedMachineId, request: entry.buildRegistryDetectRequest(), timeoutMs: 12_000 });
+            },
+        }));
+    }, [selectedMachineCapabilities.status, selectedMachineId, wizardInstallableDeps]);
 
     const wizardAgentProps = React.useMemo(() => {
         return {
             cliAvailability,
             tmuxRequested,
-            allowGemini,
-            isWarningDismissed,
-            hiddenBanners,
-            handleCLIBannerDismiss,
+            enabledAgentIds,
+            isCliBannerDismissed,
+            dismissCliBanner,
             agentType,
             setAgentType,
             modelOptions,
@@ -2350,16 +2465,15 @@ function NewSessionScreen() {
             handlePermissionModeChange,
             sessionType,
             setSessionType,
-            codexResumeBanner,
+            installableDepInstallers,
         };
     }, [
         agentType,
-        allowGemini,
         cliAvailability,
-        codexResumeBanner,
-        handleCLIBannerDismiss,
-        hiddenBanners,
-        isWarningDismissed,
+        dismissCliBanner,
+        enabledAgentIds,
+        installableDepInstallers,
+        isCliBannerDismissed,
         modelMode,
         modelOptions,
         permissionMode,
@@ -2424,7 +2538,8 @@ function NewSessionScreen() {
             selectedProfileEnvVarsCount,
             handleEnvVarsClick,
             resumeSessionId,
-            onResumeClick: canAgentResume(agentType, { allowCodexResume: experimentsEnabled && expCodexResume }) ? handleResumeClick : undefined,
+            onResumeClick: canAgentResume(agentType, resumeCapabilityOptionsResolved) ? handleResumeClick : undefined,
+            inputMaxHeight: sessionPromptInputMaxHeight,
         };
     }, [
         agentType,
@@ -2441,85 +2556,22 @@ function NewSessionScreen() {
         resumeSessionId,
         selectedProfileEnvVarsCount,
         sessionPrompt,
+        sessionPromptInputMaxHeight,
         setSessionPrompt,
     ]);
 
     return (
-        Platform.OS === 'web' ? (
-            <BaseModal
-                visible={true}
-                onClose={() => router.back()}
-                closeOnBackdrop={true}
-                showBackdrop={true}
-            >
-                <View
-                    style={[
-                        {
-                            width: '100%',
-                            maxWidth: Math.min(layout.maxWidth ?? 920, screenWidth - 24),
-                            maxHeight: screenHeight - 24,
-                            borderRadius: 16,
-                            overflow: 'hidden',
-                            backgroundColor: theme.colors.surface,
-                            borderWidth: StyleSheet.hairlineWidth,
-                            borderColor: theme.colors.divider,
-                        } as any,
-                    ]}
-                >
-                    <View
-                        style={{
-                            height: 52,
-                            paddingHorizontal: 16,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            borderBottomWidth: StyleSheet.hairlineWidth,
-                            borderBottomColor: theme.colors.divider,
-                            backgroundColor: theme.colors.surface,
-                        }}
-                    >
-                        <Text style={{ fontSize: 17, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                            {t('newSession.title')}
-                        </Text>
-                        <Pressable
-                            onPress={() => router.back()}
-                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('common.cancel')}
-                        >
-                            <Ionicons name="close" size={22} color={theme.colors.textSecondary} />
-                        </Pressable>
-                    </View>
-
-                    <View
-                        ref={popoverBoundaryRef}
-                        style={{ flex: 1, width: '100%', minHeight: 0 } as any}
-                    >
-                        <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
-                            <NewSessionWizard
-                                layout={wizardLayoutProps}
-                                profiles={wizardProfilesProps}
-                                agent={wizardAgentProps}
-                                machine={wizardMachineProps}
-                                footer={wizardFooterProps}
-                            />
-                        </PopoverBoundaryProvider>
-                    </View>
-                </View>
-            </BaseModal>
-        ) : (
-            <View ref={popoverBoundaryRef} style={{ flex: 1, width: '100%' }}>
-                <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
-                    <NewSessionWizard
-                        layout={wizardLayoutProps}
-                        profiles={wizardProfilesProps}
-                        agent={wizardAgentProps}
-                        machine={wizardMachineProps}
-                        footer={wizardFooterProps}
-                    />
-                </PopoverBoundaryProvider>
-            </View>
-        )
+        <View ref={popoverBoundaryRef} style={{ flex: 1, width: '100%' }}>
+            <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
+                <NewSessionWizard
+                    layout={wizardLayoutProps}
+                    profiles={wizardProfilesProps}
+                    agent={wizardAgentProps}
+                    machine={wizardMachineProps}
+                    footer={wizardFooterProps}
+                />
+            </PopoverBoundaryProvider>
+        </View>
     );
 }
 

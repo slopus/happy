@@ -3,10 +3,13 @@ import { Text, View, type ViewStyle } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import type { AIBackendProfile } from '@/sync/settings';
-import { useSetting } from '@/sync/storage';
+import { isProfileCompatibleWithAgent } from '@/sync/settings';
+import { getAgentCliGlyph } from '@/agents/registryUi';
+import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
+import { getAgentCore } from '@/agents/registryCore';
 
 type Props = {
-    profile: Pick<AIBackendProfile, 'compatibility'>;
+    profile: Pick<AIBackendProfile, 'compatibility' | 'isBuiltIn'>;
     size?: number;
     style?: ViewStyle;
 };
@@ -31,25 +34,22 @@ const stylesheet = StyleSheet.create((theme) => ({
 export function ProfileCompatibilityIcon({ profile, size = 32, style }: Props) {
     useUnistyles(); // Subscribe to theme changes for re-render
     const styles = stylesheet;
-    const experimentsEnabled = useSetting('experiments');
-    const expGemini = useSetting('expGemini');
-    const allowGemini = experimentsEnabled && expGemini;
-
-    // iOS can render some dingbat glyphs as emoji; force text presentation (U+FE0E).
-    const CLAUDE_GLYPH = '\u2733\uFE0E';
-    const GEMINI_GLYPH = '\u2726\uFE0E';
-    const hasClaude = !!profile.compatibility?.claude;
-    const hasCodex = !!profile.compatibility?.codex;
-    const hasGemini = allowGemini && !!profile.compatibility?.gemini;
+    const enabledAgents = useEnabledAgentIds();
 
     const glyphs = React.useMemo(() => {
         const items: Array<{ key: string; glyph: string; factor: number }> = [];
-        if (hasClaude) items.push({ key: 'claude', glyph: CLAUDE_GLYPH, factor: 1.14 });
-        if (hasCodex) items.push({ key: 'codex', glyph: '꩜', factor: 0.82 });
-        if (hasGemini) items.push({ key: 'gemini', glyph: GEMINI_GLYPH, factor: 0.88 });
+        for (const agentId of enabledAgents) {
+            if (!isProfileCompatibleWithAgent(profile, agentId)) continue;
+            const core = getAgentCore(agentId);
+            items.push({
+                key: agentId,
+                glyph: getAgentCliGlyph(agentId),
+                factor: core.ui.profileCompatibilityGlyphScale ?? 1.0,
+            });
+        }
         if (items.length === 0) items.push({ key: 'none', glyph: '•', factor: 0.85 });
         return items;
-    }, [hasClaude, hasCodex, hasGemini]);
+    }, [enabledAgents, profile.compatibility]);
 
     const multiScale = glyphs.length === 1 ? 1 : glyphs.length === 2 ? 0.6 : 0.5;
 

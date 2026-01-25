@@ -1,21 +1,30 @@
 import * as React from 'react';
-import { useSession, useSessionMessages } from "@/sync/storage";
-import { ActivityIndicator, FlatList, Platform, View } from 'react-native';
+import { useSession, useSessionMessages, useSessionPendingMessages } from "@/sync/storage";
+import { FlatList, Platform, View } from 'react-native';
 import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
-import { Message } from '@/sync/typesMessage';
+import { buildChatListItems, type ChatListItem } from './chatListItems';
+import { PendingUserTextMessageView } from './PendingUserTextMessageView';
 
-export const ChatList = React.memo((props: { session: Session }) => {
+export type ChatListBottomNotice = {
+    title: string;
+    body: string;
+};
+
+export const ChatList = React.memo((props: { session: Session; bottomNotice?: ChatListBottomNotice | null }) => {
     const { messages } = useSessionMessages(props.session.id);
+    const { messages: pendingMessages } = useSessionPendingMessages(props.session.id);
+    const items = React.useMemo(() => buildChatListItems({ messages, pendingMessages }), [messages, pendingMessages]);
     return (
         <ChatListInternal
             metadata={props.session.metadata}
             sessionId={props.session.id}
-            messages={messages}
+            items={items}
+            bottomNotice={props.bottomNotice}
         />
     )
 });
@@ -26,25 +35,38 @@ const ListHeader = React.memo(() => {
     return <View style={{ flexDirection: 'row', alignItems: 'center', height: headerHeight + safeArea.top + 32 }} />;
 });
 
-const ListFooter = React.memo((props: { sessionId: string }) => {
+const ListFooter = React.memo((props: { sessionId: string; bottomNotice?: ChatListBottomNotice | null }) => {
     const session = useSession(props.sessionId)!;
     return (
-        <ChatFooter controlledByUser={session.agentState?.controlledByUser || false} />
+        <ChatFooter
+            controlledByUser={session.agentState?.controlledByUser || false}
+            notice={props.bottomNotice ?? null}
+        />
     )
 });
 
 const ChatListInternal = React.memo((props: {
     metadata: Metadata | null,
     sessionId: string,
-    messages: Message[],
+    items: ChatListItem[],
+    bottomNotice?: ChatListBottomNotice | null,
 }) => {
-    const keyExtractor = useCallback((item: any) => item.id, []);
-    const renderItem = useCallback(({ item }: { item: any }) => (
-        <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
-    ), [props.metadata, props.sessionId]);
+    const keyExtractor = useCallback((item: ChatListItem) => item.id, []);
+    const renderItem = useCallback(({ item }: { item: ChatListItem }) => {
+        if (item.kind === 'pending-user-text') {
+            return (
+                <PendingUserTextMessageView
+                    sessionId={props.sessionId}
+                    message={item.pending}
+                    otherPendingCount={item.otherPendingCount}
+                />
+            );
+        }
+        return <MessageView message={item.message} metadata={props.metadata} sessionId={props.sessionId} />;
+    }, [props.metadata, props.sessionId]);
     return (
         <FlatList
-            data={props.messages}
+            data={props.items}
             inverted={true}
             keyExtractor={keyExtractor}
             maintainVisibleContentPosition={{
@@ -54,7 +76,7 @@ const ChatListInternal = React.memo((props: {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
             renderItem={renderItem}
-            ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
+            ListHeaderComponent={<ListFooter sessionId={props.sessionId} bottomNotice={props.bottomNotice} />}
             ListFooterComponent={<ListHeader />}
         />
     )

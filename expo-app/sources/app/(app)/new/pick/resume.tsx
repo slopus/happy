@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, InteractionManager } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { CommonActions, useNavigation } from '@react-navigation/native';
+import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
@@ -9,8 +9,9 @@ import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
-import { MultiTextInput } from '@/components/MultiTextInput';
-import { AgentType } from '@/utils/agentCapabilities';
+import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
+import type { AgentId } from '@/agents/registryCore';
+import { DEFAULT_AGENT_ID, getAgentCore, isAgentId } from '@/agents/registryCore';
 import { getClipboardStringTrimmedSafe } from '@/utils/clipboard';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -92,18 +93,15 @@ export default function ResumePickerScreen() {
     const styles = stylesheet;
     const router = useRouter();
     const navigation = useNavigation();
+    const inputRef = React.useRef<MultiTextInputHandle>(null);
     const params = useLocalSearchParams<{
         currentResumeId?: string;
-        agentType?: AgentType;
+        agentType?: AgentId;
     }>();
 
     const [inputValue, setInputValue] = React.useState(params.currentResumeId || '');
-    const agentType: AgentType = params.agentType || 'claude';
-    const agentLabel = agentType === 'codex'
-        ? t('agentInput.agent.codex')
-        : agentType === 'gemini'
-            ? t('agentInput.agent.gemini')
-            : t('agentInput.agent.claude');
+    const agentType: AgentId = isAgentId(params.agentType) ? params.agentType : DEFAULT_AGENT_ID;
+    const agentLabel = t(getAgentCore(agentType).displayNameKey);
 
     const handleSave = () => {
         const trimmed = inputValue.trim();
@@ -145,6 +143,59 @@ export default function ResumePickerScreen() {
         }
     };
 
+    const focusInputWithRetries = React.useCallback(() => {
+        let cancelled = false;
+        const focus = () => {
+            if (cancelled) return;
+            inputRef.current?.focus();
+        };
+
+        // Try immediately (best chance to succeed on web because it happens soon after navigation).
+        focus();
+
+        // Also retry across a few frames to catch cases where the input isn't mounted yet.
+        let rafAttempts = 0;
+        const rafLoop = () => {
+            rafAttempts += 1;
+            focus();
+            if (rafAttempts < 8) {
+                requestAnimationFrame(rafLoop);
+            }
+        };
+        requestAnimationFrame(rafLoop);
+
+        // And a time-based fallback for native modal transitions / slower mounts.
+        const timer = setTimeout(focus, 300);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, []);
+
+    React.useEffect(() => {
+        const cleanup = focusInputWithRetries();
+        return cleanup;
+    }, [focusInputWithRetries]);
+
+    // Auto-focus the input when the screen becomes active. Relying on `autoFocus` alone can fail
+    // with native modal transitions / nested navigators.
+    useFocusEffect(React.useCallback(() => {
+        const cleanup = focusInputWithRetries();
+
+        // Prefer `InteractionManager` to wait for modal/navigation animations to settle.
+        let interactionCleanup: (() => void) | undefined;
+        const task = InteractionManager.runAfterInteractions(() => {
+            interactionCleanup = focusInputWithRetries();
+        });
+
+        return () => {
+            task.cancel?.();
+            interactionCleanup?.();
+            cleanup();
+        };
+    }, [focusInputWithRetries]));
+
     return (
         <>
             <Stack.Screen
@@ -164,11 +215,13 @@ export default function ResumePickerScreen() {
 
                             <View style={styles.inputContainer}>
                                 <MultiTextInput
+                                    ref={inputRef}
                                     value={inputValue}
                                     onChangeText={setInputValue}
                                     placeholder={
                                         t('newSession.resume.placeholder', { agent: agentLabel })
                                     }
+                                    autoFocus={true}
                                     maxHeight={80}
                                     paddingTop={0}
                                     paddingBottom={0}

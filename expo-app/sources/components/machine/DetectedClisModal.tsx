@@ -8,6 +8,7 @@ import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache
 import { DetectedClisList } from '@/components/machine/DetectedClisList';
 import { t } from '@/text';
 import type { CustomModalInjectedProps } from '@/modal';
+import { CAPABILITIES_REQUEST_NEW_SESSION } from '@/capabilities/requests';
 
 type Props = CustomModalInjectedProps & {
     machineId: string;
@@ -62,7 +63,7 @@ export function DetectedClisModal({ onClose, machineId, isOnline }: Props) {
         machineId,
         // Cache-first: never auto-fetch on mount; user can explicitly refresh.
         enabled: false,
-        request: { checklistId: 'new-session' },
+        request: CAPABILITIES_REQUEST_NEW_SESSION,
     });
 
     return (

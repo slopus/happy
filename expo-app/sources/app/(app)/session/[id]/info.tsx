@@ -23,6 +23,9 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { resolveProfileById } from '@/sync/profileUtils';
 import { getProfileDisplayName } from '@/components/profiles/profileDisplay';
+import { DEFAULT_AGENT_ID, getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
+import { getAgentVendorResumeId } from '@/utils/agentCapabilities';
+import { useResumeCapabilityOptions } from '@/agents/useResumeCapabilityOptions';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -76,6 +79,24 @@ function SessionInfoContent({ session }: { session: Session }) {
     const expCodexAcp = useSetting('expCodexAcp');
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
+    const agentId = resolveAgentIdFromFlavor(session.metadata?.flavor) ?? DEFAULT_AGENT_ID;
+    const core = getAgentCore(agentId);
+
+    const machineId = session.metadata?.machineId ?? null;
+    const { resumeCapabilityOptions } = useResumeCapabilityOptions({
+        agentId,
+        machineId: typeof machineId === 'string' ? machineId : null,
+        experimentsEnabled: experimentsEnabled === true,
+        expCodexResume: expCodexResume === true,
+        expCodexAcp: expCodexAcp === true,
+        enabled: true,
+    });
+
+    const vendorResumeLabelKey = core.resume.uiVendorResumeIdLabelKey;
+    const vendorResumeCopiedKey = core.resume.uiVendorResumeIdCopiedKey;
+    const vendorResumeId = React.useMemo(() => {
+        return getAgentVendorResumeId(session.metadata ?? null, session.metadata?.flavor ?? null, resumeCapabilityOptions);
+    }, [resumeCapabilityOptions, session.metadata]);
 
     const profileLabel = React.useMemo(() => {
         const profileId = session.metadata?.profileId;
@@ -270,32 +291,17 @@ function SessionInfoContent({ session }: { session: Session }) {
                         icon={<Ionicons name="finger-print-outline" size={29} color="#007AFF" />}
                         onPress={handleCopySessionId}
                     />
-                    {session.metadata?.claudeSessionId && (
+                    {vendorResumeId && vendorResumeLabelKey && vendorResumeCopiedKey && (
                         <Item
-                            title={t('sessionInfo.claudeCodeSessionId')}
-                            subtitle={`${session.metadata.claudeSessionId.substring(0, 8)}...${session.metadata.claudeSessionId.substring(session.metadata.claudeSessionId.length - 8)}`}
-                            icon={<Ionicons name="code-outline" size={29} color="#9C27B0" />}
+                            title={t(vendorResumeLabelKey)}
+                            subtitle={`${vendorResumeId.substring(0, 8)}...${vendorResumeId.substring(vendorResumeId.length - 8)}`}
+                            icon={<Ionicons name={core.ui.agentPickerIconName as any} size={29} color="#007AFF" />}
                             onPress={async () => {
                                 try {
-                                    await Clipboard.setStringAsync(session.metadata!.claudeSessionId!);
-                                    Modal.alert(t('common.success'), t('sessionInfo.claudeCodeSessionIdCopied'));
+                                    await Clipboard.setStringAsync(vendorResumeId);
+                                    Modal.alert(t('common.success'), t(vendorResumeCopiedKey));
                                 } catch (error) {
-                                    Modal.alert(t('common.error'), t('sessionInfo.failedToCopyClaudeCodeSessionId'));
-                                }
-                            }}
-                        />
-                    )}
-                    {experimentsEnabled && (expCodexResume || expCodexAcp) && session.metadata?.codexSessionId && (
-                        <Item
-                            title={t('sessionInfo.codexSessionId')}
-                            subtitle={`${session.metadata.codexSessionId.substring(0, 8)}...${session.metadata.codexSessionId.substring(session.metadata.codexSessionId.length - 8)}`}
-                            icon={<Ionicons name="sparkles-outline" size={29} color="#007AFF" />}
-                            onPress={async () => {
-                                try {
-                                    await Clipboard.setStringAsync(session.metadata!.codexSessionId!);
-                                    Modal.alert(t('common.success'), t('sessionInfo.codexSessionIdCopied'));
-                                } catch (error) {
-                                    Modal.alert(t('common.error'), t('sessionInfo.failedToCopyCodexSessionId'));
+                                    Modal.alert(t('common.error'), t('sessionInfo.failedToCopyMetadata'));
                                 }
                             }}
                         />
@@ -334,7 +340,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         icon={<Ionicons name="pencil-outline" size={29} color="#007AFF" />}
                         onPress={handleRenameSession}
                     />
-                    {!session.active && (session.metadata?.claudeSessionId || (experimentsEnabled && (expCodexResume || expCodexAcp) && session.metadata?.codexSessionId)) && (
+                    {!session.active && Boolean(vendorResumeId) && (
                         <Item
                             title={t('sessionInfo.copyResumeCommand')}
                             subtitle={`happy resume ${session.id}`}
@@ -404,11 +410,12 @@ function SessionInfoContent({ session }: { session: Session }) {
 	                        <Item
 	                            title={t('sessionInfo.aiProvider')}
 	                            subtitle={(() => {
-                                    const flavor = session.metadata.flavor || 'claude';
-                                    if (flavor === 'claude') return t('agentInput.agent.claude');
-                                    if (flavor === 'gpt' || flavor === 'openai' || flavor === 'codex') return t('agentInput.agent.codex');
-                                    if (flavor === 'gemini') return t('agentInput.agent.gemini');
-                                    return flavor;
+                                    const flavor = session.metadata.flavor;
+                                    const agentId = resolveAgentIdFromFlavor(flavor);
+                                    if (agentId) return t(getAgentCore(agentId).displayNameKey);
+                                    return typeof flavor === 'string' && flavor.length > 0
+                                        ? flavor
+                                        : t(getAgentCore(DEFAULT_AGENT_ID).displayNameKey);
                                 })()}
 	                            icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
 	                            showChevron={false}

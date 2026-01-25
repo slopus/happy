@@ -4,9 +4,12 @@ import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { SessionNoticeBanner, type SessionNoticeBannerProps } from './SessionNoticeBanner';
+import { layout } from '@/components/layout';
 
 interface ChatFooterProps {
     controlledByUser?: boolean;
+    notice?: Pick<SessionNoticeBannerProps, 'title' | 'body'> | null;
 }
 
 export const ChatFooter = React.memo((props: ChatFooterProps) => {
@@ -36,14 +39,25 @@ export const ChatFooter = React.memo((props: ChatFooterProps) => {
         <View style={containerStyle}>
             {props.controlledByUser && (
                 <View style={warningContainerStyle}>
-                    <Ionicons 
-                        name="information-circle" 
-                        size={16} 
+                    <Ionicons
+                        name="information-circle"
+                        size={16}
                         color={theme.colors.box.warning.text}
                     />
                     <Text style={warningTextStyle}>
                         {t('chatFooter.permissionsTerminalOnly')}
                     </Text>
+                </View>
+            )}
+            {props.notice && (
+                <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'center' }}>
+                    <View style={{ width: '100%', flexGrow: 1, flexBasis: 0, maxWidth: layout.maxWidth }}>
+                        <SessionNoticeBanner
+                            title={props.notice.title}
+                            body={props.notice.body}
+                            style={{ marginTop: 10, marginHorizontal: 8 }}
+                        />
+                    </View>
                 </View>
             )}
         </View>

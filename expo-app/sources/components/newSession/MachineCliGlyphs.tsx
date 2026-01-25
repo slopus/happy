@@ -2,11 +2,14 @@ import * as React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
-import { useSetting } from '@/sync/storage';
 import { Modal } from '@/modal';
-import { t } from '@/text';
 import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import { DetectedClisModal } from '@/components/machine/DetectedClisModal';
+import { CAPABILITIES_REQUEST_NEW_SESSION } from '@/capabilities/requests';
+import { getAgentCore } from '@/agents/registryCore';
+import { getAgentCliGlyph } from '@/agents/registryUi';
+import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
+import type { CapabilityId } from '@/sync/capabilitiesProtocol';
 
 type Props = {
     machineId: string;
@@ -37,21 +40,15 @@ const stylesheet = StyleSheet.create((theme) => ({
 }));
 
 // iOS can render some dingbat glyphs as emoji; force text presentation (U+FE0E).
-const CLAUDE_GLYPH = '\u2733\uFE0E';
-const CODEX_GLYPH = '꩜';
-const GEMINI_GLYPH = '\u2726\uFE0E';
-
 export const MachineCliGlyphs = React.memo(({ machineId, isOnline, autoDetect = true }: Props) => {
     useUnistyles(); // re-render on theme changes
     const styles = stylesheet;
-    const experimentsEnabled = useSetting('experiments');
-    const expGemini = useSetting('expGemini');
-    const allowGemini = experimentsEnabled && expGemini;
+    const enabledAgents = useEnabledAgentIds();
 
     const { state } = useMachineCapabilitiesCache({
         machineId,
         enabled: autoDetect && isOnline,
-        request: { checklistId: 'new-session' },
+        request: CAPABILITIES_REQUEST_NEW_SESSION,
     });
 
     const onPress = React.useCallback(() => {
@@ -73,20 +70,25 @@ export const MachineCliGlyphs = React.memo(({ machineId, isOnline, autoDetect = 
 
         const items: Array<{ key: string; glyph: string; factor: number; muted: boolean }> = [];
         const results = state.snapshot.response.results;
-        const hasClaude = (results['cli.claude']?.ok && (results['cli.claude'].data as any)?.available === true) ?? false;
-        const hasCodex = (results['cli.codex']?.ok && (results['cli.codex'].data as any)?.available === true) ?? false;
-        const hasGemini = allowGemini && ((results['cli.gemini']?.ok && (results['cli.gemini'].data as any)?.available === true) ?? false);
-
-        if (hasClaude) items.push({ key: 'claude', glyph: CLAUDE_GLYPH, factor: 1.0, muted: false });
-        if (hasCodex) items.push({ key: 'codex', glyph: CODEX_GLYPH, factor: 0.92, muted: false });
-        if (hasGemini) items.push({ key: 'gemini', glyph: GEMINI_GLYPH, factor: 1.0, muted: false });
+        for (const agentId of enabledAgents) {
+            const capId = `cli.${getAgentCore(agentId).cli.detectKey}` as CapabilityId;
+            const available = (results[capId]?.ok && (results[capId].data as any)?.available === true) ?? false;
+            if (!available) continue;
+            const core = getAgentCore(agentId);
+            items.push({
+                key: agentId,
+                glyph: getAgentCliGlyph(agentId),
+                factor: core.ui.cliGlyphScale ?? 1.0,
+                muted: false,
+            });
+        }
 
         if (items.length === 0) {
             items.push({ key: 'none', glyph: '•', factor: 0.85, muted: true });
         }
 
         return items;
-    }, [allowGemini, state]);
+    }, [enabledAgents, state]);
 
     return (
         <Pressable
