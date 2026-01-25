@@ -1,30 +1,37 @@
 /**
  * Agent capability configuration.
  *
- * Upstream behavior: resume-from-UI is currently supported only for Claude.
- * Forks can add additional flavors in fork-only branches.
+ * Resume behavior is agent-specific and may be:
+ * - always available (vendor-native),
+ * - runtime-gated per machine (capability probing), or
+ * - experimental (requires explicit opt-in).
  */
 
-export type AgentType = 'claude' | 'codex' | 'gemini';
-
-/**
- * Agents that support vendor resume IDs (e.g. Claude Code session ID) for resume-from-UI.
- */
-export const RESUMABLE_AGENTS: AgentType[] = ['claude'];
+import type { AgentId } from '@/agents/registryCore';
+import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
 
 export type ResumeCapabilityOptions = {
     /**
-     * Experimental: allow Codex vendor resume.
-     *
-     * Default is false to keep upstream behavior (Claude-only).
+     * Experimental: enable vendor-resume for agents that require explicit opt-in.
      */
-    allowCodexResume?: boolean;
+    allowExperimentalResumeByAgentId?: Partial<Record<AgentId, boolean>>;
+    /**
+     * Runtime: enable vendor resume for agents that can be detected dynamically per machine.
+     * (Example: Gemini ACP loadSession support.)
+     */
+    allowRuntimeResumeByAgentId?: Partial<Record<AgentId, boolean>>;
 };
 
 export function canAgentResume(agent: string | null | undefined, options?: ResumeCapabilityOptions): boolean {
     if (typeof agent !== 'string') return false;
-    if (agent === 'codex') return options?.allowCodexResume === true;
-    return RESUMABLE_AGENTS.includes(agent as AgentType);
+    const agentId = resolveAgentIdFromFlavor(agent);
+    if (!agentId) return false;
+    const core = getAgentCore(agentId);
+    if (core.resume.supportsVendorResume !== true) {
+        return options?.allowRuntimeResumeByAgentId?.[agentId] === true;
+    }
+    if (core.resume.experimental !== true) return true;
+    return options?.allowExperimentalResumeByAgentId?.[agentId] === true;
 }
 
 /**
@@ -34,19 +41,14 @@ export function canAgentResume(agent: string | null | undefined, options?: Resum
  */
 export interface SessionMetadata {
     flavor?: string | null;
-    claudeSessionId?: string;
-    codexSessionId?: string;
+    // Vendor resume id fields vary by agent; store them as plain string properties on metadata.
+    [key: string]: unknown;
 }
 
-export function getAgentSessionIdField(agent: string | null | undefined): 'claudeSessionId' | 'codexSessionId' | null {
-    switch (agent) {
-        case 'claude':
-            return 'claudeSessionId';
-        case 'codex':
-            return 'codexSessionId';
-        default:
-            return null;
-    }
+export function getAgentSessionIdField(agent: string | null | undefined): string | null {
+    const agentId = resolveAgentIdFromFlavor(agent);
+    if (!agentId) return null;
+    return getAgentCore(agentId).resume.vendorResumeIdField;
 }
 
 export function canResumeSession(metadata: SessionMetadata | null | undefined): boolean {
@@ -75,6 +77,19 @@ export function canResumeSessionWithOptions(metadata: SessionMetadata | null | u
 export function getAgentSessionId(metadata: SessionMetadata | null | undefined): string | null {
     if (!metadata) return null;
     const field = getAgentSessionIdField(metadata.flavor);
+    if (!field) return null;
+    const agentSessionId = metadata[field];
+    return typeof agentSessionId === 'string' && agentSessionId.length > 0 ? agentSessionId : null;
+}
+
+export function getAgentVendorResumeId(
+    metadata: SessionMetadata | null | undefined,
+    agent: string | null | undefined,
+    options?: ResumeCapabilityOptions,
+): string | null {
+    if (!metadata) return null;
+    if (!canAgentResume(agent, options)) return null;
+    const field = getAgentSessionIdField(agent);
     if (!field) return null;
     const agentSessionId = metadata[field];
     return typeof agentSessionId === 'string' && agentSessionId.length > 0 ? agentSessionId : null;

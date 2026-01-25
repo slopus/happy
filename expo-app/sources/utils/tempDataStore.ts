@@ -1,4 +1,5 @@
 import { randomUUID } from '@/platform/randomUUID';
+import type { AgentId } from '@/agents/registryCore';
 
 export interface TempDataEntry {
     data: any;
@@ -9,7 +10,7 @@ export interface NewSessionData {
     prompt?: string;
     machineId?: string;
     path?: string;
-    agentType?: 'claude' | 'codex' | 'gemini';
+    agentType?: AgentId;
     sessionType?: 'simple' | 'worktree';
     resumeSessionId?: string;
     taskId?: string;
