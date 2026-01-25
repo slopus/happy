@@ -306,12 +306,12 @@ describe('ApiSessionClient connection handling', () => {
 			        await expect(waitPromise).resolves.toBe(true);
 			    });
 
-                it('waitForMetadataUpdate resolves when the socket connects (wakes idle agents)', async () => {
+                it('waitForMetadataUpdate resolves when the user-scoped socket connects (wakes idle agents)', async () => {
                     const client = new ApiSessionClient('fake-token', mockSession);
 
                     const waitPromise = client.waitForMetadataUpdate();
 
-                    const connectHandlers = mockSocket.on.mock.calls
+                    const connectHandlers = mockUserSocket.on.mock.calls
                         .filter((call: any[]) => call[0] === 'connect')
                         .map((call: any[]) => call[1]);
                     const lastConnectHandler = connectHandlers[connectHandlers.length - 1];
@@ -349,12 +349,12 @@ describe('ApiSessionClient connection handling', () => {
                 await expect(waitPromise).resolves.toBe(true);
             });
 
-            it('waitForMetadataUpdate resolves false when socket disconnects', async () => {
+            it('waitForMetadataUpdate resolves false when user-scoped socket disconnects', async () => {
                 const client = new ApiSessionClient('fake-token', mockSession);
 
                 const waitPromise = client.waitForMetadataUpdate();
 
-                const disconnectHandlers = mockSocket.on.mock.calls
+                const disconnectHandlers = mockUserSocket.on.mock.calls
                     .filter((call: any[]) => call[0] === 'disconnect')
                     .map((call: any[]) => call[1]);
                 const lastDisconnectHandler = disconnectHandlers[disconnectHandlers.length - 1];
@@ -362,6 +362,38 @@ describe('ApiSessionClient connection handling', () => {
 
                 lastDisconnectHandler();
                 await expect(waitPromise).resolves.toBe(false);
+            });
+
+            it('waitForMetadataUpdate does not miss fast user-scoped update-session wakeups', async () => {
+                const client = new ApiSessionClient('fake-token', mockSession);
+
+                const updateHandler = (mockUserSocket.on.mock.calls.find((call: any[]) => call[0] === 'update') ?? [])[1];
+                expect(typeof updateHandler).toBe('function');
+
+                mockUserSocket.connect.mockImplementation(() => {
+                    const nextMetadata = { ...mockSession.metadata, path: '/tmp/fast' };
+                    const encrypted = encodeBase64(encrypt(mockSession.encryptionKey, mockSession.encryptionVariant, nextMetadata));
+
+                    updateHandler({
+                        id: 'update-fast',
+                        seq: 999,
+                        createdAt: Date.now(),
+                        body: {
+                            t: 'update-session',
+                            sid: mockSession.id,
+                            metadata: {
+                                version: 2,
+                                value: encrypted,
+                            },
+                        },
+                    } as any);
+                });
+
+                const controller = new AbortController();
+                const promise = client.waitForMetadataUpdate(controller.signal);
+
+                queueMicrotask(() => controller.abort());
+                await expect(promise).resolves.toBe(true);
             });
 
             it('updateMetadata syncs a snapshot first when metadataVersion is unknown', async () => {

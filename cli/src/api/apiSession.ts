@@ -463,12 +463,9 @@ export class ApiSessionClient extends EventEmitter {
         if (this.metadataVersion < 0 || this.agentStateVersion < 0) {
             void this.syncSessionSnapshotFromServer({ reason: 'waitForMetadataUpdate' });
         }
-        // Ensure we can observe metadata updates even when the server broadcasts them only to user-scoped clients.
-        // This keeps idle agents wakeable without requiring server changes.
-        this.kickUserSocketConnect();
         return new Promise((resolve) => {
             let cleanedUp = false;
-            const shouldWatchConnect = !this.socket.connected;
+            const shouldWatchConnect = !this.userSocket.connected;
             const onUpdate = () => {
                 cleanup();
                 resolve(true);
@@ -491,18 +488,22 @@ export class ApiSessionClient extends EventEmitter {
                 this.off('metadata-updated', onUpdate);
                 abortSignal?.removeEventListener('abort', onAbort);
                 if (shouldWatchConnect) {
-                    this.socket.off('connect', onConnect);
+                    this.userSocket.off('connect', onConnect);
                 }
-                this.socket.off('disconnect', onDisconnect);
+                this.userSocket.off('disconnect', onDisconnect);
                 this.maybeScheduleUserSocketDisconnect();
             };
 
             this.on('metadata-updated', onUpdate);
             if (shouldWatchConnect) {
-                this.socket.on('connect', onConnect);
+                this.userSocket.on('connect', onConnect);
             }
             abortSignal?.addEventListener('abort', onAbort, { once: true });
-            this.socket.on('disconnect', onDisconnect);
+            this.userSocket.on('disconnect', onDisconnect);
+
+            // Ensure we can observe metadata updates even when the server broadcasts them only to user-scoped clients.
+            // This keeps idle agents wakeable without requiring server changes.
+            this.kickUserSocketConnect();
         });
     }
 
