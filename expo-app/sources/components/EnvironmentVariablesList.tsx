@@ -1,11 +1,11 @@
 import React from 'react';
-import { View, Text, Pressable, TextInput, Platform } from 'react-native';
+import { View, Text, TextInput, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { EnvironmentVariableCard } from './EnvironmentVariableCard';
 import type { ProfileDocumentation } from '@/sync/profileUtils';
-import { Item } from '@/components/Item';
+import { InlineAddExpander } from '@/components/InlineAddExpander';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
@@ -111,9 +111,16 @@ export function EnvironmentVariablesList({
     );
 
     // Add variable inline form state
-    const [showAddForm, setShowAddForm] = React.useState(false);
+    const [isAddExpanded, setIsAddExpanded] = React.useState(false);
     const [newVarName, setNewVarName] = React.useState('');
     const [newVarValue, setNewVarValue] = React.useState('');
+    const nameInputRef = React.useRef<TextInput>(null);
+
+    const resetAddDraft = React.useCallback(() => {
+        setNewVarName('');
+        setNewVarValue('');
+        setIsAddExpanded(false);
+    }, []);
 
     // Helper to get expected value and description from documentation
     const getDocumentation = React.useCallback((varName: string) => {
@@ -188,11 +195,8 @@ export function EnvironmentVariablesList({
             value: newVarValue.trim() || '',
         }]);
 
-        // Reset form
-        setNewVarName('');
-        setNewVarValue('');
-        setShowAddForm(false);
-    }, [environmentVariables, newVarName, newVarValue, onChange]);
+        resetAddDraft();
+    }, [environmentVariables, newVarName, newVarValue, onChange, resetAddDraft]);
 
     return (
         <View style={styles.container}>
@@ -257,67 +261,49 @@ export function EnvironmentVariablesList({
             )}
 
             <View style={styles.addContainer}>
-                <Item
-                    title={showAddForm ? t('common.cancel') : t('profiles.environmentVariables.addVariable')}
-                    icon={
-                        <Ionicons
-                            name={showAddForm ? 'close-circle-outline' : 'add-circle-outline'}
-                            size={29}
-                            color={theme.colors.button.secondary.tint}
+                <InlineAddExpander
+                    isOpen={isAddExpanded}
+                    onOpenChange={setIsAddExpanded}
+                    title={t('profiles.environmentVariables.addVariable')}
+                    icon={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}
+                    onCancel={resetAddDraft}
+                    onSave={handleAddVariable}
+                    saveDisabled={!newVarName.trim()}
+                    cancelLabel={t('common.cancel')}
+                    saveLabel={t('common.save')}
+                    autoFocusRef={nameInputRef}
+                >
+                    <Text style={styles.fieldLabel}>
+                        {t('secrets.fields.name')}
+                    </Text>
+                    <View style={styles.addInputRow}>
+                        <TextInput
+                            ref={nameInputRef}
+                            style={styles.addTextInput}
+                            placeholder={t('profiles.environmentVariables.namePlaceholder')}
+                            placeholderTextColor={theme.colors.input.placeholder}
+                            value={newVarName}
+                            onChangeText={(text) => setNewVarName(text.toUpperCase())}
+                            autoCapitalize="characters"
+                            autoCorrect={false}
                         />
-                    }
-                    showChevron={false}
-                    onPress={() => {
-                        if (showAddForm) {
-                            setShowAddForm(false);
-                            setNewVarName('');
-                            setNewVarValue('');
-                        } else {
-                            setShowAddForm(true);
-                        }
-                    }}
-                />
-
-                {showAddForm && (
-                    <View style={styles.addFormContainer}>
-                        <View style={styles.addInputRow}>
-                            <TextInput
-                                style={styles.addTextInput}
-                                placeholder={t('profiles.environmentVariables.namePlaceholder')}
-                                placeholderTextColor={theme.colors.input.placeholder}
-                                value={newVarName}
-                                onChangeText={(text) => setNewVarName(text.toUpperCase())}
-                                autoCapitalize="characters"
-                                autoCorrect={false}
-                            />
-                        </View>
-
-                        <View style={[styles.addInputRow, styles.addInputRowLast]}>
-                            <TextInput
-                                style={styles.addTextInput}
-                                placeholder={t('profiles.environmentVariables.valuePlaceholder')}
-                                placeholderTextColor={theme.colors.input.placeholder}
-                                value={newVarValue}
-                                onChangeText={setNewVarValue}
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                            />
-                        </View>
-
-                        <Pressable
-                            onPress={handleAddVariable}
-                            disabled={!newVarName.trim()}
-                            style={({ pressed }) => [
-                                styles.addButton,
-                                { opacity: !newVarName.trim() ? 0.5 : pressed ? 0.85 : 1 },
-                            ]}
-                        >
-                            <Text style={styles.addButtonText}>
-                                {t('common.add')}
-                            </Text>
-                        </Pressable>
                     </View>
-                )}
+
+                    <Text style={styles.fieldLabel}>
+                        {t('secrets.fields.value')}
+                    </Text>
+                    <View style={[styles.addInputRow, styles.addInputRowLast]}>
+                        <TextInput
+                            style={styles.addTextInput}
+                            placeholder={t('profiles.environmentVariables.valuePlaceholder')}
+                            placeholderTextColor={theme.colors.input.placeholder}
+                            value={newVarValue}
+                            onChangeText={setNewVarValue}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                        />
+                    </View>
+                </InlineAddExpander>
             </View>
         </View>
     );
@@ -355,9 +341,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         shadowRadius: 0,
         elevation: 1,
     },
-    addFormContainer: {
-        paddingHorizontal: 16,
-        paddingBottom: 12,
+    fieldLabel: {
+        ...Typography.default('semiBold'),
+        fontSize: 13,
+        color: theme.colors.groupped.sectionTitle,
+        marginBottom: 8,
     },
     addInputRow: {
         flexDirection: 'row',
@@ -388,15 +376,5 @@ const stylesheet = StyleSheet.create((theme) => ({
             },
             default: {},
         }) as object),
-    },
-    addButton: {
-        backgroundColor: theme.colors.button.primary.background,
-        borderRadius: 10,
-        paddingVertical: 10,
-        alignItems: 'center',
-    },
-    addButtonText: {
-        color: theme.colors.button.primary.tint,
-        ...Typography.default('semiBold'),
     },
 }));

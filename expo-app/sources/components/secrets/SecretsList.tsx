@@ -1,16 +1,17 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Platform, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { ItemRowActions } from '@/components/ItemRowActions';
+import { InlineAddExpander } from '@/components/InlineAddExpander';
 import { Modal } from '@/modal';
 import type { SavedSecret } from '@/sync/settings';
+import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { SecretAddModal } from '@/components/secrets/SecretAddModal';
 
 function newId(): string {
     try {
@@ -46,6 +47,7 @@ export interface SecretsListProps {
 
 export function SecretsList(props: SecretsListProps) {
     const { theme } = useUnistyles();
+    const styles = stylesheet;
     const {
         secrets,
         defaultId,
@@ -65,26 +67,36 @@ export function SecretsList(props: SecretsListProps) {
         return [defaultSecret, ...rest];
     }, [defaultId, secrets]);
 
-    const addSecret = React.useCallback(async () => {
-        Modal.show({
-            component: SecretAddModal,
-            props: {
-                onSubmit: ({ name, value }) => {
-                    const now = Date.now();
-                    const next: SavedSecret = {
-                        id: newId(),
-                        name,
-                        kind: 'apiKey',
-                        encryptedValue: { _isSecretValue: true, value },
-                        createdAt: now,
-                        updatedAt: now,
-                    };
-                    onChangeSecrets([next, ...secrets]);
-                    onAfterAddSelectId?.(next.id);
-                },
-            },
-        });
-    }, [onAfterAddSelectId, onChangeSecrets, secrets]);
+    const [isAddExpanded, setIsAddExpanded] = React.useState(false);
+    const [draftName, setDraftName] = React.useState('');
+    const [draftValue, setDraftValue] = React.useState('');
+    const nameInputRef = React.useRef<TextInput>(null);
+
+    const resetAddDraft = React.useCallback(() => {
+        setDraftName('');
+        setDraftValue('');
+        setIsAddExpanded(false);
+    }, []);
+
+    const submitAddSecret = React.useCallback(() => {
+        const name = draftName.trim();
+        const value = draftValue.trim();
+        if (!name) return;
+        if (!value) return;
+
+        const now = Date.now();
+        const next: SavedSecret = {
+            id: newId(),
+            name,
+            kind: 'apiKey',
+            encryptedValue: { _isSecretValue: true, value },
+            createdAt: now,
+            updatedAt: now,
+        };
+        onChangeSecrets([next, ...secrets]);
+        onAfterAddSelectId?.(next.id);
+        resetAddDraft();
+    }, [draftName, draftValue, onAfterAddSelectId, onChangeSecrets, resetAddDraft, secrets]);
 
     const renameSecret = React.useCallback(async (secret: SavedSecret) => {
         const name = await Modal.prompt(
@@ -194,17 +206,6 @@ export function SecretsList(props: SecretsListProps) {
                                             />
                                         )}
 
-                                        {props.onSelectId && (
-                                            <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                                <Ionicons
-                                                    name="checkmark-circle"
-                                                    size={24}
-                                                    color={theme.colors.text}
-                                                    style={{ opacity: isSelected ? 1 : 0 }}
-                                                />
-                                            </View>
-                                        )}
-
                                         {props.allowEdit !== false && (
                                             <ItemRowActions
                                                 title={secret.name}
@@ -216,6 +217,17 @@ export function SecretsList(props: SecretsListProps) {
                                                 ]}
                                             />
                                         )}
+
+                                        {props.onSelectId && (
+                                            <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                                <Ionicons
+                                                    name="checkmark-circle"
+                                                    size={24}
+                                                    color={theme.colors.text}
+                                                    style={{ opacity: isSelected ? 1 : 0 }}
+                                                />
+                                            </View>
+                                        )}
                                     </View>
                                 )}
                             />
@@ -225,14 +237,46 @@ export function SecretsList(props: SecretsListProps) {
             </ItemGroup>
             <ItemGroup footer={groupFooter}>
                 {props.allowAdd !== false ? (
-                    <Item
+                    <InlineAddExpander
+                        isOpen={isAddExpanded}
+                        onOpenChange={setIsAddExpanded}
                         title={t('common.add')}
                         subtitle={t('secrets.addSubtitle')}
                         icon={<Ionicons name="add-circle-outline" size={29} color={theme.colors.button.secondary.tint} />}
-                        onPress={() => { void addSecret(); }}
-                        showChevron={false}
-                        showDivider={false}
-                    />
+                        onCancel={resetAddDraft}
+                        onSave={submitAddSecret}
+                        saveDisabled={!draftName.trim() || !draftValue.trim()}
+                        cancelLabel={t('common.cancel')}
+                        saveLabel={t('common.save')}
+                        autoFocusRef={nameInputRef}
+                    >
+                        <Text style={styles.fieldLabel}>{t('secrets.fields.name')}</Text>
+                        <TextInput
+                            ref={nameInputRef}
+                            style={styles.textInput}
+                            placeholder={t('secrets.placeholders.nameExample')}
+                            placeholderTextColor={theme.colors.input.placeholder}
+                            value={draftName}
+                            onChangeText={setDraftName}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                        />
+
+                        <View style={{ height: 12 }} />
+
+                        <Text style={styles.fieldLabel}>{t('secrets.fields.value')}</Text>
+                        <TextInput
+                            style={styles.textInput}
+                            placeholder="sk-..."
+                            placeholderTextColor={theme.colors.input.placeholder}
+                            value={draftValue}
+                            onChangeText={setDraftValue}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            secureTextEntry
+                            textContentType={Platform.OS === 'ios' ? 'password' : undefined}
+                        />
+                    </InlineAddExpander>
                 ) : null}
             </ItemGroup>
         </>
@@ -248,3 +292,35 @@ export function SecretsList(props: SecretsListProps) {
         </ItemList>
     );
 }
+
+const stylesheet = StyleSheet.create((theme) => ({
+    fieldLabel: {
+        ...Typography.default('semiBold'),
+        fontSize: 13,
+        color: theme.colors.groupped.sectionTitle,
+        marginBottom: 8,
+    },
+    textInput: {
+        ...Typography.default('regular'),
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: Platform.select({ ios: 8, default: 10 }),
+        fontSize: Platform.select({ ios: 16, default: 16 }),
+        lineHeight: Platform.select({ ios: 20, default: 22 }),
+        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
+        color: theme.colors.input.text,
+        ...(Platform.select({
+            web: {
+                outline: 'none',
+                outlineStyle: 'none',
+                outlineWidth: 0,
+                outlineColor: 'transparent',
+                boxShadow: 'none',
+                WebkitBoxShadow: 'none',
+                WebkitAppearance: 'none',
+            },
+            default: {},
+        }) as object),
+    },
+}));

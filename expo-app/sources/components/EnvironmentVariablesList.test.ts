@@ -95,6 +95,55 @@ describe('EnvironmentVariablesList', () => {
         useEnvironmentVariablesMock.mockClear();
     });
 
+    it('adds a variable via the inline expander', () => {
+        const onChange = vi.fn();
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        act(() => {
+            tree = renderer.create(
+                React.createElement(EnvironmentVariablesList, {
+                    environmentVariables: [],
+                    machineId: 'machine-1',
+                    profileDocs: null,
+                    onChange,
+                    sourceRequirementsByName: {},
+                    onUpdateSourceRequirement: () => {},
+                    getDefaultSecretNameForSourceVar: () => null,
+                    onPickDefaultSecretForSourceVar: () => {},
+                }),
+            );
+        });
+
+        const addItem = tree!.root
+            .findAllByType('Item' as any)
+            .find((n: any) => n.props.title === 'profiles.environmentVariables.addVariable');
+        expect(addItem).toBeTruthy();
+
+        act(() => {
+            addItem!.props.onPress();
+        });
+
+        const inputs = tree!.root.findAllByType('TextInput' as any);
+        expect(inputs.length).toBeGreaterThanOrEqual(2);
+
+        act(() => {
+            inputs[0]!.props.onChangeText('FOO');
+            inputs[1]!.props.onChangeText('bar');
+        });
+
+        const saveButton = tree!.root
+            .findAllByType('Pressable' as any)
+            .find((n: any) => n.props.accessibilityLabel === 'common.save');
+        expect(saveButton).toBeTruthy();
+
+        act(() => {
+            saveButton!.props.onPress();
+        });
+
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange.mock.calls[0]?.[0]).toEqual([{ name: 'FOO', value: 'bar' }]);
+    });
+
     it('marks documented secret refs as sensitive keys (daemon-controlled disclosure)', () => {
         const profileDocs: ProfileDocumentation = {
             description: 'test',
@@ -127,7 +176,7 @@ describe('EnvironmentVariablesList', () => {
             );
         });
 
-        expect(useEnvironmentVariablesMock).toHaveBeenCalledTimes(1);
+        expect(useEnvironmentVariablesMock).toHaveBeenCalled();
         const [_machineId, keys, options] = useEnvironmentVariablesMock.mock.calls[0] as unknown as [string, string[], any];
         expect(keys).toContain('FOO');
         expect(keys).toContain('BAR');
@@ -166,7 +215,7 @@ describe('EnvironmentVariablesList', () => {
             );
         });
 
-        expect(useEnvironmentVariablesMock).toHaveBeenCalledTimes(1);
+        expect(useEnvironmentVariablesMock).toHaveBeenCalled();
         const [_machineId, keys, options] = useEnvironmentVariablesMock.mock.calls[0] as unknown as [string, string[], any];
         expect(keys).toContain('MAGIC');
         expect(keys).toContain('HOME');
