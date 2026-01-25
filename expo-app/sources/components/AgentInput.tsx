@@ -5,8 +5,9 @@ import { Image } from 'expo-image';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
-import { normalizePermissionModeForAgentFlavor, type PermissionMode, type ModelMode } from '@/sync/permissionTypes';
+import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
 import { getModelOptionsForAgentType } from '@/sync/modelOptions';
+import { getPermissionModeBadgeLabelForAgentType, getPermissionModeLabelForAgentType, getPermissionModeTitleForAgentType, getPermissionModesForAgentType, normalizePermissionModeForAgentType } from '@/sync/permissionModeOptions';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
@@ -26,10 +27,14 @@ import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
-import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
+import { AIBackendProfile, getProfileEnvironmentVariables } from '@/sync/settings';
+import { DEFAULT_AGENT_ID, getAgentCore, resolveAgentIdFromFlavor, type AgentId } from '@/agents/registryCore';
 import { resolveProfileById } from '@/sync/profileUtils';
 import { getProfileDisplayName } from '@/components/profiles/profileDisplay';
 import { useScrollEdgeFades } from './useScrollEdgeFades';
+import { ResumeChip, formatResumeChipLabel, RESUME_CHIP_ICON_NAME, RESUME_CHIP_ICON_SIZE } from './agentInput/ResumeChip';
+import { PathAndResumeRow } from './agentInput/PathAndResumeRow';
+import { getHasAnyAgentInputActions, shouldShowPathAndResumeRow } from './agentInput/actionBarLogic';
 
 interface AgentInputProps {
     value: string;
@@ -65,7 +70,7 @@ interface AgentInputProps {
     };
     alwaysShowContextSize?: boolean;
     onFileViewerPress?: () => void;
-    agentType?: 'claude' | 'codex' | 'gemini';
+    agentType?: AgentId;
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;
@@ -76,6 +81,7 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
+    inputMaxHeight?: number;
     profileId?: string | null;
     onProfileClick?: () => void;
     envVarsCount?: number;
@@ -94,6 +100,7 @@ function truncateWithEllipsis(value: string, maxChars: number) {
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         alignItems: 'center',
+        width: '100%',
         paddingBottom: 8,
         paddingTop: 8,
     },
@@ -430,20 +437,17 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
 export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, AgentInputProps>((props, ref) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const screenWidth = useWindowDimensions().width;
+    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+
+    const defaultInputMaxHeight = React.useMemo(() => {
+        if (Platform.OS !== 'web') return 120;
+        return Math.max(200, Math.min(900, Math.round(screenHeight * 0.75)));
+    }, [screenHeight]);
 
     const hasText = props.value.trim().length > 0;
 
-    // Check if this is a Codex or Gemini session
-    const effectiveFlavor = props.metadata?.flavor ?? props.agentType;
-    const isCodex = effectiveFlavor === 'codex';
-    const isGemini = effectiveFlavor === 'gemini';
-    const modelOptions = React.useMemo(() => {
-        if (effectiveFlavor === 'claude' || effectiveFlavor === 'codex' || effectiveFlavor === 'gemini') {
-            return getModelOptionsForAgentType(effectiveFlavor);
-        }
-        return [];
-    }, [effectiveFlavor]);
+    const agentId: AgentId = resolveAgentIdFromFlavor(props.metadata?.flavor) ?? props.agentType ?? DEFAULT_AGENT_ID;
+    const modelOptions = React.useMemo(() => getModelOptionsForAgentType(agentId), [agentId]);
 
     // Profile data
     const profiles = useSetting('profiles');
@@ -564,50 +568,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     });
 
     const normalizedPermissionMode = React.useMemo(() => {
-        return normalizePermissionModeForAgentFlavor(
-            props.permissionMode ?? 'default',
-            isCodex ? 'codex' : isGemini ? 'gemini' : 'claude',
-        );
-    }, [isCodex, isGemini, props.permissionMode]);
+        return normalizePermissionModeForAgentType(props.permissionMode ?? 'default', agentId);
+    }, [agentId, props.permissionMode]);
 
     const permissionChipLabel = React.useMemo(() => {
-        if (isCodex) {
-            // Hide default (use icon-only for the common case).
-            return normalizedPermissionMode === 'default'
-                ? ''
-                : normalizedPermissionMode === 'read-only'
-                    ? t('agentInput.codexPermissionMode.badgeReadOnly')
-                    : normalizedPermissionMode === 'safe-yolo'
-                        ? t('agentInput.codexPermissionMode.badgeSafeYolo')
-                        : normalizedPermissionMode === 'yolo'
-                            ? t('agentInput.codexPermissionMode.badgeYolo')
-                            : '';
-        }
-
-        if (isGemini) {
-            // Hide default (use icon-only for the common case).
-            return normalizedPermissionMode === 'default'
-                ? ''
-                : normalizedPermissionMode === 'read-only'
-                    ? t('agentInput.geminiPermissionMode.badgeReadOnly')
-                    : normalizedPermissionMode === 'safe-yolo'
-                        ? t('agentInput.geminiPermissionMode.badgeSafeYolo')
-                        : normalizedPermissionMode === 'yolo'
-                            ? t('agentInput.geminiPermissionMode.badgeYolo')
-                            : '';
-        }
-
-        // Hide default (use icon-only for the common case).
-        return normalizedPermissionMode === 'default'
-            ? ''
-            : normalizedPermissionMode === 'acceptEdits'
-                ? t('agentInput.permissionMode.badgeAccept')
-            : normalizedPermissionMode === 'plan'
-                ? t('agentInput.permissionMode.badgePlan')
-                : normalizedPermissionMode === 'bypassPermissions'
-                        ? t('agentInput.permissionMode.badgeYolo')
-                        : '';
-    }, [isCodex, isGemini, normalizedPermissionMode]);
+        return getPermissionModeBadgeLabelForAgentType(agentId, normalizedPermissionMode);
+    }, [agentId, normalizedPermissionMode]);
 
     // Handle settings button press
     const handleSettingsPress = React.useCallback(() => {
@@ -618,19 +584,29 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // NOTE: settings overlay sizing is handled by `Popover` now (anchor + boundary measurement).
 
     const showPermissionChip = Boolean(props.onPermissionModeChange || props.onPermissionClick);
-    const hasAnyActions = Boolean(
-        showPermissionChip ||
-        props.onProfileClick ||
-        props.onEnvVarsClick ||
-        props.onAgentClick ||
-        props.onMachineClick ||
-        props.onPathClick ||
-        props.onFileViewerPress ||
-        props.onAbort
-    );
+    const hasProfile = Boolean(props.onProfileClick);
+    const hasEnvVars = Boolean(props.onEnvVarsClick);
+    const hasAgent = Boolean(props.agentType && props.onAgentClick);
+    const hasMachine = Boolean(props.machineName !== undefined && props.onMachineClick);
+    const hasPath = Boolean(props.currentPath && props.onPathClick);
+    const hasResume = Boolean(props.onResumeClick);
+    const hasFiles = Boolean(props.sessionId && props.onFileViewerPress);
+    const hasStop = Boolean(props.onAbort);
+    const hasAnyActions = getHasAnyAgentInputActions({
+        showPermissionChip,
+        hasProfile,
+        hasEnvVars,
+        hasAgent,
+        hasMachine,
+        hasPath,
+        hasResume,
+        hasFiles,
+        hasStop,
+    });
 
     const actionBarShouldScroll = effectiveActionBarLayout === 'scroll';
     const actionBarIsCollapsed = effectiveActionBarLayout === 'collapsed';
+    const showPathAndResumeRow = shouldShowPathAndResumeRow(effectiveActionBarLayout);
 
     const canActionBarScroll = actionBarShouldScroll && actionBarFades.canScrollX;
     const showActionBarFadeLeft = canActionBarScroll && actionBarFades.visibility.left;
@@ -703,12 +679,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         if (props.agentType && props.onAgentClick) {
             actions.push({
                 id: 'agent',
-                label:
-                    props.agentType === 'claude'
-                        ? t('agentInput.agent.claude')
-                        : props.agentType === 'codex'
-                            ? t('agentInput.agent.codex')
-                            : t('agentInput.agent.gemini'),
+                label: t(getAgentCore(agentId).displayNameKey),
                 icon: <Octicons name="cpu" size={16} color={tint} />,
                 onPress: () => {
                     hapticsLight();
@@ -744,6 +715,24 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             });
         }
 
+        if (props.onResumeClick) {
+            actions.push({
+                id: 'resume',
+                label: formatResumeChipLabel({
+                    resumeSessionId: props.resumeSessionId,
+                    labelTitle: t('newSession.resume.title'),
+                    labelOptional: t('newSession.resume.optional'),
+                }),
+                icon: <Ionicons name={RESUME_CHIP_ICON_NAME} size={RESUME_CHIP_ICON_SIZE} color={tint} />,
+                onPress: () => {
+                    hapticsLight();
+                    setShowSettings(false);
+                    inputRef.current?.blur();
+                    props.onResumeClick?.();
+                },
+            });
+        }
+
         if (props.sessionId && props.onFileViewerPress) {
             actions.push({
                 id: 'files',
@@ -757,10 +746,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             });
         }
 
-        if (props.onAbort) {
-            actions.push({
-                id: 'stop',
-                label: t('agentInput.actionMenu.stop'),
+	        if (props.onAbort) {
+	            actions.push({
+	                id: 'stop',
+	                label: t('agentInput.actionMenu.stop'),
                 icon: <Octicons name="stop" size={16} color={tint} />,
                 onPress: () => {
                     setShowSettings(false);
@@ -769,29 +758,32 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             });
         }
 
-        return actions;
-    }, [
-        actionBarIsCollapsed,
-        hasAnyActions,
-        handleAbortPress,
-        profileIcon,
-        profileLabel,
-        props.agentType,
-        props.currentPath,
-        props.envVarsCount,
-        props.machineName,
-        props.onAbort,
-        props.onAgentClick,
-        props.onEnvVarsClick,
-        props.onFileViewerPress,
-        props.onMachineClick,
-        props.onPathClick,
-        props.onProfileClick,
-        props.sessionId,
-        setShowSettings,
-        t,
-        theme.colors.button.secondary.tint,
-    ]);
+	        return actions;
+	    }, [
+	        actionBarIsCollapsed,
+	        hasAnyActions,
+	        handleAbortPress,
+	        agentId,
+	        profileIcon,
+	        profileLabel,
+	        props.agentType,
+	        props.currentPath,
+	        props.envVarsCount,
+	        props.machineName,
+            props.onResumeClick,
+            props.resumeSessionId,
+	        props.onAbort,
+	        props.onAgentClick,
+	        props.onEnvVarsClick,
+	        props.onFileViewerPress,
+	        props.onMachineClick,
+	        props.onPathClick,
+	        props.onProfileClick,
+	        props.sessionId,
+	        setShowSettings,
+	        t,
+	        theme.colors.button.secondary.tint,
+	    ]);
 
     // Handle settings selection
     const handleSettingsSelect = React.useCallback((mode: PermissionMode) => {
@@ -845,12 +837,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             }
             // Handle Shift+Tab for permission mode switching
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
-                const modeOrder: PermissionMode[] = isCodex
-                    ? ['default', 'read-only', 'safe-yolo', 'yolo']
-                    : isGemini
-                        ? ['default', 'read-only', 'safe-yolo', 'yolo']
-                        : ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-                const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
+                const modeOrder = [...getPermissionModesForAgentType(agentId)];
+                const current = normalizePermissionModeForAgentType(props.permissionMode || 'default', agentId);
+                const currentIndex = modeOrder.indexOf(current);
                 const nextIndex = (currentIndex + 1) % modeOrder.length;
                 props.onPermissionModeChange(modeOrder[nextIndex]);
                 hapticsLight();
@@ -859,7 +848,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange, isCodex, isGemini]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange, agentId]);
 
 
 
@@ -902,14 +891,15 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
 
                 {/* Settings overlay */}
-                {showSettings && (
-                    <Popover
-                        open={showSettings}
-                        anchorRef={overlayAnchorRef}
-                        placement="top"
-                        gap={8}
-                        maxHeightCap={400}
-                        portal={{ web: true }}
+	                {showSettings && (
+	                    <Popover
+	                        open={showSettings}
+	                        anchorRef={overlayAnchorRef}
+	                        boundaryRef={null}
+	                        placement="top"
+	                        gap={8}
+	                        maxHeightCap={400}
+	                        portal={{ web: true }}
                         edgePadding={{
                             horizontal: Platform.OS === 'web' ? (screenWidth > 700 ? 12 : 16) : 0,
                             vertical: 12,
@@ -939,30 +929,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 {/* Permission Mode Section */}
                                 <View style={styles.overlaySection}>
                                     <Text style={styles.overlaySectionTitle}>
-                                        {isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title')}
+                                        {getPermissionModeTitleForAgentType(agentId)}
                                     </Text>
-                                    {((isCodex || isGemini)
-                                        ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
-                                        : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
-                                    ).map((mode) => {
-                                        const modeConfig = isCodex ? {
-                                            'default': { label: t('agentInput.codexPermissionMode.default') },
-                                            'read-only': { label: t('agentInput.codexPermissionMode.readOnly') },
-                                            'safe-yolo': { label: t('agentInput.codexPermissionMode.safeYolo') },
-                                            'yolo': { label: t('agentInput.codexPermissionMode.yolo') },
-                                        } : isGemini ? {
-                                            'default': { label: t('agentInput.geminiPermissionMode.default') },
-                                            'read-only': { label: t('agentInput.geminiPermissionMode.readOnly') },
-                                            'safe-yolo': { label: t('agentInput.geminiPermissionMode.safeYolo') },
-                                            'yolo': { label: t('agentInput.geminiPermissionMode.yolo') },
-                                        } : {
-                                            default: { label: t('agentInput.permissionMode.default') },
-                                            acceptEdits: { label: t('agentInput.permissionMode.acceptEdits') },
-                                            plan: { label: t('agentInput.permissionMode.plan') },
-                                            bypassPermissions: { label: t('agentInput.permissionMode.bypassPermissions') },
-                                        };
-                                        const config = modeConfig[mode as keyof typeof modeConfig];
-                                        if (!config) return null;
+                                    {getPermissionModesForAgentType(agentId).map((mode) => {
                                         const isSelected = normalizedPermissionMode === mode;
 
                                         return (
@@ -992,7 +961,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                         isSelected ? styles.overlayOptionLabelSelected : styles.overlayOptionLabelUnselected,
                                                     ]}
                                                 >
-                                                    {config.label}
+                                                    {getPermissionModeLabelForAgentType(agentId, mode)}
                                                 </Text>
                                             </Pressable>
                                         );
@@ -1130,7 +1099,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             placeholder={props.placeholder}
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
-                            maxHeight={120}
+                            maxHeight={props.inputMaxHeight ?? defaultInputMaxHeight}
                         />
                     </View>
 
@@ -1238,11 +1207,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             />
                                             {showChipLabels ? (
                                                 <Text style={styles.actionChipText}>
-                                                    {props.agentType === 'claude'
-                                                        ? t('agentInput.agent.claude')
-                                                        : props.agentType === 'codex'
-                                                            ? t('agentInput.agent.codex')
-                                                            : t('agentInput.agent.gemini')}
+                                                    {t(getAgentCore(props.agentType).displayNameKey)}
                                                 </Text>
                                             ) : null}
                                         </Pressable>
@@ -1296,6 +1261,24 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         </Pressable>
                                     ) : null;
 
+	                                    const resumeChip = props.onResumeClick ? (
+	                                        <ResumeChip
+	                                            key="resume"
+	                                            onPress={() => {
+	                                                hapticsLight();
+	                                                inputRef.current?.blur();
+	                                                props.onResumeClick?.();
+	                                            }}
+	                                            showLabel={showChipLabels}
+	                                            resumeSessionId={props.resumeSessionId}
+	                                            labelTitle={t('newSession.resume.title')}
+                                            labelOptional={t('newSession.resume.optional')}
+                                            iconColor={theme.colors.button.secondary.tint}
+                                            pressableStyle={chipStyle}
+                                            textStyle={styles.actionChipText}
+                                        />
+                                    ) : null;
+
                                     const abortButton = props.onAbort && !actionBarIsCollapsed ? (
                                         <Shaker key="abort" ref={shakerRef}>
                                             <Pressable
@@ -1340,7 +1323,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             envVarsChip,
                                             agentChip,
                                             machineChip,
-                                            ...(actionBarShouldScroll ? [pathChip] : []),
+                                            ...(actionBarShouldScroll ? [pathChip, resumeChip] : []),
                                             abortButton,
                                             gitStatusChip,
                                         ].filter(Boolean);
@@ -1454,74 +1437,37 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 	                                </View>
 	                            </View>,
 	
-	                            // Row 2: Path selector (separate line to match pre-PR272 layout; hidden when action bar scrolls/collapses)
-	                            (!actionBarShouldScroll && !actionBarIsCollapsed && props.currentPath && props.onPathClick) ? (
-	                                <View key="row2" style={styles.pathRow}>
-	                                    <View style={[styles.actionButtonsLeft, styles.actionButtonsLeftNoFlex]}>
-	                                        <Pressable
-                                            onPress={() => {
-                                                hapticsLight();
-                                                props.onPathClick?.();
-                                            }}
-                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                            style={(p) => [
-                                                styles.actionChip,
-                                                p.pressed ? styles.actionChipPressed : null,
-                                            ]}
-                                        >
-                                            <Ionicons
-                                                name="folder-outline"
-                                                size={16}
-                                                color={theme.colors.button.secondary.tint}
-                                            />
-                                            <Text style={styles.actionChipText}>
-                                                {props.currentPath}
-                                            </Text>
-                                        </Pressable>
-	                                    </View>
-	                                </View>
-                            ) : null,
-
-                            // Row 3: Resume selector (below path chip)
-                            (!actionBarShouldScroll && !actionBarIsCollapsed && props.onResumeClick) ? (
-                                <View key="row3" style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                                    <View style={[styles.actionButtonsLeft, { flex: 0 }]}>
-                                        <Pressable
-                                            onPress={() => {
-                                                hapticsLight();
-                                                props.onResumeClick?.();
-                                            }}
-                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                            style={(p) => ({
-                                                flexDirection: 'row',
-                                                alignItems: 'center',
-                                                borderRadius: Platform.select({ default: 16, android: 20 }),
-                                                paddingHorizontal: 10,
-                                                paddingVertical: 6,
-                                                justifyContent: 'center',
-                                                height: 32,
-                                                opacity: p.pressed ? 0.7 : 1,
-                                                gap: 6,
-                                            })}
-                                        >
-                                            <Ionicons
-                                                name="play-circle-outline"
-                                                size={14}
-                                                color={theme.colors.button.secondary.tint}
-                                            />
-                                            <Text style={{
-                                                fontSize: 13,
-                                                color: theme.colors.button.secondary.tint,
-                                                fontWeight: '600',
-                                                ...Typography.default('semiBold'),
-                                            }}>
-                                                {typeof props.resumeSessionId === 'string' && props.resumeSessionId.trim()
-                                                    ? `${t('newSession.resume.title')}: ${props.resumeSessionId.substring(0, 8)}...${props.resumeSessionId.substring(props.resumeSessionId.length - 8)}`
-                                                    : t('newSession.resume.optional')}
-                                            </Text>
-                                        </Pressable>
-                                    </View>
-                                </View>
+		                            // Row 2: Path + Resume selectors (separate line to match pre-PR272 layout)
+		                            // - wrap: shown below
+		                            // - scroll: folds into row 1
+		                            // - collapsed: moved into settings popover
+		                            (showPathAndResumeRow) ? (
+		                                <PathAndResumeRow
+		                                    key="row2"
+		                                    styles={{
+		                                        pathRow: styles.pathRow,
+		                                        actionButtonsLeft: styles.actionButtonsLeft,
+	                                        actionChip: styles.actionChip,
+	                                        actionChipIconOnly: styles.actionChipIconOnly,
+	                                        actionChipPressed: styles.actionChipPressed,
+	                                        actionChipText: styles.actionChipText,
+	                                    }}
+	                                    showChipLabels={showChipLabels}
+	                                    iconColor={theme.colors.button.secondary.tint}
+	                                    currentPath={props.currentPath}
+	                                    onPathClick={props.onPathClick ? () => {
+	                                        hapticsLight();
+	                                        props.onPathClick?.();
+	                                    } : undefined}
+		                                    resumeSessionId={props.resumeSessionId}
+		                                    onResumeClick={props.onResumeClick ? () => {
+		                                        hapticsLight();
+		                                        inputRef.current?.blur();
+		                                        props.onResumeClick?.();
+		                                    } : undefined}
+		                                    resumeLabelTitle={t('newSession.resume.title')}
+		                                    resumeLabelOptional={t('newSession.resume.optional')}
+		                                />
                             ) : null,
                         ]}</View>
                     </View>

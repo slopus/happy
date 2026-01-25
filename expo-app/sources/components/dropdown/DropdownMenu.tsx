@@ -54,6 +54,12 @@ export type DropdownMenuProps = Readonly<{
     /** Match the popover width to the trigger width in web portal mode (default true). */
     matchTriggerWidth?: boolean;
     popoverBoundaryRef?: React.RefObject<any> | null;
+    /**
+     * Web-only: controls where the popover portal is mounted.
+     * Defaults to Popover's behavior (which prefers the modal portal target when inside a modal).
+     * Set to 'body' to allow menus to escape overflow-clipped modals.
+     */
+    popoverPortalWebTarget?: 'body' | 'modal' | 'boundary';
     overlayStyle?: ViewStyle;
     /** When false, category titles like "General" are not rendered. */
     showCategoryTitles?: boolean;
@@ -149,7 +155,7 @@ export function DropdownMenu(props: DropdownMenuProps) {
                     maxWidthCap={maxWidthCap}
                     edgePadding={edgePadding}
                     portal={{
-                        web: true,
+                        web: props.popoverPortalWebTarget ? { target: props.popoverPortalWebTarget } : true,
                         native: true,
                         matchAnchorWidth: matchTriggerWidth,
                         anchorAlignVertical: 'start',

@@ -1,6 +1,6 @@
 import { useSocketStatus, useFriendRequests, useSetting, useSyncError } from '@/sync/storage';
 import * as React from 'react';
-import { Text, View, Pressable, useWindowDimensions } from 'react-native';
+import { Platform, Text, View, Pressable, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useHeaderHeight } from '@/utils/responsive';
@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { sync } from '@/sync/sync';
 import { PopoverBoundaryProvider } from '@/components/PopoverBoundary';
 import { ConnectionStatusControl } from '@/components/ConnectionStatusControl';
+import { useInboxFriendsEnabled } from '@/hooks/useInboxFriendsEnabled';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -50,9 +51,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         right: 0,
         flexDirection: 'column',
         alignItems: 'center',
-        // Allow the status control to be tappable, while still letting taps pass through
-        // to underlying header buttons when not hitting a child.
-        pointerEvents: 'box-none',
         overflow: 'visible',
     },
     titleContainerLeft: {
@@ -186,6 +184,7 @@ export const SidebarView = React.memo(() => {
     const inboxHasContent = useInboxHasContent();
     const experimentsEnabled = useSetting('experiments');
     const expZen = useSetting('expZen');
+    const inboxFriendsEnabled = useInboxFriendsEnabled();
 
     // Compute connection status once per render (theme-reactive, no stale memoization)
     const connectionStatus = (() => {
@@ -247,10 +246,12 @@ export const SidebarView = React.memo(() => {
         <>
             <Text style={styles.titleText}>{t('sidebar.sessionsTitle')}</Text>
             {connectionStatus.text ? (
-                <ConnectionStatusControl
-                    variant="sidebar"
-                    alignSelf={shouldLeftJustify ? 'flex-start' : 'center'}
-                />
+                <View style={Platform.OS === 'web' ? ({ pointerEvents: 'auto' } as any) : undefined}>
+                    <ConnectionStatusControl
+                        variant="sidebar"
+                        alignSelf={shouldLeftJustify ? 'flex-start' : 'center'}
+                    />
+                </View>
             ) : null}
         </>
     );
@@ -291,28 +292,30 @@ export const SidebarView = React.memo(() => {
                                 />
                             </Pressable>
                         )}
-                        <Pressable
-                            onPress={() => router.push('/(app)/inbox')}
-                            hitSlop={15}
-                            style={styles.notificationButton}
-                        >
-                            <Image
-                                source={require('@/assets/images/brutalist/Brutalism 27.png')}
-                                contentFit="contain"
-                                style={[{ width: 32, height: 32 }]}
-                                tintColor={theme.colors.header.tint}
-                            />
-                            {friendRequests.length > 0 && (
-                                <View style={styles.badge}>
-                                    <Text style={styles.badgeText}>
-                                        {friendRequests.length > 99 ? '99+' : friendRequests.length}
-                                    </Text>
-                                </View>
-                            )}
-                            {inboxHasContent && friendRequests.length === 0 && (
-                                <View style={styles.indicatorDot} />
-                            )}
-                        </Pressable>
+                        {inboxFriendsEnabled && (
+                            <Pressable
+                                onPress={() => router.push('/(app)/inbox')}
+                                hitSlop={15}
+                                style={styles.notificationButton}
+                            >
+                                <Image
+                                    source={require('@/assets/images/brutalist/Brutalism 27.png')}
+                                    contentFit="contain"
+                                    style={[{ width: 32, height: 32 }]}
+                                    tintColor={theme.colors.header.tint}
+                                />
+                                {friendRequests.length > 0 && (
+                                    <View style={styles.badge}>
+                                        <Text style={styles.badgeText}>
+                                            {friendRequests.length > 99 ? '99+' : friendRequests.length}
+                                        </Text>
+                                    </View>
+                                )}
+                                {inboxHasContent && friendRequests.length === 0 && (
+                                    <View style={styles.indicatorDot} />
+                                )}
+                            </Pressable>
+                        )}
                         <Pressable
                             onPress={() => router.push('/settings')}
                             hitSlop={15}
@@ -334,7 +337,12 @@ export const SidebarView = React.memo(() => {
 
                     {/* Centered title - absolute positioned over full header */}
                     {!shouldLeftJustify && (
-                        <View style={styles.titleContainer}>
+                        <View
+                            // On native, this overlay must be `box-none` so it doesn't block the header buttons.
+                            // On web, use CSS-compatible pointer-events values (RN `box-none` isn't valid CSS).
+                            pointerEvents={Platform.OS === 'web' ? undefined : 'box-none'}
+                            style={[styles.titleContainer, Platform.OS === 'web' ? ({ pointerEvents: 'none' } as any) : null]}
+                        >
                             {titleContent}
                         </View>
                     )}

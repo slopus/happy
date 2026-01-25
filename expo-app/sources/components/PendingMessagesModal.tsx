@@ -265,9 +265,25 @@ function ActionButton(props: {
     destructive?: boolean;
     testID?: string;
 }) {
-    const backgroundColor = props.destructive
-        ? props.theme.colors.box.danger.background
-        : props.theme.colors.button.secondary.background;
+    const secondaryBackground =
+        props.theme?.colors?.button?.secondary?.background ??
+        props.theme?.colors?.input?.background ??
+        'transparent';
+    const destructiveBackground =
+        props.theme?.colors?.box?.error?.background ??
+        props.theme?.colors?.box?.warning?.background ??
+        secondaryBackground;
+
+    const backgroundColor = props.destructive ? destructiveBackground : secondaryBackground;
+
+    const secondaryTint =
+        props.theme?.colors?.button?.secondary?.tint ??
+        props.theme?.colors?.text ??
+        '#000';
+    const destructiveTint =
+        props.theme?.colors?.box?.error?.text ??
+        props.theme?.colors?.text ??
+        secondaryTint;
     return (
         <Pressable
             onPress={props.onPress}
@@ -281,7 +297,7 @@ function ActionButton(props: {
             })}
         >
             <Text style={{
-                color: props.destructive ? props.theme.colors.box.danger.text : props.theme.colors.button.secondary.tint,
+                color: props.destructive ? destructiveTint : secondaryTint,
                 fontWeight: '600',
                 ...Typography.default('semiBold')
             }}>

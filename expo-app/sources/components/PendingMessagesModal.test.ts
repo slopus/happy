@@ -70,10 +70,12 @@ vi.mock('react-native-unistyles', () => ({
                 surfaceHighest: '#eee',
                 input: { background: '#fff' },
                 button: {
-                    secondary: { background: '#eee', tint: '#000' },
+                    // Match app theme shape: secondary has tint but no background.
+                    secondary: { tint: '#000' },
                 },
                 box: {
-                    danger: { background: '#fdd', text: '#a00' },
+                    // Match app theme shape: error (not danger).
+                    error: { background: '#fdd', text: '#a00' },
                 },
             },
         },
@@ -132,6 +134,47 @@ describe('PendingMessagesModal', () => {
         expect(abortOrder).toBeLessThan(sendOrder);
         expect(sendOrder).toBeLessThan(deleteOrder);
         expect(deleteOrder).toBeLessThan(closeOrder);
+    });
+
+    it('falls back to discarding when delete fails after send', async () => {
+        modalConfirm.mockResolvedValueOnce(true);
+        sessionAbort.mockResolvedValueOnce(undefined);
+        sendMessage.mockResolvedValueOnce(undefined);
+        deletePendingMessage.mockRejectedValueOnce(new Error('delete failed'));
+        discardPendingMessage.mockResolvedValueOnce(undefined);
+
+        const onClose = vi.fn();
+        const { PendingMessagesModal } = await import('./PendingMessagesModal');
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        await act(async () => {
+            tree = renderer.create(React.createElement(PendingMessagesModal, { sessionId: 's1', onClose }));
+        });
+
+        const sendNow = tree!.root
+            .findAllByType('Pressable' as any)
+            .find((p) => p.props.testID === 'pendingMessages.sendNow:p1');
+        expect(sendNow).toBeTruthy();
+
+        await act(async () => {
+            await sendNow!.props.onPress();
+        });
+
+        expect(deletePendingMessage).toHaveBeenCalledTimes(1);
+        expect(discardPendingMessage).toHaveBeenCalledTimes(1);
+        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(modalAlert).toHaveBeenCalledTimes(0);
+    });
+
+    it('renders with app theme shape (no secondary background / no danger box)', async () => {
+        const onClose = vi.fn();
+        const { PendingMessagesModal } = await import('./PendingMessagesModal');
+
+        await expect((async () => {
+            await act(async () => {
+                renderer.create(React.createElement(PendingMessagesModal, { sessionId: 's1', onClose }));
+            });
+        })()).resolves.toBeUndefined();
     });
 
     it('does not delete or close when send fails', async () => {

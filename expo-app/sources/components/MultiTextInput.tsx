@@ -31,6 +31,7 @@ interface MultiTextInputProps {
     onChangeText: (text: string) => void;
     placeholder?: string;
     maxHeight?: number;
+    autoFocus?: boolean;
     paddingTop?: number;
     paddingBottom?: number;
     paddingLeft?: number;
@@ -205,6 +206,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                 keyboardType="default"
                 returnKeyType="default"
                 autoComplete="off"
+                autoFocus={props.autoFocus}
                 textContentType="none"
                 submitBehavior="newline"
             />

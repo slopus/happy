@@ -16,6 +16,8 @@ import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ItemGroupSelectionContext } from '@/components/ItemGroup';
+import { useItemGroupRowPosition } from '@/components/ItemGroupRowPosition';
+import { getItemGroupRowCornerRadii } from '@/components/itemGroupRowCorners';
 
 export interface ItemProps {
     title: string;
@@ -113,6 +115,7 @@ export const Item = React.memo<ItemProps>((props) => {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const selectionContext = React.useContext(ItemGroupSelectionContext);
+    const rowPosition = useItemGroupRowPosition();
 
     // Platform-specific measurements
     const isIOS = Platform.OS === 'ios';
@@ -207,6 +210,7 @@ export const Item = React.memo<ItemProps>((props) => {
     const showAccessory = isInteractive && showChevron && !rightElement;
     const chevronSize = (isIOS && !isWeb) ? 17 : 24;
     const showSelectedBackground = !!selected && ((selectionContext?.selectableItemCount ?? 2) > 1);
+    const groupCornerRadius = Platform.select({ ios: 10, default: 16 });
 
     const titleColor = destructive ? styles.titleDestructive : (selected ? styles.titleSelected : styles.titleNormal);
     const containerPadding = subtitle ? styles.containerWithSubtitle : styles.containerWithoutSubtitle;
@@ -327,19 +331,27 @@ export const Item = React.memo<ItemProps>((props) => {
                 onHoverIn={isWeb && isSelectableRow && !disabled && !loading ? () => setIsHovered(true) : undefined}
                 onHoverOut={isWeb ? () => setIsHovered(false) : undefined}
                 disabled={disabled || loading}
-                style={({ pressed }) => [
-                    {
-                        backgroundColor: (() => {
-                            if (pressed && isIOS && !isWeb) return theme.colors.surfacePressedOverlay;
-                            if (showSelectedBackground) return theme.colors.surfaceSelected;
-                            // Web-only hover affordance for selectable rows (no hover when disabled).
-                            if (isWeb && isSelectableRow && isHovered && !disabled && !loading) return hoverBackgroundColor;
-                            return 'transparent';
-                        })(),
-                        opacity: disabled ? 0.5 : 1
-                    },
-                    pressableStyle
-                ]}
+                style={({ pressed }) => {
+                    const backgroundColor = (() => {
+                        if (pressed && isIOS && !isWeb) return theme.colors.surfacePressedOverlay;
+                        if (showSelectedBackground) return theme.colors.surfaceSelected;
+                        // Web-only hover affordance for selectable rows (no hover when disabled).
+                        if (isWeb && isSelectableRow && isHovered && !disabled && !loading) return hoverBackgroundColor;
+                        return 'transparent';
+                    })();
+
+                    const roundedCornersStyle = getItemGroupRowCornerRadii({
+                        hasBackground: backgroundColor !== 'transparent',
+                        position: rowPosition,
+                        radius: groupCornerRadius,
+                    });
+
+                    return [
+                        { backgroundColor, opacity: disabled ? 0.5 : 1 },
+                        roundedCornersStyle,
+                        pressableStyle,
+                    ];
+                }}
                 android_ripple={(isAndroid || isWeb) ? {
                     color: theme.colors.surfaceRipple,
                     borderless: false,

@@ -22,6 +22,7 @@ import { t } from '@/text';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackFriendsSearch } from '@/track';
 import { ConnectionStatusControl } from '@/components/ConnectionStatusControl';
+import { useInboxFriendsEnabled } from '@/hooks/useInboxFriendsEnabled';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
@@ -182,10 +183,25 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const router = useRouter();
     const friendRequests = useFriendRequests();
     const realtimeStatus = useRealtimeStatus();
+    const inboxFriendsEnabled = useInboxFriendsEnabled();
 
     // Tab state management
     // NOTE: Zen tab removed - the feature never got to a useful state
     const [activeTab, setActiveTab] = React.useState<TabType>('sessions');
+
+    React.useEffect(() => {
+        if (inboxFriendsEnabled) return;
+        if (activeTab !== 'inbox') return;
+        setActiveTab('sessions');
+    }, [activeTab, inboxFriendsEnabled]);
+
+    const headerTab: ActiveTabType = React.useMemo(() => {
+        const normalized = (activeTab === 'inbox' || activeTab === 'sessions' || activeTab === 'settings')
+            ? activeTab
+            : 'sessions';
+        if (!inboxFriendsEnabled && normalized === 'inbox') return 'sessions';
+        return normalized;
+    }, [activeTab, inboxFriendsEnabled]);
 
     const handleNewSession = React.useCallback(() => {
         router.push('/new');
@@ -199,14 +215,14 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const renderTabContent = React.useCallback(() => {
         switch (activeTab) {
             case 'inbox':
-                return <InboxView />;
+                return inboxFriendsEnabled ? <InboxView /> : <SessionsListWrapper />;
             case 'settings':
                 return <SettingsViewWrapper />;
             case 'sessions':
             default:
                 return <SessionsListWrapper />;
         }
-    }, [activeTab]);
+    }, [activeTab, inboxFriendsEnabled]);
 
     // Sidebar variant
     if (variant === 'sidebar') {
@@ -254,8 +270,8 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
             <View style={styles.phoneContainer}>
                 <View style={{ backgroundColor: theme.colors.groupped.background }}>
                     <Header
-                        title={<HeaderTitle activeTab={activeTab as ActiveTabType} />}
-                        headerRight={() => <HeaderRight activeTab={activeTab as ActiveTabType} />}
+                        title={<HeaderTitle activeTab={headerTab} />}
+                        headerRight={() => <HeaderRight activeTab={headerTab} />}
                         headerLeft={() => <HeaderLogo />}
                         headerShadowVisible={false}
                         headerTransparent={true}

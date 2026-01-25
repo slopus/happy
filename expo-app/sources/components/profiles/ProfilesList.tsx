@@ -21,6 +21,7 @@ import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { hasRequiredSecret } from '@/sync/profileSecrets';
 import { useSetting } from '@/sync/storage';
+import { getEnabledAgentIds } from '@/agents/enabled';
 
 export interface ProfilesListProps {
     customProfiles: AIBackendProfile[];
@@ -83,7 +84,6 @@ type ProfileRowProps = {
     showDivider: boolean;
     isMobile: boolean;
     machineId: string | null;
-    experimentsEnabled: boolean;
     subtitleText: string;
     showMobileBadge: boolean;
     onPressProfile?: (profile: AIBackendProfile) => void | Promise<void>;
@@ -155,9 +155,11 @@ const ProfileRow = React.memo(function ProfileRow(props: ProfileRowProps) {
 
 export function ProfilesList(props: ProfilesListProps) {
     const { theme, rt } = useUnistyles();
-    const strings = React.useMemo(() => getDefaultProfileListStrings(), []);
-    const expGemini = useSetting('expGemini');
-    const allowGemini = props.experimentsEnabled && expGemini;
+    const experimentalAgents = useSetting('experimentalAgents');
+    const enabledAgentIds = React.useMemo(() => {
+        return getEnabledAgentIds({ experiments: props.experimentsEnabled, experimentalAgents });
+    }, [experimentalAgents, props.experimentsEnabled]);
+    const strings = React.useMemo(() => getDefaultProfileListStrings(enabledAgentIds), [enabledAgentIds]);
     const {
         extraActions,
         getHasEnvironmentVariables,
@@ -172,8 +174,8 @@ export function ProfilesList(props: ProfilesListProps) {
     const isMobile = useWindowDimensions().width < 580;
 
     const groups = React.useMemo(() => {
-        return buildProfilesListGroups({ customProfiles: props.customProfiles, favoriteProfileIds: props.favoriteProfileIds });
-    }, [props.customProfiles, props.favoriteProfileIds]);
+        return buildProfilesListGroups({ customProfiles: props.customProfiles, favoriteProfileIds: props.favoriteProfileIds, enabledAgentIds });
+    }, [enabledAgentIds, props.customProfiles, props.favoriteProfileIds]);
 
     const isDefaultEnvironmentFavorite = groups.favoriteIds.has('');
     const showFavoritesGroup = groups.favoriteProfiles.length > 0 || (props.includeDefaultEnvironmentRow && isDefaultEnvironmentFavorite);
@@ -334,7 +336,7 @@ export function ProfilesList(props: ProfilesListProps) {
                         const isLast = index === groups.favoriteProfiles.length - 1;
                         const isSelected = props.selectedProfileId === profile.id;
                         const isDisabled = props.getProfileDisabled ? props.getProfileDisabled(profile) : false;
-                        const baseSubtitle = getProfileSubtitle({ profile, experimentsEnabled: allowGemini, strings });
+                        const baseSubtitle = getProfileSubtitle({ profile, enabledAgentIds, strings });
                         const extra = props.getProfileSubtitleExtra?.(profile);
                         const subtitleText = extra ? `${baseSubtitle} · ${extra}` : baseSubtitle;
                         const showMobileBadge = isMobile && hasRequiredSecret(profile) && Boolean(props.onSecretBadgePress);
@@ -349,7 +351,6 @@ export function ProfilesList(props: ProfilesListProps) {
                                 showDivider={!isLast}
                                 isMobile={isMobile}
                                 machineId={props.machineId}
-                                experimentsEnabled={allowGemini}
                                 subtitleText={subtitleText}
                                 showMobileBadge={showMobileBadge}
                                 onPressProfile={props.onPressProfile}
@@ -375,7 +376,7 @@ export function ProfilesList(props: ProfilesListProps) {
                         const isFavorite = groups.favoriteIds.has(profile.id);
                         const isSelected = props.selectedProfileId === profile.id;
                         const isDisabled = props.getProfileDisabled ? props.getProfileDisabled(profile) : false;
-                        const baseSubtitle = getProfileSubtitle({ profile, experimentsEnabled: allowGemini, strings });
+                        const baseSubtitle = getProfileSubtitle({ profile, enabledAgentIds, strings });
                         const extra = props.getProfileSubtitleExtra?.(profile);
                         const subtitleText = extra ? `${baseSubtitle} · ${extra}` : baseSubtitle;
                         const showMobileBadge = isMobile && hasRequiredSecret(profile) && Boolean(props.onSecretBadgePress);
@@ -390,7 +391,6 @@ export function ProfilesList(props: ProfilesListProps) {
                                 showDivider={!isLast}
                                 isMobile={isMobile}
                                 machineId={props.machineId}
-                                experimentsEnabled={allowGemini}
                                 subtitleText={subtitleText}
                                 showMobileBadge={showMobileBadge}
                                 onPressProfile={props.onPressProfile}
@@ -439,7 +439,7 @@ export function ProfilesList(props: ProfilesListProps) {
                     const isFavorite = groups.favoriteIds.has(profile.id);
                     const isSelected = props.selectedProfileId === profile.id;
                     const isDisabled = props.getProfileDisabled ? props.getProfileDisabled(profile) : false;
-                    const baseSubtitle = getProfileSubtitle({ profile, experimentsEnabled: allowGemini, strings });
+                    const baseSubtitle = getProfileSubtitle({ profile, enabledAgentIds, strings });
                     const extra = props.getProfileSubtitleExtra?.(profile);
                     const subtitleText = extra ? `${baseSubtitle} · ${extra}` : baseSubtitle;
                     const showMobileBadge = isMobile && hasRequiredSecret(profile) && Boolean(props.onSecretBadgePress);
@@ -454,7 +454,6 @@ export function ProfilesList(props: ProfilesListProps) {
                             showDivider={!isLast}
                             isMobile={isMobile}
                             machineId={props.machineId}
-                            experimentsEnabled={allowGemini}
                             subtitleText={subtitleText}
                             showMobileBadge={showMobileBadge}
                             onPressProfile={props.onPressProfile}

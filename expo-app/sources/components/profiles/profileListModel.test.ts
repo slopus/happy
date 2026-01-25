@@ -10,28 +10,31 @@ describe('profileListModel', () => {
     const strings = {
         builtInLabel: 'Built-in',
         customLabel: 'Custom',
-        agentClaude: 'Claude',
-        agentCodex: 'Codex',
-        agentGemini: 'Gemini',
+        agentLabelById: {
+            claude: 'Claude',
+            codex: 'Codex',
+            opencode: 'OpenCode',
+            gemini: 'Gemini',
+        },
     };
 
-    it('builds backend subtitle with experiments disabled', () => {
-        const profile = { compatibility: { claude: true, codex: true, gemini: true } } as Pick<AIBackendProfile, 'compatibility'>;
-        expect(getProfileBackendSubtitle({ profile, experimentsEnabled: false, strings })).toBe('Claude • Codex');
+    it('builds backend subtitle for enabled compatible agents', () => {
+        const profile = { isBuiltIn: false, compatibility: { claude: true, codex: true, opencode: true, gemini: true } } as Pick<AIBackendProfile, 'compatibility' | 'isBuiltIn'>;
+        expect(getProfileBackendSubtitle({ profile, enabledAgentIds: ['claude', 'codex'], strings })).toBe('Claude • Codex');
     });
 
-    it('builds backend subtitle with experiments enabled', () => {
-        const profile = { compatibility: { claude: true, codex: false, gemini: true } } as Pick<AIBackendProfile, 'compatibility'>;
-        expect(getProfileBackendSubtitle({ profile, experimentsEnabled: true, strings })).toBe('Claude • Gemini');
+    it('skips disabled agents even if compatible', () => {
+        const profile = { isBuiltIn: false, compatibility: { claude: true, codex: true, opencode: true, gemini: true } } as Pick<AIBackendProfile, 'compatibility' | 'isBuiltIn'>;
+        expect(getProfileBackendSubtitle({ profile, enabledAgentIds: ['claude', 'gemini'], strings })).toBe('Claude • Gemini');
     });
 
     it('builds built-in subtitle with backend', () => {
-        const profile = { isBuiltIn: true, compatibility: { claude: true, codex: false, gemini: false } } as Pick<AIBackendProfile, 'compatibility' | 'isBuiltIn'>;
-        expect(getProfileSubtitle({ profile, experimentsEnabled: false, strings })).toBe('Built-in · Claude');
+        const profile = { isBuiltIn: true, compatibility: { claude: true, codex: false, opencode: false, gemini: false } } as Pick<AIBackendProfile, 'compatibility' | 'isBuiltIn'>;
+        expect(getProfileSubtitle({ profile, enabledAgentIds: ['claude', 'codex'], strings })).toBe('Built-in · Claude');
     });
 
     it('builds custom subtitle without backend', () => {
-        const profile = { isBuiltIn: false, compatibility: { claude: false, codex: false, gemini: false } } as Pick<AIBackendProfile, 'compatibility' | 'isBuiltIn'>;
-        expect(getProfileSubtitle({ profile, experimentsEnabled: true, strings })).toBe('Custom');
+        const profile = { isBuiltIn: false, compatibility: { claude: false, codex: false, opencode: false, gemini: false } } as Pick<AIBackendProfile, 'compatibility' | 'isBuiltIn'>;
+        expect(getProfileSubtitle({ profile, enabledAgentIds: ['claude', 'codex', 'gemini'], strings })).toBe('Custom');
     });
 });

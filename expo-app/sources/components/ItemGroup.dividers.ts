@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ItemGroupRowPositionProvider } from './ItemGroupRowPosition';
 
 type DividerChildProps = {
     showDivider?: boolean;
@@ -36,12 +37,18 @@ export function withItemGroupDividers(children: React.ReactNode): React.ReactNod
                 return React.cloneElement(fragment, {}, apply(fragment.props.children));
             }
 
+            const isFirst = index === 0;
             const isLast = index === total - 1;
             index += 1;
 
             const element = child as React.ReactElement<DividerChildProps>;
             const showDivider = !isLast && element.props.showDivider !== false;
-            return React.cloneElement(element, { showDivider });
+            const wrapperKey = element.key ?? `row-${index - 1}`;
+            return React.createElement(
+                ItemGroupRowPositionProvider,
+                { key: wrapperKey as any, value: { isFirst, isLast } },
+                React.cloneElement(element, { showDivider }),
+            );
         });
     };
 

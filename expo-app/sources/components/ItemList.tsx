@@ -27,10 +27,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
 }));
 
-export const ItemList = React.memo<ItemListProps>((props) => {
+export const ItemList = React.memo(React.forwardRef<ScrollView, ItemListProps>((props, ref) => {
     const { theme } = useUnistyles();
     const styles = stylesheet;
-    
+
     const {
         children,
         style,
@@ -41,12 +41,13 @@ export const ItemList = React.memo<ItemListProps>((props) => {
 
     const isIOS = Platform.OS === 'ios';
     const isWeb = Platform.OS === 'web';
-    
+
     // Override background for non-inset grouped lists on iOS
     const backgroundColor = (isIOS && !insetGrouped) ? '#FFFFFF' : theme.colors.groupped.background;
 
     return (
-        <ScrollView 
+        <ScrollView
+            ref={ref}
             style={[
                 styles.container,
                 { backgroundColor },
@@ -56,8 +57,8 @@ export const ItemList = React.memo<ItemListProps>((props) => {
                 styles.contentContainer,
                 containerStyle
             ]}
-            showsVerticalScrollIndicator={scrollViewProps.showsVerticalScrollIndicator !== undefined 
-                ? scrollViewProps.showsVerticalScrollIndicator 
+            showsVerticalScrollIndicator={scrollViewProps.showsVerticalScrollIndicator !== undefined
+                ? scrollViewProps.showsVerticalScrollIndicator
                 : true}
             contentInsetAdjustmentBehavior={(isIOS && !isWeb) ? 'automatic' : undefined}
             {...scrollViewProps}
@@ -65,7 +66,9 @@ export const ItemList = React.memo<ItemListProps>((props) => {
             {children}
         </ScrollView>
     );
-});
+}));
+
+ItemList.displayName = 'ItemList';
 
 export const ItemListStatic = React.memo<Omit<ItemListProps, keyof ScrollViewProps> & {
     children: React.ReactNode;

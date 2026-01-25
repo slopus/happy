@@ -5,6 +5,7 @@ import { Typography } from '@/constants/Typography';
 import { SelectableRow, type SelectableRowVariant } from '@/components/SelectableRow';
 import { Item } from '@/components/Item';
 import { ItemGroupSelectionContext } from '@/components/ItemGroup';
+import { ItemGroupRowPositionBoundary } from '@/components/ItemGroupRowPosition';
 import type { SelectableMenuCategory, SelectableMenuItem } from './selectableMenuTypes';
 
 const stylesheet = StyleSheet.create(() => ({
@@ -139,14 +140,16 @@ export function SelectableMenuResults(props: {
     );
 
     if (rowKind === 'item') {
-        // Ensure Item's "selected row background" behavior is enabled.
+        // Ensure Item's "selected row background" behavior is enabled,
+        // and prevent row-position context from leaking into the popover.
         return (
-            <ItemGroupSelectionContext.Provider value={{ selectableItemCount: 2 }}>
-                {content}
-            </ItemGroupSelectionContext.Provider>
+            <ItemGroupRowPositionBoundary>
+                <ItemGroupSelectionContext.Provider value={{ selectableItemCount: 2 }}>
+                    {content}
+                </ItemGroupSelectionContext.Provider>
+            </ItemGroupRowPositionBoundary>
         );
     }
 
     return content;
 }
-

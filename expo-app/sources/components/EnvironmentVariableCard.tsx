@@ -265,74 +265,53 @@ export function EnvironmentVariableCard({
                 </Text>
             )}
 
-            {/* Value label */}
-            <Text style={[styles.secondaryText, styles.labelText]}>
-                {(useRemoteVariable
-                    ? t('profiles.environmentVariables.card.fallbackValueLabel')
-                    : t('profiles.environmentVariables.card.valueLabel')
-                ).replace(/:$/, '')}
-            </Text>
-
-            {/* Value input */}
-            <TextInput
-                style={styles.valueInput}
-                placeholder={
-                    expectedValue ||
-                    (useRemoteVariable
-                        ? t('profiles.environmentVariables.card.defaultValueInputPlaceholder')
-                        : t('profiles.environmentVariables.card.valueInputPlaceholder'))
-                }
-                placeholderTextColor={theme.colors.input.placeholder}
-                value={defaultValue}
-                onChangeText={setDefaultValue}
-                autoCapitalize="none"
-                autoCorrect={false}
-                secureTextEntry={hideValueInUi}
-                editable={!useSecretVault}
-                selectTextOnFocus={!useSecretVault}
-            />
-
-            {useSecretVault ? (
-                <Text style={[styles.secondaryText, { marginTop: 6 }]}>
-                    {t('profiles.environmentVariables.card.fallbackDisabledForVault')}
-                </Text>
-            ) : null}
-
-            <View style={styles.secretRow}>
-                <View style={styles.secretRowLeft}>
-                    <Text style={[styles.toggleLabelText, styles.secretLabel]}>
-                        {t('profiles.environmentVariables.card.secretToggleLabel')}
+            {!useSecretVault ? (
+                <>
+                    {/* Value label */}
+                    <Text style={[styles.secondaryText, styles.labelText]}>
+                        {(useRemoteVariable
+                            ? t('profiles.environmentVariables.card.fallbackValueLabel')
+                            : t('profiles.environmentVariables.card.valueLabel')
+                        ).replace(/:$/, '')}
                     </Text>
-                    <Text style={[styles.secondaryText, styles.secretSubtitleText]}>
-                        {isForcedSensitive
-                            ? t('profiles.environmentVariables.card.secretToggleEnforcedByDaemon')
-                            : useSecretVault
-                                ? t('profiles.environmentVariables.card.secretToggleEnforcedByVault')
-                                : t('profiles.environmentVariables.card.secretToggleSubtitle')}
-                    </Text>
-                </View>
-                <View style={styles.secretRowRight}>
-                    {showResetToAuto && (
-                        <Pressable
-                            onPress={() => onUpdateSecretOverride?.(index, undefined)}
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                            style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
-                        >
-                            <Text style={styles.resetToAutoText}>
-                                {t('profiles.environmentVariables.card.secretToggleResetToAuto')}
-                            </Text>
-                        </Pressable>
-                    )}
-                    <Switch
-                        value={hideValueInUi}
-                        onValueChange={(next) => {
-                            if (!canEditSecret) return;
-                            onUpdateSecretOverride?.(index, next);
-                        }}
-                        disabled={!canEditSecret}
+
+                    {/* Value input */}
+                    <TextInput
+                        style={styles.valueInput}
+                        placeholder={
+                            expectedValue ||
+                            (useRemoteVariable
+                                ? t('profiles.environmentVariables.card.defaultValueInputPlaceholder')
+                                : t('profiles.environmentVariables.card.valueInputPlaceholder'))
+                        }
+                        placeholderTextColor={theme.colors.input.placeholder}
+                        value={defaultValue}
+                        onChangeText={setDefaultValue}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        secureTextEntry={hideValueInUi}
+                        editable={!useSecretVault}
+                        selectTextOnFocus={!useSecretVault}
                     />
-                </View>
-            </View>
+                </>
+            ) : (Boolean(effectiveSourceRequirement?.useSecretVault) ? (
+                <Pressable
+                    onPress={() => onPickDefaultSecretForSourceVar?.(requirementVarName)}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+                >
+                    <View style={styles.toggleRow}>
+                        <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
+                            {t('profiles.environmentVariables.card.defaultSecretLabel')}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Text style={[styles.secondaryText, { marginTop: 0 }]}>
+                                {defaultSecretNameForSourceVar ?? t('secrets.noneTitle')}
+                            </Text>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+                        </View>
+                    </View>
+                </Pressable>
+            ) : null)}
 
             {/* Security message for secrets */}
             {hideValueInUi && (machineEnvPolicy === null || machineEnvPolicy === 'none') && (
@@ -370,69 +349,6 @@ export function EnvironmentVariableCard({
             >
                 {t('profiles.environmentVariables.card.resolvedOnSessionStart')}
             </Text>
-
-            {/* Requirements (independent of "use machine env") */}
-            {hasRequirementVarName ? (
-                <>
-                    <View style={styles.toggleRow}>
-                        <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
-                            {t('profiles.environmentVariables.card.requirementRequiredLabel')}
-                        </Text>
-                        <Switch
-                            value={Boolean(effectiveSourceRequirement?.required)}
-                            onValueChange={(next) => {
-                                if (!onUpdateSourceRequirement) return;
-                                onUpdateSourceRequirement(requirementVarName, {
-                                    required: next,
-                                    useSecretVault: Boolean(effectiveSourceRequirement?.useSecretVault),
-                                });
-                            }}
-                        />
-                    </View>
-                    <Text style={[styles.secondaryText, styles.resolvedOnStartText]}>
-                        {t('profiles.environmentVariables.card.requirementRequiredSubtitle')}
-                    </Text>
-
-                    <View style={styles.toggleRow}>
-                        <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
-                            {t('profiles.environmentVariables.card.requirementUseVaultLabel')}
-                        </Text>
-                        <Switch
-                            value={Boolean(effectiveSourceRequirement?.useSecretVault)}
-                            onValueChange={(next) => {
-                                if (!onUpdateSourceRequirement) return;
-                                const prevRequired = Boolean(effectiveSourceRequirement?.required);
-                                onUpdateSourceRequirement(requirementVarName, {
-                                    required: next ? (prevRequired || true) : prevRequired,
-                                    useSecretVault: next,
-                                });
-                            }}
-                        />
-                    </View>
-                    <Text style={[styles.secondaryText, styles.resolvedOnStartText]}>
-                        {t('profiles.environmentVariables.card.requirementUseVaultSubtitle')}
-                    </Text>
-
-                    {Boolean(effectiveSourceRequirement?.useSecretVault) ? (
-                        <Pressable
-                            onPress={() => onPickDefaultSecretForSourceVar?.(requirementVarName)}
-                            style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-                        >
-                            <View style={styles.toggleRow}>
-                                <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
-                                    {t('profiles.environmentVariables.card.defaultSecretLabel')}
-                                </Text>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                    <Text style={[styles.secondaryText, { marginTop: 0 }]}>
-                                        {defaultSecretNameForSourceVar ?? t('secrets.noneTitle')}
-                                    </Text>
-                                    <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
-                                </View>
-                            </View>
-                        </Pressable>
-                    ) : null}
-                </>
-            ) : null}
 
             {/* Source variable name input (only when enabled) */}
             {useRemoteVariable && (
@@ -494,6 +410,88 @@ export function EnvironmentVariableCard({
                     value: resolvedSessionValue ?? emptyValue,
                 })}
             </Text>
+
+            <View style={styles.divider} />
+
+            <View style={styles.secretRow}>
+                <View style={styles.secretRowLeft}>
+                    <Text style={[styles.toggleLabelText, styles.secretLabel]}>
+                        {t('profiles.environmentVariables.card.secretToggleLabel')}
+                    </Text>
+                    <Text style={[styles.secondaryText, styles.secretSubtitleText]}>
+                        {isForcedSensitive
+                            ? t('profiles.environmentVariables.card.secretToggleEnforcedByDaemon')
+                            : useSecretVault
+                                ? t('profiles.environmentVariables.card.secretToggleEnforcedByVault')
+                                : t('profiles.environmentVariables.card.secretToggleSubtitle')}
+                    </Text>
+                </View>
+                <View style={styles.secretRowRight}>
+                    {showResetToAuto && (
+                        <Pressable
+                            onPress={() => onUpdateSecretOverride?.(index, undefined)}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                        >
+                            <Text style={styles.resetToAutoText}>
+                                {t('profiles.environmentVariables.card.secretToggleResetToAuto')}
+                            </Text>
+                        </Pressable>
+                    )}
+                    <Switch
+                        value={hideValueInUi}
+                        onValueChange={(next) => {
+                            if (!canEditSecret) return;
+                            onUpdateSecretOverride?.(index, next);
+                        }}
+                        disabled={!canEditSecret}
+                    />
+                </View>
+            </View>
+
+            {/* Requirements (independent of "use machine env") */}
+            {hasRequirementVarName ? (
+                <>
+                    <View style={styles.toggleRow}>
+                        <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
+                            {t('profiles.environmentVariables.card.requirementRequiredLabel')}
+                        </Text>
+                        <Switch
+                            value={Boolean(effectiveSourceRequirement?.required)}
+                            onValueChange={(next) => {
+                                if (!onUpdateSourceRequirement) return;
+                                onUpdateSourceRequirement(requirementVarName, {
+                                    required: next,
+                                    useSecretVault: Boolean(effectiveSourceRequirement?.useSecretVault),
+                                });
+                            }}
+                        />
+                    </View>
+                    <Text style={[styles.secondaryText, styles.resolvedOnStartText]}>
+                        {t('profiles.environmentVariables.card.requirementRequiredSubtitle')}
+                    </Text>
+
+                    <View style={styles.toggleRow}>
+                        <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
+                            {t('profiles.environmentVariables.card.requirementUseVaultLabel')}
+                        </Text>
+                        <Switch
+                            value={Boolean(effectiveSourceRequirement?.useSecretVault)}
+                            onValueChange={(next) => {
+                                if (!onUpdateSourceRequirement) return;
+                                const prevRequired = Boolean(effectiveSourceRequirement?.required);
+                                onUpdateSourceRequirement(requirementVarName, {
+                                    required: next ? (prevRequired || true) : prevRequired,
+                                    useSecretVault: next,
+                                });
+                            }}
+                        />
+                    </View>
+                    <Text style={[styles.secondaryText, styles.resolvedOnStartText]}>
+                        {t('profiles.environmentVariables.card.requirementUseVaultSubtitle')}
+                    </Text>
+                </>
+            ) : null}
         </View>
     );
 }

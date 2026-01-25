@@ -30,10 +30,6 @@ function nearestView(instance: any) {
     return node;
 }
 
-vi.mock('@/components/PopoverBoundary', () => ({
-    usePopoverBoundaryRef: () => null,
-}));
-
 vi.mock('@/utils/radixCjs', () => {
     const React = require('react');
     return {
@@ -94,7 +90,13 @@ describe('Popover (web)', () => {
             tree = renderer.create(
                 React.createElement(
                     Popover,
-                    { open: true, anchorRef, onRequestClose: () => {}, children: () => React.createElement('PopoverChild') },
+                    {
+                        open: true,
+                        anchorRef,
+                        backdrop: { enabled: true, blockOutsidePointerEvents: true },
+                        onRequestClose: () => {},
+                        children: () => React.createElement('PopoverChild'),
+                    },
                 ),
             );
         });
@@ -168,6 +170,212 @@ describe('Popover (web)', () => {
         const portal = tree?.root.findAllByType('Portal' as any)?.[0];
         expect(portal).toBeTruthy();
         expect((portal as any)?.props?.target).toBe(modalTarget);
+    });
+
+    it('portals to the PopoverBoundary when in an Expo Router modal (prevents Vaul/Radix scroll-lock from swallowing wheel/touch scroll)', async () => {
+        const boundaryTarget = {
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            appendChild: vi.fn(),
+        } as any;
+        const boundaryRef = { current: boundaryTarget } as any;
+        const { Popover } = await import('./Popover');
+        const { PopoverBoundaryProvider } = await import('@/components/PopoverBoundary');
+
+        const anchorRef = { current: null } as any;
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        act(() => {
+            tree = renderer.create(
+                React.createElement(
+                    PopoverBoundaryProvider,
+                    {
+                        boundaryRef,
+                        children: React.createElement(Popover, {
+                            open: true,
+                            anchorRef,
+                            portal: { web: true },
+                            onRequestClose: () => {},
+                            children: () => React.createElement('PopoverChild'),
+                        }),
+                    },
+                ),
+            );
+        });
+
+        const portal = tree?.root.findAllByType('Portal' as any)?.[0];
+        expect(portal).toBeTruthy();
+        expect((portal as any)?.props?.target).toBe(boundaryTarget);
+    });
+
+    it('stops wheel propagation in portal mode (prevents document-level scroll-lock listeners from breaking popover scrolling)', async () => {
+        const { Popover } = await import('./Popover');
+
+        const anchorRef = { current: null } as any;
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        act(() => {
+            tree = renderer.create(
+                React.createElement(Popover, {
+                    open: true,
+                    anchorRef,
+                    portal: { web: true },
+                    onRequestClose: () => {},
+                    children: () => React.createElement('PopoverChild'),
+                }),
+            );
+        });
+
+        const child = tree?.root.findByType('PopoverChild' as any);
+        const content = nearestView(child);
+        expect(content).toBeTruthy();
+
+        const stopPropagation = vi.fn();
+        act(() => {
+            content?.props?.onWheel?.({ stopPropagation });
+        });
+        expect(stopPropagation).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats boundaryRef={null} as an explicit override (uses viewport fallback even when a PopoverBoundaryProvider is present)', async () => {
+        const { Popover } = await import('./Popover');
+        const { PopoverBoundaryProvider } = await import('@/components/PopoverBoundary');
+
+        const anchorRef = {
+            current: {
+                getBoundingClientRect: () => ({
+                    left: 0,
+                    top: 650,
+                    width: 100,
+                    height: 40,
+                    x: 0,
+                    y: 650,
+                }),
+            },
+        } as any;
+
+        const boundaryRef = {
+            current: {
+                getBoundingClientRect: () => ({
+                    left: 0,
+                    top: 500,
+                    width: 1000,
+                    height: 200,
+                    x: 0,
+                    y: 500,
+                }),
+            },
+        } as any;
+
+        const renders: Array<{ maxHeight: number }> = [];
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        await act(async () => {
+            tree = renderer.create(
+                React.createElement(
+                    PopoverBoundaryProvider,
+                    {
+                        boundaryRef,
+                        children: React.createElement(Popover, {
+                            open: true,
+                            anchorRef,
+                            boundaryRef: null,
+                            portal: { web: true },
+                            placement: 'top',
+                            maxHeightCap: 400,
+                            onRequestClose: () => {},
+                            children: (renderProps: any) => {
+                                renders.push({ maxHeight: renderProps.maxHeight });
+                                return React.createElement('PopoverChild');
+                            },
+                        }),
+                    },
+                ),
+            );
+            await flushMicrotasks(6);
+        });
+
+        expect(tree).toBeTruthy();
+        // With boundaryRef=null, it should ignore the boundary provider and use viewport fallback.
+        // Available top is 650 - 0 - 8 = 642, capped by maxHeightCap=400.
+        expect(renders.at(-1)?.maxHeight).toBe(400);
+    });
+
+	    it('positions top-placed portal popovers using the measured content height (avoids “mid-screen” placement)', async () => {
+	        const { Popover } = await import('./Popover');
+
+        const anchorRef = {
+            current: {
+                getBoundingClientRect: () => ({
+                    left: 0,
+                    top: 600,
+                    width: 300,
+                    height: 40,
+                    x: 0,
+                    y: 600,
+                }),
+            },
+        } as any;
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        await act(async () => {
+            tree = renderer.create(
+                React.createElement(Popover, {
+                    open: true,
+                    anchorRef,
+                    portal: { web: true },
+                    placement: 'top',
+                    gap: 8,
+                    maxHeightCap: 400,
+                    onRequestClose: () => {},
+                    children: () => React.createElement('PopoverChild'),
+                }),
+            );
+            await flushMicrotasks(6);
+	        });
+
+	        const child = tree?.root.findByType('PopoverChild' as any);
+	        expect(child).toBeTruthy();
+
+	        const contentView = tree?.root.findAllByType('View' as any).find((v: any) => typeof v.props.onLayout === 'function');
+	        expect(contentView).toBeTruthy();
+
+        // Simulate measuring the popover content.
+        await act(async () => {
+            contentView?.props?.onLayout?.({ nativeEvent: { layout: { width: 520, height: 200 } } });
+	            await flushMicrotasks(2);
+	        });
+
+	        const updatedChild = tree?.root.findByType('PopoverChild' as any);
+	        const updatedContent = updatedChild ? nearestView(updatedChild) : undefined;
+	        expect(updatedContent).toBeTruthy();
+
+	        const style = flattenStyle(updatedContent?.props?.style);
+	        // top should be anchorTop - contentHeight - gap = 600 - 200 - 8 = 392
+	        expect(style.top).toBe(392);
+	    });
+
+    it('does not attach wheel propagation stoppers when not using a portal', async () => {
+        const { Popover } = await import('./Popover');
+
+        const anchorRef = { current: null } as any;
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        act(() => {
+            tree = renderer.create(
+                React.createElement(Popover, {
+                    open: true,
+                    anchorRef,
+                    backdrop: false,
+                    children: () => React.createElement('PopoverChild'),
+                }),
+            );
+        });
+
+        const child = tree?.root.findByType('PopoverChild' as any);
+        const content = nearestView(child);
+        expect(content).toBeTruthy();
+        expect(content?.props?.onWheel).toBeUndefined();
+        expect(content?.props?.onTouchMove).toBeUndefined();
     });
 
     it('keeps portal popovers hidden until the anchor is measured (prevents visible jiggle)', async () => {
@@ -502,7 +710,7 @@ describe('Popover (web)', () => {
                     open: true,
                     anchorRef,
                     placement: 'bottom',
-                    portal: { web: true },
+                    portal: { web: { target: 'body' } },
                     backdrop: {
                         effect: 'blur',
                         anchorOverlay: () => React.createElement('AnchorOverlay'),

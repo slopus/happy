@@ -31,6 +31,8 @@ import { Avatar } from '@/components/Avatar';
 import { t } from '@/text';
 import { MachineCliGlyphs } from '@/components/newSession/MachineCliGlyphs';
 import { HappyError } from '@/utils/errors';
+import { getAgentCore } from '@/agents/registryCore';
+import { getAgentIconSource, getAgentIconTintColor } from '@/agents/registryUi';
 
 export const SettingsView = React.memo(function SettingsView() {
     const { theme } = useUnistyles();
@@ -166,7 +168,10 @@ export const SettingsView = React.memo(function SettingsView() {
 
     // Anthropic connection
     const [connectingAnthropic, connectAnthropic] = useHappyAction(async () => {
-        router.push('/(app)/settings/connect/claude');
+        const route = getAgentCore('claude').connectedService.connectRoute;
+        if (route) {
+            router.push(route);
+        }
     });
 
     // Anthropic disconnection
@@ -266,15 +271,16 @@ export const SettingsView = React.memo(function SettingsView() {
 
             <ItemGroup title={t('settings.connectedAccounts')}>
                 <Item
-                    title={t('profiles.machineLogin.claudeCode.title')}
+                    title={getAgentCore('claude').connectedService.name}
                     subtitle={isAnthropicConnected
                         ? t('settingsAccount.statusActive')
                         : t('settings.connectAccount')
                     }
                     icon={
                         <Image
-                            source={require('@/assets/images/icon-claude.png')}
+                            source={getAgentIconSource('claude')}
                             style={{ width: 29, height: 29 }}
+                            tintColor={getAgentIconTintColor('claude', theme)}
                             contentFit="contain"
                         />
                     }

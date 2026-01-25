@@ -1,45 +1,50 @@
 import type { AIBackendProfile } from '@/sync/settings';
 import { buildProfileGroups, type ProfileGroups } from '@/sync/profileGrouping';
 import { t } from '@/text';
+import { getAgentCore, type AgentId } from '@/agents/registryCore';
+import { isProfileCompatibleWithAgent } from '@/sync/settings';
 
 export interface ProfileListStrings {
     builtInLabel: string;
     customLabel: string;
-    agentClaude: string;
-    agentCodex: string;
-    agentGemini: string;
+    agentLabelById: Readonly<Record<AgentId, string>>;
 }
 
-export function getDefaultProfileListStrings(): ProfileListStrings {
+export function getDefaultProfileListStrings(enabledAgentIds: readonly AgentId[]): ProfileListStrings {
+    const agentLabelById: Record<AgentId, string> = {} as any;
+    for (const agentId of enabledAgentIds) {
+        agentLabelById[agentId] = t(getAgentCore(agentId).displayNameKey);
+    }
     return {
         builtInLabel: t('profiles.builtIn'),
         customLabel: t('profiles.custom'),
-        agentClaude: t('agentInput.agent.claude'),
-        agentCodex: t('agentInput.agent.codex'),
-        agentGemini: t('agentInput.agent.gemini'),
+        agentLabelById,
     };
 }
 
 export function getProfileBackendSubtitle(params: {
-    profile: Pick<AIBackendProfile, 'compatibility'>;
-    experimentsEnabled: boolean;
+    profile: Pick<AIBackendProfile, 'compatibility' | 'isBuiltIn'>;
+    enabledAgentIds: readonly AgentId[];
     strings: ProfileListStrings;
 }): string {
     const parts: string[] = [];
-    if (params.profile.compatibility?.claude) parts.push(params.strings.agentClaude);
-    if (params.profile.compatibility?.codex) parts.push(params.strings.agentCodex);
-    if (params.experimentsEnabled && params.profile.compatibility?.gemini) parts.push(params.strings.agentGemini);
+    for (const agentId of params.enabledAgentIds) {
+        if (isProfileCompatibleWithAgent(params.profile, agentId)) {
+            const label = params.strings.agentLabelById[agentId];
+            if (label) parts.push(label);
+        }
+    }
     return parts.length > 0 ? parts.join(' • ') : '';
 }
 
 export function getProfileSubtitle(params: {
     profile: Pick<AIBackendProfile, 'compatibility' | 'isBuiltIn'>;
-    experimentsEnabled: boolean;
+    enabledAgentIds: readonly AgentId[];
     strings: ProfileListStrings;
 }): string {
     const backend = getProfileBackendSubtitle({
         profile: params.profile,
-        experimentsEnabled: params.experimentsEnabled,
+        enabledAgentIds: params.enabledAgentIds,
         strings: params.strings,
     });
 
@@ -50,10 +55,11 @@ export function getProfileSubtitle(params: {
 export function buildProfilesListGroups(params: {
     customProfiles: AIBackendProfile[];
     favoriteProfileIds: string[];
+    enabledAgentIds?: readonly AgentId[];
 }): ProfileGroups {
     return buildProfileGroups({
         customProfiles: params.customProfiles,
         favoriteProfileIds: params.favoriteProfileIds,
+        enabledAgentIds: params.enabledAgentIds,
     });
 }
-

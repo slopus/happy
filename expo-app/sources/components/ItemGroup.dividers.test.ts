@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, expect, it } from 'vitest';
 import { withItemGroupDividers } from './ItemGroup.dividers';
+import { ItemGroupRowPositionProvider } from './ItemGroupRowPosition';
 
 type FragmentProps = {
     children?: React.ReactNode;
@@ -19,6 +20,11 @@ function collectShowDividers(node: React.ReactNode): Array<boolean | undefined> 
             if (child.type === React.Fragment) {
                 const fragment = child as React.ReactElement<FragmentProps>;
                 walk(fragment.props.children);
+                return;
+            }
+            if (child.type === ItemGroupRowPositionProvider) {
+                const provider = child as React.ReactElement<{ children?: React.ReactNode }>;
+                walk(provider.props.children);
                 return;
             }
             if (child.type === TestItem) {

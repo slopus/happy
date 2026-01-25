@@ -7,6 +7,7 @@ import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
+import { useInboxFriendsEnabled } from '@/hooks/useInboxFriendsEnabled';
 
 export type TabType = 'zen' | 'inbox' | 'sessions' | 'settings';
 
@@ -83,16 +84,20 @@ const styles = StyleSheet.create((theme) => ({
 export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }: TabBarProps) => {
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
+    const inboxFriendsEnabled = useInboxFriendsEnabled();
     const inboxHasContent = useInboxHasContent();
 
     const tabs: { key: TabType; icon: any; label: string }[] = React.useMemo(() => {
         // NOTE: Zen tab removed - the feature never got to a useful state
-        return [
-            { key: 'inbox', icon: require('@/assets/images/brutalist/Brutalism 27.png'), label: t('tabs.inbox') },
+        const base: { key: TabType; icon: any; label: string }[] = [
             { key: 'sessions', icon: require('@/assets/images/brutalist/Brutalism 15.png'), label: t('tabs.sessions') },
             { key: 'settings', icon: require('@/assets/images/brutalist/Brutalism 9.png'), label: t('tabs.settings') },
         ];
-    }, []);
+        if (inboxFriendsEnabled) {
+            base.unshift({ key: 'inbox', icon: require('@/assets/images/brutalist/Brutalism 27.png'), label: t('tabs.inbox') });
+        }
+        return base;
+    }, [inboxFriendsEnabled]);
 
     return (
         <View style={[styles.outerContainer, { paddingBottom: insets.bottom }]}>

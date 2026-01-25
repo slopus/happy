@@ -7,11 +7,15 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { AIBackendProfile } from '@/sync/settings';
 import { normalizeProfileDefaultPermissionMode, type PermissionMode } from '@/sync/permissionTypes';
+import { getPermissionModeLabelForAgentType, getPermissionModeOptionsForAgentType, normalizePermissionModeForAgentType } from '@/sync/permissionModeOptions';
+import { inferSourceModeGroupForPermissionMode } from '@/sync/permissionDefaults';
+import { mapPermissionModeAcrossAgents } from '@/sync/permissionMapping';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { Switch } from '@/components/Switch';
+import { DropdownMenu } from '@/components/dropdown/DropdownMenu';
 import { getBuiltInProfileDocumentation } from '@/sync/profileUtils';
 import { EnvironmentVariablesList } from '@/components/EnvironmentVariablesList';
 import { useSetting, useAllMachines, useMachine, useSettingMutable } from '@/sync/storage';
@@ -24,6 +28,8 @@ import { useCLIDetection } from '@/hooks/useCLIDetection';
 import { layout } from '@/components/layout';
 import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/SecretRequirementModal';
 import { parseEnvVarTemplate } from '@/utils/envVarTemplate';
+import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
+import { getAgentCore, type AgentId, type MachineLoginKey } from '@/agents/registryCore';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
@@ -113,9 +119,8 @@ export function ProfileEditForm({
     const { theme, rt } = useUnistyles();
     const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const styles = stylesheet;
-    const experimentsEnabled = useSetting('experiments');
-    const expGemini = useSetting('expGemini');
-    const allowGemini = experimentsEnabled && expGemini;
+    const popoverBoundaryRef = React.useRef<any>(null);
+    const enabledAgentIds = useEnabledAgentIds();
     const machines = useAllMachines();
     const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
     const [secrets, setSecrets] = useSettingMutable('secrets');
@@ -172,12 +177,67 @@ export function ProfileEditForm({
     const [defaultSessionType, setDefaultSessionType] = React.useState<'simple' | 'worktree'>(
         profile.defaultSessionType || 'simple',
     );
-    const [defaultPermissionMode, setDefaultPermissionMode] = React.useState<PermissionMode>(
-        normalizeProfileDefaultPermissionMode(profile.defaultPermissionMode as PermissionMode),
-    );
-    const [compatibility, setCompatibility] = React.useState<NonNullable<AIBackendProfile['compatibility']>>(
-        profile.compatibility || { claude: true, codex: true, gemini: true },
-    );
+    const sessionDefaultPermissionModeByAgent = useSetting('sessionDefaultPermissionModeByAgent');
+
+    const [defaultPermissionModes, setDefaultPermissionModes] = React.useState<Partial<Record<AgentId, PermissionMode | null>>>(() => {
+        const explicitByAgent = (profile.defaultPermissionModeByAgent as Record<string, PermissionMode | undefined>) ?? {};
+        const out: Partial<Record<AgentId, PermissionMode | null>> = {};
+
+        for (const agentId of enabledAgentIds) {
+            const explicit = explicitByAgent[agentId];
+            out[agentId] = explicit ? normalizePermissionModeForAgentType(explicit, agentId) : null;
+        }
+
+        const hasAnyExplicit = enabledAgentIds.some((agentId) => Boolean(out[agentId]));
+        if (hasAnyExplicit) return out;
+
+        const legacyRaw = profile.defaultPermissionMode as PermissionMode | undefined;
+        const legacy = legacyRaw ? normalizeProfileDefaultPermissionMode(legacyRaw) : undefined;
+        if (!legacy) return out;
+
+        const fromGroup = inferSourceModeGroupForPermissionMode(legacy);
+        const from =
+            enabledAgentIds.find((id) => getAgentCore(id).permissions.modeGroup === fromGroup) ??
+            enabledAgentIds[0] ??
+            'claude';
+        const compat = profile.compatibility ?? {};
+
+        for (const agentId of enabledAgentIds) {
+            const explicitCompat = compat[agentId];
+            const isCompat = typeof explicitCompat === 'boolean' ? explicitCompat : (profile.isBuiltIn ? false : true);
+            if (!isCompat) continue;
+            out[agentId] = normalizePermissionModeForAgentType(mapPermissionModeAcrossAgents(legacy, from, agentId), agentId);
+        }
+
+        return out;
+    });
+
+    const [compatibility, setCompatibility] = React.useState<NonNullable<AIBackendProfile['compatibility']>>(() => {
+        const base: NonNullable<AIBackendProfile['compatibility']> = { ...(profile.compatibility ?? {}) };
+        for (const agentId of enabledAgentIds) {
+            if (typeof base[agentId] !== 'boolean') {
+                base[agentId] = profile.isBuiltIn ? false : true;
+            }
+        }
+        if (enabledAgentIds.length > 0 && enabledAgentIds.every((agentId) => base[agentId] !== true)) {
+            base[enabledAgentIds[0]] = true;
+        }
+        return base;
+    });
+
+    React.useEffect(() => {
+        setCompatibility((prev) => {
+            let changed = false;
+            const next: NonNullable<AIBackendProfile['compatibility']> = { ...prev };
+            for (const agentId of enabledAgentIds) {
+                if (typeof next[agentId] !== 'boolean') {
+                    next[agentId] = profile.isBuiltIn ? false : true;
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
+        });
+    }, [enabledAgentIds, profile.isBuiltIn]);
 
     const [authMode, setAuthMode] = React.useState<AIBackendProfile['authMode']>(profile.authMode);
     const [requiresMachineLogin, setRequiresMachineLogin] = React.useState<AIBackendProfile['requiresMachineLogin']>(profile.requiresMachineLogin);
@@ -366,12 +426,38 @@ export function ProfileEditForm({
     }, [profile.id, secretBindingsByProfileId, setSecretBindingsByProfileId]);
 
     const allowedMachineLoginOptions = React.useMemo(() => {
-        const options: Array<'claude-code' | 'codex' | 'gemini-cli'> = [];
-        if (compatibility.claude) options.push('claude-code');
-        if (compatibility.codex) options.push('codex');
-        if (allowGemini && compatibility.gemini) options.push('gemini-cli');
+        const options: MachineLoginKey[] = [];
+        for (const agentId of enabledAgentIds) {
+            if (compatibility[agentId] !== true) continue;
+            options.push(getAgentCore(agentId).cli.machineLoginKey);
+        }
         return options;
-    }, [allowGemini, compatibility.claude, compatibility.codex, compatibility.gemini]);
+    }, [compatibility, enabledAgentIds]);
+
+    const [openPermissionProvider, setOpenPermissionProvider] = React.useState<null | AgentId>(null);
+    const openPermissionDropdown = React.useCallback((provider: AgentId) => {
+        requestAnimationFrame(() => setOpenPermissionProvider(provider));
+    }, []);
+
+    const setDefaultPermissionModeForProvider = React.useCallback((provider: AgentId, next: PermissionMode | null) => {
+        setDefaultPermissionModes((prev) => {
+            if (prev[provider] === next) return prev;
+            return { ...prev, [provider]: next };
+        });
+    }, []);
+
+    const accountDefaultPermissionModes = React.useMemo(() => {
+        const out: Partial<Record<AgentId, PermissionMode>> = {};
+        for (const agentId of enabledAgentIds) {
+            const raw = (sessionDefaultPermissionModeByAgent as any)?.[agentId] as PermissionMode | undefined;
+            out[agentId] = normalizePermissionModeForAgentType((raw ?? 'default') as PermissionMode, agentId);
+        }
+        return out;
+    }, [enabledAgentIds, sessionDefaultPermissionModeByAgent]);
+
+    const getPermissionIconNameForAgent = React.useCallback((agent: AgentId, mode: PermissionMode) => {
+        return getPermissionModeOptionsForAgentType(agent).find((opt) => opt.value === mode)?.icon ?? 'shield-outline';
+    }, []);
 
     React.useEffect(() => {
         if (authMode !== 'machineLogin') return;
@@ -395,7 +481,7 @@ export function ProfileEditForm({
             name,
             environmentVariables,
             defaultSessionType,
-            defaultPermissionMode,
+            defaultPermissionModes,
             compatibility,
             authMode,
             requiresMachineLogin,
@@ -410,7 +496,7 @@ export function ProfileEditForm({
             name,
             environmentVariables,
             defaultSessionType,
-            defaultPermissionMode,
+            defaultPermissionModes,
             compatibility,
             authMode,
             requiresMachineLogin,
@@ -421,7 +507,7 @@ export function ProfileEditForm({
     }, [
         authMode,
         compatibility,
-        defaultPermissionMode,
+        defaultPermissionModes,
         defaultSessionType,
         environmentVariables,
         name,
@@ -435,17 +521,17 @@ export function ProfileEditForm({
         onDirtyChange?.(isDirty);
     }, [isDirty, onDirtyChange]);
 
-    const toggleCompatibility = React.useCallback((key: keyof AIBackendProfile['compatibility']) => {
+    const toggleCompatibility = React.useCallback((agentId: AgentId) => {
         setCompatibility((prev) => {
-            const next = { ...prev, [key]: !prev[key] };
-            const enabledCount = Object.values(next).filter(Boolean).length;
+            const next = { ...prev, [agentId]: !prev[agentId] };
+            const enabledCount = enabledAgentIds.filter((id) => next[id] === true).length;
             if (enabledCount === 0) {
                 Modal.alert(t('common.error'), t('profiles.aiBackend.selectAtLeastOneError'));
                 return prev;
             }
             return next;
         });
-    }, []);
+    }, [enabledAgentIds]);
 
     const openSetupGuide = React.useCallback(async () => {
         const url = profileDocs?.setupGuideUrl;
@@ -467,8 +553,15 @@ export function ProfileEditForm({
             return false;
         }
 
+        const { defaultPermissionModeClaude, defaultPermissionModeCodex, defaultPermissionModeGemini, ...profileBase } = profile as any;
+        const defaultPermissionModeByAgent: Record<string, PermissionMode> = {};
+        for (const agentId of enabledAgentIds) {
+            const mode = (defaultPermissionModes as any)?.[agentId] as PermissionMode | null | undefined;
+            if (mode) defaultPermissionModeByAgent[agentId] = mode;
+        }
+
         return onSave({
-            ...profile,
+            ...profileBase,
             name: name.trim(),
             environmentVariables,
             authMode,
@@ -477,15 +570,18 @@ export function ProfileEditForm({
                 : undefined,
             envVarRequirements: derivedEnvVarRequirements,
             defaultSessionType,
-            defaultPermissionMode,
+            // Prefer provider-specific defaults; clear legacy field on save.
+            defaultPermissionMode: undefined,
+            defaultPermissionModeByAgent,
             compatibility,
             updatedAt: Date.now(),
         });
     }, [
         allowedMachineLoginOptions,
+        enabledAgentIds,
         derivedEnvVarRequirements,
         compatibility,
-        defaultPermissionMode,
+        defaultPermissionModes,
         defaultSessionType,
         environmentVariables,
         name,
@@ -505,7 +601,7 @@ export function ProfileEditForm({
     }, [handleSave, saveRef]);
 
     return (
-        <ItemList style={containerStyle} keyboardShouldPersistTaps="handled">
+        <ItemList ref={popoverBoundaryRef} style={containerStyle} keyboardShouldPersistTaps="handled">
             <ItemGroup title={t('profiles.profileName')}>
                 <React.Fragment>
                     <View style={styles.inputContainer}>
@@ -574,49 +670,30 @@ export function ProfileEditForm({
                         </Text>
                     );
 
-                    const claudeDefaultSubtitle = t('profiles.aiBackend.claudeSubtitle');
-                    const codexDefaultSubtitle = t('profiles.aiBackend.codexSubtitle');
-                    const geminiDefaultSubtitle = t('profiles.aiBackend.geminiSubtitleExperimental');
-
-                    const claudeSubtitle = shouldShowLoginStatus
-                        ? (typeof cliDetection.login.claude === 'boolean' ? renderLoginStatus(cliDetection.login.claude) : claudeDefaultSubtitle)
-                        : claudeDefaultSubtitle;
-                    const codexSubtitle = shouldShowLoginStatus
-                        ? (typeof cliDetection.login.codex === 'boolean' ? renderLoginStatus(cliDetection.login.codex) : codexDefaultSubtitle)
-                        : codexDefaultSubtitle;
-                    const geminiSubtitle = shouldShowLoginStatus
-                        ? (typeof cliDetection.login.gemini === 'boolean' ? renderLoginStatus(cliDetection.login.gemini) : geminiDefaultSubtitle)
-                        : geminiDefaultSubtitle;
-
                     return (
                         <>
-                            <Item
-                                title={t('agentInput.agent.claude')}
-                                subtitle={claudeSubtitle}
-                                leftElement={<Ionicons name="sparkles-outline" size={24} color={theme.colors.textSecondary} />}
-                                rightElement={<Switch value={compatibility.claude} onValueChange={() => toggleCompatibility('claude')} />}
-                                showChevron={false}
-                                onPress={() => toggleCompatibility('claude')}
-                            />
-                            <Item
-                                title={t('agentInput.agent.codex')}
-                                subtitle={codexSubtitle}
-                                leftElement={<Ionicons name="terminal-outline" size={24} color={theme.colors.textSecondary} />}
-                                rightElement={<Switch value={compatibility.codex} onValueChange={() => toggleCompatibility('codex')} />}
-                                showChevron={false}
-                                onPress={() => toggleCompatibility('codex')}
-                            />
-                            {allowGemini && (
-                                <Item
-                                    title={t('agentInput.agent.gemini')}
-                                    subtitle={geminiSubtitle}
-                                    leftElement={<Ionicons name="planet-outline" size={24} color={theme.colors.textSecondary} />}
-                                    rightElement={<Switch value={compatibility.gemini} onValueChange={() => toggleCompatibility('gemini')} />}
-                                    showChevron={false}
-                                    onPress={() => toggleCompatibility('gemini')}
-                                    showDivider={false}
-                                />
-                            )}
+                            {enabledAgentIds.map((agentId, index) => {
+                                const core = getAgentCore(agentId);
+                                const defaultSubtitle = t(core.subtitleKey);
+                                const loginStatus = shouldShowLoginStatus ? cliDetection.login[agentId] : null;
+                                const subtitle = shouldShowLoginStatus && typeof loginStatus === 'boolean'
+                                    ? renderLoginStatus(loginStatus)
+                                    : defaultSubtitle;
+                                const enabled = compatibility[agentId] === true;
+                                const showDivider = index < enabledAgentIds.length - 1;
+                                return (
+                                    <Item
+                                        key={agentId}
+                                        title={t(core.displayNameKey)}
+                                        subtitle={subtitle}
+                                        leftElement={<Ionicons name={core.ui.agentPickerIconName as any} size={24} color={theme.colors.textSecondary} />}
+                                        rightElement={<Switch value={enabled} onValueChange={() => toggleCompatibility(agentId)} />}
+                                        showChevron={false}
+                                        onPress={() => toggleCompatibility(agentId)}
+                                        showDivider={showDivider}
+                                    />
+                                );
+                            })}
                         </>
                     );
                 })()}
@@ -626,55 +703,93 @@ export function ProfileEditForm({
                 <SessionTypeSelector value={defaultSessionType} onChange={setDefaultSessionType} title={null} />
             </ItemGroup>
 
-            <ItemGroup title={t('profiles.defaultPermissionMode.title')}>
-                {[
-                    {
-                        value: 'default' as PermissionMode,
-                        label: t('agentInput.permissionMode.default'),
-                        description: t('profiles.defaultPermissionMode.descriptions.default'),
-                        icon: 'shield-outline'
-                    },
-                    {
-                        value: 'acceptEdits' as PermissionMode,
-                        label: t('agentInput.permissionMode.acceptEdits'),
-                        description: t('profiles.defaultPermissionMode.descriptions.acceptEdits'),
-                        icon: 'checkmark-outline'
-                    },
-                    {
-                        value: 'plan' as PermissionMode,
-                        label: t('agentInput.permissionMode.plan'),
-                        description: t('profiles.defaultPermissionMode.descriptions.plan'),
-                        icon: 'list-outline'
-                    },
-                    {
-                        value: 'bypassPermissions' as PermissionMode,
-                        label: t('agentInput.permissionMode.bypassPermissions'),
-                        description: t('profiles.defaultPermissionMode.descriptions.bypassPermissions'),
-                        icon: 'flash-outline'
-                    },
-                ].map((option, index, array) => (
-                    <Item
-                        key={option.value}
-                        title={option.label}
-                        subtitle={option.description}
-                        leftElement={
-                            <Ionicons
-                                name={option.icon as any}
-                                size={24}
-                                color={theme.colors.textSecondary}
+            <ItemGroup
+                title="Default permissions"
+                footer="Overrides the account-level default permissions for new sessions when this profile is selected."
+            >
+                {enabledAgentIds
+                    .filter((agentId) => compatibility[agentId] === true)
+                    .map((agentId, index, items) => {
+                        const core = getAgentCore(agentId);
+                        const override = (defaultPermissionModes as any)?.[agentId] as PermissionMode | null | undefined;
+                        const accountDefault = ((accountDefaultPermissionModes as any)?.[agentId] ?? 'default') as PermissionMode;
+                        const effectiveMode = (override ?? accountDefault) as PermissionMode;
+                        const showDivider = index < items.length - 1;
+
+                        return (
+                            <DropdownMenu
+                                key={agentId}
+                                open={openPermissionProvider === agentId}
+                                onOpenChange={(next) => setOpenPermissionProvider(next ? agentId : null)}
+                                popoverBoundaryRef={popoverBoundaryRef}
+                                variant="selectable"
+                                search={false}
+                                showCategoryTitles={false}
+                                matchTriggerWidth={true}
+                                connectToTrigger={true}
+                                rowKind="item"
+                                selectedId={override ?? '__account__'}
+                                trigger={(
+                                    <Item
+                                        selected={false}
+                                        title={t(core.displayNameKey)}
+                                        subtitle={override
+                                            ? getPermissionModeLabelForAgentType(agentId, override)
+                                            : `Account default: ${getPermissionModeLabelForAgentType(agentId, accountDefault)}`
+                                        }
+                                        icon={<Ionicons name={core.ui.agentPickerIconName as any} size={29} color={theme.colors.textSecondary} />}
+                                        rightElement={(
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                                <Ionicons
+                                                    name={getPermissionIconNameForAgent(agentId, effectiveMode) as any}
+                                                    size={22}
+                                                    color={theme.colors.textSecondary}
+                                                />
+                                                <Ionicons
+                                                    name={openPermissionProvider === agentId ? 'chevron-up' : 'chevron-down'}
+                                                    size={20}
+                                                    color={theme.colors.textSecondary}
+                                                />
+                                            </View>
+                                        )}
+                                        showChevron={false}
+                                        onPress={() => openPermissionDropdown(agentId)}
+                                        showDivider={showDivider}
+                                    />
+                                )}
+                                items={[
+                                    {
+                                        id: '__account__',
+                                        title: 'Use account default',
+                                        subtitle: `Currently: ${getPermissionModeLabelForAgentType(agentId, accountDefault)}`,
+                                        icon: (
+                                            <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+                                                <Ionicons name="settings-outline" size={22} color={theme.colors.textSecondary} />
+                                            </View>
+                                        ),
+                                    },
+                                    ...getPermissionModeOptionsForAgentType(agentId).map((opt) => ({
+                                        id: opt.value,
+                                        title: opt.label,
+                                        subtitle: opt.description,
+                                        icon: (
+                                            <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+                                                <Ionicons name={opt.icon as any} size={22} color={theme.colors.textSecondary} />
+                                            </View>
+                                        ),
+                                    })),
+                                ]}
+                                onSelect={(id) => {
+                                    if (id === '__account__') {
+                                        setDefaultPermissionModeForProvider(agentId, null);
+                                    } else {
+                                        setDefaultPermissionModeForProvider(agentId, id as any);
+                                    }
+                                    setOpenPermissionProvider(null);
+                                }}
                             />
-                        }
-                        rightElement={
-                            defaultPermissionMode === option.value ? (
-                                <Ionicons name="checkmark-circle" size={24} color={selectedIndicatorColor} />
-                            ) : null
-                        }
-                        onPress={() => setDefaultPermissionMode(option.value)}
-                        showChevron={false}
-                        selected={defaultPermissionMode === option.value}
-                        showDivider={index < array.length - 1}
-                    />
-                ))}
+                        );
+                    })}
             </ItemGroup>
 
             {!routeMachine && (
