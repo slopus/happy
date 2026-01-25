@@ -1,6 +1,6 @@
 {
-  "name": "happy-coder",
-  "version": "0.14.0-0",
+  "name": "happy-code-cli",
+  "version": "0.14.0-dev.1",
   "description": "Mobile and Web client for Claude Code and Codex",
   "author": "Kirill Dubovitskiy",
   "license": "MIT",
