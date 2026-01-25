@@ -7,7 +7,7 @@ import type { ToolCall } from '@/sync/typesMessage';
 
 const sessionDeny = vi.fn();
 const sendMessage = vi.fn();
-const sessionInteractionRespond = vi.fn();
+const sessionAllowWithAnswers = vi.fn();
 const modalAlert = vi.fn();
 
 vi.mock('@/text', () => ({
@@ -53,7 +53,17 @@ vi.mock('../ToolSectionView', () => ({
 
 vi.mock('@/sync/ops', () => ({
     sessionDeny: (...args: any[]) => sessionDeny(...args),
-    sessionInteractionRespond: (...args: any[]) => sessionInteractionRespond(...args),
+    sessionAllowWithAnswers: (...args: any[]) => sessionAllowWithAnswers(...args),
+}));
+
+vi.mock('@/sync/storage', () => ({
+    storage: {
+        getState: () => ({
+            sessions: {
+                s1: { agentState: { capabilities: { askUserQuestionAnswersInPermission: true } } },
+            },
+        }),
+    },
 }));
 
 vi.mock('@/sync/sync', () => ({
@@ -66,12 +76,12 @@ describe('AskUserQuestionView', () => {
     beforeEach(() => {
         sessionDeny.mockReset();
         sendMessage.mockReset();
-        sessionInteractionRespond.mockReset();
+        sessionAllowWithAnswers.mockReset();
         modalAlert.mockReset();
     });
 
-    it('submits answers via interaction RPC without sending a follow-up user message', async () => {
-        sessionInteractionRespond.mockResolvedValueOnce(undefined);
+    it('submits answers via permission approval without sending a follow-up user message', async () => {
+        sessionAllowWithAnswers.mockResolvedValueOnce(undefined);
 
         const { AskUserQuestionView } = await import('./AskUserQuestionView');
 
@@ -114,7 +124,7 @@ describe('AskUserQuestionView', () => {
             await touchables[touchables.length - 1].props.onPress();
         });
 
-        expect(sessionInteractionRespond).toHaveBeenCalledTimes(1);
+        expect(sessionAllowWithAnswers).toHaveBeenCalledTimes(1);
         expect(sessionDeny).toHaveBeenCalledTimes(0);
         expect(sendMessage).toHaveBeenCalledTimes(0);
     });
@@ -161,14 +171,14 @@ describe('AskUserQuestionView', () => {
             await touchables[touchables.length - 1].props.onPress();
         });
 
-        expect(sessionInteractionRespond).toHaveBeenCalledTimes(0);
+        expect(sessionAllowWithAnswers).toHaveBeenCalledTimes(0);
         expect(sessionDeny).toHaveBeenCalledTimes(0);
         expect(sendMessage).toHaveBeenCalledTimes(0);
         expect(modalAlert).toHaveBeenCalledWith('common.error', 'errors.missingPermissionId');
     });
 
-    it('shows an error when interaction RPC submit fails', async () => {
-        sessionInteractionRespond.mockRejectedValueOnce(new Error('boom'));
+    it('shows an error when permission approval fails', async () => {
+        sessionAllowWithAnswers.mockRejectedValueOnce(new Error('boom'));
 
         const { AskUserQuestionView } = await import('./AskUserQuestionView');
 
@@ -211,7 +221,7 @@ describe('AskUserQuestionView', () => {
             await touchables[touchables.length - 1].props.onPress();
         });
 
-        expect(sessionInteractionRespond).toHaveBeenCalledTimes(1);
+        expect(sessionAllowWithAnswers).toHaveBeenCalledTimes(1);
         expect(sessionDeny).toHaveBeenCalledTimes(0);
         expect(sendMessage).toHaveBeenCalledTimes(0);
         expect(modalAlert).toHaveBeenCalledWith('common.error', 'boom');

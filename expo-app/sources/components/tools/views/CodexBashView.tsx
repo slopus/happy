@@ -1,21 +1,17 @@
 import * as React from 'react';
 import { View, Text } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Ionicons, Octicons } from '@expo/vector-icons';
-import { ToolCall } from '@/sync/typesMessage';
+import { Octicons } from '@expo/vector-icons';
 import { ToolSectionView } from '../ToolSectionView';
 import { CommandView } from '@/components/CommandView';
-import { CodeView } from '@/components/CodeView';
 import { Metadata } from '@/sync/storageTypes';
 import { resolvePath } from '@/utils/pathUtils';
 import { t } from '@/text';
+import type { ToolViewProps } from './_all';
+import { extractStdStreams, tailTextWithEllipsis } from '../utils/stdStreams';
+import { StructuredResultView } from './StructuredResultView';
 
-interface CodexBashViewProps {
-    tool: ToolCall;
-    metadata: Metadata | null;
-}
-
-export const CodexBashView = React.memo<CodexBashViewProps>(({ tool, metadata }) => {
+export const CodexBashView = React.memo<ToolViewProps>(({ tool, metadata, messages, sessionId }) => {
     const { theme } = useUnistyles();
     const { input, result, state } = tool;
 
@@ -65,6 +61,7 @@ export const CodexBashView = React.memo<CodexBashViewProps>(({ tool, metadata })
                         <Text style={styles.commandText}>{commandStr}</Text>
                     )}
                 </View>
+                <StructuredResultView tool={tool} metadata={metadata} messages={messages} sessionId={sessionId} />
             </ToolSectionView>
         );
     } else if (operationType === 'write' && fileName) {
@@ -82,18 +79,27 @@ export const CodexBashView = React.memo<CodexBashViewProps>(({ tool, metadata })
                         <Text style={styles.commandText}>{commandStr}</Text>
                     )}
                 </View>
+                <StructuredResultView tool={tool} metadata={metadata} messages={messages} sessionId={sessionId} />
             </ToolSectionView>
         );
     } else {
         // Display as a regular command
         const commandDisplay = commandStr || (command && Array.isArray(command) ? command.join(' ') : '');
+
+        const streams = extractStdStreams(result);
+        const stdout = streams?.stdout
+            ? tailTextWithEllipsis(streams.stdout, state === 'running' ? 2000 : 6000)
+            : null;
+        const stderr = streams?.stderr
+            ? tailTextWithEllipsis(streams.stderr, state === 'running' ? 1200 : 3000)
+            : null;
         
         return (
             <ToolSectionView>
                 <CommandView 
                     command={commandDisplay}
-                    stdout={null}
-                    stderr={null}
+                    stdout={stdout}
+                    stderr={stderr}
                     error={state === 'error' && typeof result === 'string' ? result : null}
                     hideEmptyOutput
                 />

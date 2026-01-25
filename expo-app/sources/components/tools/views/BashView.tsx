@@ -2,42 +2,44 @@ import * as React from 'react';
 import { ToolCall } from '@/sync/typesMessage';
 import { ToolSectionView } from '../../tools/ToolSectionView';
 import { CommandView } from '@/components/CommandView';
-import { knownTools } from '@/components/tools/knownTools';
 import { Metadata } from '@/sync/storageTypes';
+import { extractShellCommand } from '../utils/shellCommand';
+import { maybeParseJson } from '../utils/parseJson';
+import { extractStdStreams, tailTextWithEllipsis } from '../utils/stdStreams';
 
 export const BashView = React.memo((props: { tool: ToolCall, metadata: Metadata | null }) => {
     const { input, result, state } = props.tool;
+    const command = extractShellCommand(input) ?? (typeof (input as any)?.command === 'string' ? (input as any).command : '');
 
-    let parsedResult: { stdout?: string; stderr?: string } | null = null;
+    const parsedStreams = extractStdStreams(result);
     let unparsedOutput: string | null = null;
     let error: string | null = null;
     
-    if (state === 'completed' && result) {
-        if (typeof result === 'string') {
-            // Handle unparsed string result
-            unparsedOutput = result;
-        } else {
-            // Try to parse as structured result
-            const parsed = knownTools.Bash.result.safeParse(result);
-            if (parsed.success) {
-                parsedResult = parsed.data;
-            } else {
-                // If parsing fails but it's not a string, stringify it
-                unparsedOutput = JSON.stringify(result);
-            }
+    if (result && state === 'completed') {
+        const parsedMaybe = maybeParseJson(result);
+        if (typeof parsedMaybe === 'string') {
+            unparsedOutput = parsedMaybe;
+        } else if (!parsedStreams) {
+            unparsedOutput = JSON.stringify(parsedMaybe);
         }
     } else if (state === 'error' && typeof result === 'string') {
         error = result;
     }
 
+    const maxStreamingChars = 2000;
+    const streamingStdout = parsedStreams?.stdout ? tailTextWithEllipsis(parsedStreams.stdout, maxStreamingChars) : null;
+    const streamingStderr = parsedStreams?.stderr ? tailTextWithEllipsis(parsedStreams.stderr, maxStreamingChars) : null;
+    const maxCompletedChars = 6000;
+    const completedStdout = parsedStreams?.stdout ? tailTextWithEllipsis(parsedStreams.stdout, maxCompletedChars) : null;
+    const completedStderr = parsedStreams?.stderr ? tailTextWithEllipsis(parsedStreams.stderr, maxCompletedChars) : null;
+
     return (
         <>
             <ToolSectionView>
                 <CommandView 
-                    command={input.command}
-                    // Don't show output in compact view
-                    stdout={null}
-                    stderr={null}
+                    command={command}
+                    stdout={state === 'running' ? streamingStdout : (state === 'completed' ? completedStdout : null)}
+                    stderr={state === 'running' ? streamingStderr : (state === 'completed' ? completedStderr : null)}
                     error={error}
                     hideEmptyOutput
                 />

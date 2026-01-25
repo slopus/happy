@@ -3,8 +3,8 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ToolViewProps } from './_all';
 import { ToolSectionView } from '../ToolSectionView';
-import { sessionDeny, sessionInteractionRespond } from '@/sync/ops';
-import { isRpcMethodNotAvailableError } from '@/sync/rpcErrors';
+import { sessionAllowWithAnswers, sessionDeny } from '@/sync/ops';
+import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { Modal } from '@/modal';
 import { t } from '@/text';
@@ -24,6 +24,20 @@ interface Question {
 
 interface AskUserQuestionInput {
     questions: Question[];
+}
+
+function parseAskUserQuestionAnswersFromToolResult(result: unknown): Record<string, string> | null {
+    if (!result || typeof result !== 'object') return null;
+    const maybeAnswers = (result as any).answers;
+    if (!maybeAnswers || typeof maybeAnswers !== 'object' || Array.isArray(maybeAnswers)) return null;
+
+    const answers: Record<string, string> = {};
+    for (const [key, value] of Object.entries(maybeAnswers as Record<string, unknown>)) {
+        if (typeof value === 'string') {
+            answers[key] = value;
+        }
+    }
+    return answers;
 }
 
 // Styles MUST be defined outside the component to prevent infinite re-renders
@@ -222,14 +236,20 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
 
         // Format answers as readable text
         const responseLines: string[] = [];
+        const answers: Record<string, string> = {};
         questions.forEach((q, qIndex) => {
             const selected = selections.get(qIndex);
             if (selected && selected.size > 0) {
-                const selectedLabels = Array.from(selected)
+                const selectedLabelsArray = Array.from(selected)
                     .map(optIndex => q.options[optIndex]?.label)
                     .filter(Boolean)
-                    .join(', ');
-                responseLines.push(`${q.header}: ${selectedLabels}`);
+                const selectedLabelsText = selectedLabelsArray.join(', ');
+                responseLines.push(`${q.header}: ${selectedLabelsText}`);
+
+                // Claude Code AskUserQuestion expects `answers` keyed by the *question text*,
+                // with values as strings (multi-select is comma-separated).
+                const questionKey = typeof q.question === 'string' && q.question.trim().length > 0 ? q.question : q.header;
+                answers[questionKey] = selectedLabelsText;
             }
         });
 
@@ -242,13 +262,18 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
                 return;
             }
 
-            try {
-                await sessionInteractionRespond(sessionId, { toolCallId, responseText });
-            } catch (err) {
-                if (!isRpcMethodNotAvailableError(err as any)) {
-                    throw err;
-                }
-                // Back-compat for older daemons: cancel the tool (no side effects) and send answers as a normal user message.
+            const session = storage.getState().sessions[sessionId];
+            const supportsAnswersInPermission = Boolean(
+                (session as any)?.agentState?.capabilities?.askUserQuestionAnswersInPermission,
+            );
+
+            if (supportsAnswersInPermission) {
+                // Preferred: attach answers directly to the existing permission approval RPC.
+                // This matches how Claude Code expects AskUserQuestion to be completed.
+                await sessionAllowWithAnswers(sessionId, toolCallId, answers);
+            } else {
+                // Back-compat: older agents won't understand answers-on-permission. Abort the tool call and
+                // send a normal user message so the agent can continue using the same information.
                 await sessionDeny(sessionId, toolCallId);
                 await sync.sendMessage(sessionId, responseText);
             }
@@ -262,17 +287,20 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
 
     // Show submitted state
     if (isSubmitted || tool.state === 'completed') {
+        const answersFromResult = parseAskUserQuestionAnswersFromToolResult(tool.result);
         return (
             <ToolSectionView>
                 <View style={styles.submittedContainer}>
                     {questions.map((q, qIndex) => {
                         const selected = selections.get(qIndex);
-                        const selectedLabels = selected
-                            ? Array.from(selected)
-                                .map(optIndex => q.options[optIndex]?.label)
-                                .filter(Boolean)
-                                .join(', ')
-                            : '-';
+                        const questionKey = typeof q.question === 'string' && q.question.trim().length > 0 ? q.question : q.header;
+                        const selectedLabels =
+                            selected && selected.size > 0
+                                ? Array.from(selected)
+                                    .map(optIndex => q.options[optIndex]?.label)
+                                    .filter(Boolean)
+                                    .join(', ')
+                                : (answersFromResult?.[questionKey] ?? '-');
                         return (
                             <View key={qIndex} style={styles.submittedItem}>
                                 <Text style={styles.submittedHeader}>{q.header}:</Text>

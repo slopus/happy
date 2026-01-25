@@ -25,6 +25,7 @@ vi.mock('react-native', () => ({
     Text: 'Text',
     TouchableOpacity: 'TouchableOpacity',
     ActivityIndicator: 'ActivityIndicator',
+    TextInput: 'TextInput',
 }));
 
 vi.mock('react-native-unistyles', () => ({
@@ -103,11 +104,8 @@ describe('ExitPlanToolView', () => {
             );
         });
 
-        const buttons = tree!.root.findAllByType('TouchableOpacity' as any);
-        expect(buttons.length).toBeGreaterThanOrEqual(2);
-
         await act(async () => {
-            await buttons[1].props.onPress();
+            await tree!.root.findByProps({ testID: 'exit-plan-approve' }).props.onPress();
         });
 
         expect(sessionAllow).toHaveBeenCalledTimes(1);
@@ -135,15 +133,88 @@ describe('ExitPlanToolView', () => {
             );
         });
 
-        const buttons = tree!.root.findAllByType('TouchableOpacity' as any);
-        expect(buttons.length).toBeGreaterThanOrEqual(2);
-
         await act(async () => {
-            await buttons[0].props.onPress();
+            await tree!.root.findByProps({ testID: 'exit-plan-reject' }).props.onPress();
         });
 
         expect(sessionDeny).toHaveBeenCalledTimes(1);
         expect(sendMessage).toHaveBeenCalledTimes(0);
+    });
+
+    it('requests changes via permission RPC with a reason', async () => {
+        const { ExitPlanToolView } = await import('./ExitPlanToolView');
+
+        const tool: ToolCall = {
+            name: 'ExitPlanMode',
+            state: 'running',
+            input: { plan: 'plan' },
+            createdAt: Date.now(),
+            startedAt: Date.now(),
+            completedAt: null,
+            description: null,
+            permission: { id: 'perm1', status: 'pending' },
+        };
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        await act(async () => {
+            tree = renderer.create(
+                React.createElement(ExitPlanToolView, { tool, sessionId: 's1', metadata: null, messages: [] }),
+            );
+        });
+
+        await act(async () => {
+            await tree!.root.findByProps({ testID: 'exit-plan-request-changes' }).props.onPress();
+        });
+
+        await act(async () => {
+            tree!.root.findByProps({ testID: 'exit-plan-request-changes-input' }).props.onChangeText('Please change step 2');
+        });
+
+        await act(async () => {
+            await tree!.root.findByProps({ testID: 'exit-plan-request-changes-send' }).props.onPress();
+        });
+
+        expect(sessionDeny).toHaveBeenCalledTimes(1);
+        expect(sessionDeny.mock.calls[0]?.[5]).toBe('Please change step 2');
+        expect(sendMessage).toHaveBeenCalledTimes(0);
+    });
+
+    it('shows an error when requesting plan changes fails', async () => {
+        sessionDeny.mockRejectedValueOnce(new Error('network'));
+
+        const { ExitPlanToolView } = await import('./ExitPlanToolView');
+
+        const tool: ToolCall = {
+            name: 'ExitPlanMode',
+            state: 'running',
+            input: { plan: 'plan' },
+            createdAt: Date.now(),
+            startedAt: Date.now(),
+            completedAt: null,
+            description: null,
+            permission: { id: 'perm1', status: 'pending' },
+        };
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        await act(async () => {
+            tree = renderer.create(
+                React.createElement(ExitPlanToolView, { tool, sessionId: 's1', metadata: null, messages: [] }),
+            );
+        });
+
+        await act(async () => {
+            await tree!.root.findByProps({ testID: 'exit-plan-request-changes' }).props.onPress();
+        });
+
+        await act(async () => {
+            tree!.root.findByProps({ testID: 'exit-plan-request-changes-input' }).props.onChangeText('Please change step 2');
+        });
+
+        await act(async () => {
+            await tree!.root.findByProps({ testID: 'exit-plan-request-changes-send' }).props.onPress();
+        });
+
+        expect(modalAlert).toHaveBeenCalledWith('common.error', 'tools.exitPlanMode.requestChangesFailed');
     });
 
     it('does not mark as responded when approve is pressed without a permission id', async () => {
@@ -167,11 +238,8 @@ describe('ExitPlanToolView', () => {
             );
         });
 
-        const buttons = tree!.root.findAllByType('TouchableOpacity' as any);
-        expect(buttons.length).toBeGreaterThanOrEqual(2);
-
         await act(async () => {
-            await buttons[1].props.onPress();
+            await tree!.root.findByProps({ testID: 'exit-plan-approve' }).props.onPress();
         });
 
         expect(sessionAllow).toHaveBeenCalledTimes(0);
@@ -202,11 +270,8 @@ describe('ExitPlanToolView', () => {
             );
         });
 
-        const buttons = tree!.root.findAllByType('TouchableOpacity' as any);
-        expect(buttons.length).toBeGreaterThanOrEqual(2);
-
         await act(async () => {
-            await buttons[0].props.onPress();
+            await tree!.root.findByProps({ testID: 'exit-plan-reject' }).props.onPress();
         });
 
         expect(sessionDeny).toHaveBeenCalledTimes(0);

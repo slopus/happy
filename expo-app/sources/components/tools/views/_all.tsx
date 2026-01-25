@@ -17,6 +17,14 @@ import { CodexDiffView } from './CodexDiffView';
 import { AskUserQuestionView } from './AskUserQuestionView';
 import { GeminiEditView } from './GeminiEditView';
 import { GeminiExecuteView } from './GeminiExecuteView';
+import { AcpHistoryImportView } from './AcpHistoryImportView';
+import { GlobView } from './GlobView';
+import { GrepView } from './GrepView';
+import { ReadView } from './ReadView';
+import { WebFetchView } from './WebFetchView';
+import { WebSearchView } from './WebSearchView';
+import { CodeSearchView } from './CodeSearchView';
+import { ReasoningView } from './ReasoningView';
 
 export type ToolViewProps = {
     tool: ToolCall;
@@ -36,21 +44,35 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     CodexPatch: CodexPatchView,
     CodexDiff: CodexDiffView,
     Write: WriteView,
+    Read: ReadView,
+    Glob: GlobView,
+    Grep: GrepView,
+    WebFetch: WebFetchView,
+    WebSearch: WebSearchView,
+    CodeSearch: CodeSearchView,
     TodoWrite: TodoView,
+    TodoRead: TodoView,
     ExitPlanMode: ExitPlanToolView,
     exit_plan_mode: ExitPlanToolView,
     MultiEdit: MultiEditView,
     Task: TaskView,
     AskUserQuestion: AskUserQuestionView,
+    AcpHistoryImport: AcpHistoryImportView,
     // Gemini tools (lowercase)
     edit: GeminiEditView,
     execute: GeminiExecuteView,
+    GeminiReasoning: ReasoningView,
+    CodexReasoning: ReasoningView,
+    think: ReasoningView,
 };
 
 export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
     Bash: BashViewFull,
     Edit: EditViewFull,
-    MultiEdit: MultiEditViewFull
+    MultiEdit: MultiEditViewFull,
+    // ACP providers often use lowercase tool names
+    execute: BashViewFull,
+    edit: EditViewFull,
 };
 
 // Helper function to get the appropriate view component for a tool
@@ -78,3 +100,10 @@ export { TaskView } from './TaskView';
 export { AskUserQuestionView } from './AskUserQuestionView';
 export { GeminiEditView } from './GeminiEditView';
 export { GeminiExecuteView } from './GeminiExecuteView';
+export { AcpHistoryImportView } from './AcpHistoryImportView';
+export { GlobView } from './GlobView';
+export { GrepView } from './GrepView';
+export { ReadView } from './ReadView';
+export { WebFetchView } from './WebFetchView';
+export { WebSearchView } from './WebSearchView';
+export { CodeSearchView } from './CodeSearchView';

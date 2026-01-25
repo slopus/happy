@@ -1,8 +1,10 @@
 import * as React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { ToolViewProps } from "./_all";
 import { knownTools } from '../../tools/knownTools';
 import { ToolSectionView } from '../../tools/ToolSectionView';
+import { maybeParseJson } from '../utils/parseJson';
 
 export interface Todo {
     content: string;
@@ -21,9 +23,16 @@ export const TodoView = React.memo<ToolViewProps>(({ tool }) => {
     }
     
     // If we have a properly structured result, use newTodos from there
-    let parsed = knownTools.TodoWrite.result.safeParse(tool.result);
+    const parsedMaybeResult = maybeParseJson(tool.result);
+    let parsed = knownTools.TodoWrite.result.safeParse(parsedMaybeResult);
     if (parsed.success && parsed.data.newTodos) {
         todosList = parsed.data.newTodos;
+    }
+
+    // TodoRead: some providers emit the current list as `result.todos`
+    const parsedRead = knownTools.TodoRead?.result.safeParse(parsedMaybeResult as any);
+    if (parsedRead?.success && parsedRead.data.todos) {
+        todosList = parsedRead.data.todos as Todo[];
     }
     
     // If we have todos to display, show them
@@ -65,7 +74,7 @@ export const TodoView = React.memo<ToolViewProps>(({ tool }) => {
     return null;
 });
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
     container: {
         gap: 4,
     },
@@ -74,17 +83,17 @@ const styles = StyleSheet.create({
     },
     todoText: {
         fontSize: 14,
-        color: '#000',
+        color: theme.colors.text,
         flex: 1,
     },
     completedText: {
-        color: '#34C759',
+        color: theme.colors.success,
         textDecorationLine: 'line-through',
     },
     inProgressText: {
-        color: '#007AFF',
+        color: theme.colors.text,
     },
     pendingText: {
-        color: '#666',
+        color: theme.colors.textSecondary,
     },
-});
+}));
