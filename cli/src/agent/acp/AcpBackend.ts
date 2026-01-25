@@ -165,7 +165,7 @@ export interface AcpBackendOptions {
  * NOTE: This function registers event handlers on stdout. If you also register
  * handlers directly on stdout (e.g., for logging), both will fire.
  */
-function nodeToWebStreams(
+export function nodeToWebStreams(
   stdin: Writable, 
   stdout: Readable
 ): { writable: WritableStream<Uint8Array>; readable: ReadableStream<Uint8Array> } {
@@ -173,16 +173,33 @@ function nodeToWebStreams(
   const writable = new WritableStream<Uint8Array>({
     write(chunk) {
       return new Promise((resolve, reject) => {
+        let drained = false;
+        let wrote = false;
+
+        const finish = () => {
+          if (wrote && drained) resolve();
+        };
+
+        const onDrain = () => {
+          drained = true;
+          finish();
+        };
+
         const ok = stdin.write(chunk, (err) => {
+          wrote = true;
           if (err) {
             logger.debug(`[AcpBackend] Error writing to stdin:`, err);
+            stdin.off('drain', onDrain);
             reject(err);
+            return;
           }
+          stdin.off('drain', onDrain);
+          finish();
         });
-        if (ok) {
-          resolve();
-        } else {
-          stdin.once('drain', resolve);
+
+        drained = ok;
+        if (!ok) {
+          stdin.once('drain', onDrain);
         }
       });
     },
