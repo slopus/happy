@@ -86,7 +86,9 @@ export type UpdateBody = z.infer<typeof UpdateBodySchema>
 
 export const UpdateSessionBodySchema = z.object({
   t: z.literal('update-session'),
-  sid: z.string(),
+  // Server payloads historically used `sid`, but some deployments send `id`.
+  sid: z.string().optional(),
+  id: z.string().optional(),
   metadata: z.object({
     version: z.number(),
     value: z.string()
@@ -95,6 +97,10 @@ export const UpdateSessionBodySchema = z.object({
     version: z.number(),
     value: z.string()
   }).nullish()
+}).superRefine((value, ctx) => {
+  if (!value.sid && !value.id) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Missing session id (sid/id)' })
+  }
 })
 
 export type UpdateSessionBody = z.infer<typeof UpdateSessionBodySchema>
@@ -371,8 +377,21 @@ export type Metadata = {
   machineId?: string,
   claudeSessionId?: string, // Claude Code session ID
   codexSessionId?: string, // Codex session/conversation ID (uuid)
+  geminiSessionId?: string, // Gemini ACP session ID (opaque)
+  opencodeSessionId?: string, // OpenCode ACP session ID (opaque)
   tools?: string[],
   slashCommands?: string[],
+  slashCommandDetails?: Array<{
+    command: string,
+    description?: string
+  }>,
+  acpHistoryImportV1?: {
+    v: 1,
+    provider: 'gemini' | 'codex' | 'opencode' | string,
+    remoteSessionId: string,
+    importedAt: number,
+    lastImportedFingerprint?: string
+  },
   homeDir: string,
   happyHomeDir: string,
   happyLibDir: string,
@@ -419,6 +438,9 @@ export type Metadata = {
 
 export type AgentState = {
   controlledByUser?: boolean | null | undefined
+  capabilities?: {
+    askUserQuestionAnswersInPermission?: boolean | null | undefined
+  } | null | undefined
   requests?: {
     [id: string]: {
       tool: string,
@@ -436,7 +458,8 @@ export type AgentState = {
       reason?: string,
       mode?: PermissionMode,
       decision?: 'approved' | 'approved_for_session' | 'approved_execpolicy_amendment' | 'denied' | 'abort',
-      allowTools?: string[]
+      allowedTools?: string[]
+      allowTools?: string[] // legacy alias
     }
   }
 }

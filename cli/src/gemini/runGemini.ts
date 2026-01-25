@@ -24,7 +24,6 @@ import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
-import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { connectionState } from '@/utils/serverConnectionErrors';
@@ -33,11 +32,14 @@ import { waitForMessagesOrPending } from '@/utils/waitForMessagesOrPending';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { formatGeminiErrorForUi } from '@/gemini/utils/formatGeminiErrorForUi';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
-import { writeTerminalAttachmentInfo } from '@/terminal/terminalAttachmentInfo';
-import { buildTerminalFallbackMessage } from '@/terminal/terminalFallbackMessage';
 import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
+import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/utils/sessionStartup/startupMetadataUpdate';
+import { createBaseSessionForAttach } from '@/utils/sessionStartup/createBaseSessionForAttach';
+import { persistTerminalAttachmentInfoIfNeeded, primeAgentStateForUi, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/utils/sessionStartup/startupSideEffects';
 
 import { createGeminiBackend } from '@/agent/factories/gemini';
+import { importAcpReplayHistoryV1 } from '@/agent/acp/history/importAcpReplayHistory';
+import { normalizeAvailableCommands, publishSlashCommandsToMetadata } from '@/agent/acp/commands/publishSlashCommands';
 import type { AgentBackend, AgentMessage } from '@/agent';
 import { GeminiDisplay } from '@/ui/ink/GeminiDisplay';
 import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
@@ -57,6 +59,12 @@ import {
   formatOptionsXml,
 } from '@/gemini/utils/optionsParser';
 import { ConversationHistory } from '@/gemini/utils/conversationHistory';
+import {
+  handleAcpModelOutputDelta,
+  handleAcpStatusRunning,
+  forwardAcpPermissionRequest,
+  forwardAcpTerminalOutput,
+} from '@/agent/acp/bridge/acpCommonHandlers';
 
 
 /**
@@ -67,6 +75,9 @@ export async function runGemini(opts: {
   startedBy?: 'daemon' | 'terminal';
   terminalRuntime?: import('@/terminal/terminalRuntimeFlags').TerminalRuntimeFlags | null;
   permissionMode?: PermissionMode;
+  permissionModeUpdatedAt?: number;
+  existingSessionId?: string;
+  resume?: string;
 }): Promise<void> {
   //
   // Define session
@@ -143,13 +154,13 @@ export async function runGemini(opts: {
     startedBy: opts.startedBy,
     terminalRuntime: opts.terminalRuntime ?? null,
     permissionMode: initialPermissionMode,
-    permissionModeUpdatedAt: Date.now(),
+    permissionModeUpdatedAt: typeof opts.permissionModeUpdatedAt === 'number' ? opts.permissionModeUpdatedAt : Date.now(),
   });
-  const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
   const terminal = buildTerminalMetadataFromRuntimeFlags(opts.terminalRuntime ?? null);
 
   // Handle server unreachable case - create offline stub with hot reconnection
   let session: ApiSessionClient;
+  let reconnectionHandle: { cancel: () => void } | null = null;
   // Permission handler declared here so it can be updated in onSessionSwap callback
   // (assigned later after Happy server setup)
   let permissionHandler: GeminiPermissionHandler;
@@ -174,70 +185,67 @@ export async function runGemini(opts: {
     }
   };
 
-  const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
-    api,
-    sessionTag,
-    metadata,
-    state,
-    response,
-    onSessionSwap: (newSession) => {
-      // If we're processing a message, queue the swap for later
-      // This prevents race conditions where session changes mid-processing
-      if (isProcessingMessage) {
-        logger.debug('[gemini] Session swap requested during message processing - queueing');
-        pendingSessionSwap = newSession;
-      } else {
-        // Safe to swap immediately
-        session = newSession;
-        if (permissionHandler) {
-          permissionHandler.updateSession(newSession);
+  const normalizedExistingSessionId = typeof opts.existingSessionId === 'string' ? opts.existingSessionId.trim() : '';
+  const permissionModeOverride = buildPermissionModeOverride({
+    permissionMode: opts.permissionMode,
+    permissionModeUpdatedAt: opts.permissionModeUpdatedAt,
+  });
+
+  let reportedSessionId: string | null = null;
+
+  if (normalizedExistingSessionId) {
+    logger.debug(`[gemini] Attaching to existing Happy session: ${normalizedExistingSessionId}`);
+    const baseSession = await createBaseSessionForAttach({
+      existingSessionId: normalizedExistingSessionId,
+      metadata,
+      state,
+    });
+
+    session = api.sessionSyncClient(baseSession);
+    reportedSessionId = normalizedExistingSessionId;
+
+    applyStartupMetadataUpdateToSession({
+      session,
+      next: metadata,
+      nowMs: Date.now(),
+      permissionModeOverride,
+    });
+  } else {
+    const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+
+    const offline = setupOfflineReconnection({
+      api,
+      sessionTag,
+      metadata,
+      state,
+      response,
+      onSessionSwap: (newSession) => {
+        // If we're processing a message, queue the swap for later
+        // This prevents race conditions where session changes mid-processing
+        if (isProcessingMessage) {
+          logger.debug('[gemini] Session swap requested during message processing - queueing');
+          pendingSessionSwap = newSession;
+        } else {
+          // Safe to swap immediately
+          session = newSession;
+          if (permissionHandler) {
+            permissionHandler.updateSession(newSession);
+          }
         }
       }
-    }
-  });
-  session = initialSession;
+    });
 
-  // Bump agentStateVersion early so the UI can reliably treat the agent as "ready" to receive messages.
-  // The server does not currently persist agentState during initial session creation; it starts at version 0
-  // and only changes via 'update-state'. The HAPI UI uses agentStateVersion > 0 as its readiness signal.
-  // (This matches what the Claude runner already does.)
-  try {
-    session.updateAgentState((currentState) => ({ ...currentState }));
-  } catch (e) {
-    logger.debug('[gemini] Failed to prime agent state (non-fatal)', e);
+    session = offline.session;
+    reconnectionHandle = offline.reconnectionHandle;
+    reportedSessionId = response ? response.id : null;
   }
 
-  // Persist terminal attachment info locally (best-effort) once we have a real session ID.
-  if (response && terminal) {
-    try {
-      await writeTerminalAttachmentInfo({
-        happyHomeDir: configuration.happyHomeDir,
-        sessionId: response.id,
-        terminal,
-      });
-    } catch (error) {
-      logger.debug('[START] Failed to persist terminal attachment info', error);
-    }
+  primeAgentStateForUi(session, '[gemini]');
 
-    const fallbackMessage = buildTerminalFallbackMessage(terminal);
-    if (fallbackMessage) {
-      session.sendSessionEvent({ type: 'message', message: fallbackMessage });
-    }
-  }
-
-  // Report to daemon (only if we have a real session)
-  if (response) {
-    try {
-      logger.debug(`[START] Reporting session ${response.id} to daemon`);
-      const result = await notifyDaemonSessionStarted(response.id, metadata);
-      if (result.error) {
-        logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
-      } else {
-        logger.debug(`[START] Reported session ${response.id} to daemon`);
-      }
-    } catch (error) {
-      logger.debug('[START] Failed to report to daemon (may not be running):', error);
-    }
+  if (reportedSessionId) {
+    await persistTerminalAttachmentInfoIfNeeded({ sessionId: reportedSessionId, terminal });
+    sendTerminalFallbackMessageIfNeeded({ session, terminal });
+    await reportSessionToDaemonIfRunning({ sessionId: reportedSessionId, metadata });
   }
 
   const messageQueue = new MessageQueue2<GeminiMode>((mode) => hashObject({
@@ -382,6 +390,22 @@ export async function runGemini(opts: {
   let geminiBackend: AgentBackend | null = null;
   let acpSessionId: string | null = null;
   let wasSessionCreated = false;
+  let storedResumeId: string | null = (() => {
+    const raw = typeof opts.resume === 'string' ? opts.resume.trim() : '';
+    return raw ? raw : null;
+  })();
+
+  const lastGeminiSessionIdPublished: { value: string | null } = { value: null };
+
+  const publishGeminiSessionIdToMetadata = (nextSessionId: string | null) => {
+    if (!nextSessionId) return;
+    if (lastGeminiSessionIdPublished.value === nextSessionId) return;
+    lastGeminiSessionIdPublished.value = nextSessionId;
+    session.updateMetadata((currentMetadata) => ({
+      ...currentMetadata,
+      geminiSessionId: nextSessionId,
+    }));
+  };
 
   async function handleAbort() {
     logger.debug('[Gemini] Abort requested - stopping current task');
@@ -548,7 +572,7 @@ export async function runGemini(opts: {
   };
 
   // Create permission handler for tool approval (variable declared earlier for onSessionSwap)
-  permissionHandler = new GeminiPermissionHandler(session);
+  permissionHandler = new GeminiPermissionHandler(session, { onAbortRequested: handleAbort });
   
   // Create reasoning processor for handling thinking/reasoning chunks
   const reasoningProcessor = new GeminiReasoningProcessor((message) => {
@@ -586,21 +610,20 @@ export async function runGemini(opts: {
     switch (msg.type) {
       case 'model-output':
         if (msg.textDelta) {
-          // If this is the first delta of a new response, create a new message
-          // Otherwise, update the existing message for this response
-          if (!isResponseInProgress) {
-            // Start of new response - create new assistant message
-            // Remove "Thinking..." message if it exists (it will be replaced by actual response)
-            messageBuffer.removeLastMessage('system'); // Remove "Thinking..." if present
-            messageBuffer.addMessage(msg.textDelta, 'assistant');
-            isResponseInProgress = true;
-            logger.debug(`[gemini] Started new response, first chunk length: ${msg.textDelta.length}`);
+          const delta = msg.textDelta;
+          const wasInProgress = isResponseInProgress;
+          handleAcpModelOutputDelta({
+            delta,
+            messageBuffer,
+            getIsResponseInProgress: () => isResponseInProgress,
+            setIsResponseInProgress: (value) => { isResponseInProgress = value; },
+            appendToAccumulatedResponse: (d) => { accumulatedResponse += d; },
+          });
+          if (!wasInProgress) {
+            logger.debug(`[gemini] Started new response, first chunk length: ${delta.length}`);
           } else {
-            // Continue existing response - update last assistant message
-            messageBuffer.updateLastMessage(msg.textDelta, 'assistant');
-            logger.debug(`[gemini] Updated response, chunk length: ${msg.textDelta.length}, total accumulated: ${accumulatedResponse.length + msg.textDelta.length}`);
+            logger.debug(`[gemini] Updated response, chunk length: ${delta.length}, total accumulated: ${accumulatedResponse.length}`);
           }
-          accumulatedResponse += msg.textDelta;
         }
         break;
 
@@ -623,24 +646,15 @@ export async function runGemini(opts: {
         }
         
         if (msg.status === 'running') {
-          thinking = true;
-          session.keepAlive(thinking, 'remote');
-          
-          // Send task_started event ONCE per turn (like Codex) when agent starts working
-          // Gemini may go running -> idle -> running multiple times during a turn
-          if (!taskStartedSent) {
-            session.sendAgentMessage('gemini', {
-              type: 'task_started',
-              id: randomUUID(),
-            });
-            taskStartedSent = true;
-          }
-          
-          // Show thinking indicator in UI when agent starts working (like Codex)
-          // This will be updated with actual thinking text when agent_thought_chunk events arrive
-          // Always show thinking indicator when status becomes 'running' to give user feedback
-          // Even if response is in progress, we want to show thinking for new operations
-          messageBuffer.addMessage('Thinking...', 'system');
+          handleAcpStatusRunning({
+            session,
+            agent: 'gemini',
+            messageBuffer,
+            onThinkingChange: (value) => { thinking = value; },
+            getTaskStartedSent: () => taskStartedSent,
+            setTaskStartedSent: (value) => { taskStartedSent = value; },
+            makeId: () => randomUUID(),
+          });
           
           // Don't reset accumulator here - tool calls can happen during a response
           // Accumulator will be reset when a new prompt is sent (in the main loop)
@@ -725,27 +739,38 @@ export async function runGemini(opts: {
           changeTitleCompleted = true;
           logger.debug('[gemini] change_title completed');
         }
+
+        const isStreamingChunk =
+          !!msg.result
+          && typeof msg.result === 'object'
+          && (msg.result as any)._stream === true
+          && (typeof (msg.result as any).stdoutChunk === 'string' || typeof (msg.result as any).stderrChunk === 'string');
         
-        // Show tool result in UI like Codex does
-        // Check if result contains error information
-        const isError = msg.result && typeof msg.result === 'object' && 'error' in msg.result;
-        const resultText = typeof msg.result === 'string' 
-          ? msg.result.substring(0, 200)
-          : JSON.stringify(msg.result).substring(0, 200);
-        const truncatedResult = resultText + (typeof msg.result === 'string' && msg.result.length > 200 ? '...' : '');
-        
-        const resultSize = typeof msg.result === 'string' 
-          ? msg.result.length 
-          : JSON.stringify(msg.result).length;
+	        // Show tool result in UI like Codex does
+	        // Check if result contains error information
+	        const isError = msg.result && typeof msg.result === 'object' && 'error' in msg.result;
+	        const resultText = msg.result == null
+	          ? '(no output)'
+	          : typeof msg.result === 'string'
+	            ? msg.result.substring(0, 200)
+	            : JSON.stringify(msg.result).substring(0, 200);
+	        const truncatedResult = resultText + (typeof msg.result === 'string' && msg.result.length > 200 ? '...' : '');
+	        
+	        const resultSize = typeof msg.result === 'string' 
+	          ? msg.result.length 
+	          : msg.result == null ? 0 : JSON.stringify(msg.result).length;
         
         logger.debug(`[gemini] ${isError ? '❌' : '✅'} Tool result received: ${msg.toolName} (${msg.callId}) - Size: ${resultSize} bytes${isError ? ' [ERROR]' : ''}`);
         
         // Process tool result through diff processor to check for diff information (like Codex)
-        if (!isError) {
+        if (!isError && !isStreamingChunk) {
           diffProcessor.processToolResult(msg.toolName, msg.result, msg.callId);
         }
         
-        if (isError) {
+        if (isStreamingChunk) {
+          // Avoid spamming the terminal UI for streamed tool result chunks; the mobile UI
+          // will append these to the active tool as incremental output.
+        } else if (isError) {
           const errorMsg = (msg.result as any).error || 'Tool call failed';
           logger.debug(`[gemini] ❌ Tool call error: ${errorMsg.substring(0, 300)}`);
           messageBuffer.addMessage(`Error: ${errorMsg}`, 'status');
@@ -796,26 +821,17 @@ export async function runGemini(opts: {
         break;
 
       case 'terminal-output':
-        messageBuffer.addMessage(msg.data, 'result');
-        session.sendAgentMessage('gemini', {
-          type: 'terminal-output',
-          data: msg.data,
-          callId: (msg as any).callId || randomUUID(),
+        forwardAcpTerminalOutput({
+          msg,
+          messageBuffer,
+          session,
+          agent: 'gemini',
+          getCallId: (m) => (m as any).callId || randomUUID(),
         });
         break;
 
       case 'permission-request':
-        // Forward permission request to mobile app
-        // Note: toolName is in msg.payload.toolName (from AcpBackend), 
-        // msg.reason also contains the tool name
-        const payload = (msg as any).payload || {};
-        session.sendAgentMessage('gemini', {
-          type: 'permission-request',
-          permissionId: msg.id,
-          toolName: payload.toolName || (msg as any).reason || 'unknown',
-          description: (msg as any).reason || payload.toolName || '',
-          options: payload,
-        });
+        forwardAcpPermissionRequest({ msg, session, agent: 'gemini' });
         break;
 
       case 'exec-approval-request':
@@ -890,6 +906,11 @@ export async function runGemini(opts: {
         break;
 
       case 'event':
+        if (msg.name === 'available_commands_update') {
+          const payload = msg.payload as any;
+          const details = normalizeAvailableCommands(payload?.availableCommands ?? payload);
+          publishSlashCommandsToMetadata({ session, details });
+        }
         // Handle thinking events - process through ReasoningProcessor like Codex
         if (msg.name === 'thinking') {
           const thinkingPayload = msg.payload as { text?: string } | undefined;
@@ -1019,6 +1040,7 @@ export async function runGemini(opts: {
         const { sessionId } = await geminiBackend.startSession();
         acpSessionId = sessionId;
         logger.debug(`[gemini] New ACP session started: ${acpSessionId}`);
+        publishGeminiSessionIdToMetadata(acpSessionId);
         
         // Update displayed model in UI (don't save to config - this is backend initialization)
         logger.debug(`[gemini] Calling updateDisplayedModel with: ${actualModel}`);
@@ -1076,9 +1098,44 @@ export async function runGemini(opts: {
             logger.debug('[gemini] Starting ACP session...');
             // Update permission handler with current permission mode before starting session
             updatePermissionMode(message.mode.permissionMode);
-            const { sessionId } = await geminiBackend.startSession();
-            acpSessionId = sessionId;
-            logger.debug(`[gemini] ACP session started: ${acpSessionId}`);
+            const resumeId = storedResumeId;
+            if (resumeId) {
+              if (!geminiBackend.loadSession) {
+                throw new Error('Gemini ACP backend does not support loading sessions');
+              }
+              storedResumeId = null; // consume once
+              messageBuffer.addMessage('Resuming previous context…', 'status');
+              const loadWithReplay = (geminiBackend as any).loadSessionWithReplayCapture as undefined | ((id: string) => Promise<{ sessionId: string; replay: any[] }>);
+              let replay: any[] | null = null;
+              if (loadWithReplay) {
+                const loaded = await loadWithReplay(resumeId);
+                replay = Array.isArray(loaded.replay) ? loaded.replay : null;
+                const loadedSessionId =
+                  typeof loaded.sessionId === 'string' && loaded.sessionId.trim().length > 0
+                    ? loaded.sessionId.trim()
+                    : resumeId;
+                acpSessionId = loadedSessionId;
+              } else {
+                await geminiBackend.loadSession(resumeId);
+                acpSessionId = resumeId;
+              }
+              logger.debug(`[gemini] ACP session loaded: ${acpSessionId}`);
+
+              if (replay) {
+                void importAcpReplayHistoryV1({
+                  session,
+                  provider: 'gemini',
+                  remoteSessionId: acpSessionId,
+                  replay,
+                  permissionHandler,
+                });
+              }
+            } else {
+              const { sessionId } = await geminiBackend.startSession();
+              acpSessionId = sessionId;
+              logger.debug(`[gemini] ACP session started: ${acpSessionId}`);
+            }
+            publishGeminiSessionIdToMetadata(acpSessionId);
             wasSessionCreated = true;
             currentModeHash = message.hash;
             

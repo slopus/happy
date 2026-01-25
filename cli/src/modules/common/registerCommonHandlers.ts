@@ -8,6 +8,7 @@ import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { configuration } from '@/configuration';
 import type { TerminalSpawnOptions } from '@/terminal/terminalConfig';
+import type { PermissionMode } from '@/api/types';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath } from './pathSecurity';
 import { registerCapabilitiesHandlers } from './capabilities/registerCapabilitiesHandlers';
@@ -138,12 +139,36 @@ export interface SpawnSessionOptions {
      */
     experimentalCodexResume?: boolean;
     /**
+     * Experimental: switch Codex sessions to use ACP (codex-acp) instead of MCP.
+     * This is evaluated by the daemon BEFORE spawning the child process.
+     */
+    experimentalCodexAcp?: boolean;
+    /**
      * Existing Happy session ID to reconnect to (for inactive session resume).
      * When set, the CLI will connect to this session instead of creating a new one.
      */
     existingSessionId?: string;
+    /**
+     * Session encryption key (dataKey mode only) encoded as base64.
+     * Required when existingSessionId is set.
+     */
+    sessionEncryptionKeyBase64?: string;
+    /**
+     * Session encryption variant (resume only supports dataKey).
+     * Required when existingSessionId is set.
+     */
+    sessionEncryptionVariant?: 'dataKey';
+    /**
+     * Optional: explicit permission mode to publish at startup (seed or override).
+     * When omitted, the runner preserves existing metadata.permissionMode.
+     */
+    permissionMode?: PermissionMode;
+    /**
+     * Optional timestamp for permissionMode (ms). Used to order explicit UI selections across devices.
+     */
+    permissionModeUpdatedAt?: number;
     approvedNewDirectoryCreation?: boolean;
-    agent?: 'claude' | 'codex' | 'gemini';
+    agent?: 'claude' | 'codex' | 'gemini' | 'opencode';
     token?: string;
     /**
      * Daemon/runtime terminal configuration for the spawned session (non-secret).

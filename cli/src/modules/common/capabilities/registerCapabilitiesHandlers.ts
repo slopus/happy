@@ -4,6 +4,8 @@ import { buildDetectContext } from './context/buildDetectContext';
 import { cliClaudeCapability } from './caps/cliClaude';
 import { cliCodexCapability } from './caps/cliCodex';
 import { cliGeminiCapability } from './caps/cliGemini';
+import { cliOpenCodeCapability } from './caps/cliOpenCode';
+import { codexAcpDepCapability } from './caps/depCodexAcp';
 import { codexMcpResumeDepCapability } from './caps/depCodexMcpResume';
 import { tmuxCapability } from './caps/toolTmux';
 import { createCapabilitiesService } from './service';
@@ -21,8 +23,10 @@ export function registerCapabilitiesHandlers(rpcHandlerManager: RpcHandlerManage
             cliCodexCapability,
             cliClaudeCapability,
             cliGeminiCapability,
+            cliOpenCodeCapability,
             tmuxCapability,
             codexMcpResumeDepCapability,
+            codexAcpDepCapability,
         ],
         checklists,
         buildContext: buildDetectContext,
@@ -40,4 +44,3 @@ export function registerCapabilitiesHandlers(rpcHandlerManager: RpcHandlerManage
         return await service.invoke(data);
     });
 }
-

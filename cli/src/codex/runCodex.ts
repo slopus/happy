@@ -26,7 +26,6 @@ import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import type { CodexSessionConfig, CodexToolResponse } from './types';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
-import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { delay } from "@/utils/time";
 import { stopCaffeinate } from "@/utils/caffeinate";
@@ -36,12 +35,14 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
-import { writeTerminalAttachmentInfo } from '@/terminal/terminalAttachmentInfo';
-import { buildTerminalFallbackMessage } from '@/terminal/terminalFallbackMessage';
-import { readPersistedHappySession, writePersistedHappySession, updatePersistedHappySessionVendorResumeId } from "@/daemon/persistedHappySession";
-import { isExperimentalCodexVendorResumeEnabled } from '@/utils/agentCapabilities';
+import { isExperimentalCodexAcpEnabled, isExperimentalCodexVendorResumeEnabled } from '@/utils/agentCapabilities';
 import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
+import { createBaseSessionForAttach } from '@/utils/sessionStartup/createBaseSessionForAttach';
+import { maybeUpdateCodexSessionIdMetadata } from './utils/codexSessionIdMetadata';
+import { createCodexAcpRuntime } from './acp/codexAcpRuntime';
+import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/utils/sessionStartup/startupMetadataUpdate';
+import { persistTerminalAttachmentInfoIfNeeded, primeAgentStateForUi, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/utils/sessionStartup/startupSideEffects';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -104,6 +105,7 @@ export async function runCodex(opts: {
     startedBy?: 'daemon' | 'terminal';
     terminalRuntime?: import('@/terminal/terminalRuntimeFlags').TerminalRuntimeFlags | null;
     permissionMode?: import('@/api/types').PermissionMode;
+    permissionModeUpdatedAt?: number;
     existingSessionId?: string;
     resume?: string;
 }): Promise<void> {
@@ -155,7 +157,7 @@ export async function runCodex(opts: {
         startedBy: opts.startedBy,
         terminalRuntime: opts.terminalRuntime ?? null,
         permissionMode: initialPermissionMode,
-        permissionModeUpdatedAt: Date.now(),
+        permissionModeUpdatedAt: typeof opts.permissionModeUpdatedAt === 'number' ? opts.permissionModeUpdatedAt : Date.now(),
     });
     const terminal = buildTerminalMetadataFromRuntimeFlags(opts.terminalRuntime ?? null);
     let session: ApiSessionClient;
@@ -168,66 +170,29 @@ export async function runCodex(opts: {
     if (typeof opts.existingSessionId === 'string' && opts.existingSessionId.trim()) {
         const existingId = opts.existingSessionId.trim();
         logger.debug(`[codex] Attaching to existing Happy session: ${existingId}`);
-        const attached = await readPersistedHappySession(existingId);
-        if (!attached) {
-            throw new Error(`Cannot resume session ${existingId}: no local persisted session state found`);
-        }
-        // Ensure we have a local persisted session file for future resume.
-        await writePersistedHappySession(attached);
-
-        session = api.sessionSyncClient(attached);
+        const baseSession = await createBaseSessionForAttach({
+            existingSessionId: existingId,
+            metadata,
+            state,
+        });
+        session = api.sessionSyncClient(baseSession);
         // Refresh metadata on startup (mark session active and update runtime fields).
-        session.updateMetadata((currentMetadata: any) => ({
-            ...currentMetadata,
-            ...metadata,
-            lifecycleState: 'running',
-            lifecycleStateSince: Date.now(),
-        }));
+        applyStartupMetadataUpdateToSession({
+            session,
+            next: metadata,
+            nowMs: Date.now(),
+            permissionModeOverride: buildPermissionModeOverride({
+                permissionMode: opts.permissionMode,
+                permissionModeUpdatedAt: opts.permissionModeUpdatedAt,
+            }),
+        });
 
-        // Bump agentStateVersion early so the UI can reliably treat the agent as "ready" to receive messages.
-        try {
-            session.updateAgentState((currentState) => ({ ...currentState }));
-        } catch (e) {
-            logger.debug('[codex] Failed to prime agent state (non-fatal)', e);
-        }
-
-        // Persist terminal attachment info locally (best-effort).
-        if (terminal) {
-            try {
-                await writeTerminalAttachmentInfo({
-                    happyHomeDir: configuration.happyHomeDir,
-                    sessionId: existingId,
-                    terminal,
-                });
-            } catch (error) {
-                logger.debug('[START] Failed to persist terminal attachment info', error);
-            }
-
-            const fallbackMessage = buildTerminalFallbackMessage(terminal);
-            if (fallbackMessage) {
-                session.sendSessionEvent({ type: 'message', message: fallbackMessage });
-            }
-        }
-
-        // Always report to daemon if it exists
-        try {
-            logger.debug(`[START] Reporting session ${existingId} to daemon`);
-            const result = await notifyDaemonSessionStarted(existingId, metadata);
-            if (result.error) {
-                logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
-            } else {
-                logger.debug(`[START] Reported session ${existingId} to daemon`);
-            }
-        } catch (error) {
-            logger.debug('[START] Failed to report to daemon (may not be running):', error);
-        }
+        primeAgentStateForUi(session, '[codex]');
+        await persistTerminalAttachmentInfoIfNeeded({ sessionId: existingId, terminal });
+        sendTerminalFallbackMessageIfNeeded({ session, terminal });
+        await reportSessionToDaemonIfRunning({ sessionId: existingId, metadata });
     } else {
         const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
-
-        // Persist session for later resume (only if server responded).
-        if (response) {
-            await writePersistedHappySession(response);
-        }
 
         // Handle server unreachable case - create offline stub with hot reconnection
         const offline = setupOfflineReconnection({
@@ -247,44 +212,11 @@ export async function runCodex(opts: {
         session = offline.session;
         reconnectionHandle = offline.reconnectionHandle;
 
-        // Bump agentStateVersion early so the UI can reliably treat the agent as "ready" to receive messages.
-        try {
-            session.updateAgentState((currentState) => ({ ...currentState }));
-        } catch (e) {
-            logger.debug('[codex] Failed to prime agent state (non-fatal)', e);
-        }
-
-        // Persist terminal attachment info locally (best-effort) once we have a real session ID.
-        if (response && terminal) {
-            try {
-                await writeTerminalAttachmentInfo({
-                    happyHomeDir: configuration.happyHomeDir,
-                    sessionId: response.id,
-                    terminal,
-                });
-            } catch (error) {
-                logger.debug('[START] Failed to persist terminal attachment info', error);
-            }
-
-            const fallbackMessage = buildTerminalFallbackMessage(terminal);
-            if (fallbackMessage) {
-                session.sendSessionEvent({ type: 'message', message: fallbackMessage });
-            }
-        }
-
-        // Always report to daemon if it exists (skip if offline)
+        primeAgentStateForUi(session, '[codex]');
         if (response) {
-            try {
-                logger.debug(`[START] Reporting session ${response.id} to daemon`);
-                const result = await notifyDaemonSessionStarted(response.id, metadata);
-                if (result.error) {
-                    logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
-                } else {
-                    logger.debug(`[START] Reported session ${response.id} to daemon`);
-                }
-            } catch (error) {
-                logger.debug('[START] Failed to report to daemon (may not be running):', error);
-            }
+            await persistTerminalAttachmentInfoIfNeeded({ sessionId: response.id, terminal });
+            sendTerminalFallbackMessageIfNeeded({ session, terminal });
+            await reportSessionToDaemonIfRunning({ sessionId: response.id, metadata });
         }
     }
 
@@ -388,6 +320,11 @@ export async function runCodex(opts: {
         logger.debug('[Codex] Resume requested via --resume:', storedSessionIdForResume);
     }
 
+    const useCodexAcp = isExperimentalCodexAcpEnabled();
+    let happyServer: { url: string; stop: () => void } | null = null;
+    let client: CodexMcpClient | null = null;
+    let codexAcpRuntime: ReturnType<typeof createCodexAcpRuntime> | null = null;
+
     /**
      * Handles aborting the current task/inference without exiting the process.
      * This is the equivalent of Claude Code's abort - it stops what's currently
@@ -397,9 +334,16 @@ export async function runCodex(opts: {
         logger.debug('[Codex] Abort requested - stopping current task');
         try {
             // Store the current session ID before aborting for potential resume
-            if (client.hasActiveSession()) {
-                storedSessionIdForResume = client.storeSessionForResume();
+            const mcpClient = client;
+            if (mcpClient && mcpClient.hasActiveSession()) {
+                storedSessionIdForResume = mcpClient.storeSessionForResume();
                 logger.debug('[Codex] Stored session for resume:', storedSessionIdForResume);
+            } else if (useCodexAcp) {
+                const currentAcpSessionId = codexAcpRuntime?.getSessionId();
+                if (currentAcpSessionId) {
+                    storedSessionIdForResume = currentAcpSessionId;
+                    logger.debug('[CodexACP] Stored session for resume:', storedSessionIdForResume);
+                }
             }
 
             abortController.abort();
@@ -442,7 +386,12 @@ export async function runCodex(opts: {
 
             // Force close Codex transport (best-effort) so we don't leave stray processes
             try {
-                await client.forceCloseSession();
+                if (client) {
+                    await client.forceCloseSession();
+                } else if (codexAcpRuntime) {
+                    await codexAcpRuntime.reset();
+                    codexAcpRuntime = null;
+                }
             } catch (e) {
                 logger.debug('[Codex] Error while force closing Codex session during termination', e);
             }
@@ -451,7 +400,7 @@ export async function runCodex(opts: {
             stopCaffeinate();
 
             // Stop Happy MCP server
-            happyServer.stop();
+            happyServer?.stop();
 
             logger.debug('[Codex] Session termination complete, exiting');
             process.exit(0);
@@ -503,8 +452,24 @@ export async function runCodex(opts: {
     // Start Context 
     //
 
+    // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
+    happyServer = await startHappyServer(session);
+    const directory = process.cwd();
+    const bridgeScript = join(projectPath(), 'bin', 'happy-mcp.mjs');
+    // Use process.execPath (bun or node) as command to support both runtimes
+    const mcpServers = {
+        happy: {
+            command: process.execPath,
+            args: [bridgeScript, '--url', happyServer!.url]
+        }
+    };
+
     const isVendorResumeRequested = typeof opts.resume === 'string' && opts.resume.trim().length > 0;
     const codexMcpServer = (() => {
+        if (useCodexAcp) {
+            // ACP mode bypasses Codex MCP server selection (resume/no-resume).
+            return { mode: 'codex-cli' as const, command: 'codex' };
+        }
         if (!isVendorResumeRequested) {
             return { mode: 'codex-cli' as const, command: 'codex' };
         }
@@ -539,10 +504,10 @@ export async function runCodex(opts: {
         );
     })();
 
-    const client = new CodexMcpClient({ mode: codexMcpServer.mode, command: codexMcpServer.command });
+    client = useCodexAcp ? null : new CodexMcpClient({ mode: codexMcpServer.mode, command: codexMcpServer.command });
 
     // NOTE: Codex resume support varies by build; forks may seed `codex-reply` with a stored session id.
-    permissionHandler = new CodexPermissionHandler(session);
+    permissionHandler = new CodexPermissionHandler(session, { onAbortRequested: handleAbort });
     const reasoningProcessor = new ReasoningProcessor((message) => {
         // Callback to send messages directly from the processor
         session.sendCodexMessage(message);
@@ -551,7 +516,7 @@ export async function runCodex(opts: {
         // Callback to send messages directly from the processor
         session.sendCodexMessage(message);
     });
-    client.setPermissionHandler(permissionHandler);
+    if (client) client.setPermissionHandler(permissionHandler);
 
     function forwardCodexStatusToUi(messageText: string): void {
         messageBuffer.addMessage(messageText, 'status');
@@ -567,10 +532,31 @@ export async function runCodex(opts: {
         forwardCodexStatusToUi(`Codex error: ${text}`);
     }
 
-    let lastCodexSessionIdPersisted: string | null = null;
+    const lastCodexThreadIdPublished: { value: string | null } = { value: null };
 
-    client.setHandler((msg) => {
+    const publishCodexThreadIdToMetadata = () => {
+        maybeUpdateCodexSessionIdMetadata({
+            getCodexThreadId: () => (client ? client.getSessionId() : (codexAcpRuntime?.getSessionId() ?? null)),
+            updateHappySessionMetadata: (updater) => session.updateMetadata(updater),
+            lastPublished: lastCodexThreadIdPublished,
+        });
+    };
+
+    if (useCodexAcp) {
+        codexAcpRuntime = createCodexAcpRuntime({
+            directory,
+            session,
+            messageBuffer,
+            mcpServers,
+            permissionHandler,
+            onThinkingChange: (value) => { thinking = value; },
+        });
+    }
+
+    if (client) client.setHandler((msg) => {
         logger.debug(`[Codex] MCP message: ${JSON.stringify(msg)}`);
+
+        publishCodexThreadIdToMetadata();
 
         const lifecycle = nextCodexLifecycleAcpMessages({ currentTaskId, msg });
         currentTaskId = lifecycle.currentTaskId;
@@ -581,24 +567,6 @@ export async function runCodex(opts: {
         const uiText = formatCodexEventForUi(msg);
         if (uiText) {
             forwardCodexStatusToUi(uiText);
-        }
-
-        // Persist Codex session id for later resume (fork-only).
-        const nextId = client.getSessionId();
-        if (typeof nextId === 'string' && nextId && nextId !== lastCodexSessionIdPersisted) {
-            lastCodexSessionIdPersisted = nextId;
-            session.updateMetadata((currentMetadata: any) => {
-                if (currentMetadata.codexSessionId === nextId) {
-                    return currentMetadata;
-                }
-                return {
-                    ...currentMetadata,
-                    codexSessionId: nextId,
-                };
-            });
-            void updatePersistedHappySessionVendorResumeId(session.sessionId, nextId).catch((e) => {
-                logger.debug('[Codex] Failed to persist vendor resume id', e);
-            });
         }
 
         // Add messages to the ink UI buffer based on message type
@@ -764,22 +732,14 @@ export async function runCodex(opts: {
         }
     });
 
-    // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
-    const happyServer = await startHappyServer(session);
-    const bridgeScript = join(projectPath(), 'bin', 'happy-mcp.mjs');
-    // Use process.execPath (bun or node) as command to support both runtimes
-    const mcpServers = {
-        happy: {
-            command: process.execPath,
-            args: [bridgeScript, '--url', happyServer.url]
-        }
-    } as const;
     let first = true;
 
     try {
-        logger.debug('[codex]: client.connect begin');
-        await client.connect();
-        logger.debug('[codex]: client.connect done');
+        if (client) {
+            logger.debug('[codex]: client.connect begin');
+            await client.connect();
+            logger.debug('[codex]: client.connect done');
+        }
         let wasCreated = false;
 
         let currentModeHash: string | null = null;
@@ -822,7 +782,11 @@ export async function runCodex(opts: {
                 logger.debug('[Codex] Mode changed – restarting Codex session');
                 messageBuffer.addMessage('═'.repeat(40), 'status');
                 messageBuffer.addMessage('Starting new Codex session (mode changed)...', 'status');
-                client.clearSession();
+                if (client) {
+                    client.clearSession();
+                } else {
+                    await codexAcpRuntime?.reset();
+                }
                 wasCreated = false;
                 currentModeHash = null;
                 pending = message;
@@ -842,7 +806,11 @@ export async function runCodex(opts: {
             const specialCommand = parseSpecialCommand(message.message);
             if (specialCommand.type === 'clear') {
                 logger.debug('[Codex] Handling /clear command - resetting session');
-                client.clearSession();
+                if (client) {
+                    client.clearSession();
+                } else {
+                    await codexAcpRuntime?.reset();
+                }
                 wasCreated = false;
                 currentModeHash = null;
 
@@ -864,8 +832,32 @@ export async function runCodex(opts: {
             }
 
             try {
-                // Map permission mode to approval policy and sandbox for startSession
-                const approvalPolicy = (() => {
+                if (useCodexAcp) {
+                    const codexAcp = codexAcpRuntime;
+                    if (!codexAcp) {
+                        throw new Error('Codex ACP runtime was not initialized');
+                    }
+                    codexAcp.beginTurn();
+
+                    if (!wasCreated) {
+                        const resumeId = storedSessionIdForResume?.trim();
+                        if (resumeId) {
+                            storedSessionIdForResume = null; // consume once
+                            messageBuffer.addMessage('Resuming previous context…', 'status');
+                            await codexAcp.startOrLoad({ resumeId });
+                        } else {
+                            await codexAcp.startOrLoad({});
+                        }
+                        wasCreated = true;
+                        first = false;
+                    }
+
+                    await codexAcp.sendPrompt(message.message);
+                } else {
+                    const mcpClient = client!;
+
+                    // Map permission mode to approval policy and sandbox for startSession
+                    const approvalPolicy = (() => {
                     switch (message.mode.permissionMode) {
                         // Codex native modes
                         case 'default': return 'untrusted' as const;                    // Ask for non-trusted commands
@@ -879,7 +871,7 @@ export async function runCodex(opts: {
                         default: return 'untrusted' as const;                           // Safe fallback
                     }
                 })();
-                const sandbox = (() => {
+                    const sandbox = (() => {
                     switch (message.mode.permissionMode) {
                         // Codex native modes
                         case 'default': return 'workspace-write' as const;              // Can write in workspace
@@ -894,7 +886,7 @@ export async function runCodex(opts: {
                     }
                 })();
 
-                if (!wasCreated) {
+                    if (!wasCreated) {
                     const startConfig: CodexSessionConfig = {
                         prompt: first ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION : message.message,
                         sandbox,
@@ -909,35 +901,37 @@ export async function runCodex(opts: {
                         const resumeId = storedSessionIdForResume;
                         storedSessionIdForResume = null; // consume once
                         messageBuffer.addMessage('Resuming previous context…', 'status');
-                        client.setSessionIdForResume(resumeId);
-                        const resumeResponse = await client.continueSession(message.message, { signal: abortController.signal });
+                        mcpClient.setSessionIdForResume(resumeId);
+                        const resumeResponse = await mcpClient.continueSession(message.message, { signal: abortController.signal });
                         const resumeError = extractCodexToolErrorText(resumeResponse);
                         if (resumeError) {
                             forwardCodexErrorToUi(resumeError);
-                            client.clearSession();
+                            mcpClient.clearSession();
                             wasCreated = false;
                             currentModeHash = null;
                             continue;
                         }
+                        publishCodexThreadIdToMetadata();
                     } else {
-                        const startResponse = await client.startSession(
+                        const startResponse = await mcpClient.startSession(
                             startConfig,
                             { signal: abortController.signal }
                         );
                         const startError = extractCodexToolErrorText(startResponse);
                         if (startError) {
                             forwardCodexErrorToUi(startError);
-                            client.clearSession();
+                            mcpClient.clearSession();
                             wasCreated = false;
                             currentModeHash = null;
                             continue;
                         }
+                        publishCodexThreadIdToMetadata();
                     }
 
                     wasCreated = true;
                     first = false;
                 } else {
-                    const response = await client.continueSession(
+                    const response = await mcpClient.continueSession(
                         message.message,
                         { signal: abortController.signal }
                     );
@@ -945,11 +939,13 @@ export async function runCodex(opts: {
                     const continueError = extractCodexToolErrorText(response);
                     if (continueError) {
                         forwardCodexErrorToUi(continueError);
-                        client.clearSession();
+                        mcpClient.clearSession();
                         wasCreated = false;
                         currentModeHash = null;
                         continue;
                     }
+                    publishCodexThreadIdToMetadata();
+                }
                 }
             } catch (error) {
                 logger.warn('Error in codex session:', error);
@@ -967,12 +963,17 @@ export async function runCodex(opts: {
                     messageBuffer.addMessage(messageText, 'status');
                     session.sendSessionEvent({ type: 'message', message: messageText });
                     // For unexpected exits, try to store session for potential recovery
-                    if (client.hasActiveSession()) {
-                        storedSessionIdForResume = client.storeSessionForResume();
+                    const mcpClient = client;
+                    if (mcpClient && mcpClient.hasActiveSession()) {
+                        storedSessionIdForResume = mcpClient.storeSessionForResume();
                         logger.debug('[Codex] Stored session after unexpected error:', storedSessionIdForResume);
                     }
                 }
             } finally {
+                if (useCodexAcp) {
+                    codexAcpRuntime?.flushTurn();
+                }
+
                 // Reset permission handler, reasoning processor, and diff processor
                 permissionHandler.reset();
                 reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls
@@ -1015,12 +1016,17 @@ export async function runCodex(opts: {
         } catch (e) {
             logger.debug('[codex]: Error while closing session', e);
         }
-        logger.debug('[codex]: client.forceCloseSession begin');
-        await client.forceCloseSession();
-        logger.debug('[codex]: client.forceCloseSession done');
+        if (client) {
+            logger.debug('[codex]: client.forceCloseSession begin');
+            await client.forceCloseSession();
+            logger.debug('[codex]: client.forceCloseSession done');
+        } else {
+            await codexAcpRuntime?.reset();
+            codexAcpRuntime = null;
+        }
         // Stop Happy MCP server
         logger.debug('[codex]: happyServer.stop');
-        happyServer.stop();
+        happyServer?.stop();
 
         // Clean up ink UI
         if (process.stdin.isTTY) {

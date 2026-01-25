@@ -7,7 +7,7 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-export type DetectCliName = 'claude' | 'codex' | 'gemini';
+export type DetectCliName = 'claude' | 'codex' | 'gemini' | 'opencode';
 
 export interface DetectCliRequest {
     /**
@@ -22,6 +22,16 @@ export interface DetectCliEntry {
     resolvedPath?: string;
     version?: string;
     isLoggedIn?: boolean | null;
+    /**
+     * Optional ACP agent capability probe results for CLIs that can run in ACP mode.
+     * This is only populated when a capabilities request explicitly asks for it.
+     */
+    acp?: {
+        ok: boolean;
+        checkedAt: number;
+        loadSession?: boolean | null;
+        error?: { message: string };
+    };
 }
 
 export interface DetectTmuxEntry {
@@ -91,7 +101,8 @@ function extractTmuxVersion(value: string | null): string | null {
 async function detectCliVersion(params: { name: DetectCliName; resolvedPath: string }): Promise<string | null> {
     // Best-effort, must never throw.
     try {
-        const timeoutMs = 600;
+        // Keep this short (runs in parallel for multiple CLIs), but give enough headroom for slower systems.
+        const timeoutMs = 1200;
         const isWindows = process.platform === 'win32';
         const isCmdScript = isWindows && /\.(cmd|bat)$/i.test(params.resolvedPath);
 
@@ -108,6 +119,8 @@ async function detectCliVersion(params: { name: DetectCliName; resolvedPath: str
                 case 'codex':
                     return [['--version'], ['version'], ['-v']];
                 case 'gemini':
+                    return [['--version'], ['version'], ['-v']];
+                case 'opencode':
                     return [['--version'], ['version'], ['-v']];
                 default:
                     return [['--version']];
@@ -232,6 +245,14 @@ async function detectCliLoginStatus(params: { name: DetectCliName; resolvedPath:
             return await runStatus(params.resolvedPath, ['auth', 'status']);
         }
 
+        if (params.name === 'opencode') {
+            // Best-effort: OpenCode supports `opencode auth list` which should succeed when configured.
+            if (isCmdScript) {
+                return await runStatus('cmd.exe', ['/d', '/s', '/c', `"${params.resolvedPath}" auth list`]);
+            }
+            return await runStatus(params.resolvedPath, ['auth', 'list']);
+        }
+
         // claude-code: no stable non-interactive auth-status command (as of early 2026).
         return null;
     } catch {
@@ -249,7 +270,7 @@ async function detectCliLoginStatus(params: { name: DetectCliName; resolvedPath:
 export async function detectCliSnapshotOnDaemonPath(data: DetectCliRequest): Promise<DetectCliSnapshot> {
     const pathEnv = typeof process.env.PATH === 'string' ? process.env.PATH : null;
     const includeLoginStatus = Boolean(data?.includeLoginStatus);
-    const names: DetectCliName[] = ['claude', 'codex', 'gemini'];
+    const names: DetectCliName[] = ['claude', 'codex', 'gemini', 'opencode'];
 
     const pairs = await Promise.all(
         names.map(async (name) => {

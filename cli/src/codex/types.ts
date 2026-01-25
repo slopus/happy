@@ -22,4 +22,9 @@ export interface CodexToolResponse {
         mimeType?: string;
     }>;
     isError?: boolean;
+    // MCP servers commonly return structured output here (e.g. structuredContent.threadId).
+    structuredContent?: Record<string, unknown>;
+    // Some versions/tools may still include alternate naming.
+    structured_content?: Record<string, unknown>;
+    meta?: Record<string, unknown>;
 }

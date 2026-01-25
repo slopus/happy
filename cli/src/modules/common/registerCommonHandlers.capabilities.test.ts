@@ -72,10 +72,10 @@ describe('registerCommonHandlers capabilities', () => {
 
         expect(result.protocolVersion).toBe(1);
         expect(result.capabilities.map((c) => c.id)).toEqual(
-            expect.arrayContaining(['cli.codex', 'cli.claude', 'cli.gemini', 'tool.tmux', 'dep.codex-mcp-resume']),
+            expect.arrayContaining(['cli.codex', 'cli.claude', 'cli.gemini', 'cli.opencode', 'tool.tmux', 'dep.codex-mcp-resume']),
         );
         expect(Object.keys(result.checklists)).toEqual(
-            expect.arrayContaining(['new-session', 'machine-details', 'resume.codex']),
+            expect.arrayContaining(['new-session', 'machine-details', 'resume.codex', 'resume.gemini']),
         );
         expect(result.checklists['resume.codex'].map((r) => r.id)).toEqual(
             expect.arrayContaining(['cli.codex', 'dep.codex-mcp-resume']),
@@ -90,6 +90,7 @@ describe('registerCommonHandlers capabilities', () => {
             const fakeCodex = join(dir, isWindows ? 'codex.cmd' : 'codex');
             const fakeClaude = join(dir, isWindows ? 'claude.cmd' : 'claude');
             const fakeGemini = join(dir, isWindows ? 'gemini.cmd' : 'gemini');
+            const fakeOpenCode = join(dir, isWindows ? 'opencode.cmd' : 'opencode');
             const fakeTmux = join(dir, isWindows ? 'tmux.cmd' : 'tmux');
 
             await writeFile(
@@ -114,6 +115,13 @@ describe('registerCommonHandlers capabilities', () => {
                 'utf8',
             );
             await writeFile(
+                fakeOpenCode,
+                isWindows
+                    ? '@echo off\r\nif "%1"=="--version" (echo opencode 0.1.48& exit /b 0)\r\necho ok\r\n'
+                    : '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "opencode 0.1.48"; exit 0; fi\necho ok\n',
+                'utf8',
+            );
+            await writeFile(
                 fakeTmux,
                 isWindows
                     ? '@echo off\r\nif "%1"=="-V" (echo tmux 3.3a& exit /b 0)\r\necho ok\r\n'
@@ -125,6 +133,7 @@ describe('registerCommonHandlers capabilities', () => {
                 await chmod(fakeCodex, 0o755);
                 await chmod(fakeClaude, 0o755);
                 await chmod(fakeGemini, 0o755);
+                await chmod(fakeOpenCode, 0o755);
                 await chmod(fakeTmux, 0o755);
             } else {
                 process.env.PATHEXT = '.CMD';
@@ -154,6 +163,11 @@ describe('registerCommonHandlers capabilities', () => {
             expect(result.results['cli.gemini'].ok).toBe(true);
             expect(result.results['cli.gemini'].data.available).toBe(true);
             expect(result.results['cli.gemini'].data.version).toBe('9.9.9');
+
+            expect(result.results['cli.opencode'].ok).toBe(true);
+            expect(result.results['cli.opencode'].data.available).toBe(true);
+            expect(result.results['cli.opencode'].data.resolvedPath).toBe(fakeOpenCode);
+            expect(result.results['cli.opencode'].data.version).toBe('0.1.48');
 
             expect(result.results['tool.tmux'].ok).toBe(true);
             expect(result.results['tool.tmux'].data.available).toBe(true);
@@ -205,4 +219,3 @@ describe('registerCommonHandlers capabilities', () => {
         }
     });
 });
-

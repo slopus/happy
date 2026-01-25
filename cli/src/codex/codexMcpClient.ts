@@ -283,7 +283,7 @@ export class CodexMcpClient {
     private client: Client;
     private transport: StdioClientTransport | null = null;
     private connected: boolean = false;
-    private sessionId: string | null = null;
+    private threadId: string | null = null;
     private conversationId: string | null = null;
     private handler: ((event: any) => void) | null = null;
     private permissionHandler: CodexPermissionHandler | null = null;
@@ -575,17 +575,20 @@ export class CodexMcpClient {
     async continueSession(prompt: string, options?: { signal?: AbortSignal }): Promise<CodexToolResponse> {
         if (!this.connected) await this.connect();
 
-        if (!this.sessionId) {
+        if (!this.threadId) {
             throw new Error('No active session. Call startSession first.');
         }
 
         if (!this.conversationId) {
-            // Some Codex deployments reuse the session ID as the conversation identifier
-            this.conversationId = this.sessionId;
-            logger.debug('[CodexMCP] conversationId missing, defaulting to sessionId:', this.conversationId);
+            // Some Codex deployments reuse the thread id as the conversation identifier.
+            this.conversationId = this.threadId;
+            logger.debug('[CodexMCP] conversationId missing, defaulting to threadId:', this.conversationId);
         }
 
-        const args = { conversationId: this.conversationId, prompt };
+        const args: Record<string, unknown> = { threadId: this.threadId, prompt };
+        if (this.conversationId) {
+            args.conversationId = this.conversationId;
+        }
         logger.debug('[CodexMCP] Continuing Codex session:', args);
 
         const response = await this.client.callTool({
@@ -614,10 +617,14 @@ export class CodexMcpClient {
         }
 
         for (const candidate of candidates) {
-            const sessionId = candidate.session_id ?? candidate.sessionId;
-            if (sessionId) {
-                this.sessionId = sessionId;
-                logger.debug('[CodexMCP] Session ID extracted from event:', this.sessionId);
+            const threadId =
+                candidate.thread_id
+                ?? candidate.threadId
+                ?? candidate.session_id
+                ?? candidate.sessionId;
+            if (threadId) {
+                this.threadId = threadId;
+                logger.debug('[CodexMCP] Thread ID extracted from event:', this.threadId);
             }
 
             const conversationId = candidate.conversation_id ?? candidate.conversationId;
@@ -629,28 +636,49 @@ export class CodexMcpClient {
     }
     private extractIdentifiers(response: any): void {
         const meta = response?.meta || {};
-        if (meta.sessionId) {
-            this.sessionId = meta.sessionId;
-            logger.debug('[CodexMCP] Session ID extracted:', this.sessionId);
-        } else if (response?.sessionId) {
-            this.sessionId = response.sessionId;
-            logger.debug('[CodexMCP] Session ID extracted:', this.sessionId);
+        const structured =
+            response?.structuredContent
+            ?? response?.structured_content
+            ?? response?.structured_output
+            ?? undefined;
+
+        const threadId =
+            (structured && typeof structured === 'object' ? (structured as any).threadId ?? (structured as any).thread_id : undefined)
+            ?? meta.threadId
+            ?? meta.thread_id
+            ?? meta.sessionId
+            ?? meta.session_id
+            ?? response?.threadId
+            ?? response?.thread_id
+            ?? response?.sessionId
+            ?? response?.session_id;
+        if (threadId) {
+            this.threadId = threadId;
+            logger.debug('[CodexMCP] Thread ID extracted:', this.threadId);
         }
 
-        if (meta.conversationId) {
-            this.conversationId = meta.conversationId;
-            logger.debug('[CodexMCP] Conversation ID extracted:', this.conversationId);
-        } else if (response?.conversationId) {
-            this.conversationId = response.conversationId;
+        const conversationId =
+            (structured && typeof structured === 'object' ? (structured as any).conversationId ?? (structured as any).conversation_id : undefined)
+            ?? meta.conversationId
+            ?? meta.conversation_id
+            ?? response?.conversationId
+            ?? response?.conversation_id;
+        if (conversationId) {
+            this.conversationId = conversationId;
             logger.debug('[CodexMCP] Conversation ID extracted:', this.conversationId);
         }
 
         const content = response?.content;
         if (Array.isArray(content)) {
             for (const item of content) {
-                if (!this.sessionId && item?.sessionId) {
-                    this.sessionId = item.sessionId;
-                    logger.debug('[CodexMCP] Session ID extracted from content:', this.sessionId);
+                if (!this.threadId && item?.threadId) {
+                    this.threadId = item.threadId;
+                    logger.debug('[CodexMCP] Thread ID extracted from content:', this.threadId);
+                }
+                if (!this.threadId && item?.sessionId) {
+                    // Some Codex events still surface the thread id under `sessionId`.
+                    this.threadId = item.sessionId;
+                    logger.debug('[CodexMCP] Thread ID extracted from content (sessionId):', this.threadId);
                 }
                 if (!this.conversationId && item && typeof item === 'object' && 'conversationId' in item && item.conversationId) {
                     this.conversationId = item.conversationId;
@@ -660,29 +688,43 @@ export class CodexMcpClient {
         }
     }
 
+    getThreadId(): string | null {
+        return this.threadId;
+    }
+
     getSessionId(): string | null {
-        return this.sessionId;
+        // Backwards-compat: our callers historically used "sessionId", but Codex standardizes on "threadId".
+        return this.threadId;
     }
 
     /**
      * Fork-only: seed the MCP client with an existing Codex session id so we can resume
      * with `codex-reply` without relying on transcript files.
      */
-    setSessionIdForResume(sessionId: string): void {
-        this.sessionId = sessionId;
-        // conversationId will be defaulted to sessionId on first reply if missing.
+    setThreadIdForResume(threadId: string): void {
+        this.threadId = threadId;
+        // conversationId will be defaulted to threadId on first reply if missing.
         this.conversationId = null;
-        logger.debug('[CodexMCP] Session seeded for resume:', this.sessionId);
+        logger.debug('[CodexMCP] Session seeded for resume:', this.threadId);
+    }
+
+    /**
+     * Backwards-compat alias.
+     *
+     * Prefer `setThreadIdForResume()` (Codex v0.81+).
+     */
+    setSessionIdForResume(sessionId: string): void {
+        this.setThreadIdForResume(sessionId);
     }
 
     hasActiveSession(): boolean {
-        return this.sessionId !== null;
+        return this.threadId !== null;
     }
 
     clearSession(): void {
         // Store the previous session ID before clearing for potential resume
-        const previousSessionId = this.sessionId;
-        this.sessionId = null;
+        const previousSessionId = this.threadId;
+        this.threadId = null;
         this.conversationId = null;
         logger.debug('[CodexMCP] Session cleared, previous sessionId:', previousSessionId);
     }
@@ -691,8 +733,8 @@ export class CodexMcpClient {
      * Store the current session ID without clearing it, useful for abort handling
      */
     storeSessionForResume(): string | null {
-        logger.debug('[CodexMCP] Storing session for potential resume:', this.sessionId);
-        return this.sessionId;
+        logger.debug('[CodexMCP] Storing session for potential resume:', this.threadId);
+        return this.threadId;
     }
 
     /**
@@ -743,6 +785,6 @@ export class CodexMcpClient {
         this.transport = null;
         this.connected = false;
         // Preserve session/conversation identifiers for potential reconnection / recovery flows.
-        logger.debug(`[CodexMCP] Disconnected; session ${this.sessionId ?? 'none'} preserved`);
+        logger.debug(`[CodexMCP] Disconnected; session ${this.threadId ?? 'none'} preserved`);
     }
 }

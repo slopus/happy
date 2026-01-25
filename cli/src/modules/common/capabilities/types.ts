@@ -2,12 +2,14 @@ export type CapabilityId =
     | 'cli.codex'
     | 'cli.claude'
     | 'cli.gemini'
+    | 'cli.opencode'
     | 'tool.tmux'
-    | 'dep.codex-mcp-resume';
+    | 'dep.codex-mcp-resume'
+    | 'dep.codex-acp';
 
 export type CapabilityKind = 'cli' | 'tool' | 'dep';
 
-export type ChecklistId = 'new-session' | 'machine-details' | 'resume.codex';
+export type ChecklistId = 'new-session' | 'machine-details' | 'resume.codex' | 'resume.gemini' | 'resume.opencode';
 
 export type CapabilityDetectRequest = {
     id: CapabilityId;
@@ -51,4 +53,3 @@ export type CapabilitiesInvokeRequest = {
 export type CapabilitiesInvokeResponse =
     | { ok: true; result: unknown }
     | { ok: false; error: { message: string; code?: string }; logPath?: string };
-
