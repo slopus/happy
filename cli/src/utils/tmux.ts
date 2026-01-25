@@ -23,6 +23,23 @@ import { spawn, SpawnOptions } from 'child_process';
 import { promisify } from 'util';
 import { logger } from '@/ui/logger';
 
+function readNonNegativeIntegerEnv(name: string, fallback: number): number {
+    const raw = process.env[name];
+    if (!raw) return fallback;
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+    return parsed;
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+    const value = readNonNegativeIntegerEnv(name, fallback);
+    return value <= 0 ? fallback : value;
+}
+
+function isTmuxWindowIndexConflict(stderr: string | undefined): boolean {
+    return /index\s+\d+\s+in\s+use/i.test(stderr ?? '');
+}
+
 export function normalizeExitCode(code: number | null): number {
     // Node passes `code === null` when the process was terminated by a signal.
     // Preserve failure semantics rather than treating it as success.
@@ -862,8 +879,31 @@ export class TmuxUtilities {
             // Add the command to run in the window (runs immediately when window is created)
             createWindowArgs.push(fullCommand);
 
-            // Create window with command and get PID immediately
-            const createResult = await this.executeTmuxCommand(createWindowArgs);
+            // Create window with command and get PID immediately.
+            //
+            // Note: tmux can fail with `create window failed: index N in use` when multiple
+            // clients concurrently create windows in the same session (tmux does not always
+            // auto-retry the window index allocation). Retry a few times to make concurrent
+            // session starts robust.
+            const maxAttempts = readPositiveIntegerEnv('HAPPY_CLI_TMUX_CREATE_WINDOW_MAX_ATTEMPTS', 3);
+            const retryDelayMs = readNonNegativeIntegerEnv('HAPPY_CLI_TMUX_CREATE_WINDOW_RETRY_DELAY_MS', 25);
+
+            let createResult: TmuxCommandResult | null = null;
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+                createResult = await this.executeTmuxCommand(createWindowArgs);
+                if (createResult && createResult.returncode === 0) break;
+
+                const stderr = createResult?.stderr;
+                const shouldRetry = attempt < maxAttempts && isTmuxWindowIndexConflict(stderr);
+                if (!shouldRetry) break;
+
+                logger.debug(
+                    `[TMUX] new-window failed with window index conflict; retrying (attempt ${attempt}/${maxAttempts})`,
+                );
+                if (retryDelayMs > 0) {
+                    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+                }
+            }
 
             if (!createResult || createResult.returncode !== 0) {
                 throw new Error(`Failed to create tmux window: ${createResult?.stderr}`);

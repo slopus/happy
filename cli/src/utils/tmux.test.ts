@@ -618,4 +618,34 @@ describe('TmuxUtilities.spawnInTmux', () => {
         );
         expect(usedLastAttachedFormat).toBe(true);
     });
+
+    it('retries new-window when tmux reports a window index conflict', async () => {
+        class ConflictThenSuccessTmuxUtilities extends FakeTmuxUtilities {
+            private newWindowAttempts = 0;
+
+            override async executeTmuxCommand(cmd: string[], session?: string): Promise<TmuxCommandResult | null> {
+                if (cmd[0] === 'new-window') {
+                    this.newWindowAttempts += 1;
+                    this.calls.push({ cmd, session });
+                    if (this.newWindowAttempts === 1) {
+                        return { returncode: 1, stdout: '', stderr: 'create window failed: index 1 in use.', command: cmd };
+                    }
+                    return { returncode: 0, stdout: '4242\n', stderr: '', command: cmd };
+                }
+                return super.executeTmuxCommand(cmd, session);
+            }
+        }
+
+        const tmux = new ConflictThenSuccessTmuxUtilities();
+
+        const result = await tmux.spawnInTmux(
+            ['echo', 'hello'],
+            { sessionName: 'my-session', windowName: 'my-window' },
+            {},
+        );
+
+        expect(result.success).toBe(true);
+        const newWindowCalls = tmux.calls.filter((call) => call.cmd[0] === 'new-window');
+        expect(newWindowCalls.length).toBeGreaterThanOrEqual(2);
+    });
 });
