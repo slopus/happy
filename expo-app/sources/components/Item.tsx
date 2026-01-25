@@ -262,10 +262,18 @@ export const Item = React.memo<ItemProps>((props) => {
                         />
                     )}
                     {rightElement}
-                    {showAccessory && (
-                        <Ionicons 
-                            name="chevron-forward" 
-                            size={chevronSize} 
+                    {selected && (
+                        <Ionicons
+                            name="checkmark"
+                            size={chevronSize}
+                            color={theme.colors.groupped.chevron}
+                            style={{ marginLeft: 4 }}
+                        />
+                    )}
+                    {showAccessory && !selected && (
+                        <Ionicons
+                            name="chevron-forward"
+                            size={chevronSize}
                             color={theme.colors.groupped.chevron}
                             style={{ marginLeft: 4 }}
                         />

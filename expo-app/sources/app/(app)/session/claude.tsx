@@ -16,6 +16,10 @@ import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { sync } from '@/sync/sync';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { MMKV } from 'react-native-mmkv';
+
+const mmkv = new MMKV();
+const SELECTED_MACHINE_KEY = 'claude-history-selected-machine';
 
 const rightIconStyle = {
     width: 29,
@@ -129,9 +133,17 @@ export default function ClaudeSessionHistory() {
 
     React.useEffect(() => {
         if (!selectedMachineId && machines.length > 0) {
-            setSelectedMachineId(machines[0].id);
+            const savedMachineId = mmkv.getString(SELECTED_MACHINE_KEY);
+            const savedMachineExists = savedMachineId && machines.some(m => m.id === savedMachineId);
+            setSelectedMachineId(savedMachineExists ? savedMachineId : machines[0].id);
         }
     }, [machines, selectedMachineId]);
+
+    React.useEffect(() => {
+        if (selectedMachineId) {
+            mmkv.set(SELECTED_MACHINE_KEY, selectedMachineId);
+        }
+    }, [selectedMachineId]);
 
     React.useEffect(() => {
         if (!selectedMachineId) {
@@ -294,6 +306,7 @@ export default function ClaudeSessionHistory() {
                                     title={title}
                                     subtitle={subtitle}
                                     selected={machine.id === selectedMachineId}
+                                    showChevron={false}
                                     icon={
                                         <Ionicons
                                             name="desktop-outline"
