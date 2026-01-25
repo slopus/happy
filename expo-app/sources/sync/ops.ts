@@ -212,9 +212,11 @@ export async function machineStopDaemon(machineId: string): Promise<{ message: s
  */
 export async function machineListClaudeSessions(
     machineId: string,
-    options?: { offset?: number; limit?: number }
+    options?: { offset?: number; limit?: number; timeoutMs?: number }
 ): Promise<{ sessions: ClaudeSessionIndexEntry[]; total: number }> {
-    const result = await apiSocket.machineRPC<any, { offset?: number; limit?: number }>(
+    const timeoutMs = options?.timeoutMs ?? 10000;
+
+    const rpcPromise = apiSocket.machineRPC<any, { offset?: number; limit?: number }>(
         machineId,
         'claude-list-sessions',
         {
@@ -222,6 +224,13 @@ export async function machineListClaudeSessions(
             limit: options?.limit
         }
     );
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+    });
+
+    const result = await Promise.race([rpcPromise, timeoutPromise]);
+
     if (!result) {
         throw new Error('RPC returned empty response');
     }
