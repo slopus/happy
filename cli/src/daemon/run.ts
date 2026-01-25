@@ -46,6 +46,7 @@ import { resolveTerminalRequestFromSpawnOptions } from '@/terminal/terminalConfi
 import { selectPreferredTmuxSessionName } from '@/terminal/tmuxSessionSelector';
 import { writeSessionExitReport } from '@/utils/sessionExitReport';
 import { reportDaemonObservedSessionExit } from './sessionTermination';
+import { validateEnvVarRecordStrict } from '@/utils/envVarSanitization';
 
 const execFileAsync = promisify(execFile);
 
@@ -350,9 +351,10 @@ export async function startDaemon(): Promise<void> {
 	    // Spawn a new session (sessionId reserved for future Happy session resume; vendor resume uses options.resume).
 		    const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
 	      // Do NOT log raw options: it may include secrets (token / env vars).
-	      const envKeys = options.environmentVariables && typeof options.environmentVariables === 'object'
+	      const envKeysPreview = options.environmentVariables && typeof options.environmentVariables === 'object'
 	        ? Object.keys(options.environmentVariables as Record<string, unknown>)
 	        : [];
+	      const environmentVariablesValidation = validateEnvVarRecordStrict(options.environmentVariables);
 	      logger.debugLargeJson('[DAEMON RUN] Spawning session', {
 	        directory: options.directory,
 	        sessionId: options.sessionId,
@@ -362,9 +364,15 @@ export async function startDaemon(): Promise<void> {
 	        profileId: options.profileId,
 	        hasToken: !!options.token,
 	        hasResume: typeof options.resume === 'string' && options.resume.trim().length > 0,
-	        environmentVariableCount: envKeys.length,
-	        environmentVariableKeys: envKeys,
+	        environmentVariableCount: envKeysPreview.length,
+	        environmentVariableKeys: envKeysPreview,
+	        environmentVariablesValid: environmentVariablesValidation.ok,
+	        environmentVariablesError: environmentVariablesValidation.ok ? null : environmentVariablesValidation.error,
 	      });
+
+	      if (!environmentVariablesValidation.ok) {
+	        return { type: 'error', errorMessage: environmentVariablesValidation.error };
+	      }
 
 			      const {
 			        directory,
@@ -509,9 +517,9 @@ export async function startDaemon(): Promise<void> {
         // the daemon are typically requested by the GUI and must respect GUI opt-in gating.
         let profileEnv: Record<string, string> = {};
 
-        if (options.environmentVariables && Object.keys(options.environmentVariables).length > 0) {
+        if (Object.keys(environmentVariablesValidation.env).length > 0) {
           // GUI provided profile environment variables - highest priority for profile settings
-          profileEnv = options.environmentVariables;
+          profileEnv = environmentVariablesValidation.env;
           logger.info(`[DAEMON RUN] Using GUI-provided profile environment variables (${Object.keys(profileEnv).length} vars)`);
           logger.debug(`[DAEMON RUN] GUI profile env var keys: ${Object.keys(profileEnv).join(', ')}`);
         } else {

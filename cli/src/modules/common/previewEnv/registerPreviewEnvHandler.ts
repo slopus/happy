@@ -1,5 +1,6 @@
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
+import { isValidEnvVarKey, sanitizeEnvVarRecord } from '@/utils/envVarSanitization';
 
 type EnvPreviewSecretsPolicy = 'none' | 'redacted' | 'full';
 
@@ -85,10 +86,6 @@ export function registerPreviewEnvHandler(rpcHandlerManager: RpcHandlerManager):
         const keys = Array.isArray(data?.keys) ? data.keys : [];
         const maxKeys = 200;
         const trimmedKeys = keys.slice(0, maxKeys);
-
-        const validNameRegex = /^[A-Za-z_][A-Za-z0-9_]*$/;
-        const forbiddenKeys = new Set(['__proto__', 'constructor', 'prototype']);
-        const isValidEnvVarKey = (key: string) => validNameRegex.test(key) && !forbiddenKeys.has(key);
         for (const key of trimmedKeys) {
             if (typeof key !== 'string' || !isValidEnvVarKey(key)) {
                 throw new Error(`Invalid env var key: "${String(key)}"`);
@@ -101,13 +98,7 @@ export function registerPreviewEnvHandler(rpcHandlerManager: RpcHandlerManager):
             : [];
         const sensitiveKeySet = new Set(sensitiveKeys);
 
-        const extraEnvRaw = data?.extraEnv && typeof data.extraEnv === 'object' ? data.extraEnv : {};
-        const extraEnv: Record<string, string> = Object.create(null);
-        for (const [k, v] of Object.entries(extraEnvRaw)) {
-            if (typeof k !== 'string' || !isValidEnvVarKey(k)) continue;
-            if (typeof v !== 'string') continue;
-            extraEnv[k] = v;
-        }
+        const extraEnv = sanitizeEnvVarRecord(data?.extraEnv);
 
         const expandedExtraEnv = Object.keys(extraEnv).length > 0
             ? expandEnvironmentVariables(extraEnv, process.env, { warnOnUndefined: false })
