@@ -38,12 +38,13 @@ function showAuthHelp(): void {
 ${chalk.bold('happy auth')} - Authentication management
 
 ${chalk.bold('Usage:')}
-  happy auth login [--force]    Authenticate with Happy
+  happy auth login [--no-open] [--force]    Authenticate with Happy
   happy auth logout             Remove authentication and machine data
   happy auth status             Show authentication status
   happy auth help               Show this help message
 
 ${chalk.bold('Options:')}
+  --no-open  Do not attempt to open a browser (prints URL instead)
   --force    Clear credentials, machine ID, and stop daemon before re-auth
 
 ${chalk.gray('PS: Your master secret never leaves your mobile/web device. Each CLI machine')}
@@ -54,6 +55,12 @@ ${chalk.gray('cannot be displayed from the CLI.')}
 
 async function handleAuthLogin(args: string[]): Promise<void> {
   const forceAuth = args.includes('--force') || args.includes('-f');
+  const noOpen = args.includes('--no-open') || args.includes('--no-browser') || args.includes('--no-browser-open');
+
+  if (noOpen) {
+    // Used by the auth UI layer to skip automatic browser open attempts.
+    process.env.HAPPY_NO_BROWSER_OPEN = '1';
+  }
 
   if (forceAuth) {
     // As per user's request: "--force-auth will clear credentials, clear machine ID, stop daemon"

@@ -9,6 +9,12 @@ import { logger } from '@/ui/logger';
  */
 export async function openBrowser(url: string): Promise<boolean> {
     try {
+        const noOpenRaw = (process.env.HAPPY_NO_BROWSER_OPEN ?? '').toString().trim();
+        const noOpen = Boolean(noOpenRaw) && noOpenRaw !== '0' && noOpenRaw.toLowerCase() !== 'false';
+        if (noOpen) {
+            logger.debug('[browser] Browser opening disabled (HAPPY_NO_BROWSER_OPEN), skipping browser open');
+            return false;
+        }
         // Check if we're in a headless environment
         if (!process.stdout.isTTY || process.env.CI || process.env.HEADLESS) {
             logger.debug('[browser] Headless environment detected, skipping browser open');
