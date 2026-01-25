@@ -12,7 +12,7 @@ export class HappyError extends Error {
         this.canTryAgain = canTryAgain;
         this.status = opts?.status;
         this.kind = opts?.kind;
-        this.name = 'RetryableError';
+        this.name = 'HappyError';
         Object.setPrototypeOf(this, HappyError.prototype);
     }
 }

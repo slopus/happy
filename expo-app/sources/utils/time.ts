@@ -2,8 +2,8 @@ export async function delay(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export function exponentialBackoffDelay(currentFailureCount: number, minDelay: number, maxDelay: number, maxFailureCount: number) {
-    // Gradually increase delay as failures increase, capped at maxDelay.
+export function linearBackoffDelay(currentFailureCount: number, minDelay: number, maxDelay: number, maxFailureCount: number) {
+    // Linearly ramp the delay as failures increase, capped at maxDelay, then apply jitter.
     const safeMaxFailureCount = Number.isFinite(maxFailureCount) ? Math.max(maxFailureCount, 1) : 50;
     const clampedFailureCount = Math.min(Math.max(currentFailureCount, 0), safeMaxFailureCount);
     const maxDelayRet = minDelay + ((maxDelay - minDelay) / safeMaxFailureCount) * clampedFailureCount;
@@ -57,7 +57,7 @@ export function createBackoff(
                 if (opts && opts.onError) {
                     opts.onError(e, currentFailureCount);
                 }
-                let waitForRequest = exponentialBackoffDelay(currentFailureCount, minDelay, maxDelay, maxFailureCount);
+                let waitForRequest = linearBackoffDelay(currentFailureCount, minDelay, maxDelay, maxFailureCount);
                 if (opts && opts.onRetry) {
                     opts.onRetry(e, currentFailureCount, waitForRequest);
                 }
