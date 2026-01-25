@@ -44,7 +44,7 @@ run(process.execPath, [patchPackageCliPath, '--patch-dir', 'expo-app/patches'], 
 
 // Some dependencies are not hoisted (e.g. expo-router) and are installed under expo-app/node_modules.
 // Run patch-package again scoped to expo-app to apply those patches.
-run(process.execPath, [patchPackageCliPath, '--patch-dir', 'patches-expo-app'], {
+run(process.execPath, [patchPackageCliPath, '--patch-dir', 'expo-app/patches'], {
   cwd: expoAppDir,
 });
 
