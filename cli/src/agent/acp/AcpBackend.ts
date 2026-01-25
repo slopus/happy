@@ -18,6 +18,7 @@ import {
   type RequestPermissionResponse,
   type InitializeRequest,
   type NewSessionRequest,
+  type LoadSessionRequest,
   type PromptRequest,
   type ContentBlock,
 } from '@agentclientprotocol/sdk';
@@ -57,27 +58,44 @@ import {
   DEFAULT_IDLE_TIMEOUT_MS,
   DEFAULT_TOOL_CALL_TIMEOUT_MS,
   handleAgentMessageChunk,
+  handleUserMessageChunk,
   handleAgentThoughtChunk,
   handleToolCallUpdate,
   handleToolCall,
   handleLegacyMessageChunk,
   handlePlanUpdate,
   handleThinkingUpdate,
+  handleAvailableCommandsUpdate,
+  handleCurrentModeUpdate,
 } from './sessionUpdateHandlers';
+import {
+  pickPermissionOutcome,
+  type PermissionOptionLike,
+} from './permissions/permissionMapping';
+import {
+  extractPermissionInputWithFallback,
+  extractPermissionToolNameHint,
+  resolvePermissionToolName,
+  type PermissionRequestLike,
+} from './permissions/permissionRequest';
+import { AcpReplayCapture, type AcpReplayEvent } from './history/acpReplayCapture';
 
 /**
  * Extended RequestPermissionRequest with additional fields that may be present
  */
 type ExtendedRequestPermissionRequest = RequestPermissionRequest & {
   toolCall?: {
+    toolCallId?: string;
     id?: string;
     kind?: string;
     toolName?: string;
+    rawInput?: Record<string, unknown>;
     input?: Record<string, unknown>;
     arguments?: Record<string, unknown>;
     content?: Record<string, unknown>;
   };
   kind?: string;
+  rawInput?: Record<string, unknown>;
   input?: Record<string, unknown>;
   arguments?: Record<string, unknown>;
   content?: Record<string, unknown>;
@@ -88,29 +106,8 @@ type ExtendedRequestPermissionRequest = RequestPermissionRequest & {
   }>;
 };
 
-/**
- * Extended SessionNotification with additional fields
- */
-type ExtendedSessionNotification = SessionNotification & {
-  update?: {
-    sessionUpdate?: string;
-    toolCallId?: string;
-    status?: string;
-    kind?: string | unknown;
-    content?: {
-      text?: string;
-      error?: string | { message?: string };
-      [key: string]: unknown;
-    } | string | unknown;
-    locations?: unknown[];
-    messageChunk?: {
-      textDelta?: string;
-    };
-    plan?: unknown;
-    thinking?: unknown;
-    [key: string]: unknown;
-  };
-}
+// SessionNotification payload shape differs across ACP SDK versions (some use `update`, some use `updates[]`).
+// We normalize dynamically in `handleSessionUpdate` and avoid relying on the SDK type here.
 
 /**
  * Permission handler interface for ACP backends
@@ -270,6 +267,7 @@ export class AcpBackend implements AgentBackend {
   private connection: ClientSideConnection | null = null;
   private acpSessionId: string | null = null;
   private disposed = false;
+  private replayCapture: AcpReplayCapture | null = null;
   /** Track active tool calls to prevent duplicate events */
   private activeToolCalls = new Set<string>();
   private toolCallTimeouts = new Map<string, NodeJS.Timeout>();
@@ -283,6 +281,10 @@ export class AcpBackend implements AgentBackend {
 
   /** Map from real tool call ID to tool name for auto-approval */
   private toolCallIdToNameMap = new Map<string, string>();
+  private toolCallIdToInputMap = new Map<string, Record<string, unknown>>();
+
+  /** Cache last selected permission option per tool call id (handles duplicate permission prompts) */
+  private lastSelectedPermissionOptionIdByToolCallId = new Map<string, string>();
 
   /** Track if we just sent a prompt with change_title instruction */
   private recentPromptHadChangeTitle = false;
@@ -321,395 +323,402 @@ export class AcpBackend implements AgentBackend {
     }
   }
 
+  private buildAcpMcpServersForSessionRequest(): NewSessionRequest['mcpServers'] {
+    if (!this.options.mcpServers) return [] as unknown as NewSessionRequest['mcpServers'];
+    const mcpServers = Object.entries(this.options.mcpServers).map(([name, config]) => ({
+      name,
+      command: config.command,
+      args: config.args || [],
+      env: config.env
+        ? Object.entries(config.env).map(([envName, envValue]) => ({ name: envName, value: envValue }))
+        : [],
+    }));
+    return mcpServers as unknown as NewSessionRequest['mcpServers'];
+  }
+
+  private async createConnectionAndInitialize(params: { operationId: string }): Promise<{ initTimeout: number }> {
+    logger.debug(`[AcpBackend] Starting process + initializing connection (op=${params.operationId})`);
+
+    if (this.process || this.connection) {
+      throw new Error('ACP backend is already initialized');
+    }
+
+    try {
+    // Spawn the ACP agent process
+    const args = this.options.args || [];
+
+    // On Windows, spawn via cmd.exe to handle .cmd files and PATH resolution
+    // This ensures proper stdio piping without shell buffering
+    if (process.platform === 'win32') {
+      const fullCommand = [this.options.command, ...args].join(' ');
+      this.process = spawn('cmd.exe', ['/c', fullCommand], {
+        cwd: this.options.cwd,
+        env: { ...process.env, ...this.options.env },
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+    } else {
+      this.process = spawn(this.options.command, args, {
+        cwd: this.options.cwd,
+        env: { ...process.env, ...this.options.env },
+        // Use 'pipe' for all stdio to capture output without printing to console
+        // stdout and stderr will be handled by our event listeners
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    }
+
+    if (!this.process.stdin || !this.process.stdout || !this.process.stderr) {
+      throw new Error('Failed to create stdio pipes');
+    }
+
+    // Handle stderr output via transport handler
+    this.process.stderr.on('data', (data: Buffer) => {
+      const text = data.toString();
+      if (!text.trim()) return;
+
+      // Build context for transport handler
+      const hasActiveInvestigation = this.transport.isInvestigationTool
+        ? Array.from(this.activeToolCalls).some(id => this.transport.isInvestigationTool!(id))
+        : false;
+
+      const context: StderrContext = {
+        activeToolCalls: this.activeToolCalls,
+        hasActiveInvestigation,
+      };
+
+      // Log to file (not console)
+      if (hasActiveInvestigation) {
+        logger.debug(`[AcpBackend] 🔍 Agent stderr (during investigation): ${text.trim()}`);
+      } else {
+        logger.debug(`[AcpBackend] Agent stderr: ${text.trim()}`);
+      }
+
+      // Let transport handler process stderr and optionally emit messages
+      if (this.transport.handleStderr) {
+        const result = this.transport.handleStderr(text, context);
+        if (result.message) {
+          this.emit(result.message);
+        }
+      }
+    });
+
+    this.process.on('error', (err) => {
+      // Log to file only, not console
+      logger.debug(`[AcpBackend] Process error:`, err);
+      this.emit({ type: 'status', status: 'error', detail: err.message });
+    });
+
+    this.process.on('exit', (code, signal) => {
+      if (!this.disposed && code !== 0 && code !== null) {
+        logger.debug(`[AcpBackend] Process exited with code ${code}, signal ${signal}`);
+        this.emit({ type: 'status', status: 'stopped', detail: `Exit code: ${code}` });
+      }
+    });
+
+    // Create Web Streams from Node streams
+    const streams = nodeToWebStreams(
+      this.process.stdin,
+      this.process.stdout
+    );
+    const writable = streams.writable;
+    const readable = streams.readable;
+
+    // Filter stdout via transport handler before ACP parsing
+    // Some agents output debug info that breaks JSON-RPC parsing
+    const transport = this.transport;
+    const filteredReadable = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const reader = readable.getReader();
+        const decoder = new TextDecoder();
+        const encoder = new TextEncoder();
+        let buffer = '';
+        let filteredCount = 0;
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              // Flush any remaining buffer
+              if (buffer.trim()) {
+                const filtered = transport.filterStdoutLine?.(buffer);
+                if (filtered === undefined) {
+                  controller.enqueue(encoder.encode(buffer));
+                } else if (filtered !== null) {
+                  controller.enqueue(encoder.encode(filtered));
+                } else {
+                  filteredCount++;
+                }
+              }
+              if (filteredCount > 0) {
+                logger.debug(`[AcpBackend] Filtered out ${filteredCount} non-JSON lines from ${transport.agentName} stdout`);
+              }
+              controller.close();
+              break;
+            }
+
+            // Decode and accumulate data
+            buffer += decoder.decode(value, { stream: true });
+
+            // Process line by line (ndJSON is line-delimited)
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep last incomplete line in buffer
+
+            for (const line of lines) {
+              if (!line.trim()) continue;
+
+              // Use transport handler to filter lines
+              // Note: filterStdoutLine returns null to filter out, string to keep
+              // If method not implemented (undefined), pass through original line
+              const filtered = transport.filterStdoutLine?.(line);
+              if (filtered === undefined) {
+                // Method not implemented, pass through
+                controller.enqueue(encoder.encode(line + '\n'));
+              } else if (filtered !== null) {
+                // Method returned transformed line
+                controller.enqueue(encoder.encode(filtered + '\n'));
+              } else {
+                // Method returned null, filter out
+                filteredCount++;
+              }
+            }
+          }
+        } catch (error) {
+          logger.debug(`[AcpBackend] Error filtering stdout stream:`, error);
+          controller.error(error);
+        } finally {
+          reader.releaseLock();
+        }
+      }
+    });
+
+    // Create ndJSON stream for ACP
+    const stream = ndJsonStream(writable, filteredReadable);
+
+    // Create Client implementation
+    const client: Client = {
+      sessionUpdate: async (params: SessionNotification) => {
+        this.handleSessionUpdate(params);
+      },
+      requestPermission: async (params: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
+
+        const extendedParams = params as ExtendedRequestPermissionRequest;
+        const toolCall = extendedParams.toolCall;
+        const options = extendedParams.options || [];
+        // ACP spec: toolCall.toolCallId is the correlation ID. Fall back to legacy fields when needed.
+        const toolCallId =
+          (typeof toolCall?.toolCallId === 'string' && toolCall.toolCallId.trim().length > 0)
+            ? toolCall.toolCallId.trim()
+            : (typeof toolCall?.id === 'string' && toolCall.id.trim().length > 0)
+              ? toolCall.id.trim()
+              : randomUUID();
+        const permissionId = toolCallId;
+
+        const toolNameHint = extractPermissionToolNameHint(extendedParams as PermissionRequestLike);
+        const input = extractPermissionInputWithFallback(
+          extendedParams as PermissionRequestLike,
+          toolCallId,
+          this.toolCallIdToInputMap
+        );
+        let toolName = resolvePermissionToolName({
+          toolNameHint,
+          toolCallId,
+          toolCallIdToNameMap: this.toolCallIdToNameMap,
+        });
+
+        // If the agent re-prompts with the same toolCallId, reuse the previous selection when possible.
+        const cachedOptionId = this.lastSelectedPermissionOptionIdByToolCallId.get(toolCallId);
+        if (cachedOptionId && options.some((opt) => opt.optionId === cachedOptionId)) {
+          logger.debug(`[AcpBackend] Duplicate permission prompt for ${toolCallId}, reusing cached optionId=${cachedOptionId}`);
+          return { outcome: { outcome: 'selected', optionId: cachedOptionId } };
+        }
+
+        // If toolName is "other" or "Unknown tool", try to determine real tool name
+        const context: ToolNameContext = {
+          recentPromptHadChangeTitle: this.recentPromptHadChangeTitle,
+          toolCallCountSincePrompt: this.toolCallCountSincePrompt,
+        };
+        toolName = this.transport.determineToolName?.(toolName, toolCallId, input, context) ?? toolName;
+
+        if (toolName !== (toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool')) {
+          logger.debug(`[AcpBackend] Detected tool name: ${toolName} from toolCallId: ${toolCallId}`);
+        }
+
+        // Increment tool call counter for context tracking
+        this.toolCallCountSincePrompt++;
+
+        const inputKeys = input && typeof input === 'object' && !Array.isArray(input)
+          ? Object.keys(input as Record<string, unknown>)
+          : [];
+        logger.debug(`[AcpBackend] Permission request: tool=${toolName}, toolCallId=${toolCallId}, inputKeys=${inputKeys.join(',')}`);
+        logger.debug(`[AcpBackend] Permission request params structure:`, JSON.stringify({
+          hasToolCall: !!toolCall,
+          toolCallToolCallId: toolCall?.toolCallId,
+          toolCallKind: toolCall?.kind,
+          toolCallToolName: toolCall?.toolName,
+          toolCallId: toolCall?.id,
+          paramsKind: extendedParams.kind,
+          options: options.map((opt) => ({ optionId: opt.optionId, kind: opt.kind, name: opt.name })),
+          paramsKeys: Object.keys(params),
+        }, null, 2));
+
+        // Emit permission request event for UI/mobile handling
+        this.emit({
+          type: 'permission-request',
+          id: permissionId,
+          reason: toolName,
+          payload: {
+            ...params,
+            permissionId,
+            toolCallId,
+            toolName,
+            input,
+            options: options.map((opt) => ({
+              id: opt.optionId,
+              name: opt.name,
+              kind: opt.kind,
+            })),
+          },
+        });
+
+        // Use permission handler if provided, otherwise auto-approve
+        if (this.options.permissionHandler) {
+          try {
+            const result = await this.options.permissionHandler.handleToolCall(
+              toolCallId,
+              toolName,
+              input
+            );
+
+            const isApproved = result.decision === 'approved'
+              || result.decision === 'approved_for_session'
+              || result.decision === 'approved_execpolicy_amendment';
+
+            await this.respondToPermission(permissionId, isApproved);
+            const outcome = pickPermissionOutcome(options as PermissionOptionLike[], result.decision);
+            if (outcome.outcome === 'selected') {
+              this.lastSelectedPermissionOptionIdByToolCallId.set(toolCallId, outcome.optionId);
+            } else {
+              this.lastSelectedPermissionOptionIdByToolCallId.delete(toolCallId);
+            }
+            return { outcome };
+          } catch (error) {
+            // Log to file only, not console
+            logger.debug('[AcpBackend] Error in permission handler:', error);
+            // Fallback to deny on error
+            return { outcome: { outcome: 'cancelled' } };
+          }
+        }
+
+        // Auto-approve once if no permission handler.
+        const outcome = pickPermissionOutcome(options as PermissionOptionLike[], 'approved');
+        if (outcome.outcome === 'selected') {
+          this.lastSelectedPermissionOptionIdByToolCallId.set(toolCallId, outcome.optionId);
+        } else {
+          this.lastSelectedPermissionOptionIdByToolCallId.delete(toolCallId);
+        }
+        return { outcome };
+      },
+    };
+
+    // Create ClientSideConnection
+    this.connection = new ClientSideConnection(
+      (_agent: Agent) => client,
+      stream
+    );
+
+    // Initialize the connection with timeout and retry
+    const initRequest: InitializeRequest = {
+      protocolVersion: 1,
+      clientCapabilities: {
+        fs: {
+          readTextFile: false,
+          writeTextFile: false,
+        },
+      },
+      clientInfo: {
+        name: 'happy-cli',
+        version: packageJson.version,
+      },
+    };
+
+    const initTimeout = this.transport.getInitTimeout();
+    logger.debug(`[AcpBackend] Initializing connection (timeout: ${initTimeout}ms)...`);
+
+    await withRetry(
+      async () => {
+        let timeoutHandle: NodeJS.Timeout | null = null;
+        try {
+          const result = await Promise.race([
+            this.connection!.initialize(initRequest).then((res) => {
+              if (timeoutHandle) {
+                clearTimeout(timeoutHandle);
+                timeoutHandle = null;
+              }
+              return res;
+            }),
+            new Promise<never>((_, reject) => {
+              timeoutHandle = setTimeout(() => {
+                reject(new Error(`Initialize timeout after ${initTimeout}ms - ${this.transport.agentName} did not respond`));
+              }, initTimeout);
+            }),
+          ]);
+          return result;
+        } finally {
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+          }
+        }
+      },
+      {
+        operationName: 'Initialize',
+        maxAttempts: RETRY_CONFIG.maxAttempts,
+        baseDelayMs: RETRY_CONFIG.baseDelayMs,
+        maxDelayMs: RETRY_CONFIG.maxDelayMs,
+      }
+    );
+
+    logger.debug(`[AcpBackend] Initialize completed`);
+    return { initTimeout };
+    } catch (error) {
+      logger.debug('[AcpBackend] Initialization failed; cleaning up process/connection', error);
+      const proc = this.process;
+      this.process = null;
+      this.connection = null;
+      this.acpSessionId = null;
+      if (proc) {
+        try {
+          // On Windows, signals are not reliably supported; `kill()` uses TerminateProcess.
+          if (process.platform === 'win32') {
+            proc.kill();
+          } else {
+            proc.kill('SIGTERM');
+          }
+        } catch {
+          // best-effort cleanup
+        }
+      }
+      throw error;
+    }
+  }
+
   async startSession(initialPrompt?: string): Promise<StartSessionResult> {
     if (this.disposed) {
       throw new Error('Backend has been disposed');
     }
 
-    const sessionId = randomUUID();
     this.emit({ type: 'status', status: 'starting' });
+    // Reset per-session caches
+    this.lastSelectedPermissionOptionIdByToolCallId.clear();
+    this.toolCallIdToNameMap.clear();
+    this.toolCallIdToInputMap.clear();
 
     try {
-      logger.debug(`[AcpBackend] Starting session: ${sessionId}`);
-      // Spawn the ACP agent process
-      const args = this.options.args || [];
-      
-      // On Windows, spawn via cmd.exe to handle .cmd files and PATH resolution
-      // This ensures proper stdio piping without shell buffering
-      if (process.platform === 'win32') {
-        const fullCommand = [this.options.command, ...args].join(' ');
-        this.process = spawn('cmd.exe', ['/c', fullCommand], {
-          cwd: this.options.cwd,
-          env: { ...process.env, ...this.options.env },
-          stdio: ['pipe', 'pipe', 'pipe'],
-          windowsHide: true,
-        });
-      } else {
-        this.process = spawn(this.options.command, args, {
-          cwd: this.options.cwd,
-          env: { ...process.env, ...this.options.env },
-          // Use 'pipe' for all stdio to capture output without printing to console
-          // stdout and stderr will be handled by our event listeners
-          stdio: ['pipe', 'pipe', 'pipe'],
-        });
-      }
-      
-      // Ensure stderr doesn't leak to console - redirect to logger only
-      // This prevents gemini CLI debug output from appearing in user's console
-      if (this.process.stderr) {
-        // stderr is already handled by the event listener below
-        // but we ensure it doesn't go to parent's stderr
-      }
-
-      if (!this.process.stdin || !this.process.stdout || !this.process.stderr) {
-        throw new Error('Failed to create stdio pipes');
-      }
-
-      // Handle stderr output via transport handler
-      this.process.stderr.on('data', (data: Buffer) => {
-        const text = data.toString();
-        if (!text.trim()) return;
-
-        // Build context for transport handler
-        const hasActiveInvestigation = this.transport.isInvestigationTool
-          ? Array.from(this.activeToolCalls).some(id => this.transport.isInvestigationTool!(id))
-          : false;
-
-        const context: StderrContext = {
-          activeToolCalls: this.activeToolCalls,
-          hasActiveInvestigation,
-        };
-
-        // Log to file (not console)
-        if (hasActiveInvestigation) {
-          logger.debug(`[AcpBackend] 🔍 Agent stderr (during investigation): ${text.trim()}`);
-        } else {
-          logger.debug(`[AcpBackend] Agent stderr: ${text.trim()}`);
-        }
-
-        // Let transport handler process stderr and optionally emit messages
-        if (this.transport.handleStderr) {
-          const result = this.transport.handleStderr(text, context);
-          if (result.message) {
-            this.emit(result.message);
-          }
-        }
-      });
-
-      this.process.on('error', (err) => {
-        // Log to file only, not console
-        logger.debug(`[AcpBackend] Process error:`, err);
-        this.emit({ type: 'status', status: 'error', detail: err.message });
-      });
-
-      this.process.on('exit', (code, signal) => {
-        if (!this.disposed && code !== 0 && code !== null) {
-          logger.debug(`[AcpBackend] Process exited with code ${code}, signal ${signal}`);
-          this.emit({ type: 'status', status: 'stopped', detail: `Exit code: ${code}` });
-        }
-      });
-
-      // Create Web Streams from Node streams
-      const streams = nodeToWebStreams(
-        this.process.stdin,
-        this.process.stdout
-      );
-      const writable = streams.writable;
-      const readable = streams.readable;
-
-      // Filter stdout via transport handler before ACP parsing
-      // Some agents output debug info that breaks JSON-RPC parsing
-      const transport = this.transport;
-      const filteredReadable = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          const reader = readable.getReader();
-          const decoder = new TextDecoder();
-          const encoder = new TextEncoder();
-          let buffer = '';
-          let filteredCount = 0;
-
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) {
-                // Flush any remaining buffer
-                if (buffer.trim()) {
-                  const filtered = transport.filterStdoutLine?.(buffer);
-                  if (filtered === undefined) {
-                    controller.enqueue(encoder.encode(buffer));
-                  } else if (filtered !== null) {
-                    controller.enqueue(encoder.encode(filtered));
-                  } else {
-                    filteredCount++;
-                  }
-                }
-                if (filteredCount > 0) {
-                  logger.debug(`[AcpBackend] Filtered out ${filteredCount} non-JSON lines from ${transport.agentName} stdout`);
-                }
-                controller.close();
-                break;
-              }
-
-              // Decode and accumulate data
-              buffer += decoder.decode(value, { stream: true });
-
-              // Process line by line (ndJSON is line-delimited)
-              const lines = buffer.split('\n');
-              buffer = lines.pop() || ''; // Keep last incomplete line in buffer
-
-              for (const line of lines) {
-                if (!line.trim()) continue;
-
-                // Use transport handler to filter lines
-                // Note: filterStdoutLine returns null to filter out, string to keep
-                // If method not implemented (undefined), pass through original line
-                const filtered = transport.filterStdoutLine?.(line);
-                if (filtered === undefined) {
-                  // Method not implemented, pass through
-                  controller.enqueue(encoder.encode(line + '\n'));
-                } else if (filtered !== null) {
-                  // Method returned transformed line
-                  controller.enqueue(encoder.encode(filtered + '\n'));
-                } else {
-                  // Method returned null, filter out
-                  filteredCount++;
-                }
-              }
-            }
-          } catch (error) {
-            logger.debug(`[AcpBackend] Error filtering stdout stream:`, error);
-            controller.error(error);
-          } finally {
-            reader.releaseLock();
-          }
-        }
-      });
-
-      // Create ndJSON stream for ACP
-      const stream = ndJsonStream(writable, filteredReadable);
-
-      // Create Client implementation
-      const client: Client = {
-        sessionUpdate: async (params: SessionNotification) => {
-          this.handleSessionUpdate(params);
-        },
-        requestPermission: async (params: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
-          
-          const extendedParams = params as ExtendedRequestPermissionRequest;
-          const toolCall = extendedParams.toolCall;
-          let toolName = toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool';
-          // Use toolCallId as the single source of truth for permission ID
-          // This ensures mobile app sends back the same ID that we use to store pending requests
-          const toolCallId = toolCall?.id || randomUUID();
-          const permissionId = toolCallId; // Use same ID for consistency!
-          
-          // Extract input/arguments from various possible locations FIRST (before checking toolName)
-          let input: Record<string, unknown> = {};
-          if (toolCall) {
-            input = toolCall.input || toolCall.arguments || toolCall.content || {};
-          } else {
-            // If no toolCall, try to extract from params directly
-            input = extendedParams.input || extendedParams.arguments || extendedParams.content || {};
-          }
-          
-          // If toolName is "other" or "Unknown tool", try to determine real tool name
-          const context: ToolNameContext = {
-            recentPromptHadChangeTitle: this.recentPromptHadChangeTitle,
-            toolCallCountSincePrompt: this.toolCallCountSincePrompt,
-          };
-          toolName = this.transport.determineToolName?.(toolName, toolCallId, input, context) ?? toolName;
-          
-          if (toolName !== (toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool')) {
-            logger.debug(`[AcpBackend] Detected tool name: ${toolName} from toolCallId: ${toolCallId}`);
-          }
-          
-          // Increment tool call counter for context tracking
-          this.toolCallCountSincePrompt++;
-          
-          const options = extendedParams.options || [];
-          
-          // Log permission request for debugging (include full params to understand structure)
-          logger.debug(`[AcpBackend] Permission request: tool=${toolName}, toolCallId=${toolCallId}, input=`, JSON.stringify(input));
-          logger.debug(`[AcpBackend] Permission request params structure:`, JSON.stringify({
-            hasToolCall: !!toolCall,
-            toolCallKind: toolCall?.kind,
-            toolCallId: toolCall?.id,
-            paramsKind: extendedParams.kind,
-            paramsKeys: Object.keys(params),
-          }, null, 2));
-          
-          // Emit permission request event for UI/mobile handling
-          this.emit({
-            type: 'permission-request',
-            id: permissionId,
-            reason: toolName,
-            payload: {
-              ...params,
-              permissionId,
-              toolCallId,
-              toolName,
-              input,
-              options: options.map((opt) => ({
-                id: opt.optionId,
-                name: opt.name,
-                kind: opt.kind,
-              })),
-            },
-          });
-          
-          // Use permission handler if provided, otherwise auto-approve
-          if (this.options.permissionHandler) {
-            try {
-              const result = await this.options.permissionHandler.handleToolCall(
-                toolCallId,
-                toolName,
-                input
-              );
-              
-              // Map permission decision to ACP response
-              // ACP uses optionId from the request options
-              let optionId = 'cancel'; // Default to cancel/deny
-              
-              const isApproved = result.decision === 'approved'
-                || result.decision === 'approved_for_session'
-                || result.decision === 'approved_execpolicy_amendment';
-              if (isApproved) {
-                // Find the appropriate optionId from the request options
-                // Look for 'proceed_once' or 'proceed_always' in options
-                const proceedOnceOption = options.find((opt: any) => 
-                  opt.optionId === 'proceed_once' || opt.name?.toLowerCase().includes('once')
-                );
-                const proceedAlwaysOption = options.find((opt: any) => 
-                  opt.optionId === 'proceed_always' || opt.name?.toLowerCase().includes('always')
-                );
-                
-                if (result.decision === 'approved_for_session' && proceedAlwaysOption) {
-                  optionId = proceedAlwaysOption.optionId || 'proceed_always';
-                } else if (proceedOnceOption) {
-                  optionId = proceedOnceOption.optionId || 'proceed_once';
-                } else if (options.length > 0) {
-                  // Fallback to first option if no specific match
-                  optionId = options[0].optionId || 'proceed_once';
-                }
-                
-                // Emit tool-result with permissionId so UI can close the timer
-                // This is needed because tool_call_update comes with a different ID
-                this.emit({
-                  type: 'tool-result',
-                  toolName,
-                  result: { status: 'approved', decision: result.decision },
-                  callId: permissionId,
-                });
-              } else {
-                // Denied or aborted - find cancel option
-                const cancelOption = options.find((opt: any) => 
-                  opt.optionId === 'cancel' || opt.name?.toLowerCase().includes('cancel')
-                );
-                if (cancelOption) {
-                  optionId = cancelOption.optionId || 'cancel';
-                }
-                
-                // Emit tool-result for denied/aborted
-                this.emit({
-                  type: 'tool-result',
-                  toolName,
-                  result: { status: 'denied', decision: result.decision },
-                  callId: permissionId,
-                });
-              }
-              
-              return { outcome: { outcome: 'selected', optionId } };
-            } catch (error) {
-              // Log to file only, not console
-              logger.debug('[AcpBackend] Error in permission handler:', error);
-              // Fallback to deny on error
-              return { outcome: { outcome: 'selected', optionId: 'cancel' } };
-            }
-          }
-          
-          // Auto-approve with 'proceed_once' if no permission handler
-          // optionId must match one from the request options (e.g., 'proceed_once', 'proceed_always', 'cancel')
-          const proceedOnceOption = options.find((opt) => 
-            opt.optionId === 'proceed_once' || (typeof opt.name === 'string' && opt.name.toLowerCase().includes('once'))
-          );
-          const defaultOptionId = proceedOnceOption?.optionId || (options.length > 0 && options[0].optionId ? options[0].optionId : 'proceed_once');
-          return { outcome: { outcome: 'selected', optionId: defaultOptionId } };
-        },
-      };
-
-      // Create ClientSideConnection
-      this.connection = new ClientSideConnection(
-        (agent: Agent) => client,
-        stream
-      );
-
-      // Initialize the connection with timeout and retry
-      const initRequest: InitializeRequest = {
-        protocolVersion: 1,
-        clientCapabilities: {
-          fs: {
-            readTextFile: false,
-            writeTextFile: false,
-          },
-        },
-        clientInfo: {
-          name: 'happy-cli',
-          version: packageJson.version,
-        },
-      };
-
-      const initTimeout = this.transport.getInitTimeout();
-      logger.debug(`[AcpBackend] Initializing connection (timeout: ${initTimeout}ms)...`);
-
-      await withRetry(
-        async () => {
-          let timeoutHandle: NodeJS.Timeout | null = null;
-          try {
-            const result = await Promise.race([
-              this.connection!.initialize(initRequest).then((res) => {
-                if (timeoutHandle) {
-                  clearTimeout(timeoutHandle);
-                  timeoutHandle = null;
-                }
-                return res;
-              }),
-              new Promise<never>((_, reject) => {
-                timeoutHandle = setTimeout(() => {
-                  reject(new Error(`Initialize timeout after ${initTimeout}ms - ${this.transport.agentName} did not respond`));
-                }, initTimeout);
-              }),
-            ]);
-            return result;
-          } finally {
-            if (timeoutHandle) {
-              clearTimeout(timeoutHandle);
-            }
-          }
-        },
-        {
-          operationName: 'Initialize',
-          maxAttempts: RETRY_CONFIG.maxAttempts,
-          baseDelayMs: RETRY_CONFIG.baseDelayMs,
-          maxDelayMs: RETRY_CONFIG.maxDelayMs,
-        }
-      );
-      logger.debug(`[AcpBackend] Initialize completed`);
+      const { initTimeout } = await this.createConnectionAndInitialize({ operationId: randomUUID() });
 
       // Create a new session with retry
-      const mcpServers = this.options.mcpServers
-        ? Object.entries(this.options.mcpServers).map(([name, config]) => ({
-            name,
-            command: config.command,
-            args: config.args || [],
-            env: config.env
-              ? Object.entries(config.env).map(([envName, envValue]) => ({ name: envName, value: envValue }))
-              : [],
-          }))
-        : [];
-
       const newSessionRequest: NewSessionRequest = {
         cwd: this.options.cwd,
-        mcpServers: mcpServers as unknown as NewSessionRequest['mcpServers'],
+        mcpServers: this.buildAcpMcpServersForSessionRequest(),
       };
 
       logger.debug(`[AcpBackend] Creating new session...`);
@@ -747,7 +756,8 @@ export class AcpBackend implements AgentBackend {
         }
       );
       this.acpSessionId = sessionResponse.sessionId;
-      logger.debug(`[AcpBackend] Session created: ${this.acpSessionId}`);
+      const sessionId = sessionResponse.sessionId;
+      logger.debug(`[AcpBackend] Session created: ${sessionId}`);
 
       this.emitIdleStatus();
 
@@ -774,6 +784,93 @@ export class AcpBackend implements AgentBackend {
     }
   }
 
+  async loadSession(sessionId: SessionId): Promise<StartSessionResult> {
+    if (this.disposed) {
+      throw new Error('Backend has been disposed');
+    }
+
+    const normalized = typeof sessionId === 'string' ? sessionId.trim() : '';
+    if (!normalized) {
+      throw new Error('Session ID is required');
+    }
+
+    this.emit({ type: 'status', status: 'starting' });
+    // Reset per-session caches
+    this.lastSelectedPermissionOptionIdByToolCallId.clear();
+    this.toolCallIdToNameMap.clear();
+    this.toolCallIdToInputMap.clear();
+
+    try {
+      const { initTimeout } = await this.createConnectionAndInitialize({ operationId: randomUUID() });
+
+      const loadSessionRequest: LoadSessionRequest = {
+        sessionId: normalized,
+        cwd: this.options.cwd,
+        mcpServers: this.buildAcpMcpServersForSessionRequest() as unknown as LoadSessionRequest['mcpServers'],
+      };
+
+      logger.debug(`[AcpBackend] Loading session: ${normalized}`);
+
+      await withRetry(
+        async () => {
+          let timeoutHandle: NodeJS.Timeout | null = null;
+          try {
+            const result = await Promise.race([
+              this.connection!.loadSession(loadSessionRequest).then((res) => {
+                if (timeoutHandle) {
+                  clearTimeout(timeoutHandle);
+                  timeoutHandle = null;
+                }
+                return res;
+              }),
+              new Promise<never>((_, reject) => {
+                timeoutHandle = setTimeout(() => {
+                  reject(new Error(`Load session timeout after ${initTimeout}ms - ${this.transport.agentName} did not respond`));
+                }, initTimeout);
+              }),
+            ]);
+            return result;
+          } finally {
+            if (timeoutHandle) {
+              clearTimeout(timeoutHandle);
+            }
+          }
+        },
+        {
+          operationName: 'LoadSession',
+          maxAttempts: RETRY_CONFIG.maxAttempts,
+          baseDelayMs: RETRY_CONFIG.baseDelayMs,
+          maxDelayMs: RETRY_CONFIG.maxDelayMs,
+        }
+      );
+
+      this.acpSessionId = normalized;
+      logger.debug(`[AcpBackend] Session loaded: ${normalized}`);
+
+      this.emitIdleStatus();
+      return { sessionId: normalized };
+    } catch (error) {
+      logger.debug('[AcpBackend] Error loading session:', error);
+      this.emit({
+        type: 'status',
+        status: 'error',
+        detail: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
+  }
+
+  async loadSessionWithReplayCapture(sessionId: SessionId): Promise<StartSessionResult & { replay: AcpReplayEvent[] }> {
+    this.replayCapture = new AcpReplayCapture();
+    try {
+      const result = await this.loadSession(sessionId);
+      const replay = this.replayCapture.finalize();
+      return { ...result, replay };
+    } finally {
+      this.replayCapture = null;
+    }
+  }
+
   /**
    * Create handler context for session update processing
    */
@@ -784,6 +881,7 @@ export class AcpBackend implements AgentBackend {
       toolCallStartTimes: this.toolCallStartTimes,
       toolCallTimeouts: this.toolCallTimeouts,
       toolCallIdToNameMap: this.toolCallIdToNameMap,
+      toolCallIdToInputMap: this.toolCallIdToInputMap,
       idleTimeout: this.idleTimeout,
       toolCallCountSincePrompt: this.toolCallCountSincePrompt,
       emit: (msg) => this.emit(msg),
@@ -804,15 +902,37 @@ export class AcpBackend implements AgentBackend {
   }
 
   private handleSessionUpdate(params: SessionNotification): void {
-    const notification = params as ExtendedSessionNotification;
-    const update = notification.update;
+    const raw = params as unknown as Record<string, unknown>;
+    const update = (
+      (raw as any).update
+      ?? (Array.isArray((raw as any).updates) ? (raw as any).updates[0] : undefined)
+    ) as SessionUpdate | undefined;
 
     if (!update) {
       logger.debug('[AcpBackend] Received session update without update field:', params);
       return;
     }
 
-    const sessionUpdateType = update.sessionUpdate;
+    const sessionUpdateType = (update as any).sessionUpdate as string | undefined;
+
+    if (this.replayCapture) {
+      try {
+        this.replayCapture.handleUpdate(update as SessionUpdate);
+      } catch (error) {
+        logger.debug('[AcpBackend] Replay capture failed (non-fatal)', { error });
+      }
+
+      // Suppress transcript-affecting updates during loadSession replay.
+      const suppress = sessionUpdateType === 'user_message_chunk'
+        || sessionUpdateType === 'agent_message_chunk'
+        || sessionUpdateType === 'agent_thought_chunk'
+        || sessionUpdateType === 'tool_call'
+        || sessionUpdateType === 'tool_call_update'
+        || sessionUpdateType === 'plan';
+      if (suppress) {
+        return;
+      }
+    }
 
     // Log session updates for debugging (but not every chunk to avoid log spam)
     if (sessionUpdateType !== 'agent_message_chunk') {
@@ -834,6 +954,11 @@ export class AcpBackend implements AgentBackend {
       return;
     }
 
+    if (sessionUpdateType === 'user_message_chunk') {
+      handleUserMessageChunk(update as SessionUpdate, ctx);
+      return;
+    }
+
     if (sessionUpdateType === 'tool_call_update') {
       const result = handleToolCallUpdate(update as SessionUpdate, ctx);
       if (result.toolCallCountSincePrompt !== undefined) {
@@ -852,6 +977,21 @@ export class AcpBackend implements AgentBackend {
       return;
     }
 
+    if (sessionUpdateType === 'available_commands_update') {
+      handleAvailableCommandsUpdate(update as SessionUpdate, ctx);
+      return;
+    }
+
+    if (sessionUpdateType === 'current_mode_update') {
+      handleCurrentModeUpdate(update as SessionUpdate, ctx);
+      return;
+    }
+
+    if (sessionUpdateType === 'plan') {
+      handlePlanUpdate(update as SessionUpdate, ctx);
+      return;
+    }
+
     // Handle legacy and auxiliary update types
     handleLegacyMessageChunk(update as SessionUpdate, ctx);
     handlePlanUpdate(update as SessionUpdate, ctx);
@@ -860,12 +1000,25 @@ export class AcpBackend implements AgentBackend {
     // Log unhandled session update types for debugging
     // Cast to string to avoid TypeScript errors (SDK types don't include all Gemini-specific update types)
     const updateTypeStr = sessionUpdateType as string;
-    const handledTypes = ['agent_message_chunk', 'tool_call_update', 'agent_thought_chunk', 'tool_call'];
+    const handledTypes = [
+      'agent_message_chunk',
+      'user_message_chunk',
+      'tool_call_update',
+      'agent_thought_chunk',
+      'tool_call',
+      'available_commands_update',
+      'current_mode_update',
+      'plan',
+    ];
+    const updateAny = update as any;
     if (updateTypeStr &&
         !handledTypes.includes(updateTypeStr) &&
-        !update.messageChunk &&
-        !update.plan &&
-        !update.thinking) {
+        !updateAny.messageChunk &&
+        !updateAny.plan &&
+        !updateAny.thinking &&
+        !updateAny.availableCommands &&
+        !updateAny.currentModeId &&
+        !updateAny.entries) {
       logger.debug(`[AcpBackend] Unhandled session update type: ${updateTypeStr}`, JSON.stringify(update, null, 2));
     }
   }
@@ -1081,5 +1234,9 @@ export class AcpBackend implements AgentBackend {
     this.toolCallTimeouts.clear();
     this.toolCallStartTimes.clear();
     this.pendingPermissions.clear();
+    this.permissionToToolCallMap.clear();
+    this.toolCallIdToNameMap.clear();
+    this.toolCallIdToInputMap.clear();
+    this.lastSelectedPermissionOptionIdByToolCallId.clear();
   }
 }

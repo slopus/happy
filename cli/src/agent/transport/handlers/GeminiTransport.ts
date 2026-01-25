@@ -72,6 +72,32 @@ const GEMINI_TOOL_PATTERNS: ExtendedToolPattern[] = [
     patterns: ['think'],
     inputFields: ['thought', 'thinking'],
   },
+  // Gemini CLI filesystem / shell tool conventions
+  {
+    name: 'read',
+    patterns: ['read', 'read_file'],
+    inputFields: ['filePath', 'file_path', 'path', 'locations'],
+  },
+  {
+    name: 'write',
+    patterns: ['write', 'write_file'],
+    inputFields: ['filePath', 'file_path', 'path', 'content'],
+  },
+  {
+    name: 'edit',
+    patterns: ['edit'],
+    inputFields: ['oldText', 'newText', 'old_string', 'new_string', 'oldString', 'newString'],
+  },
+  {
+    name: 'execute',
+    patterns: ['run_shell_command', 'shell', 'exec', 'bash'],
+    inputFields: ['command', 'cmd'],
+  },
+  {
+    name: 'TodoWrite',
+    patterns: ['write_todos', 'todo_write', 'todowrite'],
+    inputFields: ['todos', 'items'],
+  },
 ];
 
 /**
@@ -275,16 +301,16 @@ export class GeminiTransport implements TransportHandler {
     input: Record<string, unknown>,
     _context: ToolNameContext
   ): string {
-    // If tool name is already known, return it
-    if (toolName !== 'other' && toolName !== 'Unknown tool') {
-      return toolName;
-    }
-
     // 1. Check toolCallId for known tool names (most reliable)
     // Tool IDs often contain the tool name: "change_title-123456" -> "change_title"
     const idToolName = this.extractToolNameFromId(toolCallId);
     if (idToolName) {
       return idToolName;
+    }
+
+    // If tool name is already known and not generic, keep it.
+    if (toolName !== 'other' && toolName !== 'Unknown tool') {
+      return toolName;
     }
 
     // 2. Check input fields for tool-specific signatures

@@ -109,6 +109,24 @@ export interface AgentBackend {
    * @returns Promise resolving to session information
    */
   startSession(initialPrompt?: string): Promise<StartSessionResult>;
+
+  /**
+   * Load an existing agent session (vendor-level resume).
+   *
+   * Not all agents support this. ACP agents may advertise this capability
+   * via the protocol (e.g. Codex ACP).
+   *
+   * When unsupported, callers should fall back to starting a new session.
+   */
+  loadSession?(sessionId: SessionId): Promise<StartSessionResult>;
+
+  /**
+   * Load an existing agent session and capture the replayed history.
+   *
+   * ACP agents that implement session/load may replay the full conversation via session/update.
+   * This hook allows Happy CLI to capture that replay and import it into the Happy transcript.
+   */
+  loadSessionWithReplayCapture?(sessionId: SessionId): Promise<StartSessionResult & { replay: unknown[] }>;
   
   /**
    * Send a prompt to an existing session.

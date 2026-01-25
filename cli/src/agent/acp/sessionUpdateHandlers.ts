@@ -11,6 +11,7 @@
 import type { AgentMessage } from '../core';
 import type { TransportHandler } from '../transport';
 import { logger } from '@/ui/logger';
+import { normalizeAcpToolArgs, normalizeAcpToolResult } from './toolNormalization';
 
 /**
  * Default timeout for idle detection after message chunks (ms)
@@ -31,9 +32,19 @@ export interface SessionUpdate {
   toolCallId?: string;
   status?: string;
   kind?: string | unknown;
+  title?: string;
+  rawInput?: unknown;
+  rawOutput?: unknown;
+  input?: unknown;
+  output?: unknown;
+  meta?: unknown;
+  availableCommands?: Array<{ name?: string; description?: string } | unknown>;
+  currentModeId?: string;
+  entries?: unknown;
   content?: {
     text?: string;
     error?: string | { message?: string };
+    type?: string;
     [key: string]: unknown;
   } | string | unknown;
   locations?: unknown[];
@@ -59,6 +70,8 @@ export interface HandlerContext {
   toolCallTimeouts: Map<string, NodeJS.Timeout>;
   /** Map of tool call ID to tool name */
   toolCallIdToNameMap: Map<string, string>;
+  /** Map of tool call ID to the most-recent raw input (for permission prompts that omit args) */
+  toolCallIdToInputMap: Map<string, Record<string, unknown>>;
   /** Current idle timeout handle */
   idleTimeout: NodeJS.Timeout | null;
   /** Tool call counter since last prompt */
@@ -90,10 +103,151 @@ export function parseArgsFromContent(content: unknown): Record<string, unknown> 
   if (Array.isArray(content)) {
     return { items: content };
   }
+  if (typeof content === 'string') {
+    return { value: content };
+  }
   if (content && typeof content === 'object' && content !== null) {
     return content as Record<string, unknown>;
   }
   return {};
+}
+
+function extractToolInput(update: SessionUpdate): unknown {
+  if (update.rawInput !== undefined) return update.rawInput;
+  if (update.input !== undefined) return update.input;
+  return update.content;
+}
+
+function extractToolOutput(update: SessionUpdate): unknown {
+  if (update.rawOutput !== undefined) return update.rawOutput;
+  if (update.output !== undefined) return update.output;
+  return update.content;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function extractMeta(update: SessionUpdate): Record<string, unknown> | null {
+  const meta = update.meta;
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  return meta as Record<string, unknown>;
+}
+
+function hasMeaningfulToolUpdate(update: SessionUpdate): boolean {
+  if (typeof update.title === 'string' && update.title.trim().length > 0) return true;
+  if (update.rawInput !== undefined) return true;
+  if (update.input !== undefined) return true;
+  if (update.content !== undefined) return true;
+  if (Array.isArray(update.locations) && update.locations.length > 0) return true;
+  const meta = extractMeta(update);
+  if (meta) {
+    if (meta.terminal_output) return true;
+    if (meta.terminal_exit) return true;
+  }
+  return false;
+}
+
+function attachAcpMetadataToArgs(args: Record<string, unknown>, update: SessionUpdate, toolKind: string, rawInput: unknown): void {
+  const meta = extractMeta(update);
+  const acp: Record<string, unknown> = { kind: toolKind };
+
+  if (typeof update.title === 'string' && update.title.trim().length > 0) {
+    acp.title = update.title;
+    // Prevent "empty tool" UIs when a provider omits rawInput/content but provides a title.
+    if (typeof args.description !== 'string' || args.description.trim().length === 0) {
+      args.description = update.title;
+    }
+  }
+
+  if (rawInput !== undefined) acp.rawInput = rawInput;
+  if (Array.isArray(update.locations) && update.locations.length > 0) acp.locations = update.locations;
+  if (meta) acp.meta = meta;
+
+  // Only attach when we have something beyond kind (keeps payloads small).
+  if (Object.keys(acp).length > 1) {
+    (args as any)._acp = { ...(asRecord((args as any)._acp) ?? {}), ...acp };
+  }
+}
+
+function emitTerminalOutputFromMeta(update: SessionUpdate, ctx: HandlerContext): void {
+  const meta = extractMeta(update);
+  if (!meta) return;
+  const entry = meta.terminal_output;
+  const obj = asRecord(entry);
+  if (!obj) return;
+  const data = typeof obj.data === 'string' ? obj.data : null;
+  if (!data) return;
+  const toolCallId = update.toolCallId;
+  if (!toolCallId) return;
+  const toolKindStr = typeof update.kind === 'string' ? update.kind : undefined;
+  const toolName =
+    ctx.toolCallIdToNameMap.get(toolCallId)
+    ?? ctx.transport.extractToolNameFromId?.(toolCallId)
+    ?? toolKindStr
+    ?? 'unknown';
+
+  // Represent terminal output as a streaming tool-result update for the same toolCallId.
+  // The UI reducer can append stdout/stderr without marking the tool as completed.
+  ctx.emit({
+    type: 'tool-result',
+    toolName,
+    callId: toolCallId,
+    result: {
+      stdoutChunk: data,
+      _stream: true,
+      _terminal: true,
+    },
+  });
+}
+
+function emitToolCallRefresh(
+  toolCallId: string,
+  toolKind: string | unknown,
+  update: SessionUpdate,
+  ctx: HandlerContext
+): void {
+  const toolKindStr = typeof toolKind === 'string' ? toolKind : undefined;
+
+  const rawInput = extractToolInput(update);
+  if (rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)) {
+    ctx.toolCallIdToInputMap.set(toolCallId, rawInput as Record<string, unknown>);
+  }
+
+  const baseName =
+    ctx.toolCallIdToNameMap.get(toolCallId)
+    ?? ctx.transport.extractToolNameFromId?.(toolCallId)
+    ?? toolKindStr
+    ?? 'unknown';
+  const realToolName = ctx.transport.determineToolName?.(
+    baseName,
+    toolCallId,
+    (rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput))
+      ? (rawInput as Record<string, unknown>)
+      : {},
+    { recentPromptHadChangeTitle: false, toolCallCountSincePrompt: ctx.toolCallCountSincePrompt }
+  ) ?? baseName;
+
+  const parsedArgs = parseArgsFromContent(rawInput);
+  const args = normalizeAcpToolArgs({
+    toolKind: toolKindStr,
+    toolName: realToolName,
+    rawInput,
+    args: parsedArgs,
+  });
+
+  if (update.locations && Array.isArray(update.locations)) {
+    args.locations = update.locations;
+  }
+  attachAcpMetadataToArgs(args, update, toolKindStr || 'unknown', rawInput);
+
+  ctx.emit({
+    type: 'tool-call',
+    toolName: realToolName,
+    args,
+    callId: toolCallId,
+  });
 }
 
 /**
@@ -129,6 +283,16 @@ export function extractErrorDetail(content: unknown): string | undefined {
   return undefined;
 }
 
+export function extractTextFromContentBlock(content: unknown): string | null {
+  if (!content) return null;
+  if (typeof content === 'string') return content;
+  if (typeof content !== 'object' || Array.isArray(content)) return null;
+  const obj = content as Record<string, unknown>;
+  if (typeof obj.text === 'string') return obj.text;
+  if (obj.type === 'text' && typeof obj.text === 'string') return obj.text;
+  return null;
+}
+
 /**
  * Format duration for logging
  */
@@ -154,16 +318,11 @@ export function handleAgentMessageChunk(
   update: SessionUpdate,
   ctx: HandlerContext
 ): HandlerResult {
-  const content = update.content;
-
-  if (!content || typeof content !== 'object' || !('text' in content)) {
-    return { handled: false };
-  }
-
-  const text = (content as { text?: string }).text;
-  if (typeof text !== 'string') {
-    return { handled: false };
-  }
+  const text = extractTextFromContentBlock(update.content);
+  if (typeof text !== 'string' || text.length === 0) return { handled: false };
+  // Some ACP providers emit whitespace-only chunks (often "\n") as keepalives.
+  // Dropping these avoids spammy blank lines and reduces unnecessary UI churn.
+  if (!text.trim()) return { handled: true };
 
   // Filter out "thinking" messages (start with **...**)
   const isThinking = /^\*\*[^*]+\*\*\n/.test(text);
@@ -206,16 +365,9 @@ export function handleAgentThoughtChunk(
   update: SessionUpdate,
   ctx: HandlerContext
 ): HandlerResult {
-  const content = update.content;
-
-  if (!content || typeof content !== 'object' || !('text' in content)) {
-    return { handled: false };
-  }
-
-  const text = (content as { text?: string }).text;
-  if (typeof text !== 'string') {
-    return { handled: false };
-  }
+  const text = extractTextFromContentBlock(update.content);
+  if (typeof text !== 'string' || text.length === 0) return { handled: false };
+  if (!text.trim()) return { handled: true };
 
   // Log thinking chunks when tool calls are active
   if (ctx.activeToolCalls.size > 0) {
@@ -229,6 +381,48 @@ export function handleAgentThoughtChunk(
     payload: { text },
   });
 
+  return { handled: true };
+}
+
+export function handleUserMessageChunk(
+  update: SessionUpdate,
+  ctx: HandlerContext
+): HandlerResult {
+  const text = extractTextFromContentBlock(update.content);
+  if (typeof text !== 'string' || text.length === 0) return { handled: false };
+  ctx.emit({
+    type: 'event',
+    name: 'user_message_chunk',
+    payload: { text },
+  });
+  return { handled: true };
+}
+
+export function handleAvailableCommandsUpdate(
+  update: SessionUpdate,
+  ctx: HandlerContext
+): HandlerResult {
+  const commands = Array.isArray(update.availableCommands) ? update.availableCommands : null;
+  if (!commands) return { handled: false };
+  ctx.emit({
+    type: 'event',
+    name: 'available_commands_update',
+    payload: { availableCommands: commands },
+  });
+  return { handled: true };
+}
+
+export function handleCurrentModeUpdate(
+  update: SessionUpdate,
+  ctx: HandlerContext
+): HandlerResult {
+  const modeId = typeof update.currentModeId === 'string' ? update.currentModeId : null;
+  if (!modeId) return { handled: false };
+  ctx.emit({
+    type: 'event',
+    name: 'current_mode_update',
+    payload: { currentModeId: modeId },
+  });
   return { handled: true };
 }
 
@@ -246,45 +440,67 @@ export function startToolCall(
   const toolKindStr = typeof toolKind === 'string' ? toolKind : undefined;
   const isInvestigation = ctx.transport.isInvestigationTool?.(toolCallId, toolKindStr) ?? false;
 
-  // Extract real tool name from toolCallId
+  const rawInput = extractToolInput(update);
+  if (rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)) {
+    ctx.toolCallIdToInputMap.set(toolCallId, rawInput as Record<string, unknown>);
+  }
+
+  // Determine a stable tool name (never use `update.title`, which is human-readable and can vary per call).
   const extractedName = ctx.transport.extractToolNameFromId?.(toolCallId);
-  const realToolName = extractedName ?? (toolKindStr || 'unknown');
+  const baseName = extractedName ?? toolKindStr ?? 'unknown';
+  const toolName = ctx.transport.determineToolName?.(
+    baseName,
+    toolCallId,
+    (rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput))
+      ? (rawInput as Record<string, unknown>)
+      : {},
+    { recentPromptHadChangeTitle: false, toolCallCountSincePrompt: ctx.toolCallCountSincePrompt }
+  ) ?? baseName;
 
   // Store mapping for permission requests
-  ctx.toolCallIdToNameMap.set(toolCallId, realToolName);
+  ctx.toolCallIdToNameMap.set(toolCallId, toolName);
 
   ctx.activeToolCalls.add(toolCallId);
   ctx.toolCallStartTimes.set(toolCallId, startTime);
 
   logger.debug(`[AcpBackend] ⏱️ Set startTime for ${toolCallId} at ${new Date(startTime).toISOString()} (from ${source})`);
-  logger.debug(`[AcpBackend] 🔧 Tool call START: ${toolCallId} (${toolKind} -> ${realToolName})${isInvestigation ? ' [INVESTIGATION TOOL]' : ''}`);
+  logger.debug(`[AcpBackend] 🔧 Tool call START: ${toolCallId} (${toolKind} -> ${toolName})${isInvestigation ? ' [INVESTIGATION TOOL]' : ''}`);
 
   if (isInvestigation) {
     logger.debug(`[AcpBackend] 🔍 Investigation tool detected - extended timeout (10min) will be used`);
   }
 
-  // Set timeout for tool call completion
-  const timeoutMs = ctx.transport.getToolCallTimeout?.(toolCallId, toolKindStr) ?? DEFAULT_TOOL_CALL_TIMEOUT_MS;
+  // Set timeout for tool call completion.
+  // Some ACP providers send `status: pending` while waiting for a user permission response. Do not start
+  // the execution timeout until the tool is actually in progress, otherwise long permission waits can
+  // cause spurious timeouts and confusing UI state.
+  if (update.status !== 'pending') {
+    const timeoutMs = ctx.transport.getToolCallTimeout?.(toolCallId, toolKindStr) ?? DEFAULT_TOOL_CALL_TIMEOUT_MS;
 
-  if (!ctx.toolCallTimeouts.has(toolCallId)) {
-    const timeout = setTimeout(() => {
-      const duration = formatDuration(ctx.toolCallStartTimes.get(toolCallId));
-      logger.debug(`[AcpBackend] ⏱️ Tool call TIMEOUT (from ${source}): ${toolCallId} (${toolKind}) after ${(timeoutMs / 1000).toFixed(0)}s - Duration: ${duration}, removing from active set`);
+    if (!ctx.toolCallTimeouts.has(toolCallId)) {
+      const timeout = setTimeout(() => {
+        const duration = formatDuration(ctx.toolCallStartTimes.get(toolCallId));
+        logger.debug(`[AcpBackend] ⏱️ Tool call TIMEOUT (from ${source}): ${toolCallId} (${toolKind}) after ${(timeoutMs / 1000).toFixed(0)}s - Duration: ${duration}, removing from active set`);
 
-      ctx.activeToolCalls.delete(toolCallId);
-      ctx.toolCallStartTimes.delete(toolCallId);
-      ctx.toolCallTimeouts.delete(toolCallId);
+        ctx.activeToolCalls.delete(toolCallId);
+        ctx.toolCallStartTimes.delete(toolCallId);
+        ctx.toolCallTimeouts.delete(toolCallId);
+        ctx.toolCallIdToNameMap.delete(toolCallId);
+        ctx.toolCallIdToInputMap.delete(toolCallId);
 
-      if (ctx.activeToolCalls.size === 0) {
-        logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
-        ctx.emitIdleStatus();
-      }
-    }, timeoutMs);
+        if (ctx.activeToolCalls.size === 0) {
+          logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
+          ctx.emitIdleStatus();
+        }
+      }, timeoutMs);
 
-    ctx.toolCallTimeouts.set(toolCallId, timeout);
-    logger.debug(`[AcpBackend] ⏱️ Set timeout for ${toolCallId}: ${(timeoutMs / 1000).toFixed(0)}s${isInvestigation ? ' (investigation tool)' : ''}`);
+      ctx.toolCallTimeouts.set(toolCallId, timeout);
+      logger.debug(`[AcpBackend] ⏱️ Set timeout for ${toolCallId}: ${(timeoutMs / 1000).toFixed(0)}s${isInvestigation ? ' (investigation tool)' : ''}`);
+    } else {
+      logger.debug(`[AcpBackend] Timeout already set for ${toolCallId}, skipping`);
+    }
   } else {
-    logger.debug(`[AcpBackend] Timeout already set for ${toolCallId}, skipping`);
+    logger.debug(`[AcpBackend] Tool call ${toolCallId} is pending permission; skipping execution timeout setup`);
   }
 
   // Clear idle timeout - tool call is starting
@@ -294,12 +510,20 @@ export function startToolCall(
   ctx.emit({ type: 'status', status: 'running' });
 
   // Parse args and emit tool-call event
-  const args = parseArgsFromContent(update.content);
+  const parsedArgs = parseArgsFromContent(rawInput);
+  const args = normalizeAcpToolArgs({
+    toolKind: toolKindStr,
+    toolName,
+    rawInput,
+    args: parsedArgs,
+  });
 
   // Extract locations if present
   if (update.locations && Array.isArray(update.locations)) {
     args.locations = update.locations;
   }
+
+  attachAcpMetadataToArgs(args, update, toolKindStr || 'unknown', rawInput);
 
   // Log investigation tool objective
   if (isInvestigation && args.objective) {
@@ -308,7 +532,7 @@ export function startToolCall(
 
   ctx.emit({
     type: 'tool-call',
-    toolName: toolKindStr || 'unknown',
+    toolName,
     args,
     callId: toolCallId,
   });
@@ -320,15 +544,18 @@ export function startToolCall(
 export function completeToolCall(
   toolCallId: string,
   toolKind: string | unknown,
-  content: unknown,
+  update: SessionUpdate,
   ctx: HandlerContext
 ): void {
   const startTime = ctx.toolCallStartTimes.get(toolCallId);
   const duration = formatDuration(startTime);
   const toolKindStr = typeof toolKind === 'string' ? toolKind : 'unknown';
+  const resolvedToolName = ctx.toolCallIdToNameMap.get(toolCallId) ?? toolKindStr;
 
   ctx.activeToolCalls.delete(toolCallId);
   ctx.toolCallStartTimes.delete(toolCallId);
+  ctx.toolCallIdToNameMap.delete(toolCallId);
+  ctx.toolCallIdToInputMap.delete(toolCallId);
 
   const timeout = ctx.toolCallTimeouts.get(toolCallId);
   if (timeout) {
@@ -336,12 +563,23 @@ export function completeToolCall(
     ctx.toolCallTimeouts.delete(toolCallId);
   }
 
-  logger.debug(`[AcpBackend] ✅ Tool call COMPLETED: ${toolCallId} (${toolKindStr}) - Duration: ${duration}. Active tool calls: ${ctx.activeToolCalls.size}`);
+  logger.debug(`[AcpBackend] ✅ Tool call COMPLETED: ${toolCallId} (${resolvedToolName}) - Duration: ${duration}. Active tool calls: ${ctx.activeToolCalls.size}`);
+
+  const normalized = normalizeAcpToolResult(extractToolOutput(update));
+  const record = asRecord(normalized);
+  if (record) {
+    const meta = extractMeta(update);
+    const acp: Record<string, unknown> = { kind: toolKindStr };
+    if (typeof update.title === 'string' && update.title.trim().length > 0) acp.title = update.title;
+    if (Array.isArray(update.locations) && update.locations.length > 0) acp.locations = update.locations;
+    if (meta) acp.meta = meta;
+    record._acp = { ...(asRecord(record._acp) ?? {}), ...acp };
+  }
 
   ctx.emit({
     type: 'tool-result',
-    toolName: toolKindStr,
-    result: content,
+    toolName: resolvedToolName,
+    result: normalized,
     callId: toolCallId,
   });
 
@@ -360,12 +598,13 @@ export function failToolCall(
   toolCallId: string,
   status: 'failed' | 'cancelled',
   toolKind: string | unknown,
-  content: unknown,
+  update: SessionUpdate,
   ctx: HandlerContext
 ): void {
   const startTime = ctx.toolCallStartTimes.get(toolCallId);
   const duration = startTime ? Date.now() - startTime : null;
   const toolKindStr = typeof toolKind === 'string' ? toolKind : 'unknown';
+  const resolvedToolName = ctx.toolCallIdToNameMap.get(toolCallId) ?? toolKindStr;
   const isInvestigation = ctx.transport.isInvestigationTool?.(toolCallId, toolKindStr) ?? false;
   const hadTimeout = ctx.toolCallTimeouts.has(toolCallId);
 
@@ -384,7 +623,7 @@ export function failToolCall(
       }
     }
 
-    logger.debug(`[AcpBackend] 🔍 Investigation tool FAILED - full content:`, JSON.stringify(content, null, 2));
+    logger.debug(`[AcpBackend] 🔍 Investigation tool FAILED - full content:`, JSON.stringify(extractToolOutput(update), null, 2));
     logger.debug(`[AcpBackend] 🔍 Investigation tool timeout status BEFORE cleanup: ${hadTimeout ? 'timeout was set' : 'no timeout was set'}`);
     logger.debug(`[AcpBackend] 🔍 Investigation tool startTime status BEFORE cleanup: ${startTime ? `set at ${new Date(startTime).toISOString()}` : 'not set'}`);
   }
@@ -392,6 +631,8 @@ export function failToolCall(
   // Cleanup
   ctx.activeToolCalls.delete(toolCallId);
   ctx.toolCallStartTimes.delete(toolCallId);
+  ctx.toolCallIdToNameMap.delete(toolCallId);
+  ctx.toolCallIdToInputMap.delete(toolCallId);
 
   const timeout = ctx.toolCallTimeouts.get(toolCallId);
   if (timeout) {
@@ -403,10 +644,10 @@ export function failToolCall(
   }
 
   const durationStr = formatDuration(startTime);
-  logger.debug(`[AcpBackend] ❌ Tool call ${status.toUpperCase()}: ${toolCallId} (${toolKindStr}) - Duration: ${durationStr}. Active tool calls: ${ctx.activeToolCalls.size}`);
+  logger.debug(`[AcpBackend] ❌ Tool call ${status.toUpperCase()}: ${toolCallId} (${resolvedToolName}) - Duration: ${durationStr}. Active tool calls: ${ctx.activeToolCalls.size}`);
 
   // Extract error detail
-  const errorDetail = extractErrorDetail(content);
+  const errorDetail = extractErrorDetail(extractToolOutput(update));
   if (errorDetail) {
     logger.debug(`[AcpBackend] ❌ Tool call error details: ${errorDetail.substring(0, 500)}`);
   } else {
@@ -416,10 +657,18 @@ export function failToolCall(
   // Emit tool-result with error
   ctx.emit({
     type: 'tool-result',
-    toolName: toolKindStr,
-    result: errorDetail
-      ? { error: errorDetail, status }
-      : { error: `Tool call ${status}`, status },
+    toolName: resolvedToolName,
+    result: (() => {
+      const base = errorDetail
+        ? { error: errorDetail, status }
+        : { error: `Tool call ${status}`, status };
+      const meta = extractMeta(update);
+      const acp: Record<string, unknown> = { kind: toolKindStr };
+      if (typeof update.title === 'string' && update.title.trim().length > 0) acp.title = update.title;
+      if (Array.isArray(update.locations) && update.locations.length > 0) acp.locations = update.locations;
+      if (meta) acp.meta = meta;
+      return { ...base, _acp: acp };
+    })(),
     callId: toolCallId,
   });
 
@@ -449,17 +698,50 @@ export function handleToolCallUpdate(
   const toolKind = update.kind || 'unknown';
   let toolCallCountSincePrompt = ctx.toolCallCountSincePrompt;
 
+  // Some ACP providers stream terminal output via tool_call_update.meta.
+  emitTerminalOutputFromMeta(update, ctx);
+
   if (status === 'in_progress' || status === 'pending') {
     if (!ctx.activeToolCalls.has(toolCallId)) {
       toolCallCountSincePrompt++;
       startToolCall(toolCallId, toolKind, update, ctx, 'tool_call_update');
     } else {
-      logger.debug(`[AcpBackend] Tool call ${toolCallId} already tracked, status: ${status}`);
+      // If the tool call was previously pending permission, it may not have an execution timeout yet.
+      // Arm the timeout as soon as it transitions to in_progress.
+      if (status === 'in_progress' && !ctx.toolCallTimeouts.has(toolCallId)) {
+        const toolKindStr = typeof toolKind === 'string' ? toolKind : undefined;
+        const timeoutMs = ctx.transport.getToolCallTimeout?.(toolCallId, toolKindStr) ?? DEFAULT_TOOL_CALL_TIMEOUT_MS;
+        const timeout = setTimeout(() => {
+          const duration = formatDuration(ctx.toolCallStartTimes.get(toolCallId));
+          logger.debug(`[AcpBackend] ⏱️ Tool call TIMEOUT (from tool_call_update): ${toolCallId} (${toolKind}) after ${(timeoutMs / 1000).toFixed(0)}s - Duration: ${duration}, removing from active set`);
+
+          ctx.activeToolCalls.delete(toolCallId);
+          ctx.toolCallStartTimes.delete(toolCallId);
+          ctx.toolCallTimeouts.delete(toolCallId);
+          ctx.toolCallIdToNameMap.delete(toolCallId);
+          ctx.toolCallIdToInputMap.delete(toolCallId);
+
+          if (ctx.activeToolCalls.size === 0) {
+            logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
+            ctx.emitIdleStatus();
+          }
+        }, timeoutMs);
+        ctx.toolCallTimeouts.set(toolCallId, timeout);
+        logger.debug(`[AcpBackend] ⏱️ Set timeout for ${toolCallId}: ${(timeoutMs / 1000).toFixed(0)}s (armed on in_progress)`);
+      }
+
+      if (hasMeaningfulToolUpdate(update)) {
+        // Refresh the existing tool call message with updated title/rawInput/locations (without
+        // resetting timeouts/start times).
+        emitToolCallRefresh(toolCallId, toolKind, update, ctx);
+      } else {
+        logger.debug(`[AcpBackend] Tool call ${toolCallId} already tracked, status: ${status}`);
+      }
     }
   } else if (status === 'completed') {
-    completeToolCall(toolCallId, toolKind, update.content, ctx);
+    completeToolCall(toolCallId, toolKind, update, ctx);
   } else if (status === 'failed' || status === 'cancelled') {
-    failToolCall(toolCallId, status, toolKind, update.content, ctx);
+    failToolCall(toolCallId, status, toolKind, update, ctx);
   }
 
   return { handled: true, toolCallCountSincePrompt };
@@ -524,17 +806,25 @@ export function handlePlanUpdate(
   update: SessionUpdate,
   ctx: HandlerContext
 ): HandlerResult {
-  if (!update.plan) {
-    return { handled: false };
+  if (update.sessionUpdate === 'plan' && update.entries !== undefined) {
+    ctx.emit({
+      type: 'event',
+      name: 'plan',
+      payload: { entries: update.entries },
+    });
+    return { handled: true };
   }
 
-  ctx.emit({
-    type: 'event',
-    name: 'plan',
-    payload: update.plan,
-  });
+  if (update.plan !== undefined) {
+    ctx.emit({
+      type: 'event',
+      name: 'plan',
+      payload: update.plan,
+    });
+    return { handled: true };
+  }
 
-  return { handled: true };
+  return { handled: false };
 }
 
 /**
