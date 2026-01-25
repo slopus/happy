@@ -15,7 +15,20 @@ export {
   type GeminiBackendResult,
 } from './gemini';
 
+// Codex ACP factory (experimental)
+export {
+  createCodexAcpBackend,
+  type CodexAcpBackendOptions,
+  type CodexAcpBackendResult,
+} from './codexAcp';
+
+// OpenCode ACP factory
+export {
+  createOpenCodeBackend,
+  registerOpenCodeAgent,
+  type OpenCodeBackendOptions,
+} from './opencode';
+
 // Future factories:
 // export { createCodexBackend, registerCodexAgent, type CodexBackendOptions } from './codex';
 // export { createClaudeBackend, registerClaudeAgent, type ClaudeBackendOptions } from './claude';
-// export { createOpenCodeBackend, registerOpenCodeAgent, type OpenCodeBackendOptions } from './opencode';
