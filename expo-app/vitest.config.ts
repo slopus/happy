@@ -8,6 +8,7 @@ export default defineConfig({
     test: {
         globals: false,
         environment: 'node',
+        setupFiles: [resolve('./sources/dev/vitestSetup.ts')],
         include: ['sources/**/*.{spec,test}.ts'],
         coverage: {
             provider: 'v8',
@@ -22,18 +23,23 @@ export default defineConfig({
         },
     },
     resolve: {
-        alias: {
+        // IMPORTANT: keep `@` after more specific `@/...` aliases (Vite resolves aliases in-order).
+        alias: [
             // Vitest runs in node; avoid parsing React Native's Flow entrypoint.
-            'react-native': resolve('./sources/dev/reactNativeStub.ts'),
+            { find: 'react-native', replacement: resolve('./sources/dev/reactNativeStub.ts') },
+            // Expo packages commonly depend on `expo-modules-core`, whose exports point to TS sources that import `react-native`.
+            // In node/Vitest we stub the minimal surface needed by our tests.
+            { find: 'expo-modules-core', replacement: resolve('./sources/dev/expoModulesCoreStub.ts') },
+            // `expo-localization` depends on Expo modules that don't exist in Vitest's node env.
+            { find: 'expo-localization', replacement: resolve('./sources/dev/expoLocalizationStub.ts') },
             // Use libsodium-wrappers in tests instead of the RN native binding.
-            '@more-tech/react-native-libsodium': 'libsodium-wrappers',
+            { find: '@more-tech/react-native-libsodium', replacement: 'libsodium-wrappers' },
             // Use node-safe platform adapters in tests (avoid static expo-crypto imports).
-            '@/platform/cryptoRandom': resolve('./sources/platform/cryptoRandom.node.ts'),
-            '@/platform/hmacSha512': resolve('./sources/platform/hmacSha512.node.ts'),
-            '@/platform/randomUUID': resolve('./sources/platform/randomUUID.node.ts'),
-            '@/platform/digest': resolve('./sources/platform/digest.node.ts'),
-            // IMPORTANT: keep this after more specific `@/...` aliases (Vite resolves aliases in-order).
-            '@': resolve('./sources'),
-        },
+            { find: '@/platform/cryptoRandom', replacement: resolve('./sources/platform/cryptoRandom.node.ts') },
+            { find: '@/platform/hmacSha512', replacement: resolve('./sources/platform/hmacSha512.node.ts') },
+            { find: '@/platform/randomUUID', replacement: resolve('./sources/platform/randomUUID.node.ts') },
+            { find: '@/platform/digest', replacement: resolve('./sources/platform/digest.node.ts') },
+            { find: '@', replacement: resolve('./sources') },
+        ],
     },
 })

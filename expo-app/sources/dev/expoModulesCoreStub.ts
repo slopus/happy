@@ -10,3 +10,13 @@ export const Platform = {
         (specifics as any).node ?? (specifics as any).default,
 } as const;
 
+// Expo modules use this to access native modules (which don't exist in Vitest/node).
+export function requireOptionalNativeModule() {
+    return null;
+}
+
+export function requireNativeModule(moduleName: string): never {
+    // Return a dummy module so packages can be imported in Vitest without exploding at import-time.
+    // Tests that actually rely on native behavior should mock the specific module.
+    return {} as never;
+}

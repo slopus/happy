@@ -90,7 +90,7 @@ vi.mock('@/utils/platform', () => {
 
 describe('RootLayout hooks order', () => {
     it('does not throw when redirecting after a non-redirect render', async () => {
-        const { default: RootLayout } = await import('./_layout');
+        const { default: RootLayout } = await import('@/app/(app)/_layout');
 
         isAuthenticated = true;
         segments = ['(app)'];
@@ -110,3 +110,4 @@ describe('RootLayout hooks order', () => {
         }).not.toThrow();
     });
 });
+
