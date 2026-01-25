@@ -127,7 +127,7 @@ async function doWebAuth(keypair: tweetnacl.BoxKeyPair): Promise<Credentials | n
             console.log('Could not open browser automatically.');
         }
     } else {
-        console.log('Browser opening is disabled (--no-open).');
+        console.log('Browser opening is disabled (HAPPY_NO_BROWSER_OPEN is set).');
         console.log('Open the URL below in the browser profile/account you want to authenticate.');
     }
 
