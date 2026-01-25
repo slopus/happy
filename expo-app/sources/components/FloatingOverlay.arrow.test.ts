@@ -104,4 +104,26 @@ describe('FloatingOverlay', () => {
         const hostArrows = arrows.filter((node: any) => typeof node.type === 'string');
         expect(hostArrows.length).toBe(1);
     });
+
+    it('renders edge indicators when enabled without edge fades', async () => {
+        const { FloatingOverlay } = await import('./FloatingOverlay');
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        act(() => {
+            tree = renderer.create(
+                React.createElement(
+                    FloatingOverlay,
+                    {
+                        maxHeight: 200,
+                        edgeIndicators: true,
+                        edgeFades: false,
+                    } as any,
+                    React.createElement('Child'),
+                ),
+            );
+        });
+
+        const indicators = tree?.root.findAllByType('ScrollEdgeIndicators') ?? [];
+        expect(indicators.length).toBe(1);
+    });
 });

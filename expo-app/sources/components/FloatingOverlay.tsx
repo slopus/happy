@@ -88,17 +88,6 @@ export const FloatingOverlay = React.memo((props: FloatingOverlayProps) => {
         };
     }, [edgeFades]);
 
-    const fades = useScrollEdgeFades({
-        enabledEdges: {
-            top: Boolean(fadeCfg?.top),
-            bottom: Boolean(fadeCfg?.bottom),
-            left: Boolean(fadeCfg?.left),
-            right: Boolean(fadeCfg?.right),
-        },
-        overflowThreshold: 1,
-        edgeThreshold: 1,
-    });
-
     const indicatorCfg = React.useMemo(() => {
         if (!edgeIndicators) return null;
         if (edgeIndicators === true) return { size: 14, opacity: 0.35 } as const;
@@ -107,6 +96,17 @@ export const FloatingOverlay = React.memo((props: FloatingOverlayProps) => {
             opacity: typeof edgeIndicators.opacity === 'number' ? edgeIndicators.opacity : 0.35,
         };
     }, [edgeIndicators]);
+
+    const fades = useScrollEdgeFades({
+        enabledEdges: {
+            top: Boolean(fadeCfg?.top) || Boolean(indicatorCfg),
+            bottom: Boolean(fadeCfg?.bottom) || Boolean(indicatorCfg),
+            left: Boolean(fadeCfg?.left),
+            right: Boolean(fadeCfg?.right),
+        },
+        overflowThreshold: 1,
+        edgeThreshold: 1,
+    });
 
     const arrowCfg = React.useMemo(() => {
         if (!arrow) return null;
@@ -139,9 +139,9 @@ export const FloatingOverlay = React.memo((props: FloatingOverlayProps) => {
                 keyboardShouldPersistTaps={keyboardShouldPersistTaps}
                 showsVerticalScrollIndicator={showScrollIndicator}
                 scrollEventThrottle={32}
-                onLayout={fadeCfg ? fades.onViewportLayout : undefined}
-                onContentSizeChange={fadeCfg ? fades.onContentSizeChange : undefined}
-                onScroll={fadeCfg ? fades.onScroll : undefined}
+                onLayout={fadeCfg || indicatorCfg ? fades.onViewportLayout : undefined}
+                onContentSizeChange={fadeCfg || indicatorCfg ? fades.onContentSizeChange : undefined}
+                onScroll={fadeCfg || indicatorCfg ? fades.onScroll : undefined}
             >
                 {children}
             </Animated.ScrollView>
@@ -153,7 +153,7 @@ export const FloatingOverlay = React.memo((props: FloatingOverlayProps) => {
                 />
             ) : null}
 
-            {fadeCfg && indicatorCfg ? (
+            {indicatorCfg ? (
                 <ScrollEdgeIndicators
                     edges={fades.visibility}
                     color={theme.colors.textSecondary}
