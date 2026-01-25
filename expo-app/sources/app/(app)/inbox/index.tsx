@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { useRequireInboxFriendsEnabled } from '@/hooks/useRequireInboxFriendsEnabled';
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -73,11 +74,14 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 export default function InboxPage() {
+    const enabled = useRequireInboxFriendsEnabled();
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
     const isTablet = useIsTablet();
     const router = useRouter();
     const headerHeight = useHeaderHeight();
+
+    if (!enabled) return null;
 
     // Calculate gradient height: safe area + some extra for the fade effect
     const gradientHeight = insets.top + 40;

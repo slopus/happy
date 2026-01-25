@@ -11,12 +11,16 @@ import { trackFriendsConnect } from '@/track';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { useSearch } from '@/hooks/useSearch';
+import { useRequireInboxFriendsEnabled } from '@/hooks/useRequireInboxFriendsEnabled';
 
 export default function SearchFriendsScreen() {
+    const enabled = useRequireInboxFriendsEnabled();
     const { credentials } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
     const [processingUserId, setProcessingUserId] = useState<string | null>(null);
     
+    if (!enabled) return null;
+
     // Use the new search hook
     const { results: searchResults, isSearching, error: searchError } = useSearch(
         searchQuery,
