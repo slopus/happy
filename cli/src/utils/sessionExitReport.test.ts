@@ -57,39 +57,36 @@ describe('writeSessionExitReport', () => {
   });
 
   it('defaults to HAPPY_HOME_DIR/logs/session-exit', async () => {
-    const originalHappyHomeDir = process.env.HAPPY_HOME_DIR;
     const dir = await mkdtemp(join(tmpdir(), 'happy-home-dir-'));
-    process.env.HAPPY_HOME_DIR = dir;
+    vi.stubEnv('HAPPY_HOME_DIR', dir);
 
-    // Ensure Configuration picks up the test HAPPY_HOME_DIR.
-    vi.resetModules();
-    const { writeSessionExitReportSync } = await import('./sessionExitReport');
+    try {
+      // Ensure Configuration picks up the test HAPPY_HOME_DIR.
+      vi.resetModules();
+      const { writeSessionExitReportSync } = await import('./sessionExitReport');
 
-    const outPath = writeSessionExitReportSync({
-      sessionId: 'sess_3',
-      pid: 789,
-      report: {
+      const outPath = writeSessionExitReportSync({
+        sessionId: 'sess_3',
+        pid: 789,
+        report: {
+          observedAt: 3,
+          observedBy: 'daemon',
+          reason: 'process-missing',
+        },
+      });
+
+      expect(outPath.startsWith(join(dir, 'logs', 'session-exit'))).toBe(true);
+      const raw = await readFile(outPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      expect(parsed).toMatchObject({
+        sessionId: 'sess_3',
+        pid: 789,
         observedAt: 3,
         observedBy: 'daemon',
         reason: 'process-missing',
-      },
-    });
-
-    expect(outPath.startsWith(join(dir, 'logs', 'session-exit'))).toBe(true);
-    const raw = await readFile(outPath, 'utf8');
-    const parsed = JSON.parse(raw);
-    expect(parsed).toMatchObject({
-      sessionId: 'sess_3',
-      pid: 789,
-      observedAt: 3,
-      observedBy: 'daemon',
-      reason: 'process-missing',
-    });
-
-    if (originalHappyHomeDir === undefined) {
-      delete process.env.HAPPY_HOME_DIR;
-    } else {
-      process.env.HAPPY_HOME_DIR = originalHappyHomeDir;
+      });
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 });

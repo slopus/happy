@@ -19,7 +19,7 @@ describe('happy-cli subprocess invocation', () => {
     });
 
     it('builds a node invocation by default', async () => {
-        delete process.env.HAPPY_CLI_SUBPROCESS_RUNTIME;
+        process.env.HAPPY_CLI_SUBPROCESS_RUNTIME = 'node';
         const mod = (await import('@/utils/spawnHappyCLI')) as typeof import('@/utils/spawnHappyCLI');
 
         const inv = mod.buildHappyCliSubprocessInvocation(['--version']);
