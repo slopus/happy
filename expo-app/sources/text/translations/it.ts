@@ -112,8 +112,12 @@ export const it: TranslationStructure = {
             anthropic: 'Anthropic (Predefinito)',
             deepseek: 'DeepSeek (Ragionamento)',
             zai: 'Z.AI (GLM-4.6)',
+            codex: 'Codex (Predefinito)',
             openai: 'OpenAI (GPT-5)',
             azureOpenai: 'Azure OpenAI',
+            gemini: 'Gemini (Predefinito)',
+            geminiApiKey: 'Gemini (API key)',
+            geminiVertex: 'Gemini (Vertex AI)',
         },
         groups: {
             favorites: 'Preferiti',
@@ -160,6 +164,7 @@ export const it: TranslationStructure = {
             configured: 'Configurata sulla macchina',
             notConfigured: 'Non configurata',
             checking: 'Verifica…',
+            missingConfigForProfile: ({ env }: { env: string }) => `Questo profilo richiede la configurazione di ${env} sulla macchina.`,
             modalTitle: 'Segreto richiesto',
             modalBody: 'Questo profilo richiede un segreto.\n\nOpzioni supportate:\n• Usa ambiente della macchina (consigliato)\n• Usa un segreto salvato nelle impostazioni dell’app\n• Inserisci un segreto solo per questa sessione',
             sectionTitle: 'Requisiti',
@@ -236,6 +241,7 @@ export const it: TranslationStructure = {
             selectAtLeastOneError: 'Seleziona almeno un backend IA.',
             claudeSubtitle: 'Claude CLI',
             codexSubtitle: 'Codex CLI',
+            opencodeSubtitle: 'OpenCode CLI',
             geminiSubtitleExperimental: 'Gemini CLI (sperimentale)',
         },
         tmux: {
@@ -483,8 +489,6 @@ export const it: TranslationStructure = {
         experimentalFeaturesDisabled: 'Usando solo funzionalità stabili',
         experimentalOptions: 'Opzioni sperimentali',
         experimentalOptionsDescription: 'Scegli quali funzionalità sperimentali sono abilitate.',
-        expGemini: 'Gemini',
-        expGeminiSubtitle: 'Enable Gemini CLI sessions and Gemini-related UI',
         expUsageReporting: 'Usage reporting',
         expUsageReportingSubtitle: 'Enable usage and token reporting screens',
         expFileViewer: 'File viewer',
@@ -501,6 +505,8 @@ export const it: TranslationStructure = {
         expInboxFriendsSubtitle: 'Abilita la scheda Posta in arrivo e le funzionalità Amici',
         expCodexResume: 'Riprendi Codex',
         expCodexResumeSubtitle: 'Abilita la ripresa delle sessioni Codex usando un\'installazione separata (sperimentale)',
+        expCodexAcp: 'Codex ACP',
+        expCodexAcpSubtitle: 'Usa Codex tramite ACP (codex-acp) invece di MCP (sperimentale)',
         webFeatures: 'Funzionalità web',
         webFeaturesDescription: 'Funzionalità disponibili solo nella versione web dell\'app.',
         enterToSend: 'Invio con Enter',
@@ -576,10 +582,13 @@ export const it: TranslationStructure = {
         failedToSendRequest: 'Impossibile inviare la richiesta di amicizia',
         failedToResumeSession: 'Impossibile riprendere la sessione',
         failedToSendMessage: 'Impossibile inviare il messaggio',
-        missingPermissionId: 'Manca l’ID del permesso',
+        missingPermissionId: 'Manca l\'ID del permesso',
         codexResumeNotInstalledTitle: 'Codex resume non è installato su questa macchina',
         codexResumeNotInstalledMessage:
             'Per riprendere una conversazione di Codex, installa il server di ripresa di Codex sulla macchina di destinazione (Dettagli macchina → Ripresa Codex).',
+        codexAcpNotInstalledTitle: 'Codex ACP non è installato su questa macchina',
+        codexAcpNotInstalledMessage:
+            'Per usare l\'esperimento Codex ACP, installa codex-acp sulla macchina di destinazione (Dettagli macchina → Codex ACP) o disattiva l\'esperimento.',
     },
 
     deps: {
@@ -703,6 +712,18 @@ export const it: TranslationStructure = {
             reinstallTitle: 'Reinstallare Codex resume?',
             description: 'Questo installa un wrapper sperimentale del server MCP di Codex usato solo per operazioni di ripresa.',
         },
+        codexAcpBanner: {
+            title: 'Codex ACP',
+            install: 'Installa',
+            update: 'Aggiorna',
+            reinstall: 'Reinstalla',
+        },
+        codexAcpInstallModal: {
+            installTitle: 'Installare Codex ACP?',
+            updateTitle: 'Aggiornare Codex ACP?',
+            reinstallTitle: 'Reinstallare Codex ACP?',
+            description: 'Questo installa un adattatore ACP sperimentale per Codex che supporta il caricamento/la ripresa dei thread.',
+        },
     },
 
     sessionHistory: {
@@ -720,7 +741,15 @@ export const it: TranslationStructure = {
         resuming: 'Ripresa in corso...',
         resumeFailed: 'Impossibile riprendere la sessione',
         inactiveResumable: 'Inattiva (riprendibile)',
+        inactiveMachineOffline: 'Inattiva (macchina offline)',
         inactiveNotResumable: 'Inattiva',
+        inactiveNotResumableNoticeTitle: 'Questa sessione non può essere ripresa',
+        inactiveNotResumableNoticeBody: ({ provider }: { provider: string }) =>
+            `Questa sessione è terminata e non può essere ripresa perché ${provider} non supporta il ripristino del contesto qui. Avvia una nuova sessione per continuare.`,
+        machineOfflineNoticeTitle: 'La macchina è offline',
+        machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
+            `“${machine}” è offline, quindi Happy non può ancora riprendere questa sessione. Riporta la macchina online per continuare.`,
+        machineOfflineCannotResume: 'La macchina è offline. Riportala online per riprendere questa sessione.',
     },
 
     commandPalette: {
@@ -775,6 +804,10 @@ export const it: TranslationStructure = {
         codexSessionId: 'ID sessione Codex',
         codexSessionIdCopied: 'ID sessione Codex copiato negli appunti',
         failedToCopyCodexSessionId: 'Impossibile copiare l\'ID sessione Codex',
+        opencodeSessionId: 'ID sessione OpenCode',
+        opencodeSessionIdCopied: 'ID sessione OpenCode copiato negli appunti',
+        geminiSessionId: 'ID sessione Gemini',
+        geminiSessionIdCopied: 'ID sessione Gemini copiato negli appunti',
         metadataCopied: 'Metadati copiati negli appunti',
         failedToCopyMetadata: 'Impossibile copiare i metadati',
         failedToKillSession: 'Impossibile terminare la sessione',
@@ -888,6 +921,7 @@ export const it: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
+            opencode: 'OpenCode',
             gemini: 'Gemini',
         },
         model: {
@@ -992,6 +1026,11 @@ export const it: TranslationStructure = {
         exitPlanMode: {
             approve: 'Approva piano',
             reject: 'Rifiuta',
+            requestChanges: 'Richiedi modifiche',
+            requestChangesPlaceholder: 'Spiega a Claude cosa vuoi cambiare in questo piano…',
+            requestChangesSend: 'Invia feedback',
+            requestChangesEmpty: 'Scrivi cosa vuoi cambiare.',
+            requestChangesFailed: 'Impossibile inviare la richiesta di modifiche. Riprova.',
             responded: 'Risposta inviata',
             approvalMessage: 'Approvo questo piano. Procedi con l’implementazione.',
             rejectionMessage: 'Non approvo questo piano. Rivedilo o chiedimi quali modifiche desidero.',
@@ -1310,6 +1349,9 @@ export const it: TranslationStructure = {
         permissions: {
             yesAllowAllEdits: 'Sì, consenti tutte le modifiche durante questa sessione',
             yesForTool: 'Sì, non chiedere più per questo strumento',
+            yesForCommandPrefix: 'Sì, non chiedere più per questo prefisso di comando',
+            yesForSubcommand: 'Sì, non chiedere più per questo sottocomando',
+            yesForCommandName: 'Sì, non chiedere più per questo comando',
             noTellClaude: 'No, fornisci feedback',
         }
     },

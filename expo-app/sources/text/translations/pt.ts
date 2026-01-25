@@ -236,8 +236,6 @@ export const pt: TranslationStructure = {
         experimentalFeaturesDisabled: 'Usando apenas recursos estáveis',
         experimentalOptions: 'Opções experimentais',
         experimentalOptionsDescription: 'Escolha quais recursos experimentais estão ativados.',
-        expGemini: 'Gemini',
-        expGeminiSubtitle: 'Enable Gemini CLI sessions and Gemini-related UI',
         expUsageReporting: 'Usage reporting',
         expUsageReportingSubtitle: 'Enable usage and token reporting screens',
         expFileViewer: 'File viewer',
@@ -250,12 +248,14 @@ export const pt: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
-        expInboxFriends: 'Caixa de entrada e amigos',
-        expInboxFriendsSubtitle: 'Ativar a aba Caixa de entrada e os recursos de amigos',
-        expCodexResume: 'Retomar Codex',
-        expCodexResumeSubtitle: 'Permite retomar sessões do Codex usando uma instalação separada (experimental)',
-        webFeatures: 'Recursos web',
-        webFeaturesDescription: 'Recursos disponíveis apenas na versão web do aplicativo.',
+            expInboxFriends: 'Caixa de entrada e amigos',
+            expInboxFriendsSubtitle: 'Ativar a aba Caixa de entrada e os recursos de amigos',
+            expCodexResume: 'Retomar Codex',
+            expCodexResumeSubtitle: 'Permite retomar sessões do Codex usando uma instalação separada (experimental)',
+            expCodexAcp: 'Codex ACP',
+            expCodexAcpSubtitle: 'Usar Codex via ACP (codex-acp) em vez de MCP (experimental)',
+            webFeatures: 'Recursos web',
+            webFeaturesDescription: 'Recursos disponíveis apenas na versão web do aplicativo.',
         enterToSend: 'Enter para enviar',
         enterToSendEnabled: 'Pressione Enter para enviar (Shift+Enter para nova linha)',
         enterToSendDisabled: 'Enter insere uma nova linha',
@@ -329,11 +329,14 @@ export const pt: TranslationStructure = {
         failedToSendRequest: 'Falha ao enviar solicitação de amizade',
         failedToResumeSession: 'Falha ao retomar a sessão',
         failedToSendMessage: 'Falha ao enviar a mensagem',
-        missingPermissionId: 'Falta o id de permissão',
-        codexResumeNotInstalledTitle: 'O Codex resume não está instalado nesta máquina',
-        codexResumeNotInstalledMessage:
-            'Para retomar uma conversa do Codex, instale o servidor de retomada do Codex na máquina de destino (Detalhes da máquina → Retomada do Codex).',
-    },
+            missingPermissionId: 'Falta o id de permissão',
+            codexResumeNotInstalledTitle: 'O Codex resume não está instalado nesta máquina',
+            codexResumeNotInstalledMessage:
+                'Para retomar uma conversa do Codex, instale o servidor de retomada do Codex na máquina de destino (Detalhes da máquina → Retomada do Codex).',
+            codexAcpNotInstalledTitle: 'O Codex ACP não está instalado nesta máquina',
+            codexAcpNotInstalledMessage:
+                'Para usar o experimento Codex ACP, instale o codex-acp na máquina de destino (Detalhes da máquina → Codex ACP) ou desative o experimento.',
+        },
 
     deps: {
         installNotSupported: 'Atualize o Happy CLI para instalar esta dependência.',
@@ -456,6 +459,18 @@ export const pt: TranslationStructure = {
             reinstallTitle: 'Reinstalar Codex resume?',
             description: 'Isso instala um wrapper experimental de servidor MCP do Codex usado apenas para operações de retomada.',
         },
+        codexAcpBanner: {
+            title: 'Codex ACP',
+            install: 'Instalar',
+            update: 'Atualizar',
+            reinstall: 'Reinstalar',
+        },
+        codexAcpInstallModal: {
+            installTitle: 'Instalar Codex ACP?',
+            updateTitle: 'Atualizar Codex ACP?',
+            reinstallTitle: 'Reinstalar Codex ACP?',
+            description: 'Isso instala um adaptador ACP experimental em torno do Codex que oferece suporte a carregar/retomar threads.',
+        },
     },
 
     sessionHistory: {
@@ -473,7 +488,15 @@ export const pt: TranslationStructure = {
         resuming: 'Retomando...',
         resumeFailed: 'Falha ao retomar a sessão',
         inactiveResumable: 'Inativa (retomável)',
+        inactiveMachineOffline: 'Inativa (máquina offline)',
         inactiveNotResumable: 'Inativa',
+        inactiveNotResumableNoticeTitle: 'Esta sessão não pode ser retomada',
+        inactiveNotResumableNoticeBody: ({ provider }: { provider: string }) =>
+            `Esta sessão terminou e não pode ser retomada porque ${provider} não oferece suporte para restaurar o contexto aqui. Inicie uma nova sessão para continuar.`,
+        machineOfflineNoticeTitle: 'A máquina está offline',
+        machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
+            `“${machine}” está offline, então o Happy ainda não consegue retomar esta sessão. Traga a máquina de volta online para continuar.`,
+        machineOfflineCannotResume: 'A máquina está offline. Traga-a de volta online para retomar esta sessão.',
     },
 
     commandPalette: {
@@ -528,6 +551,10 @@ export const pt: TranslationStructure = {
         codexSessionId: 'ID da sessão Codex',
         codexSessionIdCopied: 'ID da sessão Codex copiado para a área de transferência',
         failedToCopyCodexSessionId: 'Falha ao copiar ID da sessão Codex',
+        opencodeSessionId: 'ID da sessão OpenCode',
+        opencodeSessionIdCopied: 'ID da sessão OpenCode copiado para a área de transferência',
+        geminiSessionId: 'ID da sessão Gemini',
+        geminiSessionIdCopied: 'ID da sessão Gemini copiado para a área de transferência',
         metadataCopied: 'Metadados copiados para a área de transferência',
         failedToCopyMetadata: 'Falha ao copiar metadados',
         failedToKillSession: 'Falha ao encerrar sessão',
@@ -641,6 +668,7 @@ export const pt: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
+            opencode: 'OpenCode',
             gemini: 'Gemini',
         },
         model: {
@@ -791,6 +819,11 @@ export const pt: TranslationStructure = {
         exitPlanMode: {
             approve: 'Aprovar plano',
             reject: 'Rejeitar',
+            requestChanges: 'Solicitar alterações',
+            requestChangesPlaceholder: 'Diga ao Claude o que você quer mudar neste plano…',
+            requestChangesSend: 'Enviar feedback',
+            requestChangesEmpty: 'Escreva o que você quer mudar.',
+            requestChangesFailed: 'Falha ao solicitar alterações. Tente novamente.',
             responded: 'Resposta enviada',
             approvalMessage: 'Aprovo este plano. Por favor, prossiga com a implementação.',
             rejectionMessage: 'Não aprovo este plano. Por favor, revise-o ou pergunte quais alterações eu gostaria.',
@@ -1063,6 +1096,9 @@ export const pt: TranslationStructure = {
         permissions: {
             yesAllowAllEdits: 'Sim, permitir todas as edições durante esta sessão',
             yesForTool: 'Sim, não perguntar novamente para esta ferramenta',
+            yesForCommandPrefix: 'Sim, não perguntar novamente para este prefixo de comando',
+            yesForSubcommand: 'Sim, não perguntar novamente para este subcomando',
+            yesForCommandName: 'Sim, não perguntar novamente para este comando',
             noTellClaude: 'Não, fornecer feedback',
         }
     },
@@ -1208,13 +1244,17 @@ export const pt: TranslationStructure = {
         builtIn: 'Integrado',
         custom: 'Personalizado',
         builtInSaveAsHint: 'Salvar um perfil integrado cria um novo perfil personalizado.',
-        builtInNames: {
-            anthropic: 'Anthropic (Padrão)',
-            deepseek: 'DeepSeek (Raciocínio)',
-            zai: 'Z.AI (GLM-4.6)',
-            openai: 'OpenAI (GPT-5)',
-            azureOpenai: 'Azure OpenAI',
-        },
+            builtInNames: {
+                anthropic: 'Anthropic (Padrão)',
+                deepseek: 'DeepSeek (Raciocínio)',
+                zai: 'Z.AI (GLM-4.6)',
+                codex: 'Codex (Padrão)',
+                openai: 'OpenAI (GPT-5)',
+                azureOpenai: 'Azure OpenAI',
+                gemini: 'Gemini (Padrão)',
+                geminiApiKey: 'Gemini (Chave de API)',
+                geminiVertex: 'Gemini (Vertex AI)',
+            },
         groups: {
             favorites: 'Favoritos',
             custom: 'Seus perfis',
@@ -1260,6 +1300,7 @@ export const pt: TranslationStructure = {
             configured: 'Configurada na máquina',
             notConfigured: 'Não configurada',
             checking: 'Verificando…',
+            missingConfigForProfile: ({ env }: { env: string }) => `Este perfil requer que ${env} esteja configurado na máquina.`,
             modalTitle: 'Segredo necessário',
             modalBody: 'Este perfil requer um segredo.\n\nOpções disponíveis:\n• Usar ambiente da máquina (recomendado)\n• Usar um segredo salvo nas configurações do app\n• Inserir um segredo apenas para esta sessão',
             sectionTitle: 'Requisitos',
@@ -1336,6 +1377,7 @@ export const pt: TranslationStructure = {
             selectAtLeastOneError: 'Selecione pelo menos um backend de IA.',
             claudeSubtitle: 'CLI do Claude',
             codexSubtitle: 'CLI do Codex',
+            opencodeSubtitle: 'CLI do OpenCode',
             geminiSubtitleExperimental: 'CLI do Gemini (experimental)',
         },
         tmux: {

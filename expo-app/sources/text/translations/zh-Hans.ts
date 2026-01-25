@@ -238,8 +238,6 @@ export const zhHans: TranslationStructure = {
         experimentalFeaturesDisabled: '仅使用稳定功能',
         experimentalOptions: '实验选项',
         experimentalOptionsDescription: '选择启用哪些实验功能。',
-        expGemini: 'Gemini',
-        expGeminiSubtitle: 'Enable Gemini CLI sessions and Gemini-related UI',
         expUsageReporting: 'Usage reporting',
         expUsageReportingSubtitle: 'Enable usage and token reporting screens',
         expFileViewer: 'File viewer',
@@ -252,12 +250,14 @@ export const zhHans: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
-        expInboxFriends: '收件箱与好友',
-        expInboxFriendsSubtitle: '启用收件箱标签页和好友功能',
-        expCodexResume: '恢复 Codex',
-        expCodexResumeSubtitle: '启用使用单独安装的 Codex 来恢复会话（实验性）',
-        webFeatures: 'Web 功能',
-        webFeaturesDescription: '仅在应用的 Web 版本中可用的功能。',
+            expInboxFriends: '收件箱与好友',
+            expInboxFriendsSubtitle: '启用收件箱标签页和好友功能',
+            expCodexResume: '恢复 Codex',
+            expCodexResumeSubtitle: '启用使用单独安装的 Codex 来恢复会话（实验性）',
+            expCodexAcp: 'Codex ACP',
+            expCodexAcpSubtitle: '使用 ACP（codex-acp）来运行 Codex，而不是 MCP（实验性）',
+            webFeatures: 'Web 功能',
+            webFeaturesDescription: '仅在应用的 Web 版本中可用的功能。',
         enterToSend: '回车发送',
         enterToSendEnabled: '按回车发送（Shift+回车换行）',
         enterToSendDisabled: '回车换行',
@@ -331,11 +331,14 @@ export const zhHans: TranslationStructure = {
         failedToSendRequest: '发送好友请求失败',
         failedToResumeSession: '恢复会话失败',
         failedToSendMessage: '发送消息失败',
-        missingPermissionId: '缺少权限请求 ID',
-        codexResumeNotInstalledTitle: '此机器未安装 Codex resume',
-        codexResumeNotInstalledMessage:
-            '要恢复 Codex 对话，请在目标机器上安装 Codex resume 服务器（机器详情 → Codex resume）。',
-    },
+            missingPermissionId: '缺少权限请求 ID',
+            codexResumeNotInstalledTitle: '此机器未安装 Codex resume',
+            codexResumeNotInstalledMessage:
+                '要恢复 Codex 对话，请在目标机器上安装 Codex resume 服务器（机器详情 → Codex resume）。',
+            codexAcpNotInstalledTitle: '此机器未安装 Codex ACP',
+            codexAcpNotInstalledMessage:
+                '要使用 Codex ACP 实验功能，请在目标机器上安装 codex-acp（机器详情 → Codex ACP），或关闭实验开关。',
+        },
 
     deps: {
         installNotSupported: '请更新 Happy CLI 以安装此依赖项。',
@@ -458,6 +461,18 @@ export const zhHans: TranslationStructure = {
             reinstallTitle: '重新安装 Codex resume？',
             description: '这将安装一个仅用于恢复操作的实验性 Codex MCP 服务器封装。',
         },
+        codexAcpBanner: {
+            title: 'Codex ACP',
+            install: '安装',
+            update: '更新',
+            reinstall: '重新安装',
+        },
+        codexAcpInstallModal: {
+            installTitle: '安装 Codex ACP？',
+            updateTitle: '更新 Codex ACP？',
+            reinstallTitle: '重新安装 Codex ACP？',
+            description: '这将安装一个围绕 Codex 的实验性 ACP 适配器，用于加载/恢复线程。',
+        },
     },
 
     sessionHistory: {
@@ -475,7 +490,15 @@ export const zhHans: TranslationStructure = {
         resuming: '正在恢复...',
         resumeFailed: '恢复会话失败',
         inactiveResumable: '未激活（可恢复）',
+        inactiveMachineOffline: '未激活（机器离线）',
         inactiveNotResumable: '未激活',
+        inactiveNotResumableNoticeTitle: '此会话无法恢复',
+        inactiveNotResumableNoticeBody: ({ provider }: { provider: string }) =>
+            `此会话已结束，且由于 ${provider} 不支持在此处恢复其上下文，因此无法恢复。请开始新会话以继续。`,
+        machineOfflineNoticeTitle: '机器离线',
+        machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
+            `“${machine}” 处于离线状态，因此 Happy 目前无法恢复此会话。请将机器恢复在线后继续。`,
+        machineOfflineCannotResume: '机器离线。请将其恢复在线后再恢复此会话。',
     },
 
     commandPalette: {
@@ -530,6 +553,10 @@ export const zhHans: TranslationStructure = {
         codexSessionId: 'Codex 会话 ID',
         codexSessionIdCopied: 'Codex 会话 ID 已复制到剪贴板',
         failedToCopyCodexSessionId: '复制 Codex 会话 ID 失败',
+        opencodeSessionId: 'OpenCode 会话 ID',
+        opencodeSessionIdCopied: 'OpenCode 会话 ID 已复制到剪贴板',
+        geminiSessionId: 'Gemini 会话 ID',
+        geminiSessionIdCopied: 'Gemini 会话 ID 已复制到剪贴板',
         metadataCopied: '元数据已复制到剪贴板',
         failedToCopyMetadata: '复制元数据失败',
         failedToKillSession: '终止会话失败',
@@ -643,6 +670,7 @@ export const zhHans: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
+            opencode: 'OpenCode',
             gemini: 'Gemini',
         },
         model: {
@@ -793,6 +821,11 @@ export const zhHans: TranslationStructure = {
         exitPlanMode: {
             approve: '批准计划',
             reject: '拒绝',
+            requestChanges: '请求修改',
+            requestChangesPlaceholder: '告诉 Claude 你希望如何修改这个计划…',
+            requestChangesSend: '发送反馈',
+            requestChangesEmpty: '请填写你希望修改的内容。',
+            requestChangesFailed: '请求修改失败，请重试。',
             responded: '已发送回复',
             approvalMessage: '我批准这个计划。请继续实现。',
             rejectionMessage: '我不批准这个计划。请修改它，或问我希望做哪些更改。',
@@ -1065,6 +1098,9 @@ export const zhHans: TranslationStructure = {
         permissions: {
             yesAllowAllEdits: '是，允许本次会话的所有编辑',
             yesForTool: '是，不再询问此工具',
+            yesForCommandPrefix: '是，不再询问此命令前缀',
+            yesForSubcommand: '是，不再询问此子命令',
+            yesForCommandName: '是，不再询问此命令',
             noTellClaude: '否，提供反馈',
         }
     },
@@ -1210,13 +1246,17 @@ export const zhHans: TranslationStructure = {
         builtIn: '内置',
         custom: '自定义',
         builtInSaveAsHint: '保存内置配置文件会创建一个新的自定义配置文件。',
-        builtInNames: {
-            anthropic: 'Anthropic（默认）',
-            deepseek: 'DeepSeek（推理）',
-            zai: 'Z.AI (GLM-4.6)',
-            openai: 'OpenAI (GPT-5)',
-            azureOpenai: 'Azure OpenAI',
-        },
+            builtInNames: {
+                anthropic: 'Anthropic（默认）',
+                deepseek: 'DeepSeek（推理）',
+                zai: 'Z.AI (GLM-4.6)',
+                codex: 'Codex（默认）',
+                openai: 'OpenAI (GPT-5)',
+                azureOpenai: 'Azure OpenAI',
+                gemini: 'Gemini（默认）',
+                geminiApiKey: 'Gemini（API 密钥）',
+                geminiVertex: 'Gemini (Vertex AI)',
+            },
         groups: {
             favorites: '收藏',
             custom: '你的配置文件',
@@ -1262,6 +1302,7 @@ export const zhHans: TranslationStructure = {
             configured: '已在设备上配置',
             notConfigured: '未配置',
             checking: '检查中…',
+            missingConfigForProfile: ({ env }: { env: string }) => `此配置文件要求在本机配置 ${env}。`,
             modalTitle: '需要机密',
             modalBody: '此配置需要机密。\n\n支持的选项：\n• 使用设备环境（推荐）\n• 使用应用设置中保存的机密\n• 仅为本次会话输入机密',
             sectionTitle: '要求',
@@ -1338,6 +1379,7 @@ export const zhHans: TranslationStructure = {
             selectAtLeastOneError: '至少选择一个 AI 后端。',
             claudeSubtitle: 'Claude 命令行',
             codexSubtitle: 'Codex 命令行',
+            opencodeSubtitle: 'OpenCode 命令行',
             geminiSubtitleExperimental: 'Gemini 命令行（实验）',
         },
         tmux: {

@@ -218,8 +218,6 @@ export const ru: TranslationStructure = {
         experimentalFeaturesDisabled: 'Используются только стабильные функции',
         experimentalOptions: 'Экспериментальные опции',
         experimentalOptionsDescription: 'Выберите, какие экспериментальные функции включены.',
-        expGemini: 'Gemini',
-        expGeminiSubtitle: 'Enable Gemini CLI sessions and Gemini-related UI',
         expUsageReporting: 'Usage reporting',
         expUsageReportingSubtitle: 'Enable usage and token reporting screens',
         expFileViewer: 'File viewer',
@@ -232,12 +230,14 @@ export const ru: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
-        expInboxFriends: 'Входящие и друзья',
-        expInboxFriendsSubtitle: 'Включить вкладку «Входящие» и функции друзей',
-        expCodexResume: 'Возобновление Codex',
-        expCodexResumeSubtitle: 'Разрешить возобновление сессий Codex через отдельную установку (экспериментально)',
-        webFeatures: 'Веб-функции',
-        webFeaturesDescription: 'Функции, доступные только в веб-версии приложения.',
+            expInboxFriends: 'Входящие и друзья',
+            expInboxFriendsSubtitle: 'Включить вкладку «Входящие» и функции друзей',
+            expCodexResume: 'Возобновление Codex',
+            expCodexResumeSubtitle: 'Разрешить возобновление сессий Codex через отдельную установку (экспериментально)',
+            expCodexAcp: 'Codex ACP',
+            expCodexAcpSubtitle: 'Использовать Codex через ACP (codex-acp) вместо MCP (экспериментально)',
+            webFeatures: 'Веб-функции',
+            webFeaturesDescription: 'Функции, доступные только в веб-версии приложения.',
         enterToSend: 'Enter для отправки',
         enterToSendEnabled: 'Нажмите Enter для отправки (Shift+Enter для новой строки)',
         enterToSendDisabled: 'Enter вставляет новую строку',
@@ -311,11 +311,14 @@ export const ru: TranslationStructure = {
         failedToSendRequest: 'Не удалось отправить запрос в друзья',
         failedToResumeSession: 'Не удалось возобновить сессию',
         failedToSendMessage: 'Не удалось отправить сообщение',
-        missingPermissionId: 'Отсутствует идентификатор запроса разрешения',
-        codexResumeNotInstalledTitle: 'Codex resume не установлен на этой машине',
-        codexResumeNotInstalledMessage:
-            'Чтобы возобновить разговор Codex, установите сервер возобновления Codex на целевой машине (Детали машины → Возобновление Codex).',
-    },
+            missingPermissionId: 'Отсутствует идентификатор запроса разрешения',
+            codexResumeNotInstalledTitle: 'Codex resume не установлен на этой машине',
+            codexResumeNotInstalledMessage:
+                'Чтобы возобновить разговор Codex, установите сервер возобновления Codex на целевой машине (Детали машины → Возобновление Codex).',
+            codexAcpNotInstalledTitle: 'Codex ACP не установлен на этой машине',
+            codexAcpNotInstalledMessage:
+                'Чтобы использовать эксперимент Codex ACP, установите codex-acp на целевой машине (Детали машины → Codex ACP) или отключите эксперимент.',
+        },
 
     deps: {
         installNotSupported: 'Обновите Happy CLI, чтобы установить эту зависимость.',
@@ -438,6 +441,18 @@ export const ru: TranslationStructure = {
             reinstallTitle: 'Переустановить Codex resume?',
             description: 'Это установит экспериментальный wrapper MCP-сервера Codex, используемый только для операций возобновления.',
         },
+        codexAcpBanner: {
+            title: 'Codex ACP',
+            install: 'Установить',
+            update: 'Обновить',
+            reinstall: 'Переустановить',
+        },
+        codexAcpInstallModal: {
+            installTitle: 'Установить Codex ACP?',
+            updateTitle: 'Обновить Codex ACP?',
+            reinstallTitle: 'Переустановить Codex ACP?',
+            description: 'Это установит экспериментальный ACP-адаптер для Codex, который поддерживает загрузку/возобновление тредов.',
+        },
     },
 
     sessionHistory: {
@@ -485,6 +500,10 @@ export const ru: TranslationStructure = {
         codexSessionId: 'ID сессии Codex',
         codexSessionIdCopied: 'ID сессии Codex скопирован в буфер обмена',
         failedToCopyCodexSessionId: 'Не удалось скопировать ID сессии Codex',
+        opencodeSessionId: 'ID сессии OpenCode',
+        opencodeSessionIdCopied: 'ID сессии OpenCode скопирован в буфер обмена',
+        geminiSessionId: 'ID сессии Gemini',
+        geminiSessionIdCopied: 'ID сессии Gemini скопирован в буфер обмена',
         metadataCopied: 'Метаданные скопированы в буфер обмена',
         failedToCopyMetadata: 'Не удалось скопировать метаданные',
         failedToKillSession: 'Не удалось завершить сессию',
@@ -610,7 +629,15 @@ export const ru: TranslationStructure = {
         resuming: 'Возобновление...',
         resumeFailed: 'Не удалось возобновить сессию',
         inactiveResumable: 'Неактивна (можно возобновить)',
+        inactiveMachineOffline: 'Неактивна (машина не в сети)',
         inactiveNotResumable: 'Неактивна',
+        inactiveNotResumableNoticeTitle: 'Эту сессию нельзя возобновить',
+        inactiveNotResumableNoticeBody: ({ provider }: { provider: string }) =>
+            `Эта сессия завершена и не может быть возобновлена, потому что ${provider} не поддерживает восстановление контекста здесь. Начните новую сессию, чтобы продолжить.`,
+        machineOfflineNoticeTitle: 'Машина не в сети',
+        machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
+            `“${machine}” не в сети, поэтому Happy пока не может возобновить эту сессию. Подключите машину, чтобы продолжить.`,
+        machineOfflineCannotResume: 'Машина не в сети. Подключите её, чтобы возобновить эту сессию.',
     },
 
     commandPalette: {
@@ -651,6 +678,7 @@ export const ru: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
+            opencode: 'OpenCode',
             gemini: 'Gemini',
         },
         model: {
@@ -801,6 +829,11 @@ export const ru: TranslationStructure = {
         exitPlanMode: {
             approve: 'Одобрить план',
             reject: 'Отклонить',
+            requestChanges: 'Попросить изменения',
+            requestChangesPlaceholder: 'Напишите Claude, что вы хотите изменить в этом плане…',
+            requestChangesSend: 'Отправить комментарий',
+            requestChangesEmpty: 'Пожалуйста, напишите, что вы хотите изменить.',
+            requestChangesFailed: 'Не удалось отправить запрос на изменения. Попробуйте снова.',
             responded: 'Ответ отправлен',
             approvalMessage: 'Я одобряю этот план. Пожалуйста, продолжайте реализацию.',
             rejectionMessage: 'Я не одобряю этот план. Пожалуйста, переработайте его или спросите, какие изменения я хочу.',
@@ -1061,6 +1094,9 @@ export const ru: TranslationStructure = {
         permissions: {
             yesAllowAllEdits: 'Да, разрешить все правки в этой сессии',
             yesForTool: 'Да, больше не спрашивать для этого инструмента',
+            yesForCommandPrefix: 'Да, больше не спрашивать для этого префикса команды',
+            yesForSubcommand: 'Да, больше не спрашивать для этой подкоманды',
+            yesForCommandName: 'Да, больше не спрашивать для этой команды',
             noTellClaude: 'Нет, дать обратную связь',
         }
     },
@@ -1287,8 +1323,12 @@ export const ru: TranslationStructure = {
             anthropic: 'Anthropic (по умолчанию)',
             deepseek: 'DeepSeek (Рассуждение)',
             zai: 'Z.AI (GLM-4.6)',
+            codex: 'Codex (по умолчанию)',
             openai: 'OpenAI (GPT-5)',
             azureOpenai: 'Azure OpenAI',
+            gemini: 'Gemini (по умолчанию)',
+            geminiApiKey: 'Gemini (API key)',
+            geminiVertex: 'Gemini (Vertex AI)',
         },
         groups: {
             favorites: 'Избранное',
@@ -1335,6 +1375,7 @@ export const ru: TranslationStructure = {
             configured: 'Настроен на машине',
             notConfigured: 'Не настроен',
             checking: 'Проверка…',
+            missingConfigForProfile: ({ env }: { env: string }) => `Этот профиль требует настройки ${env} на машине.`,
             modalTitle: 'Требуется секрет',
             modalBody: 'Для этого профиля требуется секрет.\n\nДоступные варианты:\n• Использовать окружение машины (рекомендуется)\n• Использовать сохранённый секрет из настроек приложения\n• Ввести секрет только для этой сессии',
             sectionTitle: 'Требования',
@@ -1411,6 +1452,7 @@ export const ru: TranslationStructure = {
             selectAtLeastOneError: 'Выберите хотя бы один бекенд ИИ.',
             claudeSubtitle: 'CLI Claude',
             codexSubtitle: 'CLI Codex',
+            opencodeSubtitle: 'CLI OpenCode',
             geminiSubtitleExperimental: 'Gemini CLI (экспериментально)',
         },
         tmux: {

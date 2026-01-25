@@ -8,9 +8,9 @@ import { pt } from './translations/pt';
 import { ca } from './translations/ca';
 import { zhHans } from './translations/zh-Hans';
 import { ja } from './translations/ja';
-import * as Localization from 'expo-localization';
 import { loadSettings } from '@/sync/persistence';
 import { type SupportedLanguage, SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, DEFAULT_LANGUAGE } from './_all';
+import { getDeviceLocales } from './deviceLocales';
 
 /**
  * Extract all possible dot-notation keys from the nested translation object
@@ -103,7 +103,7 @@ if (settings.settings.preferredLanguage && settings.settings.preferredLanguage i
 
 // Read from device
 if (!found) {
-    let locales = Localization.getLocales();
+    let locales = getDeviceLocales();
     for (let l of locales) {
         if (l.languageCode) {
             // Expo added special handling for Chinese variants using script code https://github.com/expo/expo/pull/34984

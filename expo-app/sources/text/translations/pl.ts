@@ -247,8 +247,6 @@ export const pl: TranslationStructure = {
         experimentalFeaturesDisabled: 'Używane tylko stabilne funkcje',
         experimentalOptions: 'Opcje eksperymentalne',
         experimentalOptionsDescription: 'Wybierz, które funkcje eksperymentalne są włączone.',
-        expGemini: 'Gemini',
-        expGeminiSubtitle: 'Enable Gemini CLI sessions and Gemini-related UI',
         expUsageReporting: 'Usage reporting',
         expUsageReportingSubtitle: 'Enable usage and token reporting screens',
         expFileViewer: 'File viewer',
@@ -261,12 +259,14 @@ export const pl: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
-        expInboxFriends: 'Skrzynka odbiorcza i znajomi',
-        expInboxFriendsSubtitle: 'Włącz kartę Skrzynka odbiorcza oraz funkcje znajomych',
-        expCodexResume: 'Wznawianie Codex',
-        expCodexResumeSubtitle: 'Umożliwia wznawianie sesji Codex przy użyciu osobnej instalacji (eksperymentalne)',
-        webFeatures: 'Funkcje webowe',
-        webFeaturesDescription: 'Funkcje dostępne tylko w wersji webowej aplikacji.',
+            expInboxFriends: 'Skrzynka odbiorcza i znajomi',
+            expInboxFriendsSubtitle: 'Włącz kartę Skrzynka odbiorcza oraz funkcje znajomych',
+            expCodexResume: 'Wznawianie Codex',
+            expCodexResumeSubtitle: 'Umożliwia wznawianie sesji Codex przy użyciu osobnej instalacji (eksperymentalne)',
+            expCodexAcp: 'Codex ACP',
+            expCodexAcpSubtitle: 'Użyj Codex przez ACP (codex-acp) zamiast MCP (eksperymentalne)',
+            webFeatures: 'Funkcje webowe',
+            webFeaturesDescription: 'Funkcje dostępne tylko w wersji webowej aplikacji.',
         enterToSend: 'Enter aby wysłać',
         enterToSendEnabled: 'Naciśnij Enter, aby wysłać (Shift+Enter dla nowej linii)',
         enterToSendDisabled: 'Enter wstawia nową linię',
@@ -340,11 +340,14 @@ export const pl: TranslationStructure = {
         failedToSendRequest: 'Nie udało się wysłać zaproszenia do znajomych',
         failedToResumeSession: 'Nie udało się wznowić sesji',
         failedToSendMessage: 'Nie udało się wysłać wiadomości',
-        missingPermissionId: 'Brak identyfikatora prośby o uprawnienie',
-        codexResumeNotInstalledTitle: 'Codex resume nie jest zainstalowane na tej maszynie',
-        codexResumeNotInstalledMessage:
-            'Aby wznowić rozmowę Codex, zainstaluj serwer wznawiania Codex na maszynie docelowej (Szczegóły maszyny → Wznawianie Codex).',
-    },
+            missingPermissionId: 'Brak identyfikatora prośby o uprawnienie',
+            codexResumeNotInstalledTitle: 'Codex resume nie jest zainstalowane na tej maszynie',
+            codexResumeNotInstalledMessage:
+                'Aby wznowić rozmowę Codex, zainstaluj serwer wznawiania Codex na maszynie docelowej (Szczegóły maszyny → Wznawianie Codex).',
+            codexAcpNotInstalledTitle: 'Codex ACP nie jest zainstalowane na tej maszynie',
+            codexAcpNotInstalledMessage:
+                'Aby użyć eksperymentu Codex ACP, zainstaluj codex-acp na maszynie docelowej (Szczegóły maszyny → Codex ACP) lub wyłącz eksperyment.',
+        },
 
     deps: {
         installNotSupported: 'Zaktualizuj Happy CLI, aby zainstalować tę zależność.',
@@ -467,6 +470,18 @@ export const pl: TranslationStructure = {
             reinstallTitle: 'Zainstalować ponownie Codex resume?',
             description: 'To instaluje eksperymentalny wrapper serwera MCP Codex używany wyłącznie do operacji wznawiania.',
         },
+        codexAcpBanner: {
+            title: 'Codex ACP',
+            install: 'Zainstaluj',
+            update: 'Zaktualizuj',
+            reinstall: 'Zainstaluj ponownie',
+        },
+        codexAcpInstallModal: {
+            installTitle: 'Zainstalować Codex ACP?',
+            updateTitle: 'Zaktualizować Codex ACP?',
+            reinstallTitle: 'Zainstalować ponownie Codex ACP?',
+            description: 'To instaluje eksperymentalny adapter ACP dla Codex, który obsługuje ładowanie/wznawianie wątków.',
+        },
     },
 
     sessionHistory: {
@@ -484,7 +499,15 @@ export const pl: TranslationStructure = {
         resuming: 'Wznawianie...',
         resumeFailed: 'Nie udało się wznowić sesji',
         inactiveResumable: 'Nieaktywna (można wznowić)',
+        inactiveMachineOffline: 'Nieaktywna (maszyna offline)',
         inactiveNotResumable: 'Nieaktywna',
+        inactiveNotResumableNoticeTitle: 'Nie można wznowić tej sesji',
+        inactiveNotResumableNoticeBody: ({ provider }: { provider: string }) =>
+            `Ta sesja została zakończona i nie można jej wznowić, ponieważ ${provider} nie obsługuje przywracania kontekstu tutaj. Rozpocznij nową sesję, aby kontynuować.`,
+        machineOfflineNoticeTitle: 'Maszyna jest offline',
+        machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
+            `“${machine}” jest offline, więc Happy nie może jeszcze wznowić tej sesji. Przywróć maszynę online, aby kontynuować.`,
+        machineOfflineCannotResume: 'Maszyna jest offline. Przywróć ją online, aby wznowić tę sesję.',
     },
 
     commandPalette: {
@@ -539,6 +562,10 @@ export const pl: TranslationStructure = {
         codexSessionId: 'ID sesji Codex',
         codexSessionIdCopied: 'ID sesji Codex skopiowane do schowka',
         failedToCopyCodexSessionId: 'Nie udało się skopiować ID sesji Codex',
+        opencodeSessionId: 'ID sesji OpenCode',
+        opencodeSessionIdCopied: 'ID sesji OpenCode skopiowane do schowka',
+        geminiSessionId: 'ID sesji Gemini',
+        geminiSessionIdCopied: 'ID sesji Gemini skopiowane do schowka',
         metadataCopied: 'Metadane skopiowane do schowka',
         failedToCopyMetadata: 'Nie udało się skopiować metadanych',
         failedToKillSession: 'Nie udało się zakończyć sesji',
@@ -651,6 +678,7 @@ export const pl: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
+            opencode: 'OpenCode',
             gemini: 'Gemini',
         },
         model: {
@@ -801,6 +829,11 @@ export const pl: TranslationStructure = {
         exitPlanMode: {
             approve: 'Zatwierdź plan',
             reject: 'Odrzuć',
+            requestChanges: 'Poproś o zmiany',
+            requestChangesPlaceholder: 'Napisz Claude, co chcesz zmienić w tym planie…',
+            requestChangesSend: 'Wyślij uwagi',
+            requestChangesEmpty: 'Wpisz, co chcesz zmienić.',
+            requestChangesFailed: 'Nie udało się poprosić o zmiany. Spróbuj ponownie.',
             responded: 'Odpowiedź wysłana',
             approvalMessage: 'Zatwierdzam ten plan. Proszę kontynuować implementację.',
             rejectionMessage: 'Nie zatwierdzam tego planu. Proszę go poprawić lub zapytać mnie, jakie zmiany chciałbym wprowadzić.',
@@ -1073,6 +1106,9 @@ export const pl: TranslationStructure = {
         permissions: {
             yesAllowAllEdits: 'Tak, zezwól na wszystkie edycje podczas tej sesji',
             yesForTool: 'Tak, nie pytaj ponownie dla tego narzędzia',
+            yesForCommandPrefix: 'Tak, nie pytaj ponownie dla tego prefiksu polecenia',
+            yesForSubcommand: 'Tak, nie pytaj ponownie dla tego podpolecenia',
+            yesForCommandName: 'Tak, nie pytaj ponownie dla tego polecenia',
             noTellClaude: 'Nie, przekaż opinię',
         }
     },
@@ -1288,8 +1324,12 @@ export const pl: TranslationStructure = {
             anthropic: 'Anthropic (Domyślny)',
             deepseek: 'DeepSeek (Reasoner)',
             zai: 'Z.AI (GLM-4.6)',
+            codex: 'Codex (Default)',
             openai: 'OpenAI (GPT-5)',
             azureOpenai: 'Azure OpenAI',
+            gemini: 'Gemini (Default)',
+            geminiApiKey: 'Gemini (API key)',
+            geminiVertex: 'Gemini (Vertex AI)',
         },
         groups: {
             favorites: 'Ulubione',
@@ -1336,6 +1376,7 @@ export const pl: TranslationStructure = {
             configured: 'Skonfigurowano na maszynie',
             notConfigured: 'Nie skonfigurowano',
             checking: 'Sprawdzanie…',
+            missingConfigForProfile: ({ env }: { env: string }) => `Ten profil wymaga skonfigurowania ${env} na maszynie.`,
             modalTitle: 'Wymagany sekret',
             modalBody: 'Ten profil wymaga sekretu.\n\nDostępne opcje:\n• Użyj środowiska maszyny (zalecane)\n• Użyj zapisanego sekretu z ustawień aplikacji\n• Wpisz sekret tylko dla tej sesji',
             sectionTitle: 'Wymagania',
@@ -1412,6 +1453,7 @@ export const pl: TranslationStructure = {
             selectAtLeastOneError: 'Wybierz co najmniej jeden backend AI.',
             claudeSubtitle: 'CLI Claude',
             codexSubtitle: 'CLI Codex',
+            opencodeSubtitle: 'CLI OpenCode',
             geminiSubtitleExperimental: 'CLI Gemini (eksperymentalne)',
         },
         tmux: {

@@ -236,8 +236,6 @@ export const es: TranslationStructure = {
         experimentalFeaturesDisabled: 'Usando solo características estables',
         experimentalOptions: 'Opciones experimentales',
         experimentalOptionsDescription: 'Elige qué funciones experimentales están activadas.',
-        expGemini: 'Gemini',
-        expGeminiSubtitle: 'Habilitar sesiones de CLI de Gemini y la UI relacionada con Gemini',
         expUsageReporting: 'Usage reporting',
         expUsageReportingSubtitle: 'Habilitar pantallas de uso y reporte de tokens',
         expFileViewer: 'File viewer',
@@ -254,6 +252,8 @@ export const es: TranslationStructure = {
         expInboxFriendsSubtitle: 'Habilitar la pestaña de Bandeja de entrada y las funciones de amigos',
         expCodexResume: 'Codex resume',
         expCodexResumeSubtitle: 'Habilitar la reanudación de sesiones de Codex usando una instalación separada de Codex (experimental)',
+        expCodexAcp: 'Codex ACP',
+        expCodexAcpSubtitle: 'Usar Codex mediante ACP (codex-acp) en lugar de MCP (experimental)',
         webFeatures: 'Características web',
         webFeaturesDescription: 'Características disponibles solo en la versión web de la aplicación.',
         enterToSend: 'Enter para enviar',
@@ -333,6 +333,9 @@ export const es: TranslationStructure = {
         codexResumeNotInstalledTitle: 'Codex resume no está instalado en esta máquina',
         codexResumeNotInstalledMessage:
             'Para reanudar una conversación de Codex, instala el servidor de reanudación de Codex en la máquina de destino (Detalles de la máquina → Reanudación de Codex).',
+        codexAcpNotInstalledTitle: 'Codex ACP no está instalado en esta máquina',
+        codexAcpNotInstalledMessage:
+            'Para usar el experimento de Codex ACP, instala codex-acp en la máquina de destino (Detalles de la máquina → Codex ACP) o desactiva el experimento.',
     },
 
     deps: {
@@ -456,6 +459,18 @@ export const es: TranslationStructure = {
             reinstallTitle: '¿Reinstalar Codex resume?',
             description: 'Esto instala un wrapper experimental de servidor MCP de Codex usado solo para operaciones de reanudación.',
         },
+        codexAcpBanner: {
+            title: 'Codex ACP',
+            install: 'Instalar',
+            update: 'Actualizar',
+            reinstall: 'Reinstalar',
+        },
+        codexAcpInstallModal: {
+            installTitle: '¿Instalar Codex ACP?',
+            updateTitle: '¿Actualizar Codex ACP?',
+            reinstallTitle: '¿Reinstalar Codex ACP?',
+            description: 'Esto instala un adaptador ACP experimental alrededor de Codex que admite cargar/reanudar hilos.',
+        },
     },
 
     sessionHistory: {
@@ -473,7 +488,15 @@ export const es: TranslationStructure = {
         resuming: 'Reanudando...',
         resumeFailed: 'No se pudo reanudar la sesión',
         inactiveResumable: 'Inactiva (reanudable)',
+        inactiveMachineOffline: 'Inactiva (máquina sin conexión)',
         inactiveNotResumable: 'Inactiva',
+        inactiveNotResumableNoticeTitle: 'Esta sesión no se puede reanudar',
+        inactiveNotResumableNoticeBody: ({ provider }: { provider: string }) =>
+            `Esta sesión terminó y no se puede reanudar porque ${provider} no admite restaurar su contexto aquí. Inicia una nueva sesión para continuar.`,
+        machineOfflineNoticeTitle: 'La máquina está sin conexión',
+        machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
+            `“${machine}” está sin conexión, así que Happy no puede reanudar esta sesión todavía. Vuelve a conectarla para continuar.`,
+        machineOfflineCannotResume: 'La máquina está sin conexión. Vuelve a conectarla para reanudar esta sesión.',
     },
 
     commandPalette: {
@@ -528,6 +551,10 @@ export const es: TranslationStructure = {
         codexSessionId: 'ID de sesión de Codex',
         codexSessionIdCopied: 'ID de sesión de Codex copiado al portapapeles',
         failedToCopyCodexSessionId: 'Falló al copiar ID de sesión de Codex',
+        opencodeSessionId: 'ID de sesión de OpenCode',
+        opencodeSessionIdCopied: 'ID de sesión de OpenCode copiado al portapapeles',
+        geminiSessionId: 'ID de sesión de Gemini',
+        geminiSessionIdCopied: 'ID de sesión de Gemini copiado al portapapeles',
         metadataCopied: 'Metadatos copiados al portapapeles',
         failedToCopyMetadata: 'Falló al copiar metadatos',
         failedToKillSession: 'Falló al terminar sesión',
@@ -641,6 +668,7 @@ export const es: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
+            opencode: 'OpenCode',
             gemini: 'Gemini',
         },
         model: {
@@ -791,6 +819,11 @@ export const es: TranslationStructure = {
         exitPlanMode: {
             approve: 'Aprobar plan',
             reject: 'Rechazar',
+            requestChanges: 'Solicitar cambios',
+            requestChangesPlaceholder: 'Dile a Claude qué quieres cambiar de este plan…',
+            requestChangesSend: 'Enviar comentarios',
+            requestChangesEmpty: 'Escribe qué quieres cambiar.',
+            requestChangesFailed: 'No se pudieron solicitar cambios. Inténtalo de nuevo.',
             responded: 'Respuesta enviada',
             approvalMessage: 'Apruebo este plan. Por favor, continúa con la implementación.',
             rejectionMessage: 'No apruebo este plan. Por favor, revísalo o pregúntame qué cambios me gustaría.',
@@ -1063,6 +1096,9 @@ export const es: TranslationStructure = {
         permissions: {
             yesAllowAllEdits: 'Sí, permitir todas las ediciones durante esta sesión',
             yesForTool: 'Sí, no volver a preguntar para esta herramienta',
+            yesForCommandPrefix: 'Sí, no volver a preguntar para este prefijo de comando',
+            yesForSubcommand: 'Sí, no volver a preguntar para este subcomando',
+            yesForCommandName: 'Sí, no volver a preguntar para este comando',
             noTellClaude: 'No, proporcionar comentarios',
         }
     },
@@ -1261,13 +1297,17 @@ export const es: TranslationStructure = {
         builtIn: 'Integrado',
         custom: 'Personalizado',
         builtInSaveAsHint: 'Guardar un perfil integrado crea un nuevo perfil personalizado.',
-        builtInNames: {
-            anthropic: 'Anthropic (Predeterminado)',
-            deepseek: 'DeepSeek (Razonamiento)',
-            zai: 'Z.AI (GLM-4.6)',
-            openai: 'OpenAI (GPT-5)',
-            azureOpenai: 'Azure OpenAI',
-        },
+            builtInNames: {
+                anthropic: 'Anthropic (Predeterminado)',
+                deepseek: 'DeepSeek (Razonamiento)',
+                zai: 'Z.AI (GLM-4.6)',
+                codex: 'Codex (Predeterminado)',
+                openai: 'OpenAI (GPT-5)',
+                azureOpenai: 'Azure OpenAI',
+                gemini: 'Gemini (Predeterminado)',
+                geminiApiKey: 'Gemini (clave API)',
+                geminiVertex: 'Gemini (Vertex AI)',
+            },
         groups: {
             favorites: 'Favoritos',
             custom: 'Tus perfiles',
@@ -1313,6 +1353,7 @@ export const es: TranslationStructure = {
             configured: 'Configurada en la máquina',
             notConfigured: 'No configurada',
             checking: 'Comprobando…',
+            missingConfigForProfile: ({ env }: { env: string }) => `Este perfil requiere que ${env} esté configurado en la máquina.`,
             modalTitle: 'Se requiere secreto',
             modalBody: 'Este perfil requiere un secreto.\n\nOpciones disponibles:\n• Usar entorno de la máquina (recomendado)\n• Usar un secreto guardado en la configuración de la app\n• Ingresar un secreto solo para esta sesión',
             sectionTitle: 'Requisitos',
@@ -1389,6 +1430,7 @@ export const es: TranslationStructure = {
             selectAtLeastOneError: 'Selecciona al menos un backend de IA.',
             claudeSubtitle: 'CLI de Claude',
             codexSubtitle: 'CLI de Codex',
+            opencodeSubtitle: 'CLI de OpenCode',
             geminiSubtitleExperimental: 'CLI de Gemini (experimental)',
         },
         tmux: {

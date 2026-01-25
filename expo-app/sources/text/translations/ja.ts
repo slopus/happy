@@ -105,8 +105,12 @@ export const ja: TranslationStructure = {
             anthropic: 'Anthropic（デフォルト）',
             deepseek: 'DeepSeek（推論）',
             zai: 'Z.AI (GLM-4.6)',
+            codex: 'Codex (Default)',
             openai: 'OpenAI (GPT-5)',
             azureOpenai: 'Azure OpenAI',
+            gemini: 'Gemini (Default)',
+            geminiApiKey: 'Gemini (API key)',
+            geminiVertex: 'Gemini (Vertex AI)',
         },
         groups: {
             favorites: 'お気に入り',
@@ -153,6 +157,7 @@ export const ja: TranslationStructure = {
             configured: 'マシンで設定済み',
             notConfigured: '未設定',
             checking: '確認中…',
+            missingConfigForProfile: ({ env }: { env: string }) => `このプロファイルを使用するには、マシンで ${env} を設定する必要があります。`,
             modalTitle: 'シークレットが必要です',
             modalBody: 'このプロファイルにはシークレットが必要です。\n\n利用可能な選択肢:\n• マシン環境を使用（推奨）\n• アプリ設定の保存済みシークレットを使用\n• このセッションのみシークレットを入力',
             sectionTitle: '要件',
@@ -229,6 +234,7 @@ export const ja: TranslationStructure = {
             selectAtLeastOneError: '少なくとも1つのAIバックエンドを選択してください。',
             claudeSubtitle: 'Claude コマンドライン',
             codexSubtitle: 'Codex コマンドライン',
+            opencodeSubtitle: 'OpenCode コマンドライン',
             geminiSubtitleExperimental: 'Gemini コマンドライン（実験）',
         },
         tmux: {
@@ -476,8 +482,6 @@ export const ja: TranslationStructure = {
         experimentalFeaturesDisabled: '安定版機能のみを使用',
         experimentalOptions: '実験オプション',
         experimentalOptionsDescription: '有効にする実験的機能を選択します。',
-        expGemini: 'Gemini',
-        expGeminiSubtitle: 'Enable Gemini CLI sessions and Gemini-related UI',
         expUsageReporting: 'Usage reporting',
         expUsageReportingSubtitle: 'Enable usage and token reporting screens',
         expFileViewer: 'File viewer',
@@ -490,12 +494,14 @@ export const ja: TranslationStructure = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
-        expInboxFriends: '受信箱と友だち',
-        expInboxFriendsSubtitle: '受信箱タブと友だち機能を有効化',
-        expCodexResume: 'Codexの再開',
-        expCodexResumeSubtitle: '再開操作専用のCodexを別途インストールして使用（実験的）',
-        webFeatures: 'Web機能',
-        webFeaturesDescription: 'Webバージョンでのみ利用可能な機能。',
+            expInboxFriends: '受信箱と友だち',
+            expInboxFriendsSubtitle: '受信箱タブと友だち機能を有効化',
+            expCodexResume: 'Codexの再開',
+            expCodexResumeSubtitle: '再開操作専用のCodexを別途インストールして使用（実験的）',
+            expCodexAcp: 'Codex ACP',
+            expCodexAcpSubtitle: 'MCPの代わりにACP（codex-acp）経由でCodexを使用（実験的）',
+            webFeatures: 'Web機能',
+            webFeaturesDescription: 'Webバージョンでのみ利用可能な機能。',
         enterToSend: 'Enterで送信',
         enterToSendEnabled: 'Enterで送信（Shift+Enterで改行）',
         enterToSendDisabled: 'Enterで改行',
@@ -569,11 +575,14 @@ export const ja: TranslationStructure = {
         failedToSendRequest: '友達リクエストの送信に失敗しました',
         failedToResumeSession: 'セッションの再開に失敗しました',
         failedToSendMessage: 'メッセージの送信に失敗しました',
-        missingPermissionId: '権限リクエストIDがありません',
-        codexResumeNotInstalledTitle: 'このマシンには Codex resume がインストールされていません',
-        codexResumeNotInstalledMessage:
-            'Codex の会話を再開するには、対象のマシンに Codex resume サーバーをインストールしてください（マシン詳細 → Codex resume）。',
-    },
+            missingPermissionId: '権限リクエストIDがありません',
+            codexResumeNotInstalledTitle: 'このマシンには Codex resume がインストールされていません',
+            codexResumeNotInstalledMessage:
+                'Codex の会話を再開するには、対象のマシンに Codex resume サーバーをインストールしてください（マシン詳細 → Codex resume）。',
+            codexAcpNotInstalledTitle: 'このマシンには Codex ACP がインストールされていません',
+            codexAcpNotInstalledMessage:
+                'Codex ACP の実験機能を使うには、対象のマシンに codex-acp をインストールしてください（マシン詳細 → Codex ACP）。または実験機能を無効にしてください。',
+        },
 
     deps: {
         installNotSupported: 'この依存関係をインストールするには Happy CLI を更新してください。',
@@ -696,6 +705,18 @@ export const ja: TranslationStructure = {
             reinstallTitle: 'Codex resume を再インストールしますか？',
             description: 'これは再開操作にのみ使用する、実験的な Codex MCP サーバーラッパーをインストールします。',
         },
+        codexAcpBanner: {
+            title: 'Codex ACP',
+            install: 'インストール',
+            update: '更新',
+            reinstall: '再インストール',
+        },
+        codexAcpInstallModal: {
+            installTitle: 'Codex ACP をインストールしますか？',
+            updateTitle: 'Codex ACP を更新しますか？',
+            reinstallTitle: 'Codex ACP を再インストールしますか？',
+            description: 'これはスレッドの読み込み/再開に対応した、Codex 向けの実験的な ACP アダプターをインストールします。',
+        },
     },
 
     sessionHistory: {
@@ -713,7 +734,15 @@ export const ja: TranslationStructure = {
         resuming: '再開中...',
         resumeFailed: 'セッションの再開に失敗しました',
         inactiveResumable: '非アクティブ（再開可能）',
+        inactiveMachineOffline: '非アクティブ（マシンがオフライン）',
         inactiveNotResumable: '非アクティブ',
+        inactiveNotResumableNoticeTitle: 'このセッションは再開できません',
+        inactiveNotResumableNoticeBody: ({ provider }: { provider: string }) =>
+            `このセッションは終了しており、${provider} がここでコンテキストの復元をサポートしていないため再開できません。続けるには新しいセッションを開始してください。`,
+        machineOfflineNoticeTitle: 'マシンがオフラインです',
+        machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
+            `“${machine}” がオフラインのため、Happy はまだこのセッションを再開できません。オンラインに戻して続行してください。`,
+        machineOfflineCannotResume: 'マシンがオフラインです。オンラインに戻してこのセッションを再開してください。',
     },
 
     commandPalette: {
@@ -768,6 +797,10 @@ export const ja: TranslationStructure = {
         codexSessionId: 'Codex セッション ID',
         codexSessionIdCopied: 'Codex セッション ID をクリップボードにコピーしました',
         failedToCopyCodexSessionId: 'Codex セッション ID のコピーに失敗しました',
+        opencodeSessionId: 'OpenCode セッション ID',
+        opencodeSessionIdCopied: 'OpenCode セッション ID をクリップボードにコピーしました',
+        geminiSessionId: 'Gemini セッション ID',
+        geminiSessionIdCopied: 'Gemini セッション ID をクリップボードにコピーしました',
         metadataCopied: 'メタデータがクリップボードにコピーされました',
         failedToCopyMetadata: 'メタデータのコピーに失敗しました',
         failedToKillSession: 'セッションの終了に失敗しました',
@@ -881,6 +914,7 @@ export const ja: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
+            opencode: 'OpenCode',
             gemini: 'Gemini',
         },
         model: {
@@ -985,6 +1019,11 @@ export const ja: TranslationStructure = {
         exitPlanMode: {
             approve: 'プランを承認',
             reject: '拒否',
+            requestChanges: '変更を依頼',
+            requestChangesPlaceholder: 'このプランで変更したい点をClaudeに伝えてください…',
+            requestChangesSend: 'フィードバックを送信',
+            requestChangesEmpty: '変更したい内容を入力してください。',
+            requestChangesFailed: '変更の依頼に失敗しました。もう一度お試しください。',
             responded: '送信しました',
             approvalMessage: 'このプランを承認します。実装を進めてください。',
             rejectionMessage: 'このプランを承認しません。修正するか、希望する変更点を確認してください。',
@@ -1303,6 +1342,9 @@ export const ja: TranslationStructure = {
         permissions: {
             yesAllowAllEdits: 'はい、このセッション中のすべての編集を許可',
             yesForTool: "はい、このツールについては確認しない",
+            yesForCommandPrefix: 'はい、このコマンドプレフィックスについては確認しない',
+            yesForSubcommand: 'はい、このサブコマンドについては確認しない',
+            yesForCommandName: 'はい、このコマンドについては確認しない',
             noTellClaude: 'いいえ、フィードバックを提供',
         }
     },

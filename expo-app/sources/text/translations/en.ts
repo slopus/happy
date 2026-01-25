@@ -249,8 +249,6 @@ export const en = {
         experimentalFeaturesDisabled: 'Using stable features only',
         experimentalOptions: 'Experimental options',
         experimentalOptionsDescription: 'Choose which experimental features are enabled.',
-        expGemini: 'Gemini',
-        expGeminiSubtitle: 'Enable Gemini CLI sessions and Gemini-related UI',
         expUsageReporting: 'Usage reporting',
         expUsageReportingSubtitle: 'Enable usage and token reporting screens',
         expFileViewer: 'File viewer',
@@ -263,12 +261,14 @@ export const en = {
         expZenSubtitle: 'Enable the Zen navigation entry',
         expVoiceAuthFlow: 'Voice auth flow',
         expVoiceAuthFlowSubtitle: 'Use authenticated voice token flow (paywall-aware)',
-        expInboxFriends: 'Inbox & Friends',
-        expInboxFriendsSubtitle: 'Enable the Inbox tab and Friends features',
-        expCodexResume: 'Codex resume',
-        expCodexResumeSubtitle: 'Enable Codex session resume using a separate Codex install (experimental)',
-        webFeatures: 'Web Features',
-        webFeaturesDescription: 'Features available only in the web version of the app.',
+            expInboxFriends: 'Inbox & Friends',
+            expInboxFriendsSubtitle: 'Enable the Inbox tab and Friends features',
+            expCodexResume: 'Codex resume',
+            expCodexResumeSubtitle: 'Enable Codex session resume using a separate Codex install (experimental)',
+            expCodexAcp: 'Codex ACP',
+            expCodexAcpSubtitle: 'Use Codex via ACP (codex-acp) instead of MCP (experimental)',
+            webFeatures: 'Web Features',
+            webFeaturesDescription: 'Features available only in the web version of the app.',
         enterToSend: 'Enter to Send',
         enterToSendEnabled: 'Press Enter to send (Shift+Enter for a new line)',
         enterToSendDisabled: 'Enter inserts a new line',
@@ -342,11 +342,14 @@ export const en = {
         failedToSendRequest: 'Failed to send friend request',
         failedToResumeSession: 'Failed to resume session',
         failedToSendMessage: 'Failed to send message',
-        missingPermissionId: 'Missing permission request id',
-        codexResumeNotInstalledTitle: 'Codex resume is not installed on this machine',
-        codexResumeNotInstalledMessage:
-            'To resume a Codex conversation, install the Codex resume server on the target machine (Machine Details → Codex resume).',
-    },
+            missingPermissionId: 'Missing permission request id',
+            codexResumeNotInstalledTitle: 'Codex resume is not installed on this machine',
+            codexResumeNotInstalledMessage:
+                'To resume a Codex conversation, install the Codex resume server on the target machine (Machine Details → Codex resume).',
+            codexAcpNotInstalledTitle: 'Codex ACP is not installed on this machine',
+            codexAcpNotInstalledMessage:
+                'To use the Codex ACP experiment, install codex-acp on the target machine (Machine Details → Codex ACP) or disable the experiment.',
+        },
 
     deps: {
         installNotSupported: 'Update Happy CLI to install this dependency.',
@@ -469,6 +472,18 @@ export const en = {
             reinstallTitle: 'Reinstall Codex resume?',
             description: 'This installs an experimental Codex MCP server wrapper used only for resume operations.',
         },
+        codexAcpBanner: {
+            title: 'Codex ACP',
+            install: 'Install',
+            update: 'Update',
+            reinstall: 'Reinstall',
+        },
+        codexAcpInstallModal: {
+            installTitle: 'Install Codex ACP?',
+            updateTitle: 'Update Codex ACP?',
+            reinstallTitle: 'Reinstall Codex ACP?',
+            description: 'This installs an experimental ACP adapter around Codex that supports loading/resuming threads.',
+        },
     },
 
     sessionHistory: {
@@ -486,7 +501,15 @@ export const en = {
         resuming: 'Resuming...',
         resumeFailed: 'Failed to resume session',
         inactiveResumable: 'Inactive (resumable)',
+        inactiveMachineOffline: 'Inactive (machine offline)',
         inactiveNotResumable: 'Inactive',
+        inactiveNotResumableNoticeTitle: 'This session can’t be resumed',
+        inactiveNotResumableNoticeBody: ({ provider }: { provider: string }) =>
+            `This session ended and can’t be resumed because ${provider} doesn’t support restoring its context here. Start a new session to continue.`,
+        machineOfflineNoticeTitle: 'Machine is offline',
+        machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
+            `“${machine}” is offline, so Happy can’t resume this session yet. Bring it online to continue.`,
+        machineOfflineCannotResume: 'Machine is offline. Bring it online to resume this session.',
     },
 
     commandPalette: {
@@ -541,6 +564,10 @@ export const en = {
         codexSessionId: 'Codex Session ID',
         codexSessionIdCopied: 'Codex Session ID copied to clipboard',
         failedToCopyCodexSessionId: 'Failed to copy Codex Session ID',
+        opencodeSessionId: 'OpenCode Session ID',
+        opencodeSessionIdCopied: 'OpenCode Session ID copied to clipboard',
+        geminiSessionId: 'Gemini Session ID',
+        geminiSessionIdCopied: 'Gemini Session ID copied to clipboard',
         metadataCopied: 'Metadata copied to clipboard',
         failedToCopyMetadata: 'Failed to copy metadata',
         failedToKillSession: 'Failed to kill session',
@@ -654,6 +681,7 @@ export const en = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
+            opencode: 'OpenCode',
             gemini: 'Gemini',
         },
         model: {
@@ -787,6 +815,11 @@ export const en = {
         exitPlanMode: {
             approve: 'Approve Plan',
             reject: 'Reject',
+            requestChanges: 'Request changes',
+            requestChangesPlaceholder: 'Tell Claude what you want to change in this plan…',
+            requestChangesSend: 'Send feedback',
+            requestChangesEmpty: 'Please write what you want to change.',
+            requestChangesFailed: 'Failed to request changes. Please try again.',
             responded: 'Response sent',
             approvalMessage: 'I approve this plan. Please proceed with the implementation.',
             rejectionMessage: 'I do not approve this plan. Please revise it or ask me what changes I would like.',
@@ -1076,6 +1109,9 @@ export const en = {
         permissions: {
             yesAllowAllEdits: 'Yes, allow all edits during this session',
             yesForTool: "Yes, don't ask again for this tool",
+            yesForCommandPrefix: "Yes, don't ask again for this command prefix",
+            yesForSubcommand: "Yes, don't ask again for this subcommand",
+            yesForCommandName: "Yes, don't ask again for this command",
             noTellClaude: 'No, and provide feedback',
         }
     },
@@ -1278,8 +1314,12 @@ export const en = {
             anthropic: 'Anthropic (Default)',
             deepseek: 'DeepSeek (Reasoner)',
             zai: 'Z.AI (GLM-4.6)',
+            codex: 'Codex (Default)',
             openai: 'OpenAI (GPT-5)',
             azureOpenai: 'Azure OpenAI',
+            gemini: 'Gemini (Default)',
+            geminiApiKey: 'Gemini (API key)',
+            geminiVertex: 'Gemini (Vertex AI)',
         },
         groups: {
             favorites: 'Favorites',
@@ -1326,6 +1366,7 @@ export const en = {
             configured: 'Configured on machine',
             notConfigured: 'Not configured',
             checking: 'Checking…',
+            missingConfigForProfile: ({ env }: { env: string }) => `This profile requires ${env} to be configured on the machine.`,
             modalTitle: 'Secret required',
             modalBody: 'This profile requires a secret.\n\nSupported options:\n• Use machine environment (recommended)\n• Use saved secret from app settings\n• Enter a secret for this session only',
             sectionTitle: 'Requirements',
@@ -1402,6 +1443,7 @@ export const en = {
             selectAtLeastOneError: 'Select at least one AI backend.',
             claudeSubtitle: 'Claude CLI',
             codexSubtitle: 'Codex CLI',
+            opencodeSubtitle: 'OpenCode CLI',
             geminiSubtitleExperimental: 'Gemini CLI (experimental)',
         },
         tmux: {
