@@ -470,6 +470,32 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 }
             }
         });
+
+        it('accepts Codex token_count messages via codex schema path (so they are not dropped)', () => {
+            const codexMessage = {
+                role: 'agent',
+                content: {
+                    type: 'codex',
+                    data: {
+                        type: 'token_count',
+                        input_tokens: 1,
+                        output_tokens: 2,
+                        total_tokens: 3,
+                        id: 'codex-id-3',
+                    },
+                },
+            };
+
+            const result = RawRecordSchema.safeParse(codexMessage);
+
+            expect(result.success).toBe(true);
+            if (result.success) {
+                const content = result.data.content;
+                if (content.type === 'codex') {
+                    expect(content.data.type).toBe('token_count');
+                }
+            }
+        });
     });
 
     describe('Handles unexpected data formats gracefully', () => {
@@ -1518,8 +1544,38 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
         });
     });
 
+    describe('ACP tool call normalization', () => {
+        it('parses ACP tool-call input when input is a JSON string', () => {
+            const raw = {
+                role: 'agent' as const,
+                content: {
+                    type: 'acp' as const,
+                    provider: 'codex' as const,
+                    data: {
+                        type: 'tool-call' as const,
+                        callId: 'call_1',
+                        name: 'execute',
+                        input: JSON.stringify({ command: ['/bin/zsh', '-lc', 'echo hi'], cwd: '/tmp' }),
+                        id: 'acp-msg-tool-call',
+                    },
+                },
+            };
+
+            const normalized = normalizeRawMessage('msg-acp-tool-call', null, Date.now(), raw);
+            expect(normalized?.role).toBe('agent');
+            if (normalized && normalized.role === 'agent') {
+                const item = normalized.content[0];
+                expect(item.type).toBe('tool-call');
+                if (item.type === 'tool-call') {
+                    expect(item.name).toBe('execute');
+                    expect(item.input).toEqual({ command: ['/bin/zsh', '-lc', 'echo hi'], cwd: '/tmp' });
+                }
+            }
+        });
+    });
+
     describe('ACP tool result normalization', () => {
-        it('normalizes ACP tool-result output to text', () => {
+        it('preserves ACP tool-result output arrays for rich renderers', () => {
             const raw = {
                 role: 'agent' as const,
                 content: {
@@ -1540,12 +1596,39 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 const item = normalized.content[0];
                 expect(item.type).toBe('tool-result');
                 if (item.type === 'tool-result') {
-                    expect(item.content).toBe('hello');
+                    expect(item.content).toEqual([{ type: 'text', text: 'hello' }]);
                 }
             }
         });
 
-        it('normalizes ACP tool-call-result output to text', () => {
+        it('parses ACP tool-result output when output is a JSON string', () => {
+            const raw = {
+                role: 'agent' as const,
+                content: {
+                    type: 'acp' as const,
+                    provider: 'codex' as const,
+                    data: {
+                        type: 'tool-result' as const,
+                        callId: 'call_1',
+                        output: JSON.stringify({ stdout: 'hi\n', stderr: '' }),
+                        id: 'acp-msg-tool-result',
+                    },
+                },
+            };
+
+            const normalized = normalizeRawMessage('msg-acp-tool-result', null, Date.now(), raw);
+            expect(normalized?.role).toBe('agent');
+            if (normalized && normalized.role === 'agent') {
+                const item = normalized.content[0];
+                expect(item.type).toBe('tool-result');
+                if (item.type === 'tool-result') {
+                    expect(item.tool_use_id).toBe('call_1');
+                    expect(item.content).toEqual({ stdout: 'hi\n', stderr: '' });
+                }
+            }
+        });
+
+        it('preserves ACP tool-call-result output arrays for rich renderers', () => {
             const raw = {
                 role: 'agent' as const,
                 content: {
@@ -1566,7 +1649,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 const item = normalized.content[0];
                 expect(item.type).toBe('tool-result');
                 if (item.type === 'tool-result') {
-                    expect(item.content).toBe('hello');
+                    expect(item.content).toEqual([{ type: 'text', text: 'hello' }]);
                 }
             }
         });
@@ -1597,7 +1680,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
-        it('normalizes ACP tool-result object output to JSON text', () => {
+        it('preserves ACP tool-result object output for rich renderers', () => {
             const raw = {
                 role: 'agent' as const,
                 content: {
@@ -1618,12 +1701,12 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 const item = normalized.content[0];
                 expect(item.type).toBe('tool-result');
                 if (item.type === 'tool-result') {
-                    expect(item.content).toBe(JSON.stringify({ key: 'value' }));
+                    expect(item.content).toEqual({ key: 'value' });
                 }
             }
         });
 
-        it('normalizes ACP tool-result null output to empty text', () => {
+        it('preserves ACP tool-result null output', () => {
             const raw = {
                 role: 'agent' as const,
                 content: {
@@ -1644,7 +1727,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 const item = normalized.content[0];
                 expect(item.type).toBe('tool-result');
                 if (item.type === 'tool-result') {
-                    expect(item.content).toBe('');
+                    expect(item.content).toBeNull();
                 }
             }
         });

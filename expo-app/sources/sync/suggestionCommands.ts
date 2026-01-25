@@ -87,19 +87,33 @@ function getCommandsFromSession(sessionId: string): CommandItem[] {
 
     const commands: CommandItem[] = [...DEFAULT_COMMANDS];
     
-    // Add commands from metadata.slashCommands (filter with ignore list)
+    // Prefer richer metadata when available
+    const details = (session.metadata as any).slashCommandDetails as Array<{ command?: unknown; description?: unknown }> | undefined;
+    if (Array.isArray(details) && details.length > 0) {
+        for (const d of details) {
+            const cmd = typeof d.command === 'string' ? d.command : null;
+            if (!cmd) continue;
+            if (IGNORED_COMMANDS.includes(cmd)) continue;
+            if (commands.find(c => c.command === cmd)) continue;
+            commands.push({
+                command: cmd,
+                description: typeof d.description === 'string' && d.description.trim().length > 0
+                    ? d.description
+                    : COMMAND_DESCRIPTIONS[cmd]
+            });
+        }
+        return commands;
+    }
+
+    // Fallback: commands from metadata.slashCommands (filter with ignore list)
     if (session.metadata.slashCommands) {
         for (const cmd of session.metadata.slashCommands) {
-            // Skip if in ignore list
             if (IGNORED_COMMANDS.includes(cmd)) continue;
-            
-            // Check if it's already in default commands
-            if (!commands.find(c => c.command === cmd)) {
-                commands.push({
-                    command: cmd,
-                    description: COMMAND_DESCRIPTIONS[cmd]  // Optional description
-                });
-            }
+            if (commands.find(c => c.command === cmd)) continue;
+            commands.push({
+                command: cmd,
+                description: COMMAND_DESCRIPTIONS[cmd]
+            });
         }
     }
     

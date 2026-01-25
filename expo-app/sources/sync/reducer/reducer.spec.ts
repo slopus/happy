@@ -1312,6 +1312,115 @@ describe('reducer', () => {
             }
         });
 
+        it('should treat streaming tool results as incremental output without completing', () => {
+            const state = createReducer();
+
+            const toolCallMessages: NormalizedMessage[] = [
+                {
+                    id: 'msg-1',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'Bash',
+                        input: { command: 'echo hello' },
+                        description: null,
+                        uuid: 'tool-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
+
+            const result1 = reducer(state, toolCallMessages);
+            expect(result1.messages).toHaveLength(1);
+            expect(result1.messages[0].kind).toBe('tool-call');
+            if (result1.messages[0].kind === 'tool-call') {
+                expect(result1.messages[0].tool.state).toBe('running');
+                expect(result1.messages[0].tool.completedAt).toBeNull();
+            }
+
+            const streamChunk1: NormalizedMessage[] = [
+                {
+                    id: 'msg-2',
+                    localId: null,
+                    createdAt: 1100,
+                    role: 'agent',
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'tool-1',
+                        content: { _stream: true, _terminal: true, stdoutChunk: 'hello\\n' },
+                        is_error: false,
+                        uuid: 'result-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
+
+            const result2 = reducer(state, streamChunk1);
+            expect(result2.messages).toHaveLength(1);
+            if (result2.messages[0].kind === 'tool-call') {
+                expect(result2.messages[0].tool.state).toBe('running');
+                expect(result2.messages[0].tool.completedAt).toBeNull();
+                expect(result2.messages[0].tool.result).toEqual({ stdout: 'hello\\n' });
+            }
+
+            const streamChunk2: NormalizedMessage[] = [
+                {
+                    id: 'msg-3',
+                    localId: null,
+                    createdAt: 1150,
+                    role: 'agent',
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'tool-1',
+                        content: { _stream: true, stdoutChunk: 'world\\n' },
+                        is_error: false,
+                        uuid: 'result-uuid-2',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
+
+            const result3 = reducer(state, streamChunk2);
+            expect(result3.messages).toHaveLength(1);
+            if (result3.messages[0].kind === 'tool-call') {
+                expect(result3.messages[0].tool.state).toBe('running');
+                expect(result3.messages[0].tool.completedAt).toBeNull();
+                expect(result3.messages[0].tool.result).toEqual({ stdout: 'hello\\nworld\\n' });
+            }
+
+            const finalResult: NormalizedMessage[] = [
+                {
+                    id: 'msg-4',
+                    localId: null,
+                    createdAt: 1200,
+                    role: 'agent',
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'tool-1',
+                        content: { exitCode: 0 },
+                        is_error: false,
+                        uuid: 'result-uuid-3',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
+
+            const result4 = reducer(state, finalResult);
+            expect(result4.messages).toHaveLength(1);
+            if (result4.messages[0].kind === 'tool-call') {
+                expect(result4.messages[0].tool.state).toBe('completed');
+                expect(result4.messages[0].tool.completedAt).toBe(1200);
+                expect(result4.messages[0].tool.result).toEqual({ exitCode: 0, stdout: 'hello\\nworld\\n' });
+            }
+        });
+
         it('should handle interleaved messages from multiple sources correctly', () => {
             const state = createReducer();
             

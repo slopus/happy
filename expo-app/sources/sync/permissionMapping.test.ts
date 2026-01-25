@@ -28,8 +28,9 @@ describe('mapPermissionModeAcrossAgents', () => {
 
     it('preserves read-only across agents', () => {
         expect(mapPermissionModeAcrossAgents('read-only', 'claude', 'codex')).toBe('read-only');
-        expect(mapPermissionModeAcrossAgents('read-only', 'codex', 'claude')).toBe('read-only');
-        expect(mapPermissionModeAcrossAgents('read-only', 'gemini', 'claude')).toBe('read-only');
+        // Claude has no true "read-only" mode; map to the safest available Claude mode.
+        expect(mapPermissionModeAcrossAgents('read-only', 'codex', 'claude')).toBe('default');
+        expect(mapPermissionModeAcrossAgents('read-only', 'gemini', 'claude')).toBe('default');
     });
 
     it('keeps Codex/Gemini modes unchanged when switching between them', () => {

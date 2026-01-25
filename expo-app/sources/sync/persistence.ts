@@ -3,8 +3,8 @@ import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './set
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
-import type { Session } from './storageTypes';
 import { isModelMode, isPermissionMode, type PermissionMode, type ModelMode } from '@/sync/permissionTypes';
+import { isAgentId, type AgentId } from '@/agents/registryCore';
 import { readStorageScopeFromEnv, scopedStorageId } from '@/utils/storageScope';
 import { dbgSettings, summarizeSettingsDelta } from './debugSettings';
 import { SecretStringSchema, type SecretString } from './secretSettings';
@@ -14,24 +14,8 @@ const storageScope = isWebRuntime ? null : readStorageScopeFromEnv();
 const mmkv = storageScope ? new MMKV({ id: scopedStorageId('default', storageScope) }) : new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
 
-export type NewSessionAgentType = 'claude' | 'codex' | 'gemini';
 export type NewSessionSessionType = 'simple' | 'worktree';
-
-type SessionModelMode = NonNullable<Session['modelMode']>;
-
-// NOTE:
-// This set must stay in sync with the configurable Session model modes.
-// TypeScript will catch invalid entries here, but it won't force adding new Session modes.
-const SESSION_MODEL_MODES = new Set<SessionModelMode>([
-    'default',
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-]);
-
-function isSessionModelMode(value: unknown): value is SessionModelMode {
-    return typeof value === 'string' && SESSION_MODEL_MODES.has(value as SessionModelMode);
-}
+export type NewSessionAgentType = AgentId;
 
 export interface NewSessionDraft {
     input: string;
@@ -272,9 +256,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             parsed.sessionOnlySecretValueEncByProfileIdByEnvVarName,
             parseDraftSecretStringOrNull,
         );
-        const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini'
-            ? parsed.agentType
-            : 'claude';
+        const agentType: NewSessionAgentType = isAgentId(parsed.agentType) ? parsed.agentType : 'claude';
         const permissionMode: PermissionMode = isPermissionMode(parsed.permissionMode)
             ? parsed.permissionMode
             : 'default';
@@ -387,7 +369,7 @@ export function saveSessionLastViewed(data: Record<string, number>) {
     mmkv.set('session-last-viewed', JSON.stringify(data));
 }
 
-export function loadSessionModelModes(): Record<string, SessionModelMode> {
+export function loadSessionModelModes(): Record<string, ModelMode> {
     const modes = mmkv.getString('session-model-modes');
     if (modes) {
         try {
@@ -396,9 +378,9 @@ export function loadSessionModelModes(): Record<string, SessionModelMode> {
                 return {};
             }
 
-            const result: Record<string, SessionModelMode> = {};
+            const result: Record<string, ModelMode> = {};
             Object.entries(parsed as Record<string, unknown>).forEach(([sessionId, mode]) => {
-                if (isSessionModelMode(mode)) {
+                if (isModelMode(mode)) {
                     result[sessionId] = mode;
                 }
             });
@@ -411,7 +393,7 @@ export function loadSessionModelModes(): Record<string, SessionModelMode> {
     return {};
 }
 
-export function saveSessionModelModes(modes: Record<string, SessionModelMode>) {
+export function saveSessionModelModes(modes: Record<string, ModelMode>) {
     mmkv.set('session-model-modes', JSON.stringify(modes));
 }
 

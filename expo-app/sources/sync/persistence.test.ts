@@ -44,7 +44,7 @@ describe('persistence', () => {
         it('filters out invalid persisted model modes', () => {
             store.set(
                 'session-model-modes',
-                JSON.stringify({ abc: 'gemini-2.5-pro', bad: 'adaptiveUsage' }),
+                JSON.stringify({ abc: 'gemini-2.5-pro', bad: 'not-a-model' }),
             );
             expect(loadSessionModelModes()).toEqual({ abc: 'gemini-2.5-pro' });
         });

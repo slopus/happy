@@ -1,7 +1,9 @@
 import { t } from '@/text';
+import type { TranslationKey } from '@/text';
 import type { AgentType } from './modelOptions';
 import type { PermissionMode } from './permissionTypes';
-import { CLAUDE_PERMISSION_MODES, CODEX_LIKE_PERMISSION_MODES, normalizePermissionModeForAgentFlavor } from './permissionTypes';
+import { CLAUDE_PERMISSION_MODES, CODEX_LIKE_PERMISSION_MODES, normalizePermissionModeForGroup } from './permissionTypes';
+import { DEFAULT_AGENT_ID, getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
 
 export type PermissionModeOption = Readonly<{
     value: PermissionMode;
@@ -10,49 +12,54 @@ export type PermissionModeOption = Readonly<{
     icon: string;
 }>;
 
+const PERMISSION_MODE_KEY_SEGMENT: Record<PermissionMode, string> = {
+    default: 'default',
+    acceptEdits: 'acceptEdits',
+    bypassPermissions: 'bypassPermissions',
+    plan: 'plan',
+    'read-only': 'readOnly',
+    'safe-yolo': 'safeYolo',
+    yolo: 'yolo',
+};
+
+const BADGE_KEY_SEGMENT_CLAUDE: Partial<Record<PermissionMode, string>> = {
+    acceptEdits: 'badgeAccept',
+    plan: 'badgePlan',
+    bypassPermissions: 'badgeYolo',
+};
+
+const BADGE_KEY_SEGMENT_CODEX_LIKE: Partial<Record<PermissionMode, string>> = {
+    'read-only': 'badgeReadOnly',
+    'safe-yolo': 'badgeSafeYolo',
+    yolo: 'badgeYolo',
+};
+
+function getAgentPermissionModeI18nPrefix(agentType: AgentType): string {
+    const agentId = resolveAgentIdFromFlavor(agentType) ?? DEFAULT_AGENT_ID;
+    return getAgentCore(agentId).permissionModeI18nPrefix;
+}
+
 export function getPermissionModeTitleForAgentType(agentType: AgentType): string {
-    if (agentType === 'codex') return t('agentInput.codexPermissionMode.title');
-    if (agentType === 'gemini') return t('agentInput.geminiPermissionMode.title');
-    return t('agentInput.permissionMode.title');
+    const prefix = getAgentPermissionModeI18nPrefix(agentType);
+    return t(`${prefix}.title` as TranslationKey);
 }
 
 export function getPermissionModeLabelForAgentType(agentType: AgentType, mode: PermissionMode): string {
-    if (agentType === 'codex') {
-        switch (mode) {
-            case 'default': return t('agentInput.codexPermissionMode.default');
-            case 'read-only': return t('agentInput.codexPermissionMode.readOnly');
-            case 'safe-yolo': return t('agentInput.codexPermissionMode.safeYolo');
-            case 'yolo': return t('agentInput.codexPermissionMode.yolo');
-            default: return t('agentInput.codexPermissionMode.default');
-        }
-    }
-    if (agentType === 'gemini') {
-        switch (mode) {
-            case 'default': return t('agentInput.geminiPermissionMode.default');
-            case 'read-only': return t('agentInput.geminiPermissionMode.readOnly');
-            case 'safe-yolo': return t('agentInput.geminiPermissionMode.safeYolo');
-            case 'yolo': return t('agentInput.geminiPermissionMode.yolo');
-            default: return t('agentInput.geminiPermissionMode.default');
-        }
-    }
-    switch (mode) {
-        case 'default': return t('agentInput.permissionMode.default');
-        case 'acceptEdits': return t('agentInput.permissionMode.acceptEdits');
-        case 'plan': return t('agentInput.permissionMode.plan');
-        case 'bypassPermissions': return t('agentInput.permissionMode.bypassPermissions');
-        default: return t('agentInput.permissionMode.default');
-    }
+    const prefix = getAgentPermissionModeI18nPrefix(agentType);
+    const seg = PERMISSION_MODE_KEY_SEGMENT[mode] ?? 'default';
+    return t(`${prefix}.${seg}` as TranslationKey);
 }
 
 export function getPermissionModesForAgentType(agentType: AgentType): readonly PermissionMode[] {
-    if (agentType === 'codex' || agentType === 'gemini') {
-        return CODEX_LIKE_PERMISSION_MODES;
-    }
-    return CLAUDE_PERMISSION_MODES;
+    const agentId = resolveAgentIdFromFlavor(agentType) ?? DEFAULT_AGENT_ID;
+    const group = getAgentCore(agentId).permissions.modeGroup;
+    return group === 'codexLike' ? CODEX_LIKE_PERMISSION_MODES : CLAUDE_PERMISSION_MODES;
 }
 
 export function getPermissionModeOptionsForAgentType(agentType: AgentType): readonly PermissionModeOption[] {
-    if (agentType === 'codex' || agentType === 'gemini') {
+    const agentId = resolveAgentIdFromFlavor(agentType) ?? DEFAULT_AGENT_ID;
+    const group = getAgentCore(agentId).permissions.modeGroup;
+    if (group === 'codexLike') {
         return [
             { value: 'default', label: getPermissionModeLabelForAgentType(agentType, 'default'), description: 'Use CLI permission settings', icon: 'shield-outline' },
             { value: 'read-only', label: getPermissionModeLabelForAgentType(agentType, 'read-only'), description: 'Read-only mode', icon: 'eye-outline' },
@@ -70,5 +77,22 @@ export function getPermissionModeOptionsForAgentType(agentType: AgentType): read
 }
 
 export function normalizePermissionModeForAgentType(mode: PermissionMode, agentType: AgentType): PermissionMode {
-    return normalizePermissionModeForAgentFlavor(mode, agentType === 'claude' ? 'claude' : agentType === 'gemini' ? 'gemini' : 'codex');
+    const agentId = resolveAgentIdFromFlavor(agentType) ?? DEFAULT_AGENT_ID;
+    const group = getAgentCore(agentId).permissions.modeGroup;
+    return normalizePermissionModeForGroup(mode, group);
+}
+
+export function getPermissionModeBadgeLabelForAgentType(agentType: AgentType, mode: PermissionMode): string {
+    const agentId = resolveAgentIdFromFlavor(agentType) ?? DEFAULT_AGENT_ID;
+    const core = getAgentCore(agentId);
+    const group = core.permissions.modeGroup;
+    const normalized = normalizePermissionModeForAgentType(mode, agentType);
+    if (normalized === 'default') return '';
+
+    const seg = group === 'codexLike'
+        ? BADGE_KEY_SEGMENT_CODEX_LIKE[normalized]
+        : BADGE_KEY_SEGMENT_CLAUDE[normalized];
+    if (!seg) return '';
+
+    return t(`${core.permissionModeI18nPrefix}.${seg}` as TranslationKey);
 }

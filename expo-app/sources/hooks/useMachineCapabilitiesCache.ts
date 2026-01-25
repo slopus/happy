@@ -25,11 +25,25 @@ type CacheEntry = {
 const cache = new Map<string, CacheEntry>();
 const listeners = new Map<string, Set<(state: MachineCapabilitiesCacheState) => void>>();
 
-const DEFAULT_STALE_MS = 10 * 60 * 1000; // 10 minutes
+const DEFAULT_STALE_MS = 24 * 60 * 60 * 1000; // 24 hours
 const DEFAULT_FETCH_TIMEOUT_MS = 2500;
 
 function getEntry(cacheKey: string): CacheEntry | null {
     return cache.get(cacheKey) ?? null;
+}
+
+export function getMachineCapabilitiesCacheState(machineId: string): MachineCapabilitiesCacheState | null {
+    const entry = getEntry(machineId);
+    return entry ? entry.state : null;
+}
+
+export function getMachineCapabilitiesSnapshot(machineId: string): MachineCapabilitiesSnapshot | null {
+    const state = getMachineCapabilitiesCacheState(machineId);
+    if (!state) return null;
+    if (state.status === 'loaded') return state.snapshot;
+    if (state.status === 'loading') return state.snapshot ?? null;
+    if (state.status === 'error') return state.snapshot ?? null;
+    return null;
 }
 
 function notify(cacheKey: string) {
@@ -92,7 +106,11 @@ function getTimeoutMsForRequest(request: CapabilitiesDetectRequest, fallback: nu
     const requests = Array.isArray(request.requests) ? request.requests : [];
     const hasRegistryCheck = requests.some((r) => Boolean((r.params as any)?.includeRegistry));
     const isResumeCodexChecklist = request.checklistId === 'resume.codex';
+    const isResumeGeminiChecklist = request.checklistId === 'resume.gemini';
+    const isMachineDetailsChecklist = request.checklistId === 'machine-details';
     if (hasRegistryCheck || isResumeCodexChecklist) return Math.max(fallback, 12_000);
+    if (isResumeGeminiChecklist) return Math.max(fallback, 8_000);
+    if (isMachineDetailsChecklist) return Math.max(fallback, 8_000);
     return fallback;
 }
 
@@ -208,6 +226,14 @@ export function useMachineCapabilitiesCache(params: {
     const { machineId, enabled, staleMs = DEFAULT_STALE_MS } = params;
     const cacheKey = machineId ?? null;
 
+    // Keep the refresh function referentially stable even when callers pass a new request
+    // object each render. This prevents effect churn (and, in extreme cases, navigation
+    // setOptions loops) while still ensuring refresh uses the latest request/timeout.
+    const requestRef = React.useRef<CapabilitiesDetectRequest>(params.request);
+    requestRef.current = params.request;
+    const timeoutMsRef = React.useRef<number | undefined>(params.timeoutMs);
+    timeoutMsRef.current = params.timeoutMs;
+
     const [state, setState] = React.useState<MachineCapabilitiesCacheState>(() => {
         if (!cacheKey) return { status: 'idle' };
         const entry = getEntry(cacheKey);
@@ -218,12 +244,12 @@ export function useMachineCapabilitiesCache(params: {
         if (!machineId) return;
         void fetchAndMerge({
             machineId,
-            request: next?.request ?? params.request,
-            timeoutMs: typeof next?.timeoutMs === 'number' ? next.timeoutMs : params.timeoutMs,
+            request: next?.request ?? requestRef.current,
+            timeoutMs: typeof next?.timeoutMs === 'number' ? next.timeoutMs : timeoutMsRef.current,
         });
         const entry = getEntry(machineId);
         if (entry) setState(entry.state);
-    }, [machineId, params.request, params.timeoutMs]);
+    }, [machineId]);
 
     React.useEffect(() => {
         if (!cacheKey) {

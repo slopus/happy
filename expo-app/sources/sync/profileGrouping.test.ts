@@ -23,6 +23,7 @@ describe('buildProfileGroups', () => {
                 id: 'custom-profile',
                 name: 'Custom Profile',
                 environmentVariables: [],
+                defaultPermissionModeByAgent: {},
                 compatibility: { claude: true, codex: true, gemini: true },
                 envVarRequirements: [],
                 isBuiltIn: false,
@@ -41,5 +42,34 @@ describe('buildProfileGroups', () => {
         expect(groups.favoriteIds.has('anthropic')).toBe(true);
         expect(groups.favoriteIds.has('custom-profile')).toBe(true);
         expect(groups.favoriteIds.has('missing-profile')).toBe(false);
+    });
+
+    it('hides profiles that are incompatible with all enabled agents', () => {
+        const customProfiles = [
+            {
+                id: 'custom-gemini-only',
+                name: 'Gemini Only',
+                environmentVariables: [],
+                defaultPermissionModeByAgent: {},
+                compatibility: { claude: false, codex: false, gemini: true },
+                envVarRequirements: [],
+                isBuiltIn: false,
+                createdAt: 0,
+                updatedAt: 0,
+                version: '1.0.0',
+            },
+        ];
+
+        const groups = buildProfileGroups({
+            customProfiles,
+            favoriteProfileIds: ['gemini', 'custom-gemini-only'],
+            enabledAgentIds: ['claude', 'codex'],
+        });
+
+        expect(groups.builtInProfiles.some((p) => p.id === 'gemini')).toBe(false);
+        expect(groups.builtInProfiles.some((p) => p.id === 'gemini-api-key')).toBe(false);
+        expect(groups.builtInProfiles.some((p) => p.id === 'gemini-vertex')).toBe(false);
+        expect(groups.favoriteProfiles.some((p) => p.id === 'custom-gemini-only')).toBe(false);
+        expect(groups.customProfiles.some((p) => p.id === 'custom-gemini-only')).toBe(false);
     });
 });

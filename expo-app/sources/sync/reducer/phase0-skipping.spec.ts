@@ -197,4 +197,65 @@ describe('Phase 0 permission skipping issue', () => {
         expect(toolAfterPermission?.tool?.permission?.id).toBe('tool1');
         expect(toolAfterPermission?.tool?.permission?.status).toBe('approved');
     });
+
+    it('should not skip a newer pending request when a completed request with the same id exists', () => {
+        const state = createReducer();
+
+        const agentState: AgentState = {
+            requests: {
+                // Newer pending request (e.g. agent re-prompts with same id)
+                'perm1': {
+                    tool: 'execute',
+                    arguments: { command: ['bash', '-lc', 'echo hello'] },
+                    createdAt: 2000
+                }
+            },
+            completedRequests: {
+                // Older completed entry for the same id
+                'perm1': {
+                    tool: 'execute',
+                    arguments: { command: ['bash', '-lc', 'echo hello'] },
+                    status: 'approved',
+                    createdAt: 900,
+                    completedAt: 1500
+                }
+            }
+        };
+
+        const result = reducer(state, [], agentState);
+
+        const tool = result.messages.find(m => m.kind === 'tool-call' && m.tool?.permission?.id === 'perm1');
+        expect(tool).toBeDefined();
+        expect(tool?.kind).toBe('tool-call');
+        if (tool?.kind === 'tool-call') {
+            // New pending should take precedence over older completed
+            expect(tool.tool?.permission?.status).toBe('pending');
+            expect(tool.tool?.state).toBe('running');
+        }
+    });
+
+    it('supports allowTools as a legacy alias for allowedTools in completed requests', () => {
+        const state = createReducer();
+
+        const agentState: AgentState = {
+            requests: {},
+            completedRequests: {
+                'tool1': {
+                    tool: 'Bash',
+                    arguments: { command: 'echo hello' },
+                    status: 'approved',
+                    createdAt: 900,
+                    completedAt: 950,
+                    allowTools: ['Bash(echo hello)']
+                } as any
+            }
+        };
+
+        reducer(state, [], agentState);
+        const msg = Array.from(state.messages.values()).find(m => m.tool?.permission?.id === 'tool1');
+        expect(msg).toBeDefined();
+        expect(msg?.tool?.permission?.status).toBe('approved');
+        // Should have been mapped into permission.allowedTools for UI code paths.
+        expect((msg?.tool?.permission as any)?.allowedTools).toEqual(['Bash(echo hello)']);
+    });
 });

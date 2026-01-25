@@ -1,8 +1,9 @@
 import type { PermissionMode } from './permissionTypes';
 import type { AgentType } from './modelOptions';
+import { getAgentCore } from '@/agents/registryCore';
 
 function isCodexLike(agent: AgentType) {
-    return agent === 'codex' || agent === 'gemini';
+    return getAgentCore(agent).permissions.modeGroup === 'codexLike';
 }
 
 export function mapPermissionModeAcrossAgents(
@@ -43,7 +44,8 @@ export function mapPermissionModeAcrossAgents(
         case 'safe-yolo':
             return 'plan';
         case 'read-only':
-            return 'read-only';
+            // Claude has no true read-only; fall back to the safest available mode.
+            return 'default';
         case 'default':
             return 'default';
         default:

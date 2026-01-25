@@ -139,6 +139,8 @@ type StoredPermission = {
     reason?: string;
     mode?: string;
     allowedTools?: string[];
+    // Backward-compatible field name used by some clients/agents.
+    allowTools?: string[];
     decision?: 'approved' | 'approved_for_session' | 'approved_execpolicy_amendment' | 'denied' | 'abort';
 };
 
@@ -218,7 +220,77 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     let changed: Set<string> = new Set();
     let hasReadyEvent = false;
 
+    const normalizeThinkingChunk = (chunk: string): string => {
+        const match = chunk.match(/^\*\*[^*]+\*\*\n([\s\S]*)$/);
+        const body = match ? match[1] : chunk;
+        // Some ACP providers stream thinking as word-per-line deltas (often `"\n"`-terminated).
+        // Preserve paragraph breaks, but collapse single newlines into spaces for readability.
+        return body
+            .replace(/\r\n/g, '\n')
+            .replace(/\n+/g, (m) => (m.length >= 2 ? '\n\n' : ' '));
+    };
+
+    const unwrapThinkingText = (text: string): string => {
+        const match = text.match(/^\*Thinking\.\.\.\*\n\n\*([\s\S]*)\*$/);
+        return match ? match[1] : text;
+    };
+
+    const wrapThinkingText = (body: string): string => `*Thinking...*\n\n*${body}*`;
+
+    const sidechainMessageIds = new Set<string>();
+    for (const chain of state.sidechains.values()) {
+        for (const m of chain) sidechainMessageIds.add(m.id);
+    }
+
+    let lastMainThinkingMessageId: string | null = null;
+    let lastMainThinkingCreatedAt: number | null = null;
+    for (const [mid, m] of state.messages) {
+        if (sidechainMessageIds.has(mid)) continue;
+        if (m.role !== 'agent' || !m.isThinking || typeof m.text !== 'string') continue;
+        if (lastMainThinkingCreatedAt === null || m.createdAt > lastMainThinkingCreatedAt) {
+            lastMainThinkingMessageId = mid;
+            lastMainThinkingCreatedAt = m.createdAt;
+        }
+    }
+
     const isEmptyArray = (v: unknown): v is [] => Array.isArray(v) && v.length === 0;
+
+    const coerceStreamingToolResultChunk = (value: unknown): { stdoutChunk?: string; stderrChunk?: string } | null => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+        const obj = value as Record<string, unknown>;
+        const streamFlag = obj._stream === true;
+        const stdoutChunk = typeof obj.stdoutChunk === 'string' ? obj.stdoutChunk : undefined;
+        const stderrChunk = typeof obj.stderrChunk === 'string' ? obj.stderrChunk : undefined;
+        if (!streamFlag && !stdoutChunk && !stderrChunk) return null;
+        if (!stdoutChunk && !stderrChunk) return null;
+        return { stdoutChunk, stderrChunk };
+    };
+
+    const mergeStreamingChunkIntoResult = (existing: unknown, chunk: { stdoutChunk?: string; stderrChunk?: string }): Record<string, unknown> => {
+        const base: Record<string, unknown> =
+            existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...(existing as Record<string, unknown>) } : {};
+        if (typeof chunk.stdoutChunk === 'string') {
+            const prev = typeof base.stdout === 'string' ? base.stdout : '';
+            base.stdout = prev + chunk.stdoutChunk;
+        }
+        if (typeof chunk.stderrChunk === 'string') {
+            const prev = typeof base.stderr === 'string' ? base.stderr : '';
+            base.stderr = prev + chunk.stderrChunk;
+        }
+        return base;
+    };
+
+    const mergeExistingStdStreamsIntoFinalResultIfMissing = (existing: unknown, next: unknown): unknown => {
+        if (!existing || typeof existing !== 'object' || Array.isArray(existing)) return next;
+        if (!next || typeof next !== 'object' || Array.isArray(next)) return next;
+
+        const prev = existing as Record<string, unknown>;
+        const out = { ...(next as Record<string, unknown>) };
+
+        if (typeof out.stdout !== 'string' && typeof prev.stdout === 'string') out.stdout = prev.stdout;
+        if (typeof out.stderr !== 'string' && typeof prev.stderr === 'string') out.stderr = prev.stderr;
+        return out;
+    };
 
     const equalOptionalStringArrays = (a: unknown, b: unknown): boolean => {
         // Treat `undefined` / `null` / `[]` as equivalent “empty”.
@@ -356,16 +428,33 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     // Phase 0: Process AgentState permissions
     //
 
+    const getCompletedAllowedTools = (completed: any): string[] | undefined => {
+        const list = completed?.allowedTools ?? completed?.allowTools;
+        return Array.isArray(list) ? list : undefined;
+    };
+
     if (ENABLE_LOGGING) {
         console.log(`[REDUCER] Phase 0: Processing AgentState`);
     }
     if (agentState) {
+        // Track permission ids where a newer pending request should override an older completed entry.
+        const pendingOverridesCompleted = new Set<string>();
+
         // Process pending permission requests
         if (agentState.requests) {
             for (const [permId, request] of Object.entries(agentState.requests)) {
-                // Skip if this permission is also in completedRequests (completed takes precedence)
-                if (agentState.completedRequests && agentState.completedRequests[permId]) {
-                    continue;
+                // If this permission is also in completedRequests, prefer the newer one by timestamp.
+                // Some agents can re-prompt with the same permission id (same toolCallId) even after
+                // a previous approval was recorded; in that case we must surface the new pending request.
+                const existingCompleted = agentState.completedRequests?.[permId];
+                if (existingCompleted) {
+                    const pendingCreatedAt = request.createdAt ?? 0;
+                    const completedAt = existingCompleted.completedAt ?? existingCompleted.createdAt ?? 0;
+                    const isNewerPending = pendingCreatedAt > completedAt;
+                    if (!isNewerPending) {
+                        continue;
+                    }
+                    pendingOverridesCompleted.add(permId);
                 }
 
                 // Check if we already have a message for this permission ID
@@ -452,6 +541,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         // Process completed permission requests
         if (agentState.completedRequests) {
             for (const [permId, completed] of Object.entries(agentState.completedRequests)) {
+                // If we have a newer pending request for this id, do not let the older completed entry win.
+                if (pendingOverridesCompleted.has(permId)) {
+                    continue;
+                }
                 // Check if we have a message for this permission ID
                 const messageId = state.toolIdToMessageId.get(permId);
                 if (messageId) {
@@ -472,7 +565,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             message.tool.permission?.status !== completed.status ||
                             message.tool.permission?.reason !== completed.reason ||
                             message.tool.permission?.mode !== completed.mode ||
-                            !equalOptionalStringArrays(message.tool.permission?.allowedTools, completed.allowedTools) ||
+                            !equalOptionalStringArrays(message.tool.permission?.allowedTools, getCompletedAllowedTools(completed)) ||
                             message.tool.permission?.decision !== completed.decision;
 
                         if (!needsUpdate) {
@@ -487,7 +580,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                                 id: permId,
                                 status: completed.status,
                                 mode: completed.mode || undefined,
-                                allowedTools: completed.allowedTools || undefined,
+                                allowedTools: getCompletedAllowedTools(completed),
                                 decision: completed.decision || undefined,
                                 reason: completed.reason || undefined
                             };
@@ -496,7 +589,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             // Update all fields
                             message.tool.permission.status = completed.status;
                             message.tool.permission.mode = completed.mode || undefined;
-                            message.tool.permission.allowedTools = completed.allowedTools || undefined;
+                            message.tool.permission.allowedTools = getCompletedAllowedTools(completed);
                             message.tool.permission.decision = completed.decision || undefined;
                             if (completed.reason) {
                                 message.tool.permission.reason = completed.reason;
@@ -531,7 +624,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             status: completed.status,
                             reason: completed.reason || undefined,
                             mode: completed.mode || undefined,
-                            allowedTools: completed.allowedTools || undefined,
+                            allowedTools: getCompletedAllowedTools(completed),
                             decision: completed.decision || undefined
                         });
 
@@ -580,7 +673,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             status: completed.status,
                             reason: completed.reason || undefined,
                             mode: completed.mode || undefined,
-                            allowedTools: completed.allowedTools || undefined,
+                            allowedTools: getCompletedAllowedTools(completed),
                             decision: completed.decision || undefined
                         }
                     };
@@ -606,7 +699,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         status: completed.status,
                         reason: completed.reason || undefined,
                         mode: completed.mode || undefined,
-                        allowedTools: completed.allowedTools || undefined,
+                        allowedTools: getCompletedAllowedTools(completed),
                         decision: completed.decision || undefined
                     });
 
@@ -651,6 +744,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             state.messageIds.set(msg.id, mid);
 
             changed.add(mid);
+            lastMainThinkingMessageId = null;
+            lastMainThinkingCreatedAt = null;
         } else if (msg.role === 'agent') {
             // Check if we've seen this agent message before
             if (state.messageIds.has(msg.id)) {
@@ -667,21 +762,62 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
             // Process text and thinking content (tool calls handled in Phase 2)
             for (let c of msg.content) {
-                if (c.type === 'text' || c.type === 'thinking') {
+                if (c.type === 'text') {
                     let mid = allocateId();
-                    const isThinking = c.type === 'thinking';
                     state.messages.set(mid, {
                         id: mid,
                         realID: msg.id,
                         role: 'agent',
                         createdAt: msg.createdAt,
-                        text: isThinking ? `*Thinking...*\n\n*${c.thinking}*` : c.text,
-                        isThinking,
+                        text: c.text,
+                        isThinking: false,
                         tool: null,
                         event: null,
                         meta: msg.meta,
                     });
                     changed.add(mid);
+                    lastMainThinkingMessageId = null;
+                    lastMainThinkingCreatedAt = null;
+                } else if (c.type === 'thinking') {
+                    const chunk = typeof c.thinking === 'string' ? normalizeThinkingChunk(c.thinking) : '';
+                    if (!chunk.trim()) {
+                        continue;
+                    }
+
+                    const prevThinkingId = lastMainThinkingMessageId;
+                    const canAppendToPrevious =
+                        prevThinkingId
+                        && lastMainThinkingCreatedAt !== null
+                        && msg.createdAt - lastMainThinkingCreatedAt < 120_000
+                        && (() => {
+                            const prev = state.messages.get(prevThinkingId);
+                            return prev?.role === 'agent' && prev.isThinking && typeof prev.text === 'string';
+                        })();
+
+                    if (canAppendToPrevious) {
+                        const prev = prevThinkingId ? state.messages.get(prevThinkingId) : null;
+                        if (prev && typeof prev.text === 'string') {
+                            const merged = unwrapThinkingText(prev.text) + chunk;
+                            prev.text = wrapThinkingText(merged);
+                            changed.add(prevThinkingId!);
+                        }
+                    } else {
+                        let mid = allocateId();
+                        state.messages.set(mid, {
+                            id: mid,
+                            realID: msg.id,
+                            role: 'agent',
+                            createdAt: msg.createdAt,
+                            text: wrapThinkingText(chunk),
+                            isThinking: true,
+                            tool: null,
+                            event: null,
+                            meta: msg.meta,
+                        });
+                        changed.add(mid);
+                        lastMainThinkingMessageId = mid;
+                        lastMainThinkingCreatedAt = msg.createdAt;
+                    }
                 }
             }
         }
@@ -711,6 +847,47 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             message.realID = msg.id;
                             message.tool.description = c.description;
                             message.tool.startedAt = msg.createdAt;
+
+                            // Merge updated tool input (ACP providers can send late-arriving titles, locations,
+                            // or rawInput in subsequent tool_call updates).
+                            const incomingInput = c.input;
+                            if (incomingInput !== undefined) {
+                                const existingInput = message.tool.input;
+                                const existingObj = existingInput && typeof existingInput === 'object' && !Array.isArray(existingInput)
+                                    ? (existingInput as Record<string, unknown>)
+                                    : null;
+                                const incomingObj = incomingInput && typeof incomingInput === 'object' && !Array.isArray(incomingInput)
+                                    ? (incomingInput as Record<string, unknown>)
+                                    : null;
+
+                                const merged =
+                                    existingObj && incomingObj
+                                        ? (() => {
+                                            // Preserve existing fields (permission args are authoritative), but allow
+                                            // ACP metadata (_acp) to update over time.
+                                            const base = { ...incomingObj, ...existingObj };
+                                            const existingAcp = existingObj._acp && typeof existingObj._acp === 'object' && !Array.isArray(existingObj._acp)
+                                                ? (existingObj._acp as Record<string, unknown>)
+                                                : null;
+                                            const incomingAcp = incomingObj._acp && typeof incomingObj._acp === 'object' && !Array.isArray(incomingObj._acp)
+                                                ? (incomingObj._acp as Record<string, unknown>)
+                                                : null;
+                                            if (incomingAcp) {
+                                                base._acp = { ...(existingAcp ?? {}), ...incomingAcp };
+                                            }
+                                            return base;
+                                        })()
+                                        : incomingInput;
+
+                                const inputUnchanged = compareToolCalls(
+                                    { name: c.name, arguments: existingInput },
+                                    { name: c.name, arguments: merged }
+                                );
+                                if (!inputUnchanged) {
+                                    message.tool.input = merged;
+                                }
+                            }
+
                             // If permission was approved and shown as completed (no tool), now it's running
                             if (message.tool.permission?.status === 'approved' && message.tool.state === 'completed') {
                                 message.tool.state = 'running';
@@ -826,9 +1003,16 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         continue;
                     }
 
+                    const streamChunk = coerceStreamingToolResultChunk(c.content);
+                    if (streamChunk) {
+                        message.tool.result = mergeStreamingChunkIntoResult(message.tool.result, streamChunk);
+                        changed.add(messageId);
+                        continue;
+                    }
+
                     // Update tool state and result
                     message.tool.state = c.is_error ? 'error' : 'completed';
-                    message.tool.result = c.content;
+                    message.tool.result = mergeExistingStdStreamsIntoFinalResultIfMissing(message.tool.result, c.content);
                     message.tool.completedAt = msg.createdAt;
 
                     // Update permission data if provided by backend
@@ -900,22 +1084,48 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         } else if (msg.role === 'agent') {
             // Process agent content in sidechain
             for (let c of msg.content) {
-                if (c.type === 'text' || c.type === 'thinking') {
+                if (c.type === 'text') {
                     let mid = allocateId();
-                    const isThinking = c.type === 'thinking';
                     let textMsg: ReducerMessage = {
                         id: mid,
                         realID: msg.id,
                         role: 'agent',
                         createdAt: msg.createdAt,
-                        text: isThinking ? `*Thinking...*\n\n*${c.thinking}*` : c.text,
-                        isThinking,
+                        text: c.text,
+                        isThinking: false,
                         tool: null,
                         event: null,
                         meta: msg.meta,
                     };
                     state.messages.set(mid, textMsg);
                     existingSidechain.push(textMsg);
+                } else if (c.type === 'thinking') {
+                    const chunk = typeof c.thinking === 'string' ? normalizeThinkingChunk(c.thinking) : '';
+                    if (!chunk.trim()) {
+                        continue;
+                    }
+
+                    const last = existingSidechain[existingSidechain.length - 1];
+                    if (last && last.role === 'agent' && last.isThinking && typeof last.text === 'string') {
+                        const merged = unwrapThinkingText(last.text) + chunk;
+                        last.text = wrapThinkingText(merged);
+                        changed.add(last.id);
+                    } else {
+                        let mid = allocateId();
+                        let textMsg: ReducerMessage = {
+                            id: mid,
+                            realID: msg.id,
+                            role: 'agent',
+                            createdAt: msg.createdAt,
+                            text: wrapThinkingText(chunk),
+                            isThinking: true,
+                            tool: null,
+                            event: null,
+                            meta: msg.meta,
+                        };
+                        state.messages.set(mid, textMsg);
+                        existingSidechain.push(textMsg);
+                    }
                 } else if (c.type === 'tool-call') {
                     // Check if there's already a permission message for this tool
                     const existingPermissionMessageId = state.toolIdToMessageId.get(c.id);
@@ -970,9 +1180,14 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     if (sidechainMessageId) {
                         let sidechainMessage = state.messages.get(sidechainMessageId);
                         if (sidechainMessage && sidechainMessage.tool && sidechainMessage.tool.state === 'running') {
-                            sidechainMessage.tool.state = c.is_error ? 'error' : 'completed';
-                            sidechainMessage.tool.result = c.content;
-                            sidechainMessage.tool.completedAt = msg.createdAt;
+                            const streamChunk = coerceStreamingToolResultChunk(c.content);
+                            if (streamChunk) {
+                                sidechainMessage.tool.result = mergeStreamingChunkIntoResult(sidechainMessage.tool.result, streamChunk);
+                            } else {
+                                sidechainMessage.tool.state = c.is_error ? 'error' : 'completed';
+                                sidechainMessage.tool.result = mergeExistingStdStreamsIntoFinalResultIfMissing(sidechainMessage.tool.result, c.content);
+                                sidechainMessage.tool.completedAt = msg.createdAt;
+                            }
                             
                             // Update permission data if provided by backend
                             if (c.permissions) {
@@ -999,6 +1214,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                                     };
                                 }
                             }
+
+                            changed.add(sidechainMessageId);
                         }
                     }
 
@@ -1007,9 +1224,14 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     if (permissionMessageId) {
                         let permissionMessage = state.messages.get(permissionMessageId);
                         if (permissionMessage && permissionMessage.tool && permissionMessage.tool.state === 'running') {
-                            permissionMessage.tool.state = c.is_error ? 'error' : 'completed';
-                            permissionMessage.tool.result = c.content;
-                            permissionMessage.tool.completedAt = msg.createdAt;
+                            const streamChunk = coerceStreamingToolResultChunk(c.content);
+                            if (streamChunk) {
+                                permissionMessage.tool.result = mergeStreamingChunkIntoResult(permissionMessage.tool.result, streamChunk);
+                            } else {
+                                permissionMessage.tool.state = c.is_error ? 'error' : 'completed';
+                                permissionMessage.tool.result = mergeExistingStdStreamsIntoFinalResultIfMissing(permissionMessage.tool.result, c.content);
+                                permissionMessage.tool.completedAt = msg.createdAt;
+                            }
                             
                             // Update permission data if provided by backend
                             if (c.permissions) {

@@ -3,6 +3,11 @@ import { dbgSettings, isSettingsSyncDebugEnabled } from './debugSettings';
 import { SecretStringSchema } from './secretSettings';
 import { pruneSecretBindings } from './secretBindings';
 import { PERMISSION_MODES } from '@/constants/PermissionModes';
+import type { AgentType } from './modelOptions';
+import { mapPermissionModeAcrossAgents } from './permissionMapping';
+import type { PermissionMode } from './permissionTypes';
+import { isPermissionMode, normalizePermissionModeForGroup } from './permissionTypes';
+import { AGENT_IDS, DEFAULT_AGENT_ID, getAgentCore, isAgentId, type AgentId } from '@/agents/registryCore';
 
 //
 // Configuration Profile Schema (for environment variable profiles)
@@ -29,14 +34,14 @@ const EnvVarRequirementSchema = z.object({
     required: z.boolean().default(true),
 });
 
-const RequiresMachineLoginSchema = z.enum(['codex', 'claude-code', 'gemini-cli']);
+const RequiresMachineLoginSchema = z.string().min(1);
 
 // Profile compatibility schema
-const ProfileCompatibilitySchema = z.object({
-    claude: z.boolean().default(true),
-    codex: z.boolean().default(true),
-    gemini: z.boolean().default(true),
-});
+const ProfileCompatibilitySchema = z.record(z.string(), z.boolean()).default({});
+
+const DEFAULT_SESSION_PERMISSION_MODE_BY_AGENT: Record<AgentId, PermissionMode> = Object.fromEntries(
+    AGENT_IDS.map((id) => [id, 'default']),
+) as any;
 
 export const AIBackendProfileSchema = z.object({
     // Accept both UUIDs (user profiles) and simple strings (built-in profiles like 'anthropic')
@@ -51,14 +56,18 @@ export const AIBackendProfileSchema = z.object({
     // Default session type for this profile
     defaultSessionType: z.enum(['simple', 'worktree']).optional(),
 
-    // Default permission mode for this profile
+    // Legacy default permission mode for this profile (kept for backwards compatibility).
     defaultPermissionMode: z.enum(PERMISSION_MODES).optional(),
+
+    // Per-agent default permission mode overrides for new sessions when this profile is selected.
+    // When unset, the account-level per-agent defaults apply.
+    defaultPermissionModeByAgent: z.record(z.string(), z.enum(PERMISSION_MODES)).default({}),
 
     // Default model mode for this profile
     defaultModelMode: z.string().optional(),
 
     // Compatibility metadata
-    compatibility: ProfileCompatibilitySchema.default({ claude: true, codex: true, gemini: true }),
+    compatibility: ProfileCompatibilitySchema.default({}),
 
     // Authentication / requirements metadata (used by UI gating)
     // - machineLogin: profile relies on a machine-local CLI login cache
@@ -124,8 +133,13 @@ export const SavedSecretSchema = z.object({
 export type SavedSecret = z.infer<typeof SavedSecretSchema>;
 
 // Helper functions for profile validation and compatibility
-export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex' | 'gemini'): boolean {
-    return profile.compatibility[agent];
+export function isProfileCompatibleWithAgent(
+    profile: Pick<AIBackendProfile, 'compatibility' | 'isBuiltIn'>,
+    agentId: AgentId,
+): boolean {
+    const explicit = profile.compatibility?.[agentId];
+    if (typeof explicit === 'boolean') return explicit;
+    return profile.isBuiltIn ? false : true;
 }
 
 function mergeEnvironmentVariables(
@@ -243,20 +257,30 @@ export const SettingsSchema = z.object({
     wrapLinesInDiffs: z.boolean().describe('Whether to wrap long lines in diff views'),
     analyticsOptOut: z.boolean().describe('Whether to opt out of anonymous analytics'),
     experiments: z.boolean().describe('Whether to enable experimental features'),
+    // Per-agent experimental gating (still subject to `experiments` master switch).
+    // Unknown keys are supported to avoid schema churn when adding new agents.
+    experimentalAgents: z.record(z.string(), z.boolean()).default({}).describe('Per-agent experimental toggles'),
     // Per-experiment toggles (gated by `experiments` master switch in UI/usage)
-    expGemini: z.boolean().describe('Experimental: enable Gemini backend + Gemini-related UX'),
     expUsageReporting: z.boolean().describe('Experimental: enable usage reporting UI'),
     expFileViewer: z.boolean().describe('Experimental: enable session file viewer'),
     expShowThinkingMessages: z.boolean().describe('Experimental: show assistant thinking messages'),
     expSessionType: z.boolean().describe('Experimental: show session type selector (simple vs worktree)'),
     expZen: z.boolean().describe('Experimental: enable Zen navigation/experience'),
     expVoiceAuthFlow: z.boolean().describe('Experimental: enable authenticated voice token flow'),
+    expInboxFriends: z.boolean().describe('Experimental: enable inbox/friends UI + related UX'),
     // Intentionally NOT auto-enabled when `experiments` is enabled; this toggles extra local installation + security surface area.
     expCodexResume: z.boolean().describe('Experimental: enable Codex vendor-resume and resume-codex installer UI'),
     // Experimental configuration for the Codex resume installer (used only when expCodexResume is enabled).
     codexResumeInstallSpec: z.string().describe('Codex resume installer spec (npm/git/file); empty uses daemon default'),
+    // Experimental: route Codex through ACP (codex-acp) instead of MCP.
+    expCodexAcp: z.boolean().describe('Experimental: enable Codex ACP backend (requires codex-acp install)'),
+    // Experimental configuration for the Codex ACP installer (used only when expCodexAcp is enabled).
+    codexAcpInstallSpec: z.string().describe('Codex ACP installer spec (npm/git/file); empty uses daemon default'),
     useProfiles: z.boolean().describe('Whether to enable AI backend profiles feature'),
     useEnhancedSessionWizard: z.boolean().describe('A/B test flag: Use enhanced profile-based session wizard UI'),
+    // Default permission modes for new sessions (account-level; per agent).
+    // Values are normalized per-agent when used in UI/session creation.
+    sessionDefaultPermissionModeByAgent: z.record(z.string(), z.enum(PERMISSION_MODES)).default(DEFAULT_SESSION_PERMISSION_MODE_BY_AGENT).describe('Default permission mode per agent for new sessions'),
     sessionUseTmux: z.boolean().describe('Whether new sessions should start in tmux by default'),
     sessionTmuxSessionName: z.string().describe('Default tmux session name for new sessions'),
     sessionTmuxIsolated: z.boolean().describe('Whether to use an isolated tmux server for new sessions'),
@@ -300,16 +324,8 @@ export const SettingsSchema = z.object({
     favoriteProfiles: z.array(z.string()).describe('User-defined favorite profiles (profile IDs) for quick access in profile selection'),
     // Dismissed CLI warning banners (supports both per-machine and global dismissal)
     dismissedCLIWarnings: z.object({
-        perMachine: z.record(z.string(), z.object({
-            claude: z.boolean().optional(),
-            codex: z.boolean().optional(),
-            gemini: z.boolean().optional(),
-        })).default({}),
-        global: z.object({
-            claude: z.boolean().optional(),
-            codex: z.boolean().optional(),
-            gemini: z.boolean().optional(),
-        }).default({}),
+        perMachine: z.record(z.string(), z.record(z.string(), z.boolean()).default({})).default({}),
+        global: z.record(z.string(), z.boolean()).default({}),
     }).default({ perMachine: {}, global: {} }).describe('Tracks which CLI installation warnings user has dismissed (per-machine or globally)'),
 });
 
@@ -342,16 +358,20 @@ export const settingsDefaults: Settings = {
     wrapLinesInDiffs: false,
     analyticsOptOut: false,
     experiments: false,
-    expGemini: false,
+    experimentalAgents: {},
     expUsageReporting: false,
     expFileViewer: false,
     expShowThinkingMessages: false,
     expSessionType: false,
     expZen: false,
     expVoiceAuthFlow: false,
+    expInboxFriends: false,
     expCodexResume: false,
     codexResumeInstallSpec: '',
+    expCodexAcp: false,
+    codexAcpInstallSpec: '',
     useProfiles: false,
+    sessionDefaultPermissionModeByAgent: DEFAULT_SESSION_PERMISSION_MODE_BY_AGENT,
     sessionUseTmux: false,
     sessionTmuxSessionName: 'happy',
     sessionTmuxIsolated: true,
@@ -516,19 +536,43 @@ export function settingsParse(settings: unknown): Settings {
         if (parsed.success) result.sessionMessageSendMode = parsed.data;
     }
 
+    // Migration: introduce per-agent default permission modes for new sessions.
+    //
+    // Sources (in priority order):
+    // 1) New field: `sessionDefaultPermissionModeByAgent`
+    // 2) Legacy: `lastUsedPermissionMode` + `lastUsedAgent` (seed defaults to preserve user intent)
+    const hasPerAgentPermissionDefaults = ('sessionDefaultPermissionModeByAgent' in input);
+    if (!hasPerAgentPermissionDefaults) {
+        const byAgent: Record<string, PermissionMode> = { ...(result.sessionDefaultPermissionModeByAgent as any) };
+        const rawMode = (input as any).lastUsedPermissionMode;
+        const rawAgent = (input as any).lastUsedAgent;
+        if (isPermissionMode(rawMode)) {
+            const from: AgentType = isAgentId(rawAgent) ? rawAgent : DEFAULT_AGENT_ID;
+            for (const to of AGENT_IDS) {
+                const mapped = mapPermissionModeAcrossAgents(rawMode as PermissionMode, from, to);
+                const group = getAgentCore(to).permissions.modeGroup;
+                byAgent[to] = normalizePermissionModeForGroup(mapped, group);
+            }
+        }
+
+        result.sessionDefaultPermissionModeByAgent = byAgent as any;
+    }
+
     // Migration: Introduce per-experiment toggles.
     // If persisted settings only had `experiments` (older clients), default ALL experiment toggles
     // to match the master switch so existing users keep the same behavior.
     const experimentKeys = [
-        'expGemini',
         'expUsageReporting',
         'expFileViewer',
         'expShowThinkingMessages',
         'expSessionType',
         'expZen',
         'expVoiceAuthFlow',
+        'expInboxFriends',
     ] as const;
-    const hasAnyExperimentKey = experimentKeys.some((k) => k in input);
+    const hasAnyExperimentKey =
+        experimentKeys.some((k) => k in input) ||
+        ('experimentalAgents' in input);
     if (!hasAnyExperimentKey) {
         const enableAll = result.experiments === true;
         for (const key of experimentKeys) {
@@ -536,9 +580,17 @@ export function settingsParse(settings: unknown): Settings {
         }
     }
 
+    const DROPPED_KEYS = new Set([
+        // Removed in favor of `defaultPermissionModeByAgent`.
+        'defaultPermissionModeClaude',
+        'defaultPermissionModeCodex',
+        'defaultPermissionModeGemini',
+    ]);
+
     // Preserve unknown fields (forward compatibility).
     for (const [key, value] of Object.entries(input)) {
         if (key === '__proto__') continue;
+        if (DROPPED_KEYS.has(key)) continue;
         if (!Object.prototype.hasOwnProperty.call(SettingsSchema.shape, key)) {
             Object.defineProperty(result, key, {
                 value,

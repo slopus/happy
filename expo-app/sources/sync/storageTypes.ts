@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PERMISSION_MODES } from "@/constants/PermissionModes";
 import type { PermissionMode } from "@/constants/PermissionModes";
+import type { ModelMode } from "@/sync/permissionTypes";
 
 //
 // Agent states
@@ -20,8 +21,21 @@ export const MetadataSchema = z.object({
     machineId: z.string().optional(),
     claudeSessionId: z.string().optional(), // Claude Code session ID
     codexSessionId: z.string().optional(), // Codex session/conversation ID (uuid)
+    geminiSessionId: z.string().optional(), // Gemini ACP session ID (opaque)
+    opencodeSessionId: z.string().optional(), // OpenCode ACP session ID (opaque)
     tools: z.array(z.string()).optional(),
     slashCommands: z.array(z.string()).optional(),
+    slashCommandDetails: z.array(z.object({
+        command: z.string(),
+        description: z.string().optional(),
+    })).optional(),
+    acpHistoryImportV1: z.object({
+        v: z.literal(1),
+        provider: z.string(),
+        remoteSessionId: z.string(),
+        importedAt: z.number(),
+        lastImportedFingerprint: z.string().optional(),
+    }).optional(),
     homeDir: z.string().optional(), // User's home directory on the machine
     happyHomeDir: z.string().optional(), // Happy configuration directory 
     hostPid: z.number().optional(), // Process ID of the session
@@ -94,8 +108,15 @@ export const AgentStateSchema = z.object({
         mode: z.string().nullish(),
         allowedTools: z.array(z.string()).nullish(),
         decision: z.enum(['approved', 'approved_for_session', 'approved_execpolicy_amendment', 'denied', 'abort']).nullish()
-    })).nullish()
-});
+    })).nullish(),
+    /**
+     * Optional agent capabilities negotiated via agentState.
+     * This must be permissive for backward/forward compatibility across agent versions.
+     */
+    capabilities: z.object({
+        askUserQuestionAnswersInPermission: z.boolean().optional(),
+    }).nullish(),
+}).passthrough();
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
@@ -123,7 +144,7 @@ export interface Session {
     draft?: string | null; // Local draft message, not synced to server
     permissionMode?: PermissionMode | null; // Local permission mode, not synced to server
     permissionModeUpdatedAt?: number | null; // Local timestamp to coordinate inferred (from last message) vs user-selected mode, not synced to server
-    modelMode?: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | null; // Local model mode, not synced to server
+    modelMode?: ModelMode | null; // Local model mode, not synced to server
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.
     // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.

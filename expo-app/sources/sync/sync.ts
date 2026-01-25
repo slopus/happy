@@ -6,7 +6,7 @@ import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
-import { Session, Machine, PendingMessage, DiscardedPendingMessage, type Metadata } from './storageTypes';
+import { Session, Machine, type Metadata } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from '@/platform/randomUUID';
@@ -32,7 +32,11 @@ import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
 import { systemPrompt } from './prompt/systemPrompt';
 import { nowServerMs } from './time';
+import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
 import { computePendingActivityAt } from './unread';
+import { computeNextSessionSeqFromUpdate } from './realtimeSessionSeq';
+import { computeNextReadStateV1 } from './readStateV1';
+import { updateSessionMetadataWithRetry as updateSessionMetadataWithRetryRpc, type UpdateMetadataAck } from './updateSessionMetadataWithRetry';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
 import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
 import { ArtifactEncryption } from './encryption/artifactEncryption';
@@ -46,6 +50,7 @@ import { HappyError } from '@/utils/errors';
 import { dbgSettings, isSettingsSyncDebugEnabled, summarizeSettings, summarizeSettingsDelta } from './debugSettings';
 import { deriveSettingsSecretsKey, decryptSecretValue, encryptSecretString, sealSecretsDeep } from './secretSettings';
 import { deleteMessageQueueV1DiscardedItem, deleteMessageQueueV1Item, discardMessageQueueV1Item, enqueueMessageQueueV1Item, restoreMessageQueueV1DiscardedItem, updateMessageQueueV1Item } from './messageQueueV1';
+import { decodeMessageQueueV1ToPendingMessages, reconcilePendingMessagesFromMetadata } from './messageQueueV1Pending';
 import { didControlReturnToMobile } from './controlledByUserTransitions';
 import { chooseSubmitMode } from './submitMode';
 import type { SavedSecret } from './settings';
@@ -65,6 +70,8 @@ class Sync {
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
+    private readStateV1RepairAttempted = new Set<string>();
+    private readStateV1RepairInFlight = new Set<string>();
     private settingsSync: InvalidateSync;
     private profileSync: InvalidateSync;
     private purchasesSync: InvalidateSync;
@@ -341,10 +348,10 @@ class Sync {
             // Read permission mode from session state
             const permissionMode = session.permissionMode || 'default';
             
-            // Read model mode - for Gemini, default to gemini-2.5-pro if not set
+            // Read model mode - default is agent-specific (Gemini needs an explicit default)
             const flavor = session.metadata?.flavor;
-            const isGemini = flavor === 'gemini';
-            const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
+            const agentId = resolveAgentIdFromFlavor(flavor);
+            const modelMode = session.modelMode || (agentId ? getAgentCore(agentId).model.defaultMode : 'default');
 
             // Generate local ID
             const localId = randomUUID();
@@ -366,7 +373,7 @@ class Sync {
                 sentFrom = 'web'; // fallback
             }
 
-            const model = isGemini && modelMode !== 'default' ? modelMode : undefined;
+            const model = agentId && getAgentCore(agentId).model.supportsSelection && modelMode !== 'default' ? modelMode : undefined;
             // Create user message content with metadata
             const content: RawRecord = {
                 role: 'user',
@@ -439,56 +446,67 @@ class Sync {
             throw new Error(`Session ${sessionId} not found`);
         }
 
-        const attempt = async (expectedVersion: number, base: Metadata): Promise<'success' | 'version-mismatch'> => {
-            const updatedMetadata = updater(base);
-            const encryptedMetadata = await encryption.encryptMetadata(updatedMetadata);
-            const result = await apiSocket.emitWithAck<{
-                result: 'success' | 'version-mismatch' | 'error';
-                version?: number;
-                metadata?: string;
-                message?: string;
-            }>('update-metadata', {
-                sid: sessionId,
-                expectedVersion,
-                metadata: encryptedMetadata
+        await updateSessionMetadataWithRetryRpc<Metadata>({
+            sessionId,
+            getSession: () => {
+                const s = storage.getState().sessions[sessionId];
+                if (!s?.metadata) return null;
+                return { metadataVersion: s.metadataVersion, metadata: s.metadata };
+            },
+            refreshSessions: async () => {
+                await this.refreshSessions();
+            },
+            encryptMetadata: async (metadata) => encryption.encryptMetadata(metadata),
+            decryptMetadata: async (version, encrypted) => encryption.decryptMetadata(version, encrypted),
+            emitUpdateMetadata: async (payload) => apiSocket.emitWithAck<UpdateMetadataAck>('update-metadata', payload),
+            applySessionMetadata: ({ metadataVersion, metadata }) => {
+                const currentSession = storage.getState().sessions[sessionId];
+                if (!currentSession) return;
+                this.applySessions([{
+                    ...currentSession,
+                    metadata,
+                    metadataVersion,
+                }]);
+            },
+            updater,
+            maxAttempts: 8,
+        });
+    }
+
+    private repairInvalidReadStateV1 = async (params: { sessionId: string; sessionSeqUpperBound: number }): Promise<void> => {
+        const { sessionId, sessionSeqUpperBound } = params;
+
+        if (this.readStateV1RepairAttempted.has(sessionId) || this.readStateV1RepairInFlight.has(sessionId)) {
+            return;
+        }
+
+        const session = storage.getState().sessions[sessionId];
+        const readState = session?.metadata?.readStateV1;
+        if (!readState) return;
+        if (readState.sessionSeq <= sessionSeqUpperBound) return;
+
+        this.readStateV1RepairAttempted.add(sessionId);
+        this.readStateV1RepairInFlight.add(sessionId);
+        try {
+            await this.updateSessionMetadataWithRetry(sessionId, (metadata) => {
+                const prev = metadata.readStateV1;
+                if (!prev) return metadata;
+                if (prev.sessionSeq <= sessionSeqUpperBound) return metadata;
+
+                const result = computeNextReadStateV1({
+                    prev,
+                    sessionSeq: sessionSeqUpperBound,
+                    pendingActivityAt: prev.pendingActivityAt,
+                    now: nowServerMs(),
+                });
+                if (!result.didChange) return metadata;
+                return { ...metadata, readStateV1: result.next };
             });
-
-            if (result.result === 'success') {
-                if (typeof result.version === 'number' && typeof result.metadata === 'string') {
-                    const decrypted = await encryption.decryptMetadata(result.version, result.metadata);
-                    const currentSession = storage.getState().sessions[sessionId];
-                    if (decrypted && currentSession) {
-                        this.applySessions([{
-                            ...currentSession,
-                            metadata: decrypted,
-                            metadataVersion: result.version
-                        }]);
-                    }
-                }
-                return 'success';
-            }
-
-            if (result.result === 'version-mismatch') {
-                return 'version-mismatch';
-            }
-
-            throw new Error(result.message || 'Failed to update session metadata');
-        };
-
-        const currentSession = storage.getState().sessions[sessionId];
-        if (!currentSession?.metadata) {
-            throw new Error('Session metadata not available');
+        } catch {
+            // ignore
+        } finally {
+            this.readStateV1RepairInFlight.delete(sessionId);
         }
-
-        const first = await attempt(currentSession.metadataVersion, currentSession.metadata);
-        if (first === 'success') return;
-
-        await this.refreshSessions();
-        const refreshed = storage.getState().sessions[sessionId];
-        if (!refreshed?.metadata) {
-            throw new Error('Session metadata not available');
-        }
-        await attempt(refreshed.metadataVersion, refreshed.metadata);
     }
 
     async markSessionViewed(sessionId: string, opts?: { sessionSeq?: number; pendingActivityAt?: number }): Promise<void> {
@@ -497,25 +515,27 @@ class Sync {
 
         const sessionSeq = opts?.sessionSeq ?? session.seq ?? 0;
         const pendingActivityAt = opts?.pendingActivityAt ?? computePendingActivityAt(session.metadata);
-
         const existing = session.metadata.readStateV1;
         const existingSeq = existing?.sessionSeq ?? 0;
-        const existingPendingAt = existing?.pendingActivityAt ?? 0;
-        if (existing && existingSeq >= sessionSeq && existingPendingAt >= pendingActivityAt) return;
+        const needsRepair = existingSeq > sessionSeq;
+
+        const early = computeNextReadStateV1({
+            prev: existing,
+            sessionSeq,
+            pendingActivityAt,
+            now: nowServerMs(),
+        });
+        if (!needsRepair && !early.didChange) return;
 
         await this.updateSessionMetadataWithRetry(sessionId, (metadata) => {
-            const prev = metadata.readStateV1;
-            const prevSeq = prev?.sessionSeq ?? 0;
-            const prevPendingAt = prev?.pendingActivityAt ?? 0;
-            return {
-                ...metadata,
-                readStateV1: {
-                    v: 1,
-                    sessionSeq: Math.max(prevSeq, sessionSeq),
-                    pendingActivityAt: Math.max(prevPendingAt, pendingActivityAt),
-                    updatedAt: nowServerMs(),
-                },
-            };
+            const result = computeNextReadStateV1({
+                prev: metadata.readStateV1,
+                sessionSeq,
+                pendingActivityAt,
+                now: nowServerMs(),
+            });
+            if (!result.didChange) return metadata;
+            return { ...metadata, readStateV1: result.next };
         });
     }
 
@@ -534,45 +554,24 @@ class Sync {
             return;
         }
 
-        const queue = session.metadata?.messageQueueV1?.queue ?? [];
-        const discardedQueue = session.metadata?.messageQueueV1Discarded ?? [];
+        const decoded = await decodeMessageQueueV1ToPendingMessages({
+            messageQueueV1: session.metadata?.messageQueueV1,
+            messageQueueV1Discarded: session.metadata?.messageQueueV1Discarded,
+            decryptRaw: (encrypted) => encryption.decryptRaw(encrypted),
+        });
 
-        const pending: PendingMessage[] = [];
-        for (const item of queue) {
-            const raw = await encryption.decryptRaw(item.message);
-            const text = (raw as any)?.content?.text;
-            if (typeof text !== 'string') continue;
-            pending.push({
-                id: item.localId,
-                localId: item.localId,
-                createdAt: item.createdAt,
-                updatedAt: item.updatedAt,
-                text,
-                displayText: typeof (raw as any)?.meta?.displayText === 'string' ? (raw as any).meta.displayText : undefined,
-                rawRecord: raw as any,
-            });
-        }
+        const existingPendingState = storage.getState().sessionPending[sessionId];
+        const reconciled = reconcilePendingMessagesFromMetadata({
+            messageQueueV1: session.metadata?.messageQueueV1,
+            messageQueueV1Discarded: session.metadata?.messageQueueV1Discarded,
+            decodedPending: decoded.pending,
+            decodedDiscarded: decoded.discarded,
+            existingPending: existingPendingState?.messages ?? [],
+            existingDiscarded: existingPendingState?.discarded ?? [],
+        });
 
-        const discarded: DiscardedPendingMessage[] = [];
-        for (const item of discardedQueue) {
-            const raw = await encryption.decryptRaw(item.message);
-            const text = (raw as any)?.content?.text;
-            if (typeof text !== 'string') continue;
-            discarded.push({
-                id: item.localId,
-                localId: item.localId,
-                createdAt: item.createdAt,
-                updatedAt: item.updatedAt,
-                discardedAt: item.discardedAt,
-                discardedReason: item.discardedReason,
-                text,
-                displayText: typeof (raw as any)?.meta?.displayText === 'string' ? (raw as any).meta.displayText : undefined,
-                rawRecord: raw as any,
-            });
-        }
-
-        storage.getState().applyPendingMessages(sessionId, pending);
-        storage.getState().applyDiscardedPendingMessages(sessionId, discarded);
+        storage.getState().applyPendingMessages(sessionId, reconciled.pending);
+        storage.getState().applyDiscardedPendingMessages(sessionId, reconciled.discarded);
     }
 
     async enqueuePendingMessage(sessionId: string, text: string, displayText?: string): Promise<void> {
@@ -592,9 +591,9 @@ class Sync {
 
         const permissionMode = session.permissionMode || 'default';
         const flavor = session.metadata?.flavor;
-        const isGemini = flavor === 'gemini';
-        const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
-        const model = isGemini && modelMode !== 'default' ? modelMode : undefined;
+        const agentId = resolveAgentIdFromFlavor(flavor);
+        const modelMode = session.modelMode || (agentId ? getAgentCore(agentId).model.defaultMode : 'default');
+        const model = agentId && getAgentCore(agentId).model.supportsSelection && modelMode !== 'default' ? modelMode : undefined;
 
         const localId = randomUUID();
 
@@ -989,8 +988,10 @@ class Sync {
                     continue;
                 }
                 sessionKeys.set(session.id, decrypted);
+                this.sessionDataKeys.set(session.id, decrypted);
             } else {
                 sessionKeys.set(session.id, null);
+                this.sessionDataKeys.delete(session.id);
             }
         }
         await this.encryption.initializeSessions(sessionKeys);
@@ -1025,7 +1026,25 @@ class Sync {
         // Apply to storage
         this.applySessions(decryptedSessions);
         log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
+        void (async () => {
+            for (const session of decryptedSessions) {
+                const readState = session.metadata?.readStateV1;
+                if (!readState) continue;
+                if (readState.sessionSeq <= session.seq) continue;
+                await this.repairInvalidReadStateV1({ sessionId: session.id, sessionSeqUpperBound: session.seq });
+            }
+        })();
 
+    }
+
+    /**
+     * Export the per-session data key for UI-assisted resume (dataKey mode only).
+     * Returns null when the session uses legacy encryption or the key is unavailable.
+     */
+    public getSessionEncryptionKeyBase64ForResume(sessionId: string): string | null {
+        const key = this.sessionDataKeys.get(sessionId);
+        if (!key) return null;
+        return encodeBase64(key, 'base64');
     }
 
     public refreshMachines = async () => {
@@ -2100,10 +2119,16 @@ class Sync {
                     // Update session
                     const session = storage.getState().sessions[updateData.body.sid];
                     if (session) {
+                        const nextSessionSeq = computeNextSessionSeqFromUpdate({
+                            currentSessionSeq: session.seq ?? 0,
+                            updateType: 'new-message',
+                            containerSeq: updateData.seq,
+                            messageSeq: updateData.body.message?.seq,
+                        });
                         this.applySessions([{
                             ...session,
                             updatedAt: updateData.createdAt,
-                            seq: updateData.seq,
+                            seq: nextSessionSeq,
                             // Update thinking state based on task lifecycle events
                             ...(isTaskComplete ? { thinking: false } : {}),
                             ...(isTaskStarted ? { thinking: true } : {})
@@ -2178,7 +2203,12 @@ class Sync {
                         ? updateData.body.metadata.version
                         : session.metadataVersion,
                     updatedAt: updateData.createdAt,
-                    seq: updateData.seq
+                    seq: computeNextSessionSeqFromUpdate({
+                        currentSessionSeq: session.seq ?? 0,
+                        updateType: 'update-session',
+                        containerSeq: updateData.seq,
+                        messageSeq: undefined,
+                    }),
                 }]);
 
                 // Invalidate git status when agent state changes (files may have been modified)

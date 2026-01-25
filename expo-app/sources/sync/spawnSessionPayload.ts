@@ -1,4 +1,6 @@
 import type { TerminalSpawnOptions } from './terminalSettings';
+import type { AgentId } from '@/agents/registryCore';
+import type { PermissionMode } from '@/sync/permissionTypes';
 
 // Options for spawning a session
 export interface SpawnSessionOptions {
@@ -6,7 +8,7 @@ export interface SpawnSessionOptions {
     directory: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
-    agent?: 'codex' | 'claude' | 'gemini';
+    agent?: AgentId;
     // Session-scoped profile identity (non-secret). Empty string means "no profile".
     profileId?: string;
     // Environment variables from AI backend profile
@@ -20,11 +22,18 @@ export interface SpawnSessionOptions {
     // - Custom variables (DEEPSEEK_*, Z_AI_*, etc.)
     environmentVariables?: Record<string, string>;
     resume?: string;
+    permissionMode?: PermissionMode;
+    permissionModeUpdatedAt?: number;
     /**
      * Experimental: allow Codex vendor resume.
      * Only relevant when agent === 'codex' and resume is set.
      */
     experimentalCodexResume?: boolean;
+    /**
+     * Experimental: route Codex through ACP (codex-acp).
+     * When enabled, Codex sessions use ACP instead of MCP.
+     */
+    experimentalCodexAcp?: boolean;
     terminal?: TerminalSpawnOptions | null;
 }
 
@@ -33,16 +42,19 @@ export type SpawnHappySessionRpcParams = {
     directory: string
     approvedNewDirectoryCreation?: boolean
     token?: string
-    agent?: 'codex' | 'claude' | 'gemini'
+    agent?: AgentId
     profileId?: string
     environmentVariables?: Record<string, string>
     resume?: string
+    permissionMode?: PermissionMode
+    permissionModeUpdatedAt?: number
     experimentalCodexResume?: boolean
+    experimentalCodexAcp?: boolean
     terminal?: TerminalSpawnOptions
 };
 
 export function buildSpawnHappySessionRpcParams(options: SpawnSessionOptions): SpawnHappySessionRpcParams {
-    const { directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables, profileId, resume, experimentalCodexResume, terminal } = options;
+    const { directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables, profileId, resume, permissionMode, permissionModeUpdatedAt, experimentalCodexResume, experimentalCodexAcp, terminal } = options;
 
     const params: SpawnHappySessionRpcParams = {
         type: 'spawn-in-directory',
@@ -53,7 +65,10 @@ export function buildSpawnHappySessionRpcParams(options: SpawnSessionOptions): S
         profileId,
         environmentVariables,
         resume,
+        permissionMode,
+        permissionModeUpdatedAt,
         experimentalCodexResume,
+        experimentalCodexAcp,
     };
 
     if (terminal) {

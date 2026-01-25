@@ -197,6 +197,8 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
     data: z.discriminatedUnion('type', [
         z.object({ type: z.literal('reasoning'), message: z.string() }),
         z.object({ type: z.literal('message'), message: z.string() }),
+        // Usage/metrics (Codex MCP sometimes sends token_count through the codex channel)
+        z.object({ type: z.literal('token_count') }).passthrough(),
         z.object({
             type: z.literal('tool-call'),
             callId: z.string(),
@@ -411,10 +413,30 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
         // Keep enough context for debugging in dev builds only.
         console.error(`[typesRaw] Message validation failed (id=${id})`);
         if (__DEV__) {
+            const contentType = (raw as any)?.content?.type;
+            const dataType = (raw as any)?.content?.data?.type;
+            const provider = (raw as any)?.content?.provider;
+            const toolName =
+                contentType === 'codex'
+                    ? (raw as any)?.content?.data?.name
+                    : contentType === 'acp'
+                        ? (raw as any)?.content?.data?.name
+                        : null;
+            const callId =
+                contentType === 'codex'
+                    ? (raw as any)?.content?.data?.callId
+                    : contentType === 'acp'
+                        ? (raw as any)?.content?.data?.callId
+                        : null;
+
             console.error('Zod issues:', JSON.stringify(parsed.error.issues, null, 2));
             console.error('Raw summary:', {
                 role: raw?.role,
-                contentType: (raw as any)?.content?.type,
+                contentType,
+                dataType,
+                provider,
+                toolName: typeof toolName === 'string' ? toolName : undefined,
+                callId: typeof callId === 'string' ? callId : undefined,
             });
         }
         return null;
@@ -444,6 +466,19 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
             return JSON.stringify(content);
         } catch {
             return String(content);
+        }
+    };
+
+    const maybeParseJsonString = (value: unknown): unknown => {
+        if (typeof value !== 'string') return value;
+        const trimmed = value.trim();
+        if (!trimmed) return value;
+        const first = trimmed[0];
+        if (first !== '{' && first !== '[') return value;
+        try {
+            return JSON.parse(trimmed) as unknown;
+        } catch {
+            return value;
         }
     };
 
@@ -713,6 +748,17 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 } satisfies NormalizedMessage;
             }
             if (raw.content.data.type === 'tool-call') {
+                let description: string | null = null;
+                const parsedInput = maybeParseJsonString(raw.content.data.input);
+                const inputObj = (parsedInput && typeof parsedInput === 'object' && !Array.isArray(parsedInput))
+                    ? (parsedInput as Record<string, unknown>)
+                    : null;
+                const acpMeta = inputObj && inputObj._acp && typeof inputObj._acp === 'object' && !Array.isArray(inputObj._acp)
+                    ? (inputObj._acp as Record<string, unknown>)
+                    : null;
+                const acpTitle = acpMeta && typeof acpMeta.title === 'string' ? acpMeta.title : null;
+                const inputDescription = inputObj && typeof inputObj.description === 'string' ? inputObj.description : null;
+                description = acpTitle ?? inputDescription ?? null;
                 return {
                     id,
                     localId,
@@ -723,8 +769,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                         type: 'tool-call',
                         id: raw.content.data.callId,
                         name: raw.content.data.name || 'unknown',
-                        input: raw.content.data.input,
-                        description: null,
+                        input: parsedInput,
+                        description,
                         uuid: raw.content.data.id,
                         parentUUID: null
                     }],
@@ -732,6 +778,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 } satisfies NormalizedMessage;
             }
             if (raw.content.data.type === 'tool-result') {
+                const parsedOutput = maybeParseJsonString(raw.content.data.output);
                 return {
                     id,
                     localId,
@@ -741,7 +788,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     content: [{
                         type: 'tool-result',
                         tool_use_id: raw.content.data.callId,
-                        content: toolResultContentToText(raw.content.data.output),
+                        content: parsedOutput,
                         is_error: raw.content.data.isError ?? false,
                         uuid: raw.content.data.id,
                         parentUUID: null
@@ -751,6 +798,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
             }
             // Handle hyphenated tool-call-result (backwards compatibility)
             if (raw.content.data.type === 'tool-call-result') {
+                const parsedOutput = maybeParseJsonString(raw.content.data.output);
                 return {
                     id,
                     localId,
@@ -760,7 +808,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     content: [{
                         type: 'tool-result',
                         tool_use_id: raw.content.data.callId,
-                        content: toolResultContentToText(raw.content.data.output),
+                        content: parsedOutput,
                         is_error: false,
                         uuid: raw.content.data.id,
                         parentUUID: null

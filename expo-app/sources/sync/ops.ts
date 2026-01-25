@@ -8,6 +8,9 @@ import { sync } from './sync';
 import type { MachineMetadata } from './storageTypes';
 import { buildSpawnHappySessionRpcParams, type SpawnHappySessionRpcParams, type SpawnSessionOptions } from './spawnSessionPayload';
 import { isRpcMethodNotAvailableError } from './rpcErrors';
+import { buildResumeHappySessionRpcParams, type ResumeHappySessionRpcParams } from './resumeSessionPayload';
+import type { AgentId } from '@/agents/registryCore';
+import type { PermissionMode } from '@/sync/permissionTypes';
 import {
     parseCapabilitiesDescribeResponse,
     parseCapabilitiesDetectResponse,
@@ -37,20 +40,16 @@ interface SessionPermissionRequest {
     approved: boolean;
     reason?: string;
     mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
-    allowTools?: string[];
+    allowedTools?: string[];
     decision?: 'approved' | 'approved_for_session' | 'approved_execpolicy_amendment' | 'denied' | 'abort';
     execPolicyAmendment?: {
         command: string[];
     };
-}
-
-interface SessionInteractionRespondRequest {
-    toolCallId: string;
-    responseText: string;
-}
-
-interface SessionInteractionRespondResponse {
-    ok: true;
+    /**
+     * AskUserQuestion: structured answers keyed by question text.
+     * When present, the agent can complete the tool call without requiring a follow-up user message.
+     */
+    answers?: Record<string, string>;
 }
 
 // Mode change operation types
@@ -205,13 +204,30 @@ export interface ResumeSessionOptions {
     machineId: string;
     /** The directory where the session was running */
     directory: string;
-    /** The agent type (claude, codex, gemini) */
-    agent: 'codex' | 'claude' | 'gemini';
+    /** The agent id */
+    agent: AgentId;
+    /** Optional vendor resume id (e.g. Claude/Codex session id). */
+    resume?: string;
+    /** Session encryption key (dataKey mode) encoded as base64. */
+    sessionEncryptionKeyBase64: string;
+    /** Session encryption variant (only dataKey supported for resume). */
+    sessionEncryptionVariant: 'dataKey';
+    /**
+     * Optional: publish an explicit UI-selected permission mode at resume time.
+     * Use only when the UI selection is newer than metadata.permissionModeUpdatedAt.
+     */
+    permissionMode?: PermissionMode;
+    permissionModeUpdatedAt?: number;
     /**
      * Experimental: allow Codex vendor resume when agent === 'codex'.
      * Ignored for other agents.
      */
     experimentalCodexResume?: boolean;
+    /**
+     * Experimental: route Codex through ACP (codex-acp) when agent === 'codex'.
+     * Ignored for other agents.
+     */
+    experimentalCodexAcp?: boolean;
 }
 
 /**
@@ -219,25 +235,26 @@ export interface ResumeSessionOptions {
  * to the existing Happy session and resumes the agent.
  */
 export async function resumeSession(options: ResumeSessionOptions): Promise<ResumeSessionResult> {
-    const { sessionId, machineId, directory, agent, experimentalCodexResume } = options;
+    const { sessionId, machineId, directory, agent, resume, sessionEncryptionKeyBase64, sessionEncryptionVariant, permissionMode, permissionModeUpdatedAt, experimentalCodexResume, experimentalCodexAcp } = options;
 
     try {
-        const result = await apiSocket.machineRPC<ResumeSessionResult, {
-            type: 'resume-session';
-            sessionId: string;
-            directory: string;
-            agent: 'codex' | 'claude' | 'gemini';
-            experimentalCodexResume?: boolean;
-        }>(
+        const params: ResumeHappySessionRpcParams = buildResumeHappySessionRpcParams({
+            sessionId,
+            directory,
+            agent,
+            ...(resume ? { resume } : {}),
+            sessionEncryptionKeyBase64,
+            sessionEncryptionVariant,
+            ...(permissionMode ? { permissionMode } : {}),
+            ...(typeof permissionModeUpdatedAt === 'number' ? { permissionModeUpdatedAt } : {}),
+            experimentalCodexResume,
+            experimentalCodexAcp,
+        });
+
+        const result = await apiSocket.machineRPC<ResumeSessionResult, ResumeHappySessionRpcParams>(
             machineId,
             'spawn-happy-session',
-            {
-                type: 'resume-session',
-                sessionId,
-                directory,
-                agent,
-                experimentalCodexResume,
-            }
+            params
         );
         return result;
     } catch (error) {
@@ -579,9 +596,18 @@ export async function machineUpdateMetadata(
  * Abort the current session operation
  */
 export async function sessionAbort(sessionId: string): Promise<void> {
-    await apiSocket.sessionRPC(sessionId, 'abort', {
-        reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`
-    });
+    try {
+        await apiSocket.sessionRPC(sessionId, 'abort', {
+            reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`
+        });
+    } catch (e) {
+        if (e instanceof Error && isRpcMethodNotAvailableError(e as any)) {
+            // Session RPCs are unavailable when no agent process is attached (inactive/resumable).
+            // Treat abort as a no-op in that case.
+            return;
+        }
+        throw e;
+    }
 }
 
 /**
@@ -599,7 +625,7 @@ export async function sessionAllow(
         id,
         approved: true,
         mode,
-        allowTools: allowedTools,
+        allowedTools,
         decision,
         execPolicyAmendment
     };
@@ -607,26 +633,36 @@ export async function sessionAllow(
 }
 
 /**
- * Deny a permission request
+ * Allow a permission request and attach structured answers (AskUserQuestion).
+ *
+ * This uses the existing `permission` RPC (no separate RPC required).
  */
-export async function sessionDeny(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[], decision?: 'denied' | 'abort'): Promise<void> {
-    const request: SessionPermissionRequest = { id, approved: false, mode, allowTools: allowedTools, decision };
+export async function sessionAllowWithAnswers(
+    sessionId: string,
+    id: string,
+    answers: Record<string, string>,
+): Promise<void> {
+    const request: SessionPermissionRequest = {
+        id,
+        approved: true,
+        answers,
+    };
     await apiSocket.sessionRPC(sessionId, 'permission', request);
 }
 
 /**
- * Respond to an in-session interaction that expects a model-native continuation
- * (e.g. answering AskUserQuestion without aborting the turn).
+ * Deny a permission request
  */
-export async function sessionInteractionRespond(
+export async function sessionDeny(
     sessionId: string,
-    request: SessionInteractionRespondRequest,
+    id: string,
+    mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan',
+    allowedTools?: string[],
+    decision?: 'denied' | 'abort',
+    reason?: string,
 ): Promise<void> {
-    await apiSocket.sessionRPC<SessionInteractionRespondResponse, SessionInteractionRespondRequest>(
-        sessionId,
-        'interaction.respond',
-        request,
-    );
+    const request: SessionPermissionRequest = { id, approved: false, mode, allowedTools, decision, reason };
+    await apiSocket.sessionRPC(sessionId, 'permission', request);
 }
 
 /**

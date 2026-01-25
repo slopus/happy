@@ -1,8 +1,10 @@
-export type CapabilityId = 'cli.codex' | 'cli.claude' | 'cli.gemini' | 'tool.tmux' | 'dep.codex-mcp-resume';
-
 export type CapabilityKind = 'cli' | 'tool' | 'dep';
 
-export type ChecklistId = 'new-session' | 'machine-details' | 'resume.codex';
+// Capability IDs are namespaced strings returned by the daemon.
+// Keep this flexible so new capabilities (including new `cli.<agent>` ids) do not require UI code changes.
+export type CapabilityId = `cli.${string}` | `tool.${string}` | `dep.${string}`;
+
+export type ChecklistId = 'new-session' | 'machine-details' | 'resume.codex' | 'resume.gemini';
 
 export type CapabilityDetectRequest = {
     id: CapabilityId;
@@ -70,13 +72,26 @@ export type CodexMcpResumeDepData = {
     registry?: { ok: true; latestVersion: string | null } | { ok: false; errorMessage: string };
 };
 
+export type CodexAcpDepData = {
+    installed: boolean;
+    installDir: string;
+    binPath: string | null;
+    installedVersion: string | null;
+    distTag: string;
+    lastInstallLogPath: string | null;
+    registry?: { ok: true; latestVersion: string | null } | { ok: false; errorMessage: string };
+};
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function parseCapabilityId(raw: unknown): CapabilityId | null {
-    if (raw === 'cli.codex' || raw === 'cli.claude' || raw === 'cli.gemini' || raw === 'tool.tmux' || raw === 'dep.codex-mcp-resume') {
-        return raw;
+    if (typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (/^(cli|tool|dep)\.[A-Za-z0-9][A-Za-z0-9._-]*$/.test(trimmed)) {
+        return trimmed as CapabilityId;
     }
     return null;
 }
@@ -194,4 +209,3 @@ export function parseCapabilitiesInvokeResponse(raw: unknown): CapabilitiesInvok
         ...((typeof logPath === 'string') ? { logPath } : {}),
     };
 }
-

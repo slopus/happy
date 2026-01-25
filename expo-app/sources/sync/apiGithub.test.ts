@@ -1,14 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('react-native-mmkv', () => {
-    class MMKV {
-        getString() {
-            return undefined;
-        }
-    }
-    return { MMKV };
-});
-
 import { HappyError } from '@/utils/errors';
 import { disconnectGitHub, getGitHubOAuthParams } from './apiGithub';
 

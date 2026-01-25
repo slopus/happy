@@ -6,6 +6,7 @@ export function createEmptyCustomProfile(): AIBackendProfile {
         id: randomUUID(),
         name: '',
         environmentVariables: [],
+        defaultPermissionModeByAgent: {},
         compatibility: { claude: true, codex: true, gemini: true },
         envVarRequirements: [],
         isBuiltIn: false,
