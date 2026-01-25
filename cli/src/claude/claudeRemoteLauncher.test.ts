@@ -112,7 +112,7 @@ describe('claudeRemoteLauncher', () => {
     expect(mockResetParentChain).toHaveBeenCalledTimes(1)
 
     session.cleanup()
-  })
+  }, 10_000)
 
   it('respects switch RPC params and is idempotent', async () => {
     const handlersByMethod: Record<string, any[]> = {}

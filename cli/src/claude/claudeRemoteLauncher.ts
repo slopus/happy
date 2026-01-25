@@ -10,7 +10,6 @@ import { AbortError, SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./s
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
-import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
@@ -18,7 +17,6 @@ import { getToolName } from "./utils/getToolName";
 import { formatErrorForUi } from "@/utils/formatErrorForUi";
 import { waitForMessagesOrPending } from "@/utils/waitForMessagesOrPending";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
-import { handleClaudeInteractionRespond } from "./utils/interactionRespond";
 
 interface PermissionsField {
     date: number;
@@ -174,32 +172,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     // Create permission handler
     const permissionHandler = new PermissionHandler(session);
 
-    let userMessageSender: ((message: SDKUserMessage) => void) | null = null;
-
-    session.client.rpcHandlerManager.registerHandler('interaction.respond', async (params: any) => {
-        const toolCallId = params && typeof params === 'object' ? (params as any).toolCallId : undefined;
-        const responseText = params && typeof params === 'object' ? (params as any).responseText : undefined;
-        if (typeof toolCallId !== 'string' || toolCallId.length === 0) {
-            throw new Error('interaction.respond: toolCallId is required');
-        }
-        if (typeof responseText !== 'string') {
-            throw new Error('interaction.respond: responseText is required');
-        }
-        if (!userMessageSender) {
-            throw new Error('interaction.respond: no active Claude remote prompt');
-        }
-        const sender = userMessageSender;
-
-        await handleClaudeInteractionRespond({
-            toolCallId,
-            responseText,
-            approveToolCall: async (id) => permissionHandler.approveToolCall(id),
-            pushToolResult: (message) => sender(message),
-        });
-
-        return { ok: true } as const;
-    });
-
     // Create outgoing message queue
     const messageQueue = new OutgoingMessageQueue(
         (logMessage) => session.client.sendClaudeSessionMessage(logMessage)
@@ -218,10 +190,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     }, permissionHandler.getResponses());
 
 
-    // Handle messages
-    let planModeToolCalls = new Set<string>();
-    let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
-
     function onMessage(message: SDKMessage) {
 
         // Write to message log
@@ -230,38 +198,11 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         // Write to permission handler for tool id resolving
         permissionHandler.onMessage(message);
 
-        // Detect plan mode tool call
-        if (message.type === 'assistant') {
-            let umessage = message as SDKAssistantMessage;
-            if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                for (let c of umessage.message.content) {
-                    if (c.type === 'tool_use' && (c.name === 'exit_plan_mode' || c.name === 'ExitPlanMode')) {
-                        logger.debug('[remote]: detected plan mode tool call ' + c.id!);
-                        planModeToolCalls.add(c.id! as string);
-                    }
-                }
-            }
-        }
-
-        // Track active tool calls
-        if (message.type === 'assistant') {
-            let umessage = message as SDKAssistantMessage;
-            if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                for (let c of umessage.message.content) {
-                    if (c.type === 'tool_use') {
-                        logger.debug('[remote]: detected tool use ' + c.id! + ' parent: ' + umessage.parent_tool_use_id);
-                        ongoingToolCalls.set(c.id!, { parentToolCallId: umessage.parent_tool_use_id ?? null });
-                    }
-                }
-            }
-        }
         if (message.type === 'user') {
             let umessage = message as SDKUserMessage;
             if (umessage.message.content && Array.isArray(umessage.message.content)) {
                 for (let c of umessage.message.content) {
                     if (c.type === 'tool_result' && c.tool_use_id) {
-                        ongoingToolCalls.delete(c.tool_use_id);
-
                         // When tool result received, release any delayed messages for this tool call
                         messageQueue.releaseToolCall(c.tool_use_id);
                     }
@@ -271,36 +212,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
         // Convert SDK message to log format and send to client
         let msg = message;
-
-        // Hack plan mode exit
-        if (message.type === 'user') {
-            let umessage = message as SDKUserMessage;
-            if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                msg = {
-                    ...umessage,
-                    message: {
-                        ...umessage.message,
-                        content: umessage.message.content.map((c) => {
-                            if (c.type === 'tool_result' && c.tool_use_id && planModeToolCalls.has(c.tool_use_id!)) {
-                                if (c.content === PLAN_FAKE_REJECT) {
-                                    logger.debug('[remote]: hack plan mode exit');
-                                    logger.debugLargeJson('[remote]: hack plan mode exit', c);
-                                    return {
-                                        ...c,
-                                        is_error: false,
-                                        content: 'Plan approved',
-                                        mode: c.mode
-                                    }
-                                } else {
-                                    return c;
-                                }
-                            }
-                            return c;
-                        })
-                    }
-                }
-            }
-        }
 
         const logMessage = sdkToLogConverter.convert(msg);
         if (logMessage) {
@@ -328,8 +239,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                 permissions.mode = response.mode;
                             }
 
-                            if (response.allowTools && response.allowTools.length > 0) {
-                                permissions.allowedTools = response.allowTools;
+                            const allowedTools = response.allowedTools ?? response.allowTools;
+                            if (allowedTools && allowedTools.length > 0) {
+                                permissions.allowedTools = allowedTools;
                             }
 
                             // Add permissions directly to the tool_result content object
@@ -487,9 +399,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
                     onMessage,
-                    setUserMessageSender: (sender) => {
-                        userMessageSender = sender;
-                    },
                     onCompletionEvent: (message: string) => {
                         logger.debug(`[remote]: Completion event: ${message}`);
                         session.client.sendSessionEvent({ type: 'message', message });
@@ -539,16 +448,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             } finally {
 
                 logger.debug('[remote]: launch finally');
-
-                // Terminate all ongoing tool calls
-                for (let [toolCallId, { parentToolCallId }] of ongoingToolCalls) {
-                    const converted = sdkToLogConverter.generateInterruptedToolResult(toolCallId, parentToolCallId);
-                    if (converted) {
-                        logger.debug('[remote]: terminating tool call ' + toolCallId + ' parent: ' + parentToolCallId);
-                        session.client.sendClaudeSessionMessage(converted);
-                    }
-                }
-                ongoingToolCalls.clear();
 
                 // Flush any remaining messages in the queue
                 logger.debug('[remote]: flushing message queue');

@@ -5,7 +5,6 @@ import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
 import type { SessionHookData } from "./utils/startHookServer";
 import type { PermissionMode } from "@/api/types";
-import { updatePersistedHappySessionVendorResumeId } from "@/daemon/persistedHappySession";
 import { randomUUID } from "node:crypto";
 
 export type SessionFoundInfo = {
@@ -171,9 +170,6 @@ export class Session {
             }));
             logger.debug(`[Session] Claude Code session ID ${sessionId} added to metadata`);
 
-            // Best-effort: persist vendor resume id locally so `happy resume <happySessionId>` can work
-            // even if the agent process was stopped.
-            void updatePersistedHappySessionVendorResumeId(this.client.sessionId, sessionId).catch(() => {});
         }
 
         // Notify callbacks when either the sessionId changes or we learned a better transcript path.

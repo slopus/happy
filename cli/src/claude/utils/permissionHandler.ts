@@ -9,19 +9,25 @@ import { isDeepStrictEqual } from 'node:util';
 import { logger } from "@/lib";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "../sdk";
 import { PermissionResult } from "../sdk/types";
-import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
 import { Session } from "../session";
 import { getToolName } from "./getToolName";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
 import { delay } from "@/utils/time";
+import { isShellCommandAllowed } from "@/utils/shellCommandAllowlist";
 
 interface PermissionResponse {
     id: string;
     approved: boolean;
     reason?: string;
     mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
-    allowTools?: string[];
+    allowedTools?: string[];
+    allowTools?: string[]; // legacy alias
+    /**
+     * AskUserQuestion: structured answers keyed by question text.
+     * Claude Code may use this to complete the interaction without a TUI.
+     */
+    answers?: Record<string, string>;
     receivedAt?: number;
 }
 
@@ -47,10 +53,60 @@ export class PermissionHandler {
     constructor(session: Session) {
         this.session = session;
         this.setupClientHandler();
+        this.advertiseCapabilities();
+        this.seedAllowlistFromAgentState();
     }
 
-    approveToolCall(toolCallId: string): void {
-        this.applyPermissionResponse({ id: toolCallId, approved: true });
+    private seedAllowlistFromAgentState(): void {
+        try {
+            const snapshot = (this.session.client as any).getAgentStateSnapshot?.() ?? null;
+            const completed = snapshot?.completedRequests;
+            if (!completed) return;
+
+            const isApprovedEntry = (value: unknown): value is { status: 'approved'; allowedTools?: unknown; allowTools?: unknown } => {
+                if (!value || typeof value !== 'object') return false;
+                return (value as any).status === 'approved';
+            };
+
+            for (const entry of Object.values(completed as Record<string, unknown>)) {
+                if (!isApprovedEntry(entry)) continue;
+
+                const list = entry.allowedTools ?? entry.allowTools;
+                if (!Array.isArray(list)) continue;
+                for (const tool of list) {
+                    if (typeof tool !== 'string' || tool.length === 0) continue;
+                    if (tool.startsWith('Bash(') || tool === 'Bash') {
+                        this.parseBashPermission(tool);
+                    } else {
+                        this.allowedTools.add(tool);
+                    }
+                }
+            }
+        } catch (error) {
+            logger.debug('[Claude] Failed to seed allowlist from agentState', error);
+        }
+    }
+
+    private advertiseCapabilities(): void {
+        // Capability negotiation for app ↔ agent compatibility.
+        // Older agents won't set this, so clients can safely fall back to legacy behavior.
+        this.session.client.updateAgentState((currentState) => {
+            const currentCaps = (currentState as any).capabilities;
+            if (currentCaps && currentCaps.askUserQuestionAnswersInPermission === true) {
+                return currentState;
+            }
+            return {
+                ...currentState,
+                capabilities: {
+                    ...(currentCaps && typeof currentCaps === 'object' ? currentCaps : {}),
+                    askUserQuestionAnswersInPermission: true,
+                },
+            };
+        });
+    }
+
+    approveToolCall(toolCallId: string, opts?: { answers?: Record<string, string> }): void {
+        this.applyPermissionResponse({ id: toolCallId, approved: true, answers: opts?.answers });
     }
 
     private applyPermissionResponse(message: PermissionResponse): void {
@@ -88,7 +144,9 @@ export class PermissionHandler {
                         status: message.approved ? 'approved' : 'denied',
                         reason: message.reason,
                         mode: message.mode,
-                        allowTools: message.allowTools
+                        ...(Array.isArray(message.allowedTools ?? message.allowTools)
+                            ? { allowedTools: (message.allowedTools ?? message.allowTools)! }
+                            : null),
                     }
                 }
             };
@@ -116,8 +174,9 @@ export class PermissionHandler {
     ): void {
 
         // Update allowed tools
-        if (response.allowTools && response.allowTools.length > 0) {
-            response.allowTools.forEach(tool => {
+        const allowedTools = response.allowedTools ?? response.allowTools;
+        if (allowedTools && allowedTools.length > 0) {
+            allowedTools.forEach(tool => {
                 if (tool.startsWith('Bash(') || tool === 'Bash') {
                     this.parseBashPermission(tool);
                 } else {
@@ -132,30 +191,35 @@ export class PermissionHandler {
             this.session.setLastPermissionMode(response.mode);
         }
 
-        // Handle 
-        if (pending.toolName === 'exit_plan_mode' || pending.toolName === 'ExitPlanMode') {
-            // Handle exit_plan_mode specially
-            logger.debug('Plan mode result received', response);
-            if (response.approved) {
-                logger.debug('Plan approved - injecting PLAN_FAKE_RESTART');
-                // Inject the approval message at the beginning of the queue
-                if (response.mode && ['default', 'acceptEdits', 'bypassPermissions'].includes(response.mode)) {
-                    this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: response.mode });
-                } else {
-                    this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: 'default' });
-                }
-                pending.resolve({ behavior: 'deny', message: PLAN_FAKE_REJECT });
-            } else {
-                pending.resolve({ behavior: 'deny', message: response.reason || 'Plan rejected' });
-            }
-        } else {
-            // Handle default case for all other tools
-            const result: PermissionResult = response.approved
-                ? { behavior: 'allow', updatedInput: (pending.input as Record<string, unknown>) || {} }
-                : { behavior: 'deny', message: response.reason || `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.` };
-
-            pending.resolve(result);
+        // Handle default case for all tools
+        if (pending.toolName === 'AskUserQuestion' && response.approved && response.answers) {
+            const baseInput =
+                pending.input && typeof pending.input === 'object' && !Array.isArray(pending.input)
+                    ? (pending.input as Record<string, unknown>)
+                    : {};
+            logger.debug(
+                `[AskUserQuestion] Resolving canCallTool with ${Object.keys(response.answers).length} answer(s) via updatedInput`,
+            );
+            pending.resolve({
+                behavior: 'allow',
+                updatedInput: {
+                    ...baseInput,
+                    answers: response.answers,
+                },
+            });
+            return;
         }
+
+        const result: PermissionResult = response.approved
+            ? { behavior: 'allow', updatedInput: (pending.input as Record<string, unknown>) || {} }
+            : {
+                behavior: 'deny',
+                message:
+                    response.reason ||
+                    `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`,
+            };
+
+        pending.resolve(result);
     }
 
     /**
@@ -167,15 +231,12 @@ export class PermissionHandler {
         if (toolName === 'Bash') {
             const inputObj = input as { command?: string };
             if (inputObj?.command) {
-                // Check literal matches
-                if (this.allowedBashLiterals.has(inputObj.command)) {
+                const patterns: Array<{ kind: 'exact'; value: string } | { kind: 'prefix'; value: string }> = [];
+                for (const literal of this.allowedBashLiterals) patterns.push({ kind: 'exact', value: literal });
+                for (const prefix of this.allowedBashPrefixes) patterns.push({ kind: 'prefix', value: prefix });
+
+                if (patterns.length > 0 && isShellCommandAllowed(inputObj.command, patterns)) {
                     return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
-                }
-                // Check prefix matches
-                for (const prefix of this.allowedBashPrefixes) {
-                    if (inputObj.command.startsWith(prefix)) {
-                        return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
-                    }
                 }
             }
         } else if (this.allowedTools.has(toolName)) {
@@ -263,6 +324,12 @@ export class PermissionHandler {
             // Update agent state
             this.session.client.updateAgentState((currentState) => ({
                 ...currentState,
+                capabilities: {
+                    ...(currentState.capabilities && typeof currentState.capabilities === 'object'
+                        ? currentState.capabilities
+                        : {}),
+                    askUserQuestionAnswersInPermission: true,
+                },
                 requests: {
                     ...currentState.requests,
                     [id]: {
@@ -366,14 +433,15 @@ export class PermissionHandler {
      */
     isAborted(toolCallId: string): boolean {
 
-        // If tool not approved, it's aborted
-        if (this.responses.get(toolCallId)?.approved === false) {
-            return true;
-        }
-
-        // Always abort exit_plan_mode
+        // ExitPlanMode is used to negotiate a plan; even if the user rejects it (or requests changes),
+        // Claude should be allowed to continue the current turn to revise the plan.
         const toolCall = this.toolCalls.find(tc => tc.id === toolCallId);
         if (toolCall && (toolCall.name === 'exit_plan_mode' || toolCall.name === 'ExitPlanMode')) {
+            return false;
+        }
+
+        // If tool not approved, it's aborted
+        if (this.responses.get(toolCallId)?.approved === false) {
             return true;
         }
 

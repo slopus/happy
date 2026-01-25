@@ -15,7 +15,7 @@ export interface SDKMessage {
 
 export interface SDKUserMessage extends SDKMessage {
     type: 'user'
-    parent_tool_use_id?: string
+    parent_tool_use_id?: string | null
     message: {
         role: 'user'
         content: string | Array<{
@@ -30,7 +30,7 @@ export interface SDKUserMessage extends SDKMessage {
 
 export interface SDKAssistantMessage extends SDKMessage {
     type: 'assistant'
-    parent_tool_use_id?: string
+    parent_tool_use_id?: string | null
     message: {
         role: 'assistant'
         content: Array<{
@@ -142,6 +142,11 @@ export type PermissionResult = {
 } | {
     behavior: 'deny'
     message: string
+    /**
+     * When true, interrupts the current execution after denying the tool call.
+     * This matches the Claude Agent SDK permission result schema.
+     */
+    interrupt?: boolean
 }
 
 /**

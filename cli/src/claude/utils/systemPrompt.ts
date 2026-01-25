@@ -5,7 +5,10 @@ import { shouldIncludeCoAuthoredBy } from "./claudeSettings";
  * Base system prompt shared across all configurations
  */
 const BASE_SYSTEM_PROMPT = (() => trimIdent(`
-    ALWAYS when you start a new chat - you must call a tool "mcp__happy__change_title" to set a chat title. When you think chat title is not relevant anymore - call the tool again to change it. When chat name is too generic and you have a change to make it more specific - call the tool again to change it. This title is needed to easily find the chat in the future. Help human.
+	    Use the tool "mcp__happy__change_title" to set (or update) a short, descriptive chat title so the user can find this chat later.
+
+	    RELIABILITY RULES (IMPORTANT):
+	    - Tool-use sequencing is strict. If you use "AskUserQuestion", do NOT include any other tool_use in the same assistant turn. Wait for the user's answer before calling other tools.
 `))();
 
 /**
