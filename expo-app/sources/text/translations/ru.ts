@@ -94,6 +94,8 @@ export const ru: TranslationStructure = {
         appearanceSubtitle: 'Настройка внешнего вида приложения',
         voiceAssistant: 'Голосовой ассистент',
         voiceAssistantSubtitle: 'Настройка предпочтений голосового взаимодействия',
+        notifications: 'Notifications',
+        notificationsSubtitle: 'Control how notifications appear',
         featuresTitle: 'Возможности',
         featuresSubtitle: 'Включить или отключить функции приложения',
         developer: 'Разработчик',
@@ -193,6 +195,15 @@ export const ru: TranslationStructure = {
         enhancedSessionWizard: 'Улучшенный мастер сессий',
         enhancedSessionWizardEnabled: 'Лаунчер с профилем активен',
         enhancedSessionWizardDisabled: 'Используется стандартный лаунчер',
+    },
+
+    settingsNotifications: {
+        title: 'Notifications',
+        footer: 'These settings only affect notifications while the app is active.',
+        hideAllTitle: 'Hide notifications while app is active',
+        hideAllSubtitle: 'No banners, sounds, or badges while using the app',
+        hideSessionTitle: 'Hide notifications for the open session',
+        hideSessionSubtitle: 'Only hides notifications that match the current session',
     },
 
     errors: {

@@ -144,6 +144,8 @@ export const ja: TranslationStructure = {
         appearanceSubtitle: 'アプリの見た目をカスタマイズ',
         voiceAssistant: '音声アシスタント',
         voiceAssistantSubtitle: '音声操作の設定',
+        notifications: 'Notifications',
+        notificationsSubtitle: 'Control how notifications appear',
         featuresTitle: '機能',
         featuresSubtitle: 'アプリ機能の有効/無効を切り替え',
         developer: '開発者',
@@ -243,6 +245,15 @@ export const ja: TranslationStructure = {
         enhancedSessionWizard: '拡張セッションウィザード',
         enhancedSessionWizardEnabled: 'プロファイル優先セッションランチャーが有効',
         enhancedSessionWizardDisabled: '標準セッションランチャーを使用',
+    },
+
+    settingsNotifications: {
+        title: 'Notifications',
+        footer: 'These settings only affect notifications while the app is active.',
+        hideAllTitle: 'Hide notifications while app is active',
+        hideAllSubtitle: 'No banners, sounds, or badges while using the app',
+        hideSessionTitle: 'Hide notifications for the open session',
+        hideSessionSubtitle: 'Only hides notifications that match the current session',
     },
 
     errors: {

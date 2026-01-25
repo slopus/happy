@@ -13,7 +13,7 @@ import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SidebarNavigator } from '@/components/SidebarNavigator';
 import sodium from '@/encryption/libsodium.lib';
-import { View, Platform } from 'react-native';
+import { AppState, View, Platform } from 'react-native';
 import { ModalProvider } from '@/modal';
 import { PostHogProvider } from 'posthog-react-native';
 import { tracking } from '@/track/tracking';
@@ -27,16 +27,60 @@ import { StatusBarProvider } from '@/components/StatusBarProvider';
 import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
 import { useUnistyles } from 'react-native-unistyles';
 import { AsyncLock } from '@/utils/lock';
+import { storage } from '@/sync/storage';
+import { usePathname } from 'expo-router';
+
+let currentAppState: string = AppState.currentState;
+let currentSessionId: string | null = null;
+
+function getNotificationSessionId(notification: Notifications.Notification): string | null {
+    const data = notification.request?.content?.data;
+    if (!data || typeof data !== 'object') {
+        return null;
+    }
+    const sessionId = (data as Record<string, unknown>).sessionId;
+    return typeof sessionId === 'string' ? sessionId : null;
+}
+
+function shouldHideForegroundNotification(notification: Notifications.Notification): boolean {
+    if (currentAppState !== 'active') {
+        return false;
+    }
+
+    const { localSettings } = storage.getState();
+
+    if (localSettings.hideNotificationsWhenActive) {
+        return true;
+    }
+
+    if (!localSettings.hideSessionNotificationsWhenActive) {
+        return false;
+    }
+
+    const notificationSessionId = getNotificationSessionId(notification);
+    return !!notificationSessionId && notificationSessionId === currentSessionId;
+}
+
+function getSessionIdFromPath(pathname: string | null | undefined): string | null {
+    if (!pathname) {
+        return null;
+    }
+    const match = pathname.match(/\/session\/([^/]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+}
 
 // Configure notification handler for foreground notifications
 Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-    }),
+    handleNotification: async (notification) => {
+        const shouldHide = shouldHideForegroundNotification(notification);
+        return {
+            shouldShowAlert: !shouldHide,
+            shouldPlaySound: !shouldHide,
+            shouldSetBadge: !shouldHide,
+            shouldShowBanner: !shouldHide,
+            shouldShowList: !shouldHide,
+        };
+    },
 });
 
 // Setup Android notification channel (required for Android 8.0+)
@@ -152,6 +196,18 @@ async function loadFonts() {
 }
 
 export default function RootLayout() {
+    const pathname = usePathname();
+    React.useEffect(() => {
+        const subscription = AppState.addEventListener('change', (nextState) => {
+            currentAppState = nextState;
+        });
+        return () => {
+            subscription.remove();
+        };
+    }, []);
+    React.useEffect(() => {
+        currentSessionId = getSessionIdFromPath(pathname);
+    }, [pathname]);
     const { theme } = useUnistyles();
     const navigationTheme = React.useMemo(() => {
         if (theme.dark) {

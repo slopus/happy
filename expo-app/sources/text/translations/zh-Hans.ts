@@ -114,6 +114,8 @@ export const zhHans: TranslationStructure = {
         appearanceSubtitle: '自定义应用外观',
         voiceAssistant: '语音助手',
         voiceAssistantSubtitle: '配置语音交互偏好',
+        notifications: '通知',
+        notificationsSubtitle: '控制通知的显示方式',
         featuresTitle: '功能',
         featuresSubtitle: '启用或禁用应用功能',
         developer: '开发者',
@@ -213,6 +215,15 @@ export const zhHans: TranslationStructure = {
         enhancedSessionWizard: '增强会话向导',
         enhancedSessionWizardEnabled: '配置文件优先启动器已激活',
         enhancedSessionWizardDisabled: '使用标准会话启动器',
+    },
+
+    settingsNotifications: {
+        title: '通知',
+        footer: '这些设置仅影响应用处于前台时的通知。',
+        hideAllTitle: '应用激活时隐藏通知',
+        hideAllSubtitle: '使用应用时不显示横幅、声音或角标',
+        hideSessionTitle: '隐藏当前会话的通知',
+        hideSessionSubtitle: '仅隐藏与当前会话匹配的通知',
     },
 
     errors: {

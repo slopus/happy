@@ -141,6 +141,8 @@ export const it: TranslationStructure = {
         appearanceSubtitle: 'Personalizza l\'aspetto dell\'app',
         voiceAssistant: 'Assistente vocale',
         voiceAssistantSubtitle: 'Configura le preferenze vocali',
+        notifications: 'Notifications',
+        notificationsSubtitle: 'Control how notifications appear',
         featuresTitle: 'Funzionalità',
         featuresSubtitle: 'Abilita o disabilita le funzionalità dell\'app',
         developer: 'Sviluppatore',
@@ -240,6 +242,15 @@ export const it: TranslationStructure = {
         enhancedSessionWizard: 'Wizard sessione avanzato',
         enhancedSessionWizardEnabled: 'Avvio sessioni con profili attivo',
         enhancedSessionWizardDisabled: 'Usando avvio sessioni standard',
+    },
+
+    settingsNotifications: {
+        title: 'Notifications',
+        footer: 'These settings only affect notifications while the app is active.',
+        hideAllTitle: 'Hide notifications while app is active',
+        hideAllSubtitle: 'No banners, sounds, or badges while using the app',
+        hideSessionTitle: 'Hide notifications for the open session',
+        hideSessionSubtitle: 'Only hides notifications that match the current session',
     },
 
     errors: {

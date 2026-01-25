@@ -112,6 +112,8 @@ export const es: TranslationStructure = {
         appearanceSubtitle: 'Personaliza como se ve la app',
         voiceAssistant: 'Asistente de voz',
         voiceAssistantSubtitle: 'Configura las preferencias de voz',
+        notifications: 'Notifications',
+        notificationsSubtitle: 'Control how notifications appear',
         featuresTitle: 'Características',
         featuresSubtitle: 'Habilitar o deshabilitar funciones de la aplicación',
         developer: 'Desarrollador',
@@ -211,6 +213,15 @@ export const es: TranslationStructure = {
         enhancedSessionWizard: 'Asistente de sesión mejorado',
         enhancedSessionWizardEnabled: 'Lanzador de sesión con perfil activo',
         enhancedSessionWizardDisabled: 'Usando el lanzador de sesión estándar',
+    },
+
+    settingsNotifications: {
+        title: 'Notifications',
+        footer: 'These settings only affect notifications while the app is active.',
+        hideAllTitle: 'Hide notifications while app is active',
+        hideAllSubtitle: 'No banners, sounds, or badges while using the app',
+        hideSessionTitle: 'Hide notifications for the open session',
+        hideSessionSubtitle: 'Only hides notifications that match the current session',
     },
 
     errors: {

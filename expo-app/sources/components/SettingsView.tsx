@@ -338,6 +338,14 @@ export const SettingsView = React.memo(function SettingsView() {
                     icon={<Ionicons name="mic-outline" size={29} color="#34C759" />}
                     onPress={() => router.push('/settings/voice')}
                 />
+                {Platform.OS !== 'web' && (
+                    <Item
+                        title={t('settings.notifications')}
+                        subtitle={t('settings.notificationsSubtitle')}
+                        icon={<Ionicons name="notifications-outline" size={29} color="#FF2D55" />}
+                        onPress={() => router.push('/settings/notifications')}
+                    />
+                )}
                 <Item
                     title={t('settings.featuresTitle')}
                     subtitle={t('settings.featuresSubtitle')}
