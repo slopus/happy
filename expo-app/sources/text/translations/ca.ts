@@ -72,6 +72,13 @@ export const ca: TranslationStructure = {
         refresh: 'Actualitza',
     },
 
+    dropdown: {
+        category: {
+            general: 'General',
+            results: 'Resultats',
+        },
+    },
+
     profile: {
         userProfile: 'Perfil d\'usuari',
         details: 'Detalls',
@@ -343,6 +350,36 @@ export const ca: TranslationStructure = {
         installFailed: 'La instal·lació ha fallat',
         installed: 'Instal·lat',
         installLog: ({ path }: { path: string }) => `Registre d'instal·lació: ${path}`,
+        installable: {
+            codexResume: {
+                title: 'Servidor de represa de Codex',
+                installSpecTitle: 'Origen d\'instal·lació de Codex resume',
+            },
+            codexAcp: {
+                title: 'Adaptador ACP de Codex',
+                installSpecTitle: 'Origen d\'instal·lació de Codex ACP',
+            },
+            installSpecDescription: 'Especificació NPM/Git/fitxer passada a `npm install` (experimental). Deixa-ho buit per usar el valor per defecte del dimoni.',
+        },
+        ui: {
+            notAvailable: 'No disponible',
+            notAvailableUpdateCli: 'No disponible (actualitza la CLI)',
+            errorRefresh: 'Error (actualitzar)',
+            installed: 'Instal·lat',
+            installedWithVersion: ({ version }: { version: string }) => `Instal·lat (v${version})`,
+            installedUpdateAvailable: ({ installedVersion, latestVersion }: { installedVersion: string; latestVersion: string }) =>
+                `Instal·lat (v${installedVersion}) — actualització disponible (v${latestVersion})`,
+            notInstalled: 'No instal·lat',
+            latest: 'Darrera',
+            latestSubtitle: ({ version, tag }: { version: string; tag: string }) => `${version} (etiqueta: ${tag})`,
+            registryCheck: 'Comprovació del registre',
+            registryCheckFailed: ({ error }: { error: string }) => `Ha fallat: ${error}`,
+            installSource: 'Origen d\'instal·lació',
+            installSourceDefault: '(per defecte)',
+            installSpecPlaceholder: 'p. ex. file:/ruta/al/paquet o github:propietari/repo#branca',
+            lastInstallLog: 'Últim registre d\'instal·lació',
+            installLogTitle: 'Registre d\'instal·lació',
+        },
     },
 
     newSession: {
@@ -651,6 +688,11 @@ export const ca: TranslationStructure = {
         envVars: {
             title: 'Variables d\'entorn',
             titleWithCount: ({ count }: { count: number }) => `Variables d'entorn (${count})`,
+        },
+        resumeChip: {
+            withId: ({ title, id }: { title: string; id: string }) => `${title}: ${id}`,
+            withIdTruncated: ({ title, prefix, suffix }: { title: string; prefix: string; suffix: string }) =>
+                `${title}: ${prefix}…${suffix}`,
         },
         permissionMode: {
             title: 'MODE DE PERMISOS',

@@ -85,6 +85,13 @@ export const en = {
         refresh: 'Refresh',
     },
 
+    dropdown: {
+        category: {
+            general: 'General',
+            results: 'Results',
+        },
+    },
+
     profile: {
         userProfile: 'User Profile',
         details: 'Details',
@@ -356,6 +363,36 @@ export const en = {
         installFailed: 'Install failed',
         installed: 'Installed',
         installLog: ({ path }: { path: string }) => `Install log: ${path}`,
+        installable: {
+            codexResume: {
+                title: 'Codex resume server',
+                installSpecTitle: 'Codex resume install source',
+            },
+            codexAcp: {
+                title: 'Codex ACP adapter',
+                installSpecTitle: 'Codex ACP install source',
+            },
+            installSpecDescription: 'NPM/Git/file spec passed to `npm install` (experimental). Leave empty to use daemon default.',
+        },
+        ui: {
+            notAvailable: 'Not available',
+            notAvailableUpdateCli: 'Not available (update CLI)',
+            errorRefresh: 'Error (refresh)',
+            installed: 'Installed',
+            installedWithVersion: ({ version }: { version: string }) => `Installed (v${version})`,
+            installedUpdateAvailable: ({ installedVersion, latestVersion }: { installedVersion: string; latestVersion: string }) =>
+                `Installed (v${installedVersion}) — update available (v${latestVersion})`,
+            notInstalled: 'Not installed',
+            latest: 'Latest',
+            latestSubtitle: ({ version, tag }: { version: string; tag: string }) => `${version} (tag: ${tag})`,
+            registryCheck: 'Registry check',
+            registryCheckFailed: ({ error }: { error: string }) => `Failed: ${error}`,
+            installSource: 'Install source',
+            installSourceDefault: '(default)',
+            installSpecPlaceholder: 'e.g. file:/path/to/pkg or github:owner/repo#branch',
+            lastInstallLog: 'Last install log',
+            installLogTitle: 'Install log',
+        },
     },
 
     newSession: {
@@ -664,6 +701,11 @@ export const en = {
         envVars: {
             title: 'Env Vars',
             titleWithCount: ({ count }: { count: number }) => `Env Vars (${count})`,
+        },
+        resumeChip: {
+            withId: ({ title, id }: { title: string; id: string }) => `${title}: ${id}`,
+            withIdTruncated: ({ title, prefix, suffix }: { title: string; prefix: string; suffix: string }) =>
+                `${title}: ${prefix}…${suffix}`,
         },
         permissionMode: {
             title: 'PERMISSION MODE',

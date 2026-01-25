@@ -74,6 +74,13 @@ export const zhHans: TranslationStructure = {
         refresh: '刷新',
     },
 
+    dropdown: {
+        category: {
+            general: '常规',
+            results: '结果',
+        },
+    },
+
     profile: {
         userProfile: '用户资料',
         details: '详情',
@@ -345,6 +352,36 @@ export const zhHans: TranslationStructure = {
         installFailed: '安装失败',
         installed: '已安装',
         installLog: ({ path }: { path: string }) => `安装日志：${path}`,
+        installable: {
+            codexResume: {
+                title: 'Codex 恢复服务器',
+                installSpecTitle: 'Codex resume 安装来源',
+            },
+            codexAcp: {
+                title: 'Codex ACP 适配器',
+                installSpecTitle: 'Codex ACP 安装来源',
+            },
+            installSpecDescription: '传给 `npm install` 的 NPM/Git/文件规格（实验性）。留空则使用守护进程默认值。',
+        },
+        ui: {
+            notAvailable: '不可用',
+            notAvailableUpdateCli: '不可用（请更新 CLI）',
+            errorRefresh: '错误（刷新）',
+            installed: '已安装',
+            installedWithVersion: ({ version }: { version: string }) => `已安装（v${version}）`,
+            installedUpdateAvailable: ({ installedVersion, latestVersion }: { installedVersion: string; latestVersion: string }) =>
+                `已安装（v${installedVersion}）— 有更新（v${latestVersion}）`,
+            notInstalled: '未安装',
+            latest: '最新',
+            latestSubtitle: ({ version, tag }: { version: string; tag: string }) => `${version}（标签：${tag}）`,
+            registryCheck: '注册表检查',
+            registryCheckFailed: ({ error }: { error: string }) => `失败：${error}`,
+            installSource: '安装来源',
+            installSourceDefault: '（默认）',
+            installSpecPlaceholder: '例如 file:/path/to/pkg 或 github:owner/repo#branch',
+            lastInstallLog: '上次安装日志',
+            installLogTitle: '安装日志',
+        },
     },
 
     newSession: {
@@ -653,6 +690,11 @@ export const zhHans: TranslationStructure = {
         envVars: {
             title: '环境变量',
             titleWithCount: ({ count }: { count: number }) => `环境变量 (${count})`,
+        },
+        resumeChip: {
+            withId: ({ title, id }: { title: string; id: string }) => `${title}: ${id}`,
+            withIdTruncated: ({ title, prefix, suffix }: { title: string; prefix: string; suffix: string }) =>
+                `${title}: ${prefix}…${suffix}`,
         },
         permissionMode: {
             title: '权限模式',

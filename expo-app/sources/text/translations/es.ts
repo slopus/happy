@@ -72,6 +72,13 @@ export const es: TranslationStructure = {
         refresh: 'Actualizar',
     },
 
+    dropdown: {
+        category: {
+            general: 'General',
+            results: 'Resultados',
+        },
+    },
+
     profile: {
         userProfile: 'Perfil de usuario',
         details: 'Detalles',
@@ -343,6 +350,36 @@ export const es: TranslationStructure = {
         installFailed: 'Instalación fallida',
         installed: 'Instalado',
         installLog: ({ path }: { path: string }) => `Registro de instalación: ${path}`,
+        installable: {
+            codexResume: {
+                title: 'Servidor de reanudación de Codex',
+                installSpecTitle: 'Fuente de instalación de Codex resume',
+            },
+            codexAcp: {
+                title: 'Adaptador ACP de Codex',
+                installSpecTitle: 'Fuente de instalación de Codex ACP',
+            },
+            installSpecDescription: 'Especificación de NPM/Git/archivo pasada a `npm install` (experimental). Déjalo vacío para usar el valor predeterminado del daemon.',
+        },
+        ui: {
+            notAvailable: 'No disponible',
+            notAvailableUpdateCli: 'No disponible (actualiza la CLI)',
+            errorRefresh: 'Error (actualizar)',
+            installed: 'Instalado',
+            installedWithVersion: ({ version }: { version: string }) => `Instalado (v${version})`,
+            installedUpdateAvailable: ({ installedVersion, latestVersion }: { installedVersion: string; latestVersion: string }) =>
+                `Instalado (v${installedVersion}) — actualización disponible (v${latestVersion})`,
+            notInstalled: 'No instalado',
+            latest: 'Última',
+            latestSubtitle: ({ version, tag }: { version: string; tag: string }) => `${version} (etiqueta: ${tag})`,
+            registryCheck: 'Comprobación del registro',
+            registryCheckFailed: ({ error }: { error: string }) => `Falló: ${error}`,
+            installSource: 'Origen de instalación',
+            installSourceDefault: '(predeterminado)',
+            installSpecPlaceholder: 'p. ej. file:/ruta/al/paquete o github:propietario/repo#rama',
+            lastInstallLog: 'Último registro de instalación',
+            installLogTitle: 'Registro de instalación',
+        },
     },
 
     newSession: {
@@ -651,6 +688,11 @@ export const es: TranslationStructure = {
         envVars: {
             title: 'Variables de entorno',
             titleWithCount: ({ count }: { count: number }) => `Variables de entorno (${count})`,
+        },
+        resumeChip: {
+            withId: ({ title, id }: { title: string; id: string }) => `${title}: ${id}`,
+            withIdTruncated: ({ title, prefix, suffix }: { title: string; prefix: string; suffix: string }) =>
+                `${title}: ${prefix}…${suffix}`,
         },
         permissionMode: {
             title: 'MODO DE PERMISOS',

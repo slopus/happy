@@ -60,10 +60,10 @@ export function InstallableDepInstaller(props: InstallableDepInstallerProps) {
     const updateAvailable = computeUpdateAvailable(props.depStatus);
 
     const subtitle = (() => {
-        if (props.capabilitiesStatus === 'loading') return 'Loading…';
-        if (props.capabilitiesStatus === 'not-supported') return 'Not available (update CLI)';
-        if (props.capabilitiesStatus === 'error') return 'Error (refresh)';
-        if (props.capabilitiesStatus !== 'loaded') return 'Not available';
+        if (props.capabilitiesStatus === 'loading') return t('common.loading');
+        if (props.capabilitiesStatus === 'not-supported') return t('deps.ui.notAvailableUpdateCli');
+        if (props.capabilitiesStatus === 'error') return t('deps.ui.errorRefresh');
+        if (props.capabilitiesStatus !== 'loaded') return t('deps.ui.notAvailable');
 
         if (props.depStatus?.installed) {
             if (updateAvailable) {
@@ -71,12 +71,14 @@ export function InstallableDepInstaller(props: InstallableDepInstallerProps) {
                 const latestV = props.depStatus.registry && props.depStatus.registry.ok
                     ? (props.depStatus.registry.latestVersion ?? 'unknown')
                     : 'unknown';
-                return `Installed (v${installedV}) — update available (v${latestV})`;
+                return t('deps.ui.installedUpdateAvailable', { installedVersion: installedV, latestVersion: latestV });
             }
-            return `Installed${props.depStatus.installedVersion ? ` (v${props.depStatus.installedVersion})` : ''}`;
+            return props.depStatus.installedVersion
+                ? t('deps.ui.installedWithVersion', { version: props.depStatus.installedVersion })
+                : t('deps.ui.installed');
         }
 
-        return 'Not installed';
+        return t('deps.ui.notInstalled');
     })();
 
     const installButtonLabel = props.depStatus?.installed
@@ -89,7 +91,7 @@ export function InstallableDepInstaller(props: InstallableDepInstallerProps) {
             props.installSpecDescription,
             {
                 defaultValue: installSpec ?? '',
-                placeholder: 'e.g. file:/path/to/pkg or github:owner/repo#branch',
+                placeholder: t('deps.ui.installSpecPlaceholder'),
                 confirmText: t('common.save'),
                 cancelText: t('common.cancel'),
             },
@@ -145,8 +147,8 @@ export function InstallableDepInstaller(props: InstallableDepInstallerProps) {
 
             {props.depStatus?.registry && props.depStatus.registry.ok && props.depStatus.registry.latestVersion && (
                 <Item
-                    title="Latest"
-                    subtitle={`${props.depStatus.registry.latestVersion} (tag: ${props.depStatus.distTag})`}
+                    title={t('deps.ui.latest')}
+                    subtitle={t('deps.ui.latestSubtitle', { version: props.depStatus.registry.latestVersion, tag: props.depStatus.distTag })}
                     icon={<Ionicons name="cloud-download-outline" size={22} color={theme.colors.textSecondary} />}
                     showChevron={false}
                 />
@@ -154,16 +156,16 @@ export function InstallableDepInstaller(props: InstallableDepInstallerProps) {
 
             {props.depStatus?.registry && !props.depStatus.registry.ok && (
                 <Item
-                    title="Registry check"
-                    subtitle={`Failed: ${props.depStatus.registry.errorMessage}`}
+                    title={t('deps.ui.registryCheck')}
+                    subtitle={t('deps.ui.registryCheckFailed', { error: props.depStatus.registry.errorMessage })}
                     icon={<Ionicons name="cloud-offline-outline" size={22} color={theme.colors.textSecondary} />}
                     showChevron={false}
                 />
             )}
 
             <Item
-                title="Install source"
-                subtitle={typeof installSpec === 'string' && installSpec.trim() ? installSpec.trim() : '(default)'}
+                title={t('deps.ui.installSource')}
+                subtitle={typeof installSpec === 'string' && installSpec.trim() ? installSpec.trim() : t('deps.ui.installSourceDefault')}
                 icon={<Ionicons name="link-outline" size={22} color={theme.colors.textSecondary} />}
                 onPress={openInstallSpecPrompt}
             />
@@ -191,11 +193,11 @@ export function InstallableDepInstaller(props: InstallableDepInstallerProps) {
 
             {props.depStatus?.lastInstallLogPath && (
                 <Item
-                    title="Last install log"
+                    title={t('deps.ui.lastInstallLog')}
                     subtitle={props.depStatus.lastInstallLogPath}
                     icon={<Ionicons name="document-text-outline" size={22} color={theme.colors.textSecondary} />}
                     showChevron={false}
-                    onPress={() => Modal.alert('Install log', props.depStatus?.lastInstallLogPath ?? '')}
+                    onPress={() => Modal.alert(t('deps.ui.installLogTitle'), props.depStatus?.lastInstallLogPath ?? '')}
                 />
             )}
         </ItemGroup>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TextInput } from 'react-native';
 import type { SelectableMenuCategory, SelectableMenuItem } from './selectableMenuTypes';
+import { t } from '@/text';
 
 function toCategoryId(title: string): string {
     return title.toLowerCase().replace(/\s+/g, '-');
@@ -31,12 +32,14 @@ export function useSelectableMenu(params: {
     const inputRef = useRef<TextInput>(null);
 
     const allItemsRaw = useMemo(() => params.items, [params.items]);
+    const defaultCategoryTitle = t('dropdown.category.general');
+    const resultsCategoryTitle = t('dropdown.category.results');
 
     const filteredCategories = useMemo((): SelectableMenuCategory[] => {
         const query = searchQuery.trim().toLowerCase();
 
         if (!query) {
-            return groupByCategory(allItemsRaw, 'General');
+            return groupByCategory(allItemsRaw, defaultCategoryTitle);
         }
 
         const filtered = allItemsRaw.filter((item) => {
@@ -46,8 +49,8 @@ export function useSelectableMenu(params: {
         });
 
         if (filtered.length === 0) return [];
-        return groupByCategory(filtered, 'Results');
-    }, [allItemsRaw, searchQuery]);
+        return groupByCategory(filtered, resultsCategoryTitle);
+    }, [allItemsRaw, defaultCategoryTitle, resultsCategoryTitle, searchQuery]);
 
     const allItems = useMemo(() => {
         return filteredCategories.flatMap((c) => c.items);
@@ -128,4 +131,3 @@ export function useSelectableMenu(params: {
         setSelectedIndex: (idx: number) => setSelectedIndex(clampToEnabled(idx)),
     };
 }
-

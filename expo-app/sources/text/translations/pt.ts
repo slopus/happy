@@ -72,6 +72,13 @@ export const pt: TranslationStructure = {
         refresh: 'Atualizar',
     },
 
+    dropdown: {
+        category: {
+            general: 'Geral',
+            results: 'Resultados',
+        },
+    },
+
     profile: {
         userProfile: 'Perfil do usuário',
         details: 'Detalhes',
@@ -343,6 +350,36 @@ export const pt: TranslationStructure = {
         installFailed: 'Falha na instalação',
         installed: 'Instalado',
         installLog: ({ path }: { path: string }) => `Log de instalação: ${path}`,
+        installable: {
+            codexResume: {
+                title: 'Servidor de retomada do Codex',
+                installSpecTitle: 'Fonte de instalação do Codex resume',
+            },
+            codexAcp: {
+                title: 'Adaptador Codex ACP',
+                installSpecTitle: 'Fonte de instalação do Codex ACP',
+            },
+            installSpecDescription: 'Especificação NPM/Git/arquivo passada para `npm install` (experimental). Deixe em branco para usar o padrão do daemon.',
+        },
+        ui: {
+            notAvailable: 'Indisponível',
+            notAvailableUpdateCli: 'Indisponível (atualize o CLI)',
+            errorRefresh: 'Erro (atualizar)',
+            installed: 'Instalado',
+            installedWithVersion: ({ version }: { version: string }) => `Instalado (v${version})`,
+            installedUpdateAvailable: ({ installedVersion, latestVersion }: { installedVersion: string; latestVersion: string }) =>
+                `Instalado (v${installedVersion}) — atualização disponível (v${latestVersion})`,
+            notInstalled: 'Não instalado',
+            latest: 'Última',
+            latestSubtitle: ({ version, tag }: { version: string; tag: string }) => `${version} (tag: ${tag})`,
+            registryCheck: 'Verificação do registro',
+            registryCheckFailed: ({ error }: { error: string }) => `Falhou: ${error}`,
+            installSource: 'Fonte de instalação',
+            installSourceDefault: '(padrão)',
+            installSpecPlaceholder: 'ex.: file:/caminho/para/pkg ou github:owner/repo#branch',
+            lastInstallLog: 'Último log de instalação',
+            installLogTitle: 'Log de instalação',
+        },
     },
 
     newSession: {
@@ -651,6 +688,11 @@ export const pt: TranslationStructure = {
         envVars: {
             title: 'Vars env',
             titleWithCount: ({ count }: { count: number }) => `Vars env (${count})`,
+        },
+        resumeChip: {
+            withId: ({ title, id }: { title: string; id: string }) => `${title}: ${id}`,
+            withIdTruncated: ({ title, prefix, suffix }: { title: string; prefix: string; suffix: string }) =>
+                `${title}: ${prefix}…${suffix}`,
         },
         permissionMode: {
             title: 'MODO DE PERMISSÃO',

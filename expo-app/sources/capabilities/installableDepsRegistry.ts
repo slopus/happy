@@ -3,6 +3,7 @@ import type { Settings } from '@/sync/settings';
 import type { TranslationKey } from '@/text';
 import type { CodexAcpDepData } from '@/sync/capabilitiesProtocol';
 import type { CodexMcpResumeDepData } from '@/sync/capabilitiesProtocol';
+import { t } from '@/text';
 
 import {
     buildCodexMcpResumeRegistryDetectRequest,
@@ -65,12 +66,12 @@ export function getInstallableDepRegistryEntries(): readonly InstallableDepRegis
         experimental: true,
         enabledSettingKey: 'expCodexResume',
         depId: CODEX_MCP_RESUME_DEP_ID,
-        depTitle: 'Codex resume server',
+        depTitle: t('deps.installable.codexResume.title'),
         depIconName: 'refresh-circle-outline',
         groupTitleKey: 'newSession.codexResumeBanner.title',
         installSpecSettingKey: 'codexResumeInstallSpec',
-        installSpecTitle: 'Codex resume install source',
-        installSpecDescription: 'NPM/Git/file spec passed to `npm install` (experimental). Leave empty to use daemon default.',
+        installSpecTitle: t('deps.installable.codexResume.installSpecTitle'),
+        installSpecDescription: t('deps.installable.installSpecDescription'),
         installLabels: {
             installKey: 'newSession.codexResumeBanner.install',
             updateKey: 'newSession.codexResumeBanner.update',
@@ -98,12 +99,12 @@ export function getInstallableDepRegistryEntries(): readonly InstallableDepRegis
         experimental: true,
         enabledSettingKey: 'expCodexAcp',
         depId: CODEX_ACP_DEP_ID,
-        depTitle: 'Codex ACP adapter',
+        depTitle: t('deps.installable.codexAcp.title'),
         depIconName: 'swap-horizontal-outline',
         groupTitleKey: 'newSession.codexAcpBanner.title',
         installSpecSettingKey: 'codexAcpInstallSpec',
-        installSpecTitle: 'Codex ACP install source',
-        installSpecDescription: 'NPM/Git/file spec passed to `npm install` (experimental). Leave empty to use daemon default.',
+        installSpecTitle: t('deps.installable.codexAcp.installSpecTitle'),
+        installSpecDescription: t('deps.installable.installSpecDescription'),
         installLabels: {
             installKey: 'newSession.codexAcpBanner.install',
             updateKey: 'newSession.codexAcpBanner.update',

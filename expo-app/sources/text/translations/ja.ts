@@ -65,6 +65,13 @@ export const ja: TranslationStructure = {
         saveAs: '名前を付けて保存',
     },
 
+    dropdown: {
+        category: {
+            general: '一般',
+            results: '結果',
+        },
+    },
+
     profile: {
         userProfile: 'ユーザープロフィール',
         details: '詳細',
@@ -589,6 +596,36 @@ export const ja: TranslationStructure = {
         installFailed: 'インストールに失敗しました',
         installed: 'インストールしました',
         installLog: ({ path }: { path: string }) => `インストールログ: ${path}`,
+        installable: {
+            codexResume: {
+                title: 'Codex 再開サーバー',
+                installSpecTitle: 'Codex resume のインストール元',
+            },
+            codexAcp: {
+                title: 'Codex ACP アダプター',
+                installSpecTitle: 'Codex ACP のインストール元',
+            },
+            installSpecDescription: '（実験的）`npm install` に渡す NPM/Git/ファイル指定。空欄の場合はデーモンの既定を使用します。',
+        },
+        ui: {
+            notAvailable: '利用できません',
+            notAvailableUpdateCli: '利用できません（CLI を更新してください）',
+            errorRefresh: 'エラー（更新）',
+            installed: 'インストール済み',
+            installedWithVersion: ({ version }: { version: string }) => `インストール済み（v${version}）`,
+            installedUpdateAvailable: ({ installedVersion, latestVersion }: { installedVersion: string; latestVersion: string }) =>
+                `インストール済み（v${installedVersion}）— 更新あり（v${latestVersion}）`,
+            notInstalled: '未インストール',
+            latest: '最新',
+            latestSubtitle: ({ version, tag }: { version: string; tag: string }) => `${version}（タグ: ${tag}）`,
+            registryCheck: 'レジストリ確認',
+            registryCheckFailed: ({ error }: { error: string }) => `失敗: ${error}`,
+            installSource: 'インストール元',
+            installSourceDefault: '（既定）',
+            installSpecPlaceholder: '例: file:/path/to/pkg または github:owner/repo#branch',
+            lastInstallLog: '前回のインストールログ',
+            installLogTitle: 'インストールログ',
+        },
     },
 
     newSession: {
@@ -897,6 +934,11 @@ export const ja: TranslationStructure = {
         envVars: {
             title: '環境変数',
             titleWithCount: ({ count }: { count: number }) => `環境変数 (${count})`,
+        },
+        resumeChip: {
+            withId: ({ title, id }: { title: string; id: string }) => `${title}: ${id}`,
+            withIdTruncated: ({ title, prefix, suffix }: { title: string; prefix: string; suffix: string }) =>
+                `${title}: ${prefix}…${suffix}`,
         },
         permissionMode: {
             title: '権限モード',

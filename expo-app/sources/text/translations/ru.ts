@@ -83,6 +83,13 @@ export const ru: TranslationStructure = {
         refresh: 'Обновить',
     },
 
+    dropdown: {
+        category: {
+            general: 'Общее',
+            results: 'Результаты',
+        },
+    },
+
     connect: {
         restoreAccount: 'Восстановить аккаунт',
         enterSecretKey: 'Пожалуйста, введите секретный ключ',
@@ -325,6 +332,36 @@ export const ru: TranslationStructure = {
         installFailed: 'Не удалось установить',
         installed: 'Установлено',
         installLog: ({ path }: { path: string }) => `Лог установки: ${path}`,
+        installable: {
+            codexResume: {
+                title: 'Сервер возобновления Codex',
+                installSpecTitle: 'Источник установки Codex resume',
+            },
+            codexAcp: {
+                title: 'Адаптер Codex ACP',
+                installSpecTitle: 'Источник установки Codex ACP',
+            },
+            installSpecDescription: 'Спецификация NPM/Git/file для `npm install` (экспериментально). Оставьте пустым, чтобы использовать значение демона по умолчанию.',
+        },
+        ui: {
+            notAvailable: 'Недоступно',
+            notAvailableUpdateCli: 'Недоступно (обновите CLI)',
+            errorRefresh: 'Ошибка (обновить)',
+            installed: 'Установлено',
+            installedWithVersion: ({ version }: { version: string }) => `Установлено (v${version})`,
+            installedUpdateAvailable: ({ installedVersion, latestVersion }: { installedVersion: string; latestVersion: string }) =>
+                `Установлено (v${installedVersion}) — доступно обновление (v${latestVersion})`,
+            notInstalled: 'Не установлено',
+            latest: 'Последняя',
+            latestSubtitle: ({ version, tag }: { version: string; tag: string }) => `${version} (tag: ${tag})`,
+            registryCheck: 'Проверка реестра',
+            registryCheckFailed: ({ error }: { error: string }) => `Ошибка: ${error}`,
+            installSource: 'Источник установки',
+            installSourceDefault: '(по умолчанию)',
+            installSpecPlaceholder: 'например, file:/path/to/pkg или github:owner/repo#branch',
+            lastInstallLog: 'Последний лог установки',
+            installLogTitle: 'Лог установки',
+        },
     },
 
     newSession: {
@@ -661,6 +698,11 @@ export const ru: TranslationStructure = {
         envVars: {
             title: 'Переменные окружения',
             titleWithCount: ({ count }: { count: number }) => `Переменные окружения (${count})`,
+        },
+        resumeChip: {
+            withId: ({ title, id }: { title: string; id: string }) => `${title}: ${id}`,
+            withIdTruncated: ({ title, prefix, suffix }: { title: string; prefix: string; suffix: string }) =>
+                `${title}: ${prefix}…${suffix}`,
         },
         permissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ',
