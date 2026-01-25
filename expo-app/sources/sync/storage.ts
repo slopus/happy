@@ -778,36 +778,44 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
-        updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => set((state) => {
-            const session = state.sessions[sessionId];
-            if (!session) return state;
+        updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => {
+            const session = get().sessions[sessionId];
+            if (!session) return;
+            const flavor = session.metadata?.flavor;
+            if (flavor === 'claude' || flavor === 'gemini') {
+                void sync.changePermissionMode(sessionId, mode);
+            }
+            set((state) => {
+                const existing = state.sessions[sessionId];
+                if (!existing) return state;
 
-            // Update the session with the new permission mode
-            const updatedSessions = {
-                ...state.sessions,
-                [sessionId]: {
-                    ...session,
-                    permissionMode: mode
-                }
-            };
+                // Update the session with the new permission mode
+                const updatedSessions = {
+                    ...state.sessions,
+                    [sessionId]: {
+                        ...existing,
+                        permissionMode: mode
+                    }
+                };
 
-            // Collect all permission modes for persistence
-            const allModes: Record<string, PermissionMode> = {};
-            Object.entries(updatedSessions).forEach(([id, sess]) => {
-                if (sess.permissionMode && sess.permissionMode !== 'default') {
-                    allModes[id] = sess.permissionMode;
-                }
+                // Collect all permission modes for persistence
+                const allModes: Record<string, PermissionMode> = {};
+                Object.entries(updatedSessions).forEach(([id, sess]) => {
+                    if (sess.permissionMode && sess.permissionMode !== 'default') {
+                        allModes[id] = sess.permissionMode;
+                    }
+                });
+
+                // Persist permission modes (only non-default values to save space)
+                saveSessionPermissionModes(allModes);
+
+                // No need to rebuild sessionListViewData since permission mode doesn't affect the list display
+                return {
+                    ...state,
+                    sessions: updatedSessions
+                };
             });
-
-            // Persist permission modes (only non-default values to save space)
-            saveSessionPermissionModes(allModes);
-
-            // No need to rebuild sessionListViewData since permission mode doesn't affect the list display
-            return {
-                ...state,
-                sessions: updatedSessions
-            };
-        }),
+        },
         updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;

@@ -40,6 +40,8 @@ import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { initializeTodoSync } from '../-zen/model/ops';
 
+type PermissionMode = NonNullable<Session['permissionMode']>;
+
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
     private static readonly SESSION_READY_TIMEOUT_MS = 10000;
@@ -297,6 +299,20 @@ class Sync {
             sentFrom,
             permissionMode: permissionMode || 'default'
         });
+    }
+
+    async changePermissionMode(sessionId: string, mode: PermissionMode): Promise<boolean> {
+        try {
+            await apiSocket.sessionRPC<boolean, { mode: PermissionMode }>(
+                sessionId,
+                'permission-mode-changed',
+                { mode }
+            );
+            return true;
+        } catch (error) {
+            log.log(`Failed to change permission mode for ${sessionId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            return false;
+        }
     }
 
     applySettings = (delta: Partial<Settings>) => {

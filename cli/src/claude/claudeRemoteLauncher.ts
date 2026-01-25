@@ -15,6 +15,7 @@ import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
+import type { PermissionMode } from "@/api/types";
 
 interface PermissionsField {
     date: number;
@@ -98,6 +99,21 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     // Create permission handler
     const permissionHandler = new PermissionHandler(session);
+    const validPermissionModes: PermissionMode[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
+
+    session.client.rpcHandlerManager.registerHandler<{ mode?: PermissionMode }, boolean>(
+        'permission-mode-changed',
+        async (payload) => {
+            const mode = payload?.mode;
+            if (!mode || !validPermissionModes.includes(mode)) {
+                logger.debug('[remote]: invalid permission mode via rpc', { mode });
+                return false;
+            }
+            permissionHandler.handleModeChange(mode);
+            logger.debug(`[remote]: permission mode updated via rpc to ${mode}`);
+            return true;
+        }
+    );
 
     // Create outgoing message queue
     const messageQueue = new OutgoingMessageQueue(

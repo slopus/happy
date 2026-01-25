@@ -520,6 +520,22 @@ export async function runGemini(opts: {
     permissionHandler.setPermissionMode(mode);
   };
 
+  const validPermissionModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+  session.rpcHandlerManager.registerHandler<{ mode?: PermissionMode }, boolean>(
+    'permission-mode-changed',
+    async (payload) => {
+      const mode = payload?.mode;
+      if (!mode || !validPermissionModes.includes(mode)) {
+        logger.debug('[gemini] Invalid permission mode via rpc', { mode });
+        return false;
+      }
+      currentPermissionMode = mode;
+      updatePermissionMode(mode);
+      logger.debug(`[gemini] Permission mode updated via rpc to ${mode}`);
+      return true;
+    }
+  );
+
   // Accumulate Gemini response text for sending complete message to mobile
   let accumulatedResponse = '';
   let isResponseInProgress = false;
@@ -1324,4 +1340,3 @@ export async function runGemini(opts: {
     logger.debug('[gemini]: Final cleanup completed');
   }
 }
-
