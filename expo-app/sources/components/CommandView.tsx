@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { Text, View, StyleSheet, Platform } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
+import { Text, View, Platform } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 
 interface CommandViewProps {

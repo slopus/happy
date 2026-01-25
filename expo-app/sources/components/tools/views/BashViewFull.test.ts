@@ -13,6 +13,10 @@ vi.mock('react-native', () => ({
     StyleSheet: { create: (styles: any) => styles },
 }));
 
+vi.mock('react-native-unistyles', () => ({
+    StyleSheet: { create: (styles: any) => styles },
+}));
+
 vi.mock('@/components/CommandView', () => ({
     CommandView: (props: any) => {
         commandViewSpy(props);

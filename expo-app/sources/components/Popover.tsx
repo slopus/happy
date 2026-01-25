@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { Platform, Pressable, StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, View, type StyleProp, type ViewProps, type ViewStyle, useWindowDimensions } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { usePopoverBoundaryRef } from '@/components/PopoverBoundary';
 import { requireRadixDismissableLayer } from '@/utils/radixCjs';
 import { useOverlayPortal } from '@/components/OverlayPortal';
