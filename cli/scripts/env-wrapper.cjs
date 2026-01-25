@@ -24,13 +24,13 @@ const VARIANTS = {
     homeDir: path.join(os.homedir(), '.happy'),
     color: '\x1b[32m', // Green
     label: '✅ STABLE',
-    serverUrl: process.env.HAPPY_SERVER_URL || 'https://api.cluster-fluster.com'
+    serverUrl: process.env.HAPPY_SERVER_URL || 'https://happy.hitosea.com'
   },
   dev: {
     homeDir: path.join(os.homedir(), '.happy-dev'),
     color: '\x1b[33m', // Yellow
     label: '🔧 DEV',
-    serverUrl: process.env.HAPPY_SERVER_URL || 'https://api.cluster-fluster.com'
+    serverUrl: process.env.HAPPY_SERVER_URL || 'https://happy.hitosea.com'
   }
 };
 
