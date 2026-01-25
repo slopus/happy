@@ -7,14 +7,20 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Switch } from '@/components/Switch';
+import { DropdownMenu } from '@/components/dropdown/DropdownMenu';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { useSettingMutable } from '@/sync/storage';
 import type { MessageSendMode } from '@/sync/submitMode';
+import { getPermissionModeLabelForAgentType, getPermissionModeOptionsForAgentType } from '@/sync/permissionModeOptions';
+import type { PermissionMode } from '@/sync/permissionTypes';
+import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
+import { getAgentCore, type AgentId } from '@/agents/registryCore';
 
 export default React.memo(function SessionSettingsScreen() {
     const { theme } = useUnistyles();
+    const popoverBoundaryRef = React.useRef<any>(null);
 
     const [useTmux, setUseTmux] = useSettingMutable('sessionUseTmux');
     const [tmuxSessionName, setTmuxSessionName] = useSettingMutable('sessionTmuxSessionName');
@@ -22,6 +28,25 @@ export default React.memo(function SessionSettingsScreen() {
     const [tmuxTmpDir, setTmuxTmpDir] = useSettingMutable('sessionTmuxTmpDir');
 
     const [messageSendMode, setMessageSendMode] = useSettingMutable('sessionMessageSendMode');
+
+    const enabledAgentIds = useEnabledAgentIds();
+
+    const [defaultPermissionByAgent, setDefaultPermissionByAgent] = useSettingMutable('sessionDefaultPermissionModeByAgent');
+    const getDefaultPermission = React.useCallback((agent: AgentId): PermissionMode => {
+        const raw = (defaultPermissionByAgent as any)?.[agent] as PermissionMode | undefined;
+        return (raw ?? 'default') as PermissionMode;
+    }, [defaultPermissionByAgent]);
+    const setDefaultPermission = React.useCallback((agent: AgentId, mode: PermissionMode) => {
+        setDefaultPermissionByAgent({
+            ...(defaultPermissionByAgent ?? {}),
+            [agent]: mode,
+        } as any);
+    }, [defaultPermissionByAgent, setDefaultPermissionByAgent]);
+
+    const [openProvider, setOpenProvider] = React.useState<null | AgentId>(null);
+    const openDropdown = React.useCallback((provider: AgentId) => {
+        requestAnimationFrame(() => setOpenProvider(provider));
+    }, []);
 
     const options: Array<{ key: MessageSendMode; title: string; subtitle: string }> = [
         {
@@ -42,7 +67,7 @@ export default React.memo(function SessionSettingsScreen() {
     ];
 
     return (
-        <ItemList style={{ paddingTop: 0 }}>
+        <ItemList ref={popoverBoundaryRef} style={{ paddingTop: 0 }}>
             <ItemGroup title="Message sending" footer="Controls what happens when you send a message while the agent is running.">
                 {options.map((option) => (
                     <Item
@@ -55,6 +80,55 @@ export default React.memo(function SessionSettingsScreen() {
                         showChevron={false}
                     />
                 ))}
+            </ItemGroup>
+
+            <ItemGroup title="Default permissions" footer="Applies when starting a new session. Profiles can optionally override this.">
+                {enabledAgentIds.map((agentId, index) => {
+                    const core = getAgentCore(agentId);
+                    const mode = getDefaultPermission(agentId);
+                    const showDivider = index < enabledAgentIds.length - 1;
+                    return (
+                        <DropdownMenu
+                            key={agentId}
+                            open={openProvider === agentId}
+                            onOpenChange={(next) => setOpenProvider(next ? agentId : null)}
+                            variant="selectable"
+                            search={false}
+                            selectedId={mode as any}
+                            showCategoryTitles={false}
+                            matchTriggerWidth={true}
+                            connectToTrigger={true}
+                            rowKind="item"
+                            popoverBoundaryRef={popoverBoundaryRef}
+                            trigger={(
+                                <Item
+                                    title={t(core.displayNameKey)}
+                                    subtitle={getPermissionModeLabelForAgentType(agentId as any, mode)}
+                                    icon={<Ionicons name={core.ui.agentPickerIconName as any} size={29} color={theme.colors.textSecondary} />}
+                                    rightElement={<Ionicons name={openProvider === agentId ? 'chevron-up' : 'chevron-down'} size={20} color={theme.colors.textSecondary} />}
+                                    onPress={() => openDropdown(agentId)}
+                                    showChevron={false}
+                                    showDivider={showDivider}
+                                    selected={false}
+                                />
+                            )}
+                            items={getPermissionModeOptionsForAgentType(agentId as any).map((opt) => ({
+                                id: opt.value,
+                                title: opt.label,
+                                subtitle: opt.description,
+                                icon: (
+                                    <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+                                        <Ionicons name={opt.icon as any} size={22} color={theme.colors.textSecondary} />
+                                    </View>
+                                ),
+                            }))}
+                            onSelect={(id) => {
+                                setDefaultPermission(agentId, id as any);
+                                setOpenProvider(null);
+                            }}
+                        />
+                    );
+                })}
             </ItemGroup>
 
             <ItemGroup title={t('profiles.tmux.title')}>

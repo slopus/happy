@@ -22,6 +22,8 @@ import { Image } from 'expo-image';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
+import { getAgentCore, resolveAgentIdFromConnectedServiceId } from '@/agents/registryCore';
+import { getAgentIconSource, getAgentIconTintColor } from '@/agents/registryUi';
 
 export default React.memo(() => {
     const { theme } = useUnistyles();
@@ -172,40 +174,42 @@ export default React.memo(() => {
 
                 {/* Connected Services Section */}
                 {profile.connectedServices && profile.connectedServices.length > 0 && (() => {
-                    // Map of service IDs to display names and icons
-                    const knownServices = {
-                        anthropic: { name: 'Claude Code', icon: require('@/assets/images/icon-claude.png'), tintColor: null },
-                        gemini: { name: 'Google Gemini', icon: require('@/assets/images/icon-gemini.png'), tintColor: null },
-                        openai: { name: 'OpenAI Codex', icon: require('@/assets/images/icon-gpt.png'), tintColor: theme.colors.text }
-                    };
-                    
-                    // Filter to only known services
-                    const displayServices = profile.connectedServices.filter(
-                        service => service in knownServices
-                    );
-                    
+                    const displayServices = profile.connectedServices
+                        .map((serviceId) => {
+                            const agentId = resolveAgentIdFromConnectedServiceId(serviceId);
+                            if (!agentId) return null;
+                            const core = getAgentCore(agentId);
+                            if (!core.connectedService?.id) return null;
+                            return {
+                                serviceId,
+                                name: core.connectedService.name,
+                                icon: getAgentIconSource(agentId),
+                                tintColor: getAgentIconTintColor(agentId, theme) ?? null,
+                            };
+                        })
+                        .filter((x): x is NonNullable<typeof x> => Boolean(x));
+
                     if (displayServices.length === 0) return null;
                     
                     return (
                         <ItemGroup title={t('settings.connectedAccounts')}>
                             {displayServices.map(service => {
-                                const serviceInfo = knownServices[service as keyof typeof knownServices];
-                                const isDisconnecting = disconnectingService === service;
+                                const isDisconnecting = disconnectingService === service.serviceId;
                                 return (
                                     <Item
-                                        key={service}
-                                        title={serviceInfo.name}
+                                        key={service.serviceId}
+                                        title={service.name}
                                         detail={t('settingsAccount.statusActive')}
                                         subtitle={t('settingsAccount.tapToDisconnect')}
-                                        onPress={() => handleDisconnectService(service, serviceInfo.name)}
+                                        onPress={() => handleDisconnectService(service.serviceId, service.name)}
                                         loading={isDisconnecting}
                                         disabled={isDisconnecting}
                                         showChevron={false}
                                         icon={
                                             <Image
-                                                source={serviceInfo.icon}
+                                                source={service.icon}
                                                 style={{ width: 29, height: 29 }}
-                                                tintColor={serviceInfo.tintColor}
+                                                tintColor={service.tintColor}
                                                 contentFit="contain"
                                             />
                                         }
