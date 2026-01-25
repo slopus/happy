@@ -15,6 +15,12 @@ import { PermissionFooter } from './PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
 import { formatMCPTitle } from './views/MCPToolView';
 import { t } from '@/text';
+import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
+import { StructuredResultView } from './views/StructuredResultView';
+import { inferToolNameForRendering } from './utils/toolNameInference';
+import { normalizeToolCallForRendering } from './utils/normalizeToolCallForRendering';
+
+const KNOWN_TOOL_KEYS = Object.keys(knownTools);
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -29,6 +35,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress, sessionId, messageId } = props;
     const router = useRouter();
     const { theme } = useUnistyles();
+    const toolForRendering = React.useMemo<ToolCall>(() => normalizeToolCallForRendering(tool), [tool]);
+    const isWaitingForPermission = toolForRendering.permission?.status === 'pending' && toolForRendering.state === 'running';
+    const parsedToolInput = toolForRendering.input;
 
     // Create default onPress handler for navigation
     const handlePress = React.useCallback(() => {
@@ -42,7 +51,17 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     // Enable pressable if either onPress is provided or we have navigation params
     const isPressable = !!(onPress || (sessionId && messageId));
 
-    let knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
+    const inferredTool = inferToolNameForRendering({
+        toolName: toolForRendering.name,
+        toolInput: parsedToolInput,
+        toolDescription: toolForRendering.description,
+        knownToolKeys: KNOWN_TOOL_KEYS,
+    });
+    const normalizedToolName = toolForRendering.name.startsWith('mcp__') ? toolForRendering.name : inferredTool.normalizedToolName;
+    const usedInferenceFallback =
+        !toolForRendering.name.startsWith('mcp__') && inferredTool.source !== 'original' && inferredTool.normalizedToolName !== toolForRendering.name;
+
+    let knownTool = knownTools[normalizedToolName as keyof typeof knownTools] as any;
 
     let description: string | null = null;
     let status: string | null = null;
@@ -51,11 +70,11 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     let noStatus = false;
     let hideDefaultError = false;
     
-    // For Gemini: unknown tools should be rendered as minimal (hidden)
-    // This prevents showing raw INPUT/OUTPUT for internal Gemini tools
-    // that we haven't explicitly added to knownTools
-    const isGemini = props.metadata?.flavor === 'gemini';
-    if (!knownTool && isGemini) {
+    // For some agents (e.g. Gemini): unknown tools should be rendered as minimal (hidden)
+    // to avoid showing raw INPUT/OUTPUT for internal tools we haven't explicitly supported yet.
+    const agentId = resolveAgentIdFromFlavor(props.metadata?.flavor);
+    const hideUnknownToolsByDefault = agentId ? getAgentCore(agentId).toolRendering.hideUnknownToolsByDefault : false;
+    if (!knownTool && hideUnknownToolsByDefault) {
         minimal = true;
     }
 
@@ -68,7 +87,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     }
 
     // Handle optional title and function type
-    let toolTitle = tool.name;
+    let toolTitle = normalizedToolName;
     
     // Special handling for MCP tools
     if (tool.name.startsWith('mcp__')) {
@@ -77,29 +96,33 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         minimal = true;
     } else if (knownTool?.title) {
         if (typeof knownTool.title === 'function') {
-            toolTitle = knownTool.title({ tool, metadata: props.metadata });
+            toolTitle = knownTool.title({ tool: toolForRendering, metadata: props.metadata });
         } else {
             toolTitle = knownTool.title;
         }
     }
 
+    if (usedInferenceFallback && typeof toolForRendering.description === 'string' && toolForRendering.description.trim().length > 0) {
+        toolTitle = toolForRendering.description.trim();
+    }
+
     if (knownTool && typeof knownTool.extractSubtitle === 'function') {
-        const subtitle = knownTool.extractSubtitle({ tool, metadata: props.metadata });
+        const subtitle = knownTool.extractSubtitle({ tool: toolForRendering, metadata: props.metadata });
         if (typeof subtitle === 'string' && subtitle) {
             description = subtitle;
         }
     }
     if (knownTool && knownTool.minimal !== undefined) {
         if (typeof knownTool.minimal === 'function') {
-            minimal = knownTool.minimal({ tool, metadata: props.metadata, messages: props.messages });
+            minimal = knownTool.minimal({ tool: toolForRendering, metadata: props.metadata, messages: props.messages });
         } else {
             minimal = knownTool.minimal;
         }
     }
     
     // Special handling for CodexBash to determine icon based on parsed_cmd
-    if (tool.name === 'CodexBash' && tool.input?.parsed_cmd && Array.isArray(tool.input.parsed_cmd) && tool.input.parsed_cmd.length > 0) {
-        const parsedCmd = tool.input.parsed_cmd[0];
+    if (toolForRendering.name === 'CodexBash' && toolForRendering.input?.parsed_cmd && Array.isArray(toolForRendering.input.parsed_cmd) && toolForRendering.input.parsed_cmd.length > 0) {
+        const parsedCmd = toolForRendering.input.parsed_cmd[0];
         if (parsedCmd.type === 'read') {
             icon = <Octicons name="eye" size={18} color={theme.colors.text} />;
         } else if (parsedCmd.type === 'write') {
@@ -121,14 +144,16 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     let statusIcon = null;
 
     let isToolUseError = false;
-    if (tool.state === 'error' && tool.result && parseToolUseError(tool.result).isToolUseError) {
+    if (toolForRendering.state === 'error' && toolForRendering.result && parseToolUseError(toolForRendering.result).isToolUseError) {
         isToolUseError = true;
-        console.log('isToolUseError', tool.result);
+        console.log('isToolUseError', toolForRendering.result);
     }
 
     // Check permission status first for denied/canceled states
     if (tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) {
         statusIcon = <Ionicons name="remove-circle-outline" size={20} color={theme.colors.textSecondary} />;
+    } else if (isWaitingForPermission) {
+        statusIcon = <Ionicons name="lock-closed-outline" size={20} color={theme.colors.warning} />;
     } else if (isToolUseError) {
         statusIcon = <Ionicons name="remove-circle-outline" size={20} color={theme.colors.textSecondary} />;
         hideDefaultError = true;
@@ -167,7 +192,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 </Text>
                             )}
                         </View>
-                        {tool.state === 'running' && (
+                        {tool.state === 'running' && !isWaitingForPermission && (
                             <View style={styles.elapsedContainer}>
                                 <ElapsedView from={tool.createdAt} />
                             </View>
@@ -189,7 +214,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 </Text>
                             )}
                         </View>
-                        {tool.state === 'running' && (
+                        {tool.state === 'running' && !isWaitingForPermission && (
                             <View style={styles.elapsedContainer}>
                                 <ElapsedView from={tool.createdAt} />
                             </View>
@@ -201,33 +226,40 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
             {/* Content area - either custom children or tool-specific view */}
             {(() => {
-                // Check if minimal first - minimal tools don't show content
-                if (minimal) {
-                    return null;
-                }
-
                 // Try to use a specific tool view component first
-                const SpecificToolView = getToolViewComponent(tool.name);
+                const SpecificToolView = getToolViewComponent(normalizedToolName);
                 if (SpecificToolView) {
                     return (
                         <View style={styles.content}>
-                            <SpecificToolView tool={tool} metadata={props.metadata} messages={props.messages ?? []} sessionId={sessionId} />
-                            {tool.state === 'error' && tool.result &&
-                                !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
+                            <SpecificToolView tool={toolForRendering} metadata={props.metadata} messages={props.messages ?? []} sessionId={sessionId} />
+                            {toolForRendering.state === 'error' && toolForRendering.result &&
+                                !(toolForRendering.permission && (toolForRendering.permission.status === 'denied' || toolForRendering.permission.status === 'canceled')) &&
                                 !hideDefaultError && (
-                                    <ToolError message={String(tool.result)} />
+                                    <ToolError message={String(toolForRendering.result)} />
                                 )}
                         </View>
                     );
                 }
 
+                // Minimal tools don't show default INPUT/OUTPUT blocks.
+                if (minimal) {
+                    if (toolForRendering.result) {
+                        return (
+                            <View style={styles.content}>
+                                <StructuredResultView tool={toolForRendering} metadata={props.metadata} messages={props.messages ?? []} sessionId={sessionId} />
+                            </View>
+                        );
+                    }
+                    return null;
+                }
+
                 // Show error state if present (but not for denied/canceled permissions and not when hideDefaultError is true)
-                if (tool.state === 'error' && tool.result &&
-                    !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
+                if (toolForRendering.state === 'error' && toolForRendering.result &&
+                    !(toolForRendering.permission && (toolForRendering.permission.status === 'denied' || toolForRendering.permission.status === 'canceled')) &&
                     !isToolUseError) {
                     return (
                         <View style={styles.content}>
-                            <ToolError message={String(tool.result)} />
+                            <ToolError message={String(toolForRendering.result)} />
                         </View>
                     );
                 }
@@ -236,16 +268,20 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 return (
                     <View style={styles.content}>
                         {/* Default content when no custom view available */}
-                        {tool.input && (
+                        {toolForRendering.input && (
                             <ToolSectionView title={t('toolView.input')}>
-                                <CodeView code={JSON.stringify(tool.input, null, 2)} />
+                                <CodeView code={JSON.stringify(toolForRendering.input, null, 2)} />
                             </ToolSectionView>
                         )}
 
-                        {tool.state === 'completed' && tool.result && (
+                        {toolForRendering.state === 'running' && toolForRendering.result && (
+                            <StructuredResultView tool={toolForRendering} metadata={props.metadata} messages={props.messages ?? []} sessionId={sessionId} />
+                        )}
+
+                        {toolForRendering.state === 'completed' && toolForRendering.result && (
                             <ToolSectionView title={t('toolView.output')}>
                                 <CodeView
-                                    code={typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
+                                    code={typeof toolForRendering.result === 'string' ? toolForRendering.result : JSON.stringify(toolForRendering.result, null, 2)}
                                 />
                             </ToolSectionView>
                         )}
@@ -253,10 +289,10 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 );
             })()}
 
-            {/* Permission footer - always renders when permission exists to maintain consistent height */}
-            {/* AskUserQuestion has its own Submit button UI - no permission footer needed */}
-            {tool.permission && sessionId && tool.name !== 'AskUserQuestion' && (
-                <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} toolInput={tool.input} metadata={props.metadata} />
+            {/* Permission footer - rendered for most tools */}
+            {/* AskUserQuestion and ExitPlanMode have custom action UIs */}
+            {isWaitingForPermission && toolForRendering.permission && sessionId && toolForRendering.name !== 'AskUserQuestion' && toolForRendering.name !== 'ExitPlanMode' && toolForRendering.name !== 'exit_plan_mode' && toolForRendering.name !== 'AcpHistoryImport' && (
+                <PermissionFooter permission={toolForRendering.permission} sessionId={sessionId} toolName={normalizedToolName} toolInput={toolForRendering.input} metadata={props.metadata} />
             )}
         </View>
     );

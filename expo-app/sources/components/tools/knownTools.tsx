@@ -5,6 +5,7 @@ import * as z from 'zod';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import React from 'react';
 import { t } from '@/text';
+import { extractShellCommand } from './utils/shellCommand';
 
 // Icon factory functions
 const ICON_TASK = (size: number = 24, color: string = '#000') => <Octicons name="rocket" size={size} color={color} />;
@@ -65,8 +66,8 @@ export const knownTools = {
             stdout: z.string(),
         }).partial().loose(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.command === 'string') {
-                const cmd = opts.tool.input.command;
+            const cmd = extractShellCommand(opts.tool.input);
+            if (typeof cmd === 'string' && cmd.length > 0) {
                 // Extract just the command name for common commands
                 const firstWord = cmd.split(' ')[0];
                 if (['cd', 'ls', 'pwd', 'mkdir', 'rm', 'cp', 'mv', 'npm', 'yarn', 'git'].includes(firstWord)) {
@@ -79,9 +80,8 @@ export const knownTools = {
             return t('tools.names.terminal');
         },
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.command === 'string') {
-                return opts.tool.input.command;
-            }
+            const cmd = extractShellCommand(opts.tool.input);
+            if (typeof cmd === 'string' && cmd.length > 0) return cmd;
             return null;
         }
     },
@@ -419,6 +419,27 @@ export const knownTools = {
             return t('tools.names.todoList');
         },
     },
+    'TodoRead': {
+        title: t('tools.names.todoList'),
+        icon: ICON_TODO,
+        noStatus: true,
+        minimal: true,
+        result: z.object({
+            todos: z.array(z.object({
+                content: z.string().describe('The todo item content'),
+                status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
+                priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
+                id: z.string().optional().describe('Unique identifier for the todo')
+            }).loose()).describe('The current todo list')
+        }).partial().loose(),
+        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            const list = Array.isArray(opts.tool.result?.todos) ? opts.tool.result.todos : null;
+            if (list) {
+                return t('tools.desc.todoListCount', { count: list.length });
+            }
+            return t('tools.names.todoList');
+        },
+    },
     'WebSearch': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.query === 'string') {
@@ -441,6 +462,36 @@ export const knownTools = {
                 return t('tools.desc.webSearchQuery', { query });
             }
             return t('tools.names.webSearch');
+        }
+    },
+    'CodeSearch': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            const query = typeof opts.tool.input?.query === 'string'
+                ? opts.tool.input.query
+                : typeof opts.tool.input?.pattern === 'string'
+                    ? opts.tool.input.pattern
+                    : null;
+            if (query && query.trim()) return query.trim();
+            return 'Code Search';
+        },
+        icon: ICON_SEARCH,
+        minimal: true,
+        input: z.object({
+            query: z.string().optional().describe('The search query'),
+            pattern: z.string().optional().describe('The search pattern'),
+            path: z.string().optional().describe('Optional path scope'),
+        }).partial().loose(),
+        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            const query = typeof opts.tool.input?.query === 'string'
+                ? opts.tool.input.query
+                : typeof opts.tool.input?.pattern === 'string'
+                    ? opts.tool.input.pattern
+                    : null;
+            if (query && query.trim()) {
+                const truncated = query.length > 30 ? query.substring(0, 30) + '...' : query;
+                return truncated;
+            }
+            return 'Search in code';
         }
     },
     'CodexBash': {
@@ -662,31 +713,30 @@ export const knownTools = {
     },
     'execute': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Gemini sends nice title in toolCall.title
-            if (typeof opts.tool.input?.toolCall?.title === 'string') {
-                // Title is like "rm file.txt [cwd /path] (description)"
+            // Prefer a human-readable title when provided by ACP metadata
+            const acpTitle =
+                typeof opts.tool.input?._acp?.title === 'string'
+                    ? opts.tool.input._acp.title
+                    : typeof opts.tool.input?.toolCall?.title === 'string'
+                        ? opts.tool.input.toolCall.title
+                        : null;
+            if (acpTitle) {
+                // Title is often like "rm file.txt [cwd /path] (description)".
                 // Extract just the command part before [
-                const fullTitle = opts.tool.input.toolCall.title;
-                const bracketIdx = fullTitle.indexOf(' [');
-                if (bracketIdx > 0) {
-                    return fullTitle.substring(0, bracketIdx);
-                }
-                return fullTitle;
+                const bracketIdx = acpTitle.indexOf(' [');
+                if (bracketIdx > 0) return acpTitle.substring(0, bracketIdx);
+                return acpTitle;
             }
+            const cmd = extractShellCommand(opts.tool.input);
+            if (cmd) return cmd;
             return t('tools.names.terminal');
         },
         icon: ICON_TERMINAL,
         isMutable: true,
         input: z.object({}).partial().loose(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Extract description from parentheses at the end
-            if (typeof opts.tool.input?.toolCall?.title === 'string') {
-                const title = opts.tool.input.toolCall.title;
-                const parenMatch = title.match(/\(([^)]+)\)$/);
-                if (parenMatch) {
-                    return parenMatch[1];
-                }
-            }
+            const cmd = extractShellCommand(opts.tool.input);
+            if (cmd) return cmd;
             return null;
         }
     },
