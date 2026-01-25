@@ -430,14 +430,14 @@ export const ca: TranslationStructure = {
             gpt5High: 'GPT-5 High',
         },
         geminiPermissionMode: {
-            title: 'MODE DE PERMISOS',
+            title: 'MODE DE PERMISOS GEMINI',
             default: 'Per defecte',
-            acceptEdits: 'Accepta edicions',
-            plan: 'Mode de planificació',
-            bypassPermissions: 'Mode Yolo',
-            badgeAcceptAllEdits: 'Accepta totes les edicions',
-            badgeBypassAllPermissions: 'Omet tots els permisos',
-            badgePlanMode: 'Mode de planificació',
+            readOnly: 'Només lectura',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Només lectura',
+            badgeSafeYolo: 'Safe YOLO',
+            badgeYolo: 'YOLO',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restant`,
@@ -780,6 +780,13 @@ export const ca: TranslationStructure = {
         codeCopied: 'Codi copiat',
         copyFailed: 'Error al copiar',
         mermaidRenderFailed: 'Error al renderitzar el diagrama mermaid',
+    },
+
+    linkPreview: {
+        loadFailed: 'No s\'ha pogut carregar la pàgina',
+        openInBrowser: 'Obrir al navegador',
+        refresh: 'Actualitzar',
+        close: 'Tancar',
     },
 
     artifacts: {

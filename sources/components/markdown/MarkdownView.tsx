@@ -1,5 +1,4 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
-import { Link } from 'expo-router';
 import * as React from 'react';
 import { Pressable, ScrollView, View, Platform } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -14,6 +13,7 @@ import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
+import { useLinkHandler } from '@/hooks/useLinkHandler';
 
 // Option type for callback
 export type Option = {
@@ -217,10 +217,20 @@ function RenderOptionsBlock(props: {
 }
 
 function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
+    const { handleLinkPress } = useLinkHandler();
+
     return (<>
         {props.spans.map((span, index) => {
             if (span.url) {
-                return <Link key={index} href={span.url as any} target="_blank" style={[style.link, span.styles.map(s => style[s])]}>{span.text}</Link>
+                return (
+                    <Text
+                        key={index}
+                        onPress={() => handleLinkPress(span.url!)}
+                        style={[style.link, span.styles.map(s => style[s])]}
+                    >
+                        {span.text}
+                    </Text>
+                );
             } else {
                 return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
             }

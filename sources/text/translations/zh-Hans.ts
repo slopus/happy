@@ -432,14 +432,14 @@ export const zhHans: TranslationStructure = {
             gpt5High: 'GPT-5 High',
         },
         geminiPermissionMode: {
-            title: '权限模式',
+            title: 'GEMINI 权限模式',
             default: '默认',
-            acceptEdits: '接受编辑',
-            plan: '计划模式',
-            bypassPermissions: 'Yolo 模式',
-            badgeAcceptAllEdits: '接受所有编辑',
-            badgeBypassAllPermissions: '绕过所有权限',
-            badgePlanMode: '计划模式',
+            readOnly: '只读',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: '只读',
+            badgeSafeYolo: 'Safe YOLO',
+            badgeYolo: 'YOLO',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
@@ -782,6 +782,13 @@ export const zhHans: TranslationStructure = {
         codeCopied: '代码已复制',
         copyFailed: '复制失败',
         mermaidRenderFailed: '渲染 mermaid 图表失败',
+    },
+
+    linkPreview: {
+        loadFailed: '页面加载失败',
+        openInBrowser: '在浏览器中打开',
+        refresh: '刷新',
+        close: '关闭',
     },
 
     artifacts: {

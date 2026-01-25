@@ -461,12 +461,12 @@ export const it: TranslationStructure = {
         geminiPermissionMode: {
             title: 'MODALITÀ PERMESSI GEMINI',
             default: 'Predefinito',
-            acceptEdits: 'Accetta modifiche',
-            plan: 'Modalità piano',
-            bypassPermissions: 'Modalità YOLO',
-            badgeAcceptAllEdits: 'Accetta tutte le modifiche',
-            badgeBypassAllPermissions: 'Bypassa tutti i permessi',
-            badgePlanMode: 'Modalità piano',
+            readOnly: 'Solo lettura',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Solo lettura',
+            badgeSafeYolo: 'Safe YOLO',
+            badgeYolo: 'YOLO',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,
@@ -809,6 +809,13 @@ export const it: TranslationStructure = {
         codeCopied: 'Codice copiato',
         copyFailed: 'Copia non riuscita',
         mermaidRenderFailed: 'Impossibile renderizzare il diagramma mermaid',
+    },
+
+    linkPreview: {
+        loadFailed: 'Impossibile caricare la pagina',
+        openInBrowser: 'Apri nel browser',
+        refresh: 'Aggiorna',
+        close: 'Chiudi',
     },
 
     artifacts: {
