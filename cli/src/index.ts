@@ -27,12 +27,10 @@ import { handleAuthCommand } from './commands/auth'
 import { handleConnectCommand } from './commands/connect'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
-import { execFileSync } from 'node:child_process'
-import { parseAndStripTerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags'
-import { handleAttachCommand } from '@/commands/attach'
-import { CODEX_GEMINI_PERMISSION_MODES, CODEX_PERMISSION_MODES, PERMISSION_MODES, isCodexGeminiPermissionMode, isCodexPermissionMode, isPermissionMode, type PermissionMode } from '@/api/types'
-import { readPersistedHappySessionFile } from './daemon/persistedHappySession'
-import { supportsVendorResume, type AgentType } from './utils/agentCapabilities'
+	import { execFileSync } from 'node:child_process'
+	import { parseAndStripTerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags'
+	import { handleAttachCommand } from '@/commands/attach'
+	import { CODEX_GEMINI_PERMISSION_MODES, CODEX_PERMISSION_MODES, PERMISSION_MODES, isCodexGeminiPermissionMode, isCodexPermissionMode, isPermissionMode, type PermissionMode } from '@/api/types'
 
 
 (async () => {
@@ -40,12 +38,14 @@ import { supportsVendorResume, type AgentType } from './utils/agentCapabilities'
   const terminalRuntime = parsed.terminal
   const args = parsed.argv
 
-  const parseSessionStartArgs = (): {
-    startedBy: 'daemon' | 'terminal' | undefined
-    permissionMode: PermissionMode | undefined
-  } => {
-    let startedBy: 'daemon' | 'terminal' | undefined = undefined
-    let permissionMode: PermissionMode | undefined = undefined
+	  const parseSessionStartArgs = (): {
+	    startedBy: 'daemon' | 'terminal' | undefined
+	    permissionMode: PermissionMode | undefined
+	    permissionModeUpdatedAt: number | undefined
+	  } => {
+	    let startedBy: 'daemon' | 'terminal' | undefined = undefined
+	    let permissionMode: PermissionMode | undefined = undefined
+	    let permissionModeUpdatedAt: number | undefined = undefined
 
     for (let i = 1; i < args.length; i++) {
       const arg = args[i]
@@ -60,7 +60,7 @@ import { supportsVendorResume, type AgentType } from './utils/agentCapabilities'
           process.exit(1)
         }
         startedBy = value
-      } else if (arg === '--permission-mode') {
+	      } else if (arg === '--permission-mode') {
         if (i + 1 >= args.length) {
           console.error(chalk.red(`Missing value for --permission-mode. Valid values: ${PERMISSION_MODES.join(', ')}`))
           process.exit(1)
@@ -70,14 +70,26 @@ import { supportsVendorResume, type AgentType } from './utils/agentCapabilities'
           console.error(chalk.red(`Invalid --permission-mode value: ${value}. Valid values: ${PERMISSION_MODES.join(', ')}`))
           process.exit(1)
         }
-        permissionMode = value
-      } else if (arg === '--yolo') {
-        permissionMode = 'yolo'
-      }
-    }
+	        permissionMode = value
+	      } else if (arg === '--permission-mode-updated-at') {
+	        if (i + 1 >= args.length) {
+	          console.error(chalk.red('Missing value for --permission-mode-updated-at (expected: unix ms timestamp)'))
+	          process.exit(1)
+	        }
+	        const raw = args[++i]
+	        const parsedAt = Number(raw)
+	        if (!Number.isFinite(parsedAt) || parsedAt <= 0) {
+	          console.error(chalk.red(`Invalid --permission-mode-updated-at value: ${raw}. Expected a positive number (unix ms)`))
+	          process.exit(1)
+	        }
+	        permissionModeUpdatedAt = Math.floor(parsedAt)
+	      } else if (arg === '--yolo') {
+	        permissionMode = 'yolo'
+	      }
+	    }
 
-    return { startedBy, permissionMode }
-  }
+	    return { startedBy, permissionMode, permissionModeUpdatedAt }
+	  }
 
   // If --version is passed - do not log, its likely daemon inquiring about our version
   if (!args.includes('--version')) {
@@ -165,72 +177,17 @@ import { supportsVendorResume, type AgentType } from './utils/agentCapabilities'
       process.exit(1)
     }
     return;
-  } else if (subcommand === 'resume') {
-    const happySessionIds = args.slice(1).filter(Boolean)
-    if (happySessionIds.length === 0) {
-      console.error(chalk.red('Error:'), 'Happy session ID required')
-      console.error(`Usage: happy resume <happySessionId...>`)
-      process.exit(1)
-    }
-
-    let ok = 0
-    for (const happySessionId of happySessionIds) {
-      try {
-        const persisted = await readPersistedHappySessionFile(happySessionId)
-        if (!persisted) {
-          console.error(chalk.red('Error:'), `No local persisted session state found for ${happySessionId}`)
-          continue
-        }
-
-        const flavor = (persisted.metadata as any)?.flavor as AgentType | undefined
-        const agent: AgentType = flavor ?? 'claude'
-        if (!supportsVendorResume(agent)) {
-          console.error(chalk.red('Error:'), `Resume is not supported for agent '${agent}' (${happySessionId})`)
-          continue
-        }
-
-        const vendorResumeId =
-          persisted.vendorResumeId
-          ?? (persisted.metadata as any)?.claudeSessionId
-          ?? (persisted.metadata as any)?.codexSessionId
-        if (!vendorResumeId || typeof vendorResumeId !== 'string') {
-          console.error(chalk.red('Error:'), `Missing vendor resume id for ${happySessionId}`)
-          continue
-        }
-
-        const cwd = typeof (persisted.metadata as any)?.path === 'string' ? (persisted.metadata as any).path : process.cwd()
-        const spawnArgs = [
-          agent,
-          '--happy-starting-mode', 'remote',
-          '--started-by', 'terminal',
-          '--existing-session', happySessionId,
-          '--resume', vendorResumeId,
-        ]
-
-        const child = spawnHappyCLI(spawnArgs, { cwd, detached: true, stdio: 'ignore', env: process.env })
-        child.unref()
-        ok++
-        console.log(`Resuming session ${happySessionId} (pid ${child.pid ?? 'unknown'})`)
-      } catch (e) {
-        console.error(chalk.red('Error:'), `Failed to resume ${happySessionId}: ${e instanceof Error ? e.message : 'Unknown error'}`)
-      }
-    }
-
-    if (ok !== happySessionIds.length) {
-      process.exit(1)
-    }
-    process.exit(0)
-  } else if (subcommand === 'codex') {
-    // Handle codex command
-    try {
-      const { runCodex } = await import('@/codex/runCodex');
+	  } else if (subcommand === 'codex') {
+	    // Handle codex command
+	    try {
+	      const { runCodex } = await import('@/codex/runCodex');
       
-      const { startedBy, permissionMode } = parseSessionStartArgs()
-      if (permissionMode && !isCodexPermissionMode(permissionMode)) {
-        console.error(chalk.red(`Invalid --permission-mode for codex: ${permissionMode}. Valid values: ${CODEX_PERMISSION_MODES.join(', ')}`))
-        console.error(chalk.gray('Tip: use --yolo for full bypass-like behavior.'))
-        process.exit(1)
-      }
+	      const { startedBy, permissionMode, permissionModeUpdatedAt } = parseSessionStartArgs()
+	      if (permissionMode && !isCodexPermissionMode(permissionMode)) {
+	        console.error(chalk.red(`Invalid --permission-mode for codex: ${permissionMode}. Valid values: ${CODEX_PERMISSION_MODES.join(', ')}`))
+	        console.error(chalk.gray('Tip: use --yolo for full bypass-like behavior.'))
+	        process.exit(1)
+	      }
 
       const readFlagValue = (flag: string): string | undefined => {
         const idx = args.indexOf(flag)
@@ -246,8 +203,41 @@ import { supportsVendorResume, type AgentType } from './utils/agentCapabilities'
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
-      await runCodex({ credentials, startedBy, terminalRuntime, permissionMode, existingSessionId, resume });
+	      await runCodex({ credentials, startedBy, terminalRuntime, permissionMode, permissionModeUpdatedAt, existingSessionId, resume });
       // Do not force exit here; allow instrumentation to show lingering handles
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'opencode') {
+    // Handle OpenCode command (ACP-based agent)
+    try {
+      const { runOpenCode } = await import('@/opencode/runOpenCode');
+
+      const { startedBy, permissionMode, permissionModeUpdatedAt } = parseSessionStartArgs()
+      if (permissionMode && !isCodexGeminiPermissionMode(permissionMode)) {
+        console.error(chalk.red(`Invalid --permission-mode for opencode: ${permissionMode}. Valid values: ${CODEX_GEMINI_PERMISSION_MODES.join(', ')}`))
+        console.error(chalk.gray('Tip: use --yolo for full bypass-like behavior.'))
+        process.exit(1)
+      }
+
+      const readFlagValue = (flag: string): string | undefined => {
+        const idx = args.indexOf(flag)
+        if (idx === -1) return undefined
+        const value = args[idx + 1]
+        if (!value || value.startsWith('-')) return undefined
+        return value
+      }
+
+      const existingSessionId = readFlagValue('--existing-session')
+      const resume = readFlagValue('--resume')
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await runOpenCode({ credentials, startedBy, terminalRuntime, permissionMode, permissionModeUpdatedAt, existingSessionId, resume });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
@@ -438,18 +428,29 @@ import { supportsVendorResume, type AgentType } from './utils/agentCapabilities'
     
     // Handle gemini command (ACP-based agent)
     try {
-      const { runGemini } = await import('@/gemini/runGemini');
-      
-      const { startedBy, permissionMode } = parseSessionStartArgs()
-      if (permissionMode && !isCodexGeminiPermissionMode(permissionMode)) {
-        console.error(chalk.red(`Invalid --permission-mode for gemini: ${permissionMode}. Valid values: ${CODEX_GEMINI_PERMISSION_MODES.join(', ')}`))
-        console.error(chalk.gray('Tip: use --yolo for full bypass-like behavior.'))
-        process.exit(1)
-      }
-      
-      const {
-        credentials
-      } = await authAndSetupMachineIfNeeded();
+	      const { runGemini } = await import('@/gemini/runGemini');
+	      
+		      const { startedBy, permissionMode, permissionModeUpdatedAt } = parseSessionStartArgs()
+		      if (permissionMode && !isCodexGeminiPermissionMode(permissionMode)) {
+		        console.error(chalk.red(`Invalid --permission-mode for gemini: ${permissionMode}. Valid values: ${CODEX_GEMINI_PERMISSION_MODES.join(', ')}`))
+		        console.error(chalk.gray('Tip: use --yolo for full bypass-like behavior.'))
+		        process.exit(1)
+		      }
+
+	      const readFlagValue = (flag: string): string | undefined => {
+	        const idx = args.indexOf(flag)
+	        if (idx === -1) return undefined
+	        const value = args[idx + 1]
+	        if (!value || value.startsWith('-')) return undefined
+	        return value
+	      }
+
+	      const existingSessionId = readFlagValue('--existing-session')
+	      const resume = readFlagValue('--resume')
+	      
+	      const {
+	        credentials
+	      } = await authAndSetupMachineIfNeeded();
 
       // Auto-start daemon for gemini (same as claude)
       logger.debug('Ensuring Happy background service is running & matches our version...');
@@ -464,11 +465,11 @@ import { supportsVendorResume, type AgentType } from './utils/agentCapabilities'
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      await runGemini({credentials, startedBy, terminalRuntime, permissionMode});
-    } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
+		      await runGemini({credentials, startedBy, terminalRuntime, permissionMode, permissionModeUpdatedAt, existingSessionId, resume});
+	    } catch (error) {
+	      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+	      if (process.env.DEBUG) {
+	        console.error(error)
       }
       process.exit(1)
     }
@@ -639,14 +640,37 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
       } else if (arg === '--yolo') {
         // Shortcut for --dangerously-skip-permissions
         unknownArgs.push('--dangerously-skip-permissions')
-      } else if (arg === '--started-by') {
-        options.startedBy = args[++i] as 'daemon' | 'terminal'
-      } else if (arg === '--js-runtime') {
-        const runtime = args[++i]
-        if (runtime !== 'node' && runtime !== 'bun') {
-          console.error(chalk.red(`Invalid --js-runtime value: ${runtime}. Must be 'node' or 'bun'`))
-          process.exit(1)
-        }
+	      } else if (arg === '--started-by') {
+	        options.startedBy = args[++i] as 'daemon' | 'terminal'
+	      } else if (arg === '--permission-mode') {
+	        if (i + 1 >= args.length) {
+	          console.error(chalk.red(`Missing value for --permission-mode. Valid values: ${PERMISSION_MODES.join(', ')}`))
+	          process.exit(1)
+	        }
+	        const value = args[++i]
+	        if (!isPermissionMode(value)) {
+	          console.error(chalk.red(`Invalid --permission-mode value: ${value}. Valid values: ${PERMISSION_MODES.join(', ')}`))
+	          process.exit(1)
+	        }
+	        options.permissionMode = value
+	      } else if (arg === '--permission-mode-updated-at') {
+	        if (i + 1 >= args.length) {
+	          console.error(chalk.red('Missing value for --permission-mode-updated-at (expected: unix ms timestamp)'))
+	          process.exit(1)
+	        }
+	        const raw = args[++i]
+	        const parsedAt = Number(raw)
+	        if (!Number.isFinite(parsedAt) || parsedAt <= 0) {
+	          console.error(chalk.red(`Invalid --permission-mode-updated-at value: ${raw}. Expected a positive number (unix ms)`))
+	          process.exit(1)
+	        }
+	        options.permissionModeUpdatedAt = Math.floor(parsedAt)
+	      } else if (arg === '--js-runtime') {
+	        const runtime = args[++i]
+	        if (runtime !== 'node' && runtime !== 'bun') {
+	          console.error(chalk.red(`Invalid --js-runtime value: ${runtime}. Must be 'node' or 'bun'`))
+	          process.exit(1)
+	        }
         options.jsRuntime = runtime
       } else if (arg === '--existing-session') {
         // Used by daemon to reconnect to an existing session (for inactive session resume)
@@ -685,11 +709,11 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
 ${chalk.bold('happy')} - Claude Code On the Go
 
 ${chalk.bold('Usage:')}
-  happy [options]         Start Claude with mobile control
-  happy resume            Resume an inactive Happy session (Claude-only)
-  happy auth              Manage authentication
-  happy codex             Start Codex mode
-  happy gemini            Start Gemini mode (ACP)
+	  happy [options]         Start Claude with mobile control
+	  happy auth              Manage authentication
+	  happy codex             Start Codex mode
+	  happy opencode          Start OpenCode mode (ACP)
+	  happy gemini            Start Gemini mode (ACP)
   happy connect           Connect AI vendor API keys
   happy notify            Send push notification
   happy daemon            Manage background service that allows
