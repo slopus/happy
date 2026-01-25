@@ -212,4 +212,31 @@ describe('Session', () => {
             session.cleanup();
         }
     });
+
+    it('does not emit orphan ACP task_complete events', () => {
+        const client = {
+            keepAlive: vi.fn(),
+            updateMetadata: vi.fn(),
+            sendAgentMessage: vi.fn(),
+        } as any;
+
+        const session = new Session({
+            api: {} as any,
+            client,
+            path: '/tmp',
+            logPath: '/tmp/log',
+            sessionId: null,
+            mcpServers: {},
+            messageQueue: new MessageQueue2<any>(() => 'mode'),
+            onModeChange: () => { },
+            hookSettingsPath: '/tmp/hooks.json',
+        });
+
+        try {
+            session.onThinkingChange(false);
+            expect(client.sendAgentMessage).not.toHaveBeenCalled();
+        } finally {
+            session.cleanup();
+        }
+    });
 });

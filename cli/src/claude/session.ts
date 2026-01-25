@@ -123,7 +123,11 @@ export class Session {
             return;
         }
 
-        const id = this.currentTaskId ?? randomUUID();
+        if (!this.currentTaskId) {
+            return;
+        }
+
+        const id = this.currentTaskId;
         this.currentTaskId = null;
         this.client.sendAgentMessage('claude', { type: 'task_complete', id });
     }
