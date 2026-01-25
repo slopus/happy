@@ -97,6 +97,16 @@ export function extractMcpToolCallResultOutput(result: unknown): unknown {
     return result;
 }
 
+export function nextStoredSessionIdForResumeAfterAttempt(
+    storedSessionIdForResume: string | null,
+    attempt: { attempted: boolean; success: boolean },
+): string | null {
+    if (!attempt.attempted) {
+        return storedSessionIdForResume;
+    }
+    return attempt.success ? null : storedSessionIdForResume;
+}
+
 /**
  * Main entry point for the codex command with ink UI
  */
@@ -842,9 +852,12 @@ export async function runCodex(opts: {
                     if (!wasCreated) {
                         const resumeId = storedSessionIdForResume?.trim();
                         if (resumeId) {
-                            storedSessionIdForResume = null; // consume once
                             messageBuffer.addMessage('Resuming previous context…', 'status');
                             await codexAcp.startOrLoad({ resumeId });
+                            storedSessionIdForResume = nextStoredSessionIdForResumeAfterAttempt(storedSessionIdForResume, {
+                                attempted: true,
+                                success: true,
+                            });
                         } else {
                             await codexAcp.startOrLoad({});
                         }
@@ -899,7 +912,6 @@ export async function runCodex(opts: {
                     // Resume-by-session-id path (fork): seed codex-reply with the previous session id.
                     if (storedSessionIdForResume) {
                         const resumeId = storedSessionIdForResume;
-                        storedSessionIdForResume = null; // consume once
                         messageBuffer.addMessage('Resuming previous context…', 'status');
                         mcpClient.setSessionIdForResume(resumeId);
                         const resumeResponse = await mcpClient.continueSession(message.message, { signal: abortController.signal });
@@ -911,6 +923,10 @@ export async function runCodex(opts: {
                             currentModeHash = null;
                             continue;
                         }
+                        storedSessionIdForResume = nextStoredSessionIdForResumeAfterAttempt(storedSessionIdForResume, {
+                            attempted: true,
+                            success: true,
+                        });
                         publishCodexThreadIdToMetadata();
                     } else {
                         const startResponse = await mcpClient.startSession(
