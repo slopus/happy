@@ -443,10 +443,10 @@ export const pl: TranslationStructure = {
             title: 'TRYB UPRAWNIEŃ GEMINI',
             default: 'Domyślny',
             readOnly: 'Tylko do odczytu',
-            safeYolo: 'Bezpieczny YOLO',
+            safeYolo: 'Safe YOLO',
             yolo: 'YOLO',
             badgeReadOnly: 'Tylko do odczytu',
-            badgeSafeYolo: 'Bezpieczny YOLO',
+            badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
         context: {

@@ -462,10 +462,10 @@ export const it: TranslationStructure = {
             title: 'MODALITÀ PERMESSI GEMINI',
             default: 'Predefinito',
             readOnly: 'Solo lettura',
-            safeYolo: 'YOLO sicuro',
+            safeYolo: 'Safe YOLO',
             yolo: 'YOLO',
             badgeReadOnly: 'Solo lettura',
-            badgeSafeYolo: 'YOLO sicuro',
+            badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
         context: {

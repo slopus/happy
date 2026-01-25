@@ -435,10 +435,10 @@ export const zhHans: TranslationStructure = {
             title: 'GEMINI 权限模式',
             default: '默认',
             readOnly: '只读',
-            safeYolo: '安全 YOLO',
+            safeYolo: 'Safe YOLO',
             yolo: 'YOLO',
             badgeReadOnly: '只读',
-            badgeSafeYolo: '安全 YOLO',
+            badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
         context: {

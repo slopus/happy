@@ -433,10 +433,10 @@ export const es: TranslationStructure = {
             title: 'MODO DE PERMISOS GEMINI',
             default: 'Por defecto',
             readOnly: 'Solo lectura',
-            safeYolo: 'YOLO seguro',
+            safeYolo: 'Safe YOLO',
             yolo: 'YOLO',
             badgeReadOnly: 'Solo lectura',
-            badgeSafeYolo: 'YOLO seguro',
+            badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
         context: {

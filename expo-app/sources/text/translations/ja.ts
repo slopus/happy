@@ -465,10 +465,10 @@ export const ja: TranslationStructure = {
             title: 'GEMINI権限モード',
             default: 'デフォルト',
             readOnly: '読み取り専用',
-            safeYolo: '安全YOLO',
+            safeYolo: 'Safe YOLO',
             yolo: 'YOLO',
             badgeReadOnly: '読み取り専用',
-            badgeSafeYolo: '安全YOLO',
+            badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
         context: {
