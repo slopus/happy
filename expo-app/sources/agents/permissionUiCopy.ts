@@ -26,11 +26,19 @@ export function getPermissionFooterCopy(agentId: AgentId): PermissionFooterCopy 
         };
     }
 
+    if (protocol === 'claude') {
+        return {
+            protocol: 'claude',
+            yesAllowAllEditsKey: 'claude.permissions.yesAllowAllEdits',
+            yesForToolKey: 'claude.permissions.yesForTool',
+            noTellAgentKey: 'claude.permissions.noTellClaude',
+        };
+    }
+
     return {
-        protocol,
+        protocol: 'claude',
         yesAllowAllEditsKey: 'claude.permissions.yesAllowAllEdits',
         yesForToolKey: 'claude.permissions.yesForTool',
         noTellAgentKey: 'claude.permissions.noTellClaude',
     };
 }
-

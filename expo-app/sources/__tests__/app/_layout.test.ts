@@ -96,18 +96,25 @@ describe('RootLayout hooks order', () => {
         segments = ['(app)'];
 
         let tree: renderer.ReactTestRenderer | undefined;
-        act(() => {
-            tree = renderer.create(React.createElement(RootLayout));
-        });
-
-        isAuthenticated = false;
-        segments = ['(app)', 'settings'];
-
-        expect(() => {
+        try {
             act(() => {
-                tree!.update(React.createElement(RootLayout));
+                tree = renderer.create(React.createElement(RootLayout));
             });
-        }).not.toThrow();
+
+            isAuthenticated = false;
+            segments = ['(app)', 'settings'];
+
+            expect(() => {
+                act(() => {
+                    tree!.update(React.createElement(RootLayout));
+                });
+            }).not.toThrow();
+        } finally {
+            if (tree) {
+                act(() => {
+                    tree!.unmount();
+                });
+            }
+        }
     });
 });
-

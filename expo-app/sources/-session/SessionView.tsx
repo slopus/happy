@@ -278,6 +278,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             markViewedTimeoutRef.current = null;
             markSessionViewed();
         }, 250);
+        return () => {
+            if (markViewedTimeoutRef.current) {
+                clearTimeout(markViewedTimeoutRef.current);
+                markViewedTimeoutRef.current = null;
+            }
+        };
     }, [markSessionViewed, pendingActivityAt, session.seq]);
 
     React.useEffect(() => {
