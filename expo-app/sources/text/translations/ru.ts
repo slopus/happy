@@ -792,6 +792,13 @@ export const ru: TranslationStructure = {
         mermaidRenderFailed: 'Не удалось отобразить диаграмму mermaid',
     },
 
+    linkPreview: {
+        loadFailed: 'Не удалось загрузить страницу',
+        openInBrowser: 'Открыть в браузере',
+        refresh: 'Обновить',
+        close: 'Закрыть',
+    },
+
     artifacts: {
         // Artifacts feature
         title: 'Артефакты',

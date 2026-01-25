@@ -782,6 +782,13 @@ export const es: TranslationStructure = {
         mermaidRenderFailed: 'Error al renderizar el diagrama mermaid',
     },
 
+    linkPreview: {
+        loadFailed: 'No se pudo cargar la página',
+        openInBrowser: 'Abrir en el navegador',
+        refresh: 'Actualizar',
+        close: 'Cerrar',
+    },
+
     artifacts: {
         // Artifacts feature
         title: 'Artefactos',

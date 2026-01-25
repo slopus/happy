@@ -784,6 +784,13 @@ export const zhHans: TranslationStructure = {
         mermaidRenderFailed: '渲染 mermaid 图表失败',
     },
 
+    linkPreview: {
+        loadFailed: '页面加载失败',
+        openInBrowser: '在浏览器中打开',
+        refresh: '刷新',
+        close: '关闭',
+    },
+
     artifacts: {
         title: '工件',
         countSingular: '1 个工件',

@@ -814,6 +814,13 @@ export const ja: TranslationStructure = {
         mermaidRenderFailed: 'Mermaidダイアグラムのレンダリングに失敗しました',
     },
 
+    linkPreview: {
+        loadFailed: 'ページの読み込みに失敗しました',
+        openInBrowser: 'ブラウザで開く',
+        refresh: '更新',
+        close: '閉じる',
+    },
+
     artifacts: {
         // Artifacts feature
         title: 'アーティファクト',
