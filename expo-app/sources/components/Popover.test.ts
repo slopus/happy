@@ -207,6 +207,75 @@ describe('Popover (web)', () => {
         expect((portal as any)?.props?.target).toBe(boundaryTarget);
     });
 
+    it('accounts for portal-target scroll offset when positioning inside a scrollable boundary (prevents dropdowns from drifting upward)', async () => {
+        const { Popover } = await import('./Popover');
+        const { PopoverBoundaryProvider } = await import('@/components/PopoverBoundary');
+
+        const boundaryTarget = {
+            scrollTop: 400,
+            scrollLeft: 0,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            appendChild: vi.fn(),
+            getBoundingClientRect: () => ({
+                left: 0,
+                top: 50,
+                width: 1000,
+                height: 800,
+                x: 0,
+                y: 50,
+            }),
+        } as any;
+
+        const boundaryRef = { current: boundaryTarget } as any;
+        const anchorRef = {
+            current: {
+                getBoundingClientRect: () => ({
+                    left: 0,
+                    top: 600,
+                    width: 300,
+                    height: 40,
+                    x: 0,
+                    y: 600,
+                }),
+            },
+        } as any;
+
+        let tree: ReturnType<typeof renderer.create> | undefined;
+        await act(async () => {
+            tree = renderer.create(
+                React.createElement(
+                    PopoverBoundaryProvider,
+                    {
+                        boundaryRef,
+                        children: React.createElement(Popover, {
+                            open: true,
+                            anchorRef,
+                            boundaryRef,
+                            portal: { web: { target: 'boundary' } },
+                            placement: 'bottom',
+                            gap: 0,
+                            maxHeightCap: 320,
+                            onRequestClose: () => {},
+                            children: () => React.createElement('PopoverChild'),
+                        }),
+                    },
+                ),
+            );
+            await flushMicrotasks(6);
+        });
+
+        const child = tree?.root.findByType('PopoverChild' as any);
+        const content = nearestView(child);
+        expect(content).toBeTruthy();
+
+        const style = flattenStyle(content?.props?.style);
+        // Desired viewport top is anchorBottom (= 600 + 40) = 640.
+        // Portal target top is 50; when positioned absolute inside a scrollable element, the style.top
+        // must include scrollTop to avoid being offset by scrolling (640 - 50 + 400 = 990).
+        expect(style.top).toBe(990);
+    });
+
     it('stops wheel propagation in portal mode (prevents document-level scroll-lock listeners from breaking popover scrolling)', async () => {
         const { Popover } = await import('./Popover');
 

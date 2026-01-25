@@ -277,17 +277,23 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
         return typeof document !== 'undefined' ? document.body : null;
     }, [getBoundaryDomElement, modalPortalTarget, portalTargetOnWeb]);
 
+    const portalPositionOnWeb: ViewStyle['position'] =
+        Platform.OS === 'web' && shouldPortalWeb && portalTargetOnWeb !== 'body'
+            ? 'absolute'
+            : ('fixed' as any);
     const webPortalTarget = shouldPortalWeb ? getWebPortalTarget() : null;
     const webPortalTargetRect =
         shouldPortalWeb && portalTargetOnWeb !== 'body'
             ? webPortalTarget?.getBoundingClientRect?.() ?? null
             : null;
-    const webPortalOffsetX = webPortalTargetRect?.left ?? webPortalTargetRect?.x ?? 0;
-    const webPortalOffsetY = webPortalTargetRect?.top ?? webPortalTargetRect?.y ?? 0;
-    const portalPositionOnWeb: ViewStyle['position'] =
-        Platform.OS === 'web' && shouldPortalWeb && portalTargetOnWeb !== 'body'
-            ? 'absolute'
-            : ('fixed' as any);
+    // When positioning `absolute` inside a scrollable container, account for its scroll offset.
+    // Otherwise, the portal content is shifted by `-scrollTop`/`-scrollLeft` (it appears to drift
+    // upward/left as you scroll the boundary). Using (rect - scroll) means later `top - offset`
+    // effectively adds scroll back in.
+    const portalScrollLeft = portalPositionOnWeb === 'absolute' ? (webPortalTarget as any)?.scrollLeft ?? 0 : 0;
+    const portalScrollTop = portalPositionOnWeb === 'absolute' ? (webPortalTarget as any)?.scrollTop ?? 0 : 0;
+    const webPortalOffsetX = (webPortalTargetRect?.left ?? webPortalTargetRect?.x ?? 0) - portalScrollLeft;
+    const webPortalOffsetY = (webPortalTargetRect?.top ?? webPortalTargetRect?.y ?? 0) - portalScrollTop;
 
     const [computed, setComputed] = React.useState<PopoverRenderProps>(() => ({
         maxHeight: maxHeightCap,
