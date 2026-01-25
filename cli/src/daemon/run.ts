@@ -5,6 +5,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 
 import { ApiClient } from '@/api/api';
+import type { ApiMachineClient } from '@/api/apiMachine';
 import { TrackedSession } from './types';
 import { MachineMetadata, DaemonState, Metadata } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
@@ -43,6 +44,8 @@ import { TmuxUtilities, isTmuxAvailable } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { resolveTerminalRequestFromSpawnOptions } from '@/terminal/terminalConfig';
 import { selectPreferredTmuxSessionName } from '@/terminal/tmuxSessionSelector';
+import { writeSessionExitReport } from '@/utils/sessionExitReport';
+import { reportDaemonObservedSessionExit } from './sessionTermination';
 
 const execFileAsync = promisify(execFile);
 
@@ -237,6 +240,7 @@ export async function startDaemon(): Promise<void> {
 	    const pidToTrackedSession = new Map<number, TrackedSession>();
 	    const codexHomeDirCleanupByPid = new Map<number, () => void>();
 	    const sessionAttachCleanupByPid = new Map<number, () => Promise<void>>();
+	    let apiMachineForSessions: ApiMachineClient | null = null;
 
     // Session spawning awaiter system
     const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
@@ -916,14 +920,14 @@ export async function startDaemon(): Promise<void> {
           happyProcess.on('exit', (code, signal) => {
             logger.debug(`[DAEMON RUN] Child PID ${happyProcess.pid} exited with code ${code}, signal ${signal}`);
             if (happyProcess.pid) {
-              onChildExited(happyProcess.pid);
+              onChildExited(happyProcess.pid, { reason: 'process-exited', code, signal });
             }
           });
 
           happyProcess.on('error', (error) => {
             logger.debug(`[DAEMON RUN] Child process error:`, error);
             if (happyProcess.pid) {
-              onChildExited(happyProcess.pid);
+              onChildExited(happyProcess.pid, { reason: 'process-error', code: null, signal: null });
             }
           });
 
@@ -1021,8 +1025,30 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Handle child process exit
-	    const onChildExited = (pid: number) => {
+    const onChildExited = (pid: number, exit: { reason: string; code: number | null; signal: string | null }) => {
 	      logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
+	      const tracked = pidToTrackedSession.get(pid);
+	      if (tracked) {
+	        if (apiMachineForSessions) {
+	          reportDaemonObservedSessionExit({
+	            apiMachine: apiMachineForSessions,
+	            trackedSession: tracked,
+	            now: () => Date.now(),
+	            exit,
+	          });
+	        }
+	        void writeSessionExitReport({
+	          sessionId: tracked.happySessionId ?? null,
+	          pid,
+	          report: {
+	            observedAt: Date.now(),
+	            observedBy: 'daemon',
+	            reason: exit.reason,
+	            code: exit.code,
+	            signal: exit.signal,
+	          },
+	        }).catch((e) => logger.debug('[DAEMON RUN] Failed to write session exit report', e));
+	      }
 	      const cleanup = codexHomeDirCleanupByPid.get(pid);
 	      if (cleanup) {
 	        codexHomeDirCleanupByPid.delete(pid);
@@ -1086,6 +1112,7 @@ export async function startDaemon(): Promise<void> {
 
     // Create realtime machine session
     const apiMachine = api.machineSyncClient(machine);
+    apiMachineForSessions = apiMachine;
 
     // Set RPC handlers
     apiMachine.setRPCHandlers({
@@ -1160,6 +1187,28 @@ export async function startDaemon(): Promise<void> {
         } catch (error) {
           // Process is dead, remove from tracking
           logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
+          const tracked = pidToTrackedSession.get(pid);
+          if (tracked) {
+            if (apiMachineForSessions) {
+              reportDaemonObservedSessionExit({
+                apiMachine: apiMachineForSessions,
+                trackedSession: tracked,
+                now: () => Date.now(),
+                exit: { reason: 'process-missing', code: null, signal: null },
+              });
+            }
+            void writeSessionExitReport({
+              sessionId: tracked.happySessionId ?? null,
+              pid,
+              report: {
+                observedAt: Date.now(),
+                observedBy: 'daemon',
+                reason: 'process-missing',
+                code: null,
+                signal: null,
+              },
+            }).catch((e) => logger.debug('[DAEMON RUN] Failed to write session exit report', e));
+          }
 	          const cleanup = codexHomeDirCleanupByPid.get(pid);
 	          if (cleanup) {
 	            codexHomeDirCleanupByPid.delete(pid);

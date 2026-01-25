@@ -27,6 +27,12 @@ interface DaemonToServerEvents {
         machineId: string;
         time: number;
     }) => void;
+    'session-end': (data: {
+        sid: string;
+        time: number;
+        // Optional extra diagnostic payload; server ignores unknown fields.
+        exit?: any;
+    }) => void;
 
     'machine-update-metadata': (data: {
         machineId: string;
@@ -317,6 +323,14 @@ export class ApiMachineClient {
                 throw new Error('Daemon state version mismatch'); // Triggers retry
             }
         });
+    }
+
+    emitSessionEnd(payload: { sid: string; time: number; exit?: any }) {
+        // May be called before connect() finishes; best-effort only.
+        if (!this.socket) {
+            return;
+        }
+        this.socket.emit('session-end', payload);
     }
 
     connect(params?: { onConnect?: () => void | Promise<void> }) {
