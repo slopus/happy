@@ -4,15 +4,15 @@ import { createReducer, reducer, ReducerState } from "../reducer/reducer";
 import { Message } from "../typesMessage";
 import { NormalizedMessage } from "../typesRaw";
 import { isMachineOnline } from '@/utils/machineUtils';
-import { applySettings, Settings } from "../settings";
-import { LocalSettings, applyLocalSettings } from "../localSettings";
-import { Purchases, customerInfoToPurchases } from "../purchases";
+import type { Settings } from "../settings";
+import type { LocalSettings } from "../localSettings";
+import type { Purchases } from "../purchases";
 import { TodoState } from "../../-zen/model/ops";
-import { Profile } from "../profile";
+import type { Profile } from "../profile";
 import { UserProfile, RelationshipUpdatedEvent } from "../friendTypes";
 import { PERMISSION_MODES } from '@/constants/PermissionModes';
 import type { PermissionMode } from '@/sync/permissionTypes';
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionPermissionModeUpdatedAts, saveSessionPermissionModeUpdatedAts, loadSessionModelModes, saveSessionModelModes, loadSessionLastViewed, saveSessionLastViewed } from "../persistence";
+import { loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionPermissionModeUpdatedAts, saveSessionPermissionModeUpdatedAts, loadSessionModelModes, saveSessionModelModes, loadSessionLastViewed, saveSessionLastViewed } from "../persistence";
 import type { CustomerInfo } from '../revenueCat/types';
 import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
 import { isMutableTool } from "@/components/tools/knownTools";
@@ -24,7 +24,10 @@ import { buildSessionListViewData, type SessionListViewItem } from '../sessionLi
 import { createArtifactsDomain } from './domains/artifacts';
 import { createFeedDomain } from './domains/feed';
 import { createFriendsDomain } from './domains/friends';
+import { createProfileDomain } from './domains/profile';
 import { createRealtimeDomain, type NativeUpdateStatus, type RealtimeMode, type RealtimeStatus, type SocketStatus, type SyncError } from './domains/realtime';
+import { createSettingsDomain } from './domains/settings';
+import { createTodosDomain } from './domains/todos';
 
 // UI-only "optimistic processing" marker.
 // Cleared via timers so components don't need to poll time.
@@ -175,10 +178,9 @@ interface StorageState {
 }
 
 export const storage = create<StorageState>()((set, get) => {
-    let { settings, version } = loadSettings();
-    let localSettings = loadLocalSettings();
-    let purchases = loadPurchases();
-    let profile = loadProfile();
+    const settingsDomain = createSettingsDomain<StorageState>({ set, get });
+    const profileDomain = createProfileDomain<StorageState>({ set, get });
+    const todosDomain = createTodosDomain<StorageState>({ set, get });
     let sessionDrafts = loadSessionDrafts();
     let sessionPermissionModes = loadSessionPermissionModes();
     let sessionModelModes = loadSessionModelModes();
@@ -214,18 +216,14 @@ export const storage = create<StorageState>()((set, get) => {
     const feedDomain = createFeedDomain<StorageState>({ set, get });
 
     return {
-        settings,
-        settingsVersion: version,
-        localSettings,
-        purchases,
-        profile,
+        ...settingsDomain,
+        ...profileDomain,
         sessions: {},
         machines: {},
         ...artifactsDomain,
         ...friendsDomain,
         ...feedDomain,
-        todoState: null,  // Initialize todo state
-        todosLoaded: false,  // Initialize todos loaded state
+        ...todosDomain,
         sessionLastViewed,
         sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
@@ -732,103 +730,6 @@ export const storage = create<StorageState>()((set, get) => {
                         messages: existing.messages.filter((m) => m.id !== pendingId)
                     }
                 }
-            };
-        }),
-        applySettingsLocal: (delta: Partial<Settings>) => set((state) => {
-            const newSettings = applySettings(state.settings, delta);
-            saveSettings(newSettings, state.settingsVersion ?? 0);
-
-            const shouldRebuildSessionListViewData =
-                Object.prototype.hasOwnProperty.call(delta, 'groupInactiveSessionsByProject') &&
-                delta.groupInactiveSessionsByProject !== state.settings.groupInactiveSessionsByProject;
-
-            if (shouldRebuildSessionListViewData) {
-                const sessionListViewData = buildSessionListViewData(
-                    state.sessions,
-                    state.machines,
-                    { groupInactiveSessionsByProject: newSettings.groupInactiveSessionsByProject }
-                );
-                return {
-                    ...state,
-                    settings: newSettings,
-                    sessionListViewData
-                };
-            }
-            return {
-                ...state,
-                settings: newSettings
-            };
-        }),
-        applySettings: (settings: Settings, version: number) => set((state) => {
-            if (state.settingsVersion == null || state.settingsVersion < version) {
-                saveSettings(settings, version);
-
-                const shouldRebuildSessionListViewData =
-                    settings.groupInactiveSessionsByProject !== state.settings.groupInactiveSessionsByProject;
-
-                const sessionListViewData = shouldRebuildSessionListViewData
-                    ? buildSessionListViewData(state.sessions, state.machines, { groupInactiveSessionsByProject: settings.groupInactiveSessionsByProject })
-                    : state.sessionListViewData;
-
-                return {
-                    ...state,
-                    settings,
-                    settingsVersion: version,
-                    sessionListViewData
-                };
-            } else {
-                return state;
-            }
-        }),
-        replaceSettings: (settings: Settings, version: number) => set((state) => {
-            saveSettings(settings, version);
-
-            const shouldRebuildSessionListViewData =
-                settings.groupInactiveSessionsByProject !== state.settings.groupInactiveSessionsByProject;
-
-            const sessionListViewData = shouldRebuildSessionListViewData
-                ? buildSessionListViewData(state.sessions, state.machines, { groupInactiveSessionsByProject: settings.groupInactiveSessionsByProject })
-                : state.sessionListViewData;
-
-            return {
-                ...state,
-                settings,
-                settingsVersion: version,
-                sessionListViewData
-            };
-        }),
-        applyLocalSettings: (delta: Partial<LocalSettings>) => set((state) => {
-            const updatedLocalSettings = applyLocalSettings(state.localSettings, delta);
-            saveLocalSettings(updatedLocalSettings);
-            return {
-                ...state,
-                localSettings: updatedLocalSettings
-            };
-        }),
-        applyPurchases: (customerInfo: CustomerInfo) => set((state) => {
-            // Transform CustomerInfo to our Purchases format
-            const purchases = customerInfoToPurchases(customerInfo);
-
-            // Always save and update - no need for version checks
-            savePurchases(purchases);
-            return {
-                ...state,
-                purchases
-            };
-        }),
-        applyProfile: (profile: Profile) => set((state) => {
-            // Always save and update profile
-            saveProfile(profile);
-            return {
-                ...state,
-                profile
-            };
-        }),
-        applyTodos: (todoState: TodoState) => set((state) => {
-            return {
-                ...state,
-                todoState,
-                todosLoaded: true
             };
         }),
         applyGitStatus: (sessionId: string, status: GitStatus | null) => set((state) => {
