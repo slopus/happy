@@ -8,6 +8,9 @@ export interface AppConfig {
     revenueCatStripeKey?: string;
     elevenLabsAgentIdDev?: string;
     elevenLabsAgentIdProd?: string;
+    stepFunApiKey?: string;
+    stepFunModelId?: string;
+    stepFunVoice?: string;
     serverUrl?: string;
 }
 
@@ -95,6 +98,18 @@ export function loadAppConfig(): AppConfig {
     if (process.env.EXPO_PUBLIC_SERVER_URL && config.serverUrl !== process.env.EXPO_PUBLIC_SERVER_URL) {
         console.log('[loadAppConfig] Override serverUrl from EXPO_PUBLIC_SERVER_URL');
         config.serverUrl = process.env.EXPO_PUBLIC_SERVER_URL;
+    }
+    if (process.env.EXPO_PUBLIC_STEPFUN_API_KEY && config.stepFunApiKey !== process.env.EXPO_PUBLIC_STEPFUN_API_KEY) {
+        console.log('[loadAppConfig] Override stepFunApiKey from EXPO_PUBLIC_STEPFUN_API_KEY');
+        config.stepFunApiKey = process.env.EXPO_PUBLIC_STEPFUN_API_KEY;
+    }
+    if (process.env.EXPO_PUBLIC_STEPFUN_MODEL_ID && config.stepFunModelId !== process.env.EXPO_PUBLIC_STEPFUN_MODEL_ID) {
+        console.log('[loadAppConfig] Override stepFunModelId from EXPO_PUBLIC_STEPFUN_MODEL_ID');
+        config.stepFunModelId = process.env.EXPO_PUBLIC_STEPFUN_MODEL_ID;
+    }
+    if (process.env.EXPO_PUBLIC_STEPFUN_VOICE && config.stepFunVoice !== process.env.EXPO_PUBLIC_STEPFUN_VOICE) {
+        console.log('[loadAppConfig] Override stepFunVoice from EXPO_PUBLIC_STEPFUN_VOICE');
+        config.stepFunVoice = process.env.EXPO_PUBLIC_STEPFUN_VOICE;
     }
 
     return config as AppConfig;

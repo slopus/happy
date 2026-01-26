@@ -1,128 +1,197 @@
-import type { VoiceSession } from './types';
-import { fetchVoiceToken } from '@/sync/apiVoice';
+/**
+ * Realtime Session Manager
+ * Manages voice session lifecycle with support for multiple providers
+ */
+
+import type { VoiceSession, VoiceSessionConfig, VoiceProviderType, VoiceProviderAdapter } from './types';
 import { storage } from '@/sync/storage';
-import { sync } from '@/sync/sync';
 import { Modal } from '@/modal';
-import { TokenStorage } from '@/auth/tokenStorage';
 import { t } from '@/text';
 import { config } from '@/config';
 import { requestMicrophonePermission, showMicrophonePermissionDeniedAlert } from '@/utils/microphonePermissions';
+import { voiceHooks } from './hooks/voiceHooks';
 
-let voiceSession: VoiceSession | null = null;
+// ===== Provider Registry =====
+
+const providerRegistry: Map<VoiceProviderType, () => VoiceProviderAdapter> = new Map();
+let currentAdapter: VoiceProviderAdapter | null = null;
+let currentSession: VoiceSession | null = null;
 let voiceSessionStarted: boolean = false;
 let currentSessionId: string | null = null;
 
+/**
+ * Register a voice provider adapter factory
+ */
+export function registerVoiceProvider(
+    type: VoiceProviderType,
+    factory: () => VoiceProviderAdapter
+): void {
+    providerRegistry.set(type, factory);
+    console.log(`[RealtimeSession] Registered provider: ${type}`);
+}
+
+/**
+ * Determine which provider to use based on configuration
+ */
+function determineProviderType(): VoiceProviderType {
+    // Check for StepFun configuration first (higher priority)
+    if (config.stepFunApiKey) {
+        return 'stepfun';
+    }
+
+    // Check for ElevenLabs configuration
+    if (config.elevenLabsAgentIdDev || config.elevenLabsAgentIdProd) {
+        return 'elevenlabs';
+    }
+
+    return 'none';
+}
+
+/**
+ * Get or create the current adapter
+ */
+function getOrCreateAdapter(): VoiceProviderAdapter | null {
+    if (currentAdapter) {
+        return currentAdapter;
+    }
+
+    const providerType = determineProviderType();
+    if (providerType === 'none') {
+        console.log('[RealtimeSession] No voice provider configured');
+        return null;
+    }
+
+    const factory = providerRegistry.get(providerType);
+    if (!factory) {
+        console.warn(`[RealtimeSession] Provider ${providerType} not registered`);
+        return null;
+    }
+
+    currentAdapter = factory();
+    currentAdapter.initialize().catch((error) => {
+        console.error(`[RealtimeSession] Failed to initialize ${providerType}:`, error);
+    });
+
+    return currentAdapter;
+}
+
+/**
+ * Build session configuration based on provider type
+ */
+function buildSessionConfig(sessionId: string, initialContext?: string): VoiceSessionConfig & Record<string, any> {
+    const providerType = determineProviderType();
+    const baseConfig: VoiceSessionConfig = {
+        sessionId,
+        initialContext,
+    };
+
+    switch (providerType) {
+        case 'stepfun':
+            return {
+                ...baseConfig,
+                provider: 'stepfun',
+                apiKey: config.stepFunApiKey!,
+                modelId: config.stepFunModelId,
+                voice: config.stepFunVoice,
+            };
+
+        case 'elevenlabs':
+            return {
+                ...baseConfig,
+                provider: 'elevenlabs',
+                agentId: __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd,
+            };
+
+        default:
+            return baseConfig;
+    }
+}
+
+// ===== Public API =====
+
+/**
+ * Start a realtime voice session
+ */
 export async function startRealtimeSession(sessionId: string, initialContext?: string) {
-    if (!voiceSession) {
-        console.warn('No voice session registered');
+    const adapter = getOrCreateAdapter();
+    if (!adapter) {
+        console.warn('[RealtimeSession] No voice provider available');
         return;
     }
 
-    // Request microphone permission before starting voice session
-    // Critical for iOS/Android - first session will fail without this
+    // Request microphone permission first
     const permissionResult = await requestMicrophonePermission();
     if (!permissionResult.granted) {
         showMicrophonePermissionDeniedAlert(permissionResult.canAskAgain);
         return;
     }
 
-    const experimentsEnabled = storage.getState().settings.experiments;
-    const agentId = __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;
-    
-    if (!agentId) {
-        console.error('Agent ID not configured');
-        return;
-    }
-    
     try {
-        // Simple path: No experiments = no auth needed
-        if (!experimentsEnabled) {
-            currentSessionId = sessionId;
-            voiceSessionStarted = true;
-            await voiceSession.startSession({
-                sessionId,
-                initialContext,
-                agentId  // Use agentId directly, no token
-            });
-            return;
-        }
-        
-        // Experiments enabled = full auth flow
-        const credentials = await TokenStorage.getCredentials();
-        if (!credentials) {
-            Modal.alert(t('common.error'), t('errors.authenticationFailed'));
-            return;
-        }
-        
-        const response = await fetchVoiceToken(credentials, sessionId);
-        console.log('[Voice] fetchVoiceToken response:', response);
-
-        if (!response.allowed) {
-            console.log('[Voice] Not allowed, presenting paywall...');
-            const result = await sync.presentPaywall();
-            console.log('[Voice] Paywall result:', result);
-            if (result.purchased) {
-                await startRealtimeSession(sessionId, initialContext);
-            }
-            return;
-        }
-
+        // Create session
+        currentSession = adapter.createSession();
         currentSessionId = sessionId;
         voiceSessionStarted = true;
 
-        if (response.token) {
-            // Use token from backend
-            await voiceSession.startSession({
-                sessionId,
-                initialContext,
-                token: response.token,
-                agentId: response.agentId
-            });
-        } else {
-            // No token (e.g. server not deployed yet) - use agentId directly
-            await voiceSession.startSession({
-                sessionId,
-                initialContext,
-                agentId
-            });
-        }
+        // Build config and start
+        const sessionConfig = buildSessionConfig(sessionId, initialContext);
+        await currentSession.startSession(sessionConfig);
+
+        console.log('[RealtimeSession] Session started successfully');
     } catch (error) {
-        console.error('Failed to start realtime session:', error);
+        console.error('[RealtimeSession] Failed to start session:', error);
+        currentSession = null;
         currentSessionId = null;
         voiceSessionStarted = false;
+        storage.getState().setRealtimeStatus('error');
         Modal.alert(t('common.error'), t('errors.voiceServiceUnavailable'));
     }
 }
 
+/**
+ * Stop the current realtime voice session
+ */
 export async function stopRealtimeSession() {
-    if (!voiceSession) {
+    if (!currentSession) {
         return;
     }
-    
+
     try {
-        await voiceSession.endSession();
+        await currentSession.endSession();
+    } catch (error) {
+        console.error('[RealtimeSession] Failed to stop session:', error);
+    } finally {
+        currentSession = null;
         currentSessionId = null;
         voiceSessionStarted = false;
-    } catch (error) {
-        console.error('Failed to stop realtime session:', error);
     }
 }
 
-export function registerVoiceSession(session: VoiceSession) {
-    if (voiceSession) {
-        console.warn('Voice session already registered, replacing with new one');
-    }
-    voiceSession = session;
-}
-
+/**
+ * Check if a voice session is currently active
+ */
 export function isVoiceSessionStarted(): boolean {
     return voiceSessionStarted;
 }
 
+/**
+ * Get the current voice session (if any)
+ */
 export function getVoiceSession(): VoiceSession | null {
-    return voiceSession;
+    return currentSession;
 }
 
+/**
+ * Get the current session ID (if any)
+ */
 export function getCurrentRealtimeSessionId(): string | null {
     return currentSessionId;
+}
+
+/**
+ * @deprecated Use registerVoiceProvider instead
+ * Legacy function for backward compatibility
+ */
+export function registerVoiceSession(session: VoiceSession) {
+    console.warn('[RealtimeSession] registerVoiceSession is deprecated, use registerVoiceProvider instead');
+    currentSession = session;
 }
