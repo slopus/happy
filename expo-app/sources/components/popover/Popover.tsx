@@ -3,7 +3,7 @@ import { Platform, View, type StyleProp, type ViewProps, type ViewStyle, useWind
 import { usePopoverBoundaryRef } from '@/components/PopoverBoundary';
 import { requireRadixDismissableLayer } from '@/utils/radixCjs';
 import { useOverlayPortal } from '@/components/OverlayPortal';
-import { useModalPortalTarget } from '@/components/ModalPortalTarget';
+import { useModalPortalTarget } from '@/modal/portal/ModalPortalTarget';
 import { usePopoverPortalTarget } from '@/components/PopoverPortalTarget';
 import type {
     PopoverBackdropEffect,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import renderer, { act } from 'react-test-renderer';
-import { useModalPortalTarget } from '@/components/ModalPortalTarget';
+import { useModalPortalTarget } from '@/modal/portal/ModalPortalTarget';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 

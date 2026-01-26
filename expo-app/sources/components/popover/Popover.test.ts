@@ -143,7 +143,7 @@ describe('Popover (web)', () => {
 
     it('portals to a modal portal host when available (prevents Radix Dialog scroll-lock from swallowing wheel/touch scroll)', async () => {
         const { Popover } = await import('./Popover');
-        const { ModalPortalTargetProvider } = await import('@/components/ModalPortalTarget');
+        const { ModalPortalTargetProvider } = await import('@/modal/portal/ModalPortalTarget');
 
         const anchorRef = { current: null } as any;
         const modalTarget = {} as any;
@@ -174,7 +174,7 @@ describe('Popover (web)', () => {
 
     it('does not subscribe to scroll events when portaling into a modal/boundary target (avoids scroll jank on mobile web)', async () => {
         const { Popover } = await import('./Popover');
-        const { ModalPortalTargetProvider } = await import('@/components/ModalPortalTarget');
+        const { ModalPortalTargetProvider } = await import('@/modal/portal/ModalPortalTarget');
 
         const anchorRef = { current: null } as any;
         const modalTarget = {} as any;
