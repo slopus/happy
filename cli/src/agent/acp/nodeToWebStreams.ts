@@ -56,7 +56,7 @@ export function nodeToWebStreams(
                     }
                 });
 
-                drained = ok;
+                drained = drained || ok;
                 if (ok) {
                     // No drain will be emitted for this write; remove the listener immediately.
                     stdin.off('drain', onDrain);
