@@ -3,12 +3,16 @@ import { logger } from '@/ui/logger'
 import type { AgentState, CreateSessionResponse, Metadata, Session, Machine, MachineMetadata, DaemonState } from '@/api/types'
 import { ApiSessionClient } from '../apiSession';
 import { ApiMachineClient } from '../apiMachine';
-import { decodeBase64, encodeBase64, getRandomBytes, encrypt, decrypt, libsodiumEncryptForPublicKey } from '../encryption';
+import { decodeBase64, encodeBase64, encrypt, decrypt } from '../encryption';
 import { PushNotificationClient } from '../pushNotifications';
 import { configuration } from '@/configuration';
-import chalk from 'chalk';
 import { Credentials } from '@/persistence';
-import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
+
+import { resolveMachineEncryptionContext, resolveSessionEncryptionContext } from './encryptionKey';
+import {
+  shouldReturnMinimalMachineForGetOrCreateMachineError,
+  shouldReturnNullForGetOrCreateSessionError,
+} from './offlineErrors';
 
 export class ApiClient {
 
@@ -32,28 +36,7 @@ export class ApiClient {
     metadata: Metadata,
     state: AgentState | null
   }): Promise<Session | null> {
-
-    // Resolve encryption key
-    let dataEncryptionKey: Uint8Array | null = null;
-    let encryptionKey: Uint8Array;
-    let encryptionVariant: 'legacy' | 'dataKey';
-    if (this.credential.encryption.type === 'dataKey') {
-
-      // Generate new encryption key
-      encryptionKey = getRandomBytes(32);
-      encryptionVariant = 'dataKey';
-
-      // Derive and encrypt data encryption key
-      // const contentDataKey = await deriveKey(this.secret, 'Happy EnCoder', ['content']);
-      // const publicKey = libsodiumPublicKeyFromSecretKey(contentDataKey);
-      let encryptedDataKey = libsodiumEncryptForPublicKey(encryptionKey, this.credential.encryption.publicKey);
-      dataEncryptionKey = new Uint8Array(encryptedDataKey.length + 1);
-      dataEncryptionKey.set([0], 0); // Version byte
-      dataEncryptionKey.set(encryptedDataKey, 1); // Data key
-    } else {
-      encryptionKey = this.credential.encryption.secret;
-      encryptionVariant = 'legacy';
-    }
+    const { encryptionKey, encryptionVariant, dataEncryptionKey } = resolveSessionEncryptionContext(this.credential);
 
     // Create session
     try {
@@ -90,46 +73,8 @@ export class ApiClient {
     } catch (error) {
       logger.debug('[API] [ERROR] Failed to get or create session:', error);
 
-      // Check if it's a connection error
-      if (error && typeof error === 'object' && 'code' in error) {
-        const errorCode = (error as any).code;
-        if (isNetworkError(errorCode)) {
-          connectionState.fail({
-            operation: 'Session creation',
-            caller: 'api.getOrCreateSession',
-            errorCode,
-            url: `${configuration.serverUrl}/v1/sessions`
-          });
-          return null;
-        }
-      }
-
-      // Handle 404 gracefully - server endpoint may not be available yet
-      const is404Error = (
-        (axios.isAxiosError(error) && error.response?.status === 404) ||
-        (error && typeof error === 'object' && 'response' in error && (error as any).response?.status === 404)
-      );
-      if (is404Error) {
-        connectionState.fail({
-          operation: 'Session creation',
-          errorCode: '404',
-          url: `${configuration.serverUrl}/v1/sessions`
-        });
+      if (shouldReturnNullForGetOrCreateSessionError(error, { url: `${configuration.serverUrl}/v1/sessions` })) {
         return null;
-      }
-
-      // Handle 5xx server errors - use offline mode with auto-reconnect
-      if (axios.isAxiosError(error) && error.response?.status) {
-        const status = error.response.status;
-        if (status >= 500) {
-          connectionState.fail({
-            operation: 'Session creation',
-            errorCode: String(status),
-            url: `${configuration.serverUrl}/v1/sessions`,
-            details: ['Server encountered an error, will retry automatically']
-          });
-          return null;
-        }
       }
 
       throw new Error(`Failed to get or create session: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -145,24 +90,7 @@ export class ApiClient {
     metadata: MachineMetadata,
     daemonState?: DaemonState,
   }): Promise<Machine> {
-
-    // Resolve encryption key
-    let dataEncryptionKey: Uint8Array | null = null;
-    let encryptionKey: Uint8Array;
-    let encryptionVariant: 'legacy' | 'dataKey';
-    if (this.credential.encryption.type === 'dataKey') {
-      // Encrypt data encryption key
-      encryptionVariant = 'dataKey';
-      encryptionKey = this.credential.encryption.machineKey;
-      let encryptedDataKey = libsodiumEncryptForPublicKey(this.credential.encryption.machineKey, this.credential.encryption.publicKey);
-      dataEncryptionKey = new Uint8Array(encryptedDataKey.length + 1);
-      dataEncryptionKey.set([0], 0); // Version byte
-      dataEncryptionKey.set(encryptedDataKey, 1); // Data key
-    } else {
-      // Legacy encryption
-      encryptionKey = this.credential.encryption.secret;
-      encryptionVariant = 'legacy';
-    }
+    const { encryptionKey, encryptionVariant, dataEncryptionKey } = resolveMachineEncryptionContext(this.credential);
 
     // Helper to create minimal machine object for offline mode (DRY)
     const createMinimalMachine = (): Machine => ({
@@ -210,62 +138,8 @@ export class ApiClient {
       };
       return machine;
     } catch (error) {
-      // Handle connection errors gracefully
-      if (axios.isAxiosError(error) && error.code && isNetworkError(error.code)) {
-        connectionState.fail({
-          operation: 'Machine registration',
-          caller: 'api.getOrCreateMachine',
-          errorCode: error.code,
-          url: `${configuration.serverUrl}/v1/machines`
-        });
+      if (shouldReturnMinimalMachineForGetOrCreateMachineError(error, { url: `${configuration.serverUrl}/v1/machines` })) {
         return createMinimalMachine();
-      }
-
-      // Handle 403/409 - server rejected request due to authorization conflict
-      // This is NOT "server unreachable" - server responded, so don't use connectionState
-      if (axios.isAxiosError(error) && error.response?.status) {
-        const status = error.response.status;
-
-        if (status === 403 || status === 409) {
-          // Re-auth conflict: machine registered to old account, re-association not allowed
-          console.log(chalk.yellow(
-            `⚠️  Machine registration rejected by the server with status ${status}`
-          ));
-          console.log(chalk.yellow(
-            `   → This machine ID is already registered to another account on the server`
-          ));
-          console.log(chalk.yellow(
-            `   → This usually happens after re-authenticating with a different account`
-          ));
-          console.log(chalk.yellow(
-            `   → Run 'happy doctor clean' to reset local state and generate a new machine ID`
-          ));
-          console.log(chalk.yellow(
-            `   → Open a GitHub issue if this problem persists`
-          ));
-          return createMinimalMachine();
-        }
-
-        // Handle 5xx - server error, use offline mode with auto-reconnect
-        if (status >= 500) {
-          connectionState.fail({
-            operation: 'Machine registration',
-            errorCode: String(status),
-            url: `${configuration.serverUrl}/v1/machines`,
-            details: ['Server encountered an error, will retry automatically']
-          });
-          return createMinimalMachine();
-        }
-
-        // Handle 404 - endpoint may not be available yet
-        if (status === 404) {
-          connectionState.fail({
-            operation: 'Machine registration',
-            errorCode: '404',
-            url: `${configuration.serverUrl}/v1/machines`
-          });
-          return createMinimalMachine();
-        }
       }
 
       // For other errors, rethrow
