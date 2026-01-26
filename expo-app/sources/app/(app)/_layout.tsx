@@ -118,6 +118,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="settings/notifications"
+                options={{
+                    headerTitle: t('settingsNotifications.title'),
+                }}
+            />
+            <Stack.Screen
                 name="terminal/connect"
                 options={{
                     headerTitle: t('navigation.connectTerminal'),
