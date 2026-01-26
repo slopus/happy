@@ -25,6 +25,7 @@ import { FeedItem } from "../feedTypes";
 import { nowServerMs } from "../time";
 import { buildSessionListViewData, type SessionListViewItem } from '../sessionListViewData';
 import { computeHasUnreadActivity, computePendingActivityAt } from '../unread';
+import { createArtifactsDomain } from './domains/artifacts';
 import { createRealtimeDomain, type NativeUpdateStatus, type RealtimeMode, type RealtimeStatus, type SocketStatus, type SyncError } from './domains/realtime';
 
 // UI-only "optimistic processing" marker.
@@ -210,6 +211,7 @@ export const storage = create<StorageState>()((set, get) => {
     };
 
     const realtimeDomain = createRealtimeDomain<StorageState>({ set, get });
+    const artifactsDomain = createArtifactsDomain<StorageState>({ set, get });
 
     return {
         settings,
@@ -219,7 +221,7 @@ export const storage = create<StorageState>()((set, get) => {
         profile,
         sessions: {},
         machines: {},
-        artifacts: {},  // Initialize artifacts
+        ...artifactsDomain,
         friends: {},  // Initialize relationships cache
         users: {},  // Initialize global user cache
         feedItems: [],  // Initialize feed items list
@@ -1079,48 +1081,6 @@ export const storage = create<StorageState>()((set, get) => {
                 ...state,
                 machines: mergedMachines,
                 sessionListViewData
-            };
-        }),
-        // Artifact methods
-        applyArtifacts: (artifacts: DecryptedArtifact[]) => set((state) => {
-            const mergedArtifacts = { ...state.artifacts };
-            artifacts.forEach(artifact => {
-                mergedArtifacts[artifact.id] = artifact;
-            });
-            
-            return {
-                ...state,
-                artifacts: mergedArtifacts
-            };
-        }),
-        addArtifact: (artifact: DecryptedArtifact) => set((state) => {
-            const updatedArtifacts = {
-                ...state.artifacts,
-                [artifact.id]: artifact
-            };
-            
-            return {
-                ...state,
-                artifacts: updatedArtifacts
-            };
-        }),
-        updateArtifact: (artifact: DecryptedArtifact) => set((state) => {
-            const updatedArtifacts = {
-                ...state.artifacts,
-                [artifact.id]: artifact
-            };
-            
-            return {
-                ...state,
-                artifacts: updatedArtifacts
-            };
-        }),
-        deleteArtifact: (artifactId: string) => set((state) => {
-            const { [artifactId]: _, ...remainingArtifacts } = state.artifacts;
-            
-            return {
-                ...state,
-                artifacts: remainingArtifacts
             };
         }),
 	        deleteSession: (sessionId: string) => set((state) => {
