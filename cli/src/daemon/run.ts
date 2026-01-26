@@ -13,7 +13,7 @@ import { configuration } from '@/configuration';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
-import { buildHappyCliSubprocessInvocation, spawnHappyCLI } from '@/utils/spawnHappyCLI';
+import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import {
   writeDaemonState,
   DaemonLocallyPersistedState,
@@ -49,57 +49,8 @@ import { validateEnvVarRecordStrict } from '@/utils/envVarSanitization';
 import { getPreferredHostName, initialMachineMetadata } from './machine/metadata';
 export { initialMachineMetadata } from './machine/metadata';
 import { createDaemonShutdownController } from './lifecycle/shutdown';
-
-export function buildTmuxWindowEnv(
-  daemonEnv: NodeJS.ProcessEnv,
-  extraEnv: Record<string, string>,
-): Record<string, string> {
-  const filteredDaemonEnv = Object.fromEntries(
-    Object.entries(daemonEnv).filter(([, value]) => typeof value === 'string'),
-  ) as Record<string, string>;
-
-  return { ...filteredDaemonEnv, ...extraEnv };
-}
-
-export function buildTmuxSpawnConfig(params: {
-  agent: 'claude' | 'codex' | 'gemini' | 'opencode';
-  directory: string;
-  extraEnv: Record<string, string>;
-  tmuxCommandEnv?: Record<string, string>;
-  extraArgs?: string[];
-}): {
-  commandTokens: string[];
-  tmuxEnv: Record<string, string>;
-  tmuxCommandEnv: Record<string, string>;
-  directory: string;
-} {
-  const args = [
-    params.agent,
-    '--happy-starting-mode',
-    'remote',
-    '--started-by',
-    'daemon',
-    ...(params.extraArgs ?? []),
-  ];
-
-  const { runtime, argv } = buildHappyCliSubprocessInvocation(args);
-  const commandTokens = [runtime, ...argv];
-
-  const tmuxEnv = buildTmuxWindowEnv(process.env, params.extraEnv);
-
-  const tmuxCommandEnv: Record<string, string> = { ...(params.tmuxCommandEnv ?? {}) };
-  const tmuxTmpDir = tmuxCommandEnv.TMUX_TMPDIR;
-  if (typeof tmuxTmpDir !== 'string' || tmuxTmpDir.length === 0) {
-    delete tmuxCommandEnv.TMUX_TMPDIR;
-  }
-
-  return {
-    commandTokens,
-    tmuxEnv,
-    tmuxCommandEnv,
-    directory: params.directory,
-  };
-}
+import { buildTmuxSpawnConfig, buildTmuxWindowEnv } from './platform/tmux/spawnConfig';
+export { buildTmuxSpawnConfig, buildTmuxWindowEnv } from './platform/tmux/spawnConfig';
 
 export async function startDaemon(): Promise<void> {
   // We don't have cleanup function at the time of server construction
