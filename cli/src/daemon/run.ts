@@ -1,8 +1,6 @@
 import fs from 'fs/promises';
 import os from 'os';
 import * as tmp from 'tmp';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 
 import { ApiClient } from '@/api/api';
 import type { ApiMachineClient } from '@/api/apiMachine';
@@ -48,40 +46,8 @@ import { writeSessionExitReport } from '@/utils/sessionExitReport';
 import { reportDaemonObservedSessionExit } from './sessionTermination';
 import { validateEnvVarRecordStrict } from '@/utils/envVarSanitization';
 
-const execFileAsync = promisify(execFile);
-
-async function getPreferredHostName(): Promise<string> {
-  const fallback = os.hostname();
-  if (process.platform !== 'darwin') {
-    return fallback;
-  }
-
-  const tryScutil = async (key: 'HostName' | 'LocalHostName' | 'ComputerName'): Promise<string | null> => {
-    try {
-      const { stdout } = await execFileAsync('scutil', ['--get', key], { timeout: 400 });
-      const value = typeof stdout === 'string' ? stdout.trim() : '';
-      return value.length > 0 ? value : null;
-    } catch {
-      return null;
-    }
-  };
-
-  // Prefer HostName (can be FQDN) → LocalHostName → ComputerName → os.hostname()
-  return (await tryScutil('HostName'))
-    ?? (await tryScutil('LocalHostName'))
-    ?? (await tryScutil('ComputerName'))
-    ?? fallback;
-}
-
-// Prepare initial metadata
-export const initialMachineMetadata: MachineMetadata = {
-  host: os.hostname(),
-  platform: os.platform(),
-  happyCliVersion: packageJson.version,
-  homeDir: os.homedir(),
-  happyHomeDir: configuration.happyHomeDir,
-  happyLibDir: projectPath()
-};
+import { getPreferredHostName, initialMachineMetadata } from './machine/metadata';
+export { initialMachineMetadata } from './machine/metadata';
 
 export function buildTmuxWindowEnv(
   daemonEnv: NodeJS.ProcessEnv,
