@@ -26,6 +26,8 @@ import { nowServerMs } from "../time";
 import { buildSessionListViewData, type SessionListViewItem } from '../sessionListViewData';
 import { computeHasUnreadActivity, computePendingActivityAt } from '../unread';
 import { createArtifactsDomain } from './domains/artifacts';
+import { createFeedDomain } from './domains/feed';
+import { createFriendsDomain } from './domains/friends';
 import { createRealtimeDomain, type NativeUpdateStatus, type RealtimeMode, type RealtimeStatus, type SocketStatus, type SyncError } from './domains/realtime';
 
 // UI-only "optimistic processing" marker.
@@ -212,6 +214,8 @@ export const storage = create<StorageState>()((set, get) => {
 
     const realtimeDomain = createRealtimeDomain<StorageState>({ set, get });
     const artifactsDomain = createArtifactsDomain<StorageState>({ set, get });
+    const friendsDomain = createFriendsDomain<StorageState>({ set, get });
+    const feedDomain = createFeedDomain<StorageState>({ set, get });
 
     return {
         settings,
@@ -222,14 +226,8 @@ export const storage = create<StorageState>()((set, get) => {
         sessions: {},
         machines: {},
         ...artifactsDomain,
-        friends: {},  // Initialize relationships cache
-        users: {},  // Initialize global user cache
-        feedItems: [],  // Initialize feed items list
-        feedHead: null,
-        feedTail: null,
-        feedHasMore: false,
-        feedLoaded: false,  // Initialize as false
-        friendsLoaded: false,  // Initialize as false
+        ...friendsDomain,
+        ...feedDomain,
         todoState: null,  // Initialize todo state
         todosLoaded: false,  // Initialize todos loaded state
         sessionLastViewed,
@@ -1083,7 +1081,7 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
-	        deleteSession: (sessionId: string) => set((state) => {
+        deleteSession: (sessionId: string) => set((state) => {
 	            const optimisticTimeout = optimisticThinkingTimeoutBySessionId.get(sessionId);
 	            if (optimisticTimeout) {
 	                clearTimeout(optimisticTimeout);
@@ -1138,129 +1136,6 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
-        // Friend management methods
-        applyFriends: (friends: UserProfile[]) => set((state) => {
-            const mergedFriends = { ...state.friends };
-            friends.forEach(friend => {
-                mergedFriends[friend.id] = friend;
-            });
-            return {
-                ...state,
-                friends: mergedFriends,
-                friendsLoaded: true  // Mark as loaded after first fetch
-            };
-        }),
-        applyRelationshipUpdate: (event: RelationshipUpdatedEvent) => set((state) => {
-            const { fromUserId, toUserId, status, action, fromUser, toUser } = event;
-            const currentUserId = state.profile.id;
-            
-            // Update friends cache
-            const updatedFriends = { ...state.friends };
-            
-            // Determine which user profile to update based on perspective
-            const otherUserId = fromUserId === currentUserId ? toUserId : fromUserId;
-            const otherUser = fromUserId === currentUserId ? toUser : fromUser;
-            
-            if (action === 'deleted' || status === 'none') {
-                // Remove from friends if deleted or status is none
-                delete updatedFriends[otherUserId];
-            } else if (otherUser) {
-                // Update or add the user profile with current status
-                updatedFriends[otherUserId] = otherUser;
-            }
-            
-            return {
-                ...state,
-                friends: updatedFriends
-            };
-        }),
-        getFriend: (userId: string) => {
-            return get().friends[userId];
-        },
-        getAcceptedFriends: () => {
-            const friends = get().friends;
-            return Object.values(friends).filter(friend => friend.status === 'friend');
-        },
-        // User cache methods
-        applyUsers: (users: Record<string, UserProfile | null>) => set((state) => ({
-            ...state,
-            users: { ...state.users, ...users }
-        })),
-        getUser: (userId: string) => {
-            return get().users[userId];  // Returns UserProfile | null | undefined
-        },
-        assumeUsers: async (userIds: string[]) => {
-            // This will be implemented in sync.ts as it needs access to credentials
-            // Just a placeholder here for the interface
-            const { sync } = await import('../sync');
-            return sync.assumeUsers(userIds);
-        },
-        // Feed methods
-        applyFeedItems: (items: FeedItem[]) => set((state) => {
-            // Always mark feed as loaded even if empty
-            if (items.length === 0) {
-                return {
-                    ...state,
-                    feedLoaded: true  // Mark as loaded even when empty
-                };
-            }
-
-            // Create a map of existing items for quick lookup
-            const existingMap = new Map<string, FeedItem>();
-            state.feedItems.forEach(item => {
-                existingMap.set(item.id, item);
-            });
-
-            // Process new items
-            const updatedItems = [...state.feedItems];
-            let head = state.feedHead;
-            let tail = state.feedTail;
-
-            items.forEach(newItem => {
-                // Remove items with same repeatKey if it exists
-                if (newItem.repeatKey) {
-                    const indexToRemove = updatedItems.findIndex(item =>
-                        item.repeatKey === newItem.repeatKey
-                    );
-                    if (indexToRemove !== -1) {
-                        updatedItems.splice(indexToRemove, 1);
-                    }
-                }
-
-                // Add new item if it doesn't exist
-                if (!existingMap.has(newItem.id)) {
-                    updatedItems.push(newItem);
-                }
-
-                // Update head/tail cursors
-                if (!head || newItem.counter > parseInt(head.substring(2), 10)) {
-                    head = newItem.cursor;
-                }
-                if (!tail || newItem.counter < parseInt(tail.substring(2), 10)) {
-                    tail = newItem.cursor;
-                }
-            });
-
-            // Sort by counter (desc - newest first)
-            updatedItems.sort((a, b) => b.counter - a.counter);
-
-            return {
-                ...state,
-                feedItems: updatedItems,
-                feedHead: head,
-                feedTail: tail,
-                feedLoaded: true  // Mark as loaded after first fetch
-            };
-        }),
-        clearFeed: () => set((state) => ({
-            ...state,
-            feedItems: [],
-            feedHead: null,
-            feedTail: null,
-            feedHasMore: false,
-            feedLoaded: false,  // Reset loading flag
-            friendsLoaded: false  // Reset loading flag
-        })),
     }
 });
 
