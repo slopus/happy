@@ -69,4 +69,42 @@ describe('waitForMessagesOrPending', () => {
         const result = await promise;
         expect(result?.message).toBe('from-pending');
     });
+
+    it('does not hang when abort races with listener registration', async () => {
+        type Mode = { id: string };
+        const mode: Mode = { id: 'm1' };
+        const queue = new MessageQueue2<Mode>(() => 'hash');
+
+        let aborted = false;
+        const abortSignal = {
+            get aborted() {
+                return aborted;
+            },
+            addEventListener: () => {
+                aborted = true;
+            },
+            removeEventListener: () => { },
+        } as any as AbortSignal;
+
+        const waitForMetadataUpdate = async (signal?: AbortSignal) => {
+            if (signal?.aborted) return false;
+            return await new Promise<boolean>((resolve) => {
+                signal?.addEventListener('abort', () => resolve(false), { once: true } as any);
+            });
+        };
+
+        const p = waitForMessagesOrPending({
+            messageQueue: queue,
+            abortSignal,
+            popPendingMessage: async () => false,
+            waitForMetadataUpdate,
+        });
+
+        await expect(
+            Promise.race([
+                p,
+                new Promise((_, reject) => setTimeout(() => reject(new Error('waitForMessagesOrPending hung')), 50)),
+            ]),
+        ).resolves.toBeNull();
+    });
 });

@@ -32,6 +32,9 @@ export async function waitForMessagesOrPending<T>(opts: {
         const controller = new AbortController();
         const onAbort = () => controller.abort();
         opts.abortSignal.addEventListener('abort', onAbort, { once: true });
+        if (opts.abortSignal.aborted) {
+            controller.abort();
+        }
 
         try {
             const winner = await Promise.race([
