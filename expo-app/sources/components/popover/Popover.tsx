@@ -7,90 +7,31 @@ import { useOverlayPortal } from '@/components/OverlayPortal';
 import { useModalPortalTarget } from '@/components/ModalPortalTarget';
 import { requireReactDOM } from '@/utils/reactDomCjs';
 import { usePopoverPortalTarget } from '@/components/PopoverPortalTarget';
+import type {
+    PopoverBackdropEffect,
+    PopoverBackdropOptions,
+    PopoverPlacement,
+    PopoverPortalOptions,
+    PopoverRenderProps,
+    PopoverWindowRect,
+    ResolvedPopoverPlacement,
+} from './_types';
+import { getFallbackBoundaryRect, measureInWindow, measureLayoutRelativeTo } from './measure';
+import { resolvePlacement } from './positioning';
 
 const ViewWithWheel = View as unknown as React.ComponentType<ViewProps & { onWheel?: any }>;
 
-export type PopoverPlacement = 'top' | 'bottom' | 'left' | 'right' | 'auto';
-export type ResolvedPopoverPlacement = Exclude<PopoverPlacement, 'auto'>;
-export type PopoverBackdropEffect = 'none' | 'dim' | 'blur';
+export type {
+    PopoverBackdropEffect,
+    PopoverBackdropOptions,
+    PopoverPlacement,
+    PopoverPortalOptions,
+    PopoverRenderProps,
+    PopoverWindowRect,
+    ResolvedPopoverPlacement,
+} from './_types';
 
-type WindowRect = Readonly<{ x: number; y: number; width: number; height: number }>;
-export type PopoverWindowRect = WindowRect;
-
-export type PopoverPortalOptions = Readonly<{
-    /**
-     * Web only: render the popover in a portal using fixed positioning.
-     * Useful when the anchor is inside overflow-clipped containers.
-     */
-    web?: boolean | Readonly<{ target?: 'body' | 'boundary' | 'modal' }>;
-    /**
-     * Native only: render the popover in a portal host mounted near the app root.
-     * This allows popovers to escape overflow clipping from lists/rows/scrollviews.
-     */
-    native?: boolean;
-    /**
-     * When true, the popover width is capped to the anchor width for top/bottom placements.
-     * Defaults to true to preserve historical behavior.
-     */
-    matchAnchorWidth?: boolean;
-    /**
-     * Horizontal alignment relative to the anchor for top/bottom placements.
-     * Defaults to 'start' to preserve historical behavior.
-     */
-    anchorAlign?: 'start' | 'center' | 'end';
-    /**
-     * Vertical alignment relative to the anchor for left/right placements.
-     * Defaults to 'center' for menus/tooltips.
-     */
-    anchorAlignVertical?: 'start' | 'center' | 'end';
-}>;
-
-export type PopoverBackdropOptions = Readonly<{
-    /**
-     * Whether to render a full-screen layer behind the popover that intercepts taps.
-     * Defaults to true.
-     *
-     * NOTE: when enabled, `onRequestClose` must be provided (Popover is controlled).
-     */
-    enabled?: boolean;
-    /**
-     * When true, blocks interactions outside the popover while it's open.
-     *
-     * - Web: defaults to `false` (popover behaves like a non-modal menu; outside clicks close it but
-     *   still allow the underlying target to receive the event).
-     * - Native: defaults to `true` (outside taps are intercepted by a full-screen Pressable).
-     */
-    blockOutsidePointerEvents?: boolean;
-    /** Optional visual effect for the backdrop layer. */
-    effect?: PopoverBackdropEffect;
-    /**
-     * Web-only options for `effect="blur"` (CSS `backdrop-filter`).
-     * This does not affect native, where `expo-blur` controls intensity/tint.
-     */
-    blurOnWeb?: Readonly<{ px?: number; tintColor?: string }>;
-    /**
-     * When enabled (and when `effect` is `dim|blur`), keeps the anchor area visually “uncovered”
-     * by the effect so the trigger stays crisp/visible.
-     *
-     * This is mainly intended for context-menu style popovers.
-     */
-    spotlight?: boolean | Readonly<{ padding?: number }>;
-    /**
-     * When provided (and when `effect` is `dim|blur` in portal mode), renders a visual overlay
-     * positioned over the anchor *above* the backdrop effect. This avoids “cutout seams”
-     * from spotlight-hole techniques and keeps the trigger crisp.
-     *
-     * Note: this overlay is visual-only and always uses `pointerEvents="none"`.
-     */
-    anchorOverlay?: React.ReactNode | ((params: Readonly<{ rect: WindowRect }>) => React.ReactNode);
-    /** Extra styles applied to the backdrop layer. */
-    style?: StyleProp<ViewStyle>;
-    /**
-     * When enabled, dragging on the backdrop will close the popover.
-     * Useful for context-menu style popovers in scrollable screens.
-     */
-    closeOnPan?: boolean;
-}>;
+type WindowRect = PopoverWindowRect;
 
 type PopoverCommonProps = Readonly<{
     open: boolean;
@@ -120,117 +61,6 @@ type PopoverWithBackdrop = PopoverCommonProps & Readonly<{
 type PopoverWithoutBackdrop = PopoverCommonProps & Readonly<{
     backdrop: false | (PopoverBackdropOptions & Readonly<{ enabled: false }>);
     onRequestClose?: () => void;
-}>;
-
-function measureInWindow(node: any): Promise<WindowRect | null> {
-    return new Promise(resolve => {
-        try {
-            if (!node) return resolve(null);
-
-            const measureDomRect = (candidate: any): WindowRect | null => {
-                const el: any =
-                    typeof candidate?.getBoundingClientRect === 'function'
-                        ? candidate
-                        : candidate?.getScrollableNode?.();
-                if (!el || typeof el.getBoundingClientRect !== 'function') return null;
-                const rect = el.getBoundingClientRect();
-                const x = rect?.left ?? rect?.x;
-                const y = rect?.top ?? rect?.y;
-                const width = rect?.width;
-                const height = rect?.height;
-                if (![x, y, width, height].every(n => Number.isFinite(n))) return null;
-                // Treat 0x0 rects as invalid: on iOS (and occasionally RN-web), refs can report 0x0
-                // for a frame while layout settles. Using these values causes menus to overlap the
-                // trigger and prevents subsequent recomputes from correcting placement.
-                if (width <= 0 || height <= 0) return null;
-                return { x, y, width, height };
-            };
-
-            // On web, prefer DOM measurement. It's synchronous and avoids cases where
-            // RN-web's `measureInWindow` returns invalid values or never calls back.
-            if (Platform.OS === 'web') {
-                const rect = measureDomRect(node);
-                if (rect) return resolve(rect);
-            }
-
-            // On native, `measure` can provide pageX/pageY values that are sometimes more reliable
-            // than `measureInWindow` when using react-native-screens (modal/drawer presentations).
-            // Prefer it when available.
-            if (Platform.OS !== 'web' && typeof node.measure === 'function') {
-                node.measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
-                    if (![pageX, pageY, width, height].every(n => Number.isFinite(n)) || width <= 0 || height <= 0) {
-                        return resolve(null);
-                    }
-                    resolve({ x: pageX, y: pageY, width, height });
-                });
-                return;
-            }
-
-            if (typeof node.measureInWindow === 'function') {
-                node.measureInWindow((x: number, y: number, width: number, height: number) => {
-                    if (![x, y, width, height].every(n => Number.isFinite(n)) || width <= 0 || height <= 0) {
-                        if (Platform.OS === 'web') {
-                            const rect = measureDomRect(node);
-                            if (rect) return resolve(rect);
-                        }
-                        return resolve(null);
-                    }
-                    resolve({ x, y, width, height });
-                });
-                return;
-            }
-
-            if (Platform.OS === 'web') return resolve(measureDomRect(node));
-
-            resolve(null);
-        } catch {
-            resolve(null);
-        }
-    });
-}
-
-function measureLayoutRelativeTo(node: any, relativeToNode: any): Promise<WindowRect | null> {
-    return new Promise(resolve => {
-        try {
-            if (!node || !relativeToNode) return resolve(null);
-            if (typeof node.measureLayout !== 'function') return resolve(null);
-            node.measureLayout(
-                relativeToNode,
-                (x: number, y: number, width: number, height: number) => {
-                    if (![x, y, width, height].every(n => Number.isFinite(n)) || width <= 0 || height <= 0) {
-                        resolve(null);
-                        return;
-                    }
-                    resolve({ x, y, width, height });
-                },
-                () => resolve(null),
-            );
-        } catch {
-            resolve(null);
-        }
-    });
-}
-
-function getFallbackBoundaryRect(params: { windowWidth: number; windowHeight: number }): WindowRect {
-    // On native, the "window" coordinate space is the best available fallback.
-    // On web, this maps closely to the viewport (measureInWindow is viewport-relative).
-    return { x: 0, y: 0, width: params.windowWidth, height: params.windowHeight };
-}
-
-function resolvePlacement(params: {
-    placement: PopoverPlacement;
-    available: Record<ResolvedPopoverPlacement, number>;
-}): ResolvedPopoverPlacement {
-    if (params.placement !== 'auto') return params.placement;
-    const entries = Object.entries(params.available) as Array<[ResolvedPopoverPlacement, number]>;
-    entries.sort((a, b) => b[1] - a[1]);
-    return entries[0]?.[0] ?? 'top';
-}
-
-export type PopoverRenderProps = Readonly<{
-    maxHeight: number;
-    maxWidth: number;
-    placement: ResolvedPopoverPlacement;
 }>;
 
 export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
