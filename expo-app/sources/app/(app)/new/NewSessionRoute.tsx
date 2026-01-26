@@ -68,23 +68,11 @@ import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { computeNewSessionInputMaxHeight } from '@/components/agentInput/inputMaxHeight';
 import { useProfileMap, transformProfileToEnvironmentVars } from '@/components/newSession/modules/profileHelpers';
 import { newSessionScreenStyles } from '@/components/newSession/utils/newSessionScreenStyles';
+import { formatResumeSupportDetailCode } from '@/components/newSession/modules/formatResumeSupportDetailCode';
 
 // Configuration constants
 const RECENT_PATHS_DEFAULT_VISIBLE = 5;
 const styles = newSessionScreenStyles;
-
-function formatResumeSupportDetailCode(code: 'cliNotDetected' | 'capabilityProbeFailed' | 'acpProbeFailed' | 'loadSessionFalse'): string {
-    switch (code) {
-        case 'cliNotDetected':
-            return t('session.resumeSupportDetails.cliNotDetected');
-        case 'capabilityProbeFailed':
-            return t('session.resumeSupportDetails.capabilityProbeFailed');
-        case 'acpProbeFailed':
-            return t('session.resumeSupportDetails.acpProbeFailed');
-        case 'loadSessionFalse':
-            return t('session.resumeSupportDetails.loadSessionFalse');
-    }
-}
 
 function NewSessionScreen() {
     const { theme, rt } = useUnistyles();
