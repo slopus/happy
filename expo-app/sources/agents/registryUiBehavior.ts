@@ -156,6 +156,10 @@ const AGENTS_UI_BEHAVIOR_OVERRIDES: Readonly<Partial<Record<AgentId, AgentUiBeha
             // Codex ACP mode can support vendor-resume via ACP `loadSession`.
             // We probe this dynamically (same as Gemini/OpenCode) and only enforce it when `expCodexAcp` is enabled.
             getAllowRuntimeResume: (results) => readAcpLoadSessionSupport('codex', results),
+            getRuntimeResumePrefetchPlan: (results) => {
+                if (!shouldPrefetchAcpCapabilities('codex', results)) return null;
+                return { request: buildAcpLoadSessionPrefetchRequest('codex'), timeoutMs: 8_000 };
+            },
         },
         newSession: {
             getPreflightIssues: (ctx) => {
