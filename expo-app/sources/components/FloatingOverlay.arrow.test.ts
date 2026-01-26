@@ -123,7 +123,7 @@ describe('FloatingOverlay', () => {
             );
         });
 
-        const indicators = tree?.root.findAllByType('ScrollEdgeIndicators') ?? [];
+        const indicators = tree?.root.findAll((node) => (node as any).type === 'ScrollEdgeIndicators') ?? [];
         expect(indicators.length).toBe(1);
     });
 });
