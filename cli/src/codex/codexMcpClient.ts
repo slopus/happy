@@ -92,28 +92,28 @@ type ReviewDecision =
 type ElicitationResponseStyle = 'decision' | 'both';
 
 export function getCodexElicitationToolCallId(params: Record<string, unknown>): string | undefined {
-    const mcpToolCallId = params.codex_mcp_tool_call_id;
-    if (typeof mcpToolCallId === 'string') {
-        return mcpToolCallId;
-    }
-
     const callId = params.codex_call_id;
     if (typeof callId === 'string') {
         return callId;
     }
 
-    return undefined;
-}
-
-function getCodexEventToolCallId(msg: Record<string, unknown>): string | undefined {
-    const mcpToolCallId = msg.mcp_tool_call_id ?? msg.codex_mcp_tool_call_id;
+    const mcpToolCallId = params.codex_mcp_tool_call_id;
     if (typeof mcpToolCallId === 'string') {
         return mcpToolCallId;
     }
 
+    return undefined;
+}
+
+export function getCodexEventToolCallId(msg: Record<string, unknown>): string | undefined {
     const callId = msg.call_id ?? msg.codex_call_id;
     if (typeof callId === 'string') {
         return callId;
+    }
+
+    const mcpToolCallId = msg.mcp_tool_call_id ?? msg.codex_mcp_tool_call_id;
+    if (typeof mcpToolCallId === 'string') {
+        return mcpToolCallId;
     }
 
     return undefined;
@@ -397,7 +397,8 @@ export class CodexMcpClient {
                 const params = (request.params ?? {}) as Record<string, unknown>;
                 logger.debugLargeJson('[CodexMCP] Received elicitation request', params);
 
-                // Extract fields using stable codex_* field names (since v0.9)
+                // Extract fields using stable codex_* field names (since v0.9).
+                // Prefer codex_call_id/call_id for local correlation because codex_mcp_tool_call_id can repeat.
                 const toolCallId = getCodexElicitationToolCallId(params) ?? randomUUID();
                 const elicitationType = this.extractString(params, 'codex_elicitation');
                 const message = this.extractString(params, 'message') ?? '';

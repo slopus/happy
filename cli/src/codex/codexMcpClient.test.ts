@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { getCodexElicitationToolCallId } from './codexMcpClient';
+import { getCodexElicitationToolCallId, getCodexEventToolCallId } from './codexMcpClient';
 
 // NOTE: This test suite uses mocks because the real Codex CLI / MCP transport
 // is not guaranteed to be available in CI or local test environments.
@@ -47,17 +47,32 @@ vi.mock('@modelcontextprotocol/sdk/client/index.js', () => {
 });
 
 describe('CodexMcpClient elicitation ids', () => {
-    it('prefers codex_mcp_tool_call_id over codex_call_id', () => {
+    it('prefers codex_call_id over codex_mcp_tool_call_id', () => {
         expect(getCodexElicitationToolCallId({
             codex_mcp_tool_call_id: 'mcp-1',
             codex_call_id: 'call-1',
-        })).toBe('mcp-1');
+        })).toBe('call-1');
     });
 
-    it('falls back to codex_call_id when codex_mcp_tool_call_id is missing', () => {
+    it('falls back to codex_mcp_tool_call_id when codex_call_id is missing', () => {
         expect(getCodexElicitationToolCallId({
-            codex_call_id: 'call-1',
+            codex_mcp_tool_call_id: 'mcp-1',
+        })).toBe('mcp-1');
+    });
+});
+
+describe('CodexMcpClient event ids', () => {
+    it('prefers call_id over mcp_tool_call_id', () => {
+        expect(getCodexEventToolCallId({
+            mcp_tool_call_id: 'mcp-1',
+            call_id: 'call-1',
         })).toBe('call-1');
+    });
+
+    it('falls back to mcp_tool_call_id when call_id is missing', () => {
+        expect(getCodexEventToolCallId({
+            mcp_tool_call_id: 'mcp-1',
+        })).toBe('mcp-1');
     });
 });
 
