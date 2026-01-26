@@ -42,6 +42,42 @@ Happy CLI (`handy-cli`) is a command-line tool that wraps Claude Code to enable 
 - Console output only for user-facing messages
 - Special handling for large JSON objects with truncation
 
+## Folder Structure & Naming Conventions (2026-01)
+
+These conventions are **additive** to the guidelines above. The goal is to keep the CLI easy to reason about and avoid “god files”.
+
+### Naming
+- Buckets are lowercase (e.g. `api`, `daemon`, `terminal`, `ui`, `commands`, `modules`, `utils`).
+- Feature folders are `camelCase` (e.g. `sessionStartup`, `toolTrace`).
+- Allowed `_*.ts` markers (organization only) inside module-ish folders: `_types.ts`, `_shared.ts`, `_constants.ts`.
+
+### CLI taxonomy (target intent)
+
+Top-level domains are “first class” and should remain few:
+- `src/agent/` — agent runtime framework (ACP, transports, adapters, factories)
+- `src/api/` — server communication, crypto, queues, RPC
+- `src/daemon/` — daemon lifecycle/control/diagnostics
+- `src/terminal/` — terminal runtime integration (including tmux)
+- `src/ui/` — user-facing UI and logging (Ink, formatting, QR, auth UI)
+- `src/commands/` — user-facing subcommands
+- `src/modules/` — pluggable modules (ripgrep/difftastic/proxy/etc) and shared handler registries
+- `src/claude/`, `src/codex/`, `src/gemini/`, `src/opencode/` — agent packages (vendor-specific logic + entrypoints)
+- `src/cli/` — argument parsing and command dispatch (keeps `src/index.ts` small)
+- `src/utils/` — shared helpers; prefer named subfolders under `utils/` over dumping unrelated code at the root of `utils/`
+
+### Specific structure goals
+
+- `tmux` is terminal integration → prefer `src/terminal/tmux/*`.
+- Shared “session startup” pipeline is agent runtime → prefer `src/agent/startup/*`.
+- `toolTrace` is runtime instrumentation → prefer `src/agent/toolTrace/*`.
+- CLI parsing is CLI domain → prefer `src/cli/parsers/*`.
+
+### When to create subfolders
+
+Avoid flat folders growing without structure:
+- If a domain folder becomes “busy” (many files, multiple concerns), add subfolders by subdomain (e.g. `api/session`, `daemon/control`, `daemon/diagnostics`).
+- Prefer “noun folders” (e.g. `api/session/`, `daemon/lifecycle/`) over `misc/`.
+
 ## Architecture & Key Components
 
 ### 1. API Module (`/src/api/`)

@@ -118,6 +118,25 @@ sources/
 - **Always apply layout width constraints** from `@/components/layout` to full-screen ScrollViews and content containers for responsive design across device sizes
 - Always run `yarn typecheck` after all changes to ensure type safety
 
+## Folder Structure & Naming Conventions (2026-01)
+
+These conventions are **additive** to the guidelines above. The goal is to keep screens and sync logic easy to reason about.
+
+### Naming
+- Buckets are lowercase (e.g. `components`, `hooks`, `sync`, `utils`).
+- Feature folders are `camelCase` (e.g. `newSession`, `agentInput`, `profileEdit`).
+- Avoid `_folders` except Expo Router special files (e.g. `_layout.tsx`) and `__tests__`.
+- Allowed `_*.ts` markers (organization only) inside module-ish folders: `_types.ts`, `_shared.ts`, `_constants.ts`.
+
+### Screens and feature code
+- Expo Router routes live in `sources/app/**`.
+- Extract non-trivial UI and logic into `sources/components/<feature>/{components,hooks,modules,utils}/*`.
+- Keep “reusable” UI in `sources/components/` and avoid duplicating generic components inside route folders.
+
+### Sync organization
+- Prefer splitting large sync areas by domain (e.g. sessions/messages/machines/settings) using subfolders under `sources/sync/`.
+- Prefer domain “slices” for state when a single file grows too large.
+
 ## Modals & dialogs (web + native)
 
 ### Rules of thumb
