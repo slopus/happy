@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "902947412706",
-    "project_id": "happy-coder-9fe36",
-    "storage_bucket": "happy-coder-9fe36.firebasestorage.app"
+    "project_number": "588365092545",
+    "project_id": "hitosea-happy",
+    "storage_bucket": "hitosea-happy.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:902947412706:android:36343adcbad4fca41b9cbb",
+        "mobilesdk_app_id": "1:588365092545:android:6c38684a3e977b54fbe640",
         "android_client_info": {
-          "package_name": "com.ex3ndr.happy"
+          "package_name": "com.hitosea.happy"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDzdshwzE3tHcc1klD6qIPpReCoAiG2Mxs"
+          "current_key": "AIzaSyCBOcQRqTX5fZATx1OrrLH6Uvs-BFq4ydY"
         }
       ],
       "services": {
@@ -26,34 +26,15 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:902947412706:android:eb8bccdbb85f0a371b9cbb",
+        "mobilesdk_app_id": "1:588365092545:android:3e07ef583b66a8ccfbe640",
         "android_client_info": {
-          "package_name": "com.slopus.happy.dev"
+          "package_name": "com.hitosea.happy.preview"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDzdshwzE3tHcc1klD6qIPpReCoAiG2Mxs"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:902947412706:android:03fd92ac3c9813651b9cbb",
-        "android_client_info": {
-          "package_name": "com.slopus.happy.preview"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDzdshwzE3tHcc1klD6qIPpReCoAiG2Mxs"
+          "current_key": "AIzaSyCBOcQRqTX5fZATx1OrrLH6Uvs-BFq4ydY"
         }
       ],
       "services": {

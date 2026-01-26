@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Happy (preview)",
-  "identifier": "com.slopus.happy.preview",
+  "identifier": "com.hitosea.happy.preview",
   "app": {
     "windows": [
       {

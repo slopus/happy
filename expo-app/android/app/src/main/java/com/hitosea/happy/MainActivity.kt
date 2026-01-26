@@ -1,4 +1,4 @@
-package com.slopus.happy.dev
+package com.hitosea.happy
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
