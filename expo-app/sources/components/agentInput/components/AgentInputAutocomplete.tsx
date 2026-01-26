@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
-import { FloatingOverlay } from './FloatingOverlay';
+import { FloatingOverlay } from '@/components/FloatingOverlay';
 
 interface AgentInputAutocompleteProps {
     suggestions: React.ReactElement[];

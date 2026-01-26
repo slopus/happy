@@ -13,7 +13,7 @@ import { Shaker, ShakeInstance } from '@/components/Shaker';
 import { StatusDot } from '@/components/StatusDot';
 import { useActiveWord } from '@/components/autocomplete/useActiveWord';
 import { useActiveSuggestions } from '@/components/autocomplete/useActiveSuggestions';
-import { AgentInputAutocomplete } from '@/components/AgentInputAutocomplete';
+import { AgentInputAutocomplete } from './components/AgentInputAutocomplete';
 import { FloatingOverlay } from '@/components/FloatingOverlay';
 import { Popover } from '@/components/Popover';
 import { ScrollEdgeFades } from '@/components/ScrollEdgeFades';

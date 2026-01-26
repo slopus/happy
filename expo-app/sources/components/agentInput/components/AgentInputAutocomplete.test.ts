@@ -16,7 +16,7 @@ vi.mock('react-native-unistyles', () => ({
     }),
 }));
 
-vi.mock('./FloatingOverlay', () => {
+vi.mock('@/components/FloatingOverlay', () => {
     const React = require('react');
     return {
         FloatingOverlay: (props: any) => {
