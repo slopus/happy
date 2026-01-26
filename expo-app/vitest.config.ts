@@ -6,6 +6,9 @@ export default defineConfig({
         __DEV__: false,
     },
     test: {
+        // Ensure per-file module isolation so test-local `vi.mock(...)` does not leak
+        // across unrelated test files (especially important for our React Native stubs).
+        isolate: true,
         globals: false,
         environment: 'node',
         setupFiles: [resolve('./sources/dev/vitestSetup.ts')],
