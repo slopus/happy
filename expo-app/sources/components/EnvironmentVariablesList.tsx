@@ -207,7 +207,7 @@ export function EnvironmentVariablesList({
             </View>
 
             {environmentVariables.length > 0 && (
-                <View style={styles.envVarListContainer}>
+                <View>
                     {environmentVariables.map((envVar, index) => {
                         const refs = extractVarRefsFromValue(envVar.value);
                         const primaryRef = refs[0] ?? null;
@@ -328,7 +328,8 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontWeight: '500',
     },
     envVarListContainer: {
-        marginHorizontal: Platform.select({ ios: 16, default: 12 }),
+        // Intentionally unused: each EnvironmentVariableCard is an ItemGroup
+        // and provides its own consistent horizontal margins.
     },
     addContainer: {
         backgroundColor: theme.colors.surface,

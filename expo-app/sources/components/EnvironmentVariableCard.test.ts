@@ -82,6 +82,29 @@ vi.mock('@/components/Switch', () => {
     };
 });
 
+vi.mock('@/components/Item', () => {
+    const React = require('react');
+    return {
+        Item: (props: any) => {
+            // Render title/subtitle/rightElement so behavior tests can find inputs/switches.
+            return React.createElement(
+                'Item',
+                props,
+                props.title ? React.createElement('Text', null, props.title) : null,
+                props.subtitle ?? null,
+                props.rightElement ?? null,
+            );
+        },
+    };
+});
+
+vi.mock('@/components/ItemGroup', () => {
+    const React = require('react');
+    return {
+        ItemGroup: (props: any) => React.createElement('ItemGroup', props, props.children),
+    };
+});
+
 import { EnvironmentVariableCard } from './EnvironmentVariableCard';
 
 describe('EnvironmentVariableCard', () => {

@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { Switch } from '@/components/Switch';
+import { Item } from '@/components/Item';
+import { ItemGroup } from '@/components/ItemGroup';
 import { formatEnvVarTemplate, parseEnvVarTemplate, type EnvVarTemplateOperator } from '@/utils/envVarTemplate';
 import { t } from '@/text';
 import type { EnvPreviewSecretsPolicy, PreviewEnvValue } from '@/sync/ops';
@@ -226,137 +228,75 @@ export function EnvironmentVariableCard({
         return computedTemplateValue || emptyValue;
     })();
 
-    return (
-        <View style={styles.container}>
-            {/* Header row with variable name and action buttons */}
-            <View style={styles.headerRow}>
-                <Text style={styles.nameText}>
-                    {variable.name}
-                    {hideValueInUi && (
-                        <Ionicons
-                            name="lock-closed"
-                            size={theme.iconSize.small}
-                            color={theme.colors.textDestructive}
-                            style={styles.lockIcon}
-                        />
-                    )}
-                </Text>
+    const valueRowTitle = (useRemoteVariable
+        ? t('profiles.environmentVariables.card.fallbackValueLabel')
+        : t('profiles.environmentVariables.card.valueLabel')
+    ).replace(/:$/, '');
 
-                <View style={styles.actionRow}>
-                    <Pressable
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        onPress={() => onDelete(index)}
-                    >
-                        <Ionicons name="trash-outline" size={theme.iconSize.large} color={theme.colors.deleteAction} />
-                    </Pressable>
-                    <Pressable
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        onPress={() => onDuplicate(index)}
-                    >
-                        <Ionicons name="copy-outline" size={theme.iconSize.large} color={theme.colors.button.secondary.tint} />
-                    </Pressable>
-                </View>
-            </View>
+    const valueRowSubtitle = !useSecretVault ? (
+        <View style={styles.valueRowContent}>
+            <TextInput
+                style={styles.valueInput}
+                placeholder={
+                    expectedValue ||
+                    (useRemoteVariable
+                        ? t('profiles.environmentVariables.card.defaultValueInputPlaceholder')
+                        : t('profiles.environmentVariables.card.valueInputPlaceholder'))
+                }
+                placeholderTextColor={theme.colors.input.placeholder}
+                value={defaultValue}
+                onChangeText={setDefaultValue}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry={hideValueInUi}
+                editable={!useSecretVault}
+                selectTextOnFocus={!useSecretVault}
+            />
 
-            {/* Description */}
-            {description && (
-                <Text style={[styles.secondaryText, styles.descriptionText]}>
-                    {description}
-                </Text>
-            )}
-
-            {!useSecretVault ? (
-                <>
-                    {/* Value label */}
-                    <Text style={[styles.secondaryText, styles.labelText]}>
-                        {(useRemoteVariable
-                            ? t('profiles.environmentVariables.card.fallbackValueLabel')
-                            : t('profiles.environmentVariables.card.valueLabel')
-                        ).replace(/:$/, '')}
-                    </Text>
-
-                    {/* Value input */}
-                    <TextInput
-                        style={styles.valueInput}
-                        placeholder={
-                            expectedValue ||
-                            (useRemoteVariable
-                                ? t('profiles.environmentVariables.card.defaultValueInputPlaceholder')
-                                : t('profiles.environmentVariables.card.valueInputPlaceholder'))
-                        }
-                        placeholderTextColor={theme.colors.input.placeholder}
-                        value={defaultValue}
-                        onChangeText={setDefaultValue}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        secureTextEntry={hideValueInUi}
-                        editable={!useSecretVault}
-                        selectTextOnFocus={!useSecretVault}
-                    />
-                </>
-            ) : (Boolean(effectiveSourceRequirement?.useSecretVault) ? (
-                <Pressable
-                    onPress={() => onPickDefaultSecretForSourceVar?.(requirementVarName)}
-                    style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-                >
-                    <View style={styles.toggleRow}>
-                        <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
-                            {t('profiles.environmentVariables.card.defaultSecretLabel')}
-                        </Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <Text style={[styles.secondaryText, { marginTop: 0 }]}>
-                                {defaultSecretNameForSourceVar ?? t('secrets.noneTitle')}
-                            </Text>
-                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
-                        </View>
-                    </View>
-                </Pressable>
-            ) : null)}
-
-            {/* Security message for secrets */}
             {hideValueInUi && (machineEnvPolicy === null || machineEnvPolicy === 'none') && (
-                <Text style={[styles.secondaryText, styles.secretMessage]}>
+                <Text style={[styles.secondaryText, styles.helperText, styles.helperTextItalic]}>
                     {t('profiles.environmentVariables.card.secretNotRetrieved')}
                 </Text>
             )}
 
-            {/* Default override warning */}
             {showDefaultOverrideWarning && !hideValueInUi && (
-                <Text style={[styles.secondaryText, styles.defaultOverrideWarning]}>
+                <Text style={[styles.secondaryText, styles.helperText]}>
                     {t('profiles.environmentVariables.card.overridingDefault', { expectedValue })}
                 </Text>
             )}
-
-            <View style={styles.divider} />
-
-            {/* Toggle: Use value from machine environment */}
-            <View style={styles.toggleRow}>
-                <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
-                    {t('profiles.environmentVariables.card.useMachineEnvToggle')}
-                </Text>
-                <Switch
-                    value={useRemoteVariable}
-                    onValueChange={setUseRemoteVariable}
-                />
+        </View>
+    ) : (Boolean(effectiveSourceRequirement?.useSecretVault) ? (
+        <Pressable
+            onPress={() => onPickDefaultSecretForSourceVar?.(requirementVarName)}
+            style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+        >
+            <View style={styles.valueRowContent}>
+                <View style={styles.vaultRow}>
+                    <Text style={[styles.secondaryText, styles.vaultRowLabel]}>
+                        {t('profiles.environmentVariables.card.defaultSecretLabel')}
+                    </Text>
+                    <View style={styles.vaultRowRight}>
+                        <Text style={[styles.secondaryText, styles.vaultRowValue]}>
+                            {defaultSecretNameForSourceVar ?? t('secrets.noneTitle')}
+                        </Text>
+                        <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+                    </View>
+                </View>
             </View>
+        </Pressable>
+    ) : null);
 
-            <Text
-                style={[
-                    styles.secondaryText,
-                    styles.resolvedOnStartText,
-                    useRemoteVariable && styles.resolvedOnStartWithRemote,
-                ]}
-            >
+    const machineEnvRowSubtitle = (
+        <View style={styles.sectionContent}>
+            <Text style={[styles.secondaryText, styles.helperText]}>
                 {t('profiles.environmentVariables.card.resolvedOnSessionStart')}
             </Text>
 
-            {/* Source variable name input (only when enabled) */}
             {useRemoteVariable && (
                 <>
-                    <Text style={[styles.secondaryText, styles.sourceLabel]}>
+                    <Text style={[styles.secondaryText, styles.fieldLabel]}>
                         {t('profiles.environmentVariables.card.sourceVariableLabel')}
                     </Text>
-
                     <TextInput
                         style={styles.sourceInput}
                         placeholder={t('profiles.environmentVariables.card.sourceVariablePlaceholder')}
@@ -366,182 +306,201 @@ export function EnvironmentVariableCard({
                         autoCapitalize="characters"
                         autoCorrect={false}
                     />
+
+                    {(!hideValueInUi && machineId && remoteVariableName.trim() !== '') && (
+                        <View style={styles.machineStatusContainer}>
+                            {isMachineEnvLoading || remoteEntry === undefined ? (
+                                <Text style={[styles.secondaryText, styles.machineStatusLoading]}>
+                                    {t('profiles.environmentVariables.card.checkingMachine', { machine: machineLabel })}
+                                </Text>
+                            ) : (remoteEntry.display === 'unset' || remoteValue === null || remoteValue === '') ? (
+                                <Text style={[styles.secondaryText, styles.machineStatusWarning]}>
+                                    {remoteValue === '' ? (
+                                        hasFallback
+                                            ? t('profiles.environmentVariables.card.emptyOnMachineUsingFallback', { machine: machineLabel })
+                                            : t('profiles.environmentVariables.card.emptyOnMachine', { machine: machineLabel })
+                                    ) : (
+                                        hasFallback
+                                            ? t('profiles.environmentVariables.card.notFoundOnMachineUsingFallback', { machine: machineLabel })
+                                            : t('profiles.environmentVariables.card.notFoundOnMachine', { machine: machineLabel })
+                                    )}
+                                </Text>
+                            ) : (
+                                <>
+                                    <Text style={[styles.secondaryText, styles.machineStatusSuccess]}>
+                                        {t('profiles.environmentVariables.card.valueFoundOnMachine', { machine: machineLabel })}
+                                    </Text>
+                                    {showRemoteDiffersWarning && (
+                                        <Text style={[styles.secondaryText, styles.machineStatusDiffers]}>
+                                            {t('profiles.environmentVariables.card.differsFromDocumented', { expectedValue })}
+                                        </Text>
+                                    )}
+                                </>
+                            )}
+                        </View>
+                    )}
                 </>
             )}
 
-            {/* Machine environment status (only with machine context) */}
-            {useRemoteVariable && !hideValueInUi && machineId && remoteVariableName.trim() !== '' && (
-                <View style={styles.machineStatusContainer}>
-                    {isMachineEnvLoading || remoteEntry === undefined ? (
-                        <Text style={[styles.secondaryText, styles.machineStatusLoading]}>
-                            {t('profiles.environmentVariables.card.checkingMachine', { machine: machineLabel })}
-                        </Text>
-                    ) : (remoteEntry.display === 'unset' || remoteValue === null || remoteValue === '') ? (
-                        <Text style={[styles.secondaryText, styles.machineStatusWarning]}>
-                            {remoteValue === '' ? (
-                                hasFallback
-                                    ? t('profiles.environmentVariables.card.emptyOnMachineUsingFallback', { machine: machineLabel })
-                                    : t('profiles.environmentVariables.card.emptyOnMachine', { machine: machineLabel })
-                            ) : (
-                                hasFallback
-                                    ? t('profiles.environmentVariables.card.notFoundOnMachineUsingFallback', { machine: machineLabel })
-                                    : t('profiles.environmentVariables.card.notFoundOnMachine', { machine: machineLabel })
-                            )}
-                        </Text>
-                    ) : (
-                        <>
-                            <Text style={[styles.secondaryText, styles.machineStatusSuccess]}>
-                                {t('profiles.environmentVariables.card.valueFoundOnMachine', { machine: machineLabel })}
-                            </Text>
-                            {showRemoteDiffersWarning && (
-                                <Text style={[styles.secondaryText, styles.machineStatusDiffers]}>
-                                    {t('profiles.environmentVariables.card.differsFromDocumented', { expectedValue })}
-                                </Text>
-                            )}
-                        </>
-                    )}
-                </View>
-            )}
-
-            {/* Session preview */}
             <Text style={[styles.secondaryText, styles.sessionPreview]}>
                 {t('profiles.environmentVariables.preview.sessionWillReceive', {
                     name: variable.name,
                     value: resolvedSessionValue ?? emptyValue,
                 })}
             </Text>
+        </View>
+    );
 
-            <View style={styles.divider} />
+    const secretRowSubtitle = (
+        isForcedSensitive
+            ? t('profiles.environmentVariables.card.secretToggleEnforcedByDaemon')
+            : useSecretVault
+                ? t('profiles.environmentVariables.card.secretToggleEnforcedByVault')
+                : t('profiles.environmentVariables.card.secretToggleSubtitle')
+    );
 
-            <View style={styles.secretRow}>
-                <View style={styles.secretRowLeft}>
-                    <Text style={[styles.toggleLabelText, styles.secretLabel]}>
-                        {t('profiles.environmentVariables.card.secretToggleLabel')}
-                    </Text>
-                    <Text style={[styles.secondaryText, styles.secretSubtitleText]}>
-                        {isForcedSensitive
-                            ? t('profiles.environmentVariables.card.secretToggleEnforcedByDaemon')
-                            : useSecretVault
-                                ? t('profiles.environmentVariables.card.secretToggleEnforcedByVault')
-                                : t('profiles.environmentVariables.card.secretToggleSubtitle')}
-                    </Text>
-                </View>
-                <View style={styles.secretRowRight}>
-                    {showResetToAuto && (
+    return (
+        <ItemGroup
+            // Hide the ItemGroup header spacing: this card renders its own "title row" as the first Item.
+            title={<View />}
+            headerStyle={styles.hiddenHeader}
+            style={styles.groupWrapper}
+            containerStyle={styles.groupContainer}
+        >
+            <Item
+                title={variable.name}
+                subtitle={description}
+                showChevron={false}
+                rightElement={(
+                    <View style={styles.titleRowActions}>
+                        {hideValueInUi && (
+                            <Ionicons
+                                name="lock-closed"
+                                size={theme.iconSize.small}
+                                color={theme.colors.textDestructive}
+                            />
+                        )}
                         <Pressable
-                            onPress={() => onUpdateSecretOverride?.(index, undefined)}
                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                            style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                            onPress={() => onDelete(index)}
                         >
-                            <Text style={styles.resetToAutoText}>
-                                {t('profiles.environmentVariables.card.secretToggleResetToAuto')}
-                            </Text>
+                            <Ionicons name="trash-outline" size={theme.iconSize.large} color={theme.colors.deleteAction} />
                         </Pressable>
-                    )}
-                    <Switch
-                        value={hideValueInUi}
-                        onValueChange={(next) => {
-                            if (!canEditSecret) return;
-                            onUpdateSecretOverride?.(index, next);
-                        }}
-                        disabled={!canEditSecret}
-                    />
-                </View>
-            </View>
+                        <Pressable
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            onPress={() => onDuplicate(index)}
+                        >
+                            <Ionicons name="copy-outline" size={theme.iconSize.large} color={theme.colors.button.secondary.tint} />
+                        </Pressable>
+                    </View>
+                )}
+            />
 
-            {/* Requirements (independent of "use machine env") */}
+            <Item
+                title={valueRowTitle}
+                subtitle={valueRowSubtitle}
+                showChevron={false}
+            />
+
+            <Item
+                title={t('profiles.environmentVariables.card.useMachineEnvToggle')}
+                subtitle={machineEnvRowSubtitle}
+                showChevron={false}
+                rightElement={(
+                    <Switch
+                        value={useRemoteVariable}
+                        onValueChange={setUseRemoteVariable}
+                    />
+                )}
+            />
+
+            <Item
+                title={t('profiles.environmentVariables.card.secretToggleLabel')}
+                subtitle={secretRowSubtitle}
+                showChevron={false}
+                rightElement={(
+                    <View style={styles.secretRowRight}>
+                        {showResetToAuto && (
+                            <Pressable
+                                onPress={() => onUpdateSecretOverride?.(index, undefined)}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                            >
+                                <Text style={styles.resetToAutoText}>
+                                    {t('profiles.environmentVariables.card.secretToggleResetToAuto')}
+                                </Text>
+                            </Pressable>
+                        )}
+                        <Switch
+                            value={hideValueInUi}
+                            onValueChange={(next) => {
+                                if (!canEditSecret) return;
+                                onUpdateSecretOverride?.(index, next);
+                            }}
+                            disabled={!canEditSecret}
+                        />
+                    </View>
+                )}
+            />
+
             {hasRequirementVarName ? (
                 <>
-                    <View style={styles.toggleRow}>
-                        <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
-                            {t('profiles.environmentVariables.card.requirementRequiredLabel')}
-                        </Text>
-                        <Switch
-                            value={Boolean(effectiveSourceRequirement?.required)}
-                            onValueChange={(next) => {
-                                if (!onUpdateSourceRequirement) return;
-                                onUpdateSourceRequirement(requirementVarName, {
-                                    required: next,
-                                    useSecretVault: Boolean(effectiveSourceRequirement?.useSecretVault),
-                                });
-                            }}
-                        />
-                    </View>
-                    <Text style={[styles.secondaryText, styles.resolvedOnStartText]}>
-                        {t('profiles.environmentVariables.card.requirementRequiredSubtitle')}
-                    </Text>
-
-                    <View style={styles.toggleRow}>
-                        <Text style={[styles.toggleLabelText, styles.toggleLabel]}>
-                            {t('profiles.environmentVariables.card.requirementUseVaultLabel')}
-                        </Text>
-                        <Switch
-                            value={Boolean(effectiveSourceRequirement?.useSecretVault)}
-                            onValueChange={(next) => {
-                                if (!onUpdateSourceRequirement) return;
-                                const prevRequired = Boolean(effectiveSourceRequirement?.required);
-                                onUpdateSourceRequirement(requirementVarName, {
-                                    required: next ? (prevRequired || true) : prevRequired,
-                                    useSecretVault: next,
-                                });
-                            }}
-                        />
-                    </View>
-                    <Text style={[styles.secondaryText, styles.resolvedOnStartText]}>
-                        {t('profiles.environmentVariables.card.requirementUseVaultSubtitle')}
-                    </Text>
+                    <Item
+                        title={t('profiles.environmentVariables.card.requirementRequiredLabel')}
+                        subtitle={t('profiles.environmentVariables.card.requirementRequiredSubtitle')}
+                        showChevron={false}
+                        rightElement={(
+                            <Switch
+                                value={Boolean(effectiveSourceRequirement?.required)}
+                                onValueChange={(next) => {
+                                    if (!onUpdateSourceRequirement) return;
+                                    onUpdateSourceRequirement(requirementVarName, {
+                                        required: next,
+                                        useSecretVault: Boolean(effectiveSourceRequirement?.useSecretVault),
+                                    });
+                                }}
+                            />
+                        )}
+                    />
+                    <Item
+                        title={t('profiles.environmentVariables.card.requirementUseVaultLabel')}
+                        subtitle={t('profiles.environmentVariables.card.requirementUseVaultSubtitle')}
+                        showChevron={false}
+                        rightElement={(
+                            <Switch
+                                value={Boolean(effectiveSourceRequirement?.useSecretVault)}
+                                onValueChange={(next) => {
+                                    if (!onUpdateSourceRequirement) return;
+                                    const prevRequired = Boolean(effectiveSourceRequirement?.required);
+                                    onUpdateSourceRequirement(requirementVarName, {
+                                        required: next ? (prevRequired || true) : prevRequired,
+                                        useSecretVault: next,
+                                    });
+                                }}
+                            />
+                        )}
+                    />
                 </>
             ) : null}
-        </View>
+        </ItemGroup>
     );
 }
 
 const stylesheet = StyleSheet.create((theme) => ({
-    container: {
-        width: '100%',
-        backgroundColor: theme.colors.surface,
-        borderRadius: 16,
-        padding: 16,
+    groupWrapper: {
+        // The card spacing between env vars should match other grouped settings lists.
         marginBottom: 12,
-        shadowColor: theme.colors.shadow.color,
-        shadowOffset: { width: 0, height: 0.33 },
-        shadowOpacity: theme.colors.shadow.opacity,
-        shadowRadius: 0,
-        elevation: 1,
     },
-    headerRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 4,
+    hiddenHeader: {
+        paddingTop: 0,
+        paddingBottom: 0,
+        paddingHorizontal: 0,
+        height: 0,
+        overflow: 'hidden',
     },
-    nameText: {
-        fontSize: Platform.select({ ios: 17, default: 16 }),
-        lineHeight: Platform.select({ ios: 22, default: 24 }),
-        letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
-        color: theme.colors.text,
-        ...Typography.default('semiBold'),
-    },
-    lockIcon: {
-        marginLeft: 4,
-    },
-    secretRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginTop: 8,
-        marginBottom: 4,
-    },
-    secretRowLeft: {
-        flex: 1,
-        paddingRight: 10,
-    },
-    secretLabel: {
-        color: theme.colors.textSecondary,
-    },
-    secretSubtitleText: {
-        marginTop: 2,
-        color: theme.colors.textSecondary,
+    groupContainer: {
+        // Avoid double horizontal margins: the list should not add its own margin.
+        marginHorizontal: 0,
     },
     secretRowRight: {
         flexDirection: 'row',
@@ -553,7 +512,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: Platform.select({ ios: 13, default: 12 }),
         ...Typography.default('semiBold'),
     },
-    actionRow: {
+    titleRowActions: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: theme.margins.md,
@@ -563,16 +522,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         lineHeight: 20,
         letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
         ...Typography.default(),
-    },
-    descriptionText: {
-        color: theme.colors.textSecondary,
-        marginBottom: 8,
-    },
-    labelText: {
-        ...Typography.default('semiBold'),
-        fontSize: 13,
-        color: theme.colors.groupped.sectionTitle,
-        marginBottom: 4,
     },
     valueInput: {
         ...Typography.default('regular'),
@@ -584,7 +533,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         lineHeight: Platform.select({ ios: 22, default: 24 }),
         letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
         color: theme.colors.input.text,
-        marginBottom: 4,
         ...(Platform.select({
             web: {
                 outline: 'none',
@@ -598,46 +546,21 @@ const stylesheet = StyleSheet.create((theme) => ({
             default: {},
         }) as object),
     },
-    secretMessage: {
+    sectionContent: {
+        marginTop: 4,
+    },
+    helperText: {
         color: theme.colors.textSecondary,
-        marginBottom: 8,
+    },
+    helperTextItalic: {
         fontStyle: 'italic',
     },
-    defaultOverrideWarning: {
-        color: theme.colors.textSecondary,
-        marginBottom: 8,
-    },
-    divider: {
-        height: 1,
-        backgroundColor: theme.colors.divider,
-        marginVertical: 12,
-    },
-    toggleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+    fieldLabel: {
+        ...Typography.default('semiBold'),
+        fontSize: 13,
+        color: theme.colors.groupped.sectionTitle,
+        marginTop: 10,
         marginBottom: 6,
-    },
-    toggleLabelText: {
-        fontSize: Platform.select({ ios: 17, default: 16 }),
-        lineHeight: 20,
-        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
-        ...Typography.default(),
-    },
-    toggleLabel: {
-        flex: 1,
-        color: theme.colors.textSecondary,
-    },
-    resolvedOnStartText: {
-        color: theme.colors.textSecondary,
-        marginBottom: 0,
-    },
-    resolvedOnStartWithRemote: {
-        marginBottom: 10,
-    },
-    sourceLabel: {
-        color: theme.colors.textSecondary,
-        marginBottom: 4,
     },
     sourceInput: {
         ...Typography.default('regular'),
@@ -649,7 +572,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         lineHeight: Platform.select({ ios: 22, default: 24 }),
         letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
         color: theme.colors.input.text,
-        marginBottom: 6,
+        marginBottom: 2,
         ...(Platform.select({
             web: {
                 outline: 'none',
@@ -663,8 +586,28 @@ const stylesheet = StyleSheet.create((theme) => ({
             default: {},
         }) as object),
     },
+    valueRowContent: {
+        marginTop: 8,
+    },
+    vaultRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    vaultRowLabel: {
+        color: theme.colors.textSecondary,
+        flex: 1,
+    },
+    vaultRowRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    vaultRowValue: {
+        color: theme.colors.textSecondary,
+    },
     machineStatusContainer: {
-        marginBottom: 8,
+        marginTop: 8,
     },
     machineStatusLoading: {
         color: theme.colors.textSecondary,
@@ -682,6 +625,6 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     sessionPreview: {
         color: theme.colors.textSecondary,
-        marginTop: 4,
+        marginTop: 10,
     },
 }));
