@@ -49,7 +49,7 @@ import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
 import { getMissingRequiredConfigEnvVarNames } from '@/utils/profileConfigRequirements';
 import { InteractionManager } from 'react-native';
 import { NewSessionWizard } from '@/components/newSession/NewSessionWizard';
-import { prefetchMachineCapabilities, prefetchMachineCapabilitiesIfStale, useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
+import { getMachineCapabilitiesSnapshot, prefetchMachineCapabilities, prefetchMachineCapabilitiesIfStale, useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import { CAPABILITIES_REQUEST_NEW_SESSION } from '@/capabilities/requests';
 import { getCodexMcpResumeDepData } from '@/capabilities/codexMcpResume';
 import { getCodexAcpDepData } from '@/capabilities/codexAcpDep';
@@ -60,7 +60,7 @@ import { resolveTerminalSpawnOptions } from '@/sync/terminalSettings';
 import { canAgentResume } from '@/utils/agentCapabilities';
 import type { CapabilityId } from '@/sync/capabilitiesProtocol';
 import { buildResumeCapabilityOptionsFromUiState, buildSpawnSessionExtrasFromUiState, getNewSessionPreflightIssues, getNewSessionRelevantInstallableDepKeys, getResumeRuntimeSupportPrefetchPlan } from '@/agents/registryUiBehavior';
-import { buildAcpLoadSessionPrefetchRequest, shouldPrefetchAcpCapabilities } from '@/agents/acpRuntimeResume';
+import { buildAcpLoadSessionPrefetchRequest, describeAcpLoadSessionSupport, shouldPrefetchAcpCapabilities } from '@/agents/acpRuntimeResume';
 import { applySecretRequirementResult } from '@/utils/secretRequirementApply';
 import type { SecretChoiceByProfileIdByEnvVarName } from '@/utils/secretRequirementApply';
 import { shouldAutoPromptSecretRequirement } from '@/utils/secretRequirementPromptEligibility';
@@ -72,6 +72,19 @@ import { newSessionScreenStyles } from '@/components/newSession/newSessionScreen
 // Configuration constants
 const RECENT_PATHS_DEFAULT_VISIBLE = 5;
 const styles = newSessionScreenStyles;
+
+function formatResumeSupportDetailCode(code: 'cliNotDetected' | 'capabilityProbeFailed' | 'acpProbeFailed' | 'loadSessionFalse'): string {
+    switch (code) {
+        case 'cliNotDetected':
+            return t('session.resumeSupportDetails.cliNotDetected');
+        case 'capabilityProbeFailed':
+            return t('session.resumeSupportDetails.capabilityProbeFailed');
+        case 'acpProbeFailed':
+            return t('session.resumeSupportDetails.acpProbeFailed');
+        case 'loadSessionFalse':
+            return t('session.resumeSupportDetails.loadSessionFalse');
+    }
+}
 
 function NewSessionScreen() {
     const { theme, rt } = useUnistyles();
@@ -645,6 +658,7 @@ function NewSessionScreen() {
         return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
     });
     const [isCreating, setIsCreating] = React.useState(false);
+    const [isResumeSupportChecking, setIsResumeSupportChecking] = React.useState(false);
 
     // Handle machineId route param from picker screens (main's navigation pattern)
     React.useEffect(() => {
@@ -741,6 +755,16 @@ function NewSessionScreen() {
             results: selectedMachineCapabilitiesSnapshot?.response.results as any,
         });
     }, [experimentsEnabled, expCodexAcp, expCodexResume, selectedMachineCapabilitiesSnapshot]);
+
+    const showResumePicker = React.useMemo(() => {
+        const core = getAgentCore(agentType);
+        if (core.resume.supportsVendorResume !== true) {
+            return core.resume.runtimeGate !== null;
+        }
+        if (core.resume.experimental !== true) return true;
+        // Experimental vendor resume (Codex): only show when explicitly enabled via experiments.
+        return experimentsEnabled === true && (expCodexResume === true || expCodexAcp === true);
+    }, [agentType, expCodexAcp, expCodexResume, experimentsEnabled]);
 
     const codexMcpResumeDep = React.useMemo(() => {
         return getCodexMcpResumeDepData(selectedMachineCapabilitiesSnapshot?.response.results);
@@ -1856,6 +1880,71 @@ function NewSessionScreen() {
                 return;
             }
 
+            const resumeDecision = await (async (): Promise<{ resume?: string; reason?: string }> => {
+                const wanted = resumeSessionId.trim();
+                if (!wanted) return {};
+
+                const computeOptions = (results: any) => buildResumeCapabilityOptionsFromUiState({
+                    experimentsEnabled: experimentsEnabled === true,
+                    expCodexResume: expCodexResume === true,
+                    expCodexAcp: expCodexAcp === true,
+                    results,
+                });
+
+                const snapshot = getMachineCapabilitiesSnapshot(selectedMachineId);
+                const results = snapshot?.response.results as any;
+                let options = computeOptions(results);
+
+                if (!canAgentResume(agentType, options)) {
+                    const plan = getResumeRuntimeSupportPrefetchPlan(agentType, results);
+                    if (plan) {
+                        setIsResumeSupportChecking(true);
+                        try {
+                            await prefetchMachineCapabilities({
+                                machineId: selectedMachineId,
+                                request: plan.request,
+                                timeoutMs: plan.timeoutMs,
+                            });
+                        } catch {
+                            // Non-blocking: we'll fall back to starting a new session if resume is still gated.
+                        } finally {
+                            setIsResumeSupportChecking(false);
+                        }
+
+                        const snapshot2 = getMachineCapabilitiesSnapshot(selectedMachineId);
+                        const results2 = snapshot2?.response.results as any;
+                        options = computeOptions(results2);
+                    }
+                }
+
+                if (canAgentResume(agentType, options)) return { resume: wanted };
+
+                const snapshotFinal = getMachineCapabilitiesSnapshot(selectedMachineId);
+                const resultsFinal = snapshotFinal?.response.results as any;
+                const desc = describeAcpLoadSessionSupport(agentType, resultsFinal);
+                const detailLines: string[] = [];
+                if (desc.code) {
+                    detailLines.push(formatResumeSupportDetailCode(desc.code));
+                }
+                if (desc.rawMessage) {
+                    detailLines.push(desc.rawMessage);
+                }
+                const detail = detailLines.length > 0 ? `\n\n${t('common.details')}: ${detailLines.join('\n')}` : '';
+                return { reason: `${t('newSession.resume.cannotApplyBody')}${detail}` };
+            })();
+
+            if (resumeSessionId.trim() && !resumeDecision.resume) {
+                const proceed = await Modal.confirm(
+                    t('session.resumeFailed'),
+                    resumeDecision.reason ?? t('newSession.resume.cannotApplyBody'),
+                    { confirmText: t('common.continue') },
+                );
+                if (!proceed) {
+                    setIsCreating(false);
+                    return;
+                }
+            }
+
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
                 directory: actualPath,
@@ -1863,9 +1952,7 @@ function NewSessionScreen() {
                 agent: agentType,
                 profileId: profilesActive ? (selectedProfileId ?? '') : undefined,
                 environmentVariables,
-                resume: canAgentResume(agentType, resumeCapabilityOptionsResolved)
-                    ? (resumeSessionId.trim() || undefined)
-                    : undefined,
+                resume: resumeDecision.resume,
                 ...buildSpawnSessionExtrasFromUiState({
                     agentId: agentType,
                     experimentsEnabled: experimentsEnabled === true,
@@ -2110,8 +2197,9 @@ function NewSessionScreen() {
                                             onMachineClick={handleMachineClick}
                                             currentPath={selectedPath}
                                             onPathClick={handlePathClick}
-                                            resumeSessionId={canAgentResume(agentType, resumeCapabilityOptionsResolved) ? resumeSessionId : undefined}
-                                            onResumeClick={canAgentResume(agentType, resumeCapabilityOptionsResolved) ? handleResumeClick : undefined}
+                                            resumeSessionId={showResumePicker ? resumeSessionId : undefined}
+                                            onResumeClick={showResumePicker ? handleResumeClick : undefined}
+                                            resumeIsChecking={isResumeSupportChecking}
                                             contentPaddingHorizontal={0}
                                             {...(useProfiles
                                                 ? {
@@ -2374,7 +2462,8 @@ function NewSessionScreen() {
             selectedProfileEnvVarsCount,
             handleEnvVarsClick,
             resumeSessionId,
-            onResumeClick: canAgentResume(agentType, resumeCapabilityOptionsResolved) ? handleResumeClick : undefined,
+            onResumeClick: showResumePicker ? handleResumeClick : undefined,
+            resumeIsChecking: isResumeSupportChecking,
             inputMaxHeight: sessionPromptInputMaxHeight,
         };
     }, [
@@ -2389,10 +2478,12 @@ function NewSessionScreen() {
         handleEnvVarsClick,
         handleResumeClick,
         isCreating,
+        isResumeSupportChecking,
         resumeSessionId,
         selectedProfileEnvVarsCount,
         sessionPrompt,
         sessionPromptInputMaxHeight,
+        showResumePicker,
         setSessionPrompt,
     ]);
 

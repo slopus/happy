@@ -29,7 +29,8 @@ import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { CAPABILITIES_REQUEST_RESUME_CODEX } from '@/capabilities/requests';
 import { getCodexAcpDepData } from '@/capabilities/codexAcpDep';
 import { getCodexMcpResumeDepData } from '@/capabilities/codexMcpResume';
-import { getMachineCapabilitiesSnapshot, prefetchMachineCapabilities } from '@/hooks/useMachineCapabilitiesCache';
+import { getMachineCapabilitiesSnapshot, prefetchMachineCapabilities, useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
+import { describeAcpLoadSessionSupport } from '@/agents/acpRuntimeResume';
 import type { ModelMode, PermissionMode } from '@/sync/permissionTypes';
 import { computePendingActivityAt } from '@/sync/unread';
 import { getPendingQueueWakeResumeOptions } from '@/sync/pendingQueueWake';
@@ -58,6 +59,19 @@ type ConfigurableModelMode = (typeof CONFIGURABLE_MODEL_MODES)[number];
 const isConfigurableModelMode = (mode: ModelMode): mode is ConfigurableModelMode => {
     return (CONFIGURABLE_MODEL_MODES as readonly string[]).includes(mode);
 };
+
+function formatResumeSupportDetailCode(code: 'cliNotDetected' | 'capabilityProbeFailed' | 'acpProbeFailed' | 'loadSessionFalse'): string {
+    switch (code) {
+        case 'cliNotDetected':
+            return t('session.resumeSupportDetails.cliNotDetected');
+        case 'capabilityProbeFailed':
+            return t('session.resumeSupportDetails.capabilityProbeFailed');
+        case 'acpProbeFailed':
+            return t('session.resumeSupportDetails.acpProbeFailed');
+        case 'loadSessionFalse':
+            return t('session.resumeSupportDetails.loadSessionFalse');
+    }
+}
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -219,6 +233,30 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         expCodexAcp: expCodexAcp === true,
         enabled: !isSessionActive,
     });
+
+    const { state: machineCapabilitiesState } = useMachineCapabilitiesCache({
+        machineId: typeof machineId === 'string' ? machineId : null,
+        enabled: false,
+        request: { requests: [] },
+    });
+    const machineCapabilitiesResults = React.useMemo(() => {
+        if (machineCapabilitiesState.status !== 'loaded' && machineCapabilitiesState.status !== 'loading') return undefined;
+        return machineCapabilitiesState.snapshot?.response.results as any;
+    }, [machineCapabilitiesState]);
+
+    const vendorResumeId = React.useMemo(() => {
+        const field = getAgentCore(agentId).resume.vendorResumeIdField;
+        if (!field) return '';
+        const raw = (session.metadata as any)?.[field];
+        return typeof raw === 'string' ? raw.trim() : '';
+    }, [agentId, session.metadata]);
+
+    const acpLoadSessionSupport = React.useMemo(() => {
+        if (!vendorResumeId) return null;
+        if (getAgentCore(agentId).resume.runtimeGate !== 'acpLoadSession') return null;
+        return describeAcpLoadSessionSupport(agentId, machineCapabilitiesResults);
+    }, [agentId, machineCapabilitiesResults, vendorResumeId]);
+
     const isResumable = canResumeSessionWithOptions(session.metadata, resumeCapabilityOptions);
     const [isResuming, setIsResuming] = React.useState(false);
 
@@ -322,7 +360,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             return;
         }
         if (!canResumeSessionWithOptions(session.metadata, resumeCapabilityOptions)) {
-            Modal.alert(t('common.error'), t('session.resumeFailed'));
+            if (acpLoadSessionSupport?.kind === 'error' || acpLoadSessionSupport?.kind === 'unknown') {
+                const detailLines: string[] = [];
+                if (acpLoadSessionSupport?.code) {
+                    detailLines.push(formatResumeSupportDetailCode(acpLoadSessionSupport.code));
+                }
+                if (acpLoadSessionSupport?.rawMessage) {
+                    detailLines.push(acpLoadSessionSupport.rawMessage);
+                }
+                const detail = detailLines.length > 0 ? `\n\n${t('common.details')}: ${detailLines.join('\n')}` : '';
+                Modal.alert(t('common.error'), `${t('session.resumeFailed')}${detail}`);
+            } else {
+                Modal.alert(t('common.error'), t('session.resumeFailed'));
+            }
             return;
         }
         if (!isMachineReachable) {
@@ -472,9 +522,26 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     const bottomNotice = React.useMemo(() => {
         if (showInactiveNotResumableNotice) {
+            const extra = (() => {
+                if (!acpLoadSessionSupport) return '';
+                if (acpLoadSessionSupport.kind === 'supported') return '';
+                const note = acpLoadSessionSupport.kind === 'unknown'
+                    ? `\n\n${t('session.resumeSupportNoteChecking')}`
+                    : `\n\n${t('session.resumeSupportNoteUnverified')}`;
+
+                const detailLines: string[] = [];
+                if (acpLoadSessionSupport.code) {
+                    detailLines.push(formatResumeSupportDetailCode(acpLoadSessionSupport.code));
+                }
+                if (acpLoadSessionSupport.rawMessage) {
+                    detailLines.push(acpLoadSessionSupport.rawMessage);
+                }
+                const detail = detailLines.length > 0 ? `\n\n${t('common.details')}: ${detailLines.join('\n')}` : '';
+                return `${note}${detail}`;
+            })();
             return {
                 title: t('session.inactiveNotResumableNoticeTitle'),
-                body: t('session.inactiveNotResumableNoticeBody', { provider: providerName }),
+                body: `${t('session.inactiveNotResumableNoticeBody', { provider: providerName })}${extra}`,
             };
         }
         if (showMachineOfflineNotice) {
@@ -484,7 +551,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             };
         }
         return null;
-    }, [machineName, providerName, showInactiveNotResumableNotice, showMachineOfflineNotice]);
+    }, [acpLoadSessionSupport, machineName, providerName, showInactiveNotResumableNotice, showMachineOfflineNotice]);
 
     let content = (
         <>

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Pressable, Text } from 'react-native';
+import { ActivityIndicator, Pressable, Text } from 'react-native';
 import { t } from '@/text';
 
 export const RESUME_CHIP_ICON_NAME = 'refresh-outline' as const;
@@ -24,6 +24,7 @@ export type ResumeChipProps = {
     onPress: () => void;
     showLabel: boolean;
     resumeSessionId: string | null | undefined;
+    isChecking?: boolean;
     labelTitle: string;
     labelOptional: string;
     iconColor: string;
@@ -46,11 +47,18 @@ export function ResumeChip(props: ResumeChipProps) {
             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
             style={(p) => props.pressableStyle(p.pressed)}
         >
-            <Ionicons
-                name={RESUME_CHIP_ICON_NAME}
-                size={RESUME_CHIP_ICON_SIZE}
-                color={props.iconColor}
-            />
+            {props.isChecking ? (
+                <ActivityIndicator
+                    size="small"
+                    color={props.iconColor}
+                />
+            ) : (
+                <Ionicons
+                    name={RESUME_CHIP_ICON_NAME}
+                    size={RESUME_CHIP_ICON_SIZE}
+                    color={props.iconColor}
+                />
+            )}
             {label ? (
                 <Text style={props.textStyle}>
                     {label}

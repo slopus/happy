@@ -24,8 +24,6 @@ import { HappyError } from '@/utils/errors';
 import { resolveProfileById } from '@/sync/profileUtils';
 import { getProfileDisplayName } from '@/components/profiles/profileDisplay';
 import { DEFAULT_AGENT_ID, getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
-import { getAgentVendorResumeId } from '@/utils/agentCapabilities';
-import { useResumeCapabilityOptions } from '@/agents/useResumeCapabilityOptions';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -75,28 +73,20 @@ function SessionInfoContent({ session }: { session: Session }) {
     const useProfiles = useSetting('useProfiles');
     const profiles = useSetting('profiles');
     const experimentsEnabled = useSetting('experiments');
-    const expCodexResume = useSetting('expCodexResume');
-    const expCodexAcp = useSetting('expCodexAcp');
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
     const agentId = resolveAgentIdFromFlavor(session.metadata?.flavor) ?? DEFAULT_AGENT_ID;
     const core = getAgentCore(agentId);
 
-    const machineId = session.metadata?.machineId ?? null;
-    const { resumeCapabilityOptions } = useResumeCapabilityOptions({
-        agentId,
-        machineId: typeof machineId === 'string' ? machineId : null,
-        experimentsEnabled: experimentsEnabled === true,
-        expCodexResume: expCodexResume === true,
-        expCodexAcp: expCodexAcp === true,
-        enabled: true,
-    });
-
     const vendorResumeLabelKey = core.resume.uiVendorResumeIdLabelKey;
     const vendorResumeCopiedKey = core.resume.uiVendorResumeIdCopiedKey;
     const vendorResumeId = React.useMemo(() => {
-        return getAgentVendorResumeId(session.metadata ?? null, session.metadata?.flavor ?? null, resumeCapabilityOptions);
-    }, [resumeCapabilityOptions, session.metadata]);
+        const field = core.resume.vendorResumeIdField;
+        if (!field) return null;
+        const raw = (session.metadata as any)?.[field];
+        const id = typeof raw === 'string' ? raw.trim() : '';
+        return id.length > 0 ? id : null;
+    }, [core.resume.vendorResumeIdField, session.metadata]);
 
     const profileLabel = React.useMemo(() => {
         const profileId = session.metadata?.profileId;

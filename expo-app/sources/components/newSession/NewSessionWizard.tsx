@@ -116,6 +116,7 @@ export interface NewSessionWizardFooterProps {
     connectionStatus?: React.ComponentProps<typeof AgentInput>['connectionStatus'];
     resumeSessionId?: string | null;
     onResumeClick?: () => void;
+    resumeIsChecking?: boolean;
     selectedProfileEnvVarsCount: number;
     handleEnvVarsClick: () => void;
     inputMaxHeight?: number;
@@ -260,6 +261,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
         connectionStatus,
         resumeSessionId,
         onResumeClick,
+        resumeIsChecking,
         selectedProfileEnvVarsCount,
         handleEnvVarsClick,
         inputMaxHeight,
@@ -703,6 +705,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                                 onPathClick={handleAgentInputPathClick}
                                 resumeSessionId={resumeSessionId}
                                 onResumeClick={onResumeClick}
+                                resumeIsChecking={resumeIsChecking}
                                 contentPaddingHorizontal={0}
                                 {...(useProfiles ? {
                                     profileId: selectedProfileId,

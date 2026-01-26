@@ -82,6 +82,7 @@ interface AgentInputProps {
     onPathClick?: () => void;
     resumeSessionId?: string | null;
     onResumeClick?: () => void;
+    resumeIsChecking?: boolean;
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
@@ -1170,6 +1171,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 	                                            }}
 	                                            showLabel={showChipLabels}
 	                                            resumeSessionId={props.resumeSessionId}
+                                                isChecking={props.resumeIsChecking === true}
 	                                            labelTitle={t('newSession.resume.title')}
                                             labelOptional={t('newSession.resume.optional')}
                                             iconColor={theme.colors.button.secondary.tint}
