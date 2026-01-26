@@ -117,6 +117,9 @@ import { AgentState } from "../storageTypes";
 import { MessageMeta } from "../typesMessageMeta";
 import { compareToolCalls } from "../../utils/toolComparison";
 import { runMessageToEventConversion } from "./phases/messageToEventConversion";
+import { equalOptionalStringArrays } from "./helpers/arrays";
+import { coerceStreamingToolResultChunk, mergeExistingStdStreamsIntoFinalResultIfMissing, mergeStreamingChunkIntoResult } from "./helpers/streamingToolResult";
+import { normalizeThinkingChunk, unwrapThinkingText, wrapThinkingText } from "./helpers/thinkingText";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -261,23 +264,6 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     let changed: Set<string> = new Set();
     let hasReadyEvent = false;
 
-    const normalizeThinkingChunk = (chunk: string): string => {
-        const match = chunk.match(/^\*\*[^*]+\*\*\n([\s\S]*)$/);
-        const body = match ? match[1] : chunk;
-        // Some ACP providers stream thinking as word-per-line deltas (often `"\n"`-terminated).
-        // Preserve paragraph breaks, but collapse single newlines into spaces for readability.
-        return body
-            .replace(/\r\n/g, '\n')
-            .replace(/\n+/g, (m) => (m.length >= 2 ? '\n\n' : ' '));
-    };
-
-    const unwrapThinkingText = (text: string): string => {
-        const match = text.match(/^\*Thinking\.\.\.\*\n\n\*([\s\S]*)\*$/);
-        return match ? match[1] : text;
-    };
-
-    const wrapThinkingText = (body: string): string => `*Thinking...*\n\n*${body}*`;
-
     const sidechainMessageIds = new Set<string>();
     for (const chain of state.sidechains.values()) {
         for (const m of chain) sidechainMessageIds.add(m.id);
@@ -294,60 +280,6 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         }
     }
 
-    const isEmptyArray = (v: unknown): v is [] => Array.isArray(v) && v.length === 0;
-
-    const coerceStreamingToolResultChunk = (value: unknown): { stdoutChunk?: string; stderrChunk?: string } | null => {
-        if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-        const obj = value as Record<string, unknown>;
-        const streamFlag = obj._stream === true;
-        const stdoutChunk = typeof obj.stdoutChunk === 'string' ? obj.stdoutChunk : undefined;
-        const stderrChunk = typeof obj.stderrChunk === 'string' ? obj.stderrChunk : undefined;
-        if (!streamFlag && !stdoutChunk && !stderrChunk) return null;
-        if (!stdoutChunk && !stderrChunk) return null;
-        return { stdoutChunk, stderrChunk };
-    };
-
-    const mergeStreamingChunkIntoResult = (existing: unknown, chunk: { stdoutChunk?: string; stderrChunk?: string }): Record<string, unknown> => {
-        const base: Record<string, unknown> =
-            existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...(existing as Record<string, unknown>) } : {};
-        if (typeof chunk.stdoutChunk === 'string') {
-            const prev = typeof base.stdout === 'string' ? base.stdout : '';
-            base.stdout = prev + chunk.stdoutChunk;
-        }
-        if (typeof chunk.stderrChunk === 'string') {
-            const prev = typeof base.stderr === 'string' ? base.stderr : '';
-            base.stderr = prev + chunk.stderrChunk;
-        }
-        return base;
-    };
-
-    const mergeExistingStdStreamsIntoFinalResultIfMissing = (existing: unknown, next: unknown): unknown => {
-        if (!existing || typeof existing !== 'object' || Array.isArray(existing)) return next;
-        if (!next || typeof next !== 'object' || Array.isArray(next)) return next;
-
-        const prev = existing as Record<string, unknown>;
-        const out = { ...(next as Record<string, unknown>) };
-
-        if (typeof out.stdout !== 'string' && typeof prev.stdout === 'string') out.stdout = prev.stdout;
-        if (typeof out.stderr !== 'string' && typeof prev.stderr === 'string') out.stderr = prev.stderr;
-        return out;
-    };
-
-    const equalOptionalStringArrays = (a: unknown, b: unknown): boolean => {
-        // Treat `undefined` / `null` / `[]` as equivalent “empty”.
-        if (a == null || isEmptyArray(a)) {
-            return b == null || isEmptyArray(b);
-        }
-        if (b == null || isEmptyArray(b)) {
-            return a == null || isEmptyArray(a);
-        }
-        if (!Array.isArray(a) || !Array.isArray(b)) return false;
-        if (a.length !== b.length) return false;
-        for (let i = 0; i < a.length; i++) {
-            if (a[i] !== b[i]) return false;
-        }
-        return true;
-    };
 
     // First, trace all messages to identify sidechains
     const tracedMessages = traceMessages(state.tracerState, messages);
