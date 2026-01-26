@@ -68,6 +68,44 @@ describe('codexMcpResume', () => {
         expect(isCodexMcpResumeUpdateAvailable(data)).toBe(true);
         expect(getCodexMcpResumeRegistryError(data)).toBeNull();
 
+        const resultsInstalledNewer: Partial<Record<CapabilityId, CapabilityDetectResult>> = {
+            [CODEX_MCP_RESUME_DEP_ID]: {
+                ok: true,
+                checkedAt: 123,
+                data: {
+                    installed: true,
+                    installDir: '/tmp',
+                    binPath: '/tmp/bin',
+                    installedVersion: '1.0.2',
+                    distTag: 'happy-codex-resume',
+                    lastInstallLogPath: null,
+                    registry: { ok: true, latestVersion: '1.0.1' },
+                },
+            },
+        };
+        const dataInstalledNewer = getCodexMcpResumeDepData(resultsInstalledNewer);
+        expect(getCodexMcpResumeLatestVersion(dataInstalledNewer)).toBe('1.0.1');
+        expect(isCodexMcpResumeUpdateAvailable(dataInstalledNewer)).toBe(false);
+
+        const resultsNonSemver: Partial<Record<CapabilityId, CapabilityDetectResult>> = {
+            [CODEX_MCP_RESUME_DEP_ID]: {
+                ok: true,
+                checkedAt: 123,
+                data: {
+                    installed: true,
+                    installDir: '/tmp',
+                    binPath: '/tmp/bin',
+                    installedVersion: 'main',
+                    distTag: 'happy-codex-resume',
+                    lastInstallLogPath: null,
+                    registry: { ok: true, latestVersion: '1.0.1' },
+                },
+            },
+        };
+        const dataNonSemver = getCodexMcpResumeDepData(resultsNonSemver);
+        expect(getCodexMcpResumeLatestVersion(dataNonSemver)).toBe('1.0.1');
+        expect(isCodexMcpResumeUpdateAvailable(dataNonSemver)).toBe(false);
+
         const resultsErr: Partial<Record<CapabilityId, CapabilityDetectResult>> = {
             [CODEX_MCP_RESUME_DEP_ID]: {
                 ok: true,

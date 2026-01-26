@@ -1,4 +1,5 @@
 import type { CapabilitiesDetectRequest, CapabilityDetectResult, CapabilityId, CodexAcpDepData } from '@/sync/capabilitiesProtocol';
+import { compareVersions, parseVersion } from '@/utils/versionUtils';
 
 export const CODEX_ACP_DEP_ID = 'dep.codex-acp' as const satisfies CapabilityId;
 export const CODEX_ACP_DIST_TAG = 'latest' as const;
@@ -40,7 +41,10 @@ export function isCodexAcpUpdateAvailable(data: CodexAcpDepData | null | undefin
     const installed = typeof data.installedVersion === 'string' ? data.installedVersion : null;
     const latest = getCodexAcpLatestVersion(data);
     if (!installed || !latest) return false;
-    return installed !== latest;
+    const installedParsed = parseVersion(installed);
+    const latestParsed = parseVersion(latest);
+    if (!installedParsed || !latestParsed) return false;
+    return compareVersions(installed, latest) < 0;
 }
 
 export function shouldPrefetchCodexAcpRegistry(params: {

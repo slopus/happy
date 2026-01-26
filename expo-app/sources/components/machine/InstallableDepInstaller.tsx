@@ -10,6 +10,7 @@ import { useSettingMutable } from '@/sync/storage';
 import { machineCapabilitiesInvoke } from '@/sync/ops';
 import type { CapabilityId } from '@/sync/capabilitiesProtocol';
 import type { Settings } from '@/sync/settings';
+import { compareVersions, parseVersion } from '@/utils/versionUtils';
 import { useUnistyles } from 'react-native-unistyles';
 
 type InstallableDepData = {
@@ -29,7 +30,10 @@ function computeUpdateAvailable(data: InstallableDepData | null): boolean {
     const installed = data.installedVersion;
     const latest = data.registry && data.registry.ok ? data.registry.latestVersion : null;
     if (!installed || !latest) return false;
-    return installed !== latest;
+    const installedParsed = parseVersion(installed);
+    const latestParsed = parseVersion(latest);
+    if (!installedParsed || !latestParsed) return false;
+    return compareVersions(installed, latest) < 0;
 }
 
 export type InstallableDepInstallerProps = {

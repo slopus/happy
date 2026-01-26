@@ -1,4 +1,5 @@
 import type { CapabilitiesDetectRequest, CapabilityDetectResult, CapabilityId, CodexMcpResumeDepData } from '@/sync/capabilitiesProtocol';
+import { compareVersions, parseVersion } from '@/utils/versionUtils';
 
 export const CODEX_MCP_RESUME_DEP_ID = 'dep.codex-mcp-resume' as const satisfies CapabilityId;
 export const CODEX_MCP_RESUME_DIST_TAG = 'happy-codex-resume' as const;
@@ -40,7 +41,10 @@ export function isCodexMcpResumeUpdateAvailable(data: CodexMcpResumeDepData | nu
     const installed = typeof data.installedVersion === 'string' ? data.installedVersion : null;
     const latest = getCodexMcpResumeLatestVersion(data);
     if (!installed || !latest) return false;
-    return installed !== latest;
+    const installedParsed = parseVersion(installed);
+    const latestParsed = parseVersion(latest);
+    if (!installedParsed || !latestParsed) return false;
+    return compareVersions(installed, latest) < 0;
 }
 
 export function shouldPrefetchCodexMcpResumeRegistry(params: {

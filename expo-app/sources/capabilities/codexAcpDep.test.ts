@@ -68,6 +68,44 @@ describe('codexAcpDep', () => {
         expect(isCodexAcpUpdateAvailable(data)).toBe(true);
         expect(getCodexAcpRegistryError(data)).toBeNull();
 
+        const resultsInstalledNewer: Partial<Record<CapabilityId, CapabilityDetectResult>> = {
+            [CODEX_ACP_DEP_ID]: {
+                ok: true,
+                checkedAt: 123,
+                data: {
+                    installed: true,
+                    installDir: '/tmp',
+                    binPath: '/tmp/bin',
+                    installedVersion: '1.0.2',
+                    distTag: 'latest',
+                    lastInstallLogPath: null,
+                    registry: { ok: true, latestVersion: '1.0.1' },
+                },
+            },
+        };
+        const dataInstalledNewer = getCodexAcpDepData(resultsInstalledNewer);
+        expect(getCodexAcpLatestVersion(dataInstalledNewer)).toBe('1.0.1');
+        expect(isCodexAcpUpdateAvailable(dataInstalledNewer)).toBe(false);
+
+        const resultsNonSemver: Partial<Record<CapabilityId, CapabilityDetectResult>> = {
+            [CODEX_ACP_DEP_ID]: {
+                ok: true,
+                checkedAt: 123,
+                data: {
+                    installed: true,
+                    installDir: '/tmp',
+                    binPath: '/tmp/bin',
+                    installedVersion: 'main',
+                    distTag: 'latest',
+                    lastInstallLogPath: null,
+                    registry: { ok: true, latestVersion: '1.0.1' },
+                },
+            },
+        };
+        const dataNonSemver = getCodexAcpDepData(resultsNonSemver);
+        expect(getCodexAcpLatestVersion(dataNonSemver)).toBe('1.0.1');
+        expect(isCodexAcpUpdateAvailable(dataNonSemver)).toBe(false);
+
         const resultsErr: Partial<Record<CapabilityId, CapabilityDetectResult>> = {
             [CODEX_ACP_DEP_ID]: {
                 ok: true,
