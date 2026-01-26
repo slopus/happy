@@ -13,9 +13,9 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { addDiscardedCommittedMessageLocalIds } from './queue/discardedCommittedMessageLocalIds';
 import { claimMessageQueueV1Next, clearMessageQueueV1InFlight, discardMessageQueueV1All, parseMessageQueueV1 } from './queue/messageQueueV1';
-import { recordToolTraceEvent } from '@/agent/toolTrace/toolTrace';
 import { fetchSessionSnapshotUpdateFromServer, shouldSyncSessionSnapshotOnConnect } from './session/snapshotSync';
 import { createSessionScopedSocket, createUserScopedSocket } from './session/sockets';
+import { isToolTraceEnabled, recordAcpToolTraceEventIfNeeded, recordClaudeToolTraceEvents, recordCodexToolTraceEventIfNeeded } from './session/toolTrace';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -531,89 +531,8 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
-        const isToolTraceEnabled =
-            ['1', 'true', 'yes', 'on'].includes((process.env.HAPPY_STACKS_TOOL_TRACE ?? '').toLowerCase()) ||
-            ['1', 'true', 'yes', 'on'].includes((process.env.HAPPY_LOCAL_TOOL_TRACE ?? '').toLowerCase()) ||
-            ['1', 'true', 'yes', 'on'].includes((process.env.HAPPY_TOOL_TRACE ?? '').toLowerCase());
-
-        if (isToolTraceEnabled) {
-            const redactClaudeToolPayload = (value: unknown, key?: string): unknown => {
-                const REDACT_KEYS = new Set([
-                    'content',
-                    'text',
-                    'old_string',
-                    'new_string',
-                    'oldContent',
-                    'newContent',
-                ]);
-
-                if (typeof value === 'string') {
-                    if (key && REDACT_KEYS.has(key)) return `[redacted ${value.length} chars]`;
-                    if (value.length <= 1_000) return value;
-                    return `${value.slice(0, 1_000)}…(truncated ${value.length - 1_000} chars)`;
-                }
-
-                if (typeof value !== 'object' || value === null) return value;
-
-                if (Array.isArray(value)) {
-                    const sliced = value.slice(0, 50).map((v) => redactClaudeToolPayload(v));
-                    if (value.length <= 50) return sliced;
-                    return [...sliced, `…(truncated ${value.length - 50} items)`];
-                }
-
-                const entries = Object.entries(value as Record<string, unknown>);
-                const out: Record<string, unknown> = {};
-                const sliced = entries.slice(0, 200);
-                for (const [k, v] of sliced) out[k] = redactClaudeToolPayload(v, k);
-                if (entries.length > 200) out._truncatedKeys = entries.length - 200;
-                return out;
-            };
-
-            // Claude tool calls/results are embedded inside message.content[] (tool_use/tool_result).
-            // Record only tool blocks (never user text).
-            //
-            // Note: tool_result blocks can appear in either assistant or user messages depending on Claude
-            // control mode and SDK message routing. We key off the presence of structured blocks, not role.
-            const contentBlocks = (body as any)?.message?.content;
-            if (Array.isArray(contentBlocks)) {
-                for (const block of contentBlocks) {
-                    if (!block || typeof block !== 'object') continue;
-                    const type = (block as any)?.type;
-                    if (type === 'tool_use') {
-                        const id = (block as any)?.id;
-                        const name = (block as any)?.name;
-                        if (typeof id !== 'string' || typeof name !== 'string') continue;
-                        recordToolTraceEvent({
-                            direction: 'outbound',
-                            sessionId: this.sessionId,
-                            protocol: 'claude',
-                            provider: 'claude',
-                            kind: 'tool-call',
-                            payload: {
-                                type: 'tool_use',
-                                id,
-                                name,
-                                input: redactClaudeToolPayload((block as any)?.input),
-                            },
-                        });
-                    } else if (type === 'tool_result') {
-                        const toolUseId = (block as any)?.tool_use_id;
-                        if (typeof toolUseId !== 'string') continue;
-                        recordToolTraceEvent({
-                            direction: 'outbound',
-                            sessionId: this.sessionId,
-                            protocol: 'claude',
-                            provider: 'claude',
-                            kind: 'tool-result',
-                            payload: {
-                                type: 'tool_result',
-                                tool_use_id: toolUseId,
-                                content: redactClaudeToolPayload((block as any)?.content, 'content'),
-                            },
-                        });
-                    }
-                }
-            }
+        if (isToolTraceEnabled()) {
+            recordClaudeToolTraceEvents({ sessionId: this.sessionId, body });
         }
 
         let content: MessageContent;
@@ -687,16 +606,7 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
 
-        if (body?.type === 'tool-call' || body?.type === 'tool-call-result') {
-            recordToolTraceEvent({
-                direction: 'outbound',
-                sessionId: this.sessionId,
-                protocol: 'codex',
-                provider: 'codex',
-                kind: body.type,
-                payload: body,
-            });
-        }
+        recordCodexToolTraceEventIfNeeded({ sessionId: this.sessionId, body });
         
         this.logSendWhileDisconnected('Codex message', { type: body?.type });
 
@@ -752,15 +662,7 @@ export class ApiSessionClient extends EventEmitter {
             normalizedBody.type === 'file-edit' ||
             normalizedBody.type === 'terminal-output'
         ) {
-            recordToolTraceEvent({
-                direction: 'outbound',
-                sessionId: this.sessionId,
-                protocol: 'acp',
-                provider,
-                kind: normalizedBody.type,
-                payload: normalizedBody,
-                localId: opts?.localId,
-            });
+            recordAcpToolTraceEventIfNeeded({ sessionId: this.sessionId, provider, body: normalizedBody, localId: opts?.localId });
         }
         
         logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, { type: normalizedBody.type, hasMessage: 'message' in normalizedBody });
