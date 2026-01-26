@@ -11,8 +11,8 @@ import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
-import { claimMessageQueueV1Next, clearMessageQueueV1InFlight, discardMessageQueueV1All, parseMessageQueueV1 } from './messageQueueV1';
-import { addDiscardedCommittedMessageLocalIds } from './discardedCommittedMessageLocalIds';
+import { addDiscardedCommittedMessageLocalIds } from './queue/discardedCommittedMessageLocalIds';
+import { claimMessageQueueV1Next, clearMessageQueueV1InFlight, discardMessageQueueV1All, parseMessageQueueV1 } from './queue/messageQueueV1';
 import { recordToolTraceEvent } from '@/agent/toolTrace/toolTrace';
 
 /**
