@@ -1,7 +1,7 @@
 import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
 import axios from 'axios';
-import { io, Socket } from 'socket.io-client'
+import { Socket } from 'socket.io-client'
 import { AgentState, ClientToServerEvents, MessageContent, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff } from '@/utils/time';
@@ -15,6 +15,7 @@ import { addDiscardedCommittedMessageLocalIds } from './queue/discardedCommitted
 import { claimMessageQueueV1Next, clearMessageQueueV1InFlight, discardMessageQueueV1All, parseMessageQueueV1 } from './queue/messageQueueV1';
 import { recordToolTraceEvent } from '@/agent/toolTrace/toolTrace';
 import { fetchSessionSnapshotUpdateFromServer, shouldSyncSessionSnapshotOnConnect } from './session/snapshotSync';
+import { createSessionScopedSocket, createUserScopedSocket } from './session/sockets';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -106,21 +107,7 @@ export class ApiSessionClient extends EventEmitter {
         // Create socket
         //
 
-        this.socket = io(configuration.serverUrl, {
-            auth: {
-                token: this.token,
-                clientType: 'session-scoped' as const,
-                sessionId: this.sessionId
-            },
-            path: '/v1/updates',
-            reconnection: true,
-            reconnectionAttempts: Infinity,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            transports: ['websocket'],
-            withCredentials: true,
-            autoConnect: false
-        });
+        this.socket = createSessionScopedSocket({ token: this.token, sessionId: this.sessionId });
 
         // A user-scoped socket is used to observe our own materialized pending-queue messages.
         //
@@ -130,20 +117,7 @@ export class ApiSessionClient extends EventEmitter {
         //
         // A second (user-scoped) connection will still receive the broadcast, letting us safely
         // drive the normal update pipeline without server changes.
-        this.userSocket = io(configuration.serverUrl, {
-            auth: {
-                token: this.token,
-                clientType: 'user-scoped' as const,
-            },
-            path: '/v1/updates',
-            reconnection: true,
-            reconnectionAttempts: Infinity,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            transports: ['websocket'],
-            withCredentials: true,
-            autoConnect: false,
-        });
+        this.userSocket = createUserScopedSocket({ token: this.token });
 
         //
         // Handlers
