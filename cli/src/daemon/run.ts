@@ -24,7 +24,7 @@ import {
   readCredentials,
 } from '@/persistence';
 import { supportsVendorResume } from '@/utils/agentCapabilities';
-import { getCodexAcpDepStatus } from '@/modules/common/capabilities/deps/codexAcp';
+import { getCodexAcpDepStatus } from '@/capabilities/deps/codexAcp';
 import { createSessionAttachFile } from './sessions/sessionAttachFile';
 import { getDaemonShutdownExitCode, getDaemonShutdownWatchdogTimeoutMs } from './lifecycle/shutdownPolicy';
 

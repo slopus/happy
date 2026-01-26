@@ -1,21 +1,21 @@
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
-import { checklists } from '@/modules/common/capabilities/checklists';
-import { buildDetectContext } from '@/modules/common/capabilities/context/buildDetectContext';
-import { cliClaudeCapability } from '@/modules/common/capabilities/registry/cliClaude';
-import { cliCodexCapability } from '@/modules/common/capabilities/registry/cliCodex';
-import { cliGeminiCapability } from '@/modules/common/capabilities/registry/cliGemini';
-import { cliOpenCodeCapability } from '@/modules/common/capabilities/registry/cliOpenCode';
-import { codexAcpDepCapability } from '@/modules/common/capabilities/registry/depCodexAcp';
-import { codexMcpResumeDepCapability } from '@/modules/common/capabilities/registry/depCodexMcpResume';
-import { tmuxCapability } from '@/modules/common/capabilities/registry/toolTmux';
-import { createCapabilitiesService } from '@/modules/common/capabilities/service';
+import { checklists } from '@/capabilities/checklists';
+import { buildDetectContext } from '@/capabilities/context/buildDetectContext';
+import { cliClaudeCapability } from '@/capabilities/registry/cliClaude';
+import { cliCodexCapability } from '@/capabilities/registry/cliCodex';
+import { cliGeminiCapability } from '@/capabilities/registry/cliGemini';
+import { cliOpenCodeCapability } from '@/capabilities/registry/cliOpenCode';
+import { codexAcpDepCapability } from '@/capabilities/registry/depCodexAcp';
+import { codexMcpResumeDepCapability } from '@/capabilities/registry/depCodexMcpResume';
+import { tmuxCapability } from '@/capabilities/registry/toolTmux';
+import { createCapabilitiesService } from '@/capabilities/service';
 import type {
     CapabilitiesDescribeResponse,
     CapabilitiesDetectRequest,
     CapabilitiesDetectResponse,
     CapabilitiesInvokeRequest,
     CapabilitiesInvokeResponse,
-} from '@/modules/common/capabilities/types';
+} from '@/capabilities/types';
 
 export function registerCapabilitiesHandlers(rpcHandlerManager: RpcHandlerManager): void {
     const service = createCapabilitiesService({
