@@ -15,6 +15,7 @@ import {
 
 import { logger } from '@/ui/logger';
 import type { TransportHandler } from '@/agent/transport';
+import { terminateProcess } from './terminateProcess';
 
 type AcpProbeResult =
     | { ok: true; checkedAt: number; agentCapabilities: InitializeResponse['agentCapabilities'] }
@@ -51,33 +52,6 @@ function nodeToWebStreams(stdin: Writable, stdout: Readable): { writable: Writab
     });
 
     return { writable, readable };
-}
-
-async function terminateProcess(child: ChildProcess): Promise<void> {
-    if (child.killed) return;
-
-    const waitForExit = new Promise<void>((resolve) => {
-        child.once('exit', () => resolve());
-    });
-
-    try {
-        child.kill('SIGTERM');
-    } catch {
-        // ignore
-    }
-
-    await Promise.race([
-        waitForExit,
-        new Promise<void>((resolve) => setTimeout(resolve, 250)),
-    ]);
-
-    if (!child.killed) {
-        try {
-            child.kill('SIGKILL');
-        } catch {
-            // ignore
-        }
-    }
 }
 
 export async function probeAcpAgentCapabilities(params: {
