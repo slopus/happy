@@ -15,6 +15,7 @@ import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
 import { delay } from "@/utils/time";
 import { isShellCommandAllowed } from "@/utils/shellCommandAllowlist";
+import { recordToolTraceEvent } from '@/toolTrace/toolTrace';
 
 interface PermissionResponse {
     id: string;
@@ -55,6 +56,41 @@ export class PermissionHandler {
         this.setupClientHandler();
         this.advertiseCapabilities();
         this.seedAllowlistFromAgentState();
+    }
+
+    private isToolTraceEnabled(): boolean {
+        const isTruthy = (value: string | undefined): boolean =>
+            typeof value === 'string' && ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+        return (
+            isTruthy(process.env.HAPPY_STACKS_TOOL_TRACE) ||
+            isTruthy(process.env.HAPPY_LOCAL_TOOL_TRACE) ||
+            isTruthy(process.env.HAPPY_TOOL_TRACE)
+        );
+    }
+
+    private redactToolTraceValue(value: unknown, key?: string): unknown {
+        const REDACT_KEYS = new Set(['content', 'text', 'old_string', 'new_string', 'oldText', 'newText', 'oldContent', 'newContent']);
+
+        if (typeof value === 'string') {
+            if (key && REDACT_KEYS.has(key)) return `[redacted ${value.length} chars]`;
+            if (value.length <= 1_000) return value;
+            return `${value.slice(0, 1_000)}…(truncated ${value.length - 1_000} chars)`;
+        }
+
+        if (typeof value !== 'object' || value === null) return value;
+
+        if (Array.isArray(value)) {
+            const sliced = value.slice(0, 50).map((v) => this.redactToolTraceValue(v));
+            if (value.length <= 50) return sliced;
+            return [...sliced, `…(truncated ${value.length - 50} items)`];
+        }
+
+        const entries = Object.entries(value as Record<string, unknown>);
+        const out: Record<string, unknown> = {};
+        const sliced = entries.slice(0, 200);
+        for (const [k, v] of sliced) out[k] = this.redactToolTraceValue(v, k);
+        if (entries.length > 200) out._truncatedKeys = entries.length - 200;
+        return out;
     }
 
     private seedAllowlistFromAgentState(): void {
@@ -113,6 +149,26 @@ export class PermissionHandler {
         logger.debug(`Permission response: ${JSON.stringify(message)}`);
 
         const id = message.id;
+
+        if (this.isToolTraceEnabled()) {
+            recordToolTraceEvent({
+                direction: 'inbound',
+                sessionId: this.session.client.sessionId,
+                protocol: 'claude',
+                provider: 'claude',
+                kind: 'permission-response',
+                payload: {
+                    type: 'permission-response',
+                    permissionId: id,
+                    approved: message.approved,
+                    reason: typeof message.reason === 'string' ? message.reason : undefined,
+                    mode: message.mode,
+                    allowedTools: this.redactToolTraceValue(message.allowedTools ?? message.allowTools, 'allowedTools'),
+                    answers: this.redactToolTraceValue(message.answers, 'answers'),
+                },
+            });
+        }
+
         const pending = this.pendingRequests.get(id);
 
         if (!pending) {
@@ -339,6 +395,22 @@ export class PermissionHandler {
                     }
                 }
             }));
+
+            if (this.isToolTraceEnabled()) {
+                recordToolTraceEvent({
+                    direction: 'outbound',
+                    sessionId: this.session.client.sessionId,
+                    protocol: 'claude',
+                    provider: 'claude',
+                    kind: 'permission-request',
+                    payload: {
+                        type: 'permission-request',
+                        permissionId: id,
+                        toolName,
+                        input: this.redactToolTraceValue(input),
+                    },
+                });
+            }
 
             logger.debug(`Permission request sent for tool call ${id}: ${toolName}`);
         });

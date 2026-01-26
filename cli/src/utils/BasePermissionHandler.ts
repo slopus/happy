@@ -11,6 +11,7 @@ import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { AgentState } from "@/api/types";
 import { isToolAllowedForSession, makeToolIdentifier } from "@/utils/permissionToolIdentifier";
+import { recordToolTraceEvent, type ToolTraceProtocol } from '@/toolTrace/toolTrace';
 
 /**
  * Permission response from the mobile app.
@@ -59,6 +60,7 @@ export abstract class BasePermissionHandler {
     private isResetting = false;
     private allowedToolIdentifiers = new Set<string>();
     private readonly onAbortRequested: (() => void | Promise<void>) | null;
+    private readonly toolTrace: { protocol: ToolTraceProtocol; provider: string } | null;
 
     /**
      * Returns the log prefix for this handler.
@@ -69,10 +71,18 @@ export abstract class BasePermissionHandler {
         session: ApiSessionClient,
         opts?: {
             onAbortRequested?: (() => void | Promise<void>) | null;
+            toolTrace?: { protocol: ToolTraceProtocol; provider: string } | null;
         }
     ) {
         this.session = session;
         this.onAbortRequested = typeof opts?.onAbortRequested === 'function' ? opts.onAbortRequested : null;
+        this.toolTrace =
+            opts?.toolTrace && typeof opts.toolTrace === 'object'
+                ? {
+                    protocol: opts.toolTrace.protocol,
+                    provider: opts.toolTrace.provider,
+                }
+                : null;
         this.setupRpcHandler();
         this.seedAllowedToolsFromAgentState();
     }
@@ -165,6 +175,22 @@ export abstract class BasePermissionHandler {
 
                 pending.resolve(result);
 
+                if (this.toolTrace) {
+                    recordToolTraceEvent({
+                        direction: 'inbound',
+                        sessionId: this.session.sessionId,
+                        protocol: this.toolTrace.protocol,
+                        provider: this.toolTrace.provider,
+                        kind: 'permission-response',
+                        payload: {
+                            type: 'permission-response',
+                            permissionId: response.id,
+                            approved: response.approved,
+                            decision: result.decision,
+                        },
+                    });
+                }
+
                 if (result.decision === 'abort') {
                     try {
                         const cb = this.onAbortRequested;
@@ -249,6 +275,23 @@ export abstract class BasePermissionHandler {
      * Add a pending request to the agent state.
      */
     protected addPendingRequestToState(toolCallId: string, toolName: string, input: unknown): void {
+        if (this.toolTrace) {
+            recordToolTraceEvent({
+                direction: 'outbound',
+                sessionId: this.session.sessionId,
+                protocol: this.toolTrace.protocol,
+                provider: this.toolTrace.provider,
+                kind: 'permission-request',
+                payload: {
+                    type: 'permission-request',
+                    permissionId: toolCallId,
+                    toolName,
+                    description: `${toolName} permission`,
+                    options: { input },
+                },
+            });
+        }
+
         this.session.updateAgentState((currentState) => ({
             ...currentState,
             requests: {

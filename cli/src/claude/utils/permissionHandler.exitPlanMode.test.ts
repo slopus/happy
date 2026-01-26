@@ -10,6 +10,15 @@ vi.mock('@/lib', () => ({
 describe('PermissionHandler (ExitPlanMode)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        delete process.env.HAPPY_STACKS_TOOL_TRACE;
+        delete process.env.HAPPY_STACKS_TOOL_TRACE_FILE;
+        delete process.env.HAPPY_STACKS_TOOL_TRACE_DIR;
+        delete process.env.HAPPY_LOCAL_TOOL_TRACE;
+        delete process.env.HAPPY_LOCAL_TOOL_TRACE_FILE;
+        delete process.env.HAPPY_LOCAL_TOOL_TRACE_DIR;
+        delete process.env.HAPPY_TOOL_TRACE;
+        delete process.env.HAPPY_TOOL_TRACE_FILE;
+        delete process.env.HAPPY_TOOL_TRACE_DIR;
     });
 
     it('allows ExitPlanMode when approved', async () => {
@@ -110,4 +119,3 @@ describe('PermissionHandler (ExitPlanMode)', () => {
         expect(handler.isAborted('toolu_1')).toBe(false);
     });
 });
-

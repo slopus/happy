@@ -24,7 +24,10 @@ export class CodexPermissionHandler extends BasePermissionHandler {
         session: ApiSessionClient,
         opts?: { onAbortRequested?: (() => void | Promise<void>) | null },
     ) {
-        super(session, opts);
+        super(session, {
+            ...opts,
+            toolTrace: { protocol: 'codex', provider: 'codex' },
+        });
     }
 
     protected getLogPrefix(): string {
