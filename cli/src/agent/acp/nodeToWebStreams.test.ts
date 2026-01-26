@@ -55,4 +55,30 @@ describe('nodeToWebStreams', () => {
         await expect(promise).resolves.toBeUndefined();
         writer.releaseLock();
     });
+
+    it('does not hang if drain fires synchronously during write', async () => {
+        let stdin: FakeStdin | null = null;
+        stdin = new FakeStdin((_chunk, cb) => {
+            stdin?.emit('drain');
+            queueMicrotask(() => cb(null));
+            return false;
+        });
+
+        const stdout = new Readable({ read() { } });
+
+        const { writable } = nodeToWebStreams(stdin as any, stdout);
+        const writer = writable.getWriter();
+        const promise = writer.write(new Uint8Array([1]));
+
+        await expect(
+            Promise.race([
+                promise,
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('write() hung waiting for drain')), 50)
+                )
+            ])
+        ).resolves.toBeUndefined();
+
+        writer.releaseLock();
+    });
 });

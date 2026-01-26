@@ -169,43 +169,48 @@ export function nodeToWebStreams(
   stdin: Writable, 
   stdout: Readable
 ): { writable: WritableStream<Uint8Array>; readable: ReadableStream<Uint8Array> } {
-  // Convert Node writable to Web WritableStream
-  const writable = new WritableStream<Uint8Array>({
-    write(chunk) {
-      return new Promise((resolve, reject) => {
-        let drained = false;
-        let wrote = false;
+	  // Convert Node writable to Web WritableStream
+	  const writable = new WritableStream<Uint8Array>({
+	    write(chunk) {
+	      return new Promise((resolve, reject) => {
+	        let drained = false;
+	        let wrote = false;
+	        let ok = false;
 
-        const finish = () => {
-          if (wrote && drained) resolve();
-        };
+	        const finish = () => {
+	          if (wrote && drained) resolve();
+	        };
 
-        const onDrain = () => {
-          drained = true;
-          finish();
-        };
+	        const onDrain = () => {
+	          drained = true;
+	          finish();
+	        };
 
-        const ok = stdin.write(chunk, (err) => {
-          wrote = true;
-          if (err) {
-            logger.debug(`[AcpBackend] Error writing to stdin:`, err);
-            stdin.off('drain', onDrain);
-            reject(err);
-            return;
-          }
-          stdin.off('drain', onDrain);
-          finish();
-        });
+	        stdin.once('drain', onDrain);
 
-        drained = ok;
-        if (!ok) {
-          stdin.once('drain', onDrain);
-        }
-      });
-    },
-    close() {
-      return new Promise((resolve) => {
-        stdin.end(resolve);
+	        ok = stdin.write(chunk, (err) => {
+	          wrote = true;
+	          if (err) {
+	            logger.debug(`[AcpBackend] Error writing to stdin:`, err);
+	            stdin.off('drain', onDrain);
+	            reject(err);
+	            return;
+	          }
+	          if (ok) {
+	            stdin.off('drain', onDrain);
+	          }
+	          finish();
+	        });
+
+	        drained ||= ok;
+	        if (ok) {
+	          stdin.off('drain', onDrain);
+	        }
+	      });
+	    },
+	    close() {
+	      return new Promise((resolve) => {
+	        stdin.end(resolve);
       });
     },
     abort(reason) {
