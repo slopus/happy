@@ -2,7 +2,7 @@ import { ApiSessionClient } from "@/api/apiSession"
 import { MessageQueue2 } from "@/utils/MessageQueue2"
 import { logger } from "@/ui/logger"
 import { Session } from "./session"
-import { claudeLocalLauncher } from "./claudeLocalLauncher"
+import { claudeLocalLauncher, LauncherResult } from "./claudeLocalLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from "@/lib"
 import type { JsRuntime } from "./runClaude"
@@ -42,7 +42,7 @@ interface LoopOptions {
     jsRuntime?: JsRuntime
 }
 
-export async function loop(opts: LoopOptions) {
+export async function loop(opts: LoopOptions): Promise<number> {
 
     // Get log path for debug display
     const logPath = logger.logFilePath;
@@ -73,12 +73,12 @@ export async function loop(opts: LoopOptions) {
 
         // Run local mode if applicable
         if (mode === 'local') {
-            let reason = await claudeLocalLauncher(session);
-            if (reason === 'exit') { // Normal exit - Exit loop
-                return;
+            let result = await claudeLocalLauncher(session);
+            if (result !== 'switch') { // Exit result - Exit loop with exit code
+                return result.code;
             }
 
-            // Non "exit" reason means we need to switch to remote mode
+            // 'switch' means we need to switch to remote mode
             mode = 'remote';
             if (opts.onModeChange) {
                 opts.onModeChange(mode);
@@ -89,8 +89,8 @@ export async function loop(opts: LoopOptions) {
         // Start remote mode
         if (mode === 'remote') {
             let reason = await claudeRemoteLauncher(session);
-            if (reason === 'exit') { // Normal exit - Exit loop
-                return;
+            if (reason === 'exit') { // Normal exit - Exit loop with code 0
+                return 0;
             }
 
             // Non "exit" reason means we need to switch to local mode
