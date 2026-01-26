@@ -64,7 +64,7 @@ vi.mock('@/sync/storage', () => ({
     },
 }));
 
-vi.mock('@/components/newSession/MachineSelector', () => ({
+vi.mock('@/components/newSession/components/MachineSelector', () => ({
     MachineSelector: () => null,
 }));
 

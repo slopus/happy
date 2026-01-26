@@ -5,7 +5,7 @@ import { SearchableListSelector } from '@/components/SearchableListSelector';
 import type { Machine } from '@/sync/storageTypes';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { t } from '@/text';
-import { MachineCliGlyphs } from '@/components/newSession/MachineCliGlyphs';
+import { MachineCliGlyphs } from '@/components/newSession/components/MachineCliGlyphs';
 
 export interface MachineSelectorProps {
     machines: Machine[];

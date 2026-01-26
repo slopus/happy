@@ -52,7 +52,7 @@ vi.mock('@/components/ItemList', () => ({
     ItemList: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 
-vi.mock('@/components/newSession/MachineSelector', () => ({
+vi.mock('@/components/newSession/components/MachineSelector', () => ({
     MachineSelector: () => null,
 }));
 

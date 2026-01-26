@@ -29,7 +29,7 @@ import { useProfile } from '@/sync/storage';
 import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
 import { Avatar } from '@/components/Avatar';
 import { t } from '@/text';
-import { MachineCliGlyphs } from '@/components/newSession/MachineCliGlyphs';
+import { MachineCliGlyphs } from '@/components/newSession/components/MachineCliGlyphs';
 import { HappyError } from '@/utils/errors';
 import { getAgentCore } from '@/agents/registryCore';
 import { getAgentIconSource, getAgentIconTintColor } from '@/agents/registryUi';

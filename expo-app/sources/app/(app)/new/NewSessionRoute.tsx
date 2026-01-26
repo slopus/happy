@@ -34,11 +34,11 @@ import { applyCliWarningDismissal, isCliWarningDismissed } from '@/agents/cliWar
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
-import { MachineSelector } from '@/components/newSession/MachineSelector';
-import { PathSelector } from '@/components/newSession/PathSelector';
+import { MachineSelector } from '@/components/newSession/components/MachineSelector';
+import { PathSelector } from '@/components/newSession/components/PathSelector';
 import { SearchHeader } from '@/components/SearchHeader';
-import { ProfileCompatibilityIcon } from '@/components/newSession/ProfileCompatibilityIcon';
-import { EnvironmentVariablesPreviewModal } from '@/components/newSession/EnvironmentVariablesPreviewModal';
+import { ProfileCompatibilityIcon } from '@/components/newSession/components/ProfileCompatibilityIcon';
+import { EnvironmentVariablesPreviewModal } from '@/components/newSession/components/EnvironmentVariablesPreviewModal';
 import { consumeProfileIdParam, consumeSecretIdParam } from '@/profileRouteParams';
 import { getModelOptionsForAgentType } from '@/sync/modelOptions';
 import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/SecretRequirementModal';
@@ -48,7 +48,7 @@ import { useMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
 import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
 import { getMissingRequiredConfigEnvVarNames } from '@/utils/profileConfigRequirements';
 import { InteractionManager } from 'react-native';
-import { NewSessionWizard } from '@/components/newSession/NewSessionWizard';
+import { NewSessionWizard } from '@/components/newSession/components/NewSessionWizard';
 import { getMachineCapabilitiesSnapshot, prefetchMachineCapabilities, prefetchMachineCapabilitiesIfStale, useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import { CAPABILITIES_REQUEST_NEW_SESSION } from '@/capabilities/requests';
 import { getCodexMcpResumeDepData } from '@/capabilities/codexMcpResume';
@@ -66,8 +66,8 @@ import type { SecretChoiceByProfileIdByEnvVarName } from '@/utils/secretRequirem
 import { shouldAutoPromptSecretRequirement } from '@/utils/secretRequirementPromptEligibility';
 import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { computeNewSessionInputMaxHeight } from '@/components/agentInput/inputMaxHeight';
-import { useProfileMap, transformProfileToEnvironmentVars } from '@/components/newSession/profileHelpers';
-import { newSessionScreenStyles } from '@/components/newSession/newSessionScreenStyles';
+import { useProfileMap, transformProfileToEnvironmentVars } from '@/components/newSession/modules/profileHelpers';
+import { newSessionScreenStyles } from '@/components/newSession/utils/newSessionScreenStyles';
 
 // Configuration constants
 const RECENT_PATHS_DEFAULT_VISIBLE = 5;

@@ -25,7 +25,7 @@ vi.mock('@/components/layout', () => ({
     layout: { maxWidth: 720 },
 }));
 
-vi.mock('@/components/newSession/PathSelector', () => ({
+vi.mock('@/components/newSession/components/PathSelector', () => ({
     PathSelector: (props: any) => {
         const didTriggerRef = React.useRef(false);
         React.useEffect(() => {

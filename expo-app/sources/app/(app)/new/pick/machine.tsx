@@ -7,7 +7,7 @@ import { useAllMachines, useSessions, useSetting, useSettingMutable } from '@/sy
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { ItemList } from '@/components/ItemList';
-import { MachineSelector } from '@/components/newSession/MachineSelector';
+import { MachineSelector } from '@/components/newSession/components/MachineSelector';
 import { getRecentMachinesFromSessions } from '@/utils/recentMachines';
 import { Ionicons } from '@expo/vector-icons';
 import { sync } from '@/sync/sync';

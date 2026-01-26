@@ -8,9 +8,9 @@ import { Typography } from '@/constants/Typography';
 import { AgentInput } from '@/components/AgentInput';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
-import { MachineSelector } from '@/components/newSession/MachineSelector';
-import { PathSelector } from '@/components/newSession/PathSelector';
-import { WizardSectionHeaderRow } from '@/components/newSession/WizardSectionHeaderRow';
+import { MachineSelector } from '@/components/newSession/components/MachineSelector';
+import { PathSelector } from '@/components/newSession/components/PathSelector';
+import { WizardSectionHeaderRow } from '@/components/newSession/components/WizardSectionHeaderRow';
 import { ProfilesList } from '@/components/profiles/ProfilesList';
 import { SessionTypeSelectorRows } from '@/components/SessionTypeSelector';
 import { layout } from '@/components/layout';
@@ -27,7 +27,7 @@ import type { CLIAvailability } from '@/hooks/useCLIDetection';
 import type { AgentId } from '@/agents/registryCore';
 import { getAgentCore } from '@/agents/registryCore';
 import { getAgentPickerOptions } from '@/agents/agentPickerOptions';
-import { CliNotDetectedBanner, type CliNotDetectedBannerDismissScope } from '@/components/newSession/CliNotDetectedBanner';
+import { CliNotDetectedBanner, type CliNotDetectedBannerDismissScope } from '@/components/newSession/components/CliNotDetectedBanner';
 import { InstallableDepInstaller, type InstallableDepInstallerProps } from '@/components/machine/InstallableDepInstaller';
 
 export interface NewSessionWizardLayoutProps {
