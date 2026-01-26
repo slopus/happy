@@ -9,18 +9,23 @@ describe('envVarSanitization', () => {
     });
 
     it('sanitizes records by filtering invalid keys and non-string values', () => {
-        const out = sanitizeEnvVarRecord({
-            GOOD: 'ok',
-            '__proto__': 'bad',
-            ALSO_OK: 123,
-        } as any);
-        expect(out).toEqual({ GOOD: 'ok' });
+        const raw = Object.create(null) as any;
+        raw.GOOD = 'ok';
+        raw['__proto__'] = 'bad';
+        raw.ALSO_OK = 123;
+
+        const out = sanitizeEnvVarRecord(raw);
+        expect(Object.getPrototypeOf(out)).toBe(null);
+        expect(Object.fromEntries(Object.entries(out))).toEqual({ GOOD: 'ok' });
     });
 
     it('strictly validates records for spawning', () => {
         expect(validateEnvVarRecordStrict({ GOOD: 'ok' })).toEqual({ ok: true, env: { GOOD: 'ok' } });
-        expect(validateEnvVarRecordStrict({ '__proto__': 'x' } as any)).toEqual({ ok: false, error: 'Invalid env var key: \"__proto__\"' });
+
+        const protoKey = Object.create(null) as any;
+        protoKey['__proto__'] = 'x';
+        expect(validateEnvVarRecordStrict(protoKey)).toEqual({ ok: false, error: 'Invalid env var key: \"__proto__\"' });
+
         expect(validateEnvVarRecordStrict({ GOOD: 123 } as any)).toEqual({ ok: false, error: 'Invalid env var value for \"GOOD\": expected string' });
     });
 });
-
