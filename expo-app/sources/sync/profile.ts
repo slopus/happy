@@ -9,7 +9,7 @@ export const GitHubProfileSchema = z.object({
     login: z.string(),
     name: z.string(),
     avatar_url: z.string(),
-    email: z.string().optional(),
+    email: z.string().nullable(),
     bio: z.string().nullable()
 });
 
