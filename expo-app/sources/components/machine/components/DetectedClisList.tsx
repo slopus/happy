@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Platform, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
-import { Item } from '@/components/Item';
+import { Item } from '@/components/lists/Item';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import type { MachineCapabilitiesCacheState } from '@/hooks/useMachineCapabilitiesCache';

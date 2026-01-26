@@ -8,14 +8,14 @@ vi.mock('@/components/PopoverBoundary', () => ({
     usePopoverBoundaryRef: () => null,
 }));
 
-vi.mock('./FloatingOverlay', () => {
+vi.mock('@/components/FloatingOverlay', () => {
     const React = require('react');
     return {
         FloatingOverlay: (props: any) => React.createElement('FloatingOverlay', props, props.children),
     };
 });
 
-vi.mock('./Popover', () => {
+vi.mock('@/components/Popover', () => {
     const React = require('react');
     return {
         Popover: (props: any) => {
@@ -82,7 +82,7 @@ vi.mock('react-native', () => {
 describe('ItemRowActions', () => {
     it('invokes overflow actions even when InteractionManager does not run callbacks', async () => {
         const { ItemRowActions } = await import('./ItemRowActions');
-        const { SelectableRow } = await import('./SelectableRow');
+        const { SelectableRow } = await import('@/components/SelectableRow');
 
         const onEdit = vi.fn();
 

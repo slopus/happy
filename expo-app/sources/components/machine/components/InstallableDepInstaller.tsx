@@ -2,8 +2,8 @@ import * as React from 'react';
 import { ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { Item } from '@/components/Item';
-import { ItemGroup } from '@/components/ItemGroup';
+import { Item } from '@/components/lists/Item';
+import { ItemGroup } from '@/components/lists/ItemGroup';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { useSettingMutable } from '@/sync/storage';

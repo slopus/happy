@@ -3,7 +3,7 @@ import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView } from
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, storage, useSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
-import { Item } from '@/components/Item';
+import { Item } from '@/components/lists/Item';
 import { useRouter, useLocalSearchParams, useNavigation, usePathname } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';

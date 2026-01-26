@@ -5,7 +5,7 @@ import { t } from '@/text';
 import { useRouter } from 'expo-router';
 import { useUser } from '@/sync/storage';
 import { Avatar } from './Avatar';
-import { Item } from './Item';
+import { Item } from '@/components/lists/Item';
 import { useUnistyles } from 'react-native-unistyles';
 
 interface FeedItemCardProps {

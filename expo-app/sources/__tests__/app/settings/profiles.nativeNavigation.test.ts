@@ -79,13 +79,13 @@ vi.mock('@/sync/profileMutations', () => ({
     duplicateProfileForEdit: (p: any) => p,
 }));
 
-vi.mock('@/components/ItemList', () => ({
+vi.mock('@/components/lists/ItemList', () => ({
     ItemList: (props: any) => React.createElement('ItemList', props, props.children),
 }));
-vi.mock('@/components/ItemGroup', () => ({
+vi.mock('@/components/lists/ItemGroup', () => ({
     ItemGroup: (props: any) => React.createElement('ItemGroup', props, props.children),
 }));
-vi.mock('@/components/Item', () => ({
+vi.mock('@/components/lists/Item', () => ({
     Item: (props: any) => React.createElement('Item', props, props.children),
 }));
 vi.mock('@/components/Switch', () => ({

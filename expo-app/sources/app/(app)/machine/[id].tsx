@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Item } from '@/components/Item';
-import { ItemGroup } from '@/components/ItemGroup';
-import { ItemGroupTitleWithAction } from '@/components/ItemGroupTitleWithAction';
-import { ItemList } from '@/components/ItemList';
+import { Item } from '@/components/lists/Item';
+import { ItemGroup } from '@/components/lists/ItemGroup';
+import { ItemGroupTitleWithAction } from '@/components/lists/ItemGroupTitleWithAction';
+import { ItemList } from '@/components/lists/ItemList';
 import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines, useMachine, storage, useSetting, useSettingMutable, useSettings } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';

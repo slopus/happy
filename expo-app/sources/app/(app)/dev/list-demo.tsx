@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Item } from '@/components/Item';
-import { ItemGroup } from '@/components/ItemGroup';
-import { ItemList } from '@/components/ItemList';
+import { Item } from '@/components/lists/Item';
+import { ItemGroup } from '@/components/lists/ItemGroup';
+import { ItemList } from '@/components/lists/ItemList';
 import { Switch } from '@/components/Switch';
 
 export default function ListDemoScreen() {

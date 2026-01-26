@@ -55,11 +55,11 @@ vi.mock('@/sync/storage', () => ({
     },
 }));
 
-vi.mock('@/components/ItemGroup', () => ({
+vi.mock('@/components/lists/ItemGroup', () => ({
     ItemGroup: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 
-vi.mock('@/components/Item', () => ({
+vi.mock('@/components/lists/Item', () => ({
     Item: () => null,
 }));
 

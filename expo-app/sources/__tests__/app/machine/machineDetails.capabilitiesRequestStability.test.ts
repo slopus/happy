@@ -93,15 +93,15 @@ vi.mock('@/text', () => {
     return { t: (key: string) => key };
 });
 
-vi.mock('@/components/Item', () => ({
+vi.mock('@/components/lists/Item', () => ({
     Item: () => null,
 }));
 
-vi.mock('@/components/ItemGroup', () => ({
+vi.mock('@/components/lists/ItemGroup', () => ({
     ItemGroup: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 
-vi.mock('@/components/ItemList', () => ({
+vi.mock('@/components/lists/ItemList', () => ({
     ItemList: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 

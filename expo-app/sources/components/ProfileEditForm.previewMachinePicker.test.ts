@@ -96,16 +96,16 @@ vi.mock('@/components/dropdown/DropdownMenu', () => ({
     DropdownMenu: () => null,
 }));
 
-vi.mock('@/components/ItemList', () => ({
+vi.mock('@/components/lists/ItemList', () => ({
     ItemList: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 
-vi.mock('@/components/ItemGroup', () => ({
+vi.mock('@/components/lists/ItemGroup', () => ({
     ItemGroup: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 
 let capturedPreviewMachineItem: any = null;
-vi.mock('@/components/Item', () => ({
+vi.mock('@/components/lists/Item', () => ({
     Item: (props: any) => {
         if (props?.onPress && props?.title === 'profiles.previewMachine.itemTitle') {
             capturedPreviewMachineItem = props;

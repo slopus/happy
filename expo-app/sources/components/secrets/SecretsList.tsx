@@ -3,10 +3,10 @@ import { Platform, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
-import { Item } from '@/components/Item';
-import { ItemGroup } from '@/components/ItemGroup';
-import { ItemList } from '@/components/ItemList';
-import { ItemRowActions } from '@/components/ItemRowActions';
+import { Item } from '@/components/lists/Item';
+import { ItemGroup } from '@/components/lists/ItemGroup';
+import { ItemList } from '@/components/lists/ItemList';
+import { ItemRowActions } from '@/components/lists/ItemRowActions';
 import { InlineAddExpander } from '@/components/InlineAddExpander';
 import { Modal } from '@/modal';
 import type { SavedSecret } from '@/sync/settings';

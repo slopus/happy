@@ -37,7 +37,7 @@ vi.mock('@expo/vector-icons', () => ({
     Ionicons: 'Ionicons',
 }));
 
-vi.mock('@/components/ItemList', () => ({
+vi.mock('@/components/lists/ItemList', () => ({
     ItemList: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 

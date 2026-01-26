@@ -3,8 +3,8 @@ import { View, Text, ScrollView, Pressable, Platform, useWindowDimensions } from
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
-import { ItemGroup } from '@/components/ItemGroup';
-import { Item } from '@/components/Item';
+import { ItemGroup } from '@/components/lists/ItemGroup';
+import { Item } from '@/components/lists/Item';
 import { useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
 import { t } from '@/text';
 import { formatEnvVarTemplate, parseEnvVarTemplate } from '@/utils/envVarTemplate';

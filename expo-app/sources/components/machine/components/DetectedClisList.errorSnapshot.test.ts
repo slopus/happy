@@ -31,7 +31,7 @@ vi.mock('react-native-unistyles', () => ({
     useUnistyles: () => ({ theme: { colors: { textSecondary: '#666', status: { connected: '#0a0' } } } }),
 }));
 
-vi.mock('@/components/Item', () => ({
+vi.mock('@/components/lists/Item', () => ({
     Item: (props: any) => React.createElement('Item', props),
 }));
 

@@ -17,7 +17,7 @@ vi.mock('@/constants/Typography', () => ({
     Typography: { default: () => ({}) },
 }));
 
-vi.mock('@/components/ItemList', () => ({
+vi.mock('@/components/lists/ItemList', () => ({
     ItemList: ({ children }: any) => React.createElement('ItemList', null, children),
 }));
 

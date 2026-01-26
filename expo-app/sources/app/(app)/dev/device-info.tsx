@@ -3,9 +3,9 @@ import { View, Text, ScrollView, Dimensions, Platform, PixelRatio } from 'react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { Typography } from '@/constants/Typography';
-import { ItemGroup } from '@/components/ItemGroup';
-import { Item } from '@/components/Item';
-import { ItemList } from '@/components/ItemList';
+import { ItemGroup } from '@/components/lists/ItemGroup';
+import { Item } from '@/components/lists/Item';
+import { ItemList } from '@/components/lists/ItemList';
 import Constants from 'expo-constants';
 import { useIsTablet, getDeviceType, calculateDeviceDimensions, useHeaderHeight } from '@/utils/responsive';
 import { layout } from '@/components/layout';

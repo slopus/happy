@@ -11,9 +11,9 @@ import { getPermissionModeLabelForAgentType, getPermissionModeOptionsForAgentTyp
 import { inferSourceModeGroupForPermissionMode } from '@/sync/permissionDefaults';
 import { mapPermissionModeAcrossAgents } from '@/sync/permissionMapping';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
-import { ItemList } from '@/components/ItemList';
-import { ItemGroup } from '@/components/ItemGroup';
-import { Item } from '@/components/Item';
+import { ItemList } from '@/components/lists/ItemList';
+import { ItemGroup } from '@/components/lists/ItemGroup';
+import { Item } from '@/components/lists/Item';
 import { Switch } from '@/components/Switch';
 import { DropdownMenu } from '@/components/dropdown/DropdownMenu';
 import { getBuiltInProfileDocumentation } from '@/sync/profileUtils';

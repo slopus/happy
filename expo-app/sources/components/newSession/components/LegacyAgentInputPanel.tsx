@@ -2,7 +2,7 @@ import * as React from 'react';
 import type { ViewStyle } from 'react-native';
 import { Platform, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { ItemGroup } from '@/components/ItemGroup';
+import { ItemGroup } from '@/components/lists/ItemGroup';
 import { SessionTypeSelectorRows } from '@/components/SessionTypeSelector';
 import { layout } from '@/components/layout';
 import { AgentInput } from '@/components/AgentInput';

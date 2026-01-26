@@ -1,8 +1,8 @@
 import React from 'react';
 import { View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { ItemGroup } from '@/components/ItemGroup';
-import { Item } from '@/components/Item';
+import { ItemGroup } from '@/components/lists/ItemGroup';
+import { Item } from '@/components/lists/Item';
 import { t } from '@/text';
 
 export interface SessionTypeSelectorProps {

@@ -2,9 +2,9 @@ import * as React from 'react';
 import { View, Text, FlatList, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { log } from '@/log';
-import { ItemGroup } from '@/components/ItemGroup';
-import { ItemList } from '@/components/ItemList';
-import { Item } from '@/components/Item';
+import { ItemGroup } from '@/components/lists/ItemGroup';
+import { ItemList } from '@/components/lists/ItemList';
+import { Item } from '@/components/lists/Item';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 

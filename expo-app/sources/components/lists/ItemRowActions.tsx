@@ -4,9 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import Color from 'color';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { type ItemAction } from '@/components/itemActions/types';
-import { Popover } from './Popover';
-import { FloatingOverlay } from './FloatingOverlay';
-import { ActionListSection, type ActionListItem } from './ActionListSection';
+import { Popover } from '@/components/Popover';
+import { FloatingOverlay } from '@/components/FloatingOverlay';
+import { ActionListSection, type ActionListItem } from '@/components/ActionListSection';
 
 export interface ItemRowActionsProps {
     title: string;

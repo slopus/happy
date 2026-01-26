@@ -33,14 +33,14 @@ vi.mock('@/components/SelectableRow', () => {
     };
 });
 
-vi.mock('@/components/Item', () => {
+vi.mock('@/components/lists/Item', () => {
     const React = require('react');
     return {
         Item: (props: any) => React.createElement('Item', props, props.children),
     };
 });
 
-vi.mock('@/components/ItemGroup', () => {
+vi.mock('@/components/lists/ItemGroup', () => {
     const React = require('react');
     return {
         ItemGroupSelectionContext: {
@@ -49,7 +49,7 @@ vi.mock('@/components/ItemGroup', () => {
     };
 });
 
-vi.mock('@/components/ItemGroupRowPosition', () => {
+vi.mock('@/components/lists/ItemGroupRowPosition', () => {
     const React = require('react');
     return {
         ItemGroupRowPositionBoundary: (props: any) => React.createElement('ItemGroupRowPositionBoundary', props, props.children),

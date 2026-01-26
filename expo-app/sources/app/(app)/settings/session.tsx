@@ -3,9 +3,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { View, TextInput, Platform } from 'react-native';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 
-import { Item } from '@/components/Item';
-import { ItemGroup } from '@/components/ItemGroup';
-import { ItemList } from '@/components/ItemList';
+import { Item } from '@/components/lists/Item';
+import { ItemGroup } from '@/components/lists/ItemGroup';
+import { ItemList } from '@/components/lists/ItemList';
 import { Switch } from '@/components/Switch';
 import { DropdownMenu } from '@/components/dropdown/DropdownMenu';
 import { Text } from '@/components/StyledText';

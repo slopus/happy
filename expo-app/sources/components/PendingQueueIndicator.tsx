@@ -5,7 +5,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
 import { PendingMessagesModal } from './PendingMessagesModal';
-import { layout } from './layout';
+import { layout } from '@/components/layout';
 
 const PENDING_INDICATOR_DEBOUNCE_MS = 250;
 

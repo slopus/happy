@@ -8,7 +8,7 @@ import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
-import { layout } from "./layout";
+import { layout } from "@/components/layout";
 import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Item } from './Item';
-import { ItemGroup } from './ItemGroup';
+import { Item } from '@/components/lists/Item';
+import { ItemGroup } from '@/components/lists/ItemGroup';
 import { useUnistyles } from 'react-native-unistyles';
 import { useUpdates } from '@/hooks/useUpdates';
 import { useChangelog } from '@/hooks/useChangelog';

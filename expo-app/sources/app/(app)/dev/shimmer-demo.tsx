@@ -3,7 +3,7 @@ import { View, Text, ScrollView } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { Stack } from 'expo-router';
 import { ShimmerView } from '@/components/ShimmerView';
-import { ItemGroup } from '@/components/ItemGroup';
+import { ItemGroup } from '@/components/lists/ItemGroup';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function ShimmerDemoScreen() {

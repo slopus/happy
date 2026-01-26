@@ -7,7 +7,7 @@ import { Typography } from '@/constants/Typography';
 import type { PendingMessage } from '@/sync/storageTypes';
 import { MarkdownView } from './markdown/MarkdownView';
 import { PendingMessagesModal } from './PendingMessagesModal';
-import { layout } from './layout';
+import { layout } from '@/components/layout';
 
 export function PendingUserTextMessageView(props: {
     sessionId: string;

@@ -3,7 +3,7 @@ import { Platform, Pressable } from 'react-native';
 import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
-import { ItemList } from '@/components/ItemList';
+import { ItemList } from '@/components/lists/ItemList';
 import { MachineSelector } from '@/components/newSession/components/MachineSelector';
 import { useAllMachines, useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';

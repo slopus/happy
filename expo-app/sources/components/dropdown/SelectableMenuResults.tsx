@@ -3,9 +3,9 @@ import { Text, View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { SelectableRow, type SelectableRowVariant } from '@/components/SelectableRow';
-import { Item } from '@/components/Item';
-import { ItemGroupSelectionContext } from '@/components/ItemGroup';
-import { ItemGroupRowPositionBoundary } from '@/components/ItemGroupRowPosition';
+import { Item } from '@/components/lists/Item';
+import { ItemGroupSelectionContext } from '@/components/lists/ItemGroup';
+import { ItemGroupRowPositionBoundary } from '@/components/lists/ItemGroupRowPosition';
 import type { SelectableMenuCategory, SelectableMenuItem } from './selectableMenuTypes';
 
 const stylesheet = StyleSheet.create(() => ({

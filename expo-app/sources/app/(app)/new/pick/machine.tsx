@@ -6,7 +6,7 @@ import { Typography } from '@/constants/Typography';
 import { useAllMachines, useSessions, useSetting, useSettingMutable } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
-import { ItemList } from '@/components/ItemList';
+import { ItemList } from '@/components/lists/ItemList';
 import { MachineSelector } from '@/components/newSession/components/MachineSelector';
 import { getRecentMachinesFromSessions } from '@/utils/recentMachines';
 import { Ionicons } from '@expo/vector-icons';

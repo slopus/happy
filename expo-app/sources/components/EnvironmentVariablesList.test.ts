@@ -74,7 +74,7 @@ vi.mock('react-native-unistyles', () => ({
     },
 }));
 
-vi.mock('@/components/Item', () => {
+vi.mock('@/components/lists/Item', () => {
     const React = require('react');
     return {
         Item: (props: unknown) => React.createElement('Item', props),

@@ -48,7 +48,7 @@ vi.mock('@/sync/storage', () => ({
     useSettingMutable: () => [[], vi.fn()],
 }));
 
-vi.mock('@/components/ItemList', () => ({
+vi.mock('@/components/lists/ItemList', () => ({
     ItemList: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 

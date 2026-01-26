@@ -15,9 +15,9 @@ import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { ItemGroupSelectionContext } from '@/components/ItemGroup';
-import { useItemGroupRowPosition } from '@/components/ItemGroupRowPosition';
-import { getItemGroupRowCornerRadii } from '@/components/itemGroupRowCorners';
+import { ItemGroupSelectionContext } from '@/components/lists/ItemGroup';
+import { useItemGroupRowPosition } from '@/components/lists/ItemGroupRowPosition';
+import { getItemGroupRowCornerRadii } from '@/components/lists/itemGroupRowCorners';
 
 export interface ItemProps {
     title: string;

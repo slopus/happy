@@ -8,11 +8,11 @@ import {
     Platform
 } from 'react-native';
 import { Typography } from '@/constants/Typography';
-import { layout } from './layout';
+import { layout } from '@/components/layout';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { withItemGroupDividers } from './ItemGroup.dividers';
 import { countSelectableItems } from './ItemGroup.selectableCount';
-import { PopoverBoundaryProvider } from './PopoverBoundary';
+import { PopoverBoundaryProvider } from '@/components/PopoverBoundary';
 
 export { withItemGroupDividers } from './ItemGroup.dividers';
 

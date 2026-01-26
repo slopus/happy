@@ -3,10 +3,10 @@ import { View, Text, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 
-import { ItemList } from '@/components/ItemList';
-import { ItemGroup } from '@/components/ItemGroup';
-import { Item } from '@/components/Item';
-import { ItemRowActions } from '@/components/ItemRowActions';
+import { ItemList } from '@/components/lists/ItemList';
+import { ItemGroup } from '@/components/lists/ItemGroup';
+import { Item } from '@/components/lists/Item';
+import { ItemRowActions } from '@/components/lists/ItemRowActions';
 import type { ItemAction } from '@/components/itemActions/types';
 
 import type { AIBackendProfile } from '@/sync/settings';
