@@ -1,8 +1,8 @@
 import { logger } from '@/ui/logger';
 import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
-import { validatePath } from '../pathSecurity';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
+import { validatePath } from '@/modules/common/pathSecurity';
 
 const execAsync = promisify(exec);
 
@@ -105,4 +105,3 @@ export function registerBashHandler(rpcHandlerManager: RpcHandlerManager, workin
         }
     });
 }
-

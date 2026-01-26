@@ -2,8 +2,8 @@ import { logger } from '@/ui/logger';
 import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { createHash } from 'crypto';
 import { join } from 'path';
-import { validatePath } from '../pathSecurity';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
+import { validatePath } from '@/modules/common/pathSecurity';
 
 interface ReadFileRequest {
     path: string;
@@ -296,4 +296,3 @@ export function registerFileSystemHandlers(rpcHandlerManager: RpcHandlerManager,
         }
     });
 }
-

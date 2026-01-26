@@ -1,7 +1,7 @@
 import { logger } from '@/ui/logger';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import { run as runDifftastic } from '@/modules/difftastic/index';
-import { validatePath } from '../pathSecurity';
+import { validatePath } from '@/modules/common/pathSecurity';
 
 interface DifftasticRequest {
     args: string[];
@@ -46,4 +46,3 @@ export function registerDifftasticHandler(rpcHandlerManager: RpcHandlerManager, 
         }
     });
 }
-
