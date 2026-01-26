@@ -55,6 +55,36 @@ function coerceSingleLocationPath(locations: unknown): string | null {
   return path;
 }
 
+function coerceFirstItemDiff(items: unknown): Record<string, unknown> | null {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  const first = items[0];
+  if (!first || typeof first !== 'object' || Array.isArray(first)) return null;
+  return first as Record<string, unknown>;
+}
+
+function coerceItemPath(item: Record<string, unknown> | null): string | null {
+  if (!item) return null;
+  const path =
+    (typeof item.path === 'string' && item.path.trim())
+      ? item.path.trim()
+      : (typeof item.filePath === 'string' && item.filePath.trim())
+        ? item.filePath.trim()
+        : null;
+  return path;
+}
+
+function coerceItemText(item: Record<string, unknown> | null, key: 'old' | 'new'): string | null {
+  if (!item) return null;
+  const candidates =
+    key === 'old'
+      ? [item.oldText, item.old_string, item.oldString]
+      : [item.newText, item.new_string, item.newString];
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim().length > 0) return c;
+  }
+  return null;
+}
+
 function normalizeUrlFromArgs(args: UnknownRecord): string | null {
   const url = args.url;
   if (typeof url === 'string' && url.trim().length > 0) return url.trim();
@@ -140,6 +170,13 @@ export function normalizeAcpToolArgs(opts: {
     }
   }
 
+  // ACP diff tools often provide file context + content in args.items[0].
+  const firstItem = coerceFirstItemDiff(out.items);
+  const itemPath = coerceItemPath(firstItem);
+  if (itemPath && typeof out.file_path !== 'string') {
+    out.file_path = itemPath;
+  }
+
   // Write: normalize `content` from common aliases.
   if (toolNameLower === 'write' || toolKindLower === 'write') {
     if (typeof out.content !== 'string') {
@@ -151,18 +188,24 @@ export function normalizeAcpToolArgs(opts: {
             : typeof out.newText === 'string'
               ? out.newText
               : null;
+      const fromItem = coerceItemText(firstItem, 'new');
       if (typeof content === 'string') out.content = content;
+      else if (fromItem) out.content = fromItem;
     }
   }
 
   // Edit: normalize common field aliases used by ACP agents.
   // (Gemini edit view supports oldText/newText and old_string/new_string, but not oldString/newString.)
   if (toolNameLower === 'edit' || toolKindLower === 'edit') {
+    const oldFromItem = coerceItemText(firstItem, 'old');
+    const newFromItem = coerceItemText(firstItem, 'new');
     if (typeof out.oldText !== 'string' && typeof out.old_string !== 'string') {
       if (typeof out.oldString === 'string') out.oldText = out.oldString;
+      else if (oldFromItem) out.oldText = oldFromItem;
     }
     if (typeof out.newText !== 'string' && typeof out.new_string !== 'string') {
       if (typeof out.newString === 'string') out.newText = out.newString;
+      else if (newFromItem) out.newText = newFromItem;
     }
     if (typeof out.path !== 'string' && typeof out.filePath === 'string') {
       out.path = out.filePath;

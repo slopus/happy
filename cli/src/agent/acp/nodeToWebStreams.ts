@@ -11,17 +11,22 @@ export function nodeToWebStreams(
     const writable = new WritableStream<Uint8Array>({
         write(chunk) {
             return new Promise((resolve, reject) => {
-                let settled = false;
                 let drained = false;
                 let wrote = false;
+                let settled = false;
 
                 const onDrain = () => {
                     drained = true;
-                    if (wrote && !settled) {
-                        settled = true;
-                        resolve();
-                    }
+                    if (!wrote) return;
+                    if (settled) return;
+                    settled = true;
+                    stdin.off('drain', onDrain);
+                    resolve();
                 };
+
+                // Register the drain handler up-front to avoid missing a synchronous `drain` emission
+                // from custom Writable implementations (or odd edge cases).
+                stdin.once('drain', onDrain);
 
                 const ok = stdin.write(chunk, (err) => {
                     wrote = true;
@@ -38,6 +43,7 @@ export function nodeToWebStreams(
                     if (ok) {
                         if (!settled) {
                             settled = true;
+                            stdin.off('drain', onDrain);
                             resolve();
                         }
                         return;
@@ -45,12 +51,16 @@ export function nodeToWebStreams(
 
                     if (drained && !settled) {
                         settled = true;
+                        stdin.off('drain', onDrain);
                         resolve();
                     }
                 });
 
                 drained = ok;
-                if (!ok) stdin.once('drain', onDrain);
+                if (ok) {
+                    // No drain will be emitted for this write; remove the listener immediately.
+                    stdin.off('drain', onDrain);
+                }
             });
         },
         close() {

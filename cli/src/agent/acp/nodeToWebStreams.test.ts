@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
-import { nodeToWebStreams } from './AcpBackend';
+import { nodeToWebStreams } from './nodeToWebStreams';
 
 class FakeStdin extends EventEmitter {
     writeImpl: (chunk: Uint8Array, cb: (err?: Error | null) => void) => boolean;
@@ -73,10 +73,8 @@ describe('nodeToWebStreams', () => {
         await expect(
             Promise.race([
                 promise,
-                new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('write() hung waiting for drain')), 50)
-                )
-            ])
+                new Promise((_, reject) => setTimeout(() => reject(new Error('write() hung waiting for drain')), 50)),
+            ]),
         ).resolves.toBeUndefined();
 
         writer.releaseLock();

@@ -7,7 +7,6 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { Readable, Writable } from 'node:stream';
 import {
   ClientSideConnection,
   ndJsonStream,
@@ -68,6 +67,7 @@ import {
   handleAvailableCommandsUpdate,
   handleCurrentModeUpdate,
 } from './sessionUpdateHandlers';
+import { nodeToWebStreams } from './nodeToWebStreams';
 import {
   pickPermissionOutcome,
   type PermissionOptionLike,
@@ -157,88 +157,6 @@ export interface AcpBackendOptions {
 
   /** Optional callback to check if prompt has change_title instruction */
   hasChangeTitleInstruction?: (prompt: string) => boolean;
-}
-
-/**
- * Convert Node.js streams to Web Streams for ACP SDK
- * 
- * NOTE: This function registers event handlers on stdout. If you also register
- * handlers directly on stdout (e.g., for logging), both will fire.
- */
-export function nodeToWebStreams(
-  stdin: Writable, 
-  stdout: Readable
-): { writable: WritableStream<Uint8Array>; readable: ReadableStream<Uint8Array> } {
-	  // Convert Node writable to Web WritableStream
-	  const writable = new WritableStream<Uint8Array>({
-	    write(chunk) {
-	      return new Promise((resolve, reject) => {
-	        let drained = false;
-	        let wrote = false;
-	        let ok = false;
-
-	        const finish = () => {
-	          if (wrote && drained) resolve();
-	        };
-
-	        const onDrain = () => {
-	          drained = true;
-	          finish();
-	        };
-
-	        stdin.once('drain', onDrain);
-
-	        ok = stdin.write(chunk, (err) => {
-	          wrote = true;
-	          if (err) {
-	            logger.debug(`[AcpBackend] Error writing to stdin:`, err);
-	            stdin.off('drain', onDrain);
-	            reject(err);
-	            return;
-	          }
-	          if (ok) {
-	            stdin.off('drain', onDrain);
-	          }
-	          finish();
-	        });
-
-	        drained ||= ok;
-	        if (ok) {
-	          stdin.off('drain', onDrain);
-	        }
-	      });
-	    },
-	    close() {
-	      return new Promise((resolve) => {
-	        stdin.end(resolve);
-      });
-    },
-    abort(reason) {
-      stdin.destroy(reason instanceof Error ? reason : new Error(String(reason)));
-    }
-  });
-
-  // Convert Node readable to Web ReadableStream
-  // Filter out non-JSON debug output from gemini CLI (experiments, flags, etc.)
-  const readable = new ReadableStream<Uint8Array>({
-    start(controller) {
-      stdout.on('data', (chunk: Buffer) => {
-        controller.enqueue(new Uint8Array(chunk));
-      });
-      stdout.on('end', () => {
-        controller.close();
-      });
-      stdout.on('error', (err) => {
-        logger.debug(`[AcpBackend] Stdout error:`, err);
-        controller.error(err);
-      });
-    },
-    cancel() {
-      stdout.destroy();
-    }
-  });
-
-  return { writable, readable };
 }
 
 /**
@@ -937,6 +855,36 @@ export class AcpBackend implements AgentBackend {
 
     const sessionUpdateType = (update as any).sessionUpdate as string | undefined;
 
+    const isGeminiAcpDebugEnabled = (() => {
+      const stacks = process.env.HAPPY_STACKS_GEMINI_ACP_DEBUG;
+      const local = process.env.HAPPY_LOCAL_GEMINI_ACP_DEBUG;
+      return stacks === '1' || local === '1' || stacks === 'true' || local === 'true';
+    })();
+
+    const sanitizeForLogs = (value: unknown, depth = 0): unknown => {
+      if (depth > 4) return '[truncated depth]';
+      if (typeof value === 'string') {
+        const max = 400;
+        if (value.length <= max) return value;
+        return `${value.slice(0, max)}… [truncated ${value.length - max} chars]`;
+      }
+      if (Array.isArray(value)) {
+        if (value.length > 50) {
+          return [...value.slice(0, 50).map((v) => sanitizeForLogs(v, depth + 1)), `… [truncated ${value.length - 50} items]`];
+        }
+        return value.map((v) => sanitizeForLogs(v, depth + 1));
+      }
+      if (value && typeof value === 'object') {
+        const obj = value as Record<string, unknown>;
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(obj)) {
+          out[k] = sanitizeForLogs(v, depth + 1);
+        }
+        return out;
+      }
+      return value;
+    };
+
     if (this.replayCapture) {
       try {
         this.replayCapture.handleUpdate(update as SessionUpdate);
@@ -966,6 +914,18 @@ export class AcpBackend implements AgentBackend {
         hasContent: !!update.content,
         hasLocations: !!update.locations,
       }, null, 2));
+    }
+
+    // Gemini ACP deep debug: dump raw terminal tool updates to verify where tool outputs live.
+    if (
+      isGeminiAcpDebugEnabled &&
+      this.transport.agentName === 'gemini' &&
+      (sessionUpdateType === 'tool_call_update' || sessionUpdateType === 'tool_call') &&
+      (update.status === 'completed' || update.status === 'failed' || update.status === 'cancelled')
+    ) {
+      const keys = Object.keys(update as any);
+      logger.debug('[AcpBackend] [GeminiACP] Terminal tool update keys:', keys);
+      logger.debug('[AcpBackend] [GeminiACP] Terminal tool update payload:', JSON.stringify(sanitizeForLogs(update), null, 2));
     }
 
     const ctx = this.createHandlerContext();

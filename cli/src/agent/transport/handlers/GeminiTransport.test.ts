@@ -22,3 +22,16 @@ describe('GeminiTransport determineToolName', () => {
   });
 });
 
+describe('GeminiTransport extractToolNameFromId', () => {
+  it('prefers TodoWrite over write for write_todos toolCallIds', () => {
+    expect(geminiTransport.extractToolNameFromId('write_todos-123')).toBe('TodoWrite');
+  });
+
+  it('detects replace as edit', () => {
+    expect(geminiTransport.extractToolNameFromId('replace-123')).toBe('edit');
+  });
+
+  it('detects glob toolCallIds', () => {
+    expect(geminiTransport.extractToolNameFromId('glob-123')).toBe('glob');
+  });
+});

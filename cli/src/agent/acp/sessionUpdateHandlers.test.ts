@@ -3,11 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { HandlerContext, SessionUpdate } from './sessionUpdateHandlers';
 import { handleToolCall, handleToolCallUpdate } from './sessionUpdateHandlers';
 import { defaultTransport } from '../transport/DefaultTransport';
+import { GeminiTransport } from '../transport/handlers/GeminiTransport';
 
-function createCtx(): HandlerContext & { emitted: any[] } {
+function createCtx(opts?: { transport?: HandlerContext['transport'] }): HandlerContext & { emitted: any[] } {
   const emitted: any[] = [];
   return {
-    transport: defaultTransport,
+    transport: opts?.transport ?? defaultTransport,
     activeToolCalls: new Set(),
     toolCallStartTimes: new Map(),
     toolCallTimeouts: new Map(),
@@ -76,5 +77,54 @@ describe('sessionUpdateHandlers tool call tracking', () => {
 
     vi.useRealTimers();
   });
-});
 
+  it('infers tool kind/name for terminal tool_call_update events when kind/start are missing (Gemini)', () => {
+    vi.useFakeTimers();
+    const ctx = createCtx({ transport: new GeminiTransport() });
+
+    const failedUpdate: SessionUpdate = {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'read_file-1',
+      status: 'failed',
+      title: 'Read /etc/hosts',
+      locations: [{ path: '/etc/hosts' }],
+      content: { filePath: '/etc/hosts' },
+      meta: {},
+    };
+
+    handleToolCallUpdate(failedUpdate, ctx);
+
+    const toolCall = ctx.emitted.find((m) => m.type === 'tool-call' && m.callId === 'read_file-1');
+    expect(toolCall).toBeTruthy();
+    expect(toolCall.toolName).toBe('read');
+
+    const toolResult = ctx.emitted.find((m) => m.type === 'tool-result' && m.callId === 'read_file-1');
+    expect(toolResult).toBeTruthy();
+    expect(toolResult.toolName).toBe('read');
+    expect(toolResult.result?._acp?.kind).toBe('read');
+
+    expect(ctx.toolCallTimeouts.size).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it('extracts tool output from update.result when output/rawOutput/content are absent', () => {
+    const ctx = createCtx();
+
+    const completedUpdate: SessionUpdate = {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'read_file-1',
+      status: 'completed',
+      kind: 'read',
+      title: 'Read /tmp/a.txt',
+      // Gemini-style: result may be carried in a non-standard field.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ...( { result: { content: 'hello' } } as any ),
+    };
+
+    handleToolCallUpdate(completedUpdate, ctx);
+
+    const toolResult = ctx.emitted.find((m) => m.type === 'tool-result' && m.callId === 'read_file-1');
+    expect(toolResult).toBeTruthy();
+    expect(toolResult.result).toMatchObject({ content: 'hello' });
+  });
+});

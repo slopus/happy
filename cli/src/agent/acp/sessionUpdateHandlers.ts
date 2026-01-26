@@ -37,6 +37,10 @@ export interface SessionUpdate {
   rawOutput?: unknown;
   input?: unknown;
   output?: unknown;
+  // Some ACP providers (notably Gemini CLI) may surface tool outputs in other fields.
+  result?: unknown;
+  liveContent?: unknown;
+  live_content?: unknown;
   meta?: unknown;
   availableCommands?: Array<{ name?: string; description?: string } | unknown>;
   currentModeId?: string;
@@ -121,6 +125,9 @@ function extractToolInput(update: SessionUpdate): unknown {
 function extractToolOutput(update: SessionUpdate): unknown {
   if (update.rawOutput !== undefined) return update.rawOutput;
   if (update.output !== undefined) return update.output;
+  if (update.result !== undefined) return update.result;
+  if (update.liveContent !== undefined) return update.liveContent;
+  if (update.live_content !== undefined) return update.live_content;
   return update.content;
 }
 
@@ -695,11 +702,28 @@ export function handleToolCallUpdate(
     return { handled: false };
   }
 
-  const toolKind = update.kind || 'unknown';
+  const toolKind =
+    typeof update.kind === 'string'
+      ? update.kind
+      : (ctx.transport.extractToolNameFromId?.(toolCallId) ?? 'unknown');
   let toolCallCountSincePrompt = ctx.toolCallCountSincePrompt;
 
   // Some ACP providers stream terminal output via tool_call_update.meta.
   emitTerminalOutputFromMeta(update, ctx);
+
+  const isTerminalStatus = status === 'completed' || status === 'failed' || status === 'cancelled';
+  // Some ACP providers (notably Gemini CLI) can emit a terminal tool_call_update without ever sending an
+  // in_progress/pending update first. Seed a synthetic tool-call so the UI has enough context to render
+  // the tool input/locations, and so tool-result can attach a non-"unknown" kind.
+  if (isTerminalStatus && !ctx.toolCallIdToNameMap.has(toolCallId)) {
+    startToolCall(
+      toolCallId,
+      toolKind,
+      { ...update, status: 'pending' },
+      ctx,
+      'tool_call_update'
+    );
+  }
 
   if (status === 'in_progress' || status === 'pending') {
     if (!ctx.activeToolCalls.has(toolCallId)) {

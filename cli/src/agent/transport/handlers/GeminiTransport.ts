@@ -85,13 +85,18 @@ const GEMINI_TOOL_PATTERNS: ExtendedToolPattern[] = [
   },
   {
     name: 'edit',
-    patterns: ['edit'],
+    patterns: ['edit', 'replace'],
     inputFields: ['oldText', 'newText', 'old_string', 'new_string', 'oldString', 'newString'],
   },
   {
     name: 'execute',
     patterns: ['run_shell_command', 'shell', 'exec', 'bash'],
     inputFields: ['command', 'cmd'],
+  },
+  {
+    name: 'glob',
+    patterns: ['glob'],
+    inputFields: ['pattern', 'glob'],
   },
   {
     name: 'TodoWrite',
@@ -263,15 +268,24 @@ export class GeminiTransport implements TransportHandler {
   extractToolNameFromId(toolCallId: string): string | null {
     const lowerId = toolCallId.toLowerCase();
 
+    // Prefer the most-specific match (longest pattern). Gemini tool IDs can contain multiple
+    // substrings (e.g. "write_todos-..." contains "write"), so first-match order is too fragile.
+    let bestName: string | null = null;
+    let bestLen = 0;
+
     for (const toolPattern of GEMINI_TOOL_PATTERNS) {
       for (const pattern of toolPattern.patterns) {
-        if (lowerId.includes(pattern.toLowerCase())) {
-          return toolPattern.name;
+        const needle = pattern.toLowerCase();
+        if (!needle) continue;
+        if (!lowerId.includes(needle)) continue;
+        if (needle.length > bestLen) {
+          bestLen = needle.length;
+          bestName = toolPattern.name;
         }
       }
     }
 
-    return null;
+    return bestName;
   }
 
   /**

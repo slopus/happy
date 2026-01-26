@@ -37,5 +37,33 @@ describe('normalizeAcpToolArgs', () => {
     expect(normalized.newText).toBe('b');
     expect(normalized.path).toBe('/tmp/x');
   });
-});
 
+  it('normalizes ACP diff items[] into file_path and content for write', () => {
+    const normalized = normalizeAcpToolArgs({
+      toolKind: 'write',
+      toolName: 'write',
+      rawInput: null,
+      args: {
+        items: [{ path: '/tmp/a.txt', oldText: 'old', newText: 'new', type: 'diff' }],
+      },
+    });
+
+    expect(normalized.file_path).toBe('/tmp/a.txt');
+    expect(normalized.content).toBe('new');
+  });
+
+  it('normalizes ACP diff items[] into file_path and oldText/newText for edit', () => {
+    const normalized = normalizeAcpToolArgs({
+      toolKind: 'edit',
+      toolName: 'edit',
+      rawInput: null,
+      args: {
+        items: [{ path: '/tmp/a.txt', oldText: 'old', newText: 'new', type: 'diff' }],
+      },
+    });
+
+    expect(normalized.file_path).toBe('/tmp/a.txt');
+    expect(normalized.oldText).toBe('old');
+    expect(normalized.newText).toBe('new');
+  });
+});
