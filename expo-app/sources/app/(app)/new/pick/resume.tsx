@@ -155,14 +155,23 @@ export default function ResumePickerScreen() {
 
         // Also retry across a few frames to catch cases where the input isn't mounted yet.
         let rafAttempts = 0;
+        const raf =
+            typeof (globalThis as any).requestAnimationFrame === 'function'
+                ? ((globalThis as any).requestAnimationFrame as (cb: (ts: number) => void) => any).bind(globalThis)
+                : (cb: (ts: number) => void) => setTimeout(() => cb(Date.now()), 16);
+        const caf =
+            typeof (globalThis as any).cancelAnimationFrame === 'function'
+                ? ((globalThis as any).cancelAnimationFrame as (id: any) => void).bind(globalThis)
+                : (id: any) => clearTimeout(id);
+        let rafId: any = null;
         const rafLoop = () => {
             rafAttempts += 1;
             focus();
             if (rafAttempts < 8) {
-                requestAnimationFrame(rafLoop);
+                rafId = raf(rafLoop);
             }
         };
-        requestAnimationFrame(rafLoop);
+        rafId = raf(rafLoop);
 
         // And a time-based fallback for native modal transitions / slower mounts.
         const timer = setTimeout(focus, 300);
@@ -170,6 +179,7 @@ export default function ResumePickerScreen() {
         return () => {
             cancelled = true;
             clearTimeout(timer);
+            if (rafId !== null) caf(rafId);
         };
     }, []);
 
@@ -196,14 +206,21 @@ export default function ResumePickerScreen() {
         };
     }, [focusInputWithRetries]));
 
+    const headerTitle = t('newSession.resume.pickerTitle');
+    const headerBackTitle = t('common.cancel');
+    const screenOptions = React.useMemo(() => {
+        return {
+            headerShown: true,
+            title: headerTitle,
+            headerTitle,
+            headerBackTitle,
+        } as const;
+    }, [headerBackTitle, headerTitle]);
+
     return (
         <>
             <Stack.Screen
-                options={{
-                    headerShown: true,
-                    headerTitle: t('newSession.resume.pickerTitle'),
-                    headerBackTitle: t('common.cancel'),
-                }}
+                options={screenOptions}
             />
             <View style={styles.container}>
                 <ItemList>

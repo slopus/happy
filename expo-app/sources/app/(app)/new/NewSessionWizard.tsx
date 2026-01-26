@@ -678,22 +678,22 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
                         />
                     ) : null}
                     <View style={{ paddingHorizontal: newSessionSidePadding }}>
-                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                            <AgentInput
-                                value={sessionPrompt}
-                                onChangeText={setSessionPrompt}
-                                onSend={handleCreateSession}
-                                isSendDisabled={!canCreate}
-                                isSending={isCreating}
-                                placeholder={t('session.inputPlaceholder')}
-                                autocompletePrefixes={emptyAutocompletePrefixes}
-                                autocompleteSuggestions={emptyAutocompleteSuggestions}
-                                inputMaxHeight={inputMaxHeight}
-                                agentType={agentType}
-                                onAgentClick={handleAgentInputAgentClick}
-                                permissionMode={permissionMode}
-                                onPermissionModeChange={handlePermissionModeChange}
-                                onPermissionClick={handleAgentInputPermissionClick}
+	                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+	                            <AgentInput
+	                                value={sessionPrompt}
+	                                onChangeText={setSessionPrompt}
+	                                onSend={handleCreateSession}
+	                                isSendDisabled={!canCreate}
+	                                isSending={isCreating}
+	                                placeholder={t('session.inputPlaceholder')}
+	                                autocompletePrefixes={emptyAutocompletePrefixes}
+	                                autocompleteSuggestions={emptyAutocompleteSuggestions}
+	                                inputMaxHeight={inputMaxHeight}
+	                                agentType={agentType}
+	                                onAgentClick={handleAgentInputAgentClick}
+	                                permissionMode={permissionMode}
+	                                onPermissionModeChange={handlePermissionModeChange}
+	                                onPermissionClick={handleAgentInputPermissionClick}
                                 modelMode={modelMode}
                                 onModelModeChange={setModelMode}
                                 connectionStatus={connectionStatus}

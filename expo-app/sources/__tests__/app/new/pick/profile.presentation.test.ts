@@ -11,6 +11,7 @@ vi.mock('@/text', () => ({
 vi.mock('react-native', () => ({
     Platform: { OS: 'ios' },
     Pressable: 'Pressable',
+    View: 'View',
 }));
 
 let lastStackScreenOptions: any = null;
@@ -82,10 +83,12 @@ vi.mock('@/sync/settings', () => ({
 
 vi.mock('@/utils/tempDataStore', () => ({
     storeTempData: () => 'temp',
+    getTempData: () => null,
 }));
 
 describe('ProfilePickerScreen (iOS presentation)', () => {
     it('presents as containedModal on iOS and provides an explicit header back button', async () => {
+        vi.resetModules();
         const ProfilePickerScreen = (await import('@/app/(app)/new/pick/profile')).default;
         lastStackScreenOptions = null;
 
@@ -93,7 +96,8 @@ describe('ProfilePickerScreen (iOS presentation)', () => {
             renderer.create(React.createElement(ProfilePickerScreen));
         });
 
-        expect(lastStackScreenOptions?.presentation).toBe('containedModal');
-        expect(typeof lastStackScreenOptions?.headerLeft).toBe('function');
+        const resolvedOptions = typeof lastStackScreenOptions === 'function' ? lastStackScreenOptions() : lastStackScreenOptions;
+        expect(resolvedOptions?.presentation).toBe('containedModal');
+        expect(typeof resolvedOptions?.headerLeft).toBe('function');
     });
 });

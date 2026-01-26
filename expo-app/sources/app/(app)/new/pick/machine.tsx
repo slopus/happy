@@ -50,6 +50,7 @@ function useMachinePickerScreenOptions(params: {
 
     return React.useMemo(() => ({
         headerShown: true,
+        title: params.title,
         headerTitle,
         headerBackTitle: t('common.back'),
         // /new is presented as `containedModal` on iOS. Ensure picker screens are too,

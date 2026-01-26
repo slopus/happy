@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, useSessions, useSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +16,7 @@ export default React.memo(function PathPickerScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const router = useRouter();
+    const navigation = useNavigation();
     const params = useLocalSearchParams<{ machineId?: string; selectedPath?: string }>();
     const machines = useAllMachines();
     const sessions = useSessions();
@@ -47,51 +48,70 @@ export default React.memo(function PathPickerScreen() {
         const rawPath = typeof pathOverride === 'string' ? pathOverride : customPath;
         const pathToUse = rawPath.trim() || machine?.metadata?.homeDir || '/home';
         router.setParams({ path: pathToUse });
-        router.back();
-    }, [customPath, router, machine]);
+        navigation.goBack();
+    }, [customPath, machine, navigation, router]);
+
+    const handleBackPress = React.useCallback(() => {
+        navigation.goBack();
+    }, [navigation]);
+
+    const headerTitle = t('newSession.selectPathTitle');
+    const headerBackTitle = t('common.back');
+
+    const headerLeft = React.useCallback(() => {
+        return (
+            <Pressable
+                onPress={handleBackPress}
+                hitSlop={10}
+                style={({ pressed }) => ({
+                    marginLeft: 10,
+                    opacity: pressed ? 0.7 : 1,
+                    padding: 4,
+                })}
+            >
+                <Ionicons name="chevron-back" size={22} color={theme.colors.header.tint} />
+            </Pressable>
+        );
+    }, [handleBackPress, theme.colors.header.tint]);
+
+    const canConfirmCustomPath = customPath.trim().length > 0;
+
+    const headerRight = React.useCallback(() => {
+        return (
+            <Pressable
+                onPress={() => handleSelectPath()}
+                disabled={!canConfirmCustomPath}
+                style={({ pressed }) => ({
+                    opacity: pressed ? 0.7 : 1,
+                    padding: 4,
+                })}
+            >
+                <Ionicons
+                    name="checkmark"
+                    size={24}
+                    color={theme.colors.header.tint}
+                />
+            </Pressable>
+        );
+    }, [canConfirmCustomPath, handleSelectPath, theme.colors.header.tint]);
+
+    const screenOptions = React.useMemo(() => {
+        return {
+            headerShown: true,
+            title: headerTitle,
+            headerTitle,
+            headerBackTitle,
+            presentation: Platform.OS === 'ios' ? 'containedModal' : undefined,
+            headerLeft,
+            headerRight,
+        } as const;
+    }, [headerBackTitle, headerLeft, headerRight, headerTitle]);
 
     if (!machine) {
         return (
             <>
                 <Stack.Screen
-                    options={{
-                        headerShown: true,
-                        headerTitle: t('newSession.selectPathTitle'),
-                        headerBackTitle: t('common.back'),
-                        // /new is presented as `containedModal` on iOS. Ensure picker screens are too,
-                        // otherwise they can be pushed "behind" the modal (invisible but on the back stack).
-                        presentation: Platform.OS === 'ios' ? 'containedModal' : undefined,
-                        headerLeft: () => (
-                            <Pressable
-                                onPress={() => router.back()}
-                                hitSlop={10}
-                                style={({ pressed }) => ({
-                                    marginLeft: 10,
-                                    opacity: pressed ? 0.7 : 1,
-                                    padding: 4,
-                                })}
-                            >
-                                <Ionicons name="chevron-back" size={22} color={theme.colors.header.tint} />
-                            </Pressable>
-                        ),
-                        headerRight: () => (
-                            <Pressable
-                                onPress={() => handleSelectPath()}
-                                disabled={!customPath.trim()}
-                                style={({ pressed }) => ({
-                                    marginRight: 16,
-                                    opacity: pressed ? 0.7 : 1,
-                                    padding: 4,
-                                })}
-                            >
-                                <Ionicons
-                                    name="checkmark"
-                                    size={24}
-                                    color={theme.colors.header.tint}
-                                />
-                            </Pressable>
-                        )
-                    }}
+                    options={screenOptions}
                 />
                 <ItemList>
                     <View style={styles.emptyContainer}>
@@ -105,41 +125,7 @@ export default React.memo(function PathPickerScreen() {
     return (
         <>
             <Stack.Screen
-                options={{
-                    headerShown: true,
-                    headerTitle: t('newSession.selectPathTitle'),
-                    headerBackTitle: t('common.back'),
-                    presentation: Platform.OS === 'ios' ? 'containedModal' : undefined,
-                    headerLeft: () => (
-                        <Pressable
-                            onPress={() => router.back()}
-                            hitSlop={10}
-                            style={({ pressed }) => ({
-                                marginLeft: 10,
-                                opacity: pressed ? 0.7 : 1,
-                                padding: 4,
-                            })}
-                        >
-                            <Ionicons name="chevron-back" size={22} color={theme.colors.header.tint} />
-                        </Pressable>
-                    ),
-                    headerRight: () => (
-                        <Pressable
-                            onPress={() => handleSelectPath()}
-                            disabled={!customPath.trim()}
-                            style={({ pressed }) => ({
-                                opacity: pressed ? 0.7 : 1,
-                                padding: 4,
-                            })}
-                        >
-                            <Ionicons
-                                name="checkmark"
-                                size={24}
-                                color={theme.colors.header.tint}
-                            />
-                        </Pressable>
-                    ),
-                }}
+                options={screenOptions}
             />
             <ItemList style={{ paddingTop: 0 }} keyboardShouldPersistTaps="handled">
                 {usePathPickerSearch && (

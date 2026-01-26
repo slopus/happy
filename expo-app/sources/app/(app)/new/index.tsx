@@ -56,6 +56,7 @@ import { getCodexMcpResumeDepData } from '@/capabilities/codexMcpResume';
 import { getCodexAcpDepData } from '@/capabilities/codexAcpDep';
 import { getInstallableDepRegistryEntries } from '@/capabilities/installableDepsRegistry';
 import { PopoverBoundaryProvider } from '@/components/PopoverBoundary';
+import { PopoverPortalTargetProvider } from '@/components/PopoverPortalTargetProvider';
 import { resolveTerminalSpawnOptions } from '@/sync/terminalSettings';
 import { canAgentResume } from '@/utils/agentCapabilities';
 import type { CapabilityId } from '@/sync/capabilitiesProtocol';
@@ -64,6 +65,8 @@ import { buildAcpLoadSessionPrefetchRequest, shouldPrefetchAcpCapabilities } fro
 import { applySecretRequirementResult } from '@/utils/secretRequirementApply';
 import type { SecretChoiceByProfileIdByEnvVarName } from '@/utils/secretRequirementApply';
 import { shouldAutoPromptSecretRequirement } from '@/utils/secretRequirementPromptEligibility';
+import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
+import { computeNewSessionInputMaxHeight } from '@/components/agentInput/inputMaxHeight';
 
 // Optimized profile lookup utility
 const useProfileMap = (profiles: AIBackendProfile[]) => {
@@ -249,6 +252,7 @@ function NewSessionScreen() {
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+    const keyboardHeight = useKeyboardHeight();
     const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const popoverBoundaryRef = React.useRef<View>(null!);
 
@@ -341,12 +345,12 @@ function NewSessionScreen() {
     }, [pathname]);
 
     const sessionPromptInputMaxHeight = React.useMemo(() => {
-        if (Platform.OS !== 'web') return undefined;
-
-        const ratio = useEnhancedSessionWizard ? 0.25 : 0.35;
-        const cap = useEnhancedSessionWizard ? 240 : 340;
-        return Math.max(120, Math.min(cap, Math.round(screenHeight * ratio)));
-    }, [screenHeight, useEnhancedSessionWizard]);
+        return computeNewSessionInputMaxHeight({
+            useEnhancedSessionWizard,
+            screenHeight,
+            keyboardHeight,
+        });
+    }, [keyboardHeight, screenHeight, useEnhancedSessionWizard]);
     const useProfiles = useSetting('useProfiles');
     const [secrets, setSecrets] = useSettingMutable('secrets');
     const [secretBindingsByProfileId, setSecretBindingsByProfileId] = useSettingMutable('secretBindingsByProfileId');
@@ -2228,7 +2232,8 @@ function NewSessionScreen() {
                         justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
                     }}
                 >
-                    <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
+                    <PopoverPortalTargetProvider>
+                        <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
                         <View style={{
                             width: '100%',
                             alignSelf: 'center',
@@ -2255,20 +2260,21 @@ function NewSessionScreen() {
                             >
                                 <View style={{ paddingHorizontal: newSessionSidePadding }}>
                                     <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                                        <AgentInput
-                                            value={sessionPrompt}
-                                            onChangeText={setSessionPrompt}
-                                            onSend={handleCreateSession}
-                                            isSendDisabled={!canCreate}
-                                            isSending={isCreating}
-                                            placeholder={t('session.inputPlaceholder')}
-                                            autocompletePrefixes={emptyAutocompletePrefixes}
-                                            autocompleteSuggestions={emptyAutocompleteSuggestions}
-                                            agentType={agentType}
-                                            onAgentClick={handleAgentClick}
-                                            permissionMode={permissionMode}
-                                            onPermissionModeChange={handlePermissionModeChange}
-                                            modelMode={modelMode}
+	                                        <AgentInput
+	                                            value={sessionPrompt}
+	                                            onChangeText={setSessionPrompt}
+	                                            onSend={handleCreateSession}
+	                                            isSendDisabled={!canCreate}
+	                                            isSending={isCreating}
+	                                            placeholder={t('session.inputPlaceholder')}
+	                                            autocompletePrefixes={emptyAutocompletePrefixes}
+	                                            autocompleteSuggestions={emptyAutocompleteSuggestions}
+	                                            inputMaxHeight={sessionPromptInputMaxHeight}
+	                                            agentType={agentType}
+	                                            onAgentClick={handleAgentClick}
+	                                            permissionMode={permissionMode}
+	                                            onPermissionModeChange={handlePermissionModeChange}
+	                                            modelMode={modelMode}
                                             onModelModeChange={setModelMode}
                                             connectionStatus={connectionStatus}
                                             machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
@@ -2291,7 +2297,8 @@ function NewSessionScreen() {
                                 </View>
                             </View>
                         </View>
-                    </PopoverBoundaryProvider>
+                        </PopoverBoundaryProvider>
+                    </PopoverPortalTargetProvider>
                 </View>
             </KeyboardAvoidingView>
         );
@@ -2562,15 +2569,17 @@ function NewSessionScreen() {
 
     return (
         <View ref={popoverBoundaryRef} style={{ flex: 1, width: '100%' }}>
-            <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
-                <NewSessionWizard
-                    layout={wizardLayoutProps}
-                    profiles={wizardProfilesProps}
-                    agent={wizardAgentProps}
-                    machine={wizardMachineProps}
-                    footer={wizardFooterProps}
-                />
-            </PopoverBoundaryProvider>
+            <PopoverPortalTargetProvider>
+                <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
+                    <NewSessionWizard
+                        layout={wizardLayoutProps}
+                        profiles={wizardProfilesProps}
+                        agent={wizardAgentProps}
+                        machine={wizardMachineProps}
+                        footer={wizardFooterProps}
+                    />
+                </PopoverBoundaryProvider>
+            </PopoverPortalTargetProvider>
         </View>
     );
 }

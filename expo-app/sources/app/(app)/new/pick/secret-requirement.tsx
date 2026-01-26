@@ -6,6 +6,7 @@ import { useSetting, useSettingMutable } from '@/sync/storage';
 import { getBuiltInProfile } from '@/sync/profileUtils';
 import { SecretRequirementScreen, type SecretRequirementModalResult } from '@/components/SecretRequirementModal';
 import { storeTempData } from '@/utils/tempDataStore';
+import { PopoverPortalTargetProvider } from '@/components/PopoverPortalTargetProvider';
 
 type SecretRequirementRoutePayload = Readonly<{
     profileId: string;
@@ -81,6 +82,13 @@ export default React.memo(function SecretRequirementPickerScreen() {
         return parseJsonRecord(params.selectedSecretIdByEnvVarName);
     }, [params.selectedSecretIdByEnvVarName]);
 
+    const screenOptions = React.useMemo(() => {
+        return {
+            headerShown: false,
+            presentation: Platform.OS === 'ios' ? 'containedTransparentModal' : undefined,
+        } as const;
+    }, []);
+
     const didSendResultRef = React.useRef(false);
 
     const sendResultToNewSession = React.useCallback((result: SecretRequirementModalResult) => {
@@ -119,10 +127,7 @@ export default React.memo(function SecretRequirementPickerScreen() {
         return (
             <>
                 <Stack.Screen
-                    options={{
-                        headerShown: false,
-                        presentation: Platform.OS === 'ios' ? 'containedTransparentModal' : undefined,
-                    }}
+                    options={screenOptions}
                 />
             </>
         );
@@ -131,45 +136,44 @@ export default React.memo(function SecretRequirementPickerScreen() {
     const defaultBindingsForProfile = secretBindingsByProfileId?.[profile.id] ?? null;
 
     return (
-        <>
-            <Stack.Screen
-                options={{
-                    headerShown: false,
-                    presentation: Platform.OS === 'ios' ? 'containedTransparentModal' : undefined,
-                }}
-            />
+        <PopoverPortalTargetProvider>
+            <>
+                <Stack.Screen
+                    options={screenOptions}
+                />
 
-            <SecretRequirementScreen
-                profile={profile}
-                secretEnvVarName={secretEnvVarName}
-                secretEnvVarNames={secretEnvVarNames.length > 0 ? secretEnvVarNames : undefined}
-                machineId={machineId}
-                secrets={secrets}
-                defaultSecretId={defaultBindingsForProfile?.[secretEnvVarName] ?? null}
-                selectedSavedSecretId={
-                    typeof selectedSecretIdByEnvVarName?.[secretEnvVarName] === 'string' &&
-                        String(selectedSecretIdByEnvVarName?.[secretEnvVarName]).trim().length > 0
-                        ? (selectedSecretIdByEnvVarName?.[secretEnvVarName] as string)
-                        : null
-                }
-                selectedSecretIdByEnvVarName={selectedSecretIdByEnvVarName}
-                defaultSecretIdByEnvVarName={defaultBindingsForProfile}
-                onSetDefaultSecretId={(id) => {
-                    if (!id) return;
-                    setSecretBindingsByProfileId({
-                        ...secretBindingsByProfileId,
-                        [profile.id]: {
-                            ...(secretBindingsByProfileId?.[profile.id] ?? {}),
-                            [secretEnvVarName]: id,
-                        },
-                    });
-                }}
-                onChangeSecrets={setSecrets}
-                allowSessionOnly={true}
-                onResolve={sendResultToNewSession}
-                onRequestClose={handleCancel}
-                onClose={handleCancel}
-            />
-        </>
+                <SecretRequirementScreen
+                    profile={profile}
+                    secretEnvVarName={secretEnvVarName}
+                    secretEnvVarNames={secretEnvVarNames.length > 0 ? secretEnvVarNames : undefined}
+                    machineId={machineId}
+                    secrets={secrets}
+                    defaultSecretId={defaultBindingsForProfile?.[secretEnvVarName] ?? null}
+                    selectedSavedSecretId={
+                        typeof selectedSecretIdByEnvVarName?.[secretEnvVarName] === 'string' &&
+                            String(selectedSecretIdByEnvVarName?.[secretEnvVarName]).trim().length > 0
+                            ? (selectedSecretIdByEnvVarName?.[secretEnvVarName] as string)
+                            : null
+                    }
+                    selectedSecretIdByEnvVarName={selectedSecretIdByEnvVarName}
+                    defaultSecretIdByEnvVarName={defaultBindingsForProfile}
+                    onSetDefaultSecretId={(id) => {
+                        if (!id) return;
+                        setSecretBindingsByProfileId({
+                            ...secretBindingsByProfileId,
+                            [profile.id]: {
+                                ...(secretBindingsByProfileId?.[profile.id] ?? {}),
+                                [secretEnvVarName]: id,
+                            },
+                        });
+                    }}
+                    onChangeSecrets={setSecrets}
+                    allowSessionOnly={true}
+                    onResolve={sendResultToNewSession}
+                    onRequestClose={handleCancel}
+                    onClose={handleCancel}
+                />
+            </>
+        </PopoverPortalTargetProvider>
     );
 });

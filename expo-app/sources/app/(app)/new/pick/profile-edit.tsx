@@ -15,6 +15,7 @@ import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfi
 import { Modal } from '@/modal';
 import { promptUnsavedChangesAlert } from '@/utils/promptUnsavedChangesAlert';
 import { Ionicons } from '@expo/vector-icons';
+import { PopoverPortalTargetProvider } from '@/components/PopoverPortalTargetProvider';
 
 export default React.memo(function ProfileEditScreen() {
     const { theme } = useUnistyles();
@@ -242,64 +243,85 @@ export default React.memo(function ProfileEditScreen() {
         })();
     }, [confirmDiscard, router]);
 
+    const headerTitle = profile.name ? t('profiles.editProfile') : t('profiles.addProfile');
+    const headerBackTitle = t('common.back');
+
+    const headerLeft = React.useCallback(() => {
+        return (
+            <Pressable
+                onPress={handleCancel}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.cancel')}
+                hitSlop={12}
+                style={({ pressed }) => ({
+                    opacity: pressed ? 0.7 : 1,
+                    padding: 4,
+                })}
+            >
+                <Ionicons name="close" size={24} color={theme.colors.header.tint} />
+            </Pressable>
+        );
+    }, [handleCancel, theme.colors.header.tint]);
+
+    const handleSavePress = React.useCallback(() => {
+        saveRef.current?.();
+    }, []);
+
+    const headerRight = React.useCallback(() => {
+        return (
+            <Pressable
+                onPress={handleSavePress}
+                disabled={!isDirty}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.save')}
+                hitSlop={12}
+                style={({ pressed }) => ({
+                    opacity: !isDirty ? 0.35 : pressed ? 0.7 : 1,
+                    padding: 4,
+                })}
+            >
+                <Ionicons name="checkmark" size={24} color={theme.colors.header.tint} />
+            </Pressable>
+        );
+    }, [handleSavePress, isDirty, theme.colors.header.tint]);
+
+    const screenOptions = React.useMemo(() => {
+        return {
+            headerTitle,
+            headerBackTitle,
+            headerLeft,
+            headerRight,
+        } as const;
+    }, [headerBackTitle, headerLeft, headerRight, headerTitle]);
+
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + headerHeight : 0}
-            style={profileEditScreenStyles.container}
-        >
-            <Stack.Screen
-                options={{
-                    headerTitle: profile.name ? t('profiles.editProfile') : t('profiles.addProfile'),
-                    headerBackTitle: t('common.back'),
-                    headerLeft: () => (
-                        <Pressable
-                            onPress={handleCancel}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('common.cancel')}
-                            hitSlop={12}
-                            style={({ pressed }) => ({
-                                opacity: pressed ? 0.7 : 1,
-                                padding: 4,
-                            })}
-                        >
-                            <Ionicons name="close" size={24} color={theme.colors.header.tint} />
-                        </Pressable>
-                    ),
-                    headerRight: () => (
-                        <Pressable
-                            onPress={() => saveRef.current?.()}
-                            disabled={!isDirty}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('common.save')}
-                            hitSlop={12}
-                            style={({ pressed }) => ({
-                                opacity: !isDirty ? 0.35 : pressed ? 0.7 : 1,
-                                padding: 4,
-                            })}
-                        >
-                            <Ionicons name="checkmark" size={24} color={theme.colors.header.tint} />
-                        </Pressable>
-                    ),
-                }}
-            />
-            <View style={[
-                { flex: 1, paddingHorizontal: screenWidth > 700 ? 16 : 8 }
-            ]}>
+        <PopoverPortalTargetProvider>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + headerHeight : 0}
+                style={profileEditScreenStyles.container}
+            >
+                <Stack.Screen
+                    options={screenOptions}
+                />
                 <View style={[
-                    { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
+                    { flex: 1, paddingHorizontal: screenWidth > 700 ? 16 : 8 }
                 ]}>
-                    <ProfileEditForm
-                        profile={profile}
-                        machineId={machineIdParam || null}
-                        onSave={handleSave}
-                        onCancel={handleCancel}
-                        onDirtyChange={setIsDirty}
-                        saveRef={saveRef}
-                    />
+                    <View style={[
+                        { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
+                    ]}>
+                        <ProfileEditForm
+                            profile={profile}
+                            machineId={machineIdParam || null}
+                            onSave={handleSave}
+                            onCancel={handleCancel}
+                            onDirtyChange={setIsDirty}
+                            saveRef={saveRef}
+                        />
+                    </View>
                 </View>
-            </View>
-        </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
+        </PopoverPortalTargetProvider>
     );
 });
 

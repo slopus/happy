@@ -30,6 +30,7 @@ vi.mock('expo-router', () => ({
         },
     },
     useRouter: () => ({ back: vi.fn(), setParams: vi.fn() }),
+    useNavigation: () => ({ goBack: vi.fn() }),
     useLocalSearchParams: () => ({ selectedId: '' }),
 }));
 

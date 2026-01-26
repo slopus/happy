@@ -30,6 +30,7 @@ import { SecretRequirementModal, type SecretRequirementModalResult } from '@/com
 import { parseEnvVarTemplate } from '@/utils/envVarTemplate';
 import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
 import { getAgentCore, type AgentId, type MachineLoginKey } from '@/agents/registryCore';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
@@ -117,6 +118,9 @@ export function ProfileEditForm({
     saveRef,
 }: ProfileEditFormProps) {
     const { theme, rt } = useUnistyles();
+    const router = useRouter();
+    const routeParams = useLocalSearchParams<{ previewMachineId?: string | string[] }>();
+    const previewMachineIdParam = Array.isArray(routeParams.previewMachineId) ? routeParams.previewMachineId[0] : routeParams.previewMachineId;
     const selectedIndicatorColor = rt.themeName === 'dark' ? theme.colors.text : theme.colors.button.primary.background;
     const styles = stylesheet;
     const popoverBoundaryRef = React.useRef<any>(null);
@@ -131,6 +135,17 @@ export function ProfileEditForm({
     React.useEffect(() => {
         setPreviewMachineId(routeMachine);
     }, [routeMachine]);
+
+    React.useEffect(() => {
+        if (routeMachine) return;
+        if (typeof previewMachineIdParam !== 'string') return;
+        const trimmed = previewMachineIdParam.trim();
+        if (trimmed.length === 0) {
+            setPreviewMachineId(null);
+            return;
+        }
+        setPreviewMachineId(trimmed);
+    }, [previewMachineIdParam, routeMachine]);
 
     const resolvedMachineId = routeMachine ?? previewMachineId;
     const resolvedMachine = useMachine(resolvedMachineId ?? '');
@@ -158,11 +173,16 @@ export function ProfileEditForm({
     }, [favoriteMachines, machines, previewMachineId, toggleFavoriteMachineId]);
 
     const showMachinePreviewPicker = React.useCallback(() => {
+        if (Platform.OS !== 'web') {
+            const params = previewMachineId ? { selectedId: previewMachineId } : {};
+            router.push({ pathname: '/new/pick/preview-machine', params } as any);
+            return;
+        }
         Modal.show({
             component: MachinePreviewModalWrapper,
             props: {},
         });
-    }, [MachinePreviewModalWrapper]);
+    }, [MachinePreviewModalWrapper, previewMachineId, router]);
 
     const profileDocs = React.useMemo(() => {
         if (!profile.isBuiltIn) return null;
@@ -435,9 +455,6 @@ export function ProfileEditForm({
     }, [compatibility, enabledAgentIds]);
 
     const [openPermissionProvider, setOpenPermissionProvider] = React.useState<null | AgentId>(null);
-    const openPermissionDropdown = React.useCallback((provider: AgentId) => {
-        requestAnimationFrame(() => setOpenPermissionProvider(provider));
-    }, []);
 
     const setDefaultPermissionModeForProvider = React.useCallback((provider: AgentId, next: PermissionMode | null) => {
         setDefaultPermissionModes((prev) => {
@@ -729,7 +746,7 @@ export function ProfileEditForm({
                                 connectToTrigger={true}
                                 rowKind="item"
                                 selectedId={override ?? '__account__'}
-                                trigger={(
+                                trigger={({ open, toggle }) => (
                                     <Item
                                         selected={false}
                                         title={t(core.displayNameKey)}
@@ -746,14 +763,14 @@ export function ProfileEditForm({
                                                     color={theme.colors.textSecondary}
                                                 />
                                                 <Ionicons
-                                                    name={openPermissionProvider === agentId ? 'chevron-up' : 'chevron-down'}
+                                                    name={open ? 'chevron-up' : 'chevron-down'}
                                                     size={20}
                                                     color={theme.colors.textSecondary}
                                                 />
                                             </View>
                                         )}
                                         showChevron={false}
-                                        onPress={() => openPermissionDropdown(agentId)}
+                                        onPress={toggle}
                                         showDivider={showDivider}
                                     />
                                 )}

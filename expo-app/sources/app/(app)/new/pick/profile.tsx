@@ -13,17 +13,18 @@ import type { ItemAction } from '@/components/itemActions/types';
 import { machinePreviewEnv } from '@/sync/ops';
 import { getProfileEnvironmentVariables } from '@/sync/settings';
 import { getRequiredSecretEnvVarNames } from '@/sync/profileSecrets';
-import { storeTempData } from '@/utils/tempDataStore';
+import { getTempData, storeTempData } from '@/utils/tempDataStore';
 import { ProfilesList } from '@/components/profiles/ProfilesList';
 import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/SecretRequirementModal';
 import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
 import { useMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
+import { PopoverPortalTargetProvider } from '@/components/PopoverPortalTargetProvider';
 
 export default React.memo(function ProfilePickerScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
     const navigation = useNavigation();
-    const params = useLocalSearchParams<{ selectedId?: string; machineId?: string; profileId?: string | string[] }>();
+    const params = useLocalSearchParams<{ selectedId?: string; machineId?: string; profileId?: string | string[]; secretRequirementResultId?: string }>();
     const useProfiles = useSetting('useProfiles');
     const experimentsEnabled = useSetting('experiments');
     const [secrets, setSecrets] = useSettingMutable('secrets');
@@ -34,6 +35,7 @@ export default React.memo(function ProfilePickerScreen() {
     const selectedId = typeof params.selectedId === 'string' ? params.selectedId : '';
     const machineId = typeof params.machineId === 'string' ? params.machineId : undefined;
     const profileId = Array.isArray(params.profileId) ? params.profileId[0] : params.profileId;
+    const secretRequirementResultId = typeof params.secretRequirementResultId === 'string' ? params.secretRequirementResultId : '';
     const setParamsOnPreviousAndClose = React.useCallback((next: { profileId: string; secretId?: string; secretSessionOnlyId?: string }) => {
         const state = navigation.getState();
         const previousRoute = state?.routes?.[state.index - 1];
@@ -47,11 +49,95 @@ export default React.memo(function ProfilePickerScreen() {
         router.back();
     }, [navigation, router]);
 
+    // When the secret requirement screen is used (native), it returns a temp id via params.
+    // We handle it here and then return to the previous route with the correct selection.
+    React.useEffect(() => {
+        if (typeof secretRequirementResultId !== 'string' || secretRequirementResultId.length === 0) {
+            return;
+        }
+
+        const entry = getTempData<{
+            profileId: string;
+            revertOnCancel: boolean;
+            result: SecretRequirementModalResult;
+        }>(secretRequirementResultId);
+
+        const clearParam = () => {
+            const setParams = (navigation as any)?.setParams;
+            if (typeof setParams === 'function') {
+                setParams({ secretRequirementResultId: undefined });
+            } else {
+                navigation.dispatch({
+                    type: 'SET_PARAMS',
+                    payload: { params: { secretRequirementResultId: undefined } },
+                } as never);
+            }
+        };
+
+        if (!entry || !entry?.result) {
+            clearParam();
+            return;
+        }
+
+        const result = entry.result;
+        if (result.action === 'cancel') {
+            clearParam();
+            return;
+        }
+
+        const resolvedProfileId = entry.profileId;
+        if (result.action === 'useMachine') {
+            setParamsOnPreviousAndClose({ profileId: resolvedProfileId, secretId: '' });
+            return;
+        }
+
+        if (result.action === 'enterOnce') {
+            const tempId = storeTempData({ secret: result.value });
+            setParamsOnPreviousAndClose({ profileId: resolvedProfileId, secretSessionOnlyId: tempId });
+            return;
+        }
+
+        if (result.action === 'selectSaved') {
+            const envVarName = result.envVarName.trim().toUpperCase();
+            if (result.setDefault && envVarName.length > 0) {
+                setSecretBindingsByProfileId({
+                    ...secretBindingsByProfileId,
+                    [resolvedProfileId]: {
+                        ...(secretBindingsByProfileId[resolvedProfileId] ?? {}),
+                        [envVarName]: result.secretId,
+                    },
+                });
+            }
+            setParamsOnPreviousAndClose({ profileId: resolvedProfileId, secretId: result.secretId });
+            return;
+        }
+
+        clearParam();
+    }, [navigation, secretBindingsByProfileId, secretRequirementResultId, setParamsOnPreviousAndClose, setSecretBindingsByProfileId]);
+
     const openSecretModal = React.useCallback((profile: AIBackendProfile, envVarName: string) => {
         const requiredSecretName = envVarName.trim().toUpperCase();
         if (!requiredSecretName) return;
 
         const requiredSecretNames = getRequiredSecretEnvVarNames(profile);
+
+        if (Platform.OS !== 'web') {
+            const selectedSecretIdByEnvVarName = secretBindingsByProfileId[profile.id] ?? null;
+            router.push({
+                pathname: '/new/pick/secret-requirement',
+                params: {
+                    profileId: profile.id,
+                    machineId: machineId ?? undefined,
+                    secretEnvVarName: requiredSecretName,
+                    secretEnvVarNames: requiredSecretNames.join(','),
+                    revertOnCancel: '0',
+                    selectedSecretIdByEnvVarName: selectedSecretIdByEnvVarName
+                        ? encodeURIComponent(JSON.stringify(selectedSecretIdByEnvVarName))
+                        : undefined,
+                },
+            } as any);
+            return;
+        }
 
         const handleResolve = (result: SecretRequirementModalResult) => {
             if (result.action === 'cancel') return;
@@ -99,7 +185,7 @@ export default React.memo(function ProfilePickerScreen() {
             },
             closeOnBackdrop: true,
         });
-    }, [machineId, secretBindingsByProfileId, secrets, setParamsOnPreviousAndClose, setSecretBindingsByProfileId, setSecrets]);
+    }, [machineId, router, secretBindingsByProfileId, secrets, setParamsOnPreviousAndClose, setSecretBindingsByProfileId, setSecrets]);
 
     const handleProfilePress = React.useCallback(async (profile: AIBackendProfile) => {
         const profileId = profile.id;
@@ -231,90 +317,105 @@ export default React.memo(function ProfilePickerScreen() {
         );
     }, [profiles, selectedId, setParamsOnPreviousAndClose, setProfiles]);
 
-    return (
-        <>
-            <Stack.Screen
-                options={{
-                    headerShown: true,
-                    headerTitle: t('profiles.title'),
-                    headerBackTitle: t('common.back'),
-                    // /new is presented as `containedModal` on iOS. Ensure picker screens are too,
-                    // otherwise they can be pushed "behind" the modal (invisible but on the back stack).
-                    presentation: Platform.OS === 'ios' ? 'containedModal' : undefined,
-                    headerLeft: () => (
-                        <Pressable
-                            onPress={() => router.back()}
-                            hitSlop={10}
-                            style={({ pressed }) => ({ marginLeft: 10, padding: 4, opacity: pressed ? 0.7 : 1 })}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('common.back')}
-                        >
-                            <Ionicons name="chevron-back" size={22} color={theme.colors.header.tint} />
-                        </Pressable>
-                    ),
-                }}
-            />
+    const handleBackPress = React.useCallback(() => {
+        navigation.goBack();
+    }, [navigation]);
 
-            {!useProfiles ? (
-                <ItemGroup footer={t('settingsFeatures.profilesDisabled')}>
-                    <Item
-                        title={t('settingsFeatures.profiles')}
-                        subtitle={t('settingsFeatures.profilesDisabled')}
-                        icon={<Ionicons name="person-outline" size={29} color={theme.colors.textSecondary} />}
-                        showChevron={false}
-                    />
-                    <Item
-                        title={t('settings.featuresTitle')}
-                        subtitle={t('settings.featuresSubtitle')}
-                        icon={<Ionicons name="flask-outline" size={29} color={theme.colors.textSecondary} />}
-                        onPress={() => router.push('/settings/features')}
-                    />
-                </ItemGroup>
-            ) : (
-                <ProfilesList
-                    customProfiles={profiles}
-                    favoriteProfileIds={favoriteProfileIds}
-                    onFavoriteProfileIdsChange={setFavoriteProfileIds}
-                    experimentsEnabled={experimentsEnabled}
-                    selectedProfileId={selectedId || null}
-                    onPressProfile={handleProfilePress}
-                    includeDefaultEnvironmentRow
-                    onPressDefaultEnvironment={handleDefaultEnvironmentPress}
-                    includeAddProfileRow
-                    onAddProfilePress={handleAddProfile}
-                    machineId={machineId ?? null}
-                    getSecretOverrideReady={(profile) => {
-                        const requiredSecretNames = getRequiredSecretEnvVarNames(profile);
-                        if (requiredSecretNames.length === 0) return false;
-                        const satisfaction = getSecretSatisfaction({
-                            profile,
-                            secrets,
-                            defaultBindings: secretBindingsByProfileId[profile.id] ?? null,
-                            machineEnvReadyByName: null,
-                        });
-                        if (!satisfaction.isSatisfied) return false;
-                        const required = satisfaction.items.filter((i) => i.required);
-                        if (required.length == 0) return false;
-                        return required.some((i) => i.satisfiedBy !== 'machineEnv');
-                    }}
-                    getSecretMachineEnvOverride={getSecretMachineEnvOverride}
-                    onEditProfile={(p) => openProfileEdit(p.id)}
-                    onDuplicateProfile={(p) => openProfileDuplicate(p.id)}
-                    onDeleteProfile={handleDeleteProfile}
-                    onSecretBadgePress={(profile) => {
-                        const missing = getSecretSatisfaction({
-                            profile,
-                            secrets,
-                            defaultBindings: secretBindingsByProfileId[profile.id] ?? null,
-                            machineEnvReadyByName: machineEnvPresence.meta
-                                ? Object.fromEntries(Object.entries(machineEnvPresence.meta).map(([k, v]) => [k, Boolean(v?.isSet)]))
-                                : null,
-                        }).items.find((i) => i.required && !i.isSatisfied)?.envVarName ?? null;
-                        openSecretModal(profile, missing ?? (getRequiredSecretEnvVarNames(profile)[0] ?? ''));
-                    }}
+    const headerLeft = React.useCallback(() => {
+        return (
+            <Pressable
+                onPress={handleBackPress}
+                hitSlop={10}
+                style={({ pressed }) => ({ marginLeft: 10, padding: 4, opacity: pressed ? 0.7 : 1 })}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.back')}
+            >
+                <Ionicons name="chevron-back" size={22} color={theme.colors.header.tint} />
+            </Pressable>
+        );
+    }, [handleBackPress, theme.colors.header.tint]);
+
+    const screenOptions = React.useCallback(() => {
+        return {
+            headerShown: true,
+            title: t('profiles.title'),
+            headerTitle: t('profiles.title'),
+            headerBackTitle: t('common.back'),
+            // /new is presented as `containedModal` on iOS. Ensure picker screens are too,
+            // otherwise they can be pushed "behind" the modal (invisible but on the back stack).
+            presentation: Platform.OS === 'ios' ? 'containedModal' : undefined,
+            headerLeft,
+        } as const;
+    }, [headerLeft]);
+
+    return (
+        <PopoverPortalTargetProvider>
+            <>
+                <Stack.Screen
+                    options={screenOptions}
                 />
-            )}
-        </>
+
+                {!useProfiles ? (
+                    <ItemGroup footer={t('settingsFeatures.profilesDisabled')}>
+                        <Item
+                            title={t('settingsFeatures.profiles')}
+                            subtitle={t('settingsFeatures.profilesDisabled')}
+                            icon={<Ionicons name="person-outline" size={29} color={theme.colors.textSecondary} />}
+                            showChevron={false}
+                        />
+                        <Item
+                            title={t('settings.featuresTitle')}
+                            subtitle={t('settings.featuresSubtitle')}
+                            icon={<Ionicons name="flask-outline" size={29} color={theme.colors.textSecondary} />}
+                            onPress={() => router.push('/settings/features')}
+                        />
+                    </ItemGroup>
+                ) : (
+                    <ProfilesList
+                        customProfiles={profiles}
+                        favoriteProfileIds={favoriteProfileIds}
+                        onFavoriteProfileIdsChange={setFavoriteProfileIds}
+                        experimentsEnabled={experimentsEnabled}
+                        selectedProfileId={selectedId || null}
+                        onPressProfile={handleProfilePress}
+                        includeDefaultEnvironmentRow
+                        onPressDefaultEnvironment={handleDefaultEnvironmentPress}
+                        includeAddProfileRow
+                        onAddProfilePress={handleAddProfile}
+                        machineId={machineId ?? null}
+                        getSecretOverrideReady={(profile) => {
+                            const requiredSecretNames = getRequiredSecretEnvVarNames(profile);
+                            if (requiredSecretNames.length === 0) return false;
+                            const satisfaction = getSecretSatisfaction({
+                                profile,
+                                secrets,
+                                defaultBindings: secretBindingsByProfileId[profile.id] ?? null,
+                                machineEnvReadyByName: null,
+                            });
+                            if (!satisfaction.isSatisfied) return false;
+                            const required = satisfaction.items.filter((i) => i.required);
+                            if (required.length == 0) return false;
+                            return required.some((i) => i.satisfiedBy !== 'machineEnv');
+                        }}
+                        getSecretMachineEnvOverride={getSecretMachineEnvOverride}
+                        onEditProfile={(p) => openProfileEdit(p.id)}
+                        onDuplicateProfile={(p) => openProfileDuplicate(p.id)}
+                        onDeleteProfile={handleDeleteProfile}
+                        onSecretBadgePress={(profile) => {
+                            const missing = getSecretSatisfaction({
+                                profile,
+                                secrets,
+                                defaultBindings: secretBindingsByProfileId[profile.id] ?? null,
+                                machineEnvReadyByName: machineEnvPresence.meta
+                                    ? Object.fromEntries(Object.entries(machineEnvPresence.meta).map(([k, v]) => [k, Boolean(v?.isSet)]))
+                                    : null,
+                            }).items.find((i) => i.required && !i.isSatisfied)?.envVarName ?? null;
+                            openSecretModal(profile, missing ?? (getRequiredSecretEnvVarNames(profile)[0] ?? ''));
+                        }}
+                    />
+                )}
+            </>
+        </PopoverPortalTargetProvider>
     );
 });
 
