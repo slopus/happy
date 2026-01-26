@@ -16,6 +16,7 @@ import { claimMessageQueueV1Next, clearMessageQueueV1InFlight, discardMessageQue
 import { fetchSessionSnapshotUpdateFromServer, shouldSyncSessionSnapshotOnConnect } from './session/snapshotSync';
 import { createSessionScopedSocket, createUserScopedSocket } from './session/sockets';
 import { isToolTraceEnabled, recordAcpToolTraceEventIfNeeded, recordClaudeToolTraceEvents, recordCodexToolTraceEventIfNeeded } from './session/toolTrace';
+import { updateSessionAgentStateWithAck, updateSessionMetadataWithAck } from './session/stateUpdates';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -838,28 +839,21 @@ export class ApiSessionClient extends EventEmitter {
      */
     updateMetadata(handler: (metadata: Metadata) => Metadata) {
         this.metadataLock.inLock(async () => {
-            await backoff(async () => {
-                if (this.metadataVersion < 0) {
-                    await this.syncSessionSnapshotFromServer({ reason: 'waitForMetadataUpdate' });
-                    if (this.metadataVersion < 0) {
-                        logger.debug('[API] updateMetadata skipped: metadataVersion is still unknown');
-                        return;
-                    }
-                }
-                let updated = handler(this.metadata!); // Weird state if metadata is null - should never happen but here we are
-                const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) });
-                if (answer.result === 'success') {
-                    this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
-                    this.metadataVersion = answer.version;
-                } else if (answer.result === 'version-mismatch') {
-                    if (answer.version > this.metadataVersion) {
-                        this.metadataVersion = answer.version;
-                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
-                    }
-                    throw new Error('Metadata version mismatch');
-                } else if (answer.result === 'error') {
-                    // Hard error - ignore
-                }
+            await updateSessionMetadataWithAck({
+                socket: this.socket as any,
+                sessionId: this.sessionId,
+                encryptionKey: this.encryptionKey,
+                encryptionVariant: this.encryptionVariant,
+                getMetadata: () => this.metadata,
+                setMetadata: (metadata) => {
+                    this.metadata = metadata;
+                },
+                getMetadataVersion: () => this.metadataVersion,
+                setMetadataVersion: (version) => {
+                    this.metadataVersion = version;
+                },
+                syncSessionSnapshotFromServer: () => this.syncSessionSnapshotFromServer({ reason: 'waitForMetadataUpdate' }),
+                handler,
             });
         });
     }
@@ -871,30 +865,21 @@ export class ApiSessionClient extends EventEmitter {
     updateAgentState(handler: (metadata: AgentState) => AgentState) {
         logger.debugLargeJson('Updating agent state', this.agentState);
         this.agentStateLock.inLock(async () => {
-            await backoff(async () => {
-                if (this.agentStateVersion < 0) {
-                    await this.syncSessionSnapshotFromServer({ reason: 'waitForMetadataUpdate' });
-                    if (this.agentStateVersion < 0) {
-                        logger.debug('[API] updateAgentState skipped: agentStateVersion is still unknown');
-                        return;
-                    }
-                }
-                let updated = handler(this.agentState || {});
-                const answer = await this.socket.emitWithAck('update-state', { sid: this.sessionId, expectedVersion: this.agentStateVersion, agentState: updated ? encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) : null });
-                if (answer.result === 'success') {
-                    this.agentState = answer.agentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState)) : null;
-                    this.agentStateVersion = answer.version;
-                    logger.debug('Agent state updated', this.agentState);
-                } else if (answer.result === 'version-mismatch') {
-                    if (answer.version > this.agentStateVersion) {
-                        this.agentStateVersion = answer.version;
-                        this.agentState = answer.agentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState)) : null;
-                    }
-                    throw new Error('Agent state version mismatch');
-                } else if (answer.result === 'error') {
-                    // console.error('Agent state update error', answer);
-                    // Hard error - ignore
-                }
+            await updateSessionAgentStateWithAck({
+                socket: this.socket as any,
+                sessionId: this.sessionId,
+                encryptionKey: this.encryptionKey,
+                encryptionVariant: this.encryptionVariant,
+                getAgentState: () => this.agentState,
+                setAgentState: (agentState) => {
+                    this.agentState = agentState;
+                },
+                getAgentStateVersion: () => this.agentStateVersion,
+                setAgentStateVersion: (version) => {
+                    this.agentStateVersion = version;
+                },
+                syncSessionSnapshotFromServer: () => this.syncSessionSnapshotFromServer({ reason: 'waitForMetadataUpdate' }),
+                handler,
             });
         });
     }
