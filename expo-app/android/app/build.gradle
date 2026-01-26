@@ -87,15 +87,23 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.slopus.happy.dev'
+    namespace 'com.hitosea.happy'
     defaultConfig {
-        applicationId 'com.slopus.happy.dev'
+        applicationId 'com.hitosea.happy'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.6.2"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
+
+        // Filter ABIs based on ABI_FILTERS environment variable
+        def abiFiltersEnv = System.getenv("ABI_FILTERS")
+        if (abiFiltersEnv != null && !abiFiltersEnv.isEmpty()) {
+            ndk {
+                abiFilters(*abiFiltersEnv.split(","))
+            }
+        }
     }
     signingConfigs {
         debug {

@@ -10,7 +10,11 @@
       "distribution": "internal",
       "channel": "development",
       "env": {
-        "APP_ENV": "development"
+        "APP_ENV": "development",
+        "ABI_FILTERS": "arm64-v8a,x86_64"
+      },
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-16.4"
       }
     },
     "development-store": {
@@ -19,7 +23,11 @@
       "distribution": "store",
       "channel": "development",
       "env": {
-        "APP_ENV": "development"
+        "APP_ENV": "development",
+        "ABI_FILTERS": "arm64-v8a,x86_64"
+      },
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-16.4"
       }
     },
     "preview": {
@@ -27,7 +35,14 @@
       "distribution": "internal",
       "channel": "preview",
       "env": {
-        "APP_ENV": "preview"
+        "APP_ENV": "preview",
+        "ABI_FILTERS": "arm64-v8a"
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-16.4"
       }
     },
     "preview-store": {
@@ -35,14 +50,22 @@
       "distribution": "store",
       "channel": "preview",
       "env": {
-        "APP_ENV": "preview"
+        "APP_ENV": "preview",
+        "ABI_FILTERS": "arm64-v8a"
+      },
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-16.4"
       }
     },
     "production": {
       "autoIncrement": true,
       "channel": "production",
       "env": {
-        "APP_ENV": "production"
+        "APP_ENV": "production",
+        "ABI_FILTERS": "arm64-v8a,armeabi-v7a"
+      },
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-16.4"
       }
     }
   },
