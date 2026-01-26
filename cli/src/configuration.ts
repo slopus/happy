@@ -29,8 +29,8 @@ class Configuration {
 
   constructor() {
     // Server configuration - priority: parameter > environment > default
-    this.serverUrl = process.env.HAPPY_SERVER_URL || 'https://happy.hitosea.com'
-    this.webappUrl = process.env.HAPPY_WEBAPP_URL || 'https://app.happy.engineering'
+    this.serverUrl = process.env.HAPPY_SERVER_URL || 'https://api.happy.hitosea.com'
+    this.webappUrl = process.env.HAPPY_WEBAPP_URL || 'https://happy.hitosea.com'
 
     // Check if we're running as daemon based on process args
     const args = process.argv.slice(2)
