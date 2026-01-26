@@ -14,6 +14,9 @@ import { readCredentials } from './persistence'
 import { authAndSetupMachineIfNeeded } from './ui/auth'
 import packageJson from '../package.json'
 import { z } from 'zod'
+import { existsSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { startDaemon } from './daemon/run'
 import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './daemon/controlClient'
 import { getLatestDaemonLog } from './ui/logger'
@@ -27,6 +30,7 @@ import { handleAuthCommand } from './commands/auth'
 import { handleConnectCommand } from './commands/connect'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
+import { setGeminiModelConfig } from './gemini/utils/setGeminiModelConfig'
 	import { execFileSync } from 'node:child_process'
 	import { parseAndStripTerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags'
 	import { handleAttachCommand } from '@/commands/attach'
@@ -262,34 +266,7 @@ import { claudeCliPath } from './claude/claudeLocal'
       }
       
       try {
-        const { existsSync, readFileSync, writeFileSync, mkdirSync } = require('fs');
-        const { join } = require('path');
-        const { homedir } = require('os');
-        
-        const configDir = join(homedir(), '.gemini');
-        const configPath = join(configDir, 'config.json');
-        
-        // Create directory if it doesn't exist
-        if (!existsSync(configDir)) {
-          mkdirSync(configDir, { recursive: true });
-        }
-        
-        // Read existing config or create new one
-        let config: any = {};
-        if (existsSync(configPath)) {
-          try {
-            config = JSON.parse(readFileSync(configPath, 'utf-8'));
-          } catch (error) {
-            // Ignore parse errors, start fresh
-            config = {};
-          }
-        }
-        
-        // Update model in config
-        config.model = modelName;
-        
-        // Write config back
-        writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+        const { configPath } = setGeminiModelConfig({ model: modelName });
         console.log(`✓ Model set to: ${modelName}`);
         console.log(`  Config saved to: ${configPath}`);
         console.log(`  This model will be used in future sessions.`);
@@ -303,10 +280,6 @@ import { claudeCliPath } from './claude/claudeLocal'
     // Handle "happy gemini model get" command
     if (geminiSubcommand === 'model' && args[2] === 'get') {
       try {
-        const { existsSync, readFileSync } = require('fs');
-        const { join } = require('path');
-        const { homedir } = require('os');
-        
         const configPaths = [
           join(homedir(), '.gemini', 'config.json'),
           join(homedir(), '.config', 'gemini', 'config.json'),
