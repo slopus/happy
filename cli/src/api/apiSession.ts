@@ -456,16 +456,18 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    waitForMetadataUpdate(abortSignal?: AbortSignal): Promise<boolean> {
-        if (abortSignal?.aborted) {
-            return Promise.resolve(false);
-        }
-        if (this.metadataVersion < 0 || this.agentStateVersion < 0) {
-            void this.syncSessionSnapshotFromServer({ reason: 'waitForMetadataUpdate' });
-        }
-        return new Promise((resolve) => {
-            let cleanedUp = false;
-            const shouldWatchConnect = !this.userSocket.connected;
+	    waitForMetadataUpdate(abortSignal?: AbortSignal): Promise<boolean> {
+	        if (abortSignal?.aborted) {
+	            return Promise.resolve(false);
+	        }
+	        const startMetadataVersion = this.metadataVersion;
+	        const startAgentStateVersion = this.agentStateVersion;
+	        if (startMetadataVersion < 0 || startAgentStateVersion < 0) {
+	            void this.syncSessionSnapshotFromServer({ reason: 'waitForMetadataUpdate' });
+	        }
+	        return new Promise((resolve) => {
+	            let cleanedUp = false;
+	            const shouldWatchConnect = !this.userSocket.connected;
             const onUpdate = () => {
                 cleanup();
                 resolve(true);
@@ -498,14 +500,29 @@ export class ApiSessionClient extends EventEmitter {
             if (shouldWatchConnect) {
                 this.userSocket.on('connect', onConnect);
             }
-            abortSignal?.addEventListener('abort', onAbort, { once: true });
-            this.userSocket.on('disconnect', onDisconnect);
+	            abortSignal?.addEventListener('abort', onAbort, { once: true });
+	            this.userSocket.on('disconnect', onDisconnect);
 
-            // Ensure we can observe metadata updates even when the server broadcasts them only to user-scoped clients.
-            // This keeps idle agents wakeable without requiring server changes.
-            this.kickUserSocketConnect();
-        });
-    }
+	            // Ensure we can observe metadata updates even when the server broadcasts them only to user-scoped clients.
+	            // This keeps idle agents wakeable without requiring server changes.
+	            this.kickUserSocketConnect();
+
+	            if (abortSignal?.aborted) {
+	                onAbort();
+	                return;
+	            }
+
+	            // Avoid lost wakeups if a snapshot sync or socket event raced with handler registration.
+	            if (this.metadataVersion !== startMetadataVersion || this.agentStateVersion !== startAgentStateVersion) {
+	                onUpdate();
+	                return;
+	            }
+	            if (shouldWatchConnect && this.userSocket.connected) {
+	                onConnect();
+	                return;
+	            }
+	        });
+	    }
 
     private async maybeClearPendingInFlight(localId: string | null): Promise<void> {
         if (!localId) return;

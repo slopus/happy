@@ -396,6 +396,30 @@ describe('ApiSessionClient connection handling', () => {
                 await expect(promise).resolves.toBe(true);
             });
 
+            it('waitForMetadataUpdate does not miss snapshot sync updates started before handlers attach', async () => {
+                const client = new ApiSessionClient('fake-token', mockSession);
+
+                (client as any).metadataVersion = -1;
+                (client as any).agentStateVersion = -1;
+
+                (client as any).syncSessionSnapshotFromServer = () => {
+                    (client as any).metadataVersion = 1;
+                    (client as any).agentStateVersion = 1;
+                    client.emit('metadata-updated');
+                    return Promise.resolve();
+                };
+
+                const promise = client.waitForMetadataUpdate();
+                await expect(
+                    Promise.race([
+                        promise,
+                        new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error('waitForMetadataUpdate() hung after snapshot sync')), 50)
+                        )
+                    ])
+                ).resolves.toBe(true);
+            });
+
             it('updateMetadata syncs a snapshot first when metadataVersion is unknown', async () => {
                 const sessionSocket: any = {
                     connected: false,
