@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TrackedSession } from './types';
+import type { TrackedSession } from '../types';
 import { findRunningTrackedSessionById } from './findRunningTrackedSessionById';
 
 describe('findRunningTrackedSessionById', () => {
@@ -50,4 +50,3 @@ describe('findRunningTrackedSessionById', () => {
         expect(found).toBeNull();
     });
 });
-

@@ -24,17 +24,17 @@ import {
   readCredentials,
 } from '@/persistence';
 import { supportsVendorResume } from '@/utils/agentCapabilities';
-import { createSessionAttachFile } from './sessionAttachFile';
 import { getCodexAcpDepStatus } from '@/modules/common/capabilities/deps/codexAcp';
-import { getDaemonShutdownExitCode, getDaemonShutdownWatchdogTimeoutMs } from './shutdownPolicy';
+import { createSessionAttachFile } from './sessions/sessionAttachFile';
+import { getDaemonShutdownExitCode, getDaemonShutdownWatchdogTimeoutMs } from './lifecycle/shutdownPolicy';
 
-import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
-import { startDaemonControlServer } from './controlServer';
-import { findAllHappyProcesses, findHappyProcessByPid } from './doctor';
-import { hashProcessCommand, listSessionMarkers, removeSessionMarker, writeSessionMarker } from './sessionRegistry';
-import { findRunningTrackedSessionById } from './findRunningTrackedSessionById';
-import { isPidSafeHappySessionProcess } from './pidSafety';
-import { adoptSessionsFromMarkers } from './reattach';
+import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './control/client';
+import { startDaemonControlServer } from './control/server';
+import { findAllHappyProcesses, findHappyProcessByPid } from './diagnostics/doctor';
+import { hashProcessCommand, listSessionMarkers, removeSessionMarker, writeSessionMarker } from './sessions/sessionRegistry';
+import { findRunningTrackedSessionById } from './sessions/findRunningTrackedSessionById';
+import { isPidSafeHappySessionProcess } from './sessions/pidSafety';
+import { adoptSessionsFromMarkers } from './sessions/reattach';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
@@ -43,7 +43,7 @@ import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { resolveTerminalRequestFromSpawnOptions } from '@/terminal/terminalConfig';
 import { selectPreferredTmuxSessionName } from '@/terminal/tmuxSessionSelector';
 import { writeSessionExitReport } from '@/utils/sessionExitReport';
-import { reportDaemonObservedSessionExit } from './sessionTermination';
+import { reportDaemonObservedSessionExit } from './sessions/sessionTermination';
 import { validateEnvVarRecordStrict } from '@/utils/envVarSanitization';
 
 import { getPreferredHostName, initialMachineMetadata } from './machine/metadata';
