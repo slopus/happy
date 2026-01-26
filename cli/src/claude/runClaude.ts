@@ -428,7 +428,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     registerKillSessionHandler(session.rpcHandlerManager, cleanup);
 
     // Create claude loop
-    await loop({
+    const exitCode = await loop({
         path: workingDirectory,
         model: options.model,
         permissionMode: options.permissionMode,
@@ -488,6 +488,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     cleanupHookSettingsFile(hookSettingsPath);
     logger.debug('Stopped Hook server and cleaned up settings file');
 
-    // Exit
-    process.exit(0);
+    // Exit with the code from Claude
+    process.exit(exitCode);
 }
