@@ -6,6 +6,8 @@
  * the Happy CLI and mobile app.
  */
 
+import { registerDefaultAgents } from './registry';
+
 // Core types, interfaces, and registry - re-export from core/
 export type {
   AgentMessage,
@@ -30,6 +32,7 @@ export * from './acp';
 
 // Agent factories (high-level, recommended)
 export * from './factories';
+export { agentRegistrarById, registerDefaultAgents, type AgentRegistrar } from './registry';
 
 /**
  * Initialize all agent backends and register them with the global registry.
@@ -37,9 +40,5 @@ export * from './factories';
  * Call this function during application startup to make all agents available.
  */
 export function initializeAgents(): void {
-  // Import and register agents from factories
-  const { registerGeminiAgent } = require('./factories/gemini');
-  const { registerOpenCodeAgent } = require('./factories/opencode');
-  registerGeminiAgent();
-  registerOpenCodeAgent();
+  registerDefaultAgents();
 }
