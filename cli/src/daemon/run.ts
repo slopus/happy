@@ -47,6 +47,7 @@ import { selectPreferredTmuxSessionName } from '@/terminal/tmuxSessionSelector';
 import { writeSessionExitReport } from '@/utils/sessionExitReport';
 import { reportDaemonObservedSessionExit } from './sessionTermination';
 import { validateEnvVarRecordStrict } from '@/utils/envVarSanitization';
+import { stopTrackedSessionById } from './stopTrackedSessionById';
 
 const execFileAsync = promisify(execFile);
 
@@ -990,47 +991,20 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    // Stop a session by sessionId or PID fallback
-    const stopSession = async (sessionId: string): Promise<boolean> => {
-      logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
-
-      // Try to find by sessionId first
-      for (const [pid, session] of pidToTrackedSession.entries()) {
-        if (session.happySessionId === sessionId ||
-          (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))) {
-
-          if (session.startedBy === 'daemon' && session.childProcess) {
-            try {
-              session.childProcess.kill('SIGTERM');
-              logger.debug(`[DAEMON RUN] Sent SIGTERM to daemon-spawned session ${sessionId}`);
-            } catch (error) {
-              logger.debug(`[DAEMON RUN] Failed to kill session ${sessionId}:`, error);
-            }
-          } else {
-            // PID reuse safety: verify the PID still looks like a Happy session process (and matches hash if known).
-            const safe = await isPidSafeHappySessionProcess({ pid, expectedProcessCommandHash: session.processCommandHash });
-            if (!safe) {
-              logger.warn(`[DAEMON RUN] Refusing to SIGTERM PID ${pid} for session ${sessionId} (PID reuse safety)`);
-              return false;
-            }
-            // For externally started sessions, try to kill by PID
-            try {
-              process.kill(pid, 'SIGTERM');
-              logger.debug(`[DAEMON RUN] Sent SIGTERM to external session PID ${pid}`);
-            } catch (error) {
-              logger.debug(`[DAEMON RUN] Failed to kill external session PID ${pid}:`, error);
-            }
-          }
-
-          pidToTrackedSession.delete(pid);
-          logger.debug(`[DAEMON RUN] Removed session ${sessionId} from tracking`);
-          return true;
-        }
-      }
-
-      logger.debug(`[DAEMON RUN] Session ${sessionId} not found`);
-      return false;
-    };
+	    // Stop a session by sessionId or PID fallback
+	    const stopSession = async (sessionId: string): Promise<boolean> => {
+	      logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
+	      const ok = await stopTrackedSessionById({
+	        pidToTrackedSession,
+	        sessionId,
+	        isPidSafeHappySessionProcess,
+	        killPid: (pid, signal) => process.kill(pid, signal),
+	      });
+	      if (!ok) {
+	        logger.warn(`[DAEMON RUN] Refusing or failed to stop session ${sessionId}`);
+	      }
+	      return ok;
+	    };
 
     // Handle child process exit
     const onChildExited = (pid: number, exit: { reason: string; code: number | null; signal: string | null }) => {
@@ -1240,7 +1214,7 @@ export async function startDaemon(): Promise<void> {
 	        }
 	      }
 
-      // Cleanup any CODEX_HOME temp dirs for sessions no longer tracked (e.g. stopSession removed them).
+	      // Cleanup any CODEX_HOME temp dirs for sessions no longer tracked.
 	      for (const [pid, cleanup] of codexHomeDirCleanupByPid.entries()) {
 	        if (pidToTrackedSession.has(pid)) continue;
 	        try {
