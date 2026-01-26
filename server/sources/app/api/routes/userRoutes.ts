@@ -182,5 +182,7 @@ const UserProfileSchema = z.object({
     username: z.string(),
     bio: z.string().nullable(),
     status: RelationshipStatusSchema,
-    publicKey: z.string()
+    publicKey: z.string(),
+    contentPublicKey: z.string().nullable(),
+    contentPublicKeySig: z.string().nullable(),
 });

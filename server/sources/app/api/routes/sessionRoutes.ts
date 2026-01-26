@@ -7,6 +7,7 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
+import { checkSessionAccess } from "@/app/share/accessControl";
 
 export function sessionRoutes(app: Fastify) {
 
@@ -316,15 +317,8 @@ export function sessionRoutes(app: Fastify) {
         const userId = request.userId;
         const { sessionId } = request.params;
 
-        // Verify session belongs to user
-        const session = await db.session.findFirst({
-            where: {
-                id: sessionId,
-                accountId: userId
-            }
-        });
-
-        if (!session) {
+        const access = await checkSessionAccess(userId, sessionId);
+        if (!access) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 

@@ -11,3 +11,11 @@ export const RelationshipStatus = {
 } as const;
 
 export type RelationshipStatus = (typeof RelationshipStatus)[keyof typeof RelationshipStatus];
+
+export const ShareAccessLevel = {
+    view: "view",
+    edit: "edit",
+    admin: "admin",
+} as const;
+
+export type ShareAccessLevel = (typeof ShareAccessLevel)[keyof typeof ShareAccessLevel];

@@ -4,9 +4,10 @@ import { z } from "zod";
 import { isSessionOwner } from "@/app/share/accessControl";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { logPublicShareAccess, getIpAddress, getUserAgent } from "@/app/share/accessLogger";
-import { PROFILE_SELECT } from "@/app/share/types";
+import { PROFILE_SELECT, toShareUserProfile } from "@/app/share/types";
 import { eventRouter, buildPublicShareCreatedUpdate, buildPublicShareUpdatedUpdate, buildPublicShareDeletedUpdate } from "@/app/events/eventRouter";
 import { allocateUserSeq } from "@/storage/seq";
+import { createHash } from "crypto";
 
 /**
  * Public session sharing API routes
@@ -31,8 +32,8 @@ export function publicShareRoutes(app: Fastify) {
                 sessionId: z.string()
             }),
             body: z.object({
-                token: z.string(), // client-generated token
-                encryptedDataKey: z.string(), // base64 encoded
+                token: z.string().optional(), // client-generated token (required when creating or rotating)
+                encryptedDataKey: z.string().optional(), // base64 encoded (required when creating or rotating)
                 expiresAt: z.number().optional(), // timestamp
                 maxUses: z.number().int().positive().optional(),
                 isConsentRequired: z.boolean().optional() // require consent for detailed logging
@@ -57,23 +58,39 @@ export function publicShareRoutes(app: Fastify) {
         const isUpdate = !!existing;
 
         if (existing) {
-            // Update existing share (keep the same token, update encryption and settings)
+            const shouldRotateToken = typeof token === 'string' && token.length > 0;
+            if (shouldRotateToken && !encryptedDataKey) {
+                return reply.code(400).send({ error: 'encryptedDataKey required when rotating token' });
+            }
+            const nextTokenHash = shouldRotateToken ? createHash('sha256').update(token!, 'utf8').digest() : null;
+
+            // Update existing share (token is stored as a hash only; token itself is not persisted)
             publicShare = await db.publicSessionShare.update({
                 where: { sessionId },
                 data: {
-                    encryptedDataKey: new Uint8Array(Buffer.from(encryptedDataKey, 'base64')),
+                    ...(nextTokenHash ? { tokenHash: nextTokenHash } : {}),
+                    ...(encryptedDataKey ? { encryptedDataKey: new Uint8Array(Buffer.from(encryptedDataKey, 'base64')) } : {}),
                     expiresAt: expiresAt ? new Date(expiresAt) : null,
                     maxUses: maxUses ?? null,
-                    isConsentRequired: isConsentRequired ?? false
+                    isConsentRequired: isConsentRequired ?? false,
+                    ...(nextTokenHash ? { useCount: 0 } : {}),
                 }
             });
         } else {
+            if (!token) {
+                return reply.code(400).send({ error: 'token required' });
+            }
+            if (!encryptedDataKey) {
+                return reply.code(400).send({ error: 'encryptedDataKey required' });
+            }
+            const tokenHash = createHash('sha256').update(token, 'utf8').digest();
+
             // Create new share with client-provided token
             publicShare = await db.publicSessionShare.create({
                 data: {
                     sessionId,
                     createdByUserId: userId,
-                    token,
+                    tokenHash,
                     encryptedDataKey: new Uint8Array(Buffer.from(encryptedDataKey, 'base64')),
                     expiresAt: expiresAt ? new Date(expiresAt) : null,
                     maxUses: maxUses ?? null,
@@ -86,7 +103,7 @@ export function publicShareRoutes(app: Fastify) {
         const updateSeq = await allocateUserSeq(userId);
         const updatePayload = isUpdate
             ? buildPublicShareUpdatedUpdate(publicShare, updateSeq, randomKeyNaked(12))
-            : buildPublicShareCreatedUpdate(publicShare, updateSeq, randomKeyNaked(12));
+            : buildPublicShareCreatedUpdate({ ...publicShare, token: token! }, updateSeq, randomKeyNaked(12));
 
         eventRouter.emitUpdate({
             userId: userId,
@@ -97,7 +114,7 @@ export function publicShareRoutes(app: Fastify) {
         return reply.send({
             publicShare: {
                 id: publicShare.id,
-                token: publicShare.token,
+                token: token ?? null,
                 expiresAt: publicShare.expiresAt?.getTime() ?? null,
                 maxUses: publicShare.maxUses,
                 useCount: publicShare.useCount,
@@ -138,7 +155,7 @@ export function publicShareRoutes(app: Fastify) {
         return reply.send({
             publicShare: {
                 id: publicShare.id,
-                token: publicShare.token,
+                token: null,
                 expiresAt: publicShare.expiresAt?.getTime() ?? null,
                 maxUses: publicShare.maxUses,
                 useCount: publicShare.useCount,
@@ -229,6 +246,7 @@ export function publicShareRoutes(app: Fastify) {
     }, async (request, reply) => {
         const { token } = request.params;
         const { consent } = request.query || {};
+        const tokenHash = createHash('sha256').update(token, 'utf8').digest();
 
         // Try to get user ID if authenticated
         let userId: string | null = null;
@@ -245,7 +263,7 @@ export function publicShareRoutes(app: Fastify) {
         const result = await db.$transaction(async (tx) => {
             // Check access and get full public share data
             const publicShare = await tx.publicSessionShare.findUnique({
-                where: { token },
+                where: { tokenHash },
                 select: {
                     id: true,
                     sessionId: true,
@@ -312,7 +330,7 @@ export function publicShareRoutes(app: Fastify) {
                 const session = await db.session.findUnique({
                     where: { id: result.sessionId },
                     select: {
-                        owner: {
+                        account: {
                             select: PROFILE_SELECT
                         }
                     }
@@ -322,7 +340,7 @@ export function publicShareRoutes(app: Fastify) {
                     error: result.error,
                     requiresConsent: true,
                     sessionId: result.sessionId,
-                    owner: session?.owner || null
+                    owner: session?.account ? toShareUserProfile(session.account) : null
                 });
             }
             return reply.code(404).send({ error: result.error });
@@ -347,7 +365,7 @@ export function publicShareRoutes(app: Fastify) {
                 agentStateVersion: true,
                 active: true,
                 lastActiveAt: true,
-                owner: {
+                account: {
                     select: PROFILE_SELECT
                 }
             }
@@ -370,10 +388,126 @@ export function publicShareRoutes(app: Fastify) {
                 agentState: session.agentState,
                 agentStateVersion: session.agentStateVersion
             },
-            owner: session.owner,
+            owner: toShareUserProfile(session.account),
             accessLevel: 'view',
             encryptedDataKey: Buffer.from(result.encryptedDataKey).toString('base64'),
             isConsentRequired: result.isConsentRequired
+        });
+    });
+
+    /**
+     * Get messages for a public share token (no auth required, read-only)
+     *
+     * NOTE: Does not increment useCount (useCount is incremented on /v1/public-share/:token).
+     */
+    app.get('/v1/public-share/:token/messages', {
+        config: {
+            rateLimit: {
+                max: 20,
+                timeWindow: '1 minute'
+            }
+        },
+        schema: {
+            params: z.object({
+                token: z.string()
+            }),
+            querystring: z.object({
+                consent: z.coerce.boolean().optional()
+            }).optional()
+        }
+    }, async (request, reply) => {
+        const { token } = request.params;
+        const { consent } = request.query || {};
+        const tokenHash = createHash('sha256').update(token, 'utf8').digest();
+
+        // Try to get user ID if authenticated
+        let userId: string | null = null;
+        if (request.headers.authorization) {
+            try {
+                await app.authenticate(request, reply);
+                userId = request.userId;
+            } catch {
+                // Not authenticated, continue as anonymous
+            }
+        }
+
+        const publicShare = await db.publicSessionShare.findUnique({
+            where: { tokenHash },
+            select: {
+                id: true,
+                sessionId: true,
+                expiresAt: true,
+                maxUses: true,
+                useCount: true,
+                isConsentRequired: true,
+                blockedUsers: userId ? {
+                    where: { userId },
+                    select: { id: true }
+                } : undefined
+            }
+        });
+
+        if (!publicShare) {
+            return reply.code(404).send({ error: 'Public share not found or expired' });
+        }
+
+        // Check if expired
+        if (publicShare.expiresAt && publicShare.expiresAt < new Date()) {
+            return reply.code(404).send({ error: 'Public share not found or expired' });
+        }
+
+        // Check if max uses exceeded
+        if (publicShare.maxUses && publicShare.useCount >= publicShare.maxUses) {
+            return reply.code(404).send({ error: 'Public share not found or expired' });
+        }
+
+        // Check if user is blocked
+        if (userId && publicShare.blockedUsers && publicShare.blockedUsers.length > 0) {
+            return reply.code(404).send({ error: 'Public share not found or expired' });
+        }
+
+        // Check consent requirement
+        if (publicShare.isConsentRequired && !consent) {
+            const session = await db.session.findUnique({
+                where: { id: publicShare.sessionId },
+                select: {
+                    account: {
+                        select: PROFILE_SELECT
+                    }
+                }
+            });
+
+            return reply.code(403).send({
+                error: 'Consent required',
+                requiresConsent: true,
+                sessionId: publicShare.sessionId,
+                owner: session?.account ? toShareUserProfile(session.account) : null
+            });
+        }
+
+        const messages = await db.sessionMessage.findMany({
+            where: { sessionId: publicShare.sessionId },
+            orderBy: { createdAt: 'desc' },
+            take: 150,
+            select: {
+                id: true,
+                seq: true,
+                localId: true,
+                content: true,
+                createdAt: true,
+                updatedAt: true
+            }
+        });
+
+        return reply.send({
+            messages: messages.map((v) => ({
+                id: v.id,
+                seq: v.seq,
+                content: v.content,
+                localId: v.localId,
+                createdAt: v.createdAt.getTime(),
+                updatedAt: v.updatedAt.getTime()
+            }))
         });
     });
 
@@ -418,7 +552,7 @@ export function publicShareRoutes(app: Fastify) {
         return reply.send({
             blockedUsers: blockedUsers.map(bu => ({
                 id: bu.id,
-                user: bu.user,
+                user: toShareUserProfile(bu.user),
                 reason: bu.reason,
                 blockedAt: bu.blockedAt.getTime()
             }))
@@ -474,7 +608,7 @@ export function publicShareRoutes(app: Fastify) {
         return reply.send({
             blockedUser: {
                 id: blockedUser.id,
-                user: blockedUser.user,
+                user: toShareUserProfile(blockedUser.user),
                 reason: blockedUser.reason,
                 blockedAt: blockedUser.blockedAt.getTime()
             }
@@ -554,7 +688,7 @@ export function publicShareRoutes(app: Fastify) {
         return reply.send({
             logs: logs.map(log => ({
                 id: log.id,
-                user: log.user || null,
+                user: log.user ? toShareUserProfile(log.user) : null,
                 accessedAt: log.accessedAt.getTime(),
                 ipAddress: log.ipAddress,
                 userAgent: log.userAgent

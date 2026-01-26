@@ -1,5 +1,6 @@
 import { db } from "@/storage/db";
 import { ShareAccessLevel } from "@prisma/client";
+import { createHash } from "crypto";
 
 /**
  * Access level for session sharing (including owner)
@@ -190,8 +191,9 @@ export async function checkPublicShareAccess(
     sessionId: string;
     publicShareId: string;
 } | null> {
+    const tokenHash = createHash('sha256').update(token, 'utf8').digest();
     const publicShare = await db.publicSessionShare.findUnique({
-        where: { token },
+        where: { tokenHash },
         select: {
             id: true,
             sessionId: true,

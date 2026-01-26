@@ -1,12 +1,14 @@
 import { db } from "@/storage/db";
 import { log } from "@/utils/log";
 import { sessionCacheCounter, databaseUpdatesSkippedCounter } from "@/app/monitoring/metrics2";
+import { checkSessionAccess } from "@/app/share/accessControl";
 
 interface SessionCacheEntry {
     validUntil: number;
     lastUpdateSent: number;
     pendingUpdate: number | null;
     userId: string;
+    sessionId: string;
 }
 
 interface MachineCacheEntry {
@@ -48,10 +50,11 @@ class ActivityCache {
 
     async isSessionValid(sessionId: string, userId: string): Promise<boolean> {
         const now = Date.now();
-        const cached = this.sessionCache.get(sessionId);
+        const cacheKey = `${sessionId}:${userId}`;
+        const cached = this.sessionCache.get(cacheKey);
         
         // Check cache first
-        if (cached && cached.validUntil > now && cached.userId === userId) {
+        if (cached && cached.validUntil > now) {
             sessionCacheCounter.inc({ operation: 'session_validation', result: 'hit' });
             return true;
         }
@@ -60,17 +63,16 @@ class ActivityCache {
         
         // Cache miss - check database
         try {
-            const session = await db.session.findUnique({
-                where: { id: sessionId, accountId: userId }
-            });
+            const access = await checkSessionAccess(userId, sessionId);
             
-            if (session) {
+            if (access) {
                 // Cache the result
-                this.sessionCache.set(sessionId, {
+                this.sessionCache.set(cacheKey, {
                     validUntil: now + this.CACHE_TTL,
-                    lastUpdateSent: session.lastActiveAt.getTime(),
+                    lastUpdateSent: now,
                     pendingUpdate: null,
-                    userId
+                    userId,
+                    sessionId
                 });
                 return true;
             }
@@ -123,8 +125,9 @@ class ActivityCache {
         }
     }
 
-    queueSessionUpdate(sessionId: string, timestamp: number): boolean {
-        const cached = this.sessionCache.get(sessionId);
+    queueSessionUpdate(sessionId: string, userId: string, timestamp: number): boolean {
+        const cacheKey = `${sessionId}:${userId}`;
+        const cached = this.sessionCache.get(cacheKey);
         if (!cached) {
             return false; // Should validate first
         }
@@ -158,13 +161,13 @@ class ActivityCache {
     }
 
     private async flushPendingUpdates(): Promise<void> {
-        const sessionUpdates: { id: string, timestamp: number }[] = [];
+        const sessionUpdatesById = new Map<string, number>();
         const machineUpdates: { id: string, timestamp: number, userId: string }[] = [];
         
         // Collect session updates
-        for (const [sessionId, entry] of this.sessionCache.entries()) {
+        for (const entry of this.sessionCache.values()) {
             if (entry.pendingUpdate) {
-                sessionUpdates.push({ id: sessionId, timestamp: entry.pendingUpdate });
+                sessionUpdatesById.set(entry.sessionId, Math.max(sessionUpdatesById.get(entry.sessionId) ?? 0, entry.pendingUpdate));
                 entry.lastUpdateSent = entry.pendingUpdate;
                 entry.pendingUpdate = null;
             }
@@ -184,16 +187,16 @@ class ActivityCache {
         }
         
         // Batch update sessions
-        if (sessionUpdates.length > 0) {
+        if (sessionUpdatesById.size > 0) {
             try {
-                await Promise.all(sessionUpdates.map(update =>
+                await Promise.all(Array.from(sessionUpdatesById.entries()).map(([sessionId, timestamp]) =>
                     db.session.update({
-                        where: { id: update.id },
-                        data: { lastActiveAt: new Date(update.timestamp), active: true }
+                        where: { id: sessionId },
+                        data: { lastActiveAt: new Date(timestamp), active: true }
                     })
                 ));
                 
-                log({ module: 'session-cache' }, `Flushed ${sessionUpdates.length} session updates`);
+                log({ module: 'session-cache' }, `Flushed ${sessionUpdatesById.size} session updates`);
             } catch (error) {
                 log({ module: 'session-cache', level: 'error' }, `Error updating sessions: ${error}`);
             }

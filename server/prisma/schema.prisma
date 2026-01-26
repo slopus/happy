@@ -22,6 +22,10 @@ datasource db {
 model Account {
     id              String      @id @default(cuid())
     publicKey       String      @unique
+    /// X25519 (NaCl box) public key for encrypting session DEKs to this account
+    contentPublicKey Bytes?
+    /// Ed25519 signature binding contentPublicKey to publicKey
+    contentPublicKeySig Bytes?
     seq             Int         @default(0)
     feedSeq         BigInt      @default(0)
     createdAt       DateTime    @default(now())
@@ -429,8 +433,8 @@ model PublicSessionShare {
     session           Session                   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
     createdByUserId   String
     createdByUser     Account                   @relation("PublicSessionShares", fields: [createdByUserId], references: [id])
-    /// Random token for URL (e.g., /share/:token)
-    token             String                    @unique
+    /// sha256(token) (32 bytes)
+    tokenHash         Bytes                     @unique
     /// Encrypted dataEncryptionKey for public access
     encryptedDataKey  Bytes
     /// Optional expiration time (null = no expiration)
@@ -446,7 +450,7 @@ model PublicSessionShare {
     accessLogs        PublicShareAccessLog[]
     blockedUsers      PublicShareBlockedUser[]
 
-    @@index([token])
+    @@index([tokenHash])
     @@index([sessionId])
 }
 

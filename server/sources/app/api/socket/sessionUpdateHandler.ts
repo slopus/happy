@@ -1,6 +1,7 @@
 import { sessionAliveEventsCounter, websocketEventsCounter } from "@/app/monitoring/metrics2";
 import { activityCache } from "@/app/presence/sessionCache";
 import { buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessionUpdate, ClientConnection, eventRouter } from "@/app/events/eventRouter";
+import { checkSessionAccess, requireAccessLevel } from "@/app/share/accessControl";
 import { db } from "@/storage/db";
 import { allocateSessionSeq, allocateUserSeq } from "@/storage/seq";
 import { AsyncLock } from "@/utils/lock";
@@ -9,6 +10,48 @@ import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { Socket } from "socket.io";
 
 export function sessionUpdateHandler(userId: string, socket: Socket, connection: ClientConnection) {
+    const getSessionParticipantUserIds = async (sessionId: string): Promise<string[]> => {
+        const session = await db.session.findUnique({
+            where: { id: sessionId },
+            select: {
+                accountId: true,
+                shares: {
+                    select: {
+                        sharedWithUserId: true
+                    }
+                }
+            }
+        });
+        if (!session) {
+            return [];
+        }
+        const ids = new Set<string>();
+        ids.add(session.accountId);
+        for (const share of session.shares) {
+            ids.add(share.sharedWithUserId);
+        }
+        return Array.from(ids);
+    };
+
+    const emitUpdateToSessionParticipants = async (params: {
+        sessionId: string;
+        senderUserId: string;
+        skipSenderConnection?: ClientConnection;
+        buildPayload: (updateSeq: number, updateId: string) => any;
+    }): Promise<void> => {
+        const participantUserIds = await getSessionParticipantUserIds(params.sessionId);
+        await Promise.all(participantUserIds.map(async (participantUserId) => {
+            const updSeq = await allocateUserSeq(participantUserId);
+            const payload = params.buildPayload(updSeq, randomKeyNaked(12));
+            eventRouter.emitUpdate({
+                userId: participantUserId,
+                payload,
+                recipientFilter: { type: 'all-interested-in-session', sessionId: params.sessionId },
+                skipSenderConnection: participantUserId === params.senderUserId ? params.skipSenderConnection : undefined
+            });
+        }));
+    };
+
     socket.on('update-metadata', async (data: any, callback: (response: any) => void) => {
         try {
             const { sid, metadata, expectedVersion } = data;
@@ -22,10 +65,20 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             }
 
             // Resolve session
+            const access = await checkSessionAccess(userId, sid);
+            if (!access || !requireAccessLevel(access, 'edit')) {
+                if (callback) {
+                    callback({ result: 'forbidden' });
+                }
+                return;
+            }
             const session = await db.session.findUnique({
-                where: { id: sid, accountId: userId }
+                where: { id: sid }
             });
             if (!session) {
+                if (callback) {
+                    callback({ result: 'error' });
+                }
                 return;
             }
 
@@ -49,16 +102,15 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             }
 
             // Generate session metadata update
-            const updSeq = await allocateUserSeq(userId);
             const metadataUpdate = {
                 value: metadata,
                 version: expectedVersion + 1
             };
-            const updatePayload = buildUpdateSessionUpdate(sid, updSeq, randomKeyNaked(12), metadataUpdate);
-            eventRouter.emitUpdate({
-                userId,
-                payload: updatePayload,
-                recipientFilter: { type: 'all-interested-in-session', sessionId: sid }
+            await emitUpdateToSessionParticipants({
+                sessionId: sid,
+                senderUserId: userId,
+                skipSenderConnection: connection,
+                buildPayload: (updSeq, updId) => buildUpdateSessionUpdate(sid, updSeq, updId, metadataUpdate)
             });
 
             // Send success response with new version via callback
@@ -84,15 +136,17 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             }
 
             // Resolve session
+            const access = await checkSessionAccess(userId, sid);
+            if (!access || !requireAccessLevel(access, 'edit')) {
+                callback({ result: 'forbidden' });
+                return;
+            }
             const session = await db.session.findUnique({
-                where: {
-                    id: sid,
-                    accountId: userId
-                }
+                where: { id: sid }
             });
             if (!session) {
                 callback({ result: 'error' });
-                return null;
+                return;
             }
 
             // Check version
@@ -115,16 +169,15 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             }
 
             // Generate session agent state update
-            const updSeq = await allocateUserSeq(userId);
             const agentStateUpdate = {
                 value: agentState,
                 version: expectedVersion + 1
             };
-            const updatePayload = buildUpdateSessionUpdate(sid, updSeq, randomKeyNaked(12), undefined, agentStateUpdate);
-            eventRouter.emitUpdate({
-                userId,
-                payload: updatePayload,
-                recipientFilter: { type: 'all-interested-in-session', sessionId: sid }
+            await emitUpdateToSessionParticipants({
+                sessionId: sid,
+                senderUserId: userId,
+                skipSenderConnection: connection,
+                buildPayload: (updSeq, updId) => buildUpdateSessionUpdate(sid, updSeq, updId, undefined, agentStateUpdate)
             });
 
             // Send success response with new version via callback
@@ -168,7 +221,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             }
 
             // Queue database update (will only update if time difference is significant)
-            activityCache.queueSessionUpdate(sid, t);
+            activityCache.queueSessionUpdate(sid, userId, t);
 
             // Emit session activity update
             const sessionActivity = buildSessionActivityEphemeral(sid, true, t, thinking || false);
@@ -192,8 +245,12 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 log({ module: 'websocket' }, `Received message from socket ${socket.id}: sessionId=${sid}, messageLength=${message.length} bytes, connectionType=${connection.connectionType}, connectionSessionId=${connection.connectionType === 'session-scoped' ? connection.sessionId : 'N/A'}`);
 
                 // Resolve session
+                const access = await checkSessionAccess(userId, sid);
+                if (!access || !requireAccessLevel(access, 'edit')) {
+                    return;
+                }
                 const session = await db.session.findUnique({
-                    where: { id: sid, accountId: userId }
+                    where: { id: sid }
                 });
                 if (!session) {
                     return;
@@ -207,7 +264,6 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 };
 
                 // Resolve seq
-                const updSeq = await allocateUserSeq(userId);
                 const msgSeq = await allocateSessionSeq(sid);
 
                 // Check if message already exists
@@ -231,12 +287,11 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 });
 
                 // Emit new message update to relevant clients
-                const updatePayload = buildNewMessageUpdate(msg, sid, updSeq, randomKeyNaked(12));
-                eventRouter.emitUpdate({
-                    userId,
-                    payload: updatePayload,
-                    recipientFilter: { type: 'all-interested-in-session', sessionId: sid },
-                    skipSenderConnection: connection
+                await emitUpdateToSessionParticipants({
+                    sessionId: sid,
+                    senderUserId: userId,
+                    skipSenderConnection: connection,
+                    buildPayload: (updSeq, updId) => buildNewMessageUpdate(msg, sid, updSeq, updId)
                 });
             } catch (error) {
                 log({ module: 'websocket', level: 'error' }, `Error in message handler: ${error}`);

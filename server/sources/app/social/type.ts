@@ -1,6 +1,7 @@
 import { getPublicUrl, ImageRef } from "@/storage/files";
 import type { RelationshipStatus } from "@/storage/prisma";
 import { GitHubProfile } from "../api/types";
+import * as privacyKit from "privacy-kit";
 
 export type UserProfile = {
     id: string;
@@ -17,6 +18,8 @@ export type UserProfile = {
     bio: string | null;
     status: RelationshipStatus;
     publicKey: string;
+    contentPublicKey: string | null;
+    contentPublicKeySig: string | null;
 }
 
 export function buildUserProfile(
@@ -28,6 +31,8 @@ export function buildUserProfile(
         avatar: ImageRef | null;
         githubUser: { profile: GitHubProfile } | null;
         publicKey: string;
+        contentPublicKey: Uint8Array | null;
+        contentPublicKeySig: Uint8Array | null;
     },
     status: RelationshipStatus
 ): UserProfile {
@@ -54,6 +59,8 @@ export function buildUserProfile(
         username: account.username || githubProfile?.login || '',
         bio: githubProfile?.bio || null,
         status,
-        publicKey: account.publicKey
+        publicKey: account.publicKey,
+        contentPublicKey: account.contentPublicKey ? privacyKit.encodeBase64(account.contentPublicKey) : null,
+        contentPublicKeySig: account.contentPublicKeySig ? privacyKit.encodeBase64(account.contentPublicKeySig) : null,
     };
 }
