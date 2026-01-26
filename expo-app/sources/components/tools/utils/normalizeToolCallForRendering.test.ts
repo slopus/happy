@@ -59,4 +59,47 @@ describe('normalizeToolCallForRendering', () => {
             new_string: 'hi',
         });
     });
+
+    it('normalizes ACP-style items[] diffs for write into content + file_path', () => {
+        const tool = {
+            name: 'write',
+            state: 'completed' as const,
+            input: {
+                items: [{ path: '/tmp/a.txt', oldText: 'hello', newText: 'hi', type: 'diff' }],
+            },
+            result: '',
+            createdAt: 0,
+            startedAt: 0,
+            completedAt: 1,
+            description: null,
+        };
+
+        const normalized = normalizeToolCallForRendering(tool as any);
+        expect(normalized.input).toMatchObject({
+            file_path: '/tmp/a.txt',
+            content: 'hi',
+        });
+    });
+
+    it('normalizes ACP-style items[] diffs for edit into old_string/new_string + file_path', () => {
+        const tool = {
+            name: 'edit',
+            state: 'completed' as const,
+            input: {
+                items: [{ path: '/tmp/a.txt', oldText: 'hello', newText: 'hi', type: 'diff' }],
+            },
+            result: '',
+            createdAt: 0,
+            startedAt: 0,
+            completedAt: 1,
+            description: null,
+        };
+
+        const normalized = normalizeToolCallForRendering(tool as any);
+        expect(normalized.input).toMatchObject({
+            file_path: '/tmp/a.txt',
+            old_string: 'hello',
+            new_string: 'hi',
+        });
+    });
 });

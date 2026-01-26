@@ -14,11 +14,40 @@ function firstString(value: unknown): string | null {
     return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function extractFirstLocationPath(locations: unknown): string | null {
+    if (!Array.isArray(locations) || locations.length === 0) return null;
+    const first = asRecord(locations[0]);
+    if (!first) return null;
+    return (
+        firstString(first.path) ??
+        firstString(first.filePath) ??
+        null
+    );
+}
+
+function extractFirstItemPath(items: unknown): string | null {
+    if (!Array.isArray(items) || items.length === 0) return null;
+    const first = asRecord(items[0]);
+    if (!first) return null;
+    return (
+        firstString(first.path) ??
+        firstString(first.filePath) ??
+        null
+    );
+}
+
 function extractFilePathLike(input: unknown): string | null {
     const obj = asRecord(input);
     if (!obj) return null;
+
+    // Common ACP-style format: { locations: [{ path }] }
+    const locPath = extractFirstLocationPath(obj.locations);
+    if (locPath) return locPath;
+
     // Gemini ACP-style nested format: { toolCall: { content: [{ path }] } }
     const toolCall = asRecord(obj.toolCall);
+    const toolCallLocPath = extractFirstLocationPath(toolCall?.locations);
+    if (toolCallLocPath) return toolCallLocPath;
     const contentArr = toolCall && Array.isArray((toolCall as any).content) ? ((toolCall as any).content as unknown[]) : null;
     if (contentArr && contentArr.length > 0) {
         const first = asRecord(contentArr[0]);
@@ -33,6 +62,10 @@ function extractFilePathLike(input: unknown): string | null {
         const nestedPath = firstString(first?.path);
         if (nestedPath) return nestedPath;
     }
+
+    // ACP diff-style format: { items: [{ path }] }
+    const itemPath = extractFirstItemPath(obj.items);
+    if (itemPath) return itemPath;
 
     return (
         firstString(obj.filePath) ??

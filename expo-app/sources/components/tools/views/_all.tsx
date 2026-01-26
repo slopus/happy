@@ -45,6 +45,7 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     CodexDiff: CodexDiffView,
     Write: WriteView,
     Read: ReadView,
+    read: ReadView,
     Glob: GlobView,
     Grep: GrepView,
     WebFetch: WebFetchView,

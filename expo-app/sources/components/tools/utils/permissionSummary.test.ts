@@ -25,5 +25,20 @@ describe('formatPermissionRequestSummary', () => {
         });
         expect(summary).toBe('Read: /etc/hosts');
     });
-});
 
+    it('summarizes file read permissions from locations[]', () => {
+        const summary = formatPermissionRequestSummary({
+            toolName: 'read',
+            toolInput: { locations: [{ path: '/etc/hosts' }] },
+        });
+        expect(summary).toBe('Read: /etc/hosts');
+    });
+
+    it('summarizes file write permissions from items[]', () => {
+        const summary = formatPermissionRequestSummary({
+            toolName: 'write',
+            toolInput: { items: [{ path: '/tmp/a.txt', type: 'diff' }] },
+        });
+        expect(summary).toBe('Write: /tmp/a.txt');
+    });
+});
