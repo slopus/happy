@@ -172,6 +172,38 @@ describe('Popover (web)', () => {
         expect((portal as any)?.props?.target).toBe(modalTarget);
     });
 
+    it('does not subscribe to scroll events when portaling into a modal/boundary target (avoids scroll jank on mobile web)', async () => {
+        const { Popover } = await import('./Popover');
+        const { ModalPortalTargetProvider } = await import('@/components/ModalPortalTarget');
+
+        const anchorRef = { current: null } as any;
+        const modalTarget = {} as any;
+
+        act(() => {
+            renderer.create(
+                React.createElement(
+                    ModalPortalTargetProvider,
+                    {
+                        target: modalTarget,
+                        children: React.createElement(Popover, {
+                            open: true,
+                            anchorRef,
+                            portal: { web: true },
+                            onRequestClose: () => {},
+                            children: () => React.createElement('PopoverChild'),
+                        }),
+                    },
+                ),
+            );
+        });
+
+        const add = (globalThis as any).window?.addEventListener as any;
+        const calls = add?.mock?.calls ?? [];
+        const events = calls.map((c: any[]) => c?.[0]).filter(Boolean);
+        expect(events).toContain('resize');
+        expect(events).not.toContain('scroll');
+    });
+
     it('portals to the PopoverBoundary when in an Expo Router modal (prevents Vaul/Radix scroll-lock from swallowing wheel/touch scroll)', async () => {
         const boundaryTarget = {
             addEventListener: vi.fn(),

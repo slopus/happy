@@ -6,7 +6,7 @@ import { requireRadixDismissableLayer } from '@/utils/radixCjs';
 import { useOverlayPortal } from '@/components/OverlayPortal';
 import { useModalPortalTarget } from '@/components/ModalPortalTarget';
 import { requireReactDOM } from '@/utils/reactDomCjs';
-import { requireReactNativeScreens } from '@/utils/reactNativeScreensCjs';
+import { usePopoverPortalTarget } from '@/components/PopoverPortalTarget';
 
 const ViewWithWheel = View as unknown as React.ComponentType<ViewProps & { onWheel?: any }>;
 
@@ -27,7 +27,7 @@ export type PopoverPortalOptions = Readonly<{
      * Native only: render the popover in a portal host mounted near the app root.
      * This allows popovers to escape overflow clipping from lists/rows/scrollviews.
      */
-    native?: boolean | Readonly<{ useFullWindowOverlayOnIOS?: boolean }>;
+    native?: boolean;
     /**
      * When true, the popover width is capped to the anchor width for top/bottom placements.
      * Defaults to true to preserve historical behavior.
@@ -139,6 +139,10 @@ function measureInWindow(node: any): Promise<WindowRect | null> {
                 const width = rect?.width;
                 const height = rect?.height;
                 if (![x, y, width, height].every(n => Number.isFinite(n))) return null;
+                // Treat 0x0 rects as invalid: on iOS (and occasionally RN-web), refs can report 0x0
+                // for a frame while layout settles. Using these values causes menus to overlap the
+                // trigger and prevents subsequent recomputes from correcting placement.
+                if (width <= 0 || height <= 0) return null;
                 return { x, y, width, height };
             };
 
@@ -149,9 +153,22 @@ function measureInWindow(node: any): Promise<WindowRect | null> {
                 if (rect) return resolve(rect);
             }
 
+            // On native, `measure` can provide pageX/pageY values that are sometimes more reliable
+            // than `measureInWindow` when using react-native-screens (modal/drawer presentations).
+            // Prefer it when available.
+            if (Platform.OS !== 'web' && typeof node.measure === 'function') {
+                node.measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
+                    if (![pageX, pageY, width, height].every(n => Number.isFinite(n)) || width <= 0 || height <= 0) {
+                        return resolve(null);
+                    }
+                    resolve({ x: pageX, y: pageY, width, height });
+                });
+                return;
+            }
+
             if (typeof node.measureInWindow === 'function') {
                 node.measureInWindow((x: number, y: number, width: number, height: number) => {
-                    if (![x, y, width, height].every(n => Number.isFinite(n))) {
+                    if (![x, y, width, height].every(n => Number.isFinite(n)) || width <= 0 || height <= 0) {
                         if (Platform.OS === 'web') {
                             const rect = measureDomRect(node);
                             if (rect) return resolve(rect);
@@ -166,6 +183,28 @@ function measureInWindow(node: any): Promise<WindowRect | null> {
             if (Platform.OS === 'web') return resolve(measureDomRect(node));
 
             resolve(null);
+        } catch {
+            resolve(null);
+        }
+    });
+}
+
+function measureLayoutRelativeTo(node: any, relativeToNode: any): Promise<WindowRect | null> {
+    return new Promise(resolve => {
+        try {
+            if (!node || !relativeToNode) return resolve(null);
+            if (typeof node.measureLayout !== 'function') return resolve(null);
+            node.measureLayout(
+                relativeToNode,
+                (x: number, y: number, width: number, height: number) => {
+                    if (![x, y, width, height].every(n => Number.isFinite(n)) || width <= 0 || height <= 0) {
+                        resolve(null);
+                        return;
+                    }
+                    resolve({ x, y, width, height });
+                },
+                () => resolve(null),
+            );
         } catch {
             resolve(null);
         }
@@ -218,6 +257,7 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
     const overlayPortal = useOverlayPortal();
     const modalPortalTarget = useModalPortalTarget();
+    const portalTarget = usePopoverPortalTarget();
     const portalWeb = props.portal?.web;
     const portalNative = props.portal?.native;
     const defaultPortalTargetOnWeb: 'body' | 'boundary' | 'modal' =
@@ -230,10 +270,6 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
         typeof portalWeb === 'object' && portalWeb
             ? (portalWeb.target ?? defaultPortalTargetOnWeb)
             : defaultPortalTargetOnWeb;
-    const useFullWindowOverlayOnIOS =
-        typeof portalNative === 'object' && portalNative
-            ? (portalNative.useFullWindowOverlayOnIOS ?? true)
-            : true;
     const matchAnchorWidthOnPortal = props.portal?.matchAnchorWidth ?? true;
     const anchorAlignOnPortal = props.portal?.anchorAlign ?? 'start';
     const anchorAlignVerticalOnPortal = props.portal?.anchorAlignVertical ?? 'center';
@@ -241,6 +277,7 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
     const shouldPortalWeb = Platform.OS === 'web' && Boolean(portalWeb);
     const shouldPortalNative = Platform.OS !== 'web' && Boolean(portalNative) && Boolean(overlayPortal);
     const shouldPortal = shouldPortalWeb || shouldPortalNative;
+    const shouldUseOverlayPortalOnNative = shouldPortalNative;
     const portalIdRef = React.useRef<string | null>(null);
     if (portalIdRef.current === null) {
         portalIdRef.current = `popover-${Math.random().toString(36).slice(2)}`;
@@ -329,6 +366,10 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
         const measureOnce = async (): Promise<boolean> => {
             const anchorNode = anchorRef.current as any;
             const boundaryNodeRaw = boundaryRef?.current as any;
+            const portalRootNode =
+                Platform.OS !== 'web' && shouldPortalNative
+                    ? (portalTarget?.rootRef?.current as any)
+                    : null;
             // On web, if boundary is a ScrollView ref, measure the real scrollable node to match
             // the element we attach scroll listeners to. This reduces coordinate mismatches.
             const boundaryNode =
@@ -336,15 +377,68 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
                     ? (boundaryNodeRaw?.getScrollableNode?.() ?? boundaryNodeRaw)
                     : boundaryNodeRaw;
 
-            const [anchorRect, boundaryRectRaw] = await Promise.all([
-                measureInWindow(anchorNode),
-                boundaryNode ? measureInWindow(boundaryNode) : Promise.resolve(null),
-            ]);
+            let anchorRect: WindowRect | null = null;
+            let anchorIsPortalRelative = false;
+
+            if (portalRootNode) {
+                const relative = await measureLayoutRelativeTo(anchorNode, portalRootNode);
+                if (relative) {
+                    anchorRect = relative;
+                    anchorIsPortalRelative = true;
+                }
+            }
+
+            if (!anchorRect) {
+                anchorRect = await measureInWindow(anchorNode);
+            }
+
+            const boundaryRectRaw = await (async () => {
+                // IMPORTANT: Keep anchor + boundary in the same coordinate space.
+                // If we position using portal-root-relative anchor coords (measureLayout), then using
+                // a window-relative boundary (measureInWindow) can clamp the menu off-screen.
+                if (portalRootNode && anchorIsPortalRelative) {
+                    const relativeBoundary = boundaryNode ? await measureLayoutRelativeTo(boundaryNode, portalRootNode) : null;
+                    if (relativeBoundary) return relativeBoundary;
+
+                    const targetLayout = portalTarget?.layout;
+                    if (targetLayout && targetLayout.width > 0 && targetLayout.height > 0) {
+                        return { x: 0, y: 0, width: targetLayout.width, height: targetLayout.height };
+                    }
+
+                    const rootRect = await measureInWindow(portalRootNode);
+                    if (rootRect?.width && rootRect?.height) {
+                        return { x: 0, y: 0, width: rootRect.width, height: rootRect.height };
+                    }
+
+                    return null;
+                }
+
+                if (portalRootNode) {
+                    const relativeBoundary = boundaryNode ? await measureLayoutRelativeTo(boundaryNode, portalRootNode) : null;
+                    if (relativeBoundary) return relativeBoundary;
+                    const targetLayout = portalTarget?.layout;
+                    if (targetLayout && targetLayout.width > 0 && targetLayout.height > 0) {
+                        return { x: 0, y: 0, width: targetLayout.width, height: targetLayout.height };
+                    }
+                }
+
+                return boundaryNode ? measureInWindow(boundaryNode) : Promise.resolve(null);
+            })();
 
             if (!isMountedRef.current) return false;
             if (!anchorRect) return false;
+            // When portaling (web/native), a zero-sized anchor can cause the popover to render in
+            // the wrong place (often overlapping the trigger). Treat it as an invalid measurement
+            // and retry a couple times to allow layout to settle.
+            if ((shouldPortalWeb || shouldPortalNative) && (anchorRect.width < 1 || anchorRect.height < 1)) {
+                return false;
+            }
 
-            const boundaryRect = boundaryRectRaw ?? getFallbackBoundaryRect({ windowWidth, windowHeight });
+            const boundaryRect =
+                boundaryRectRaw ??
+                (portalRootNode && portalTarget?.layout?.width && portalTarget?.layout?.height
+                    ? { x: 0, y: 0, width: portalTarget.layout.width, height: portalTarget.layout.height }
+                    : getFallbackBoundaryRect({ windowWidth, windowHeight }));
 
             // Shrink the usable boundary so the popover doesn't sit flush to the container edges.
             // (This also makes maxHeight/maxWidth clamping respect the margin.)
@@ -394,36 +488,43 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
             return true;
         };
 
-        if (Platform.OS === 'web') {
-            const scheduleFrame = (cb: () => void) => {
-                // In some test/non-browser environments, rAF may be missing.
-                // Prefer rAF when available so layout has a chance to settle.
-                if (typeof requestAnimationFrame === 'function') {
-                    requestAnimationFrame(cb);
-                    return;
-                }
-                setTimeout(cb, 0);
-            };
+        const scheduleFrame = (cb: () => void) => {
+            // In some test/non-browser environments, rAF may be missing.
+            // Prefer rAF when available so layout has a chance to settle.
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(cb);
+                return;
+            }
+            if (typeof queueMicrotask === 'function') {
+                queueMicrotask(cb);
+                return;
+            }
+            setTimeout(cb, 0);
+        };
 
-            // On web, layout can "settle" a frame later (especially when opening).
-            // If the initial measurement returns invalid values, retry a couple times so we
-            // don't get stuck in an invisible "open" state until a resize/scroll occurs.
-            const measureWithRetries = async (attempt: number) => {
-                const ok = await measureOnce();
-                if (ok) return;
-                if (!isMountedRef.current) return;
-                if (attempt >= 2) return;
-                scheduleFrame(() => {
-                    void measureWithRetries(attempt + 1);
-                });
-            };
-            scheduleFrame(() => {
-                void measureWithRetries(0);
-            });
-        } else {
+        const shouldRetry = Platform.OS === 'web' || shouldPortalNative;
+        if (!shouldRetry) {
             void measureOnce();
+            return;
         }
-    }, [anchorRef, boundaryRef, edgeInsets.horizontal, edgeInsets.vertical, gap, maxHeightCap, maxWidthCap, open, placement, windowHeight, windowWidth]);
+
+        // On web and native portal overlays, layout can "settle" a frame later (especially when opening).
+        // If the initial measurement returns invalid values, retry a couple times so we don't get stuck
+        // with incorrect placement or invisible portal content.
+        const measureWithRetries = async (attempt: number) => {
+            const ok = await measureOnce();
+            if (ok) return;
+            if (!isMountedRef.current) return;
+            if (attempt >= 2) return;
+            scheduleFrame(() => {
+                void measureWithRetries(attempt + 1);
+            });
+        };
+
+        scheduleFrame(() => {
+            void measureWithRetries(0);
+        });
+    }, [anchorRef, boundaryRef, edgeInsets.horizontal, edgeInsets.vertical, gap, maxHeightCap, maxWidthCap, open, placement, shouldPortalNative, shouldPortalWeb, windowHeight, windowWidth, portalTarget]);
 
     React.useLayoutEffect(() => {
         if (!open) return;
@@ -446,22 +547,32 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
         };
 
         window.addEventListener('resize', schedule);
-        // Window scroll covers page-level scrolling, but RN-web ScrollViews scroll their own
-        // internal div. We also subscribe to boundary element scrolling when available.
-        window.addEventListener('scroll', schedule, { passive: true } as any);
-        const boundaryEl = getBoundaryDomElement();
-        if (boundaryEl) {
-            boundaryEl.addEventListener('scroll', schedule, { passive: true } as any);
+
+        // Only subscribe to scroll events when we portal to `document.body` (fixed positioning).
+        // For portals mounted inside the modal/boundary target (absolute positioning), the popover
+        // is positioned in the same scroll coordinate space as its anchor, so it stays aligned
+        // without recomputing on every scroll (avoids scroll jank on mobile web).
+        const shouldSubscribeToScroll = shouldPortalWeb && portalTargetOnWeb === 'body';
+        const boundaryEl = shouldSubscribeToScroll ? getBoundaryDomElement() : null;
+        if (shouldSubscribeToScroll) {
+            // Window scroll covers page-level scrolling, but RN-web ScrollViews scroll their own
+            // internal div. Subscribe to both so fixed-position popovers track their anchor.
+            window.addEventListener('scroll', schedule, { passive: true } as any);
+            if (boundaryEl) {
+                boundaryEl.addEventListener('scroll', schedule, { passive: true } as any);
+            }
         }
         return () => {
             if (timer !== null) window.clearTimeout(timer);
             window.removeEventListener('resize', schedule);
-            window.removeEventListener('scroll', schedule as any);
-            if (boundaryEl) {
-                boundaryEl.removeEventListener('scroll', schedule as any);
+            if (shouldSubscribeToScroll) {
+                window.removeEventListener('scroll', schedule as any);
+                if (boundaryEl) {
+                    boundaryEl.removeEventListener('scroll', schedule as any);
+                }
             }
         };
-    }, [getBoundaryDomElement, open, recompute]);
+    }, [getBoundaryDomElement, open, portalTargetOnWeb, recompute, shouldPortalWeb]);
 
     const fixedPositionOnWeb = (Platform.OS === 'web' ? ('fixed' as any) : 'absolute') as ViewStyle['position'];
 
@@ -924,47 +1035,18 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
         }
     })();
 
-    const contentWithOptionalIOSOverlay = React.useMemo(() => {
-        if (!shouldPortalNative || !content) return null;
-        if (!useFullWindowOverlayOnIOS || Platform.OS !== 'ios') return content;
-        try {
-            const { FullWindowOverlay } = requireReactNativeScreens();
-            if (!FullWindowOverlay) return content;
-            // On iOS, FullWindowOverlay can end up "click-through" when pointerEvents is `box-none`,
-            // depending on how react-native-screens and RN coordinate hit testing. This makes
-            // context-menu style popovers appear visually but not respond to taps (taps land on the
-            // underlying screen, closing the popover without firing the action).
-            //
-            // When a backdrop is enabled, we *do* want to intercept touches for the full window.
-            // When the popover is still measuring (portalOpacity=0), avoid blocking touches.
-            const overlayPointerEvents: 'none' | 'auto' | 'box-none' =
-                portalOpacity === 0
-                    ? 'none'
-                    : backdropEnabled
-                        ? 'auto'
-                        : 'box-none';
-            return (
-                <FullWindowOverlay pointerEvents={overlayPointerEvents} style={StyleSheet.absoluteFill}>
-                    {content}
-                </FullWindowOverlay>
-            );
-        } catch {
-            return content;
-        }
-    }, [backdropEnabled, content, portalOpacity, shouldPortalNative, useFullWindowOverlayOnIOS]);
-
     React.useLayoutEffect(() => {
         if (!overlayPortal) return;
         const id = portalIdRef.current as string;
-        if (!shouldPortalNative || !contentWithOptionalIOSOverlay) {
+        if (!shouldUseOverlayPortalOnNative || !content) {
             overlayPortal.removePortalNode(id);
             return;
         }
-        overlayPortal.setPortalNode(id, contentWithOptionalIOSOverlay);
+        overlayPortal.setPortalNode(id, content);
         return () => {
             overlayPortal.removePortalNode(id);
         };
-    }, [contentWithOptionalIOSOverlay, overlayPortal, shouldPortalNative]);
+    }, [content, overlayPortal, shouldUseOverlayPortalOnNative]);
 
     if (!open) return null;
 
@@ -991,7 +1073,6 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
         }
     }
 
-    if (shouldPortalNative) return null;
-
+    if (shouldUseOverlayPortalOnNative) return null;
     return contentWithRadixBranch;
 }

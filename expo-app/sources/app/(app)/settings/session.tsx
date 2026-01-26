@@ -44,9 +44,6 @@ export default React.memo(function SessionSettingsScreen() {
     }, [defaultPermissionByAgent, setDefaultPermissionByAgent]);
 
     const [openProvider, setOpenProvider] = React.useState<null | AgentId>(null);
-    const openDropdown = React.useCallback((provider: AgentId) => {
-        requestAnimationFrame(() => setOpenProvider(provider));
-    }, []);
 
     const options: Array<{ key: MessageSendMode; title: string; subtitle: string }> = [
         {
@@ -100,13 +97,13 @@ export default React.memo(function SessionSettingsScreen() {
                             connectToTrigger={true}
                             rowKind="item"
                             popoverBoundaryRef={popoverBoundaryRef}
-                            trigger={(
+                            trigger={({ open, toggle }) => (
                                 <Item
                                     title={t(core.displayNameKey)}
                                     subtitle={getPermissionModeLabelForAgentType(agentId as any, mode)}
                                     icon={<Ionicons name={core.ui.agentPickerIconName as any} size={29} color={theme.colors.textSecondary} />}
-                                    rightElement={<Ionicons name={openProvider === agentId ? 'chevron-up' : 'chevron-down'} size={20} color={theme.colors.textSecondary} />}
-                                    onPress={() => openDropdown(agentId)}
+                                    rightElement={<Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={theme.colors.textSecondary} />}
+                                    onPress={toggle}
                                     showChevron={false}
                                     showDivider={showDivider}
                                     selected={false}

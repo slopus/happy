@@ -22,8 +22,19 @@ export type DropdownMenuItem = Readonly<{
 }>;
 
 export type DropdownMenuProps = Readonly<{
-    /** The trigger element. A ref will be attached internally for anchoring. */
-    trigger: React.ReactNode;
+    /**
+     * The trigger element.
+     * Prefer the render-prop form so DropdownMenu can provide a consistent `toggle()` helper.
+     * A ref will be attached internally for anchoring (the trigger is rendered inside that host).
+     */
+    trigger:
+        | React.ReactNode
+        | ((props: Readonly<{
+            open: boolean;
+            toggle: () => void;
+            openMenu: () => void;
+            closeMenu: () => void;
+        }>) => React.ReactNode);
     open: boolean;
     onOpenChange: (next: boolean) => void;
 
@@ -114,6 +125,37 @@ export function DropdownMenu(props: DropdownMenuProps) {
     }, [props.items, rowVariant, theme.colors.textSecondary]);
 
     const onRequestClose = React.useCallback(() => props.onOpenChange(false), [props]);
+    const schedule = React.useCallback((cb: () => void) => {
+        // Opening an overlay on the same click can sometimes immediately trigger a backdrop close
+        // (especially on web). Deferring by one tick ensures the opening press completes first.
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(cb);
+            return;
+        }
+        setTimeout(cb, 0);
+    }, []);
+    const openMenu = React.useCallback(() => {
+        schedule(() => props.onOpenChange(true));
+    }, [props, schedule]);
+    const closeMenu = React.useCallback(() => props.onOpenChange(false), [props]);
+    const toggle = React.useCallback(() => {
+        if (props.open) {
+            props.onOpenChange(false);
+            return;
+        }
+        openMenu();
+    }, [openMenu, props]);
+    const triggerNode = React.useMemo(() => {
+        if (typeof props.trigger === 'function') {
+            return props.trigger({
+                open: props.open,
+                toggle,
+                openMenu,
+                closeMenu,
+            });
+        }
+        return props.trigger;
+    }, [closeMenu, openMenu, props, toggle]);
 
     const {
         searchQuery,
@@ -143,8 +185,15 @@ export function DropdownMenu(props: DropdownMenuProps) {
     }, [handleKeyPress, props]);
 
     return (
-        <View ref={anchorRef} style={{ position: 'relative' }}>
-            {props.trigger}
+        <View
+            ref={anchorRef}
+            // Ensure this wrapper exists in the native hierarchy so `measureInWindow` is reliable.
+            // Without this, RN can "collapse" the View and measurement can return 0x0, causing
+            // dropdowns to overlap their trigger (notably on iOS).
+            collapsable={false}
+            style={{ position: 'relative' }}
+        >
+            {triggerNode}
             {props.open ? (
                 <Popover
                     open={props.open}

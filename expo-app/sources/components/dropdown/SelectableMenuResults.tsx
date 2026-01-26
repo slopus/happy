@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Platform, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { SelectableRow, type SelectableRowVariant } from '@/components/SelectableRow';
@@ -49,14 +49,6 @@ export function SelectableMenuResults(props: {
     const itemRefs = React.useRef<Record<number, View | null>>({});
 
     const allItems = React.useMemo(() => props.categories.flatMap((c) => c.items), [props.categories]);
-
-    React.useEffect(() => {
-        const selectedItem = itemRefs.current[props.selectedIndex];
-        if (!selectedItem) return;
-        if (Platform.OS === 'web' && typeof (selectedItem as any).scrollIntoView === 'function') {
-            (selectedItem as any).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-    }, [props.selectedIndex]);
 
     if (props.categories.length === 0 || allItems.length === 0) {
         return (

@@ -256,16 +256,7 @@ export function SecretRequirementModal(props: SecretRequirementModalProps) {
     }, [activeEnvVarName, normalizedSecretEnvVarName, props.defaultSecretId, props.defaultSecretIdByEnvVarName]);
 
     const [showChoiceDropdown, setShowChoiceDropdown] = React.useState(false);
-    const openChoiceDropdown = React.useCallback(() => {
-        // On web (and sometimes native), opening an overlay on the same click can immediately
-        // trigger the backdrop close. Defer by a tick so the opening press completes first.
-        requestAnimationFrame(() => setShowChoiceDropdown(true));
-    }, []);
-
     const [showEnvVarDropdown, setShowEnvVarDropdown] = React.useState(false);
-    const openEnvVarDropdown = React.useCallback(() => {
-        requestAnimationFrame(() => setShowEnvVarDropdown(true));
-    }, []);
 
     // If the machine env option is disabled, never show it as the selected option.
     React.useEffect(() => {
@@ -398,10 +389,10 @@ export function SecretRequirementModal(props: SecretRequirementModalProps) {
                                 rowKind="item"
                                 popoverBoundaryRef={screenPopoverBoundaryRef}
                                 popoverPortalWebTarget="body"
-                                trigger={(
+                                trigger={({ open, toggle }) => (
                                     <View
                                         style={[
-                                            showEnvVarDropdown
+                                            open
                                                 ? (Platform.OS === 'web'
                                                     ? ({
                                                         boxShadow: theme.dark
@@ -418,9 +409,9 @@ export function SecretRequirementModal(props: SecretRequirementModalProps) {
                                                 : null,
                                             {
                                                 borderRadius: 12,
-                                                borderBottomLeftRadius: showEnvVarDropdown ? 0 : 12,
-                                                borderBottomRightRadius: showEnvVarDropdown ? 0 : 12,
-                                                backgroundColor: showEnvVarDropdown
+                                                borderBottomLeftRadius: open ? 0 : 12,
+                                                borderBottomRightRadius: open ? 0 : 12,
+                                                backgroundColor: open
                                                     ? (theme.dark ? theme.colors.surfaceHighest : theme.colors.surfaceHigh)
                                                     : theme.colors.surface,
                                             },
@@ -433,18 +424,18 @@ export function SecretRequirementModal(props: SecretRequirementModalProps) {
                                             icon={<Ionicons name="key-outline" size={24} color={theme.colors.textSecondary} />}
                                             rightElement={(
                                                 <Ionicons
-                                                    name={showEnvVarDropdown ? 'chevron-up' : 'chevron-down'}
+                                                    name={open ? 'chevron-up' : 'chevron-down'}
                                                     size={20}
                                                     color={theme.colors.textSecondary}
                                                 />
                                             )}
                                             showChevron={false}
                                             showDivider={false}
-                                            onPress={openEnvVarDropdown}
+                                            onPress={toggle}
                                             pressableStyle={{
                                                 borderRadius: 12,
-                                                borderBottomLeftRadius: showEnvVarDropdown ? 0 : 12,
-                                                borderBottomRightRadius: showEnvVarDropdown ? 0 : 12,
+                                                borderBottomLeftRadius: open ? 0 : 12,
+                                                borderBottomRightRadius: open ? 0 : 12,
                                                 overflow: 'hidden',
                                             }}
                                         />
@@ -480,12 +471,12 @@ export function SecretRequirementModal(props: SecretRequirementModalProps) {
                                 rowKind="item"
                                 popoverBoundaryRef={screenPopoverBoundaryRef}
                                 popoverPortalWebTarget="body"
-                                trigger={(
+                                trigger={({ open, toggle }) => (
                                     <View
                                         style={[
                                             // When open, use the same shadow "strength" as FloatingOverlay, but bias it
                                             // upward so the trigger is visually separated from the background.
-                                            showChoiceDropdown
+                                            open
                                                 ? (Platform.OS === 'web'
                                                     ? ({
                                                         boxShadow: theme.dark
@@ -502,9 +493,9 @@ export function SecretRequirementModal(props: SecretRequirementModalProps) {
                                                 : null,
                                             {
                                                 borderRadius: 12,
-                                                borderBottomLeftRadius: showChoiceDropdown ? 0 : 12,
-                                                borderBottomRightRadius: showChoiceDropdown ? 0 : 12,
-                                                backgroundColor: showChoiceDropdown
+                                                borderBottomLeftRadius: open ? 0 : 12,
+                                                borderBottomRightRadius: open ? 0 : 12,
+                                                backgroundColor: open
                                                     ? (theme.dark ? theme.colors.surfaceHighest : theme.colors.surfaceHigh)
                                                     : theme.colors.surface,
                                             },
@@ -548,18 +539,18 @@ export function SecretRequirementModal(props: SecretRequirementModalProps) {
                                             )}
                                             rightElement={(
                                                 <Ionicons
-                                                    name={showChoiceDropdown ? 'chevron-up' : 'chevron-down'}
+                                                    name={open ? 'chevron-up' : 'chevron-down'}
                                                     size={20}
                                                     color={theme.colors.textSecondary}
                                                 />
                                             )}
                                             showChevron={false}
                                             showDivider={false}
-                                            onPress={openChoiceDropdown}
+                                            onPress={toggle}
                                             pressableStyle={{
                                                 borderRadius: 12,
-                                                borderBottomLeftRadius: showChoiceDropdown ? 0 : 12,
-                                                borderBottomRightRadius: showChoiceDropdown ? 0 : 12,
+                                                borderBottomLeftRadius: open ? 0 : 12,
+                                                borderBottomRightRadius: open ? 0 : 12,
                                                 // Keep clipping for rounded corners, but the shadow comes from the wrapper above.
                                                 overflow: 'hidden',
                                             }}
