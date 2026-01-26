@@ -14,6 +14,7 @@ import { registerCommonHandlers } from '../modules/common/registerCommonHandlers
 import { addDiscardedCommittedMessageLocalIds } from './queue/discardedCommittedMessageLocalIds';
 import { claimMessageQueueV1Next, clearMessageQueueV1InFlight, discardMessageQueueV1All, parseMessageQueueV1 } from './queue/messageQueueV1';
 import { recordToolTraceEvent } from '@/agent/toolTrace/toolTrace';
+import { fetchSessionSnapshotUpdateFromServer, shouldSyncSessionSnapshotOnConnect } from './session/snapshotSync';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -157,7 +158,7 @@ export class ApiSessionClient extends EventEmitter {
             // If the user enqueued pending messages before this agent connected, the corresponding metadata
             // update happened "in the past" and won't be replayed over the socket. Syncing a snapshot here
             // ensures messageQueueV1 is visible so popPendingMessage() can materialize the first queued item.
-            if (this.metadataVersion < 0 || this.agentStateVersion < 0) {
+            if (shouldSyncSessionSnapshotOnConnect({ metadataVersion: this.metadataVersion, agentStateVersion: this.agentStateVersion })) {
                 void this.syncSessionSnapshotFromServer({ reason: 'connect' });
             }
         })
@@ -200,42 +201,24 @@ export class ApiSessionClient extends EventEmitter {
 
         const p = (async () => {
             try {
-                const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
-                    headers: {
-                        Authorization: `Bearer ${this.token}`,
-                        'Content-Type': 'application/json',
-                    },
-                    timeout: 10_000,
+                const update = await fetchSessionSnapshotUpdateFromServer({
+                    token: this.token,
+                    sessionId: this.sessionId,
+                    encryptionKey: this.encryptionKey,
+                    encryptionVariant: this.encryptionVariant,
+                    currentMetadataVersion: this.metadataVersion,
+                    currentAgentStateVersion: this.agentStateVersion,
                 });
 
-                const sessions = (response?.data as any)?.sessions;
-                if (!Array.isArray(sessions)) {
-                    return;
+                if (update.metadata) {
+                    this.metadata = update.metadata.metadata;
+                    this.metadataVersion = update.metadata.metadataVersion;
+                    this.emit('metadata-updated');
                 }
 
-                const raw = sessions.find((s: any) => s && typeof s === 'object' && s.id === this.sessionId);
-                if (!raw) {
-                    return;
-                }
-
-                // Sync metadata if it is newer than our local view.
-                const nextMetadataVersion = typeof raw.metadataVersion === 'number' ? raw.metadataVersion : null;
-                const rawMetadata = typeof raw.metadata === 'string' ? raw.metadata : null;
-                if (rawMetadata && nextMetadataVersion !== null && nextMetadataVersion > this.metadataVersion) {
-                    const decrypted = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(rawMetadata));
-                    if (decrypted) {
-                        this.metadata = decrypted;
-                        this.metadataVersion = nextMetadataVersion;
-                        this.emit('metadata-updated');
-                    }
-                }
-
-                // Sync agent state if it is newer than our local view.
-                const nextAgentStateVersion = typeof raw.agentStateVersion === 'number' ? raw.agentStateVersion : null;
-                const rawAgentState = typeof raw.agentState === 'string' ? raw.agentState : null;
-                if (nextAgentStateVersion !== null && nextAgentStateVersion > this.agentStateVersion) {
-                    this.agentState = rawAgentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(rawAgentState)) : null;
-                    this.agentStateVersion = nextAgentStateVersion;
+                if (update.agentState) {
+                    this.agentState = update.agentState.agentState;
+                    this.agentStateVersion = update.agentState.agentStateVersion;
                 }
             } catch (error) {
                 logger.debug('[API] Failed to sync session snapshot from server', { reason: opts.reason, error });
