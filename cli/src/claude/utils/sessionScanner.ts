@@ -158,6 +158,8 @@ function messageKey(message: RawJSONLines): string {
         return 'summary: ' + message.leafUuid + ': ' + message.summary;
     } else if (message.type === 'system') {
         return message.uuid;
+    } else if (message.type === 'progress') {
+        return message.uuid;
     } else {
         throw Error() // Impossible
     }
