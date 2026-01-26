@@ -48,7 +48,7 @@ import { useMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
 import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
 import { getMissingRequiredConfigEnvVarNames } from '@/utils/profileConfigRequirements';
 import { InteractionManager } from 'react-native';
-import { NewSessionWizard } from './NewSessionWizard';
+import { NewSessionWizard } from '@/components/newSession/NewSessionWizard';
 import { prefetchMachineCapabilities, prefetchMachineCapabilitiesIfStale, useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import { CAPABILITIES_REQUEST_NEW_SESSION } from '@/capabilities/requests';
 import { getCodexMcpResumeDepData } from '@/capabilities/codexMcpResume';
