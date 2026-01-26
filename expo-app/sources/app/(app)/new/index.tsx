@@ -3,19 +3,15 @@ import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView } from
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, storage, useSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
-import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { useRouter, useLocalSearchParams, useNavigation, usePathname } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
-import { layout } from '@/components/layout';
 import { t } from '@/text';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
-import { SessionTypeSelectorRows } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
@@ -24,7 +20,6 @@ import { mapPermissionModeAcrossAgents } from '@/sync/permissionMapping';
 import { readAccountPermissionDefaults, resolveNewSessionDefaultPermissionMode } from '@/sync/permissionDefaults';
 import { AIBackendProfile, getProfileEnvironmentVariables, isProfileCompatibleWithAgent } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES, getProfilePrimaryCli, getProfileSupportedAgentIds, isProfileCompatibleWithAnyAgent } from '@/sync/profileUtils';
-import { AgentInput } from '@/components/AgentInput';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
 import { getRequiredSecretEnvVarNames } from '@/sync/profileSecrets';
 import { DEFAULT_AGENT_ID, getAgentCore, isAgentId, resolveAgentIdFromCliDetectKey, type AgentId } from '@/agents/registryCore';
@@ -69,6 +64,7 @@ import { formatResumeSupportDetailCode } from '@/components/newSession/modules/f
 import { useSecretRequirementFlow } from '@/components/newSession/hooks/useSecretRequirementFlow';
 import { useNewSessionCapabilitiesPrefetch } from '@/components/newSession/hooks/useNewSessionCapabilitiesPrefetch';
 import { useNewSessionDraftAutoPersist } from '@/components/newSession/hooks/useNewSessionDraftAutoPersist';
+import { LegacyAgentInputPanel } from '@/components/newSession/components/LegacyAgentInputPanel';
 
 // Configuration constants
 const RECENT_PATHS_DEFAULT_VISIBLE = 5;
@@ -1750,106 +1746,47 @@ function NewSessionScreen() {
     // ========================================================================
     if (!useEnhancedSessionWizard) {
         return (
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + safeArea.bottom + 16 : 0}
-                style={[
-                    styles.container,
-                    ...(Platform.OS === 'web'
-                        ? [
-                            {
-                                justifyContent: 'center',
-                                paddingTop: 0,
-                            },
-                        ]
-                        : [
-                            {
-                                justifyContent: 'flex-end',
-                                paddingTop: 40,
-                            },
-                        ]),
-                ]}
-            >
-                <View
-                    ref={popoverBoundaryRef}
-                    style={{
-                        flex: 1,
-                        width: '100%',
-                        // Keep the content centered on web. Without this, the boundary wrapper (flex:1)
-                        // can cause the inner content to stick to the top even when the modal is centered.
-                        justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
-                    }}
-                >
-                    <PopoverPortalTargetProvider>
-                        <PopoverBoundaryProvider boundaryRef={popoverBoundaryRef}>
-                        <View style={{
-                            width: '100%',
-                            alignSelf: 'center',
-                            paddingTop: safeArea.top,
-                            paddingBottom: safeArea.bottom,
-                        }}>
-                            {/* Session type selector only if enabled via experiments */}
-                            {experimentsEnabled && expSessionType && (
-                                <View style={{ paddingHorizontal: newSessionSidePadding, marginBottom: 16 }}>
-                                    <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                                        <ItemGroup title={t('newSession.sessionType.title')} containerStyle={{ marginHorizontal: 0 }}>
-                                            <SessionTypeSelectorRows value={sessionType} onChange={setSessionType} />
-                                        </ItemGroup>
-                                    </View>
-                                </View>
-                            )}
-
-                            {/* AgentInput with inline chips - sticky at bottom */}
-                            <View
-                                style={{
-                                    paddingTop: 12,
-                                    paddingBottom: newSessionBottomPadding,
-                                }}
-                            >
-                                <View style={{ paddingHorizontal: newSessionSidePadding }}>
-                                    <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-	                                        <AgentInput
-	                                            value={sessionPrompt}
-	                                            onChangeText={setSessionPrompt}
-	                                            onSend={handleCreateSession}
-	                                            isSendDisabled={!canCreate}
-	                                            isSending={isCreating}
-	                                            placeholder={t('session.inputPlaceholder')}
-	                                            autocompletePrefixes={emptyAutocompletePrefixes}
-	                                            autocompleteSuggestions={emptyAutocompleteSuggestions}
-	                                            inputMaxHeight={sessionPromptInputMaxHeight}
-	                                            agentType={agentType}
-	                                            onAgentClick={handleAgentClick}
-	                                            permissionMode={permissionMode}
-	                                            onPermissionModeChange={handlePermissionModeChange}
-	                                            modelMode={modelMode}
-                                            onModelModeChange={setModelMode}
-                                            connectionStatus={connectionStatus}
-                                            machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
-                                            onMachineClick={handleMachineClick}
-                                            currentPath={selectedPath}
-                                            onPathClick={handlePathClick}
-                                            resumeSessionId={showResumePicker ? resumeSessionId : undefined}
-                                            onResumeClick={showResumePicker ? handleResumeClick : undefined}
-                                            resumeIsChecking={isResumeSupportChecking}
-                                            contentPaddingHorizontal={0}
-                                            {...(useProfiles
-                                                ? {
-                                                    profileId: selectedProfileId,
-                                                    onProfileClick: handleProfileClick,
-                                                    envVarsCount: selectedProfileEnvVarsCount || undefined,
-                                                    onEnvVarsClick: selectedProfileEnvVarsCount > 0 ? handleEnvVarsClick : undefined,
-                                                }
-                                                : {})}
-                                        />
-                                    </View>
-                                </View>
-                            </View>
-                        </View>
-                        </PopoverBoundaryProvider>
-                    </PopoverPortalTargetProvider>
-                </View>
-            </KeyboardAvoidingView>
+            <LegacyAgentInputPanel
+                popoverBoundaryRef={popoverBoundaryRef}
+                headerHeight={headerHeight}
+                safeAreaTop={safeArea.top}
+                safeAreaBottom={safeArea.bottom}
+                newSessionSidePadding={newSessionSidePadding}
+                newSessionBottomPadding={newSessionBottomPadding}
+                containerStyle={styles.container as any}
+                experimentsEnabled={experimentsEnabled === true}
+                expSessionType={expSessionType === true}
+                sessionType={sessionType}
+                setSessionType={setSessionType}
+                sessionPrompt={sessionPrompt}
+                setSessionPrompt={setSessionPrompt}
+                handleCreateSession={handleCreateSession}
+                canCreate={canCreate}
+                isCreating={isCreating}
+                emptyAutocompletePrefixes={emptyAutocompletePrefixes}
+                emptyAutocompleteSuggestions={emptyAutocompleteSuggestions}
+                sessionPromptInputMaxHeight={sessionPromptInputMaxHeight}
+                agentType={agentType}
+                handleAgentClick={handleAgentClick}
+                permissionMode={permissionMode}
+                handlePermissionModeChange={handlePermissionModeChange}
+                modelMode={modelMode}
+                setModelMode={setModelMode}
+                connectionStatus={connectionStatus}
+                machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
+                handleMachineClick={handleMachineClick}
+                selectedPath={selectedPath}
+                handlePathClick={handlePathClick}
+                showResumePicker={showResumePicker}
+                resumeSessionId={resumeSessionId}
+                handleResumeClick={handleResumeClick}
+                isResumeSupportChecking={isResumeSupportChecking}
+                useProfiles={useProfiles}
+                selectedProfileId={selectedProfileId}
+                handleProfileClick={handleProfileClick}
+                selectedProfileEnvVarsCount={selectedProfileEnvVarsCount}
+                handleEnvVarsClick={handleEnvVarsClick}
+            />
         );
     }
 
