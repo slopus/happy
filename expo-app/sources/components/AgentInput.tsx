@@ -18,7 +18,7 @@ import { FloatingOverlay } from './FloatingOverlay';
 import { Popover } from './Popover';
 import { ScrollEdgeFades } from './ScrollEdgeFades';
 import { ScrollEdgeIndicators } from './ScrollEdgeIndicators';
-import { ActionListSection, type ActionListItem } from './ActionListSection';
+import { ActionListSection } from './ActionListSection';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
@@ -37,6 +37,8 @@ import { PathAndResumeRow } from './agentInput/PathAndResumeRow';
 import { getHasAnyAgentInputActions, shouldShowPathAndResumeRow } from './agentInput/actionBarLogic';
 import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { computeAgentInputDefaultMaxHeight } from './agentInput/inputMaxHeight';
+import { getContextWarning } from './agentInput/contextWarning';
+import { buildAgentInputActionMenuActions } from './agentInput/actionMenuActions';
 
 interface AgentInputProps {
     value: string;
@@ -91,8 +93,6 @@ interface AgentInputProps {
     contentPaddingHorizontal?: number;
     panelStyle?: ViewStyle;
 }
-
-const MAX_CONTEXT_SIZE = 190000;
 
 function truncateWithEllipsis(value: string, maxChars: number) {
     if (value.length <= maxChars) return value;
@@ -421,21 +421,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
 }));
 
-const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
-    const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
-    const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
-
-    if (percentageRemaining <= 5) {
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warningCritical };
-    } else if (percentageRemaining <= 10) {
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
-    } else if (alwaysShow) {
-        // Show context remaining in neutral color when not near limit
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
-    }
-    return null; // No display needed
-};
-
 export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, AgentInputProps>((props, ref) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -648,123 +633,33 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [props.onAbort]);
 
     const actionMenuActions = React.useMemo(() => {
-        if (!actionBarIsCollapsed || !hasAnyActions) return [] as ActionListItem[];
-
-        const tint = theme.colors.button.secondary.tint;
-        const actions: ActionListItem[] = [];
-
-        if (props.onProfileClick) {
-            actions.push({
-                id: 'profile',
-                label: profileLabel ?? t('profiles.noProfile'),
-                icon: <Ionicons name={profileIcon as any} size={16} color={tint} />,
-                onPress: () => {
-                    hapticsLight();
-                    setShowSettings(false);
-                    props.onProfileClick?.();
-                },
-            });
-        }
-
-        if (props.onEnvVarsClick) {
-            actions.push({
-                id: 'env-vars',
-                label:
-                    props.envVarsCount === undefined
-                        ? t('agentInput.envVars.title')
-                        : t('agentInput.envVars.titleWithCount', { count: props.envVarsCount }),
-                icon: <Ionicons name="list-outline" size={16} color={tint} />,
-                onPress: () => {
-                    hapticsLight();
-                    setShowSettings(false);
-                    props.onEnvVarsClick?.();
-                },
-            });
-        }
-
-        if (props.agentType && props.onAgentClick) {
-            actions.push({
-                id: 'agent',
-                label: t(getAgentCore(agentId).displayNameKey),
-                icon: <Octicons name="cpu" size={16} color={tint} />,
-                onPress: () => {
-                    hapticsLight();
-                    setShowSettings(false);
-                    props.onAgentClick?.();
-                },
-            });
-        }
-
-        if (props.machineName !== undefined && props.onMachineClick) {
-            actions.push({
-                id: 'machine',
-                label: props.machineName === null ? t('agentInput.noMachinesAvailable') : props.machineName,
-                icon: <Ionicons name="desktop-outline" size={16} color={tint} />,
-                onPress: () => {
-                    hapticsLight();
-                    setShowSettings(false);
-                    props.onMachineClick?.();
-                },
-            });
-        }
-
-        if (props.currentPath && props.onPathClick) {
-            actions.push({
-                id: 'path',
-                label: props.currentPath,
-                icon: <Ionicons name="folder-outline" size={16} color={tint} />,
-                onPress: () => {
-                    hapticsLight();
-                    setShowSettings(false);
-                    props.onPathClick?.();
-                },
-            });
-        }
-
-        if (props.onResumeClick) {
-            actions.push({
-                id: 'resume',
-                label: formatResumeChipLabel({
-                    resumeSessionId: props.resumeSessionId,
-                    labelTitle: t('newSession.resume.title'),
-                    labelOptional: t('newSession.resume.optional'),
-                }),
-                icon: <Ionicons name={RESUME_CHIP_ICON_NAME} size={RESUME_CHIP_ICON_SIZE} color={tint} />,
-                onPress: () => {
-                    hapticsLight();
-                    setShowSettings(false);
-                    inputRef.current?.blur();
-                    props.onResumeClick?.();
-                },
-            });
-        }
-
-        if (props.sessionId && props.onFileViewerPress) {
-            actions.push({
-                id: 'files',
-                label: t('agentInput.actionMenu.files'),
-                icon: <Octicons name="git-branch" size={16} color={tint} />,
-                onPress: () => {
-                    hapticsLight();
-                    setShowSettings(false);
-                    props.onFileViewerPress?.();
-                },
-            });
-        }
-
-	        if (props.onAbort) {
-	            actions.push({
-	                id: 'stop',
-	                label: t('agentInput.actionMenu.stop'),
-                icon: <Octicons name="stop" size={16} color={tint} />,
-                onPress: () => {
-                    setShowSettings(false);
-                    void handleAbortPress();
-                },
-            });
-        }
-
-	        return actions;
+        return buildAgentInputActionMenuActions({
+            actionBarIsCollapsed,
+            hasAnyActions,
+            tint: theme.colors.button.secondary.tint,
+            agentId,
+            profileLabel,
+            profileIcon,
+            envVarsCount: props.envVarsCount,
+            agentType: props.agentType,
+            machineName: props.machineName,
+            currentPath: props.currentPath,
+            resumeSessionId: props.resumeSessionId,
+            sessionId: props.sessionId,
+            onProfileClick: props.onProfileClick,
+            onEnvVarsClick: props.onEnvVarsClick,
+            onAgentClick: props.onAgentClick,
+            onMachineClick: props.onMachineClick,
+            onPathClick: props.onPathClick,
+            onResumeClick: props.onResumeClick,
+            onFileViewerPress: props.onFileViewerPress,
+            canStop: Boolean(props.onAbort),
+            onStop: () => {
+                void handleAbortPress();
+            },
+            dismiss: () => setShowSettings(false),
+            blurInput: () => inputRef.current?.blur(),
+        });
 	    }, [
 	        actionBarIsCollapsed,
 	        hasAnyActions,
@@ -786,8 +681,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 	        props.onPathClick,
 	        props.onProfileClick,
 	        props.sessionId,
-	        setShowSettings,
-	        t,
 	        theme.colors.button.secondary.tint,
 	    ]);
 
