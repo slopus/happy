@@ -36,6 +36,7 @@ import { findRunningTrackedSessionById } from './sessions/findRunningTrackedSess
 import { isPidSafeHappySessionProcess } from './sessions/pidSafety';
 import { reattachTrackedSessionsFromMarkers } from './sessions/reattachFromMarkers';
 import { createOnHappySessionWebhook } from './sessions/onHappySessionWebhook';
+import { createOnChildExited } from './sessions/onChildExited';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
@@ -814,50 +815,13 @@ export async function startDaemon(): Promise<void> {
       return false;
     };
 
-    // Handle child process exit
-    const onChildExited = (pid: number, exit: { reason: string; code: number | null; signal: string | null }) => {
-	      logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
-	      const tracked = pidToTrackedSession.get(pid);
-	      if (tracked) {
-	        if (apiMachineForSessions) {
-	          reportDaemonObservedSessionExit({
-	            apiMachine: apiMachineForSessions,
-	            trackedSession: tracked,
-	            now: () => Date.now(),
-	            exit,
-	          });
-	        }
-	        void writeSessionExitReport({
-	          sessionId: tracked.happySessionId ?? null,
-	          pid,
-	          report: {
-	            observedAt: Date.now(),
-	            observedBy: 'daemon',
-	            reason: exit.reason,
-	            code: exit.code,
-	            signal: exit.signal,
-	          },
-	        }).catch((e) => logger.debug('[DAEMON RUN] Failed to write session exit report', e));
-	      }
-	      const cleanup = codexHomeDirCleanupByPid.get(pid);
-	      if (cleanup) {
-	        codexHomeDirCleanupByPid.delete(pid);
-        try {
-          cleanup();
-        } catch (error) {
-          logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', error);
-	        }
-	      }
-	      const attachCleanup = sessionAttachCleanupByPid.get(pid);
-	      if (attachCleanup) {
-	        sessionAttachCleanupByPid.delete(pid);
-	        void attachCleanup().catch((error) => {
-	          logger.debug('[DAEMON RUN] Failed to cleanup session attach file', error);
-	        });
-	      }
-	      pidToTrackedSession.delete(pid);
-	      void removeSessionMarker(pid);
-	    };
+	    // Handle child process exit
+	    const onChildExited = createOnChildExited({
+	      pidToTrackedSession,
+	      codexHomeDirCleanupByPid,
+	      sessionAttachCleanupByPid,
+	      getApiMachineForSessions: () => apiMachineForSessions,
+	    });
 
     // Start control server
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
