@@ -30,11 +30,11 @@ import { getDaemonShutdownExitCode, getDaemonShutdownWatchdogTimeoutMs } from '.
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './control/client';
 import { startDaemonControlServer } from './control/server';
-import { findAllHappyProcesses, findHappyProcessByPid } from './diagnostics/doctor';
-import { hashProcessCommand, listSessionMarkers, removeSessionMarker, writeSessionMarker } from './sessions/sessionRegistry';
+import { findHappyProcessByPid } from './diagnostics/doctor';
+import { hashProcessCommand, removeSessionMarker, writeSessionMarker } from './sessions/sessionRegistry';
 import { findRunningTrackedSessionById } from './sessions/findRunningTrackedSessionById';
 import { isPidSafeHappySessionProcess } from './sessions/pidSafety';
-import { adoptSessionsFromMarkers } from './sessions/reattach';
+import { reattachTrackedSessionsFromMarkers } from './sessions/reattachFromMarkers';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
@@ -124,25 +124,7 @@ export async function startDaemon(): Promise<void> {
     // Helper functions
     const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
 
-    // On daemon restart, reattach to still-running sessions via disk markers (stack-scoped by HAPPY_HOME_DIR).
-    try {
-      const markers = await listSessionMarkers();
-      const happyProcesses = await findAllHappyProcesses();
-      const aliveMarkers = [];
-      for (const marker of markers) {
-        try {
-          process.kill(marker.pid, 0);
-          aliveMarkers.push(marker);
-        } catch {
-          await removeSessionMarker(marker.pid);
-          continue;
-        }
-      }
-      const { adopted } = adoptSessionsFromMarkers({ markers: aliveMarkers, happyProcesses, pidToTrackedSession });
-      if (adopted > 0) logger.debug(`[DAEMON RUN] Reattached ${adopted} sessions from disk markers`);
-    } catch (e) {
-      logger.debug('[DAEMON RUN] Failed to reattach sessions from disk markers', e);
-    }
+	    await reattachTrackedSessionsFromMarkers({ pidToTrackedSession });
 
     // Handle webhook from happy session reporting itself
     const onHappySessionWebhook = (sessionId: string, sessionMetadata: Metadata) => {
