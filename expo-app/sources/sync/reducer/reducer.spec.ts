@@ -377,6 +377,48 @@ describe('reducer', () => {
     });
 
     describe('AgentState permissions', () => {
+        it('should treat permission-request tool-call inputs as pending permissions (no AgentState required)', () => {
+            const state = createReducer();
+
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'perm-msg-1',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'write_file-123',
+                        name: 'write',
+                        input: {
+                            permissionId: 'write_file-123',
+                            toolCall: {
+                                toolCallId: 'write_file-123',
+                                status: 'pending',
+                                title: 'Writing to .tmp/example.txt',
+                                content: [{ path: 'example.txt', type: 'diff', oldText: '', newText: 'hello' }],
+                                locations: [{ path: '/Users/example/.tmp/example.txt' }],
+                            },
+                        },
+                        description: 'write',
+                        uuid: 'perm-msg-1',
+                        parentUUID: null,
+                    }],
+                },
+            ];
+
+            const result = reducer(state, messages);
+            expect(result.messages).toHaveLength(1);
+
+            const msg = result.messages[0];
+            expect(msg.kind).toBe('tool-call');
+            if (msg.kind !== 'tool-call') return;
+
+            expect(msg.tool.permission).toEqual({ id: 'write_file-123', status: 'pending' });
+            expect(msg.tool.startedAt).toBeNull();
+        });
+
         it('should create tool messages for pending permission requests', () => {
             const state = createReducer();
             const agentState: AgentState = {

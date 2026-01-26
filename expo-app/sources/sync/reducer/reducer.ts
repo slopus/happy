@@ -118,6 +118,47 @@ import { MessageMeta } from "../typesMessageMeta";
 import { parseMessageAsEvent } from "./messageToEvent";
 import { compareToolCalls } from "../../utils/toolComparison";
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return value as Record<string, unknown>;
+}
+
+function firstString(value: unknown): string | null {
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function extractPermissionRequestId(input: unknown): string | null {
+    const obj = asRecord(input);
+    if (!obj) return null;
+
+    const direct =
+        firstString(obj.permissionId) ??
+        firstString(obj.toolCallId) ??
+        null;
+    if (direct) return direct;
+
+    const toolCall = asRecord(obj.toolCall);
+    if (!toolCall) return null;
+
+    return (
+        firstString(toolCall.permissionId) ??
+        firstString(toolCall.toolCallId) ??
+        null
+    );
+}
+
+function isPermissionRequestToolCall(toolId: string, input: unknown): boolean {
+    const extracted = extractPermissionRequestId(input);
+    if (!extracted || extracted !== toolId) return false;
+
+    const obj = asRecord(input);
+    const toolCall = obj ? asRecord(obj.toolCall) : null;
+    const status = firstString(toolCall?.status) ?? firstString(obj?.status) ?? null;
+
+    // Only treat as a permission request when it looks pending.
+    return status === 'pending' || toolCall !== null;
+}
+
 type ReducerMessage = {
     id: string;
     realID: string | null;
@@ -888,6 +929,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                                 }
                             }
 
+                            if (!message.tool.permission && isPermissionRequestToolCall(c.id, message.tool.input)) {
+                                message.tool.permission = { id: c.id, status: 'pending' };
+                                message.tool.startedAt = null;
+                            }
+
                             // If permission was approved and shown as completed (no tool), now it's running
                             if (message.tool.permission?.status === 'approved' && message.tool.state === 'completed') {
                                 message.tool.state = 'running';
@@ -947,6 +993,19 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                                     toolCall.result = { error: permission.reason };
                                 }
                             }
+                        }
+
+                        // Some providers persist pending permission requests as tool-call messages (without AgentState).
+                        // Treat those tool-call inputs as pending permissions so the UI can render approval controls.
+                        if (!permission && isPermissionRequestToolCall(c.id, c.input)) {
+                            toolCall.startedAt = null;
+                            toolCall.permission = { id: c.id, status: 'pending' };
+                            state.permissions.set(c.id, {
+                                tool: c.name,
+                                arguments: c.input,
+                                createdAt: msg.createdAt,
+                                status: 'pending',
+                            });
                         }
 
                         let mid = allocateId();
