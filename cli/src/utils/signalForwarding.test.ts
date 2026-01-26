@@ -4,11 +4,13 @@ import { attachProcessSignalForwardingToChild } from './signalForwarding';
 
 class FakeProc {
     platform: NodeJS.Platform;
+    pid = 999;
     handlers = new Map<string, (() => void)[]>();
     off = vi.fn((event: string, handler: () => void) => {
         const list = this.handlers.get(event) ?? [];
         this.handlers.set(event, list.filter((h) => h !== handler));
     });
+    kill = vi.fn();
 
     constructor(platform: NodeJS.Platform) {
         this.platform = platform;
@@ -53,5 +55,20 @@ describe('attachProcessSignalForwardingToChild', () => {
 
         expect(proc.handlers.has('SIGHUP')).toBe(false);
     });
-});
 
+    it('forwards SIGINT to the child without swallowing the parent signal', () => {
+        const proc = new FakeProc('darwin');
+        const child = new FakeChild() as any;
+
+        attachProcessSignalForwardingToChild(child, proc as any);
+
+        const handler = (proc.handlers.get('SIGINT') ?? [])[0];
+        expect(typeof handler).toBe('function');
+
+        handler();
+
+        expect(child.kill).toHaveBeenCalledWith('SIGINT');
+        expect(proc.kill).toHaveBeenCalledWith(proc.pid, 'SIGINT');
+        expect(proc.off).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+    });
+});

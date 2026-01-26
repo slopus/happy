@@ -1,6 +1,6 @@
 import type { ChildProcess } from 'node:child_process';
 
-type SignalForwardingProcess = Pick<NodeJS.Process, 'platform' | 'on' | 'off'>;
+type SignalForwardingProcess = Pick<NodeJS.Process, 'platform' | 'on' | 'off' | 'pid' | 'kill'>;
 
 export function attachProcessSignalForwardingToChild(
     child: ChildProcess,
@@ -17,14 +17,8 @@ export function attachProcessSignalForwardingToChild(
         signals.push('SIGHUP');
     }
 
-    const handlers = new Map<NodeJS.Signals, () => void>();
-    for (const signal of signals) {
-        const handler = () => forwardSignal(signal);
-        handlers.set(signal, handler);
-        proc.on(signal, handler);
-    }
-
     let cleanedUp = false;
+    const handlers = new Map<NodeJS.Signals, () => void>();
     const cleanup = () => {
         if (cleanedUp) return;
         cleanedUp = true;
@@ -33,8 +27,21 @@ export function attachProcessSignalForwardingToChild(
         }
     };
 
+    for (const signal of signals) {
+        const handler = () => {
+            forwardSignal(signal);
+            cleanup();
+            try {
+                proc.kill(proc.pid, signal);
+            } catch {
+                // ignore
+            }
+        };
+        handlers.set(signal, handler);
+        proc.on(signal, handler);
+    }
+
     child.on('exit', cleanup);
     child.on('close', cleanup);
     child.on('error', cleanup);
 }
-
