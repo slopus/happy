@@ -1,6 +1,5 @@
 import type { GitStatus, Machine, Session } from '../../storageTypes';
-import { createReducer, reducer, type ReducerState } from '../../reducer/reducer';
-import type { Message } from '../../typesMessage';
+import { createReducer, reducer } from '../../reducer/reducer';
 import type { NormalizedMessage } from '../../typesRaw';
 import { buildSessionListViewData, type SessionListViewItem } from '../../sessionListViewData';
 import { nowServerMs } from '../../time';
@@ -10,21 +9,14 @@ import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/Realtim
 import type { PermissionMode } from '@/sync/permissionTypes';
 
 import type { StoreGet, StoreSet } from './_shared';
+import type { SessionMessages } from './messages';
 
 type SessionModelMode = NonNullable<Session['modelMode']>;
-
-type SessionMessages = {
-    messages: Message[];
-    messagesMap: Record<string, Message>;
-    reducerState: ReducerState;
-    isLoaded: boolean;
-};
 
 export type SessionsDomain = {
     sessions: Record<string, Session>;
     sessionsData: (string | Session)[] | null;
     sessionListViewData: SessionListViewItem[] | null;
-    sessionMessages: Record<string, SessionMessages>;
     sessionGitStatus: Record<string, GitStatus | null>;
     sessionLastViewed: Record<string, number>;
     isDataReady: boolean;
@@ -57,7 +49,6 @@ export type SessionsDomain = {
 type SessionsDomainDependencies = {
     machines: Record<string, Machine>;
     sessionMessages: Record<string, SessionMessages>;
-    sessionPending: Record<string, any>;
     settings: { groupInactiveSessionsByProject: boolean };
 };
 
@@ -135,7 +126,6 @@ export function createSessionsDomain<S extends SessionsDomain & SessionsDomainDe
         sessions: {},
         sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
-        sessionMessages: {},
         sessionGitStatus: {},
         sessionLastViewed,
         isDataReady: false,
