@@ -24,6 +24,7 @@ import { buildSessionListViewData, type SessionListViewItem } from '../sessionLi
 import { createArtifactsDomain } from './domains/artifacts';
 import { createFeedDomain } from './domains/feed';
 import { createFriendsDomain } from './domains/friends';
+import { createMachinesDomain } from './domains/machines';
 import { createProfileDomain } from './domains/profile';
 import { createRealtimeDomain, type NativeUpdateStatus, type RealtimeMode, type RealtimeStatus, type SocketStatus, type SyncError } from './domains/realtime';
 import { createSettingsDomain } from './domains/settings';
@@ -181,6 +182,7 @@ export const storage = create<StorageState>()((set, get) => {
     const settingsDomain = createSettingsDomain<StorageState>({ set, get });
     const profileDomain = createProfileDomain<StorageState>({ set, get });
     const todosDomain = createTodosDomain<StorageState>({ set, get });
+    const machinesDomain = createMachinesDomain<StorageState>({ set, get });
     let sessionDrafts = loadSessionDrafts();
     let sessionPermissionModes = loadSessionPermissionModes();
     let sessionModelModes = loadSessionModelModes();
@@ -219,7 +221,7 @@ export const storage = create<StorageState>()((set, get) => {
         ...settingsDomain,
         ...profileDomain,
         sessions: {},
-        machines: {},
+        ...machinesDomain,
         ...artifactsDomain,
         ...friendsDomain,
         ...feedDomain,
@@ -947,37 +949,6 @@ export const storage = create<StorageState>()((set, get) => {
             // Trigger a state update to notify hooks
             set((state) => ({ ...state }));
         },
-        applyMachines: (machines: Machine[], replace: boolean = false) => set((state) => {
-            // Either replace all machines or merge updates
-            let mergedMachines: Record<string, Machine>;
-
-            if (replace) {
-                // Replace entire machine state (used by fetchMachines)
-                mergedMachines = {};
-                machines.forEach(machine => {
-                    mergedMachines[machine.id] = machine;
-                });
-            } else {
-                // Merge individual updates (used by update-machine)
-                mergedMachines = { ...state.machines };
-                machines.forEach(machine => {
-                    mergedMachines[machine.id] = machine;
-                });
-            }
-
-            // Rebuild sessionListViewData to reflect machine changes
-            const sessionListViewData = buildSessionListViewData(
-                state.sessions,
-                mergedMachines,
-                { groupInactiveSessionsByProject: state.settings.groupInactiveSessionsByProject }
-            );
-
-            return {
-                ...state,
-                machines: mergedMachines,
-                sessionListViewData
-            };
-        }),
         deleteSession: (sessionId: string) => set((state) => {
 	            const optimisticTimeout = optimisticThinkingTimeoutBySessionId.get(sessionId);
 	            if (optimisticTimeout) {
