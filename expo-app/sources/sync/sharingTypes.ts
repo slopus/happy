@@ -26,7 +26,7 @@ export interface ShareUserProfile {
     /** Unique user identifier */
     id: string;
     /** User's unique username */
-    username: string;
+    username: string | null;
     /** User's first name, if set */
     firstName: string | null;
     /** User's last name, if set */
@@ -87,8 +87,14 @@ export interface PublicSessionShare {
     id: string;
     /** ID of the session being shared (optional in some contexts) */
     sessionId?: string;
-    /** Random token used in the public URL */
-    token: string;
+    /**
+     * Random token used in the public URL
+     *
+     * @remarks
+     * Public-share tokens are stored hashed on the server and cannot be recovered.
+     * The server returns the token only at creation/rotation time.
+     */
+    token: string | null;
     /**
      * Expiration timestamp (milliseconds since epoch), or null if never expires
      *
@@ -142,9 +148,13 @@ export interface SharedSession {
     /** Timestamp of last activity (milliseconds since epoch) */
     activeAt: number;
     /** Session metadata (path, name, etc.) */
-    metadata: any;
+    metadata: string;
     /** Version number of the metadata */
     metadataVersion: number;
+    /** Agent state (encrypted) */
+    agentState: string | null;
+    /** Agent state version number */
+    agentStateVersion: number;
     /** User who shared this session */
     sharedBy: ShareUserProfile;
     /** Access level granted to current user */
@@ -225,6 +235,8 @@ export interface CreateSessionShareRequest {
     userId: string;
     /** Access level to grant */
     accessLevel: ShareAccessLevel;
+    /** Base64 encoded (v0 + box bundle) */
+    encryptedDataKey: string;
 }
 
 /** Response containing a single session share */
@@ -319,6 +331,10 @@ export interface AccessPublicShareResponse {
     accessLevel: 'view';
     /** Encrypted data key for decrypting session (base64) */
     encryptedDataKey: string;
+    /** Session owner profile */
+    owner: ShareUserProfile;
+    /** Whether consent is required (echoed) */
+    isConsentRequired: boolean;
 }
 
 /** Response containing sessions shared with the current user */

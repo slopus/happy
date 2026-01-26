@@ -21,8 +21,12 @@ export async function encryptDataKeyForPublicShare(
     const tokenBytes = new TextEncoder().encode(token);
     const encryptionKey = await deriveKey(tokenBytes, 'Happy Public Share', ['v1']);
 
-    // Encrypt the data key
-    const encrypted = encryptSecretBox(dataEncryptionKey, encryptionKey);
+    // IMPORTANT: encryptSecretBox JSON-stringifies its input, so we must not pass Uint8Array directly.
+    const payload = {
+        v: 0,
+        keyB64: encodeBase64(dataEncryptionKey, 'base64'),
+    };
+    const encrypted = encryptSecretBox(payload, encryptionKey);
 
     // Return as base64
     return encodeBase64(encrypted, 'base64');
@@ -50,20 +54,15 @@ export async function decryptDataKeyFromPublicShare(
         // Decode from base64
         const encrypted = decodeBase64(encryptedDataKey, 'base64');
 
-        // Decrypt and return
-        const decrypted = decryptSecretBox(encrypted, decryptionKey);
-        if (!decrypted) {
+        const payload = decryptSecretBox(encrypted, decryptionKey) as { v: number; keyB64: string } | null;
+        if (!payload || payload.v !== 0) {
             return null;
         }
-
-        // Convert back to Uint8Array if it's a different type
-        if (typeof decrypted === 'string') {
-            return new TextEncoder().encode(decrypted);
+        if (typeof payload.keyB64 !== 'string') {
+            return null;
         }
-
-        return new Uint8Array(decrypted);
+        return decodeBase64(payload.keyB64, 'base64');
     } catch (error) {
-        console.error('Failed to decrypt public share data key:', error);
         return null;
     }
 }

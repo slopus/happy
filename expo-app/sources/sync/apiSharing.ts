@@ -76,8 +76,8 @@ export async function getSessionShares(
  * The target user must be a friend of the owner. If a share already exists
  * for the user, it will be updated with the new access level.
  *
- * The server will automatically encrypt the session's data encryption key with
- * the recipient's public key, allowing them to decrypt the session data.
+ * The client must provide `encryptedDataKey` (the session DEK wrapped for the
+ * recipient's content public key). The server stores it as an opaque blob.
  */
 export async function createSessionShare(
     credentials: AuthCredentials,

@@ -162,7 +162,7 @@ export interface Session {
     owner?: string; // User ID of the session owner (for shared sessions)
     ownerProfile?: {
         id: string;
-        username: string;
+        username: string | null;
         firstName: string | null;
         lastName: string | null;
         avatar: string | null;

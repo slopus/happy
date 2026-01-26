@@ -571,7 +571,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const input = shouldShowInput ? (
         <View>
             <AgentInput
-                placeholder={isReadOnly ? t('sessionSharing.viewOnlyMode') : t('session.inputPlaceholder')}
+                placeholder={isReadOnly ? t('session.sharing.viewOnlyMode') : t('session.inputPlaceholder')}
                 value={message}
                 onChangeText={setMessage}
                 sessionId={sessionId}
@@ -599,7 +599,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 }}
                 onSend={() => {
                     if (!hasWriteAccess) {
-                        Modal.alert(t('common.error'), t('sessionSharing.noEditPermission'));
+                        Modal.alert(t('common.error'), t('session.sharing.noEditPermission'));
                         return;
                     }
                     const text = message.trim();

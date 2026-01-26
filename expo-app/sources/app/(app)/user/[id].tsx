@@ -16,12 +16,14 @@ import { Modal } from '@/modal';
 import { t } from '@/text';
 import { trackFriendsConnect } from '@/track';
 import { Ionicons } from '@expo/vector-icons';
+import { useAllSessions } from '@/sync/storage';
 
 export default function UserProfileScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { credentials } = useAuth();
     const router = useRouter();
     const { theme } = useUnistyles();
+    const sessions = useAllSessions();
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -159,6 +161,9 @@ export default function UserProfileScreen() {
     };
 
     const friendActions = getFriendActions();
+    const sharedSessions = userProfile.status === 'friend'
+        ? sessions.filter(session => session.owner === userProfile.id)
+        : [];
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -206,6 +211,29 @@ export default function UserProfileScreen() {
                     />
                 ))}
             </ItemGroup>
+
+            {/* Sessions shared by this friend */}
+            {userProfile.status === 'friend' && (
+                <ItemGroup title={t('friends.sharedSessions')}>
+                    {sharedSessions.length > 0 ? (
+                        sharedSessions.map((session) => (
+                            <Item
+                                key={session.id}
+                                title={session.metadata?.name || session.metadata?.path || t('sessionHistory.title')}
+                                subtitle={t('session.sharing.viewOnly')}
+                                icon={<Ionicons name="chatbubble-ellipses-outline" size={29} color="#007AFF" />}
+                                onPress={() => router.push(`/session/${session.id}`)}
+                            />
+                        ))
+                    ) : (
+                        <Item
+                            title={t('friends.noSharedSessions')}
+                            icon={<Ionicons name="chatbubble-outline" size={29} color={theme.colors.textSecondary} />}
+                            showChevron={false}
+                        />
+                    )}
+                </ItemGroup>
+            )}
 
             {/* GitHub Link */}
 

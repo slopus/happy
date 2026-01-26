@@ -1,192 +1,307 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { useUnistyles } from 'react-native-unistyles';
-import { t } from '@/text';
-import { sync } from '@/sync/sync';
+import { Avatar } from '@/components/Avatar';
+import { getServerUrl } from '@/sync/serverConfig';
 import { decryptDataKeyFromPublicShare } from '@/sync/publicShareEncryption';
-import { Ionicons } from '@expo/vector-icons';
-import { getServerUrl } from "@/sync/serverConfig";
+import { AES256Encryption } from '@/sync/encryption/encryptor';
+import { EncryptionCache } from '@/sync/encryption/encryptionCache';
+import { SessionEncryption } from '@/sync/encryption/sessionEncryption';
+import type { ApiMessage } from '@/sync/apiTypes';
+import { normalizeRawMessage, type NormalizedMessage } from '@/sync/typesRaw';
+import { useAuth } from '@/auth/AuthContext';
 
-/**
- * Public share access screen
- *
- * This screen handles accessing a session via a public share link.
- * The token from the URL is used to decrypt the session data key.
- */
-export default function PublicShareAccessScreen() {
+type ShareOwner = {
+    id: string;
+    username: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    avatar: string | null;
+};
+
+type PublicShareResponse = {
+    session: {
+        id: string;
+        seq: number;
+        createdAt: number;
+        updatedAt: number;
+        active: boolean;
+        activeAt: number;
+        metadata: string;
+        metadataVersion: number;
+        agentState: string | null;
+        agentStateVersion: number;
+    };
+    owner: ShareOwner;
+    accessLevel: 'view';
+    encryptedDataKey: string;
+    isConsentRequired: boolean;
+};
+
+type PublicShareConsentResponse = {
+    error: string;
+    requiresConsent: true;
+    sessionId: string;
+    owner: ShareOwner | null;
+};
+
+type PublicShareMessagesResponse = {
+    messages: ApiMessage[];
+};
+
+function getOwnerDisplayName(owner: ShareOwner | null): string {
+    if (!owner) return t('status.unknown');
+    if (owner.username) return `@${owner.username}`;
+    const fullName = [owner.firstName, owner.lastName].filter(Boolean).join(' ');
+    return fullName || t('status.unknown');
+}
+
+function summarizeMessage(message: NormalizedMessage): string {
+    if (message.role === 'user') {
+        return message.content.text;
+    }
+    if (message.role === 'agent') {
+        for (const block of message.content) {
+            if (block.type === 'text' && block.text) {
+                return block.text;
+            }
+            if (block.type === 'tool-call') {
+                return block.name;
+            }
+            if (block.type === 'tool-result') {
+                return t('common.details');
+            }
+        }
+        return t('common.details');
+    }
+    return t('common.details');
+}
+
+export default memo(function PublicShareViewerScreen() {
     const { token } = useLocalSearchParams<{ token: string }>();
+    const { credentials } = useAuth();
     const router = useRouter();
     const { theme } = useUnistyles();
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [shareInfo, setShareInfo] = useState<{
-        sessionId: string;
-        ownerName: string;
-        requiresConsent: boolean;
-    } | null>(null);
 
-    useEffect(() => {
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [consentInfo, setConsentInfo] = useState<PublicShareConsentResponse | null>(null);
+    const [share, setShare] = useState<PublicShareResponse | null>(null);
+    const [decryptedMetadata, setDecryptedMetadata] = useState<any | null>(null);
+    const [messages, setMessages] = useState<NormalizedMessage[]>([]);
+
+    const authHeader = useMemo(() => {
+        if (!credentials?.token) return null;
+        return `Bearer ${credentials.token}`;
+    }, [credentials?.token]);
+
+    const load = useCallback(async (withConsent: boolean) => {
         if (!token) {
             setError(t('errors.invalidShareLink'));
-            setLoading(false);
+            setIsLoading(false);
             return;
         }
 
-        loadPublicShare();
-    }, [token]);
+        setIsLoading(true);
+        setError(null);
+        setConsentInfo(null);
+        setShare(null);
+        setDecryptedMetadata(null);
+        setMessages([]);
 
-    const loadPublicShare = async (withConsent: boolean = false) => {
         try {
-            setLoading(true);
-            setError(null);
-
-            const credentials = sync.getCredentials();
             const serverUrl = getServerUrl();
-
-            // Build URL with consent parameter if user has accepted
             const url = withConsent
                 ? `${serverUrl}/v1/public-share/${token}?consent=true`
                 : `${serverUrl}/v1/public-share/${token}`;
 
-            const response = await fetch(url, {
-                headers: {
-                    'Authorization': `Bearer ${credentials.token}`,
-                },
-            });
-
-            if (!response.ok) {
-                if (response.status === 404) {
-                    setError(t('session.sharing.shareNotFound'));
-                    setLoading(false);
-                    return;
-                } else if (response.status === 403) {
-                    // Consent required but not provided
-                    const data = await response.json();
-                    if (data.requiresConsent) {
-                        // Show consent screen with owner info from server
-                        setShareInfo({
-                            sessionId: data.sessionId || '',
-                            ownerName: data.owner?.username || data.owner?.firstName || 'Unknown',
-                            requiresConsent: true,
-                        });
-                        setLoading(false);
-                        return;
-                    }
-                    setError(t('session.sharing.shareExpired'));
-                    setLoading(false);
-                    return;
-                } else {
-                    setError(t('errors.operationFailed'));
-                    setLoading(false);
-                    return;
-                }
+            const headers: Record<string, string> = {};
+            if (authHeader) {
+                headers['Authorization'] = authHeader;
             }
 
-            const data = await response.json();
-
-            // Decrypt the data encryption key using the token
-            const decryptedKey = await decryptDataKeyFromPublicShare(
-                data.encryptedDataKey,
-                token
-            );
-
-            if (!decryptedKey) {
-                setError(t('session.sharing.failedToDecrypt'));
-                setLoading(false);
+            const response = await fetch(url, { method: 'GET', headers });
+            if (!response.ok) {
+                if (response.status === 403) {
+                    const data = await response.json();
+                    if (data?.requiresConsent) {
+                        setConsentInfo(data as PublicShareConsentResponse);
+                        setIsLoading(false);
+                        return;
+                    }
+                }
+                setError(t('session.sharing.shareNotFound'));
+                setIsLoading(false);
                 return;
             }
 
-            // Store the decrypted key for this session
-            sync.storePublicShareKey(data.session.id, decryptedKey);
+            const data = (await response.json()) as PublicShareResponse;
+            const decryptedKey = await decryptDataKeyFromPublicShare(data.encryptedDataKey, token);
+            if (!decryptedKey) {
+                setError(t('session.sharing.failedToDecrypt'));
+                setIsLoading(false);
+                return;
+            }
 
-            setShareInfo({
-                sessionId: data.session.id,
-                ownerName: data.owner?.username || data.owner?.firstName || 'Unknown',
-                requiresConsent: false, // Successfully accessed, no need to show consent screen
-            });
-            setLoading(false);
-        } catch (err) {
-            console.error('Failed to load public share:', err);
+            const sessionEncryptor = new AES256Encryption(decryptedKey);
+            const cache = new EncryptionCache();
+            const sessionEncryption = new SessionEncryption(data.session.id, sessionEncryptor, cache);
+
+            const decryptedMetadata = await sessionEncryption.decryptMetadata(
+                data.session.metadataVersion,
+                data.session.metadata
+            );
+
+            const messagesUrl = withConsent
+                ? `${serverUrl}/v1/public-share/${token}/messages?consent=true`
+                : `${serverUrl}/v1/public-share/${token}/messages`;
+            const messagesResponse = await fetch(messagesUrl, { method: 'GET', headers });
+            if (!messagesResponse.ok) {
+                setError(t('errors.operationFailed'));
+                setIsLoading(false);
+                return;
+            }
+            const messagesData = (await messagesResponse.json()) as PublicShareMessagesResponse;
+            const decryptedMessages = await sessionEncryption.decryptMessages(messagesData.messages ?? []);
+            const normalized: NormalizedMessage[] = [];
+            for (const m of decryptedMessages) {
+                if (!m || !m.content) continue;
+                const normalizedMessage = normalizeRawMessage(m.id, m.localId, m.createdAt, m.content);
+                if (normalizedMessage) {
+                    normalized.push(normalizedMessage);
+                }
+            }
+            normalized.sort((a, b) => a.createdAt - b.createdAt);
+
+            setShare(data);
+            setDecryptedMetadata(decryptedMetadata);
+            setMessages(normalized.slice(-60));
+            setIsLoading(false);
+        } catch {
             setError(t('errors.operationFailed'));
-            setLoading(false);
+            setIsLoading(false);
         }
-    };
+    }, [authHeader, token]);
 
-    const handleAcceptConsent = () => {
-        // Reload with consent=true to actually access the session
-        loadPublicShare(true);
-    };
+    useEffect(() => {
+        void load(false);
+    }, [load]);
 
-    const handleDeclineConsent = () => {
-        router.back();
-    };
-
-    if (loading) {
+    if (isLoading) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.groupped.background }}>
+            <View style={[styles.center, { backgroundColor: theme.colors.groupped.background }]}>
                 <ActivityIndicator size="large" color={theme.colors.textLink} />
-                <Text style={{ color: theme.colors.textSecondary, marginTop: 16, fontSize: 15 }}>
-                    {t('common.loading')}
-                </Text>
             </View>
         );
     }
 
     if (error) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.groupped.background, paddingHorizontal: 32 }}>
+            <View style={[styles.center, { backgroundColor: theme.colors.groupped.background }]}>
                 <Ionicons name="alert-circle-outline" size={64} color={theme.colors.textDestructive} />
-                <Text style={{ color: theme.colors.text, fontSize: 20, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>
-                    {t('common.error')}
-                </Text>
-                <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center' }}>
-                    {error}
-                </Text>
-            </View>
-        );
-    }
-
-    if (shareInfo && shareInfo.requiresConsent) {
-        return (
-            <View style={{ flex: 1, backgroundColor: theme.colors.groupped.background }}>
                 <ItemList>
-                    <ItemGroup title={t('session.sharing.consentRequired')}>
-                        <Item
-                            title={t('session.sharing.sharedBy', { name: shareInfo.ownerName })}
-                            icon={<Ionicons name="person-outline" size={29} color="#007AFF" />}
-                            showChevron={false}
-                        />
-                        <Item
-                            title={t('session.sharing.consentDescription')}
-                            showChevron={false}
-                        />
-                    </ItemGroup>
                     <ItemGroup>
-                        <Item
-                            title={t('session.sharing.acceptAndView')}
-                            icon={<Ionicons name="checkmark-circle-outline" size={29} color="#34C759" />}
-                            onPress={handleAcceptConsent}
-                        />
-                        <Item
-                            title={t('common.cancel')}
-                            icon={<Ionicons name="close-circle-outline" size={29} color="#FF3B30" />}
-                            onPress={handleDeclineConsent}
-                        />
+                        <Item title={t('common.error')} subtitle={error} showChevron={false} />
                     </ItemGroup>
                 </ItemList>
             </View>
         );
     }
 
-    // No consent required, navigate directly to session
-    if (shareInfo) {
-        router.replace(`/session/${shareInfo.sessionId}`);
+    if (consentInfo?.requiresConsent) {
+        const ownerName = getOwnerDisplayName(consentInfo.owner);
+        return (
+            <ItemList style={{ paddingTop: 0 }}>
+                <ItemGroup title={t('session.sharing.consentRequired')}>
+                    <Item
+                        title={t('session.sharing.sharedBy', { name: ownerName })}
+                        icon={<Ionicons name="person-outline" size={29} color="#007AFF" />}
+                        showChevron={false}
+                    />
+                    <Item
+                        title={t('session.sharing.consentDescription')}
+                        showChevron={false}
+                    />
+                </ItemGroup>
+                <ItemGroup>
+                    <Item
+                        title={t('session.sharing.acceptAndView')}
+                        icon={<Ionicons name="checkmark-circle-outline" size={29} color="#34C759" />}
+                        onPress={() => load(true)}
+                    />
+                    <Item
+                        title={t('common.cancel')}
+                        icon={<Ionicons name="close-circle-outline" size={29} color="#FF3B30" />}
+                        onPress={() => router.back()}
+                    />
+                </ItemGroup>
+            </ItemList>
+        );
+    }
+
+    if (!share) {
         return null;
     }
 
-    return null;
-}
+    const ownerName = getOwnerDisplayName(share.owner);
+    const ownerAvatarUrl = share.owner?.avatar ?? null;
+    const sessionName = decryptedMetadata?.name || decryptedMetadata?.path || t('session.sharing.session');
+
+    return (
+        <ItemList style={{ paddingTop: 0 }}>
+            <ItemGroup title={t('session.sharing.publicLink')}>
+                <Item
+                    title={sessionName}
+                    subtitle={t('session.sharing.viewOnly')}
+                    icon={<Ionicons name="lock-closed-outline" size={29} color="#007AFF" />}
+                    showChevron={false}
+                />
+                <Item
+                    title={ownerName}
+                    icon={
+                        <Avatar
+                            id={share.owner.id}
+                            size={32}
+                            imageUrl={ownerAvatarUrl}
+                        />
+                    }
+                    showChevron={false}
+                />
+            </ItemGroup>
+
+            <ItemGroup title={t('common.message')}>
+                {messages.length > 0 ? (
+                    messages.map((m) => (
+                        <Item
+                            key={m.id}
+                            title={t('common.message')}
+                            subtitle={summarizeMessage(m)}
+                            subtitleLines={2}
+                            showChevron={false}
+                        />
+                    ))
+                ) : (
+                    <Item
+                        title={t('session.sharing.noMessages')}
+                        showChevron={false}
+                    />
+                )}
+            </ItemGroup>
+        </ItemList>
+    );
+});
+
+const styles = StyleSheet.create(() => ({
+    center: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 24,
+    },
+}));

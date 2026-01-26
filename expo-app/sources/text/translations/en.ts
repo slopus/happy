@@ -326,6 +326,7 @@ export const en = {
         webViewLoadFailed: 'Failed to load authentication page',
         failedToLoadProfile: 'Failed to load user profile',
         userNotFound: 'User not found',
+        invalidShareLink: 'Invalid or expired share link',
         sessionDeleted: 'Session has been deleted',
         sessionDeletedDescription: 'This session has been permanently removed',
 
@@ -350,14 +351,20 @@ export const en = {
         failedToSendRequest: 'Failed to send friend request',
         failedToResumeSession: 'Failed to resume session',
         failedToSendMessage: 'Failed to send message',
-            missingPermissionId: 'Missing permission request id',
-            codexResumeNotInstalledTitle: 'Codex resume is not installed on this machine',
-            codexResumeNotInstalledMessage:
-                'To resume a Codex conversation, install the Codex resume server on the target machine (Machine Details → Codex resume).',
-            codexAcpNotInstalledTitle: 'Codex ACP is not installed on this machine',
-            codexAcpNotInstalledMessage:
-                'To use the Codex ACP experiment, install codex-acp on the target machine (Machine Details → Codex ACP) or disable the experiment.',
-        },
+        cannotShareWithSelf: 'Cannot share with yourself',
+        canOnlyShareWithFriends: 'Can only share with friends',
+        shareNotFound: 'Share not found',
+        publicShareNotFound: 'Public share not found or expired',
+        consentRequired: 'Consent required for access',
+        maxUsesReached: 'Maximum uses reached',
+        missingPermissionId: 'Missing permission request id',
+        codexResumeNotInstalledTitle: 'Codex resume is not installed on this machine',
+        codexResumeNotInstalledMessage:
+            'To resume a Codex conversation, install the Codex resume server on the target machine (Machine Details → Codex resume).',
+        codexAcpNotInstalledTitle: 'Codex ACP is not installed on this machine',
+        codexAcpNotInstalledMessage:
+            'To use the Codex ACP experiment, install codex-acp on the target machine (Machine Details → Codex ACP) or disable the experiment.',
+    },
 
     deps: {
         installNotSupported: 'Update Happy CLI to install this dependency.',
@@ -557,6 +564,62 @@ export const en = {
         machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
             `“${machine}” is offline, so Happy can’t resume this session yet. Bring it online to continue.`,
         machineOfflineCannotResume: 'Machine is offline. Bring it online to resume this session.',
+
+        sharing: {
+            title: 'Sharing',
+            directSharing: 'Direct sharing',
+            addShare: 'Share with a friend',
+            accessLevel: 'Access level',
+            shareWith: 'Share with',
+            sharedWith: 'Shared with',
+            noShares: 'Not shared',
+            viewOnly: 'View only',
+            viewOnlyDescription: 'Can view the session but can’t send messages.',
+            viewOnlyMode: 'View-only (shared session)',
+            noEditPermission: 'You have read-only access to this session.',
+            canEdit: 'Can edit',
+            canEditDescription: 'Can send messages.',
+            canManage: 'Can manage',
+            canManageDescription: 'Can manage sharing settings.',
+            stopSharing: 'Stop sharing',
+            recipientMissingKeys: 'This user hasn’t registered encryption keys yet.',
+
+            publicLink: 'Public link',
+            publicLinkActive: 'Public link is active',
+            publicLinkDescription: 'Create a link that lets anyone view this session.',
+            createPublicLink: 'Create public link',
+            regeneratePublicLink: 'Regenerate public link',
+            deletePublicLink: 'Delete public link',
+            linkToken: 'Link token',
+            tokenNotRecoverable: 'Token not available',
+            tokenNotRecoverableDescription: 'For security reasons, public-link tokens are stored hashed and can’t be recovered. Regenerate the link to create a new token.',
+
+            expiresIn: 'Expires in',
+            expiresOn: 'Expires on',
+            days7: '7 days',
+            days30: '30 days',
+            never: 'Never',
+
+            maxUsesLabel: 'Maximum uses',
+            unlimited: 'Unlimited',
+            uses10: '10 uses',
+            uses50: '50 uses',
+            usageCount: 'Usage count',
+            usageCountWithMax: ({ used, max }: { used: number; max: number }) => `${used}/${max} uses`,
+            usageCountUnlimited: ({ used }: { used: number }) => `${used} uses`,
+
+            requireConsent: 'Require consent',
+            requireConsentDescription: 'Ask viewers to consent before their access is logged.',
+            consentRequired: 'Consent required',
+            consentDescription: 'This link requires your consent to log your IP address and user agent.',
+            acceptAndView: 'Accept and view',
+            sharedBy: ({ name }: { name: string }) => `Shared by ${name}`,
+
+            shareNotFound: 'Share link not found or expired',
+            failedToDecrypt: 'Failed to decrypt the session',
+            noMessages: 'No messages yet',
+            session: 'Session',
+        },
     },
 
     commandPalette: {
@@ -629,6 +692,8 @@ export const en = {
         copyResumeCommand: 'Copy resume command',
         viewMachine: 'View Machine',
         viewMachineSubtitle: 'View machine details and sessions',
+        manageSharing: 'Manage sharing',
+        manageSharingSubtitle: 'Share this session with others',
         killSessionSubtitle: 'Immediately terminate the session',
         archiveSessionSubtitle: 'Archive this session and stop it',
         metadata: 'Metadata',
@@ -1274,6 +1339,8 @@ export const en = {
         cancelRequestConfirm: ({ name }: { name: string }) => `Cancel your friendship request to ${name}?`,
         denyRequest: 'Deny friendship',
         nowFriendsWith: ({ name }: { name: string }) => `You are now friends with ${name}`,
+        sharedSessions: 'Shared sessions',
+        noSharedSessions: 'No shared sessions yet',
     },
 
     usage: {

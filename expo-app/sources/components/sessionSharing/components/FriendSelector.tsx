@@ -73,7 +73,7 @@ export const FriendSelector = memo(function FriendSelector({
             {/* Search input */}
             <TextInput
                 style={styles.searchInput}
-                placeholder={t('friends.searchFriends')}
+                placeholder={t('friends.searchPlaceholder')}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 autoFocus
@@ -88,7 +88,9 @@ export const FriendSelector = memo(function FriendSelector({
                         <View style={styles.friendItem}>
                             <UserCard
                                 user={item}
-                                onPress={() => setSelectedUserId(item.id)}
+                                onPress={item.contentPublicKey && item.contentPublicKeySig ? () => setSelectedUserId(item.id) : undefined}
+                                disabled={!item.contentPublicKey || !item.contentPublicKeySig}
+                                subtitle={!item.contentPublicKey || !item.contentPublicKeySig ? t('session.sharing.recipientMissingKeys') : undefined}
                             />
                             {selectedUserId === item.id && (
                                 <View style={styles.selectedIndicator} />
@@ -99,7 +101,7 @@ export const FriendSelector = memo(function FriendSelector({
                         <View style={styles.emptyState}>
                             <Text style={styles.emptyText}>
                                 {searchQuery
-                                    ? t('friends.noFriendsFound')
+                                    ? t('common.noMatches')
                                     : t('friends.noFriendsYet')
                                 }
                             </Text>

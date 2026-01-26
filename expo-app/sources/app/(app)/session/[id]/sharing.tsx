@@ -9,9 +9,7 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
-import { SessionShareDialog } from '@/components/SessionSharing/SessionShareDialog';
-import { FriendSelector } from '@/components/SessionSharing/FriendSelector';
-import { PublicLinkDialog } from '@/components/SessionSharing/PublicLinkDialog';
+import { FriendSelector, PublicLinkDialog, SessionShareDialog } from '@/components/sessionSharing';
 import { SessionShare, PublicSessionShare, ShareAccessLevel } from '@/sync/sharingTypes';
 import {
     getSessionShares,
@@ -29,6 +27,7 @@ import { getFriendsList } from '@/sync/apiFriends';
 import { UserProfile } from '@/sync/friendTypes';
 import { encryptDataKeyForPublicShare } from '@/sync/encryption/publicShareEncryption';
 import { getRandomBytes } from 'expo-crypto';
+import { encryptDataKeyForRecipientV0, verifyRecipientContentPublicKeyBinding } from '@/sync/directShareEncryption';
 
 function SharingManagementContent({ sessionId }: { sessionId: string }) {
     const { theme } = useUnistyles();
@@ -55,7 +54,13 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
             // Load public share
             try {
                 const publicShareData = await getPublicShare(credentials, sessionId);
-                setPublicShare(publicShareData);
+                setPublicShare((prev) => {
+                    if (!publicShareData) return null;
+                    if (prev?.token && !publicShareData.token) {
+                        return { ...publicShareData, token: prev.token };
+                    }
+                    return publicShareData;
+                });
             } catch (e) {
                 // No public share exists
                 setPublicShare(null);
@@ -78,9 +83,33 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
         try {
             const credentials = sync.getCredentials();
 
+            const friend = friends.find(f => f.id === userId);
+            if (!friend) {
+                throw new HappyError(t('errors.operationFailed'), false);
+            }
+            if (!friend.contentPublicKey || !friend.contentPublicKeySig) {
+                throw new HappyError(t('session.sharing.recipientMissingKeys'), false);
+            }
+            const isValidBinding = verifyRecipientContentPublicKeyBinding({
+                signingPublicKeyHex: friend.publicKey,
+                contentPublicKeyB64: friend.contentPublicKey,
+                contentPublicKeySigB64: friend.contentPublicKeySig,
+            });
+            if (!isValidBinding) {
+                throw new HappyError(t('errors.operationFailed'), false);
+            }
+
+            // Get plaintext session DEK from the sync layer (owner/admin only)
+            const dataKey = sync.getSessionDataKey(sessionId);
+            if (!dataKey) {
+                throw new HappyError(t('errors.sessionNotFound'), false);
+            }
+            const encryptedDataKey = encryptDataKeyForRecipientV0(dataKey, friend.contentPublicKey);
+
             await createSessionShare(credentials, sessionId, {
                 userId,
                 accessLevel,
+                encryptedDataKey,
             });
 
             await loadSharingData();
@@ -88,7 +117,7 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
         } catch (error) {
             throw new HappyError(t('errors.operationFailed'), false);
         }
-    }, [sessionId, loadSharingData]);
+    }, [friends, sessionId, loadSharingData]);
 
     // Handle updating share access level
     const handleUpdateShare = useCallback(async (shareId: string, accessLevel: ShareAccessLevel) => {
@@ -140,7 +169,7 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
                 ? Date.now() + options.expiresInDays * 24 * 60 * 60 * 1000
                 : undefined;
 
-            await createPublicShare(credentials, sessionId, {
+            const created = await createPublicShare(credentials, sessionId, {
                 token,
                 encryptedDataKey,
                 expiresAt,
@@ -148,6 +177,7 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
                 isConsentRequired: options.isConsentRequired,
             });
 
+            setPublicShare(created);
             await loadSharingData();
         } catch (error) {
             throw new HappyError(t('errors.operationFailed'), false);
@@ -183,15 +213,13 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
     }
 
     const excludedUserIds = shares.map(share => share.sharedWithUser.id);
-    // Check if current user is the session owner
-    const currentUserId = sync.getUserID();
-    const canManage = session.owner === currentUserId;
+    const canManage = !session.accessLevel || session.accessLevel === 'admin';
 
     return (
         <>
             <ItemList>
                 {/* Current Shares */}
-                <ItemGroup title={t('sessionSharing.directSharing')}>
+                <ItemGroup title={t('session.sharing.directSharing')}>
                     {shares.length > 0 ? (
                         shares.map(share => (
                             <Item
@@ -211,7 +239,7 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
                     )}
                     {canManage && (
                         <Item
-                            title={t('sessionSharing.addShare')}
+                            title={t('session.sharing.addShare')}
                             icon={<Ionicons name="person-add-outline" size={29} color="#34C759" />}
                             onPress={() => setShowFriendSelector(true)}
                         />
@@ -219,21 +247,21 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
                 </ItemGroup>
 
                 {/* Public Link */}
-                <ItemGroup title={t('sessionSharing.publicLink')}>
+                <ItemGroup title={t('session.sharing.publicLink')}>
                     {publicShare ? (
                         <Item
-                            title={t('sessionSharing.publicLinkActive')}
+                            title={t('session.sharing.publicLinkActive')}
                             subtitle={publicShare.expiresAt
-                                ? t('sessionSharing.expiresOn') + ': ' + new Date(publicShare.expiresAt).toLocaleDateString()
-                                : t('sessionSharing.never')
+                                ? t('session.sharing.expiresOn') + ': ' + new Date(publicShare.expiresAt).toLocaleDateString()
+                                : t('session.sharing.never')
                             }
                             icon={<Ionicons name="link-outline" size={29} color="#34C759" />}
                             onPress={() => setShowPublicLinkDialog(true)}
                         />
                     ) : (
                         <Item
-                            title={t('sessionSharing.createPublicLink')}
-                            subtitle={t('sessionSharing.publicLinkDescription')}
+                            title={t('session.sharing.createPublicLink')}
+                            subtitle={t('session.sharing.publicLinkDescription')}
                             icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
                             onPress={() => setShowPublicLinkDialog(true)}
                         />

@@ -9,6 +9,7 @@ import { ItemList } from '@/components/ItemList';
 import { RoundButton } from '@/components/RoundButton';
 import { t } from '@/text';
 import { getServerUrl } from '@/sync/serverConfig';
+import { Ionicons } from '@expo/vector-icons';
 
 /**
  * Props for PublicLinkDialog component
@@ -42,14 +43,14 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
     onCancel
 }: PublicLinkDialogProps) {
     const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-    const [isCreating, setIsCreating] = useState(!publicShare);
+    const [isConfiguring, setIsConfiguring] = useState(false);
     const [expiresInDays, setExpiresInDays] = useState<number | undefined>(7);
     const [maxUses, setMaxUses] = useState<number | undefined>(undefined);
     const [isConsentRequired, setIsConsentRequired] = useState(true);
 
     // Generate QR code when public share exists
     useEffect(() => {
-        if (!publicShare) {
+        if (!publicShare?.token) {
             setQrDataUrl(null);
             return;
         }
@@ -67,10 +68,11 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
             },
         })
             .then(setQrDataUrl)
-            .catch(console.error);
-    }, [publicShare]);
+            .catch(() => setQrDataUrl(null));
+    }, [publicShare?.token]);
 
     const handleCreate = () => {
+        setIsConfiguring(false);
         onCreate({
             expiresInDays,
             maxUses,
@@ -93,7 +95,7 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
             </View>
 
             <ScrollView style={styles.content}>
-                {isCreating ? (
+                {!publicShare || isConfiguring ? (
                     <ItemList>
                         <Text style={styles.description}>
                             {t('session.sharing.publicLinkDescription')}
@@ -208,7 +210,7 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                         {/* Create button */}
                         <View style={styles.buttonContainer}>
                             <RoundButton
-                                title={t('session.sharing.createPublicLink')}
+                                title={publicShare ? t('session.sharing.regeneratePublicLink') : t('session.sharing.createPublicLink')}
                                 onPress={handleCreate}
                                 size="large"
                                 style={{ width: '100%', maxWidth: 400 }}
@@ -217,6 +219,12 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                     </ItemList>
                 ) : publicShare ? (
                     <ItemList>
+                        <Item
+                            title={t('session.sharing.regeneratePublicLink')}
+                            onPress={() => setIsConfiguring(true)}
+                            icon={<Ionicons name="refresh-outline" size={29} color="#007AFF" />}
+                        />
+
                         {/* QR Code */}
                         {qrDataUrl && (
                             <View style={styles.qrContainer}>
@@ -229,11 +237,19 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                         )}
 
                         {/* Info */}
-                        <Item
-                            title={t('session.sharing.linkToken')}
-                            subtitle={publicShare.token}
-                            subtitleLines={1}
-                        />
+                        {publicShare.token ? (
+                            <Item
+                                title={t('session.sharing.linkToken')}
+                                subtitle={publicShare.token}
+                                subtitleLines={1}
+                            />
+                        ) : (
+                            <Item
+                                title={t('session.sharing.tokenNotRecoverable')}
+                                subtitle={t('session.sharing.tokenNotRecoverableDescription')}
+                                showChevron={false}
+                            />
+                        )}
                         {publicShare.expiresAt && (
                             <Item
                                 title={t('session.sharing.expiresOn')}
