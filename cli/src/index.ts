@@ -14,9 +14,6 @@ import { readCredentials } from './persistence'
 import { authAndSetupMachineIfNeeded } from './ui/auth'
 import packageJson from '../package.json'
 import { z } from 'zod'
-import { existsSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { startDaemon } from './daemon/run'
 import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './daemon/controlClient'
 import { getLatestDaemonLog } from './ui/logger'
@@ -30,10 +27,10 @@ import { handleAuthCommand } from './commands/auth'
 import { handleConnectCommand } from './commands/connect'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
-import { setGeminiModelConfig } from './gemini/utils/setGeminiModelConfig'
 	import { execFileSync } from 'node:child_process'
 	import { parseAndStripTerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags'
 	import { handleAttachCommand } from '@/commands/attach'
+import { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_ENV } from './gemini/constants'
 	import { CODEX_GEMINI_PERMISSION_MODES, CODEX_PERMISSION_MODES, PERMISSION_MODES, isCodexGeminiPermissionMode, isCodexPermissionMode, isPermissionMode, type PermissionMode } from '@/api/types'
 
 
@@ -266,7 +263,11 @@ import { setGeminiModelConfig } from './gemini/utils/setGeminiModelConfig'
       }
       
       try {
-        const { configPath } = setGeminiModelConfig({ model: modelName });
+        const { saveGeminiModelToConfig } = await import('@/gemini/utils/config');
+        saveGeminiModelToConfig(modelName);
+        const { join } = await import('node:path');
+        const { homedir } = await import('node:os');
+        const configPath = join(homedir(), '.gemini', 'config.json');
         console.log(`✓ Model set to: ${modelName}`);
         console.log(`  Config saved to: ${configPath}`);
         console.log(`  This model will be used in future sessions.`);
@@ -280,30 +281,14 @@ import { setGeminiModelConfig } from './gemini/utils/setGeminiModelConfig'
     // Handle "happy gemini model get" command
     if (geminiSubcommand === 'model' && args[2] === 'get') {
       try {
-        const configPaths = [
-          join(homedir(), '.gemini', 'config.json'),
-          join(homedir(), '.config', 'gemini', 'config.json'),
-        ];
-        
-        let model: string | null = null;
-        for (const configPath of configPaths) {
-          if (existsSync(configPath)) {
-            try {
-              const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-              model = config.model || config.GEMINI_MODEL || null;
-              if (model) break;
-            } catch (error) {
-              // Ignore parse errors
-            }
-          }
-        }
-        
-        if (model) {
-          console.log(`Current model: ${model}`);
-        } else if (process.env.GEMINI_MODEL) {
-          console.log(`Current model: ${process.env.GEMINI_MODEL} (from GEMINI_MODEL env var)`);
+        const { readGeminiLocalConfig } = await import('@/gemini/utils/config');
+        const local = readGeminiLocalConfig();
+        if (local.model) {
+          console.log(`Current model: ${local.model}`);
+        } else if (process.env[GEMINI_MODEL_ENV]) {
+          console.log(`Current model: ${process.env[GEMINI_MODEL_ENV]} (from ${GEMINI_MODEL_ENV} env var)`);
         } else {
-          console.log('Current model: gemini-2.5-pro (default)');
+          console.log(`Current model: ${DEFAULT_GEMINI_MODEL} (default)`);
         }
         process.exit(0);
       } catch (error) {
