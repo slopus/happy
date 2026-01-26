@@ -51,6 +51,12 @@ export const RawJSONLinesSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("system"),
     uuid: z.string() // Used in getMessageKey()
+  }).passthrough(),
+
+  // Progress message - hook progress events, not counted toward message limits
+  z.object({
+    type: z.literal("progress"),
+    uuid: z.string()
   }).passthrough()
 ]);
 

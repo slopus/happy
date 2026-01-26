@@ -24,6 +24,9 @@ function messageKey(message: RawJSONLines): string {
     if (message.type === 'system') {
         return message.uuid;
     }
+    if (message.type === 'progress') {
+        return message.uuid;
+    }
     return `unknown:${Math.random()}`;
 }
 
@@ -31,6 +34,9 @@ function isPrimaryUserMessage(message: RawJSONLines): boolean {
     if (message.type !== 'user') return false;
     if ((message as any).isSidechain) return false;
     if ((message as any).isMeta) return false;
+    // Tool results have content as array with tool_result type, not real user input
+    const content = (message as any).message?.content;
+    if (Array.isArray(content)) return false;
     return true;
 }
 
@@ -98,12 +104,19 @@ export async function backfillClaudeSessionHistory(opts: {
     let totalCount = 0;
     let userCount = 0;
 
+    // Work backwards from the most recent message
     for (let i = messages.length - 1; i >= 0; i--) {
         const message = messages[i];
         if (message.type === 'summary') {
             continue; // Skip summaries to avoid title churn
         }
         selected.push(message);
+
+        // Progress messages are included but don't count toward limits
+        if (message.type === 'progress') {
+            continue;
+        }
+
         totalCount += 1;
         const isPrimaryUser = isPrimaryUserMessage(message);
         if (isPrimaryUser) {

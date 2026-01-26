@@ -9,12 +9,16 @@ export interface ClaudeSessionIndexEntry {
     originalPath: string | null;
     title?: string | null;
     updatedAt?: number;
+    messageCount?: number;
+    gitBranch?: string | null;
 }
 
 type ParsedSession = {
     sessionId: string;
     updatedAt?: number;
     title?: string | null;
+    messageCount?: number;
+    gitBranch?: string | null;
 };
 
 function parseTimestamp(value: unknown): number | undefined {
@@ -80,6 +84,22 @@ function extractTitle(entry: any): string | null {
     return null;
 }
 
+function extractMessageCount(entry: any): number | undefined {
+    if (!entry || typeof entry !== 'object') return undefined;
+    if (typeof entry.messageCount === 'number' && entry.messageCount >= 0) {
+        return entry.messageCount;
+    }
+    return undefined;
+}
+
+function extractGitBranch(entry: any): string | null {
+    if (!entry || typeof entry !== 'object') return null;
+    if (typeof entry.gitBranch === 'string' && entry.gitBranch.trim()) {
+        return entry.gitBranch.trim();
+    }
+    return null;
+}
+
 function extractSessionsFromIndex(data: any): ParsedSession[] {
     if (!data) return [];
 
@@ -92,7 +112,9 @@ function extractSessionsFromIndex(data: any): ParsedSession[] {
             sessions.push({
                 sessionId,
                 updatedAt: extractUpdatedAt(entry),
-                title: extractTitle(entry)
+                title: extractTitle(entry),
+                messageCount: extractMessageCount(entry),
+                gitBranch: extractGitBranch(entry)
             });
         }
         return sessions;
@@ -107,7 +129,9 @@ function extractSessionsFromIndex(data: any): ParsedSession[] {
             sessions.push({
                 sessionId,
                 updatedAt: extractUpdatedAt(entry),
-                title: extractTitle(entry)
+                title: extractTitle(entry),
+                messageCount: extractMessageCount(entry),
+                gitBranch: extractGitBranch(entry)
             });
         }
         return sessions;
@@ -121,7 +145,9 @@ function extractSessionsFromIndex(data: any): ParsedSession[] {
             sessions.push({
                 sessionId: sessionId.trim(),
                 updatedAt: extractUpdatedAt(entry),
-                title: extractTitle(entry)
+                title: extractTitle(entry),
+                messageCount: extractMessageCount(entry),
+                gitBranch: extractGitBranch(entry)
             });
         }
         return sessions;
@@ -136,7 +162,9 @@ function extractSessionsFromIndex(data: any): ParsedSession[] {
             sessions.push({
                 sessionId,
                 updatedAt: extractUpdatedAt(entry),
-                title: extractTitle(entry)
+                title: extractTitle(entry),
+                messageCount: extractMessageCount(entry),
+                gitBranch: extractGitBranch(entry)
             });
         }
         return sessions;
@@ -185,34 +213,56 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
         if (!originalPath) {
             continue;
         }
-        let sessions = extractSessionsFromIndex(data);
+        // Get sessions from index (has title/summary info)
+        const indexedSessions = extractSessionsFromIndex(data);
+        const indexedMap = new Map<string, ParsedSession>();
+        for (const session of indexedSessions) {
+            indexedMap.set(session.sessionId, session);
+        }
 
-        // Fallback: scan .jsonl files if index missing or empty
-        if (sessions.length === 0) {
-            try {
-                const projectEntries = await readdir(projectDir, { withFileTypes: true }) as Dirent[];
-                const fallbackSessions: ParsedSession[] = [];
-                for (const entry of projectEntries) {
-                    if (!entry.isFile()) continue;
-                    if (!entry.name.endsWith('.jsonl')) continue;
-                    const sessionId = entry.name.replace(/\.jsonl$/, '');
-                    if (!sessionId) continue;
-                    let updatedAt: number | undefined = undefined;
+        // Always scan .jsonl files to find all sessions (like Claude Code /resume does)
+        // Then merge with index data for title/summary info
+        const sessions: ParsedSession[] = [];
+        try {
+            const projectEntries = await readdir(projectDir, { withFileTypes: true }) as Dirent[];
+            for (const entry of projectEntries) {
+                if (!entry.isFile()) continue;
+                if (!entry.name.endsWith('.jsonl')) continue;
+                const sessionId = entry.name.replace(/\.jsonl$/, '');
+                if (!sessionId) continue;
+
+                // Get metadata from index if available, otherwise use file stats
+                const indexed = indexedMap.get(sessionId);
+                let updatedAt: number | undefined = indexed?.updatedAt;
+                if (updatedAt === undefined) {
                     try {
                         const stats = await stat(join(projectDir, entry.name));
                         updatedAt = stats.mtime.getTime();
                     } catch {
                         // ignore stat errors
                     }
-                    fallbackSessions.push({ sessionId, updatedAt });
                 }
-                sessions = fallbackSessions;
-            } catch (error) {
-                // ignore scan errors
+
+                sessions.push({
+                    sessionId,
+                    updatedAt,
+                    title: indexed?.title ?? null,
+                    messageCount: indexed?.messageCount,
+                    gitBranch: indexed?.gitBranch ?? null
+                });
             }
+        } catch (error) {
+            // If scan fails, fall back to index-only sessions
+            sessions.push(...indexedSessions);
         }
 
+        // Extract directory name from originalPath as fallback title
+        const dirName = originalPath.split(/[\\/]/).filter(Boolean).pop() || null;
+
         for (const session of sessions) {
+            // Skip sessions without messageCount - they have no context to resume
+            if (!session.messageCount) continue;
+
             const key = `${projectId}:${session.sessionId}`;
             if (seen.has(key)) continue;
             seen.add(key);
@@ -220,8 +270,10 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
                 sessionId: session.sessionId,
                 projectId,
                 originalPath,
-                title: session.title,
-                updatedAt: session.updatedAt
+                title: session.title || dirName,
+                updatedAt: session.updatedAt,
+                messageCount: session.messageCount,
+                gitBranch: session.gitBranch
             });
         }
     }

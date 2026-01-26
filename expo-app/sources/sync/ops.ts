@@ -160,6 +160,8 @@ export interface ClaudeSessionIndexEntry {
     originalPath: string | null;
     title?: string | null;
     updatedAt?: number;
+    messageCount?: number;
+    gitBranch?: string | null;
 }
 
 // Exported session operation functions
@@ -178,6 +180,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             approvedNewDirectoryCreation?: boolean,
             token?: string,
             agent?: 'codex' | 'claude' | 'gemini',
+            resumeSessionId?: string,
             sessionTitle?: string,
             environmentVariables?: Record<string, string>;
         }>(

@@ -345,7 +345,8 @@ export default function ClaudeSessionHistory() {
                             const displayPath = entry.originalPath
                                 ? formatPathRelativeToHome(entry.originalPath, selectedMachine?.metadata?.homeDir)
                                 : t('claudeHistory.pathUnavailable');
-                            const line2Parts = [time, entry.sessionId.slice(0, 8)].filter(Boolean);
+                            const msgCount = entry.messageCount ? `${entry.messageCount} messages` : null;
+                            const line2Parts = [time, msgCount, entry.gitBranch].filter(Boolean);
                             const line2 = line2Parts.join(' • ');
                             const subtitle = line2 ? `${displayPath}\n${line2}` : displayPath;
                             const title = getClaudeSessionTitle(entry);
