@@ -35,6 +35,8 @@ import { useScrollEdgeFades } from './useScrollEdgeFades';
 import { ResumeChip, formatResumeChipLabel, RESUME_CHIP_ICON_NAME, RESUME_CHIP_ICON_SIZE } from './agentInput/ResumeChip';
 import { PathAndResumeRow } from './agentInput/PathAndResumeRow';
 import { getHasAnyAgentInputActions, shouldShowPathAndResumeRow } from './agentInput/actionBarLogic';
+import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
+import { computeAgentInputDefaultMaxHeight } from './agentInput/inputMaxHeight';
 
 interface AgentInputProps {
     value: string;
@@ -438,11 +440,15 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+    const keyboardHeight = useKeyboardHeight();
 
     const defaultInputMaxHeight = React.useMemo(() => {
-        if (Platform.OS !== 'web') return 120;
-        return Math.max(200, Math.min(900, Math.round(screenHeight * 0.75)));
-    }, [screenHeight]);
+        return computeAgentInputDefaultMaxHeight({
+            platform: Platform.OS,
+            screenHeight,
+            keyboardHeight,
+        });
+    }, [keyboardHeight, screenHeight]);
 
     const hasText = props.value.trim().length > 0;
 
