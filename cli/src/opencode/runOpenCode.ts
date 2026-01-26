@@ -324,6 +324,7 @@ export async function runOpenCode(opts: {
             } catch (e) {
               logger.debug('[OpenCode] Resume failed; starting a new session instead', e);
               messageBuffer.addMessage('Resume failed; starting a new session.', 'status');
+              session.sendAgentMessage('opencode', { type: 'message', message: 'Resume failed; starting a new session.' });
               await runtime.startOrLoad({});
             }
           } else {

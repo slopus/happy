@@ -3,6 +3,7 @@ import { buildCliCapabilityData } from '../probes/cliBase';
 import { probeAcpAgentCapabilities } from '../probes/acpProbe';
 import { geminiTransport } from '@/agent/transport';
 import { normalizeCapabilityProbeError } from '../utils/normalizeCapabilityProbeError';
+import { resolveAcpProbeTimeoutMs } from '../utils/acpProbeTimeout';
 
 export const cliGeminiCapability: Capability = {
     descriptor: { id: 'cli.gemini', kind: 'cli', title: 'Gemini CLI' },
@@ -25,7 +26,7 @@ export const cliGeminiCapability: Capability = {
                 DEBUG: '',
             },
             transport: geminiTransport,
-            timeoutMs: 4000,
+            timeoutMs: resolveAcpProbeTimeoutMs('gemini'),
         });
 
         const acp = probe.ok

@@ -4,6 +4,7 @@ import { probeAcpAgentCapabilities } from '../probes/acpProbe';
 import { DefaultTransport } from '@/agent/transport';
 import { resolveCodexAcpCommand } from '@/codex/acp/resolveCodexAcpCommand';
 import { normalizeCapabilityProbeError } from '../utils/normalizeCapabilityProbeError';
+import { resolveAcpProbeTimeoutMs } from '../utils/acpProbeTimeout';
 
 export const cliCodexCapability: Capability = {
     descriptor: { id: 'cli.codex', kind: 'cli', title: 'Codex CLI' },
@@ -30,7 +31,7 @@ export const cliCodexCapability: Capability = {
                         DEBUG: '',
                     },
                     transport: new DefaultTransport('codex'),
-                    timeoutMs: 4000,
+                    timeoutMs: resolveAcpProbeTimeoutMs('codex'),
                 });
 
                 return probe.ok

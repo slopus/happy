@@ -3,6 +3,7 @@ import { buildCliCapabilityData } from '../probes/cliBase';
 import { probeAcpAgentCapabilities } from '../probes/acpProbe';
 import { openCodeTransport } from '@/agent/transport';
 import { normalizeCapabilityProbeError } from '../utils/normalizeCapabilityProbeError';
+import { resolveAcpProbeTimeoutMs } from '../utils/acpProbeTimeout';
 
 export const cliOpenCodeCapability: Capability = {
     descriptor: { id: 'cli.opencode', kind: 'cli', title: 'OpenCode CLI' },
@@ -25,7 +26,7 @@ export const cliOpenCodeCapability: Capability = {
                 DEBUG: '',
             },
             transport: openCodeTransport,
-            timeoutMs: 4000,
+            timeoutMs: resolveAcpProbeTimeoutMs('opencode'),
         });
 
         const acp = probe.ok

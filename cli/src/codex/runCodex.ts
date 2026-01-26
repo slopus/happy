@@ -853,11 +853,22 @@ export async function runCodex(opts: {
                         const resumeId = storedSessionIdForResume?.trim();
                         if (resumeId) {
                             messageBuffer.addMessage('Resuming previous context…', 'status');
-                            await codexAcp.startOrLoad({ resumeId });
-                            storedSessionIdForResume = nextStoredSessionIdForResumeAfterAttempt(storedSessionIdForResume, {
-                                attempted: true,
-                                success: true,
-                            });
+                            try {
+                                await codexAcp.startOrLoad({ resumeId });
+                                storedSessionIdForResume = nextStoredSessionIdForResumeAfterAttempt(storedSessionIdForResume, {
+                                    attempted: true,
+                                    success: true,
+                                });
+                            } catch (e) {
+                                logger.debug('[Codex ACP] Resume failed; starting a new session instead', e);
+                                messageBuffer.addMessage('Resume failed; starting a new session.', 'status');
+                                session.sendSessionEvent({ type: 'message', message: 'Resume failed; starting a new session.' });
+                                await codexAcp.startOrLoad({});
+                                storedSessionIdForResume = nextStoredSessionIdForResumeAfterAttempt(storedSessionIdForResume, {
+                                    attempted: true,
+                                    success: false,
+                                });
+                            }
                         } else {
                             await codexAcp.startOrLoad({});
                         }
