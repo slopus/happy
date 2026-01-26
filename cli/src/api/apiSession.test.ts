@@ -114,6 +114,34 @@ describe('ApiSessionClient connection handling', () => {
         });
     });
 
+    it('sets isError on outbound ACP tool-result messages when output looks like an error', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'happy-tool-trace-apiSession-'));
+        const filePath = join(dir, 'tool-trace.jsonl');
+        process.env.HAPPY_STACKS_TOOL_TRACE = '1';
+        process.env.HAPPY_STACKS_TOOL_TRACE_FILE = filePath;
+
+        const client = new ApiSessionClient('fake-token', mockSession);
+        client.sendAgentMessage('gemini', {
+            type: 'tool-result',
+            callId: 'call-1',
+            output: { error: 'Tool call failed', status: 'failed' },
+            id: 'msg-1',
+        });
+
+        const raw = readFileSync(filePath, 'utf8');
+        const lines = raw.trim().split('\n');
+        expect(lines).toHaveLength(1);
+        expect(JSON.parse(lines[0])).toMatchObject({
+            protocol: 'acp',
+            provider: 'gemini',
+            kind: 'tool-result',
+            payload: expect.objectContaining({
+                type: 'tool-result',
+                isError: true,
+            }),
+        });
+    });
+
     it('does not record outbound ACP non-tool messages when tool tracing is enabled', () => {
         const dir = mkdtempSync(join(tmpdir(), 'happy-tool-trace-apiSession-'));
         const filePath = join(dir, 'tool-trace.jsonl');
@@ -166,6 +194,41 @@ describe('ApiSessionClient connection handling', () => {
             provider: 'claude',
             kind: 'tool-result',
         });
+    });
+
+    it('records Claude tool_result blocks sent as user messages when tool tracing is enabled', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'happy-tool-trace-claude-user-tool-result-'));
+        const filePath = join(dir, 'tool-trace.jsonl');
+        process.env.HAPPY_STACKS_TOOL_TRACE = '1';
+        process.env.HAPPY_STACKS_TOOL_TRACE_FILE = filePath;
+
+        const session = { ...mockSession, id: 'test-session-id-user-tool-result' };
+        const client = new ApiSessionClient('fake-token', session);
+        client.sendClaudeSessionMessage({
+            type: 'user',
+            uuid: 'uuid-2',
+            message: {
+                content: [
+                    { type: 'tool_result', tool_use_id: 'toolu_1', content: 'ok' },
+                ],
+            },
+        } as any);
+
+        const raw = existsSync(filePath) ? readFileSync(filePath, 'utf8') : '';
+        const lines = raw.trim().length > 0 ? raw.trim().split('\n') : [];
+        const parsed = lines.map((l) => JSON.parse(l));
+        expect(parsed).toContainEqual(expect.objectContaining({
+            v: 1,
+            direction: 'outbound',
+            sessionId: 'test-session-id-user-tool-result',
+            protocol: 'claude',
+            provider: 'claude',
+            kind: 'tool-result',
+            payload: expect.objectContaining({
+                type: 'tool_result',
+                tool_use_id: 'toolu_1',
+            }),
+        }));
     });
 
     it('does not record Claude user text messages when tool tracing is enabled', () => {
@@ -278,10 +341,10 @@ describe('ApiSessionClient connection handling', () => {
 	        );
 	    });
 
-			    it('waitForMetadataUpdate resolves when session metadata updates', async () => {
-			        const client = new ApiSessionClient('fake-token', mockSession);
+				    it('waitForMetadataUpdate resolves when session metadata updates', async () => {
+				        const client = new ApiSessionClient('fake-token', mockSession);
 
-			        const waitPromise = client.waitForMetadataUpdate();
+				        const waitPromise = client.waitForMetadataUpdate();
 
 	        const updateHandler = (mockSocket.on.mock.calls.find((call: any[]) => call[0] === 'update') ?? [])[1];
 	        expect(typeof updateHandler).toBe('function');
@@ -303,23 +366,23 @@ describe('ApiSessionClient connection handling', () => {
 	            },
 	        } as any);
 
-			        await expect(waitPromise).resolves.toBe(true);
-			    });
+				        await expect(waitPromise).resolves.toBe(true);
+				    });
 
-                it('waitForMetadataUpdate resolves when the user-scoped socket connects (wakes idle agents)', async () => {
-                    const client = new ApiSessionClient('fake-token', mockSession);
+	                it('waitForMetadataUpdate resolves when the user-scoped socket connects (wakes idle agents)', async () => {
+	                    const client = new ApiSessionClient('fake-token', mockSession);
 
-                    const waitPromise = client.waitForMetadataUpdate();
+	                    const waitPromise = client.waitForMetadataUpdate();
 
-                    const connectHandlers = mockUserSocket.on.mock.calls
-                        .filter((call: any[]) => call[0] === 'connect')
-                        .map((call: any[]) => call[1]);
-                    const lastConnectHandler = connectHandlers[connectHandlers.length - 1];
-                    expect(typeof lastConnectHandler).toBe('function');
+	                    const connectHandlers = mockUserSocket.on.mock.calls
+	                        .filter((call: any[]) => call[0] === 'connect')
+	                        .map((call: any[]) => call[1]);
+	                    const lastConnectHandler = connectHandlers[connectHandlers.length - 1];
+	                    expect(typeof lastConnectHandler).toBe('function');
 
-                    lastConnectHandler();
-                    await expect(waitPromise).resolves.toBe(true);
-                });
+	                    lastConnectHandler();
+	                    await expect(waitPromise).resolves.toBe(true);
+	                });
 
             it('waitForMetadataUpdate resolves when session metadata updates (server sends update-session with id)', async () => {
                 const client = new ApiSessionClient('fake-token', mockSession);
@@ -346,83 +409,82 @@ describe('ApiSessionClient connection handling', () => {
                     },
                 } as any);
 
-                await expect(waitPromise).resolves.toBe(true);
-            });
+	                await expect(waitPromise).resolves.toBe(true);
+	            });
 
-            it('waitForMetadataUpdate resolves false when user-scoped socket disconnects', async () => {
-                const client = new ApiSessionClient('fake-token', mockSession);
+	            it('waitForMetadataUpdate resolves false when user-scoped socket disconnects', async () => {
+	                const client = new ApiSessionClient('fake-token', mockSession);
 
-                const waitPromise = client.waitForMetadataUpdate();
+	                const waitPromise = client.waitForMetadataUpdate();
 
-                const disconnectHandlers = mockUserSocket.on.mock.calls
-                    .filter((call: any[]) => call[0] === 'disconnect')
-                    .map((call: any[]) => call[1]);
-                const lastDisconnectHandler = disconnectHandlers[disconnectHandlers.length - 1];
-                expect(typeof lastDisconnectHandler).toBe('function');
+	                const disconnectHandlers = mockUserSocket.on.mock.calls
+	                    .filter((call: any[]) => call[0] === 'disconnect')
+	                    .map((call: any[]) => call[1]);
+	                const lastDisconnectHandler = disconnectHandlers[disconnectHandlers.length - 1];
+	                expect(typeof lastDisconnectHandler).toBe('function');
 
-                lastDisconnectHandler();
-                await expect(waitPromise).resolves.toBe(false);
-            });
+	                lastDisconnectHandler();
+	                await expect(waitPromise).resolves.toBe(false);
+	            });
 
-            it('waitForMetadataUpdate does not miss fast user-scoped update-session wakeups', async () => {
-                const client = new ApiSessionClient('fake-token', mockSession);
+                it('waitForMetadataUpdate does not miss fast user-scoped update-session wakeups', async () => {
+                    const client = new ApiSessionClient('fake-token', mockSession);
 
-                const updateHandler = (mockUserSocket.on.mock.calls.find((call: any[]) => call[0] === 'update') ?? [])[1];
-                expect(typeof updateHandler).toBe('function');
+                    const updateHandler = (mockUserSocket.on.mock.calls.find((call: any[]) => call[0] === 'update') ?? [])[1];
+                    expect(typeof updateHandler).toBe('function');
 
-                mockUserSocket.connect.mockImplementation(() => {
-                    const nextMetadata = { ...mockSession.metadata, path: '/tmp/fast' };
-                    const encrypted = encodeBase64(encrypt(mockSession.encryptionKey, mockSession.encryptionVariant, nextMetadata));
-
-                    updateHandler({
-                        id: 'update-fast',
-                        seq: 999,
-                        createdAt: Date.now(),
-                        body: {
-                            t: 'update-session',
-                            sid: mockSession.id,
-                            metadata: {
-                                version: 2,
-                                value: encrypted,
+                    mockUserSocket.connect.mockImplementation(() => {
+                        const nextMetadata = { ...mockSession.metadata, path: '/tmp/fast' };
+                        const encrypted = encodeBase64(encrypt(mockSession.encryptionKey, mockSession.encryptionVariant, nextMetadata));
+                        updateHandler({
+                            id: 'update-fast',
+                            seq: 999,
+                            createdAt: Date.now(),
+                            body: {
+                                t: 'update-session',
+                                sid: mockSession.id,
+                                metadata: {
+                                    version: 2,
+                                    value: encrypted,
+                                },
                             },
-                        },
-                    } as any);
+                        } as any);
+                    });
+
+                    const controller = new AbortController();
+                    const promise = client.waitForMetadataUpdate(controller.signal);
+
+                    queueMicrotask(() => controller.abort());
+                    await expect(promise).resolves.toBe(true);
                 });
 
-                const controller = new AbortController();
-                const promise = client.waitForMetadataUpdate(controller.signal);
+                it('waitForMetadataUpdate does not miss snapshot sync updates started before handlers attach', async () => {
+                    const client = new ApiSessionClient('fake-token', mockSession);
 
-                queueMicrotask(() => controller.abort());
-                await expect(promise).resolves.toBe(true);
-            });
+                    (client as any).metadataVersion = -1;
+                    (client as any).agentStateVersion = -1;
 
-            it('waitForMetadataUpdate does not miss snapshot sync updates started before handlers attach', async () => {
-                const client = new ApiSessionClient('fake-token', mockSession);
+                    (client as any).syncSessionSnapshotFromServer = () => {
+                        (client as any).metadataVersion = 1;
+                        (client as any).agentStateVersion = 1;
+                        client.emit('metadata-updated');
+                        return Promise.resolve();
+                    };
 
-                (client as any).metadataVersion = -1;
-                (client as any).agentStateVersion = -1;
+                    const promise = client.waitForMetadataUpdate();
+                    await expect(
+                        Promise.race([
+                            promise,
+                            new Promise((_, reject) =>
+                                setTimeout(() => reject(new Error('waitForMetadataUpdate() hung after snapshot sync')), 50)
+                            )
+                        ])
+                    ).resolves.toBe(true);
+                });
 
-                (client as any).syncSessionSnapshotFromServer = () => {
-                    (client as any).metadataVersion = 1;
-                    (client as any).agentStateVersion = 1;
-                    client.emit('metadata-updated');
-                    return Promise.resolve();
-                };
-
-                const promise = client.waitForMetadataUpdate();
-                await expect(
-                    Promise.race([
-                        promise,
-                        new Promise((_, reject) =>
-                            setTimeout(() => reject(new Error('waitForMetadataUpdate() hung after snapshot sync')), 50)
-                        )
-                    ])
-                ).resolves.toBe(true);
-            });
-
-            it('updateMetadata syncs a snapshot first when metadataVersion is unknown', async () => {
-                const sessionSocket: any = {
-                    connected: false,
+	            it('updateMetadata syncs a snapshot first when metadataVersion is unknown', async () => {
+	                const sessionSocket: any = {
+	                    connected: false,
                     connect: vi.fn(),
                     on: vi.fn(),
                     off: vi.fn(),

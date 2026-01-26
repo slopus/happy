@@ -456,18 +456,19 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-	    waitForMetadataUpdate(abortSignal?: AbortSignal): Promise<boolean> {
-	        if (abortSignal?.aborted) {
-	            return Promise.resolve(false);
-	        }
-	        const startMetadataVersion = this.metadataVersion;
-	        const startAgentStateVersion = this.agentStateVersion;
-	        if (startMetadataVersion < 0 || startAgentStateVersion < 0) {
-	            void this.syncSessionSnapshotFromServer({ reason: 'waitForMetadataUpdate' });
-	        }
-	        return new Promise((resolve) => {
-	            let cleanedUp = false;
-	            const shouldWatchConnect = !this.userSocket.connected;
+    waitForMetadataUpdate(abortSignal?: AbortSignal): Promise<boolean> {
+        if (abortSignal?.aborted) {
+            return Promise.resolve(false);
+        }
+
+        const startMetadataVersion = this.metadataVersion;
+        const startAgentStateVersion = this.agentStateVersion;
+        if (startMetadataVersion < 0 || startAgentStateVersion < 0) {
+            void this.syncSessionSnapshotFromServer({ reason: 'waitForMetadataUpdate' });
+        }
+        return new Promise((resolve) => {
+            let cleanedUp = false;
+            const shouldWatchConnect = !this.userSocket.connected;
             const onUpdate = () => {
                 cleanup();
                 resolve(true);
@@ -500,29 +501,29 @@ export class ApiSessionClient extends EventEmitter {
             if (shouldWatchConnect) {
                 this.userSocket.on('connect', onConnect);
             }
-	            abortSignal?.addEventListener('abort', onAbort, { once: true });
-	            this.userSocket.on('disconnect', onDisconnect);
+            abortSignal?.addEventListener('abort', onAbort, { once: true });
+            this.userSocket.on('disconnect', onDisconnect);
 
-	            // Ensure we can observe metadata updates even when the server broadcasts them only to user-scoped clients.
-	            // This keeps idle agents wakeable without requiring server changes.
-	            this.kickUserSocketConnect();
+            // Ensure we can observe metadata updates even when the server broadcasts them only to user-scoped clients.
+            // This keeps idle agents wakeable without requiring server changes.
+            this.kickUserSocketConnect();
 
-	            if (abortSignal?.aborted) {
-	                onAbort();
-	                return;
-	            }
+            if (abortSignal?.aborted) {
+                onAbort();
+                return;
+            }
 
-	            // Avoid lost wakeups if a snapshot sync or socket event raced with handler registration.
-	            if (this.metadataVersion !== startMetadataVersion || this.agentStateVersion !== startAgentStateVersion) {
-	                onUpdate();
-	                return;
-	            }
-	            if (shouldWatchConnect && this.userSocket.connected) {
-	                onConnect();
-	                return;
-	            }
-	        });
-	    }
+            // Avoid lost wakeups if a snapshot sync or socket event raced with handler registration.
+            if (this.metadataVersion !== startMetadataVersion || this.agentStateVersion !== startAgentStateVersion) {
+                onUpdate();
+                return;
+            }
+            if (shouldWatchConnect && this.userSocket.connected) {
+                onConnect();
+                return;
+            }
+        });
+    }
 
     private async maybeClearPendingInFlight(localId: string | null): Promise<void> {
         if (!localId) return;
@@ -578,7 +579,7 @@ export class ApiSessionClient extends EventEmitter {
             ['1', 'true', 'yes', 'on'].includes((process.env.HAPPY_LOCAL_TOOL_TRACE ?? '').toLowerCase()) ||
             ['1', 'true', 'yes', 'on'].includes((process.env.HAPPY_TOOL_TRACE ?? '').toLowerCase());
 
-        if (isToolTraceEnabled && body?.type === 'assistant') {
+        if (isToolTraceEnabled) {
             const redactClaudeToolPayload = (value: unknown, key?: string): unknown => {
                 const REDACT_KEYS = new Set([
                     'content',
@@ -611,8 +612,11 @@ export class ApiSessionClient extends EventEmitter {
                 return out;
             };
 
-            // Claude tool calls/results are embedded inside assistant.message.content[] (tool_use/tool_result).
+            // Claude tool calls/results are embedded inside message.content[] (tool_use/tool_result).
             // Record only tool blocks (never user text).
+            //
+            // Note: tool_result blocks can appear in either assistant or user messages depending on Claude
+            // control mode and SDK message routing. We key off the presence of structured blocks, not role.
             const contentBlocks = (body as any)?.message?.content;
             if (Array.isArray(contentBlocks)) {
                 for (const block of contentBlocks) {
@@ -759,12 +763,24 @@ export class ApiSessionClient extends EventEmitter {
         body: ACPMessageData,
         opts?: { localId?: string; meta?: Record<string, unknown> },
     ) {
+        const normalizedBody: ACPMessageData = (() => {
+            if (body.type !== 'tool-result') return body;
+            if (typeof (body as any).isError === 'boolean') return body;
+            const output = (body as any).output as unknown;
+            if (!output || typeof output !== 'object' || Array.isArray(output)) return body;
+            const record = output as Record<string, unknown>;
+            const status = typeof record.status === 'string' ? record.status : null;
+            const error = typeof record.error === 'string' ? record.error : null;
+            const isError = Boolean(error && error.length > 0) || status === 'failed' || status === 'cancelled' || status === 'error';
+            return isError ? ({ ...(body as any), isError: true } as ACPMessageData) : body;
+        })();
+
         let content = {
             role: 'agent',
             content: {
                 type: 'acp',
                 provider,
-                data: body
+                data: normalizedBody
             },
             meta: {
                 sentFrom: 'cli',
@@ -773,25 +789,25 @@ export class ApiSessionClient extends EventEmitter {
         };
 
         if (
-            body.type === 'tool-call' ||
-            body.type === 'tool-result' ||
-            body.type === 'permission-request' ||
-            body.type === 'file-edit' ||
-            body.type === 'terminal-output'
+            normalizedBody.type === 'tool-call' ||
+            normalizedBody.type === 'tool-result' ||
+            normalizedBody.type === 'permission-request' ||
+            normalizedBody.type === 'file-edit' ||
+            normalizedBody.type === 'terminal-output'
         ) {
             recordToolTraceEvent({
                 direction: 'outbound',
                 sessionId: this.sessionId,
                 protocol: 'acp',
                 provider,
-                kind: body.type,
-                payload: body,
+                kind: normalizedBody.type,
+                payload: normalizedBody,
                 localId: opts?.localId,
             });
         }
         
-        logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, { type: body.type, hasMessage: 'message' in body });
-        this.logSendWhileDisconnected(`${provider} ACP message`, { type: body.type });
+        logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, { type: normalizedBody.type, hasMessage: 'message' in normalizedBody });
+        this.logSendWhileDisconnected(`${provider} ACP message`, { type: normalizedBody.type });
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
 
         this.socket.emit('message', {
