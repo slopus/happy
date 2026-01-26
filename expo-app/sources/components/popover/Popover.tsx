@@ -1,11 +1,9 @@
 import * as React from 'react';
-import { Platform, Pressable, View, type StyleProp, type ViewProps, type ViewStyle, useWindowDimensions } from 'react-native';
-import { StyleSheet } from 'react-native-unistyles';
+import { Platform, View, type StyleProp, type ViewProps, type ViewStyle, useWindowDimensions } from 'react-native';
 import { usePopoverBoundaryRef } from '@/components/PopoverBoundary';
 import { requireRadixDismissableLayer } from '@/utils/radixCjs';
 import { useOverlayPortal } from '@/components/OverlayPortal';
 import { useModalPortalTarget } from '@/components/ModalPortalTarget';
-import { requireReactDOM } from '@/utils/reactDomCjs';
 import { usePopoverPortalTarget } from '@/components/PopoverPortalTarget';
 import type {
     PopoverBackdropEffect,
@@ -18,6 +16,8 @@ import type {
 } from './_types';
 import { getFallbackBoundaryRect, measureInWindow, measureLayoutRelativeTo } from './measure';
 import { resolvePlacement } from './positioning';
+import { PopoverBackdrop } from './backdrop';
+import { tryRenderWebPortal, useNativeOverlayPortalNode } from './portal';
 
 const ViewWithWheel = View as unknown as React.ComponentType<ViewProps & { onWheel?: any }>;
 
@@ -619,199 +619,29 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
 
     const content = open ? (
         <>
-            {backdropEnabled && backdropEffect !== 'none' ? (() => {
-                // On web, use fixed positioning even when not in portal mode to avoid contributing
-                // to scrollHeight/scrollWidth (e.g. inside Radix Dialog/Expo Router modals).
-                const position =
-                    Platform.OS === 'web' && shouldPortalWeb
-                        ? portalPositionOnWeb
-                        : fixedPositionOnWeb;
-                const zIndex = shouldPortal ? portalZ : 998;
-                const edge = Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000);
-
-                const fullScreenStyle = [
-                    StyleSheet.absoluteFill,
-                    {
-                        position,
-                        top: position === 'absolute' ? 0 : edge,
-                        left: position === 'absolute' ? 0 : edge,
-                        right: position === 'absolute' ? 0 : edge,
-                        bottom: position === 'absolute' ? 0 : edge,
-                        opacity: portalOpacity,
-                        zIndex,
-                    } as const,
-                ];
-
-                const spotlightPadding = (() => {
-                    if (!backdropSpotlight) return 0;
-                    if (backdropSpotlight === true) return 8;
-                    const candidate = backdropSpotlight.padding;
-                    return typeof candidate === 'number' ? candidate : 8;
-                })();
-
-                const spotlightStyles = (() => {
-                    if (!shouldPortal) return null;
-                    if (!anchorRectState) return null;
-                    if (!backdropSpotlight) return null;
-
-                    const offsetX = position === 'absolute' ? webPortalOffsetX : 0;
-                    const offsetY = position === 'absolute' ? webPortalOffsetY : 0;
-
-                    const left = Math.max(0, Math.floor(anchorRectState.x - spotlightPadding - offsetX));
-                    const top = Math.max(0, Math.floor(anchorRectState.y - spotlightPadding - offsetY));
-                    const right = Math.min(windowWidth, Math.ceil(anchorRectState.x + anchorRectState.width + spotlightPadding - offsetX));
-                    const bottom = Math.min(windowHeight, Math.ceil(anchorRectState.y + anchorRectState.height + spotlightPadding - offsetY));
-
-                    const holeHeight = Math.max(0, bottom - top);
-
-                    const base: ViewStyle = {
-                        position,
-                        opacity: portalOpacity,
-                        zIndex,
-                    };
-
-                    return [
-                        // top
-                        [{ ...base, top: 0, left: 0, right: 0, height: top }],
-                        // bottom
-                        [{ ...base, top: bottom, left: 0, right: 0, bottom: 0 }],
-                        // left
-                        [{ ...base, top, left: 0, width: left, height: holeHeight }],
-                        // right
-                        [{ ...base, top, left: right, right: 0, height: holeHeight }],
-                    ] as const;
-                })();
-
-                const effectStyles = spotlightStyles ?? [fullScreenStyle];
-
-                if (backdropEffect === 'blur') {
-                    const webBlurPx = typeof backdropBlurOnWeb?.px === 'number' ? backdropBlurOnWeb.px : 12;
-                    const webBlurTint = backdropBlurOnWeb?.tintColor ?? 'rgba(0,0,0,0.10)';
-                    if (Platform.OS !== 'web') {
-                        try {
-                            // eslint-disable-next-line @typescript-eslint/no-var-requires
-                            const { BlurView } = require('expo-blur');
-                            if (BlurView) {
-                                return (
-                                    <>
-                                        {effectStyles.map((style, index) => (
-                                            <BlurView
-                                                // eslint-disable-next-line react/no-array-index-key
-                                                key={index}
-                                                testID="popover-backdrop-effect"
-                                                intensity={Platform.OS === 'ios' ? 12 : 3}
-                                                tint="default"
-                                                pointerEvents="none"
-                                                style={style}
-                                            />
-                                        ))}
-                                    </>
-                                );
-                            }
-                        } catch {
-                            // fall through to dim fallback
-                        }
-                    }
-
-                    return (
-                        <>
-                            {effectStyles.map((style, index) => (
-                                <View
-                                    // eslint-disable-next-line react/no-array-index-key
-                                    key={index}
-                                    testID="popover-backdrop-effect"
-                                    pointerEvents="none"
-                                        style={[
-                                            style,
-                                            Platform.OS === 'web'
-                                            ? ({ backdropFilter: `blur(${webBlurPx}px)`, backgroundColor: webBlurTint } as any)
-                                            : ({ backgroundColor: 'rgba(0,0,0,0.08)' } as any),
-                                    ]}
-                                />
-                            ))}
-                        </>
-                    );
-                }
-
-                // dim
-                return (
-                    <>
-                        {effectStyles.map((style, index) => (
-                            <View
-                                // eslint-disable-next-line react/no-array-index-key
-                                key={index}
-                                testID="popover-backdrop-effect"
-                                pointerEvents="none"
-                                style={[
-                                    style,
-                                    { backgroundColor: 'rgba(0,0,0,0.08)' },
-                                ]}
-                            />
-                        ))}
-                    </>
-                );
-            })() : null}
-
-            {backdropEnabled && backdropBlocksOutsidePointerEvents ? (
-                <Pressable
-                    onPress={onRequestClose}
-                    pointerEvents={portalOpacity === 0 ? 'none' : 'auto'}
-                    onMoveShouldSetResponderCapture={() => {
-                        if (!closeOnBackdropPan || !onRequestClose) return false;
-                        onRequestClose();
-                        return false;
-                    }}
-                    style={[
-                        // Default is deliberately "oversized" so it can capture taps outside the anchor area.
-                        {
-                            position: fixedPositionOnWeb,
-                            top: Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000),
-                            left: Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000),
-                            right: Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000),
-                            bottom: Platform.OS === 'web' ? 0 : (shouldPortal ? 0 : -1000),
-                            opacity: portalOpacity,
-                            zIndex: shouldPortal ? portalZ : 999,
-                        },
-                        backdropStyle,
-                    ]}
-                />
-            ) : null}
-
-            {shouldPortal && backdropEnabled && backdropEffect !== 'none' && backdropAnchorOverlay && anchorRectState ? (
-                <View
-                    testID="popover-anchor-overlay"
-                    pointerEvents="none"
-                    style={[
-                        {
-                            position: shouldPortalWeb ? portalPositionOnWeb : 'absolute',
-                            left: (() => {
-                                const offsetX = portalPositionOnWeb === 'absolute' ? webPortalOffsetX : 0;
-                                return Math.max(0, Math.floor(anchorRectState.x - offsetX));
-                            })(),
-                            top: (() => {
-                                const offsetY = portalPositionOnWeb === 'absolute' ? webPortalOffsetY : 0;
-                                return Math.max(0, Math.floor(anchorRectState.y - offsetY));
-                            })(),
-                            width: (() => {
-                                const offsetX = portalPositionOnWeb === 'absolute' ? webPortalOffsetX : 0;
-                                const left = Math.max(0, Math.floor(anchorRectState.x - offsetX));
-                                return Math.max(0, Math.min(windowWidth - left, Math.ceil(anchorRectState.width)));
-                            })(),
-                            height: (() => {
-                                const offsetY = portalPositionOnWeb === 'absolute' ? webPortalOffsetY : 0;
-                                const top = Math.max(0, Math.floor(anchorRectState.y - offsetY));
-                                return Math.max(0, Math.min(windowHeight - top, Math.ceil(anchorRectState.height)));
-                            })(),
-                            opacity: portalOpacity,
-                            zIndex: portalZ + 1,
-                        } as const,
-                    ]}
-                >
-                    {typeof backdropAnchorOverlay === 'function'
-                        ? backdropAnchorOverlay({ rect: anchorRectState })
-                        : backdropAnchorOverlay}
-                </View>
-            ) : null}
+            <PopoverBackdrop
+                backdrop={backdropEnabled ? backdrop : false}
+                backdropBlocksOutsidePointerEvents={backdropBlocksOutsidePointerEvents}
+                backdropEffect={backdropEffect}
+                backdropBlurOnWeb={backdropBlurOnWeb}
+                backdropSpotlight={backdropSpotlight}
+                backdropAnchorOverlay={backdropAnchorOverlay}
+                backdropStyle={backdropStyle}
+                closeOnBackdropPan={closeOnBackdropPan}
+                onRequestClose={onRequestClose}
+                shouldPortal={shouldPortal}
+                shouldPortalWeb={shouldPortalWeb}
+                portal={props.portal}
+                portalOpacity={portalOpacity}
+                portalPositionOnWeb={portalPositionOnWeb}
+                fixedPositionOnWeb={fixedPositionOnWeb}
+                portalZ={portalZ}
+                anchorRect={anchorRectState}
+                windowWidth={windowWidth}
+                windowHeight={windowHeight}
+                webPortalOffsetX={webPortalOffsetX}
+                webPortalOffsetY={webPortalOffsetY}
+            />
             <ViewWithWheel
                 ref={contentContainerRef}
                 {...(shouldPortalWeb
@@ -865,43 +695,23 @@ export function Popover(props: PopoverWithBackdrop | PopoverWithoutBackdrop) {
         }
     })();
 
-    React.useLayoutEffect(() => {
-        if (!overlayPortal) return;
-        const id = portalIdRef.current as string;
-        if (!shouldUseOverlayPortalOnNative || !content) {
-            overlayPortal.removePortalNode(id);
-            return;
-        }
-        overlayPortal.setPortalNode(id, content);
-        return () => {
-            overlayPortal.removePortalNode(id);
-        };
-    }, [content, overlayPortal, shouldUseOverlayPortalOnNative]);
+    useNativeOverlayPortalNode({
+        overlayPortal,
+        portalId: portalIdRef.current as string,
+        enabled: shouldUseOverlayPortalOnNative,
+        content,
+    });
 
     if (!open) return null;
 
-    if (shouldPortalWeb) {
-        try {
-            // Avoid importing react-dom on native.
-            const ReactDOM = requireReactDOM();
-            const boundaryEl = getBoundaryDomElement();
-            const targetRequested =
-                portalTargetOnWeb === 'modal'
-                    ? modalPortalTarget
-                    : portalTargetOnWeb === 'boundary'
-                    ? boundaryEl
-                    : (typeof document !== 'undefined' ? document.body : null);
-            // Fallback: if the requested boundary isn't a DOM node, fall back to body
-            const target =
-                targetRequested ??
-                (typeof document !== 'undefined' ? document.body : null);
-            if (target && ReactDOM?.createPortal) {
-                return ReactDOM.createPortal(contentWithRadixBranch, target);
-            }
-        } catch {
-            // fall back to inline render
-        }
-    }
+    const webPortal = tryRenderWebPortal({
+        shouldPortalWeb,
+        portalTargetOnWeb,
+        modalPortalTarget: (modalPortalTarget as any) ?? null,
+        getBoundaryDomElement,
+        content: contentWithRadixBranch,
+    });
+    if (webPortal) return webPortal;
 
     if (shouldUseOverlayPortalOnNative) return null;
     return contentWithRadixBranch;
