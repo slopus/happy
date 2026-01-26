@@ -5,7 +5,7 @@ import * as tmp from 'tmp';
 import { ApiClient } from '@/api/api';
 import type { ApiMachineClient } from '@/api/apiMachine';
 import { TrackedSession } from './types';
-import { MachineMetadata, DaemonState, Metadata } from '@/api/types';
+import { MachineMetadata, DaemonState } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { logger } from '@/ui/logger';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
@@ -17,7 +17,6 @@ import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import {
   writeDaemonState,
   DaemonLocallyPersistedState,
-  readDaemonState,
   acquireDaemonLock,
   releaseDaemonLock,
   readSettings,
@@ -31,21 +30,20 @@ import { getDaemonShutdownExitCode, getDaemonShutdownWatchdogTimeoutMs } from '.
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './control/client';
 import { startDaemonControlServer } from './control/server';
 import { findHappyProcessByPid } from './diagnostics/doctor';
-import { hashProcessCommand, removeSessionMarker, writeSessionMarker } from './sessions/sessionRegistry';
+import { hashProcessCommand } from './sessions/sessionRegistry';
 import { findRunningTrackedSessionById } from './sessions/findRunningTrackedSessionById';
 import { reattachTrackedSessionsFromMarkers } from './sessions/reattachFromMarkers';
 import { createOnHappySessionWebhook } from './sessions/onHappySessionWebhook';
 import { createOnChildExited } from './sessions/onChildExited';
 import { createStopSession } from './sessions/stopSession';
-import { existsSync, readFileSync } from 'fs';
+import { startDaemonHeartbeatLoop } from './lifecycle/heartbeat';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { TmuxUtilities, isTmuxAvailable } from '@/terminal/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { resolveTerminalRequestFromSpawnOptions } from '@/terminal/terminalConfig';
 import { selectPreferredTmuxSessionName } from '@/terminal/tmuxSessionSelector';
-import { writeSessionExitReport } from '@/utils/sessionExitReport';
-import { reportDaemonObservedSessionExit } from './sessions/sessionTermination';
 import { validateEnvVarRecordStrict } from '@/utils/envVarSanitization';
 
 import { getPreferredHostName, initialMachineMetadata } from './machine/metadata';
@@ -881,159 +879,16 @@ export async function startDaemon(): Promise<void> {
     // 2. Check if daemon needs update
     // 3. If outdated, restart with latest version
     // 4. Write heartbeat
-    const heartbeatIntervalMs = parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '60000');
-    let heartbeatRunning = false
-    const restartOnStaleVersionAndHeartbeat = setInterval(async () => {
-      if (heartbeatRunning) {
-        return;
-      }
-      heartbeatRunning = true;
-
-      if (process.env.DEBUG) {
-        logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
-      }
-
-      // Prune stale sessions
-      for (const [pid, _] of pidToTrackedSession.entries()) {
-        try {
-          // Check if process is still alive (signal 0 doesn't kill, just checks)
-          process.kill(pid, 0);
-        } catch (error) {
-          // Process is dead, remove from tracking
-          logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
-          const tracked = pidToTrackedSession.get(pid);
-          if (tracked) {
-            if (apiMachineForSessions) {
-              reportDaemonObservedSessionExit({
-                apiMachine: apiMachineForSessions,
-                trackedSession: tracked,
-                now: () => Date.now(),
-                exit: { reason: 'process-missing', code: null, signal: null },
-              });
-            }
-            void writeSessionExitReport({
-              sessionId: tracked.happySessionId ?? null,
-              pid,
-              report: {
-                observedAt: Date.now(),
-                observedBy: 'daemon',
-                reason: 'process-missing',
-                code: null,
-                signal: null,
-              },
-            }).catch((e) => logger.debug('[DAEMON RUN] Failed to write session exit report', e));
-          }
-	          const cleanup = codexHomeDirCleanupByPid.get(pid);
-	          if (cleanup) {
-	            codexHomeDirCleanupByPid.delete(pid);
-	            try {
-	              cleanup();
-	            } catch (cleanupError) {
-	              logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', cleanupError);
-	            }
-	          }
-	          const attachCleanup = sessionAttachCleanupByPid.get(pid);
-	          if (attachCleanup) {
-	            sessionAttachCleanupByPid.delete(pid);
-	            try {
-	              await attachCleanup();
-	            } catch (cleanupError) {
-	              logger.debug('[DAEMON RUN] Failed to cleanup session attach file', cleanupError);
-	            }
-	          }
-	          pidToTrackedSession.delete(pid);
-	          void removeSessionMarker(pid);
-	        }
-	      }
-
-      // Cleanup any CODEX_HOME temp dirs for sessions no longer tracked (e.g. stopSession removed them).
-	      for (const [pid, cleanup] of codexHomeDirCleanupByPid.entries()) {
-	        if (pidToTrackedSession.has(pid)) continue;
-	        try {
-	          process.kill(pid, 0);
-	        } catch {
-	          codexHomeDirCleanupByPid.delete(pid);
-	          try {
-	            cleanup();
-	          } catch (cleanupError) {
-	            logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', cleanupError);
-	          }
-	        }
-	      }
-
-	      for (const [pid, cleanup] of sessionAttachCleanupByPid.entries()) {
-	        if (pidToTrackedSession.has(pid)) continue;
-	        try {
-	          process.kill(pid, 0);
-	        } catch {
-	          sessionAttachCleanupByPid.delete(pid);
-	          try {
-	            await cleanup();
-	          } catch (cleanupError) {
-	            logger.debug('[DAEMON RUN] Failed to cleanup session attach file', cleanupError);
-	          }
-	        }
-	      }
-
-      // Check if daemon needs update
-      // If version on disk is different from the one in package.json - we need to restart
-      // BIG if - does this get updated from underneath us on npm upgrade?
-      const projectVersion = JSON.parse(readFileSync(join(projectPath(), 'package.json'), 'utf-8')).version;
-      if (projectVersion !== configuration.currentCliVersion) {
-        logger.debug('[DAEMON RUN] Daemon is outdated, triggering self-restart with latest version, clearing heartbeat interval');
-
-        clearInterval(restartOnStaleVersionAndHeartbeat);
-
-        // Spawn new daemon through the CLI
-        // We do not need to clean ourselves up - we will be killed by
-        // the CLI start command.
-        // 1. It will first check if daemon is running (yes in this case)
-        // 2. If the version is stale (it will read daemon.state.json file and check startedWithCliVersion) & compare it to its own version
-        // 3. Next it will start a new daemon with the latest version with daemon-sync :D
-        // Done!
-        try {
-          spawnHappyCLI(['daemon', 'start'], {
-            detached: true,
-            stdio: 'ignore'
-          });
-        } catch (error) {
-          logger.debug('[DAEMON RUN] Failed to spawn new daemon, this is quite likely to happen during integration tests as we are cleaning out dist/ directory', error);
-        }
-
-        // So we can just hang forever
-        logger.debug('[DAEMON RUN] Hanging for a bit - waiting for CLI to kill us because we are running outdated version of the code');
-        await new Promise(resolve => setTimeout(resolve, 10_000));
-        process.exit(0);
-      }
-
-      // Before wrecklessly overriting the daemon state file, we should check if we are the ones who own it
-      // Race condition is possible, but thats okay for the time being :D
-      const daemonState = await readDaemonState();
-      if (daemonState && daemonState.pid !== process.pid) {
-        logger.debug('[DAEMON RUN] Somehow a different daemon was started without killing us. We should kill ourselves.')
-        requestShutdown('exception', 'A different daemon was started without killing us. We should kill ourselves.')
-      }
-
-      // Heartbeat
-      try {
-        const updatedState: DaemonLocallyPersistedState = {
-          pid: process.pid,
-          httpPort: controlPort,
-          startTime: fileState.startTime,
-          startedWithCliVersion: packageJson.version,
-          lastHeartbeat: new Date().toLocaleString(),
-          daemonLogPath: fileState.daemonLogPath
-        };
-        writeDaemonState(updatedState);
-        if (process.env.DEBUG) {
-          logger.debug(`[DAEMON RUN] Health check completed at ${updatedState.lastHeartbeat}`);
-        }
-      } catch (error) {
-        logger.debug('[DAEMON RUN] Failed to write heartbeat', error);
-      }
-
-      heartbeatRunning = false;
-    }, heartbeatIntervalMs); // Every 60 seconds in production
+    const restartOnStaleVersionAndHeartbeat = startDaemonHeartbeatLoop({
+      pidToTrackedSession,
+      codexHomeDirCleanupByPid,
+      sessionAttachCleanupByPid,
+      getApiMachineForSessions: () => apiMachineForSessions,
+      controlPort,
+      fileState,
+      currentCliVersion: configuration.currentCliVersion,
+      requestShutdown,
+    });
 
 	    // Setup signal handlers
 	    const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
