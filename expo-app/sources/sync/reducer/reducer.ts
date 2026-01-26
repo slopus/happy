@@ -122,6 +122,7 @@ import { runUserAndTextPhase } from "./phases/userAndText";
 import { runToolCallsPhase } from "./phases/toolCalls";
 import { runToolResultsPhase } from "./phases/toolResults";
 import { runSidechainsPhase } from "./phases/sidechains";
+import { runModeSwitchEventsPhase } from "./phases/modeSwitchEvents";
 import { equalOptionalStringArrays } from "./helpers/arrays";
 import { coerceStreamingToolResultChunk, mergeExistingStdStreamsIntoFinalResultIfMissing, mergeStreamingChunkIntoResult } from "./helpers/streamingToolResult";
 import { normalizeThinkingChunk, unwrapThinkingText, wrapThinkingText } from "./helpers/thinkingText";
@@ -352,25 +353,12 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         allocateId,
     });
 
-    // Phase 5: Process mode-switch messages
-    //
-
-    for (let msg of nonSidechainMessages) {
-        if (msg.role === 'event') {
-            let mid = allocateId();
-            state.messages.set(mid, {
-                id: mid,
-                realID: msg.id,
-                role: 'agent',
-                createdAt: msg.createdAt,
-                event: msg.content,
-                tool: null,
-                text: null,
-                meta: msg.meta,
-            });
-            changed.add(mid);
-        }
-    }
+    runModeSwitchEventsPhase({
+        state,
+        nonSidechainMessages,
+        changed,
+        allocateId,
+    });
 
     //
     // Collect changed messages (only root-level messages)
