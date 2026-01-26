@@ -7,7 +7,9 @@ vi.mock('chalk', () => ({
   },
 }));
 
-const mockSpawnInTmux = vi.fn(async () => ({ success: true as const }));
+const mockSpawnInTmux = vi.fn(
+  async (_args: string[], _options: any, _env?: Record<string, string>) => ({ success: true as const }),
+);
 const mockExecuteTmuxCommand = vi.fn(async () => ({ stdout: '' }));
 
 vi.mock('@/utils/tmux', () => {
@@ -77,5 +79,23 @@ describe('startHappyHeadlessInTmux', () => {
     expect(attachIdx).toBeGreaterThanOrEqual(0);
     expect(selectIdx).toBeGreaterThanOrEqual(0);
     expect(attachIdx).toBeLessThan(selectIdx);
+  });
+
+  it('does not pass TMUX variables through to the tmux window environment', async () => {
+    process.env.TMUX = '1';
+    process.env.TMUX_PANE = '%1';
+    process.env.HAPPY_TEST_FOO = 'bar';
+    const { startHappyHeadlessInTmux } = await import('./startHappyHeadlessInTmux');
+
+    await startHappyHeadlessInTmux([]);
+
+    const env = mockSpawnInTmux.mock.calls[0]?.[2] as Record<string, string> | undefined;
+    expect(env).toBeDefined();
+    expect(env?.TMUX).toBeUndefined();
+    expect(env?.TMUX_PANE).toBeUndefined();
+    expect(env?.HAPPY_TEST_FOO).toBe('bar');
+
+    delete process.env.TMUX_PANE;
+    delete process.env.HAPPY_TEST_FOO;
   });
 });

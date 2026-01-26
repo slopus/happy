@@ -16,8 +16,11 @@ function inferAgent(argv: string[]): 'claude' | 'codex' | 'gemini' {
 }
 
 function buildWindowEnv(): Record<string, string> {
+  const excludedKeys = new Set(['TMUX', 'TMUX_PANE']);
   return Object.fromEntries(
-    Object.entries(process.env).filter(([, value]) => typeof value === 'string'),
+    Object.entries(process.env).filter(
+      ([key, value]) => typeof value === 'string' && !excludedKeys.has(key),
+    ),
   ) as Record<string, string>;
 }
 

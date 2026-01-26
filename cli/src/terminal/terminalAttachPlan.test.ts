@@ -17,6 +17,16 @@ describe('createTerminalAttachPlan', () => {
     expect(plan.type).toBe('not-attachable');
   });
 
+  it('returns not-attachable when tmux target is invalid', () => {
+    const terminal: NonNullable<Metadata['terminal']> = {
+      mode: 'tmux',
+      tmux: { target: 'bad*:window' },
+    };
+
+    const plan = createTerminalAttachPlan({ terminal, insideTmux: false });
+    expect(plan.type).toBe('not-attachable');
+  });
+
   it('plans select-window + attach when outside tmux', () => {
     const terminal: NonNullable<Metadata['terminal']> = {
       mode: 'tmux',
@@ -62,4 +72,3 @@ describe('createTerminalAttachPlan', () => {
     expect(plan.shouldAttach).toBe(true);
   });
 });
-

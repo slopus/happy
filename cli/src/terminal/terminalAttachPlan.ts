@@ -41,7 +41,15 @@ export function createTerminalAttachPlan(params: {
     };
   }
 
-  const parsed = parseTmuxSessionIdentifier(target);
+  let parsed: ReturnType<typeof parseTmuxSessionIdentifier>;
+  try {
+    parsed = parseTmuxSessionIdentifier(target);
+  } catch {
+    return {
+      type: 'not-attachable',
+      reason: 'Session includes an invalid tmux target.',
+    };
+  }
 
   const tmpDir = params.terminal.tmux?.tmpDir;
   const tmuxCommandEnv: Record<string, string> =
@@ -62,4 +70,3 @@ export function createTerminalAttachPlan(params: {
     attachSessionArgs: ['attach-session', '-t', parsed.session],
   };
 }
-
