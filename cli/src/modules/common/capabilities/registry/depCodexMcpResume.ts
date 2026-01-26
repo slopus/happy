@@ -1,12 +1,12 @@
 import type { Capability } from '../service';
 import { CapabilityError } from '../errors';
-import { getCodexAcpDepStatus, installCodexAcp } from '../deps/codexAcp';
+import { getCodexMcpResumeDepStatus, installCodexMcpResume } from '../deps/codexMcpResume';
 
-export const codexAcpDepCapability: Capability = {
+export const codexMcpResumeDepCapability: Capability = {
     descriptor: {
-        id: 'dep.codex-acp',
+        id: 'dep.codex-mcp-resume',
         kind: 'dep',
-        title: 'Codex ACP',
+        title: 'Codex MCP resume',
         methods: {
             install: { title: 'Install' },
             upgrade: { title: 'Upgrade' },
@@ -16,7 +16,7 @@ export const codexAcpDepCapability: Capability = {
         const includeRegistry = Boolean((request.params ?? {}).includeRegistry);
         const onlyIfInstalled = Boolean((request.params ?? {}).onlyIfInstalled);
         const distTag = typeof (request.params ?? {}).distTag === 'string' ? String((request.params ?? {}).distTag) : undefined;
-        return await getCodexAcpDepStatus({ includeRegistry, onlyIfInstalled, distTag });
+        return await getCodexMcpResumeDepStatus({ includeRegistry, onlyIfInstalled, distTag });
     },
     invoke: async ({ method, params }) => {
         if (method !== 'install' && method !== 'upgrade') {
@@ -27,11 +27,10 @@ export const codexAcpDepCapability: Capability = {
             ? String(params.installSpec)
             : undefined;
 
-        const result = await installCodexAcp(installSpec);
+        const result = await installCodexMcpResume(installSpec);
         if (!result.ok) {
             return { ok: false, error: { message: result.errorMessage, code: 'install-failed' }, logPath: result.logPath };
         }
         return { ok: true, result: { logPath: result.logPath } };
     },
 };
-

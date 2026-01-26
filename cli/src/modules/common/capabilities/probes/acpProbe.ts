@@ -1,5 +1,4 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { Readable, Writable } from 'node:stream';
 import {
     ClientSideConnection,
     ndJsonStream,
@@ -15,43 +14,37 @@ import {
 
 import { logger } from '@/ui/logger';
 import type { TransportHandler } from '@/agent/transport';
-import { terminateProcess } from './terminateProcess';
+import { nodeToWebStreams } from '@/agent/acp/nodeToWebStreams';
 
 type AcpProbeResult =
     | { ok: true; checkedAt: number; agentCapabilities: InitializeResponse['agentCapabilities'] }
     | { ok: false; checkedAt: number; error: { message: string } };
 
-function nodeToWebStreams(stdin: Writable, stdout: Readable): { writable: WritableStream<Uint8Array>; readable: ReadableStream<Uint8Array> } {
-    const writable = new WritableStream<Uint8Array>({
-        write(chunk) {
-            return new Promise((resolve, reject) => {
-                const ok = stdin.write(chunk, (err) => {
-                    if (err) reject(err);
-                });
-                if (ok) resolve();
-                else stdin.once('drain', resolve);
-            });
-        },
-        close() {
-            return new Promise((resolve) => stdin.end(resolve));
-        },
-        abort(reason) {
-            stdin.destroy(reason instanceof Error ? reason : new Error(String(reason)));
-        },
+async function terminateProcess(child: ChildProcess): Promise<void> {
+    if (child.killed) return;
+
+    const waitForExit = new Promise<void>((resolve) => {
+        child.once('exit', () => resolve());
     });
 
-    const readable = new ReadableStream<Uint8Array>({
-        start(controller) {
-            stdout.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)));
-            stdout.on('end', () => controller.close());
-            stdout.on('error', (err) => controller.error(err));
-        },
-        cancel() {
-            stdout.destroy();
-        },
-    });
+    try {
+        child.kill('SIGTERM');
+    } catch {
+        // ignore
+    }
 
-    return { writable, readable };
+    await Promise.race([
+        waitForExit,
+        new Promise<void>((resolve) => setTimeout(resolve, 250)),
+    ]);
+
+    if (!child.killed) {
+        try {
+            child.kill('SIGKILL');
+        } catch {
+            // ignore
+        }
+    }
 }
 
 export async function probeAcpAgentCapabilities(params: {

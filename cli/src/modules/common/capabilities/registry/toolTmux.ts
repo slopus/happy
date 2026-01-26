@@ -6,4 +6,3 @@ export const tmuxCapability: Capability = {
         return context.cliSnapshot?.tmux ?? { available: false };
     },
 };
-

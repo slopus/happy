@@ -10,4 +10,3 @@ export function normalizeCapabilityProbeError(error: unknown): { message: string
     }
     return { message: String(error) };
 }
-

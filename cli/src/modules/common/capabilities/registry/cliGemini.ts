@@ -1,13 +1,13 @@
 import type { Capability } from '../service';
-import { buildCliCapabilityData } from './cliBase';
-import { probeAcpAgentCapabilities } from './acpProbe';
-import { openCodeTransport } from '@/agent/transport';
-import { normalizeCapabilityProbeError } from './normalizeCapabilityProbeError';
+import { buildCliCapabilityData } from '../probes/cliBase';
+import { probeAcpAgentCapabilities } from '../probes/acpProbe';
+import { geminiTransport } from '@/agent/transport';
+import { normalizeCapabilityProbeError } from '../utils/normalizeCapabilityProbeError';
 
-export const cliOpenCodeCapability: Capability = {
-    descriptor: { id: 'cli.opencode', kind: 'cli', title: 'OpenCode CLI' },
+export const cliGeminiCapability: Capability = {
+    descriptor: { id: 'cli.gemini', kind: 'cli', title: 'Gemini CLI' },
     detect: async ({ request, context }) => {
-        const entry = context.cliSnapshot?.clis?.opencode;
+        const entry = context.cliSnapshot?.clis?.gemini;
         const base = buildCliCapabilityData({ request, entry });
 
         const includeAcpCapabilities = Boolean((request.params ?? {}).includeAcpCapabilities);
@@ -17,14 +17,14 @@ export const cliOpenCodeCapability: Capability = {
 
         const probe = await probeAcpAgentCapabilities({
             command: base.resolvedPath,
-            args: ['acp'],
+            args: ['--experimental-acp'],
             cwd: process.cwd(),
             env: {
                 // Keep output clean to avoid ACP stdout pollution.
                 NODE_ENV: 'production',
                 DEBUG: '',
             },
-            transport: openCodeTransport,
+            transport: geminiTransport,
             timeoutMs: 4000,
         });
 

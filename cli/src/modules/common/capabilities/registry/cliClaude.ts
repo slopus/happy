@@ -1,5 +1,5 @@
 import type { Capability } from '../service';
-import { buildCliCapabilityData } from './cliBase';
+import { buildCliCapabilityData } from '../probes/cliBase';
 
 export const cliClaudeCapability: Capability = {
     descriptor: { id: 'cli.claude', kind: 'cli', title: 'Claude CLI' },

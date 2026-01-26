@@ -1,9 +1,9 @@
 import type { Capability } from '../service';
-import { buildCliCapabilityData } from './cliBase';
-import { probeAcpAgentCapabilities } from './acpProbe';
+import { buildCliCapabilityData } from '../probes/cliBase';
+import { probeAcpAgentCapabilities } from '../probes/acpProbe';
 import { DefaultTransport } from '@/agent/transport';
 import { resolveCodexAcpCommand } from '@/codex/acp/resolveCodexAcpCommand';
-import { normalizeCapabilityProbeError } from './normalizeCapabilityProbeError';
+import { normalizeCapabilityProbeError } from '../utils/normalizeCapabilityProbeError';
 
 export const cliCodexCapability: Capability = {
     descriptor: { id: 'cli.codex', kind: 'cli', title: 'Codex CLI' },

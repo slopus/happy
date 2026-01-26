@@ -1,13 +1,13 @@
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import { checklists } from './checklists';
 import { buildDetectContext } from './context/buildDetectContext';
-import { cliClaudeCapability } from './caps/cliClaude';
-import { cliCodexCapability } from './caps/cliCodex';
-import { cliGeminiCapability } from './caps/cliGemini';
-import { cliOpenCodeCapability } from './caps/cliOpenCode';
-import { codexAcpDepCapability } from './caps/depCodexAcp';
-import { codexMcpResumeDepCapability } from './caps/depCodexMcpResume';
-import { tmuxCapability } from './caps/toolTmux';
+import { cliClaudeCapability } from './registry/cliClaude';
+import { cliCodexCapability } from './registry/cliCodex';
+import { cliGeminiCapability } from './registry/cliGemini';
+import { cliOpenCodeCapability } from './registry/cliOpenCode';
+import { codexAcpDepCapability } from './registry/depCodexAcp';
+import { codexMcpResumeDepCapability } from './registry/depCodexMcpResume';
+import { tmuxCapability } from './registry/toolTmux';
 import { createCapabilitiesService } from './service';
 import type {
     CapabilitiesDescribeResponse,

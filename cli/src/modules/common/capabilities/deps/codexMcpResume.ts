@@ -1,7 +1,7 @@
 import { execFile } from 'child_process';
 import { constants as fsConstants } from 'fs';
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { promisify } from 'util';
 import { configuration } from '@/configuration';
 
@@ -87,6 +87,7 @@ async function installNpmDepToPrefix(opts: {
 }): Promise<{ ok: true } | { ok: false; errorMessage: string }> {
     try {
         await mkdir(opts.installDir, { recursive: true });
+        await mkdir(dirname(opts.logPath), { recursive: true });
         const { stdout, stderr } = await execFileAsync(
             'npm',
             ['install', '--no-audit', '--no-fund', '--prefix', opts.installDir, opts.installSpec],
@@ -103,6 +104,7 @@ async function installNpmDepToPrefix(opts: {
     } catch (e) {
         const message = e instanceof Error ? e.message : 'Install failed';
         try {
+            await mkdir(dirname(opts.logPath), { recursive: true });
             await writeFile(opts.logPath, `# installSpec: ${opts.installSpec}\n\n${message}\n`, 'utf8');
         } catch { }
         return { ok: false, errorMessage: message };
@@ -219,4 +221,3 @@ export async function getCodexMcpResumeDepStatus(opts?: {
         ...(registry ? { registry } : {}),
     };
 }
-
