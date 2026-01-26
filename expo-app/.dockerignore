@@ -1,0 +1,9 @@
+node_modules
+.expo
+dist
+android
+ios
+.git
+*.log
+.DS_Store
+src-tauri/target

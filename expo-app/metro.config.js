@@ -1,5 +1,6 @@
 const { getDefaultConfig } = require("expo/metro-config");
 const path = require("path");
+const fs = require("fs");
 
 const config = getDefaultConfig(__dirname, {
   // Enable CSS support for web
@@ -12,10 +13,17 @@ config.resolver.assetExts.push('wasm');
 
 // Force libsodium-wrappers to use CJS version instead of ESM
 // The ESM version requires top-level await and ./libsodium.mjs which Metro can't resolve
+// Try local node_modules first (Docker), then parent (monorepo development)
+const libsodiumPaths = [
+  path.resolve(__dirname, 'node_modules/libsodium-wrappers/dist/modules/libsodium-wrappers.js'),
+  path.resolve(__dirname, '../node_modules/libsodium-wrappers/dist/modules/libsodium-wrappers.js'),
+];
+const libsodiumPath = libsodiumPaths.find(p => fs.existsSync(p));
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (moduleName === 'libsodium-wrappers') {
+  if (moduleName === 'libsodium-wrappers' && libsodiumPath) {
     return {
-      filePath: path.resolve(__dirname, '../node_modules/libsodium-wrappers/dist/modules/libsodium-wrappers.js'),
+      filePath: libsodiumPath,
       type: 'sourceFile',
     };
   }
