@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { configuration } from '@/configuration';
 import { readTerminalAttachmentInfo } from '@/terminal/terminalAttachmentInfo';
 import { createTerminalAttachPlan } from '@/terminal/terminalAttachPlan';
-import { isTmuxAvailable, normalizeExitCode } from '@/utils/tmux';
+import { isTmuxAvailable, normalizeExitCode } from '@/terminal/tmux';
 
 function spawnTmux(params: {
   args: string[];
@@ -86,4 +86,3 @@ export async function handleAttachCommand(argv: string[]): Promise<void> {
   });
   process.exit(attachExit);
 }
-

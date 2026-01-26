@@ -21,20 +21,20 @@ import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { projectPath } from '@/projectPath';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
-import { createBaseSessionForAttach } from '@/utils/sessionStartup/createBaseSessionForAttach';
+import { createBaseSessionForAttach } from '@/agent/startup/createBaseSessionForAttach';
 import {
   persistTerminalAttachmentInfoIfNeeded,
   primeAgentStateForUi,
   reportSessionToDaemonIfRunning,
   sendTerminalFallbackMessageIfNeeded,
-} from '@/utils/sessionStartup/startupSideEffects';
+} from '@/agent/startup/startupSideEffects';
 import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
-import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/utils/sessionStartup/startupMetadataUpdate';
+import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/startup/startupMetadataUpdate';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
-import { parseSpecialCommand } from '@/parsers/specialCommands';
+import { parseSpecialCommand } from '@/cli/parsers/specialCommands';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { CodexDisplay } from '@/ui/ink/CodexDisplay';
 

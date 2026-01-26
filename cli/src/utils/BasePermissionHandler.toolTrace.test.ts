@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BasePermissionHandler, type PermissionResult } from './BasePermissionHandler';
-import { __resetToolTraceForTests } from '@/toolTrace/toolTrace';
+import { __resetToolTraceForTests } from '@/agent/toolTrace/toolTrace';
 
 class FakeRpcHandlerManager {
     handlers = new Map<string, (payload: any) => any>();

@@ -40,21 +40,22 @@ vi.mock('child_process', () => ({
     spawn: spawnMock,
 }));
 
-describe('TmuxUtilities tmux subprocess environment', () => {
+describe('TmuxUtilities tmux socket path', () => {
     beforeEach(() => {
         spawnMock.mockClear();
     });
 
-    it('passes TMUX_TMPDIR to tmux subprocess env when provided', async () => {
+    it('uses -S <socketPath> by default when configured', async () => {
         vi.resetModules();
-        const { TmuxUtilities } = await import('@/utils/tmux');
+        const { TmuxUtilities } = await import('@/terminal/tmux');
 
-        const utils = new TmuxUtilities('happy', { TMUX_TMPDIR: '/custom/tmux' });
+        const socketPath = '/tmp/happy-cli-tmux-test.sock';
+        const utils = new TmuxUtilities('happy', undefined, socketPath);
         await utils.executeTmuxCommand(['list-sessions']);
 
         const call = getLastSpawnCall();
         expect(call).not.toBeNull();
-        expect((call!.options.env as NodeJS.ProcessEnv | undefined)?.TMUX_TMPDIR).toBe('/custom/tmux');
+        expect(call!.command).toBe('tmux');
+        expect(call!.args).toEqual(expect.arrayContaining(['-S', socketPath]));
     });
 });
-

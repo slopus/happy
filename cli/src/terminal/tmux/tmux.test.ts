@@ -18,7 +18,7 @@ import {
     TmuxUtilities,
     type TmuxSessionIdentifier,
     type TmuxCommandResult,
-} from './tmux';
+} from './index';
 
 describe('normalizeExitCode', () => {
     it('treats signal termination (null) as non-zero', () => {

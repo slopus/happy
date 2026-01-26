@@ -12,7 +12,7 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
-import { parseSpecialCommand } from '@/parsers/specialCommands';
+import { parseSpecialCommand } from '@/cli/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
 import { initialMachineMetadata } from '@/daemon/run';
@@ -28,9 +28,9 @@ import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import type { TerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
-import { persistTerminalAttachmentInfoIfNeeded, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/utils/sessionStartup/startupSideEffects';
-import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/utils/sessionStartup/startupMetadataUpdate';
-import { createBaseSessionForAttach } from '@/utils/sessionStartup/createBaseSessionForAttach';
+import { persistTerminalAttachmentInfoIfNeeded, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/agent/startup/startupSideEffects';
+import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/startup/startupMetadataUpdate';
+import { createBaseSessionForAttach } from '@/agent/startup/createBaseSessionForAttach';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 
 /** JavaScript runtime to use for spawning Claude Code */

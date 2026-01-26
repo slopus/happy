@@ -37,12 +37,12 @@ import type { ApiSessionClient } from '@/api/apiSession';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
 import { isExperimentalCodexAcpEnabled, isExperimentalCodexVendorResumeEnabled } from '@/utils/agentCapabilities';
 import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
-import { parseSpecialCommand } from '@/parsers/specialCommands';
-import { createBaseSessionForAttach } from '@/utils/sessionStartup/createBaseSessionForAttach';
+import { parseSpecialCommand } from '@/cli/parsers/specialCommands';
+import { createBaseSessionForAttach } from '@/agent/startup/createBaseSessionForAttach';
 import { maybeUpdateCodexSessionIdMetadata } from './utils/codexSessionIdMetadata';
 import { createCodexAcpRuntime } from './acp/codexAcpRuntime';
-import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/utils/sessionStartup/startupMetadataUpdate';
-import { persistTerminalAttachmentInfoIfNeeded, primeAgentStateForUi, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/utils/sessionStartup/startupSideEffects';
+import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/startup/startupMetadataUpdate';
+import { persistTerminalAttachmentInfoIfNeeded, primeAgentStateForUi, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/agent/startup/startupSideEffects';
 
 type ReadyEventOptions = {
     pending: unknown;

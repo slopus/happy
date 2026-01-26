@@ -33,9 +33,9 @@ import type { ApiSessionClient } from '@/api/apiSession';
 import { formatGeminiErrorForUi } from '@/gemini/utils/formatGeminiErrorForUi';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
 import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
-import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/utils/sessionStartup/startupMetadataUpdate';
-import { createBaseSessionForAttach } from '@/utils/sessionStartup/createBaseSessionForAttach';
-import { persistTerminalAttachmentInfoIfNeeded, primeAgentStateForUi, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/utils/sessionStartup/startupSideEffects';
+import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/startup/startupMetadataUpdate';
+import { createBaseSessionForAttach } from '@/agent/startup/createBaseSessionForAttach';
+import { persistTerminalAttachmentInfoIfNeeded, primeAgentStateForUi, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/agent/startup/startupSideEffects';
 
 import { createGeminiBackend } from '@/agent/factories/gemini';
 import { importAcpReplayHistoryV1 } from '@/agent/acp/history/importAcpReplayHistory';

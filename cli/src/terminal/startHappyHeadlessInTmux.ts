@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 
 import { buildHappyCliSubprocessInvocation } from '@/utils/spawnHappyCLI';
-import { isTmuxAvailable, TmuxUtilities } from '@/utils/tmux';
+import { isTmuxAvailable, TmuxUtilities } from '@/terminal/tmux';
 import { selectPreferredTmuxSessionName } from '@/terminal/tmuxSessionSelector';
 import { ensureRemoteStartingModeArgs } from '@/terminal/headlessTmuxArgs';
 

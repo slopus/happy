@@ -13,7 +13,7 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { claimMessageQueueV1Next, clearMessageQueueV1InFlight, discardMessageQueueV1All, parseMessageQueueV1 } from './messageQueueV1';
 import { addDiscardedCommittedMessageLocalIds } from './discardedCommittedMessageLocalIds';
-import { recordToolTraceEvent } from '@/toolTrace/toolTrace';
+import { recordToolTraceEvent } from '@/agent/toolTrace/toolTrace';
 
 /**
  * ACP (Agent Communication Protocol) message data types.

@@ -5,7 +5,7 @@ import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { claudeFindLastSession } from "./utils/claudeFindLastSession";
 import { join, resolve } from 'node:path';
 import { projectPath } from "@/projectPath";
-import { parseSpecialCommand } from "@/parsers/specialCommands";
+import { parseSpecialCommand } from "@/cli/parsers/specialCommands";
 import { logger } from "@/lib";
 import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
 import { systemPrompt } from "./utils/systemPrompt";

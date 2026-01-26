@@ -1,5 +1,5 @@
 import type { Metadata } from '@/api/types';
-import { parseTmuxSessionIdentifier } from '@/utils/tmux';
+import { parseTmuxSessionIdentifier } from '@/terminal/tmux';
 
 export type TerminalAttachPlan =
   | { type: 'not-attachable'; reason: string }

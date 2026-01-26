@@ -5,7 +5,7 @@ import { encodeBase64, encrypt } from './encryption';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { __resetToolTraceForTests } from '@/toolTrace/toolTrace';
+import { __resetToolTraceForTests } from '@/agent/toolTrace/toolTrace';
 
 // Use vi.hoisted to ensure mock function is available when vi.mock factory runs
 const { mockIo } = vi.hoisted(() => ({

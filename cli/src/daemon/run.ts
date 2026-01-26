@@ -40,7 +40,7 @@ import { adoptSessionsFromMarkers } from './reattach';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
-import { TmuxUtilities, isTmuxAvailable } from '@/utils/tmux';
+import { TmuxUtilities, isTmuxAvailable } from '@/terminal/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { resolveTerminalRequestFromSpawnOptions } from '@/terminal/terminalConfig';
 import { selectPreferredTmuxSessionName } from '@/terminal/tmuxSessionSelector';

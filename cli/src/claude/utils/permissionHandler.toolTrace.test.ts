@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { __resetToolTraceForTests } from '@/toolTrace/toolTrace';
+import { __resetToolTraceForTests } from '@/agent/toolTrace/toolTrace';
 import { PermissionHandler } from './permissionHandler';
 
 class FakeRpcHandlerManager {
@@ -105,4 +105,3 @@ describe('Claude PermissionHandler tool trace', () => {
         );
     });
 });
-

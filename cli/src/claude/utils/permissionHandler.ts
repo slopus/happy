@@ -15,7 +15,7 @@ import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
 import { delay } from "@/utils/time";
 import { isShellCommandAllowed } from "@/utils/shellCommandAllowlist";
-import { recordToolTraceEvent } from '@/toolTrace/toolTrace';
+import { recordToolTraceEvent } from '@/agent/toolTrace/toolTrace';
 
 interface PermissionResponse {
     id: string;
