@@ -180,14 +180,18 @@ export default function ExpoConstantsScreen() {
     
     // Check if running embedded update
     const isEmbedded = ExpoUpdates?.isEmbeddedLaunch;
+
+    const screenOptions = React.useMemo(() => {
+        return {
+            title: 'Expo Constants',
+            headerLargeTitle: false,
+        } as const;
+    }, []);
     
     return (
         <>
             <Stack.Screen
-                options={{
-                    title: 'Expo Constants',
-                    headerLargeTitle: false,
-                }}
+                options={screenOptions}
             />
             <ItemList>
                 {/* Main Configuration */}

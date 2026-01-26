@@ -376,12 +376,16 @@ export function formatTime(date: Date): string {
         );
     };
 
+    const screenOptions = React.useMemo(() => {
+        return {
+            headerTitle: 'Tool Views Demo',
+        } as const;
+    }, []);
+
     return (
         <>
             <Stack.Screen
-                options={{
-                    headerTitle: 'Tool Views Demo',
-                }}
+                options={screenOptions}
             />
             
             <ScrollView style={styles.container}>

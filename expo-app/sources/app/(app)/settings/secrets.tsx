@@ -8,14 +8,21 @@ import { SecretsList } from '@/components/secrets/SecretsList';
 export default React.memo(function SecretsSettingsScreen() {
     const [secrets, setSecrets] = useSettingMutable('secrets');
 
+    const headerTitle = t('settings.secrets');
+    const headerBackTitle = t('common.back');
+
+    const screenOptions = React.useMemo(() => {
+        return {
+            headerShown: true,
+            headerTitle,
+            headerBackTitle,
+        } as const;
+    }, [headerBackTitle, headerTitle]);
+
     return (
         <>
             <Stack.Screen
-                options={{
-                    headerShown: true,
-                    headerTitle: t('settings.secrets'),
-                    headerBackTitle: t('common.back'),
-                }}
+                options={screenOptions}
             />
 
             <SecretsList
@@ -27,4 +34,3 @@ export default React.memo(function SecretsSettingsScreen() {
         </>
     );
 });
-

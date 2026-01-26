@@ -7,12 +7,16 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function ShimmerDemoScreen() {
+    const screenOptions = React.useMemo(() => {
+        return {
+            headerTitle: 'Shimmer View Demo',
+        } as const;
+    }, []);
+
     return (
         <>
             <Stack.Screen
-                options={{
-                    headerTitle: 'Shimmer View Demo',
-                }}
+                options={screenOptions}
             />
             
             <ScrollView style={styles.container}>

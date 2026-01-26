@@ -54,12 +54,16 @@ export default function InvertedListTest() {
         </View>
     );
 
+    const screenOptions = React.useMemo(() => {
+        return {
+            headerTitle: 'Inverted List Test',
+        } as const;
+    }, []);
+
     return (
         <>
             <Stack.Screen
-                options={{
-                    headerTitle: 'Inverted List Test',
-                }}
+                options={screenOptions}
             />
 
             <Animated.View style={[styles.container, { transform: [{ translateY: height }] }]}>

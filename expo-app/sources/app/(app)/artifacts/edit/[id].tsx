@@ -205,15 +205,38 @@ export default function EditArtifactScreen() {
         },
         default: {},
     });
+
+    const loadingTitle = t('artifacts.loading');
+    const errorTitle = t('common.error');
+    const headerTitle = t('artifacts.edit');
+
+    const loadingScreenOptions = React.useMemo(() => {
+        return {
+            headerShown: true,
+            headerTitle: loadingTitle,
+        } as const;
+    }, [loadingTitle]);
+
+    const errorScreenOptions = React.useMemo(() => {
+        return {
+            headerShown: true,
+            headerTitle: errorTitle,
+        } as const;
+    }, [errorTitle]);
+
+    const screenOptions = React.useMemo(() => {
+        return {
+            headerShown: true,
+            headerTitle,
+            headerRight: HeaderRight,
+        } as const;
+    }, [HeaderRight, headerTitle]);
     
     if (isLoading) {
         return (
             <View style={styles.container}>
                 <Stack.Screen 
-                    options={{
-                        headerShown: true,
-                        headerTitle: t('artifacts.loading'),
-                    }}
+                    options={loadingScreenOptions}
                 />
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" />
@@ -226,10 +249,7 @@ export default function EditArtifactScreen() {
         return (
             <View style={styles.container}>
                 <Stack.Screen 
-                    options={{
-                        headerShown: true,
-                        headerTitle: t('common.error'),
-                    }}
+                    options={errorScreenOptions}
                 />
                 <View style={styles.errorContainer}>
                     <Text style={styles.errorText}>
@@ -243,11 +263,7 @@ export default function EditArtifactScreen() {
     return (
         <>
             <Stack.Screen 
-                options={{
-                    headerShown: true,
-                    headerTitle: t('artifacts.edit'),
-                    headerRight: HeaderRight,
-                }}
+                options={screenOptions}
             />
             <View style={styles.container}>
                 <KeyboardWrapper {...keyboardProps}>

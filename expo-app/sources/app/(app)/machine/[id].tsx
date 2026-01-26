@@ -121,6 +121,7 @@ export default function MachineDetailScreen() {
     const inputRef = useRef<MultiTextInputHandle>(null);
     const [showAllPaths, setShowAllPaths] = useState(false);
     const isOnline = !!machine && isMachineOnline(machine);
+    const metadata = machine?.metadata;
 
     const terminalUseTmux = useSetting('sessionUseTmux');
     const terminalTmuxSessionName = useSetting('sessionTmuxSessionName');
@@ -236,9 +237,7 @@ export default function MachineDetailScreen() {
     const daemonStatus = useMemo(() => {
         if (!machine) return 'unknown';
 
-        // Check metadata for daemon status
-        const metadata = machine.metadata as any;
-        if (metadata?.daemonLastKnownStatus === 'shutting-down') {
+        if (machine.metadata?.daemonLastKnownStatus === 'shutting-down') {
             return 'stopped';
         }
 
@@ -479,15 +478,90 @@ export default function MachineDetailScreen() {
         return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
     }, []);
 
+    const headerBackTitle = t('machine.back');
+
+    const notFoundScreenOptions = React.useMemo(() => {
+        return {
+            headerShown: true,
+            headerTitle: '',
+            headerBackTitle,
+        } as const;
+    }, [headerBackTitle]);
+
+    const machineName =
+        machine?.metadata?.displayName ||
+        machine?.metadata?.host ||
+        t('machine.unknownMachine');
+    const machineIsOnline = machine ? isMachineOnline(machine) : false;
+
+    const headerTitle = React.useCallback(() => {
+        if (!machine) return null;
+        return (
+            <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Ionicons
+                        name="desktop-outline"
+                        size={18}
+                        color={theme.colors.header.tint}
+                        style={{ marginRight: 6 }}
+                    />
+                    <Text style={[Typography.default('semiBold'), { fontSize: 17, color: theme.colors.header.tint }]}>
+                        {machineName}
+                    </Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                    <View style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: 3,
+                        backgroundColor: machineIsOnline ? '#34C759' : '#999',
+                        marginRight: 4
+                    }} />
+                    <Text style={[Typography.default(), {
+                        fontSize: 12,
+                        color: machineIsOnline ? '#34C759' : '#999'
+                    }]}>
+                        {machineIsOnline ? t('status.online') : t('status.offline')}
+                    </Text>
+                </View>
+            </View>
+        );
+    }, [machineIsOnline, machine, machineName, theme.colors.header.tint]);
+
+    const headerRight = React.useCallback(() => {
+        if (!machine) return null;
+        return (
+            <Pressable
+                onPress={handleRenameMachine}
+                hitSlop={10}
+                style={{
+                    opacity: isRenamingMachine ? 0.5 : 1
+                }}
+                disabled={isRenamingMachine}
+            >
+                <Octicons
+                    name="pencil"
+                    size={20}
+                    color={theme.colors.text}
+                />
+            </Pressable>
+        );
+    }, [handleRenameMachine, isRenamingMachine, machine, theme.colors.text]);
+
+    const screenOptions = React.useMemo(() => {
+        return {
+            headerShown: true,
+            headerTitle,
+            headerRight,
+            headerBackTitle,
+        } as const;
+    }, [headerBackTitle, headerRight, headerTitle]);
+
     if (!machine) {
         return (
             <>
                 <Stack.Screen
-                    options={{
-                        headerShown: true,
-                        headerTitle: '',
-                        headerBackTitle: t('machine.back')
-                    }}
+                    options={notFoundScreenOptions}
                 />
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                     <Text style={[Typography.default(), { fontSize: 16, color: '#666' }]}>
@@ -498,64 +572,12 @@ export default function MachineDetailScreen() {
         );
     }
 
-    const metadata = machine.metadata;
-    const machineName = metadata?.displayName || metadata?.host || t('machine.unknownMachine');
-
     const spawnButtonDisabled = !customPath.trim() || isSpawning || !isMachineOnline(machine!);
 
     return (
         <>
             <Stack.Screen
-                options={{
-                    headerShown: true,
-                    headerTitle: () => (
-                        <View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Ionicons
-                                    name="desktop-outline"
-                                    size={18}
-                                    color={theme.colors.header.tint}
-                                    style={{ marginRight: 6 }}
-                                />
-                                <Text style={[Typography.default('semiBold'), { fontSize: 17, color: theme.colors.header.tint }]}>
-                                    {machineName}
-                                </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                                <View style={{
-                                    width: 6,
-                                    height: 6,
-                                    borderRadius: 3,
-                                    backgroundColor: isMachineOnline(machine) ? '#34C759' : '#999',
-                                    marginRight: 4
-                                }} />
-                                <Text style={[Typography.default(), {
-                                    fontSize: 12,
-                                    color: isMachineOnline(machine) ? '#34C759' : '#999'
-                                }]}>
-                                    {isMachineOnline(machine) ? t('status.online') : t('status.offline')}
-                                </Text>
-                            </View>
-                        </View>
-                    ),
-                    headerRight: () => (
-                        <Pressable
-                            onPress={handleRenameMachine}
-                            hitSlop={10}
-                            style={{
-                                opacity: isRenamingMachine ? 0.5 : 1
-                            }}
-                            disabled={isRenamingMachine}
-                        >
-                            <Octicons
-                                name="pencil"
-                                size={20}
-                                color={theme.colors.text}
-                            />
-                        </Pressable>
-                    ),
-                    headerBackTitle: t('machine.back')
-                }}
+                options={screenOptions}
             />
             <ItemList
                 refreshControl={

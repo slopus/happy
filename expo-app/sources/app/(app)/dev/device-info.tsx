@@ -29,14 +29,18 @@ export default function DeviceInfo() {
     });
     
     const { widthInches, heightInches, diagonalInches } = dimensions;
+
+    const screenOptions = React.useMemo(() => {
+        return {
+            title: 'Device Info',
+            headerLargeTitle: false,
+        } as const;
+    }, []);
     
     return (
         <>
             <Stack.Screen
-                options={{
-                    title: 'Device Info',
-                    headerLargeTitle: false,
-                }}
+                options={screenOptions}
             />
             <ItemList>
                 <ItemGroup title="Safe Area Insets">

@@ -77,20 +77,32 @@ export default React.memo(() => {
             </View>
         );
     }
+
+    const tool = message.kind === 'tool-call' ? message.tool : null;
+    const toolHeaderTitle = React.useCallback(() => {
+        return tool ? <ToolHeader tool={tool} /> : null;
+    }, [tool]);
+    const toolHeaderRight = React.useCallback(() => {
+        return tool ? <ToolStatusIndicator tool={tool} /> : null;
+    }, [tool]);
+
+    const toolScreenOptions = React.useMemo(() => {
+        return {
+            headerTitle: toolHeaderTitle,
+            headerRight: toolHeaderRight,
+            headerStyle: {
+                backgroundColor: theme.colors.header.background,
+            },
+            headerTintColor: theme.colors.header.tint,
+            headerShadowVisible: false,
+        } as const;
+    }, [theme.colors.header.background, theme.colors.header.tint, toolHeaderRight, toolHeaderTitle]);
     
     return (
         <>
-            {message && message.kind === 'tool-call' && message.tool && (
+            {tool && (
                 <Stack.Screen
-                    options={{
-                        headerTitle: () => <ToolHeader tool={message.tool} />,
-                        headerRight: () => <ToolStatusIndicator tool={message.tool} />,
-                        headerStyle: {
-                            backgroundColor: theme.colors.header.background,
-                        },
-                        headerTintColor: theme.colors.header.tint,
-                        headerShadowVisible: false,
-                    }}
+                    options={toolScreenOptions}
                 />
             )}
             <Deferred>

@@ -172,14 +172,63 @@ export default function ArtifactDetailScreen() {
         });
     }, [artifact]);
 
+    const loadingTitle = t('artifacts.loading');
+    const errorTitle = t('common.error');
+    const untitledTitle = t('artifacts.untitled');
+    const artifactTitle = artifact?.title || untitledTitle;
+
+    const loadingScreenOptions = React.useMemo(() => {
+        return {
+            headerShown: true,
+            headerTitle: loadingTitle,
+        } as const;
+    }, [loadingTitle]);
+
+    const errorScreenOptions = React.useMemo(() => {
+        return {
+            headerShown: true,
+            headerTitle: errorTitle,
+        } as const;
+    }, [errorTitle]);
+
+    const headerRight = React.useCallback(() => {
+        return (
+            <View style={{ flexDirection: 'row' }}>
+                <Pressable
+                    onPress={handleEdit}
+                    style={{ padding: 8, marginRight: 8 }}
+                    disabled={isDeleting}
+                >
+                    <Ionicons name="create-outline" size={22} color={styles.title.color} />
+                </Pressable>
+                <Pressable
+                    onPress={handleDelete}
+                    style={{ padding: 8 }}
+                    disabled={isDeleting}
+                >
+                    <Ionicons
+                        name="trash-outline"
+                        size={22}
+                        color={isDeleting ? styles.meta.color : styles.errorIcon.color}
+                    />
+                </Pressable>
+            </View>
+        );
+    }, [handleDelete, handleEdit, isDeleting, styles.errorIcon.color, styles.meta.color, styles.title.color]);
+
+    const screenOptions = React.useMemo(() => {
+        return {
+            headerShown: true,
+            headerTitle: artifactTitle,
+            headerRight,
+        } as const;
+    }, [artifactTitle, headerRight]);
+
     if (isLoading) {
         return (
             <View style={styles.container}>
                 <Stack.Screen 
-                    options={{
-                        headerShown: true,
-                        headerTitle: t('artifacts.loading'),
-                    }}
+                    options={loadingScreenOptions}
                 />
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" />
@@ -192,10 +241,7 @@ export default function ArtifactDetailScreen() {
         return (
             <View style={styles.container}>
                 <Stack.Screen 
-                    options={{
-                        headerShown: true,
-                        headerTitle: t('common.error'),
-                    }}
+                    options={errorScreenOptions}
                 />
                 <View style={styles.errorContainer}>
                         <Ionicons 
@@ -214,32 +260,7 @@ export default function ArtifactDetailScreen() {
     return (
         <>
             <Stack.Screen 
-                options={{
-                    headerShown: true,
-                    headerTitle: artifact.title || t('artifacts.untitled'),
-                    headerRight: () => (
-                        <View style={{ flexDirection: 'row' }}>
-                            <Pressable
-                                onPress={handleEdit}
-                                style={{ padding: 8, marginRight: 8 }}
-                                disabled={isDeleting}
-                            >
-                                <Ionicons name="create-outline" size={22} color={styles.title.color} />
-                            </Pressable>
-                            <Pressable
-                                onPress={handleDelete}
-                                style={{ padding: 8 }}
-                                disabled={isDeleting}
-                            >
-                                <Ionicons 
-                                    name="trash-outline" 
-                                    size={22} 
-                                    color={isDeleting ? styles.meta.color : styles.errorIcon.color} 
-                                />
-                            </Pressable>
-                        </View>
-                    ),
-                }}
+                options={screenOptions}
             />
             <View style={styles.container}>
                 <ScrollView 
@@ -256,7 +277,7 @@ export default function ArtifactDetailScreen() {
                                 !artifact.title && styles.untitledTitle
                             ]}
                         >
-                            {artifact.title || t('artifacts.untitled')}
+                            {artifactTitle}
                         </Text>
                         <Text style={styles.meta}>
                             {formattedDate}

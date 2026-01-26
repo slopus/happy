@@ -140,15 +140,20 @@ export default function NewArtifactScreen() {
         },
         default: {},
     });
+
+    const headerTitle = t('artifacts.new');
+    const screenOptions = React.useMemo(() => {
+        return {
+            headerShown: true,
+            headerTitle,
+            headerRight: HeaderRight,
+        } as const;
+    }, [HeaderRight, headerTitle]);
     
     return (
         <>
             <Stack.Screen 
-                options={{
-                    headerShown: true,
-                    headerTitle: t('artifacts.new'),
-                    headerRight: HeaderRight,
-                }}
+                options={screenOptions}
             />
             <View style={styles.container}>
                 <KeyboardWrapper {...keyboardProps}>

@@ -158,14 +158,21 @@ export default function ServerConfigScreen() {
         }
     };
 
+    const headerTitle = t('server.serverConfiguration');
+    const headerBackTitle = t('common.back');
+
+    const screenOptions = React.useMemo(() => {
+        return {
+            headerShown: true,
+            headerTitle,
+            headerBackTitle,
+        } as const;
+    }, [headerBackTitle, headerTitle]);
+
     return (
         <>
             <Stack.Screen
-                options={{
-                    headerShown: true,
-                    headerTitle: t('server.serverConfiguration'),
-                    headerBackTitle: t('common.back'),
-                }}
+                options={screenOptions}
             />
 
             <KeyboardAvoidingView 

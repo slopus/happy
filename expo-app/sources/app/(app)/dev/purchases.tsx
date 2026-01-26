@@ -80,13 +80,17 @@ export default function PurchasesDevScreen() {
         }
     };
 
+    const screenOptions = React.useMemo(() => {
+        return {
+            title: 'Purchases',
+            headerShown: true,
+        } as const;
+    }, []);
+
     return (
         <>
             <Stack.Screen
-                options={{
-                    title: 'Purchases',
-                    headerShown: true
-                }}
+                options={screenOptions}
             />
 
             <ItemList>
