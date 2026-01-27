@@ -2,7 +2,7 @@ import * as React from 'react';
 import { View, Text } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ToolSectionView } from '../ToolSectionView';
-import type { ToolViewProps } from './_all';
+import type { ToolViewProps } from './_registry';
 import { maybeParseJson } from '../utils/parseJson';
 
 function coerceStringArray(value: unknown): string[] | null {
@@ -75,4 +75,3 @@ const styles = StyleSheet.create((theme) => ({
         fontFamily: 'Menlo',
     },
 }));
-

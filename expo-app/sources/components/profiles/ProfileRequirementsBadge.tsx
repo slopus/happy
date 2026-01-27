@@ -92,6 +92,7 @@ export function ProfileRequirementsBadge(props: ProfileRequirementsBadgeProps) {
     );
 }
 
+
 const stylesheet = StyleSheet.create((theme) => ({
     badge: {
         maxWidth: 140,

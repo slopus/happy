@@ -31,11 +31,11 @@ vi.mock('@/constants/Typography', () => ({
     Typography: { default: () => ({}) },
 }));
 
-vi.mock('./layout', () => ({
+vi.mock('@/components/layout', () => ({
     layout: { maxWidth: 800, headerMaxWidth: 800 },
 }));
 
-vi.mock('./markdown/MarkdownView', () => ({
+vi.mock('@/components/markdown/MarkdownView', () => ({
     MarkdownView: 'MarkdownView',
 }));
 

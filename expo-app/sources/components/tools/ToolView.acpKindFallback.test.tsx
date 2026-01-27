@@ -37,7 +37,7 @@ vi.mock('@expo/vector-icons', () => ({
     Octicons: 'Octicons',
 }));
 
-vi.mock('@/components/tools/views/_all', () => ({
+vi.mock('@/components/tools/views/_registry', () => ({
     getToolViewComponent: (toolName: string) =>
         toolName === 'execute'
             ? (props: any) => React.createElement('SpecificToolView', { resolvedName: props.tool?.name })
@@ -111,4 +111,3 @@ describe('ToolView (ACP kind fallback)', () => {
         expect(tree!.root.findAllByType('SpecificToolView' as any)).toHaveLength(1);
     });
 });
-

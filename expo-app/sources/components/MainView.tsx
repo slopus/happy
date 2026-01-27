@@ -21,7 +21,7 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackFriendsSearch } from '@/track';
-import { ConnectionStatusControl } from '@/components/ConnectionStatusControl';
+import { ConnectionStatusControl } from '@/components/navigation/ConnectionStatusControl';
 import { useInboxFriendsEnabled } from '@/hooks/useInboxFriendsEnabled';
 
 interface MainViewProps {

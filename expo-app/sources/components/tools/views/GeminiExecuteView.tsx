@@ -2,7 +2,7 @@ import * as React from 'react';
 import { View, Text } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { ToolSectionView } from '../../tools/ToolSectionView';
-import { ToolViewProps } from './_all';
+import { ToolViewProps } from './_registry';
 import { t } from '@/text';
 import { CommandView } from '@/components/CommandView';
 import { extractShellCommand } from '../utils/shellCommand';

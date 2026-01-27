@@ -15,9 +15,9 @@ import { Item } from '@/components/ui/lists/Item';
 import { useMachine } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { DropdownMenu } from '@/components/ui/forms/dropdown/DropdownMenu';
-import { useScrollEdgeFades } from '@/components/useScrollEdgeFades';
-import { ScrollEdgeFades } from '@/components/ScrollEdgeFades';
-import { ScrollEdgeIndicators } from '@/components/ScrollEdgeIndicators';
+import { useScrollEdgeFades } from '@/components/ui/scroll/useScrollEdgeFades';
+import { ScrollEdgeFades } from '@/components/ui/scroll/ScrollEdgeFades';
+import { ScrollEdgeIndicators } from '@/components/ui/scroll/ScrollEdgeIndicators';
 
 const secretRequirementSelectionMemory = new Map<string, 'machine' | 'saved' | 'once'>();
 

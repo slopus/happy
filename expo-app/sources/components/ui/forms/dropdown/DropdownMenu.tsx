@@ -6,7 +6,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { Popover, type PopoverPlacement } from '@/components/ui/popover';
 import { FloatingOverlay } from '@/components/FloatingOverlay';
 import { t } from '@/text';
-import type { SelectableRowVariant } from '@/components/SelectableRow';
+import type { SelectableRowVariant } from '@/components/ui/lists/SelectableRow';
 import { SelectableMenuResults } from '@/components/ui/forms/dropdown/SelectableMenuResults';
 import type { SelectableMenuItem } from '@/components/ui/forms/dropdown/selectableMenuTypes';
 import { useSelectableMenu } from '@/components/ui/forms/dropdown/useSelectableMenu';

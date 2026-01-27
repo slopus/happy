@@ -5,7 +5,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { EnvironmentVariableCard } from './EnvironmentVariableCard';
 import type { ProfileDocumentation } from '@/sync/profileUtils';
-import { InlineAddExpander } from '@/components/InlineAddExpander';
+import { InlineAddExpander } from '@/components/ui/forms/InlineAddExpander';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
@@ -308,6 +308,7 @@ export function EnvironmentVariablesList({
         </View>
     );
 }
+
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {

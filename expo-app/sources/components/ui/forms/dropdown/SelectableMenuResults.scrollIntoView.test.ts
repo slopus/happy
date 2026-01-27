@@ -26,7 +26,7 @@ vi.mock('@/constants/Typography', () => ({
     Typography: { default: () => ({}) },
 }));
 
-vi.mock('@/components/SelectableRow', () => {
+vi.mock('@/components/ui/lists/SelectableRow', () => {
     const React = require('react');
     return {
         SelectableRow: (props: any) => React.createElement('SelectableRow', props, props.children),
@@ -103,4 +103,3 @@ describe('SelectableMenuResults (web)', () => {
         expect(scrollIntoViewSpy).not.toHaveBeenCalled();
     });
 });
-

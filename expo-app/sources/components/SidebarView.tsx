@@ -17,7 +17,7 @@ import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 import { Ionicons } from '@expo/vector-icons';
 import { sync } from '@/sync/sync';
 import { PopoverBoundaryProvider } from '@/components/ui/popover';
-import { ConnectionStatusControl } from '@/components/ConnectionStatusControl';
+import { ConnectionStatusControl } from '@/components/navigation/ConnectionStatusControl';
 import { useInboxFriendsEnabled } from '@/hooks/useInboxFriendsEnabled';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({

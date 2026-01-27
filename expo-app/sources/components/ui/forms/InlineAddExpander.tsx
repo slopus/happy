@@ -123,6 +123,7 @@ export function InlineAddExpander({
     );
 }
 
+
 const stylesheet = StyleSheet.create((theme) => ({
     expandedContainer: {
         paddingHorizontal: 16,

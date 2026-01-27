@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Text, View, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons, Octicons } from '@expo/vector-icons';
-import { getToolViewComponent } from './views/_all';
+import { getToolViewComponent } from './views/_registry';
 import { Message, ToolCall } from '@/sync/typesMessage';
 import { CodeView } from '../CodeView';
 import { ToolSectionView } from './ToolSectionView';

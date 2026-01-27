@@ -486,6 +486,7 @@ export function EnvironmentVariableCard({
     );
 }
 
+
 const stylesheet = StyleSheet.create((theme) => ({
     groupWrapper: {
         // The card spacing between env vars should match other grouped settings lists.

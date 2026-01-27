@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { Item } from '@/components/ui/lists/Item';
 import { ItemGroup } from '@/components/ui/lists/ItemGroup';
 import { ItemList } from '@/components/ui/lists/ItemList';
-import { SearchHeader } from '@/components/SearchHeader';
+import { SearchHeader } from '@/components/ui/forms/SearchHeader';
 import { useSettingMutable } from '@/sync/storage';
 import { LANGUAGES, getLanguageDisplayName, type Language } from '@/constants/Languages';
 import { t } from '@/text';

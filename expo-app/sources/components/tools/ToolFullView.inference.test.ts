@@ -52,7 +52,7 @@ const getToolViewComponentSpy = vi.fn((toolName: string) => {
     return null;
 });
 
-vi.mock('./views/_all', () => ({
+vi.mock('./views/_registry', () => ({
     getToolFullViewComponent: getToolFullViewComponentSpy,
     getToolViewComponent: getToolViewComponentSpy,
 }));

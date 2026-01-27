@@ -82,7 +82,7 @@ vi.mock('react-native', () => {
 describe('ItemRowActions', () => {
     it('invokes overflow actions even when InteractionManager does not run callbacks', async () => {
         const { ItemRowActions } = await import('./ItemRowActions');
-        const { SelectableRow } = await import('@/components/SelectableRow');
+        const { SelectableRow } = await import('@/components/ui/lists/SelectableRow');
 
         const onEdit = vi.fn();
 

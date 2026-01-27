@@ -11,10 +11,10 @@ import type { ItemAction } from '@/components/ui/lists/itemActions';
 
 import type { AIBackendProfile } from '@/sync/settings';
 import { ProfileCompatibilityIcon } from '@/components/sessions/newSession/components/ProfileCompatibilityIcon';
-import { ProfileRequirementsBadge } from '@/components/ProfileRequirementsBadge';
+import { ProfileRequirementsBadge } from '@/components/profiles/ProfileRequirementsBadge';
 import { ignoreNextRowPress } from '@/utils/ignoreNextRowPress';
 import { toggleFavoriteProfileId } from '@/sync/profileGrouping';
-import { buildProfileActions } from '@/components/profileActions';
+import { buildProfileActions } from '@/components/profiles/profileActions';
 import { getDefaultProfileListStrings, getProfileSubtitle, buildProfilesListGroups } from '@/components/profiles/profileListModel';
 import { getProfileDisplayName } from '@/components/profiles/profileDisplay';
 import { t } from '@/text';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getToolViewComponent } from './_all';
+import { getToolViewComponent } from './_registry';
 import { ReadView } from './ReadView';
 
 describe('toolViewRegistry', () => {
@@ -7,4 +7,3 @@ describe('toolViewRegistry', () => {
         expect(getToolViewComponent('read')).toBe(ReadView);
     });
 });
-

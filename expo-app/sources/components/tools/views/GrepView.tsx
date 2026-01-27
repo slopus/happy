@@ -2,7 +2,7 @@ import * as React from 'react';
 import { View, Text } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { ToolSectionView } from '../ToolSectionView';
-import type { ToolViewProps } from './_all';
+import type { ToolViewProps } from './_registry';
 import { maybeParseJson } from '../utils/parseJson';
 
 type GrepMatch = { file?: string; path?: string; line?: number; text?: string };
@@ -111,4 +111,3 @@ const styles = StyleSheet.create((theme) => ({
         fontFamily: 'Menlo',
     },
 }));
-

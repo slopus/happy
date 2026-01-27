@@ -16,9 +16,9 @@ import { useActiveSuggestions } from '@/components/autocomplete/useActiveSuggest
 import { AgentInputAutocomplete } from './components/AgentInputAutocomplete';
 import { FloatingOverlay } from '@/components/FloatingOverlay';
 import { Popover } from '@/components/ui/popover';
-import { ScrollEdgeFades } from '@/components/ScrollEdgeFades';
-import { ScrollEdgeIndicators } from '@/components/ScrollEdgeIndicators';
-import { ActionListSection } from '@/components/ActionListSection';
+import { ScrollEdgeFades } from '@/components/ui/scroll/ScrollEdgeFades';
+import { ScrollEdgeIndicators } from '@/components/ui/scroll/ScrollEdgeIndicators';
+import { ActionListSection } from '@/components/ui/lists/ActionListSection';
 import { TextInputState, MultiTextInputHandle } from '@/components/MultiTextInput';
 import { applySuggestion } from '@/components/autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from '@/components/GitStatusBadge';
@@ -31,7 +31,7 @@ import { AIBackendProfile, getProfileEnvironmentVariables } from '@/sync/setting
 import { DEFAULT_AGENT_ID, getAgentCore, resolveAgentIdFromFlavor, type AgentId } from '@/agents/registryCore';
 import { resolveProfileById } from '@/sync/profileUtils';
 import { getProfileDisplayName } from '@/components/profiles/profileDisplay';
-import { useScrollEdgeFades } from '@/components/useScrollEdgeFades';
+import { useScrollEdgeFades } from '@/components/ui/scroll/useScrollEdgeFades';
 import { ResumeChip, formatResumeChipLabel, RESUME_CHIP_ICON_NAME, RESUME_CHIP_ICON_SIZE } from './ResumeChip';
 import { PathAndResumeRow } from './PathAndResumeRow';
 import { getHasAnyAgentInputActions, shouldShowPathAndResumeRow } from './actionBarLogic';

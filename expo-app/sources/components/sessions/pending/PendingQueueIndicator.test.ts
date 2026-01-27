@@ -32,7 +32,7 @@ vi.mock('@/constants/Typography', () => ({
     Typography: { default: () => ({}) },
 }));
 
-vi.mock('./layout', () => ({
+vi.mock('@/components/layout', () => ({
     layout: { maxWidth: 800, headerMaxWidth: 800 },
 }));
 

@@ -68,7 +68,7 @@ vi.mock('@/components/StatusDot', () => ({
     StatusDot: 'StatusDot',
 }));
 
-vi.mock('@/components/ActionListSection', () => ({
+vi.mock('@/components/ui/lists/ActionListSection', () => ({
     ActionListSection: () => null,
 }));
 
@@ -120,4 +120,3 @@ describe('ConnectionStatusControl (native popover config)', () => {
         expect(lastPopoverProps.portal?.matchAnchorWidth).toBe(false);
     });
 });
-

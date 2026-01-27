@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Text, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
-import { SelectableRow } from '@/components/SelectableRow';
+import { SelectableRow } from './SelectableRow';
 
 export type ActionListItem = Readonly<{
     id: string;
@@ -68,4 +68,3 @@ export function ActionListSection(props: {
         </View>
     );
 }
-

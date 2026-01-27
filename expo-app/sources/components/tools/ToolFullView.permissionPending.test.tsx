@@ -33,7 +33,7 @@ vi.mock('@/text', () => ({
     t: (key: string) => key,
 }));
 
-vi.mock('./views/_all', () => ({
+vi.mock('./views/_registry', () => ({
     getToolFullViewComponent: () => null,
     getToolViewComponent: () => null,
 }));
@@ -78,4 +78,3 @@ describe('ToolFullView (permission pending)', () => {
         expect(tree!.root.findAllByType('PermissionFooter' as any).length).toBe(1);
     });
 });
-

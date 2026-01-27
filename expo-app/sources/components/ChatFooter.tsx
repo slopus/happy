@@ -4,7 +4,7 @@ import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
-import { SessionNoticeBanner, type SessionNoticeBannerProps } from './SessionNoticeBanner';
+import { SessionNoticeBanner, type SessionNoticeBannerProps } from '@/components/sessions/SessionNoticeBanner';
 import { layout } from '@/components/layout';
 
 interface ChatFooterProps {

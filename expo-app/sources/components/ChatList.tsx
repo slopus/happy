@@ -7,8 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
-import { buildChatListItems, type ChatListItem } from './chatListItems';
-import { PendingUserTextMessageView } from './PendingUserTextMessageView';
+import { buildChatListItems, type ChatListItem } from '@/components/sessions/chatListItems';
+import { PendingUserTextMessageView } from '@/components/sessions/pending/PendingUserTextMessageView';
 
 export type ChatListBottomNotice = {
     title: string;

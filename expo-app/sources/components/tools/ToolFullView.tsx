@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { CodeView } from '../CodeView';
 import { Metadata } from '@/sync/storageTypes';
-import { getToolFullViewComponent, getToolViewComponent } from './views/_all';
+import { getToolFullViewComponent, getToolViewComponent } from './views/_registry';
 import { layout } from '../layout';
 import { useLocalSetting } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';

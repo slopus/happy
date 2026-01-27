@@ -17,7 +17,7 @@ import { Item } from '@/components/ui/lists/Item';
 import { Switch } from '@/components/Switch';
 import { DropdownMenu } from '@/components/ui/forms/dropdown/DropdownMenu';
 import { getBuiltInProfileDocumentation } from '@/sync/profileUtils';
-import { EnvironmentVariablesList } from '@/components/EnvironmentVariablesList';
+import { EnvironmentVariablesList } from '@/components/profiles/environmentVariables/EnvironmentVariablesList';
 import { useSetting, useAllMachines, useMachine, useSettingMutable } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { isMachineOnline } from '@/utils/machineUtils';

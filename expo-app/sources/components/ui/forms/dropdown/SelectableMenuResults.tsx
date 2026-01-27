@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Text, View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
-import { SelectableRow, type SelectableRowVariant } from '@/components/SelectableRow';
+import { SelectableRow, type SelectableRowVariant } from '@/components/ui/lists/SelectableRow';
 import { Item } from '@/components/ui/lists/Item';
 import { ItemGroupSelectionContext } from '@/components/ui/lists/ItemGroup';
 import { ItemGroupRowPositionBoundary } from '@/components/ui/lists/ItemGroupRowPosition';

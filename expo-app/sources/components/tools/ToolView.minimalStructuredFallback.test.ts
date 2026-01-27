@@ -37,7 +37,7 @@ vi.mock('@expo/vector-icons', () => ({
     Octicons: 'Octicons',
 }));
 
-vi.mock('@/components/tools/views/_all', () => ({
+vi.mock('@/components/tools/views/_registry', () => ({
     getToolViewComponent: () => null,
 }));
 

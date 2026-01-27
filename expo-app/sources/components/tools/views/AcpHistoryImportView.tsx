@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { ToolViewProps } from './_all';
+import { ToolViewProps } from './_registry';
 import { ToolSectionView } from '../ToolSectionView';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { Modal } from '@/modal';
@@ -210,4 +210,3 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.5,
   },
 }));
-

@@ -72,7 +72,7 @@ vi.mock('@/hooks/useCLIDetection', () => ({
     useCLIDetection: () => ({ status: 'unknown' }),
 }));
 
-vi.mock('@/components/EnvironmentVariablesList', () => ({
+vi.mock('@/components/profiles/environmentVariables/EnvironmentVariablesList', () => ({
     EnvironmentVariablesList: () => null,
 }));
 

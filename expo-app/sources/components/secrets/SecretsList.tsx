@@ -7,7 +7,7 @@ import { Item } from '@/components/ui/lists/Item';
 import { ItemGroup } from '@/components/ui/lists/ItemGroup';
 import { ItemList } from '@/components/ui/lists/ItemList';
 import { ItemRowActions } from '@/components/ui/lists/ItemRowActions';
-import { InlineAddExpander } from '@/components/InlineAddExpander';
+import { InlineAddExpander } from '@/components/ui/forms/InlineAddExpander';
 import { Modal } from '@/modal';
 import type { SavedSecret } from '@/sync/settings';
 import { Typography } from '@/constants/Typography';

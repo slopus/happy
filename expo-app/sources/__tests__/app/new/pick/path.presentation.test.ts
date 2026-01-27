@@ -46,7 +46,7 @@ vi.mock('@/components/layout', () => ({
     layout: { maxWidth: 900 },
 }));
 
-vi.mock('@/components/SearchHeader', () => ({
+vi.mock('@/components/ui/forms/SearchHeader', () => ({
     SearchHeader: () => null,
 }));
 

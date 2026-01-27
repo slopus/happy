@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View } from 'react-native';
-import type { ToolViewProps } from './_all';
+import type { ToolViewProps } from './_registry';
 import { ToolSectionView } from '../../tools/ToolSectionView';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 
@@ -28,4 +28,3 @@ export const ReasoningView = React.memo<ToolViewProps>(({ tool }) => {
         </ToolSectionView>
     );
 });
-

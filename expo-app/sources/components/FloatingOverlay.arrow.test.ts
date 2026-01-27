@@ -62,17 +62,17 @@ vi.mock('react-native-reanimated', () => {
     };
 });
 
-vi.mock('./ScrollEdgeFades', () => {
+vi.mock('@/components/ui/scroll/ScrollEdgeFades', () => {
     const React = require('react');
     return { ScrollEdgeFades: () => React.createElement('ScrollEdgeFades') };
 });
 
-vi.mock('./ScrollEdgeIndicators', () => {
+vi.mock('@/components/ui/scroll/ScrollEdgeIndicators', () => {
     const React = require('react');
     return { ScrollEdgeIndicators: () => React.createElement('ScrollEdgeIndicators') };
 });
 
-vi.mock('./useScrollEdgeFades', () => ({
+vi.mock('@/components/ui/scroll/useScrollEdgeFades', () => ({
     useScrollEdgeFades: () => ({
         visibility: { top: false, bottom: false, left: false, right: false },
         onViewportLayout: () => {},

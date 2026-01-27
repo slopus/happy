@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, Text } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import { ToolViewProps } from "./_all";
+import { ToolViewProps } from './_registry';
 import { knownTools } from '../../tools/knownTools';
 import { ToolSectionView } from '../../tools/ToolSectionView';
 import { maybeParseJson } from '../utils/parseJson';

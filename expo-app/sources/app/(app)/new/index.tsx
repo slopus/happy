@@ -31,7 +31,7 @@ import { StatusDot } from '@/components/StatusDot';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
 import { MachineSelector } from '@/components/sessions/newSession/components/MachineSelector';
 import { PathSelector } from '@/components/sessions/newSession/components/PathSelector';
-import { SearchHeader } from '@/components/SearchHeader';
+import { SearchHeader } from '@/components/ui/forms/SearchHeader';
 import { ProfileCompatibilityIcon } from '@/components/sessions/newSession/components/ProfileCompatibilityIcon';
 import { EnvironmentVariablesPreviewModal } from '@/components/sessions/newSession/components/EnvironmentVariablesPreviewModal';
 import { consumeProfileIdParam, consumeSecretIdParam } from '@/profileRouteParams';

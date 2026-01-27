@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { ToolViewProps } from './_all';
+import { ToolViewProps } from './_registry';
 import { ToolSectionView } from '../../tools/ToolSectionView';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { knownTools } from '../../tools/knownTools';

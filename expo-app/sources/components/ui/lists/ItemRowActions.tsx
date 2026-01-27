@@ -6,7 +6,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { type ItemAction } from '@/components/ui/lists/itemActions';
 import { Popover } from '@/components/ui/popover';
 import { FloatingOverlay } from '@/components/FloatingOverlay';
-import { ActionListSection, type ActionListItem } from '@/components/ActionListSection';
+import { ActionListSection, type ActionListItem } from '@/components/ui/lists/ActionListSection';
 
 export interface ItemRowActionsProps {
     title: string;

@@ -2,9 +2,9 @@ import * as React from 'react';
 import { Platform, type StyleProp, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { ScrollEdgeFades } from './ScrollEdgeFades';
-import { useScrollEdgeFades } from './useScrollEdgeFades';
-import { ScrollEdgeIndicators } from './ScrollEdgeIndicators';
+import { ScrollEdgeFades } from '@/components/ui/scroll/ScrollEdgeFades';
+import { useScrollEdgeFades } from '@/components/ui/scroll/useScrollEdgeFades';
+import { ScrollEdgeIndicators } from '@/components/ui/scroll/ScrollEdgeIndicators';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {

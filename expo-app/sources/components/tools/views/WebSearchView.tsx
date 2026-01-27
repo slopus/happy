@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, Text } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import type { ToolViewProps } from './_all';
+import type { ToolViewProps } from './_registry';
 import { ToolSectionView } from '../ToolSectionView';
 import { maybeParseJson } from '../utils/parseJson';
 
@@ -100,4 +100,3 @@ const styles = StyleSheet.create((theme) => ({
         fontFamily: 'Menlo',
     },
 }));
-

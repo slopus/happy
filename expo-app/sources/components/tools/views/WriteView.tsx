@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ToolViewProps } from './_all';
+import { ToolViewProps } from './_registry';
 import { ToolSectionView } from '../../tools/ToolSectionView';
 import { knownTools } from '@/components/tools/knownTools';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { ToolSectionView } from '../../tools/ToolSectionView';
-import { ToolViewProps } from './_all';
+import { ToolViewProps } from './_registry';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { knownTools } from '../../tools/knownTools';
 import { trimIdent } from '@/utils/trimIdent';

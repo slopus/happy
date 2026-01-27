@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { ToolSectionView } from '../../tools/ToolSectionView';
-import { ToolViewProps } from './_all';
+import { ToolViewProps } from './_registry';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { trimIdent } from '@/utils/trimIdent';
 import { useSetting } from '@/sync/storage';
@@ -72,4 +72,3 @@ export const GeminiEditView = React.memo<ToolViewProps>(({ tool }) => {
         </>
     );
 });
-

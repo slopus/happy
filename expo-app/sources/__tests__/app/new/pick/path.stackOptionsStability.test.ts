@@ -38,7 +38,7 @@ vi.mock('@/components/sessions/newSession/components/PathSelector', () => ({
     },
 }));
 
-vi.mock('@/components/SearchHeader', () => ({
+vi.mock('@/components/ui/forms/SearchHeader', () => ({
     SearchHeader: () => null,
 }));
 

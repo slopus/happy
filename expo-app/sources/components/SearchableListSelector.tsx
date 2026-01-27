@@ -7,7 +7,7 @@ import { ItemGroup } from '@/components/ui/lists/ItemGroup';
 import { Item } from '@/components/ui/lists/Item';
 import { t } from '@/text';
 import { StatusDot } from '@/components/StatusDot';
-import { SearchHeader } from '@/components/SearchHeader';
+import { SearchHeader } from '@/components/ui/forms/SearchHeader';
 
 /**
  * Configuration object for customizing the SearchableListSelector component.

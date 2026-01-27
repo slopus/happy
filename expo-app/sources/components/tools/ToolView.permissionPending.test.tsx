@@ -41,7 +41,7 @@ vi.mock('@/hooks/useElapsedTime', () => ({
     useElapsedTime: () => 123.4,
 }));
 
-vi.mock('@/components/tools/views/_all', () => ({
+vi.mock('@/components/tools/views/_registry', () => ({
     getToolViewComponent: () => null,
 }));
 

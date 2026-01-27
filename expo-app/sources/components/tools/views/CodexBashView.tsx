@@ -7,7 +7,7 @@ import { CommandView } from '@/components/CommandView';
 import { Metadata } from '@/sync/storageTypes';
 import { resolvePath } from '@/utils/pathUtils';
 import { t } from '@/text';
-import type { ToolViewProps } from './_all';
+import type { ToolViewProps } from './_registry';
 import { extractStdStreams, tailTextWithEllipsis } from '../utils/stdStreams';
 import { StructuredResultView } from './StructuredResultView';
 

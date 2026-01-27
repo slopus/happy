@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ToolViewProps } from './_all';
+import { ToolViewProps } from './_registry';
 import { Text, View, ActivityIndicator, Platform } from 'react-native';
 import { knownTools } from '../../tools/knownTools';
 import { Ionicons } from '@expo/vector-icons';

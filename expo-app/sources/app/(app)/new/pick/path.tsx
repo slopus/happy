@@ -9,7 +9,7 @@ import { t } from '@/text';
 import { ItemList } from '@/components/ui/lists/ItemList';
 import { layout } from '@/components/layout';
 import { PathSelector } from '@/components/sessions/newSession/components/PathSelector';
-import { SearchHeader } from '@/components/SearchHeader';
+import { SearchHeader } from '@/components/ui/forms/SearchHeader';
 import { getRecentPathsForMachine } from '@/utils/recentPaths';
 
 export default React.memo(function PathPickerScreen() {

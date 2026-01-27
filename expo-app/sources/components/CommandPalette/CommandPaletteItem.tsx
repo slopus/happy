@@ -3,7 +3,7 @@ import { View, Text } from 'react-native';
 import { Command } from './types';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
-import { SelectableRow } from '@/components/SelectableRow';
+import { SelectableRow } from '@/components/ui/lists/SelectableRow';
 import { Typography } from '@/constants/Typography';
 
 interface CommandPaletteItemProps {
