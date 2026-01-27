@@ -37,7 +37,7 @@ import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from
 import { createBaseSessionForAttach } from '@/agent/runtime/createBaseSessionForAttach';
 import { persistTerminalAttachmentInfoIfNeeded, primeAgentStateForUi, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/agent/runtime/startupSideEffects';
 
-import { createGeminiBackend } from '@/gemini/acp/backend';
+import { createCatalogAcpBackend } from '@/agent/acp';
 import { importAcpReplayHistoryV1 } from '@/agent/acp/history/importAcpReplayHistory';
 import { normalizeAvailableCommands, publishSlashCommandsToMetadata } from '@/agent/acp/commands/publishSlashCommands';
 import type { AgentBackend, AgentMessage } from '@/agent';
@@ -1014,7 +1014,7 @@ export async function runGemini(opts: {
 
         // Create new backend with new model
         const modelToUse = message.mode?.model === undefined ? undefined : (message.mode.model || null);
-        const backendResult = createGeminiBackend({
+        const backendResult = await createCatalogAcpBackend('gemini', {
           cwd: process.cwd(),
           mcpServers,
           permissionHandler,
@@ -1068,7 +1068,7 @@ export async function runGemini(opts: {
           // First message or session not created yet - create backend and start session
           if (!geminiBackend) {
             const modelToUse = message.mode?.model === undefined ? undefined : (message.mode.model || null);
-            const backendResult = createGeminiBackend({
+            const backendResult = await createCatalogAcpBackend('gemini', {
               cwd: process.cwd(),
               mcpServers,
               permissionHandler,

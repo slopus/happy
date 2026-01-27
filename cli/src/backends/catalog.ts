@@ -6,7 +6,7 @@ import type { AgentCatalogEntry, CatalogAgentId } from './types';
 
 export type { AgentCatalogEntry, AgentChecklistContributions, CatalogAgentId, CliDetectSpec } from './types';
 
-export const AGENTS = {
+export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
   claude: {
     id: 'claude',
     cliSubcommand: 'claude',
@@ -20,6 +20,10 @@ export const AGENTS = {
     getCliCommandHandler: async () => (await import('@/codex/cli/command')).handleCodexCliCommand,
     getCliCapabilityOverride: async () => (await import('@/codex/cli/capability')).cliCapability,
     getCliDetect: async () => (await import('@/codex/cli/detect')).cliDetect,
+    getAcpBackendFactory: async () => {
+      const { createCodexAcpBackend } = await import('@/codex/acp/backend');
+      return (opts) => createCodexAcpBackend(opts as any);
+    },
     checklists: codexChecklists,
   },
   gemini: {
@@ -28,6 +32,10 @@ export const AGENTS = {
     getCliCommandHandler: async () => (await import('@/gemini/cli/command')).handleGeminiCliCommand,
     getCliCapabilityOverride: async () => (await import('@/gemini/cli/capability')).cliCapability,
     getCliDetect: async () => (await import('@/gemini/cli/detect')).cliDetect,
+    getAcpBackendFactory: async () => {
+      const { createGeminiBackend } = await import('@/gemini/acp/backend');
+      return (opts) => createGeminiBackend(opts as any);
+    },
     checklists: geminiChecklists,
     registerBackend: () => {
       return import('@/gemini/acp/backend').then(({ registerGeminiAgent }) => {
@@ -41,6 +49,10 @@ export const AGENTS = {
     getCliCommandHandler: async () => (await import('@/opencode/cli/command')).handleOpenCodeCliCommand,
     getCliCapabilityOverride: async () => (await import('@/opencode/cli/capability')).cliCapability,
     getCliDetect: async () => (await import('@/opencode/cli/detect')).cliDetect,
+    getAcpBackendFactory: async () => {
+      const { createOpenCodeBackend } = await import('@/opencode/acp/backend');
+      return (opts) => ({ backend: createOpenCodeBackend(opts as any) });
+    },
     checklists: openCodeChecklists,
     registerBackend: () => {
       return import('@/opencode/acp/backend').then(({ registerOpenCodeAgent }) => {
@@ -48,7 +60,7 @@ export const AGENTS = {
       });
     },
   },
-} satisfies Record<CatalogAgentId, AgentCatalogEntry>;
+};
 
 export function resolveCatalogAgentId(agentId?: AgentId | null): CatalogAgentId {
   const raw = agentId ?? 'claude';

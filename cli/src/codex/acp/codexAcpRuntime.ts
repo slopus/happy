@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { logger } from '@/ui/logger';
 import type { AgentBackend, AgentMessage, McpServerConfig } from '@/agent';
-import { createCodexAcpBackend } from '@/codex/acp/backend';
+import { createCatalogAcpBackend } from '@/agent/acp';
 import type { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { maybeUpdateCodexSessionIdMetadata } from '@/codex/utils/codexSessionIdMetadata';
 import {
@@ -174,9 +174,9 @@ export function createCodexAcpRuntime(params: {
     });
   };
 
-  const ensureBackend = () => {
+  const ensureBackend = async (): Promise<AgentBackend> => {
     if (backend) return backend;
-    const created = createCodexAcpBackend({
+    const created = await createCatalogAcpBackend('codex', {
       cwd: params.directory,
       mcpServers: params.mcpServers,
       permissionHandler: params.permissionHandler,
@@ -209,7 +209,7 @@ export function createCodexAcpRuntime(params: {
     },
 
     async startOrLoad(opts: { resumeId?: string | null }): Promise<string> {
-      const b = ensureBackend();
+      const b = await ensureBackend();
 
       if (opts.resumeId) {
         const resumeId = opts.resumeId.trim();
@@ -259,7 +259,7 @@ export function createCodexAcpRuntime(params: {
       if (!sessionId) {
         throw new Error('Codex ACP session was not started');
       }
-      const b = ensureBackend();
+      const b = await ensureBackend();
       await b.sendPrompt(sessionId, prompt);
       if (b.waitForResponseComplete) {
         await b.waitForResponseComplete(120_000);

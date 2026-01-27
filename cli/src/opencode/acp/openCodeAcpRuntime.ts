@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { logger } from '@/ui/logger';
 import type { AgentBackend, AgentMessage, McpServerConfig } from '@/agent';
-import { createOpenCodeBackend } from '@/opencode/acp/backend';
+import { createCatalogAcpBackend } from '@/agent/acp';
 import type { MessageBuffer } from '@/ui/ink/messageBuffer';
 import {
   handleAcpModelOutputDelta,
@@ -160,13 +160,14 @@ export function createOpenCodeAcpRuntime(params: {
     });
   };
 
-  const ensureBackend = () => {
+  const ensureBackend = async (): Promise<AgentBackend> => {
     if (backend) return backend;
-    backend = createOpenCodeBackend({
+    const created = await createCatalogAcpBackend('opencode', {
       cwd: params.directory,
       mcpServers: params.mcpServers,
       permissionHandler: params.permissionHandler,
     });
+    backend = created.backend;
     attachMessageHandler(backend);
     logger.debug('[OpenCodeACP] Backend created');
     return backend;
@@ -181,7 +182,7 @@ export function createOpenCodeAcpRuntime(params: {
 
     async cancel(): Promise<void> {
       if (!sessionId) return;
-      const b = ensureBackend();
+      const b = await ensureBackend();
       await b.cancel(sessionId);
     },
 
@@ -201,7 +202,7 @@ export function createOpenCodeAcpRuntime(params: {
     },
 
     async startOrLoad(opts: { resumeId?: string | null }): Promise<string> {
-      const b = ensureBackend();
+      const b = await ensureBackend();
 
       const resumeId = typeof opts.resumeId === 'string' ? opts.resumeId.trim() : '';
       if (resumeId) {
@@ -250,7 +251,7 @@ export function createOpenCodeAcpRuntime(params: {
         throw new Error('OpenCode ACP session was not started');
       }
 
-      const b = ensureBackend();
+      const b = await ensureBackend();
       await b.sendPrompt(sessionId, prompt);
       if (b.waitForResponseComplete) {
         await b.waitForResponseComplete(120_000);

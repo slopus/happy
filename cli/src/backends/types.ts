@@ -1,9 +1,13 @@
 import type { AgentId } from '@/agent/core';
+import type { AgentBackend } from '@/agent/core';
 import type { ChecklistId } from '@/capabilities/checklistIds';
 import type { Capability } from '@/capabilities/service';
 import type { CommandHandler } from '@/cli/commandRegistry';
 
 export type CatalogAgentId = Extract<AgentId, 'claude' | 'codex' | 'gemini' | 'opencode'>;
+
+export type CatalogAcpBackendCreateResult = Readonly<{ backend: AgentBackend }>;
+export type CatalogAcpBackendFactory = (opts: unknown) => CatalogAcpBackendCreateResult;
 
 export type AgentChecklistContributions = Partial<
   Record<ChecklistId, ReadonlyArray<Readonly<{ id: string; params?: Record<string, unknown> }>>>
@@ -31,6 +35,13 @@ export type AgentCatalogEntry = Readonly<{
   getCliCommandHandler?: () => Promise<CommandHandler>;
   getCliCapabilityOverride?: () => Promise<Capability>;
   getCliDetect?: () => Promise<CliDetectSpec>;
+  /**
+   * Optional ACP backend factory for this agent.
+   *
+   * This is intentionally "pull-based" (lazy import) to avoid side-effect
+   * registration and import-order dependence.
+   */
+  getAcpBackendFactory?: () => Promise<CatalogAcpBackendFactory>;
   /**
    * Optional capability checklist contributions for agent-specific UX.
    *
