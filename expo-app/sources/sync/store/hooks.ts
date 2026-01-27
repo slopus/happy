@@ -16,14 +16,15 @@ import type { SessionListViewItem } from '../sessionListViewData';
 import { computeHasUnreadActivity, computePendingActivityAt } from '../unread';
 import { sync } from '../sync';
 
-import { type KnownEntitlements, storage } from './storage';
+import { getStorage } from '../storage';
+import type { KnownEntitlements } from '../storage';
 
 export function useSessions() {
-  return storage(useShallow((state) => (state.isDataReady ? state.sessionsData : null)));
+  return getStorage()(useShallow((state) => (state.isDataReady ? state.sessionsData : null)));
 }
 
 export function useSession(id: string): Session | null {
-  return storage(useShallow((state) => state.sessions[id] ?? null));
+  return getStorage()(useShallow((state) => state.sessions[id] ?? null));
 }
 
 const emptyArray: unknown[] = [];
@@ -31,7 +32,7 @@ const emptyArray: unknown[] = [];
 export function useSessionMessages(
   sessionId: string
 ): { messages: Message[]; isLoaded: boolean } {
-  return storage(
+  return getStorage()(
     useShallow((state) => {
       const session = state.sessionMessages[sessionId];
       return {
@@ -43,7 +44,7 @@ export function useSessionMessages(
 }
 
 export function useHasUnreadMessages(sessionId: string): boolean {
-  return storage((state) => {
+  return getStorage()((state) => {
     const session = state.sessions[sessionId];
     if (!session) return false;
     const pendingActivityAt = computePendingActivityAt(session.metadata);
@@ -60,7 +61,7 @@ export function useHasUnreadMessages(sessionId: string): boolean {
 export function useSessionPendingMessages(
   sessionId: string
 ): { messages: PendingMessage[]; discarded: DiscardedPendingMessage[]; isLoaded: boolean } {
-  return storage(
+  return getStorage()(
     useShallow((state) => {
       const pending = state.sessionPending[sessionId];
       return {
@@ -73,7 +74,7 @@ export function useSessionPendingMessages(
 }
 
 export function useMessage(sessionId: string, messageId: string): Message | null {
-  return storage(
+  return getStorage()(
     useShallow((state) => {
       const session = state.sessionMessages[sessionId];
       return session?.messagesMap[messageId] ?? null;
@@ -82,7 +83,7 @@ export function useMessage(sessionId: string, messageId: string): Message | null
 }
 
 export function useSessionUsage(sessionId: string) {
-  return storage(
+  return getStorage()(
     useShallow((state) => {
       const session = state.sessionMessages[sessionId];
       return session?.reducerState?.latestUsage ?? null;
@@ -91,7 +92,7 @@ export function useSessionUsage(sessionId: string) {
 }
 
 export function useSettings(): Settings {
-  return storage(useShallow((state) => state.settings));
+  return getStorage()(useShallow((state) => state.settings));
 }
 
 export function useSettingMutable<K extends keyof Settings>(
@@ -108,15 +109,15 @@ export function useSettingMutable<K extends keyof Settings>(
 }
 
 export function useSetting<K extends keyof Settings>(name: K): Settings[K] {
-  return storage(useShallow((state) => state.settings[name]));
+  return getStorage()(useShallow((state) => state.settings[name]));
 }
 
 export function useLocalSettings(): LocalSettings {
-  return storage(useShallow((state) => state.localSettings));
+  return getStorage()(useShallow((state) => state.localSettings));
 }
 
 export function useAllMachines(): Machine[] {
-  return storage(
+  return getStorage()(
     useShallow((state) => {
       if (!state.isDataReady) return [];
       return Object.values(state.machines)
@@ -127,15 +128,15 @@ export function useAllMachines(): Machine[] {
 }
 
 export function useMachine(machineId: string): Machine | null {
-  return storage(useShallow((state) => state.machines[machineId] ?? null));
+  return getStorage()(useShallow((state) => state.machines[machineId] ?? null));
 }
 
 export function useSessionListViewData(): SessionListViewItem[] | null {
-  return storage((state) => (state.isDataReady ? state.sessionListViewData : null));
+  return getStorage()((state) => (state.isDataReady ? state.sessionListViewData : null));
 }
 
 export function useAllSessions(): Session[] {
-  return storage(
+  return getStorage()(
     useShallow((state) => {
       if (!state.isDataReady) return [];
       return Object.values(state.sessions).sort((a, b) => b.updatedAt - a.updatedAt);
@@ -148,7 +149,7 @@ export function useLocalSettingMutable<K extends keyof LocalSettings>(
 ): [LocalSettings[K], (value: LocalSettings[K]) => void] {
   const setValue = React.useCallback(
     (value: LocalSettings[K]) => {
-      storage.getState().applyLocalSettings({ [name]: value });
+      getStorage().getState().applyLocalSettings({ [name]: value });
     },
     [name]
   );
@@ -158,40 +159,40 @@ export function useLocalSettingMutable<K extends keyof LocalSettings>(
 
 // Project management hooks
 export function useProjects() {
-  return storage(useShallow((state) => state.getProjects()));
+  return getStorage()(useShallow((state) => state.getProjects()));
 }
 
 export function useProject(projectId: string | null) {
-  return storage(useShallow((state) => (projectId ? state.getProject(projectId) : null)));
+  return getStorage()(useShallow((state) => (projectId ? state.getProject(projectId) : null)));
 }
 
 export function useProjectForSession(sessionId: string | null) {
-  return storage(
+  return getStorage()(
     useShallow((state) => (sessionId ? state.getProjectForSession(sessionId) : null))
   );
 }
 
 export function useProjectSessions(projectId: string | null) {
-  return storage(useShallow((state) => (projectId ? state.getProjectSessions(projectId) : [])));
+  return getStorage()(useShallow((state) => (projectId ? state.getProjectSessions(projectId) : [])));
 }
 
 export function useProjectGitStatus(projectId: string | null) {
-  return storage(useShallow((state) => (projectId ? state.getProjectGitStatus(projectId) : null)));
+  return getStorage()(useShallow((state) => (projectId ? state.getProjectGitStatus(projectId) : null)));
 }
 
 export function useSessionProjectGitStatus(sessionId: string | null) {
-  return storage(
+  return getStorage()(
     useShallow((state) => (sessionId ? state.getSessionProjectGitStatus(sessionId) : null))
   );
 }
 
 export function useLocalSetting<K extends keyof LocalSettings>(name: K): LocalSettings[K] {
-  return storage(useShallow((state) => state.localSettings[name]));
+  return getStorage()(useShallow((state) => state.localSettings[name]));
 }
 
 // Artifact hooks
 export function useArtifacts(): DecryptedArtifact[] {
-  return storage(
+  return getStorage()(
     useShallow((state) => {
       if (!state.isDataReady) return [];
       // Filter out draft artifacts from the main list
@@ -203,7 +204,7 @@ export function useArtifacts(): DecryptedArtifact[] {
 }
 
 export function useAllArtifacts(): DecryptedArtifact[] {
-  return storage(
+  return getStorage()(
     useShallow((state) => {
       if (!state.isDataReady) return [];
       // Return all artifacts including drafts
@@ -213,7 +214,7 @@ export function useAllArtifacts(): DecryptedArtifact[] {
 }
 
 export function useDraftArtifacts(): DecryptedArtifact[] {
-  return storage(
+  return getStorage()(
     useShallow((state) => {
       if (!state.isDataReady) return [];
       // Return only draft artifacts
@@ -225,11 +226,11 @@ export function useDraftArtifacts(): DecryptedArtifact[] {
 }
 
 export function useArtifact(artifactId: string): DecryptedArtifact | null {
-  return storage(useShallow((state) => state.artifacts[artifactId] ?? null));
+  return getStorage()(useShallow((state) => state.artifacts[artifactId] ?? null));
 }
 
 export function useArtifactsCount(): number {
-  return storage(
+  return getStorage()(
     useShallow((state) => {
       // Count only non-draft artifacts
       return Object.values(state.artifacts).filter((a) => !a.draft).length;
@@ -238,19 +239,19 @@ export function useArtifactsCount(): number {
 }
 
 export function useEntitlement(id: KnownEntitlements): boolean {
-  return storage(useShallow((state) => state.purchases.entitlements[id] ?? false));
+  return getStorage()(useShallow((state) => state.purchases.entitlements[id] ?? false));
 }
 
 export function useRealtimeStatus(): 'disconnected' | 'connecting' | 'connected' | 'error' {
-  return storage(useShallow((state) => state.realtimeStatus));
+  return getStorage()(useShallow((state) => state.realtimeStatus));
 }
 
 export function useRealtimeMode(): 'idle' | 'speaking' {
-  return storage(useShallow((state) => state.realtimeMode));
+  return getStorage()(useShallow((state) => state.realtimeMode));
 }
 
 export function useSocketStatus() {
-  return storage(
+  return getStorage()(
     useShallow((state) => ({
       status: state.socketStatus,
       lastConnectedAt: state.socketLastConnectedAt,
@@ -262,31 +263,31 @@ export function useSocketStatus() {
 }
 
 export function useSyncError() {
-  return storage(useShallow((state) => state.syncError));
+  return getStorage()(useShallow((state) => state.syncError));
 }
 
 export function useLastSyncAt() {
-  return storage(useShallow((state) => state.lastSyncAt));
+  return getStorage()(useShallow((state) => state.lastSyncAt));
 }
 
 export function useSessionGitStatus(sessionId: string): GitStatus | null {
-  return storage(useShallow((state) => state.sessionGitStatus[sessionId] ?? null));
+  return getStorage()(useShallow((state) => state.sessionGitStatus[sessionId] ?? null));
 }
 
 export function useIsDataReady(): boolean {
-  return storage(useShallow((state) => state.isDataReady));
+  return getStorage()(useShallow((state) => state.isDataReady));
 }
 
 export function useProfile() {
-  return storage(useShallow((state) => state.profile));
+  return getStorage()(useShallow((state) => state.profile));
 }
 
 export function useFriends() {
-  return storage(useShallow((state) => state.friends));
+  return getStorage()(useShallow((state) => state.friends));
 }
 
 export function useFriendRequests() {
-  return storage(
+  return getStorage()(
     useShallow((state) => {
       // Filter friends to get pending requests (where status is 'pending')
       return Object.values(state.friends).filter((friend) => friend.status === 'pending');
@@ -295,7 +296,7 @@ export function useFriendRequests() {
 }
 
 export function useAcceptedFriends() {
-  return storage(
+  return getStorage()(
     useShallow((state) => {
       return Object.values(state.friends).filter((friend) => friend.status === 'friend');
     })
@@ -303,29 +304,28 @@ export function useAcceptedFriends() {
 }
 
 export function useFeedItems() {
-  return storage(useShallow((state) => state.feedItems));
+  return getStorage()(useShallow((state) => state.feedItems));
 }
 export function useFeedLoaded() {
-  return storage((state) => state.feedLoaded);
+  return getStorage()((state) => state.feedLoaded);
 }
 export function useFriendsLoaded() {
-  return storage((state) => state.friendsLoaded);
+  return getStorage()((state) => state.friendsLoaded);
 }
 
 export function useFriend(userId: string | undefined) {
-  return storage(useShallow((state) => (userId ? state.friends[userId] : undefined)));
+  return getStorage()(useShallow((state) => (userId ? state.friends[userId] : undefined)));
 }
 
 export function useUser(userId: string | undefined) {
-  return storage(useShallow((state) => (userId ? state.users[userId] : undefined)));
+  return getStorage()(useShallow((state) => (userId ? state.users[userId] : undefined)));
 }
 
 export function useRequestedFriends() {
-  return storage(
+  return getStorage()(
     useShallow((state) => {
       // Filter friends to get sent requests (where status is 'requested')
       return Object.values(state.friends).filter((friend) => friend.status === 'requested');
     })
   );
 }
-

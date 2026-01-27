@@ -1,1 +1,2 @@
-export * from './typesRaw/index';
+export * from './typesRaw/schemas';
+export * from './typesRaw/normalize';
