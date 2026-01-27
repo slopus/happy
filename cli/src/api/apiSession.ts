@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
+import { calculateCost } from '@/utils/pricing';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -34,7 +35,7 @@ export type ACPMessageData =
     // Permissions
     | { type: 'permission-request'; permissionId: string; toolName: string; description: string; options?: unknown }
     // Usage/metrics
-    | { type: 'token_count'; [key: string]: unknown };
+    | { type: 'token_count';[key: string]: unknown };
 
 export type ACPProvider = 'gemini' | 'codex' | 'claude' | 'opencode';
 
@@ -148,7 +149,7 @@ export class ApiSessionClient extends EventEmitter {
                     }
                 } else if (data.body.t === 'update-session') {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
-                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant,decodeBase64(data.body.metadata.value));
+                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
                         this.metadataVersion = data.body.metadata.version;
                     }
                     if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
@@ -236,7 +237,7 @@ export class ApiSessionClient extends EventEmitter {
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
             try {
-                this.sendUsageData(body.message.usage);
+                this.sendUsageData(body.message.usage, body.message.model);
             } catch (error) {
                 logger.debug('[SOCKET] Failed to send usage data:', error);
             }
@@ -266,13 +267,13 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
-        
+
         // Check if socket is connected before sending
         if (!this.socket.connected) {
             logger.debug('[API] Socket not connected, cannot send message. Message will be lost:', { type: body.type });
             // TODO: Consider implementing message queue or HTTP fallback for reliability
         }
-        
+
         this.socket.emit('message', {
             sid: this.sessionId,
             message: encrypted
@@ -298,9 +299,9 @@ export class ApiSessionClient extends EventEmitter {
                 sentFrom: 'cli'
             }
         };
-        
+
         logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, { type: body.type, hasMessage: 'message' in body });
-        
+
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.socket.emit('message', {
             sid: this.sessionId,
@@ -357,9 +358,11 @@ export class ApiSessionClient extends EventEmitter {
     /**
      * Send usage data to the server
      */
-    sendUsageData(usage: Usage) {
+    sendUsageData(usage: Usage, model?: string) {
         // Calculate total tokens
         const totalTokens = usage.input_tokens + usage.output_tokens + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
+
+        const costs = calculateCost(usage, model);
 
         // Transform Claude usage format to backend expected format
         const usageReport = {
@@ -373,11 +376,9 @@ export class ApiSessionClient extends EventEmitter {
                 cache_read: usage.cache_read_input_tokens || 0
             },
             cost: {
-                // TODO: Calculate actual costs based on pricing
-                // For now, using placeholder values
-                total: 0,
-                input: 0,
-                output: 0
+                total: costs.total,
+                input: costs.input,
+                output: costs.output
             }
         }
         logger.debugLargeJson('[SOCKET] Sending usage data:', usageReport)
