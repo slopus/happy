@@ -1,0 +1,96 @@
+import type { NormalizedMessage } from '../typesRaw';
+import { normalizeRawMessage } from '../typesRaw';
+import { computeNextSessionSeqFromUpdate } from '../realtimeSessionSeq';
+import { inferTaskLifecycleFromMessageContent } from './updates';
+import type { Session } from '../storageTypes';
+
+type SessionEncryption = {
+    decryptMessage: (message: any) => Promise<any>;
+};
+
+export async function handleNewMessageSocketUpdate(params: {
+    updateData: any;
+    getSessionEncryption: (sessionId: string) => SessionEncryption | null;
+    getSession: (sessionId: string) => Session | undefined;
+    applySessions: (sessions: Array<Omit<Session, 'presence'> & { presence?: 'online' | number }>) => void;
+    fetchSessions: () => void;
+    applyMessages: (sessionId: string, messages: NormalizedMessage[]) => void;
+    isMutableToolCall: (sessionId: string, toolUseId: string) => boolean;
+    invalidateGitStatus: (sessionId: string) => void;
+    onSessionVisible: (sessionId: string) => void;
+}): Promise<void> {
+    const {
+        updateData,
+        getSessionEncryption,
+        getSession,
+        applySessions,
+        fetchSessions,
+        applyMessages,
+        isMutableToolCall,
+        invalidateGitStatus,
+        onSessionVisible,
+    } = params;
+
+    // Get encryption
+    const encryption = getSessionEncryption(updateData.body.sid);
+    if (!encryption) {
+        // Should never happen
+        console.error(`Session ${updateData.body.sid} not found`);
+        fetchSessions(); // Just fetch sessions again
+        return;
+    }
+
+    // Decrypt message
+    let lastMessage: NormalizedMessage | null = null;
+    if (updateData.body.message) {
+        const decrypted = await encryption.decryptMessage(updateData.body.message);
+        if (decrypted) {
+            lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+
+            // Check for task lifecycle events to update thinking state.
+            // This ensures UI updates even if volatile activity updates are lost.
+            const { isTaskComplete, isTaskStarted } = inferTaskLifecycleFromMessageContent(decrypted.content);
+
+            // Update session
+            const session = getSession(updateData.body.sid);
+            if (session) {
+                const nextSessionSeq = computeNextSessionSeqFromUpdate({
+                    currentSessionSeq: session.seq ?? 0,
+                    updateType: 'new-message',
+                    containerSeq: updateData.seq,
+                    messageSeq: updateData.body.message?.seq,
+                });
+
+                applySessions([
+                    {
+                        ...session,
+                        updatedAt: updateData.createdAt,
+                        seq: nextSessionSeq,
+                        // Update thinking state based on task lifecycle events
+                        ...(isTaskComplete ? { thinking: false } : {}),
+                        ...(isTaskStarted ? { thinking: true } : {}),
+                    },
+                ]);
+            } else {
+                // Fetch sessions again if we don't have this session
+                fetchSessions();
+            }
+
+            // Update messages
+            if (lastMessage) {
+                applyMessages(updateData.body.sid, [lastMessage]);
+                let hasMutableTool = false;
+                if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
+                    hasMutableTool = isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
+                }
+                if (hasMutableTool) {
+                    invalidateGitStatus(updateData.body.sid);
+                }
+            }
+        }
+    }
+
+    // Ping session
+    onSessionVisible(updateData.body.sid);
+}
+

@@ -34,7 +34,6 @@ import { systemPrompt } from './prompt/systemPrompt';
 import { nowServerMs } from './time';
 import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
 import { computePendingActivityAt } from './unread';
-import { computeNextSessionSeqFromUpdate } from './realtimeSessionSeq';
 import { computeNextReadStateV1 } from './readStateV1';
 import { updateSessionMetadataWithRetry as updateSessionMetadataWithRetryRpc, type UpdateMetadataAck } from './updateSessionMetadataWithRetry';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
@@ -62,12 +61,13 @@ import {
     decryptArtifactWithBody,
     decryptSocketNewArtifactUpdate,
 } from './engine/artifacts';
-import { inferTaskLifecycleFromMessageContent, parseUpdateContainer } from './engine/updates';
+import { parseUpdateContainer } from './engine/updates';
 import { handleNewFeedPostUpdate } from './engine/feedSocketUpdates';
 import { handleTodoKvBatchUpdate } from './engine/todoSocketUpdates';
 import { buildUpdatedMachineFromSocketUpdate } from './engine/machineSocketUpdates';
 import { handleUpdateAccountSocketUpdate } from './engine/accountSocketUpdates';
 import { buildUpdatedSessionFromSocketUpdate } from './engine/sessionSocketUpdates';
+import { handleNewMessageSocketUpdate } from './engine/newMessageSocketUpdate';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -2010,64 +2010,17 @@ class Sync {
         if (!updateData) return;
 
         if (updateData.body.t === 'new-message') {
-
-            // Get encryption
-            const encryption = this.encryption.getSessionEncryption(updateData.body.sid);
-            if (!encryption) { // Should never happen
-                console.error(`Session ${updateData.body.sid} not found`);
-                this.fetchSessions(); // Just fetch sessions again
-                return;
-            }
-
-            // Decrypt message
-            let lastMessage: NormalizedMessage | null = null;
-            if (updateData.body.message) {
-                const decrypted = await encryption.decryptMessage(updateData.body.message);
-                if (decrypted) {
-                    lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
-
-                    // Check for task lifecycle events to update thinking state.
-                    // This ensures UI updates even if volatile activity updates are lost.
-                    const { isTaskComplete, isTaskStarted } = inferTaskLifecycleFromMessageContent(decrypted.content);
-
-                    // Update session
-                    const session = storage.getState().sessions[updateData.body.sid];
-                    if (session) {
-                        const nextSessionSeq = computeNextSessionSeqFromUpdate({
-                            currentSessionSeq: session.seq ?? 0,
-                            updateType: 'new-message',
-                            containerSeq: updateData.seq,
-                            messageSeq: updateData.body.message?.seq,
-                        });
-                        this.applySessions([{
-                            ...session,
-                            updatedAt: updateData.createdAt,
-                            seq: nextSessionSeq,
-                            // Update thinking state based on task lifecycle events
-                            ...(isTaskComplete ? { thinking: false } : {}),
-                            ...(isTaskStarted ? { thinking: true } : {})
-                        }])
-                    } else {
-                        // Fetch sessions again if we don't have this session
-                        this.fetchSessions();
-                    }
-
-                    // Update messages
-                    if (lastMessage) {
-                        this.applyMessages(updateData.body.sid, [lastMessage]);
-                        let hasMutableTool = false;
-                        if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
-                            hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
-                        }
-                        if (hasMutableTool) {
-                            gitStatusSync.invalidate(updateData.body.sid);
-                        }
-                    }
-                }
-            }
-
-            // Ping session
-            this.onSessionVisible(updateData.body.sid);
+            await handleNewMessageSocketUpdate({
+                updateData,
+                getSessionEncryption: (sessionId) => this.encryption.getSessionEncryption(sessionId),
+                getSession: (sessionId) => storage.getState().sessions[sessionId],
+                applySessions: (sessions) => this.applySessions(sessions),
+                fetchSessions: () => this.fetchSessions(),
+                applyMessages: (sessionId, messages) => this.applyMessages(sessionId, messages),
+                isMutableToolCall: (sessionId, toolUseId) => storage.getState().isMutableToolCall(sessionId, toolUseId),
+                invalidateGitStatus: (sessionId) => gitStatusSync.invalidate(sessionId),
+                onSessionVisible: (sessionId) => this.onSessionVisible(sessionId),
+            });
 
         } else if (updateData.body.t === 'new-session') {
             log.log('🆕 New session update received');
