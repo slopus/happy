@@ -4,7 +4,7 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
-import { ApiEphemeralUpdateSchema, ApiMessage } from './apiTypes';
+import { ApiMessage } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine, type Metadata } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
@@ -69,6 +69,9 @@ import { handleUpdateAccountSocketUpdate } from './engine/accountSocketUpdates';
 import { buildUpdatedSessionFromSocketUpdate } from './engine/sessionSocketUpdates';
 import { handleNewMessageSocketUpdate } from './engine/newMessageSocketUpdate';
 import { handleDeleteSessionSocketUpdate } from './engine/deleteSessionSocketUpdate';
+import { handleRelationshipUpdatedSocketUpdate } from './engine/relationshipSocketUpdates';
+import { handleDeleteArtifactSocketUpdate } from './engine/deleteArtifactSocketUpdate';
+import { parseEphemeralUpdate } from './engine/ephemeralUpdates';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -2110,22 +2113,14 @@ class Sync {
         } else if (updateData.body.t === 'relationship-updated') {
             log.log('👥 Received relationship-updated update');
             const relationshipUpdate = updateData.body;
-            
-            // Apply the relationship update to storage
-            storage.getState().applyRelationshipUpdate({
-                fromUserId: relationshipUpdate.fromUserId,
-                toUserId: relationshipUpdate.toUserId,
-                status: relationshipUpdate.status,
-                action: relationshipUpdate.action,
-                fromUser: relationshipUpdate.fromUser,
-                toUser: relationshipUpdate.toUser,
-                timestamp: relationshipUpdate.timestamp
+
+            handleRelationshipUpdatedSocketUpdate({
+                relationshipUpdate,
+                applyRelationshipUpdate: (update) => storage.getState().applyRelationshipUpdate(update),
+                invalidateFriends: () => this.friendsSync.invalidate(),
+                invalidateFriendRequests: () => this.friendRequestsSync.invalidate(),
+                invalidateFeed: () => this.feedSync.invalidate(),
             });
-            
-            // Invalidate friends data to refresh with latest changes
-            this.friendsSync.invalidate();
-            this.friendRequestsSync.invalidate();
-            this.feedSync.invalidate();
         } else if (updateData.body.t === 'new-artifact') {
             log.log('📦 Received new-artifact update');
             const artifactUpdate = updateData.body;
@@ -2195,12 +2190,12 @@ class Sync {
             log.log('📦 Received delete-artifact update');
             const artifactUpdate = updateData.body;
             const artifactId = artifactUpdate.artifactId;
-            
-            // Remove from storage
-            storage.getState().deleteArtifact(artifactId);
-            
-            // Remove encryption key from memory
-            this.artifactDataKeys.delete(artifactId);
+
+            handleDeleteArtifactSocketUpdate({
+                artifactId,
+                deleteArtifact: (id) => storage.getState().deleteArtifact(id),
+                artifactDataKeys: this.artifactDataKeys,
+            });
         } else if (updateData.body.t === 'new-feed-post') {
             log.log('📰 Received new-feed-post update');
             const feedUpdate = updateData.body;
@@ -2251,12 +2246,8 @@ class Sync {
     }
 
     private handleEphemeralUpdate = (update: unknown) => {
-        const validatedUpdate = ApiEphemeralUpdateSchema.safeParse(update);
-        if (!validatedUpdate.success) {
-            console.error('Invalid ephemeral update received:', update);
-            return;
-        }
-        const updateData = validatedUpdate.data;
+        const updateData = parseEphemeralUpdate(update);
+        if (!updateData) return;
 
         // Process activity updates through smart debounce accumulator
         if (updateData.type === 'activity') {
