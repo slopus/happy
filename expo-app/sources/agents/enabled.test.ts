@@ -7,6 +7,7 @@ describe('agents/enabled', () => {
         expect(isAgentEnabled({ agentId: 'claude', experiments: false, experimentalAgents: {} })).toBe(true);
         expect(isAgentEnabled({ agentId: 'codex', experiments: false, experimentalAgents: {} })).toBe(true);
         expect(isAgentEnabled({ agentId: 'opencode', experiments: false, experimentalAgents: {} })).toBe(true);
+        expect(isAgentEnabled({ agentId: 'auggie', experiments: false, experimentalAgents: {} })).toBe(true);
     });
 
     it('gates experimental agents behind experiments + per-agent toggle', () => {
@@ -16,7 +17,7 @@ describe('agents/enabled', () => {
     });
 
     it('returns enabled agent ids in display order', () => {
-        expect(getEnabledAgentIds({ experiments: false, experimentalAgents: { gemini: true } })).toEqual(['claude', 'codex', 'opencode']);
-        expect(getEnabledAgentIds({ experiments: true, experimentalAgents: { gemini: true } })).toEqual(['claude', 'codex', 'opencode', 'gemini']);
+        expect(getEnabledAgentIds({ experiments: false, experimentalAgents: { gemini: true } })).toEqual(['claude', 'codex', 'opencode', 'auggie']);
+        expect(getEnabledAgentIds({ experiments: true, experimentalAgents: { gemini: true } })).toEqual(['claude', 'codex', 'opencode', 'gemini', 'auggie']);
     });
 });

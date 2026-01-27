@@ -168,6 +168,27 @@ describe('persistence', () => {
             expect(draft?.resumeSessionId).toBe('abc123');
         });
 
+        it('roundtrips auggieAllowIndexing when persisted', () => {
+            store.set(
+                'new-session-draft-v1',
+                JSON.stringify({
+                    input: '',
+                    selectedMachineId: null,
+                    selectedPath: null,
+                    selectedProfileId: null,
+                    agentType: 'auggie',
+                    permissionMode: 'default',
+                    modelMode: 'default',
+                    sessionType: 'simple',
+                    auggieAllowIndexing: true,
+                    updatedAt: Date.now(),
+                }),
+            );
+
+            const draft = loadNewSessionDraft();
+            expect(draft?.auggieAllowIndexing).toBe(true);
+        });
+
         it('clamps invalid permissionMode to default', () => {
             store.set(
                 'new-session-draft-v1',

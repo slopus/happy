@@ -445,7 +445,11 @@ export default function MachineDetailScreen() {
                     // Dismiss machine picker & machine detail screen
                     router.back();
                     router.back();
-                    navigateToSession(result.sessionId);
+                    if (result.sessionId) {
+                        navigateToSession(result.sessionId);
+                    } else {
+                        Modal.alert(t('common.error'), t('newSession.failedToStart'));
+                    }
                     break;
                 case 'requestToApproveDirectoryCreation': {
                     const approved = await Modal.confirm(

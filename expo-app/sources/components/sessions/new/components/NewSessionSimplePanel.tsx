@@ -30,6 +30,7 @@ export function NewSessionSimplePanel(props: Readonly<{
     emptyAutocompletePrefixes: React.ComponentProps<typeof AgentInput>['autocompletePrefixes'];
     emptyAutocompleteSuggestions: React.ComponentProps<typeof AgentInput>['autocompleteSuggestions'];
     sessionPromptInputMaxHeight: number;
+    agentInputExtraActionChips?: React.ComponentProps<typeof AgentInput>['extraActionChips'];
     agentType: React.ComponentProps<typeof AgentInput>['agentType'];
     handleAgentClick: React.ComponentProps<typeof AgentInput>['onAgentClick'];
     permissionMode: React.ComponentProps<typeof AgentInput>['permissionMode'];
@@ -121,6 +122,7 @@ export function NewSessionSimplePanel(props: Readonly<{
                                             placeholder={t('session.inputPlaceholder')}
                                             autocompletePrefixes={props.emptyAutocompletePrefixes}
                                             autocompleteSuggestions={props.emptyAutocompleteSuggestions}
+                                            extraActionChips={props.agentInputExtraActionChips}
                                             inputMaxHeight={props.sessionPromptInputMaxHeight}
                                             agentType={props.agentType}
                                             onAgentClick={props.handleAgentClick}

@@ -543,6 +543,8 @@ export const ru: TranslationStructure = {
         opencodeSessionIdCopied: 'ID сессии OpenCode скопирован в буфер обмена',
         geminiSessionId: 'ID сессии Gemini',
         geminiSessionIdCopied: 'ID сессии Gemini скопирован в буфер обмена',
+        auggieSessionId: 'ID сессии Auggie',
+        auggieSessionIdCopied: 'ID сессии Auggie скопирован в буфер обмена',
         metadataCopied: 'Метаданные скопированы в буфер обмена',
         failedToCopyMetadata: 'Не удалось скопировать метаданные',
         failedToKillSession: 'Не удалось завершить сессию',
@@ -732,6 +734,11 @@ export const ru: TranslationStructure = {
             codex: 'Codex',
             opencode: 'OpenCode',
             gemini: 'Gemini',
+            auggie: 'Auggie',
+        },
+        auggieIndexingChip: {
+            on: 'Индексация включена',
+            off: 'Индексация выключена',
         },
         model: {
             title: 'МОДЕЛЬ',
@@ -1506,6 +1513,7 @@ export const ru: TranslationStructure = {
             codexSubtitle: 'CLI Codex',
             opencodeSubtitle: 'CLI OpenCode',
             geminiSubtitleExperimental: 'Gemini CLI (экспериментально)',
+            auggieSubtitle: 'Auggie CLI',
         },
         tmux: {
             title: 'Tmux',

@@ -600,6 +600,8 @@ export const ca: TranslationStructure = {
         failedToCopyCodexSessionId: 'Ha fallat copiar l\'ID de la sessió de Codex',
         opencodeSessionId: 'ID de la sessió d\'OpenCode',
         opencodeSessionIdCopied: 'ID de la sessió d\'OpenCode copiat al porta-retalls',
+        auggieSessionId: 'ID de la sessió d\'Auggie',
+        auggieSessionIdCopied: 'ID de la sessió d\'Auggie copiat al porta-retalls',
         geminiSessionId: 'ID de la sessió de Gemini',
         geminiSessionIdCopied: 'ID de la sessió de Gemini copiat al porta-retalls',
         metadataCopied: 'Metadades copiades al porta-retalls',
@@ -722,6 +724,11 @@ export const ca: TranslationStructure = {
             codex: 'Codex',
             opencode: 'OpenCode',
             gemini: 'Gemini',
+            auggie: 'Auggie',
+        },
+        auggieIndexingChip: {
+            on: 'Indexing on',
+            off: 'Indexing off',
         },
         model: {
             title: 'MODEL',
@@ -1431,6 +1438,7 @@ export const ca: TranslationStructure = {
             codexSubtitle: 'CLI de Codex',
             opencodeSubtitle: 'CLI d\'OpenCode',
             geminiSubtitleExperimental: 'CLI de Gemini (experimental)',
+            auggieSubtitle: 'CLI d\'Auggie',
         },
         tmux: {
             title: 'Tmux',

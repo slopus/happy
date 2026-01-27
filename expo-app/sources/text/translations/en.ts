@@ -613,6 +613,8 @@ export const en = {
         failedToCopyCodexSessionId: 'Failed to copy Codex Session ID',
         opencodeSessionId: 'OpenCode Session ID',
         opencodeSessionIdCopied: 'OpenCode Session ID copied to clipboard',
+        auggieSessionId: 'Auggie Session ID',
+        auggieSessionIdCopied: 'Auggie Session ID copied to clipboard',
         geminiSessionId: 'Gemini Session ID',
         geminiSessionIdCopied: 'Gemini Session ID copied to clipboard',
         metadataCopied: 'Metadata copied to clipboard',
@@ -735,6 +737,11 @@ export const en = {
             codex: 'Codex',
             opencode: 'OpenCode',
             gemini: 'Gemini',
+            auggie: 'Auggie',
+        },
+        auggieIndexingChip: {
+            on: 'Indexing on',
+            off: 'Indexing off',
         },
         model: {
             title: 'MODEL',
@@ -1497,6 +1504,7 @@ export const en = {
             codexSubtitle: 'Codex CLI',
             opencodeSubtitle: 'OpenCode CLI',
             geminiSubtitleExperimental: 'Gemini CLI (experimental)',
+            auggieSubtitle: 'Auggie CLI',
         },
         tmux: {
             title: 'Tmux',

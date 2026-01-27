@@ -52,6 +52,7 @@ import { useNewSessionCapabilitiesPrefetch } from '@/components/sessions/new/hoo
 import { useNewSessionDraftAutoPersist } from '@/components/sessions/new/hooks/useNewSessionDraftAutoPersist';
 import { useCreateNewSession } from '@/components/sessions/new/hooks/useCreateNewSession';
 import { useNewSessionWizardProps } from '@/components/sessions/new/hooks/useNewSessionWizardProps';
+import { createAuggieAllowIndexingChip } from '@/agents/providers/auggie/AuggieIndexingChip';
 
 // Configuration constants
 const RECENT_PATHS_DEFAULT_VISIBLE = 5;
@@ -130,6 +131,13 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
             return persistedDraft.resumeSessionId;
         }
         return typeof resumeSessionIdParam === 'string' ? resumeSessionIdParam : '';
+    });
+
+    const [auggieAllowIndexing, setAuggieAllowIndexing] = React.useState(() => {
+        if (typeof persistedDraft?.auggieAllowIndexing === 'boolean') {
+            return persistedDraft.auggieAllowIndexing;
+        }
+        return false;
     });
 
     // Settings and state
@@ -1404,6 +1412,7 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
         modelMode,
         sessionPrompt,
         resumeSessionId,
+        auggieAllowIndexing,
         machineEnvPresence,
         secrets,
         secretBindingsByProfileId,
@@ -1442,6 +1451,16 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
         };
     }, [selectedMachine, theme]);
 
+    const agentInputExtraActionChips = React.useMemo(() => {
+        if (agentType !== 'auggie') return undefined;
+        return [
+            createAuggieAllowIndexingChip({
+                allowIndexing: auggieAllowIndexing,
+                setAllowIndexing: setAuggieAllowIndexing,
+            }),
+        ];
+    }, [agentType, auggieAllowIndexing]);
+
     const persistDraftNow = React.useCallback(() => {
         saveNewSessionDraft({
             input: sessionPrompt,
@@ -1456,10 +1475,12 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
             modelMode,
             sessionType,
             resumeSessionId,
+            auggieAllowIndexing,
             updatedAt: Date.now(),
         });
     }, [
         agentType,
+        auggieAllowIndexing,
         getSessionOnlySecretValueEncByProfileIdByEnvVarName,
         modelMode,
         permissionMode,
@@ -1521,6 +1542,7 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
                 resumeSessionId,
                 handleResumeClick,
                 isResumeSupportChecking,
+                agentInputExtraActionChips,
                 useProfiles,
                 selectedProfileId,
                 handleProfileClick,
@@ -1627,6 +1649,7 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
         handleResumeClick,
         isResumeSupportChecking,
         sessionPromptInputMaxHeight,
+        agentInputExtraActionChips,
 
         expCodexResume,
     });

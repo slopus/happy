@@ -251,6 +251,7 @@ export const it: TranslationStructure = {
             codexSubtitle: 'Codex CLI',
             opencodeSubtitle: 'OpenCode CLI',
             geminiSubtitleExperimental: 'Gemini CLI (sperimentale)',
+            auggieSubtitle: 'Auggie CLI',
         },
         tmux: {
             title: 'Tmux',
@@ -853,6 +854,8 @@ export const it: TranslationStructure = {
         failedToCopyCodexSessionId: 'Impossibile copiare l\'ID sessione Codex',
         opencodeSessionId: 'ID sessione OpenCode',
         opencodeSessionIdCopied: 'ID sessione OpenCode copiato negli appunti',
+        auggieSessionId: 'ID sessione Auggie',
+        auggieSessionIdCopied: 'ID sessione Auggie copiato negli appunti',
         geminiSessionId: 'ID sessione Gemini',
         geminiSessionIdCopied: 'ID sessione Gemini copiato negli appunti',
         metadataCopied: 'Metadati copiati negli appunti',
@@ -975,6 +978,11 @@ export const it: TranslationStructure = {
             codex: 'Codex',
             opencode: 'OpenCode',
             gemini: 'Gemini',
+            auggie: 'Auggie',
+        },
+        auggieIndexingChip: {
+            on: 'Indexing on',
+            off: 'Indexing off',
         },
         model: {
             title: 'MODELLO',

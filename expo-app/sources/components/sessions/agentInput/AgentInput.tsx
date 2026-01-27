@@ -40,6 +40,18 @@ import { computeAgentInputDefaultMaxHeight } from './inputMaxHeight';
 import { getContextWarning } from './contextWarning';
 import { buildAgentInputActionMenuActions } from './actionMenuActions';
 
+export type AgentInputExtraActionChipRenderContext = Readonly<{
+    chipStyle: (pressed: boolean) => any;
+    showLabel: boolean;
+    iconColor: string;
+    textStyle: any;
+}>;
+
+export type AgentInputExtraActionChip = Readonly<{
+    key: string;
+    render: (ctx: AgentInputExtraActionChipRenderContext) => React.ReactNode;
+}>;
+
 interface AgentInputProps {
     value: string;
     placeholder: string;
@@ -93,6 +105,7 @@ interface AgentInputProps {
     onEnvVarsClick?: () => void;
     contentPaddingHorizontal?: number;
     panelStyle?: ViewStyle;
+    extraActionChips?: ReadonlyArray<AgentInputExtraActionChip>;
 }
 
 function truncateWithEllipsis(value: string, maxChars: number) {
@@ -1014,6 +1027,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         !showChipLabels ? styles.actionChipIconOnly : null,
                                         pressed ? styles.actionChipPressed : null,
                                     ]);
+                                    const extraChips = (props.extraActionChips ?? []).map((chip) => (
+                                        <React.Fragment key={chip.key}>
+                                            {chip.render({
+                                                chipStyle,
+                                                showLabel: showChipLabels,
+                                                iconColor: theme.colors.button.secondary.tint,
+                                                textStyle: styles.actionChipText,
+                                            })}
+                                        </React.Fragment>
+                                    ));
 
                                     const permissionOrControlsChip = (showPermissionChip || actionBarIsCollapsed) ? (
                                         <Pressable
@@ -1223,6 +1246,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             profileChip,
                                             envVarsChip,
                                             agentChip,
+                                            ...extraChips,
                                             machineChip,
                                             ...(actionBarShouldScroll ? [pathChip, resumeChip] : []),
                                             abortButton,

@@ -22,6 +22,7 @@ import { transformProfileToEnvironmentVars } from '@/components/sessions/new/mod
 import type { UseMachineEnvPresenceResult } from '@/hooks/useMachineEnvPresence';
 import { getMachineCapabilitiesSnapshot, prefetchMachineCapabilities } from '@/hooks/useMachineCapabilitiesCache';
 import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
+import { applyAuggieAllowIndexingEnv } from '@/agents/providers/auggie/indexing';
 
 export function useCreateNewSession(params: Readonly<{
     router: { push: (options: any) => void; replace: (path: any, options?: any) => void };
@@ -49,6 +50,7 @@ export function useCreateNewSession(params: Readonly<{
 
     sessionPrompt: string;
     resumeSessionId: string;
+    auggieAllowIndexing: boolean;
 
     machineEnvPresence: UseMachineEnvPresenceResult;
     secrets: SavedSecret[];
@@ -181,6 +183,10 @@ export function useCreateNewSession(params: Readonly<{
                 }
             }
 
+            if (params.agentType === 'auggie') {
+                environmentVariables = applyAuggieAllowIndexingEnv(environmentVariables, params.auggieAllowIndexing === true);
+            }
+
             const terminal = resolveTerminalSpawnOptions({
                 settings: storage.getState().settings,
                 machineId: params.selectedMachineId,
@@ -294,7 +300,7 @@ export function useCreateNewSession(params: Readonly<{
                 terminal,
             });
 
-            if ('sessionId' in result && result.sessionId) {
+            if (result.type === 'success' && result.sessionId) {
                 // Clear draft state on successful session creation
                 clearNewSessionDraft();
 
@@ -316,6 +322,25 @@ export function useCreateNewSession(params: Readonly<{
                         return 'session'
                     },
                 });
+            } else if (result.type === 'requestToApproveDirectoryCreation') {
+                Modal.alert(t('common.error'), t('newSession.failedToStart'));
+                params.setIsCreating(false);
+            } else if (result.type === 'error') {
+                const extraDetail = (() => {
+                    switch (result.errorCode) {
+                        case SPAWN_SESSION_ERROR_CODES.RESUME_NOT_SUPPORTED:
+                            return 'Resume is not supported for this agent on this machine.';
+                        case SPAWN_SESSION_ERROR_CODES.CHILD_EXITED_BEFORE_WEBHOOK:
+                            return 'The agent process exited before it could connect. Check that the agent CLI is installed and available to the daemon (PATH).';
+                        case SPAWN_SESSION_ERROR_CODES.SESSION_WEBHOOK_TIMEOUT:
+                            return 'Session startup timed out. The machine may be slow or the agent CLI may be stuck starting.';
+                        default:
+                            return null;
+                    }
+                })();
+                const detail = extraDetail ? `\n\n${t('common.details')}: ${extraDetail}` : '';
+                Modal.alert(t('common.error'), `${result.errorMessage}${detail}`);
+                params.setIsCreating(false);
             } else {
                 throw new Error('Session spawning failed - no session ID returned.');
             }
@@ -363,3 +388,4 @@ export function useCreateNewSession(params: Readonly<{
 
     return { handleCreateSession };
 }
+import { SPAWN_SESSION_ERROR_CODES } from '@happy/protocol';

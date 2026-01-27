@@ -244,6 +244,7 @@ export const ja: TranslationStructure = {
             codexSubtitle: 'Codex コマンドライン',
             opencodeSubtitle: 'OpenCode コマンドライン',
             geminiSubtitleExperimental: 'Gemini コマンドライン（実験）',
+            auggieSubtitle: 'Auggie CLI',
         },
         tmux: {
             title: 'Tmux',
@@ -846,6 +847,8 @@ export const ja: TranslationStructure = {
         failedToCopyCodexSessionId: 'Codex セッション ID のコピーに失敗しました',
         opencodeSessionId: 'OpenCode セッション ID',
         opencodeSessionIdCopied: 'OpenCode セッション ID をクリップボードにコピーしました',
+        auggieSessionId: 'Auggie セッション ID',
+        auggieSessionIdCopied: 'Auggie セッション ID をクリップボードにコピーしました',
         geminiSessionId: 'Gemini セッション ID',
         geminiSessionIdCopied: 'Gemini セッション ID をクリップボードにコピーしました',
         metadataCopied: 'メタデータがクリップボードにコピーされました',
@@ -968,6 +971,11 @@ export const ja: TranslationStructure = {
             codex: 'Codex',
             opencode: 'OpenCode',
             gemini: 'Gemini',
+            auggie: 'Auggie',
+        },
+        auggieIndexingChip: {
+            on: 'Indexing on',
+            off: 'Indexing off',
         },
         model: {
             title: 'モデル',

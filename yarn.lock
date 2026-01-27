@@ -1496,6 +1496,11 @@
 "@happy/agents@link:packages/agents":
   version "0.0.0"
 
+"@happy/protocol@link:packages/protocol":
+  version "0.0.0"
+  dependencies:
+    "@happy/agents" "link:packages/agents"
+
 "@iconify/types@^2.0.0":
   version "2.0.0"
   resolved "https://registry.yarnpkg.com/@iconify/types/-/types-2.0.0.tgz#ab0e9ea681d6c8a1214f30cd741fe3a20cc57f57"

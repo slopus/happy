@@ -65,6 +65,16 @@ export const AGENTS_UI: Readonly<Record<AgentId, AgentUiConfig>> = Object.freeze
         },
         cliGlyph: '\u2726\uFE0E',
     },
+    auggie: {
+        id: 'auggie',
+        icon: require('@/assets/images/icon-monochrome.png'),
+        tintColor: (theme: UnistylesThemes[keyof UnistylesThemes]) => theme.colors.text,
+        avatarOverlay: {
+            circleScale: 0.35,
+            iconScale: ({ size }: { size: number }) => Math.round(size * 0.25),
+        },
+        cliGlyph: 'A',
+    },
 });
 
 export function getAgentIconSource(agentId: AgentId): ImageSourcePropType {

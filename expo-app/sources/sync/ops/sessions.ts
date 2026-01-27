@@ -8,6 +8,10 @@ import { isRpcMethodNotAvailableError } from '../rpcErrors';
 import { buildResumeHappySessionRpcParams, type ResumeHappySessionRpcParams } from '../resumeSessionPayload';
 import type { AgentId } from '@/agents/catalog';
 import type { PermissionMode } from '@/sync/permissionTypes';
+import type { SpawnSessionResult } from '@happy/protocol';
+import { SPAWN_SESSION_ERROR_CODES } from '@happy/protocol';
+import { RPC_METHODS } from '@happy/protocol/rpc';
+import { normalizeSpawnSessionResult } from './_shared';
 
 
 // Permission operation types
@@ -137,9 +141,7 @@ interface SessionKillResponse {
 }
 
 // Response types for spawn session
-export type ResumeSessionResult =
-    | { type: 'success' }
-    | { type: 'error'; errorMessage: string };
+export type ResumeSessionResult = SpawnSessionResult;
 
 /**
  * Options for resuming an inactive session.
@@ -198,15 +200,16 @@ export async function resumeSession(options: ResumeSessionOptions): Promise<Resu
             experimentalCodexAcp,
         });
 
-        const result = await apiSocket.machineRPC<ResumeSessionResult, ResumeHappySessionRpcParams>(
+        const result = await apiSocket.machineRPC<unknown, ResumeHappySessionRpcParams>(
             machineId,
-            'spawn-happy-session',
+            RPC_METHODS.SPAWN_HAPPY_SESSION,
             params
         );
-        return result;
+        return normalizeSpawnSessionResult(result);
     } catch (error) {
         return {
             type: 'error',
+            errorCode: SPAWN_SESSION_ERROR_CODES.UNEXPECTED,
             errorMessage: error instanceof Error ? error.message : 'Failed to resume session'
         };
     }

@@ -13,6 +13,7 @@ import { CAPABILITIES_REQUEST_NEW_SESSION } from '@/capabilities/requests';
 import { getSecretSatisfaction } from '@/utils/secrets/secretSatisfaction';
 import type { SecretChoiceByProfileIdByEnvVarName } from '@/utils/secrets/secretRequirementApply';
 
+import type { AgentInputExtraActionChip } from '@/components/sessions/agentInput';
 import type { InstallableDepInstallerProps } from '@/components/machines/InstallableDepInstaller';
 import type {
     NewSessionWizardAgentProps,
@@ -120,6 +121,7 @@ export function useNewSessionWizardProps(params: Readonly<{
     handleResumeClick: () => void;
     isResumeSupportChecking: boolean;
     sessionPromptInputMaxHeight: number;
+    agentInputExtraActionChips?: ReadonlyArray<AgentInputExtraActionChip>;
 
     // Kept for memo stability parity with prior implementation
     expCodexResume: boolean | null;
@@ -376,12 +378,14 @@ export function useNewSessionWizardProps(params: Readonly<{
             onResumeClick: params.showResumePicker ? params.handleResumeClick : undefined,
             resumeIsChecking: params.isResumeSupportChecking,
             inputMaxHeight: params.sessionPromptInputMaxHeight,
+            agentInputExtraActionChips: params.agentInputExtraActionChips,
         };
         // NOTE: Agent selection doesn't affect these props, but keeping dependencies
         // broad mirrors the previous in-screen memoization behavior and avoids subtle
         // referential changes during refactors.
     }, [
         params.agentType,
+        params.agentInputExtraActionChips,
         params.canCreate,
         params.connectionStatus,
         params.expCodexResume,

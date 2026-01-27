@@ -2,19 +2,17 @@
  * Machine operations for remote procedure calls
  */
 
+import type { SpawnSessionResult } from '@happy/protocol';
+import { SPAWN_SESSION_ERROR_CODES } from '@happy/protocol';
+
 import { apiSocket } from '../apiSocket';
 import { sync } from '../sync';
 import type { MachineMetadata } from '../storageTypes';
 import { buildSpawnHappySessionRpcParams, type SpawnHappySessionRpcParams, type SpawnSessionOptions } from '../spawnSessionPayload';
-import { isPlainObject } from './_shared';
+import { isPlainObject, normalizeSpawnSessionResult } from './_shared';
 
 export type { SpawnHappySessionRpcParams, SpawnSessionOptions } from '../spawnSessionPayload';
 export { buildSpawnHappySessionRpcParams } from '../spawnSessionPayload';
-
-export type SpawnSessionResult =
-    | { type: 'success'; sessionId: string }
-    | { type: 'requestToApproveDirectoryCreation'; directory: string }
-    | { type: 'error'; errorMessage: string };
 
 // Exported session operation functions
 
@@ -26,12 +24,13 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
 
     try {
         const params = buildSpawnHappySessionRpcParams(options);
-        const result = await apiSocket.machineRPC<SpawnSessionResult, SpawnHappySessionRpcParams>(machineId, 'spawn-happy-session', params);
-        return result;
+        const result = await apiSocket.machineRPC<unknown, SpawnHappySessionRpcParams>(machineId, 'spawn-happy-session', params);
+        return normalizeSpawnSessionResult(result);
     } catch (error) {
         // Handle RPC errors
         return {
             type: 'error',
+            errorCode: SPAWN_SESSION_ERROR_CODES.UNEXPECTED,
             errorMessage: error instanceof Error ? error.message : 'Failed to spawn session'
         };
     }

@@ -38,6 +38,7 @@ export interface NewSessionDraft {
     modelMode: ModelMode;
     sessionType: NewSessionSessionType;
     resumeSessionId?: string;
+    auggieAllowIndexing?: boolean;
     updatedAt: number;
 }
 
@@ -265,6 +266,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
         const resumeSessionId = typeof parsed.resumeSessionId === 'string' ? parsed.resumeSessionId : undefined;
+        const auggieAllowIndexing = typeof parsed.auggieAllowIndexing === 'boolean' ? parsed.auggieAllowIndexing : undefined;
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
 
         return {
@@ -280,6 +282,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             modelMode,
             sessionType,
             ...(resumeSessionId ? { resumeSessionId } : {}),
+            ...(typeof auggieAllowIndexing === 'boolean' ? { auggieAllowIndexing } : {}),
             updatedAt,
         };
     } catch (e) {

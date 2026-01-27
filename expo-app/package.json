@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@happy/agents": "link:../packages/agents",
+    "@happy/protocol": "link:../packages/protocol",
     "@config-plugins/react-native-webrtc": "^12.0.0",
     "@elevenlabs/react": "^0.12.3",
     "@elevenlabs/react-native": "^0.5.7",

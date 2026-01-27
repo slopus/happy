@@ -120,6 +120,7 @@ export interface NewSessionWizardFooterProps {
     selectedProfileEnvVarsCount: number;
     handleEnvVarsClick: () => void;
     inputMaxHeight?: number;
+    agentInputExtraActionChips?: React.ComponentProps<typeof AgentInput>['extraActionChips'];
 }
 
 export interface NewSessionWizardProps {
@@ -690,6 +691,7 @@ export const NewSessionWizard = React.memo(function NewSessionWizard(props: NewS
 	                                placeholder={t('session.inputPlaceholder')}
 	                                autocompletePrefixes={emptyAutocompletePrefixes}
 	                                autocompleteSuggestions={emptyAutocompleteSuggestions}
+                                    extraActionChips={props.footer.agentInputExtraActionChips}
 	                                inputMaxHeight={inputMaxHeight}
 	                                agentType={agentType}
 	                                onAgentClick={handleAgentInputAgentClick}
