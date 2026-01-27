@@ -4,7 +4,7 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
-import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
+import { ApiEphemeralUpdateSchema, ApiMessage } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine, type Metadata } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
@@ -57,6 +57,7 @@ import type { SavedSecret } from './settings';
 import { scheduleDebouncedPendingSettingsFlush } from './engine/pendingSettings';
 import { repairInvalidReadStateV1 as repairInvalidReadStateV1Engine } from './engine/readStateRepair';
 import { decryptArtifactListItem, decryptArtifactWithBody } from './engine/artifacts';
+import { inferTaskLifecycleFromMessageContent, parseUpdateContainer } from './engine/updates';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -1995,12 +1996,8 @@ class Sync {
     }
 
     private handleUpdate = async (update: unknown) => {
-        const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
-        if (!validatedUpdate.success) {
-            console.error('❌ Sync: Invalid update data:', update);
-            return;
-        }
-        const updateData = validatedUpdate.data;
+        const updateData = parseUpdateContainer(update);
+        if (!updateData) return;
 
         if (updateData.body.t === 'new-message') {
 
@@ -2019,18 +2016,9 @@ class Sync {
                 if (decrypted) {
                     lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
 
-                    // Check for task lifecycle events to update thinking state
-                    // This ensures UI updates even if volatile activity updates are lost
-                    const rawContent = decrypted.content as { role?: string; content?: { type?: string; data?: { type?: string } } } | null;
-                    const contentType = rawContent?.content?.type;
-                    const dataType = rawContent?.content?.data?.type;
-
-                    const isTaskComplete = 
-                        ((contentType === 'acp' || contentType === 'codex') && 
-                            (dataType === 'task_complete' || dataType === 'turn_aborted'));
-                    
-                    const isTaskStarted = 
-                        ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started');
+                    // Check for task lifecycle events to update thinking state.
+                    // This ensures UI updates even if volatile activity updates are lost.
+                    const { isTaskComplete, isTaskStarted } = inferTaskLifecycleFromMessageContent(decrypted.content);
 
                     // Update session
                     const session = storage.getState().sessions[updateData.body.sid];
