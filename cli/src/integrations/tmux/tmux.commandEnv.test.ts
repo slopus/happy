@@ -47,7 +47,7 @@ describe('TmuxUtilities tmux subprocess environment', () => {
 
     it('passes TMUX_TMPDIR to tmux subprocess env when provided', async () => {
         vi.resetModules();
-        const { TmuxUtilities } = await import('@/terminal/tmux');
+        const { TmuxUtilities } = await import('@/integrations/tmux');
 
         const utils = new TmuxUtilities('happy', { TMUX_TMPDIR: '/custom/tmux' });
         await utils.executeTmuxCommand(['list-sessions']);

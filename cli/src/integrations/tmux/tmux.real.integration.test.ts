@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { TmuxUtilities } from '@/terminal/tmux';
+import { TmuxUtilities } from '@/integrations/tmux';
 
 function isTmuxInstalled(): boolean {
     const result = spawnSync('tmux', ['-V'], { encoding: 'utf8' });

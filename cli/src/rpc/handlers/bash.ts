@@ -2,7 +2,7 @@ import { logger } from '@/ui/logger';
 import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
-import { validatePath } from '@/modules/common/pathSecurity';
+import { validatePath } from './pathSecurity';
 
 const execAsync = promisify(exec);
 

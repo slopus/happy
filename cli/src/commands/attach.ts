@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { configuration } from '@/configuration';
 import { readTerminalAttachmentInfo } from '@/terminal/terminalAttachmentInfo';
 import { createTerminalAttachPlan } from '@/terminal/terminalAttachPlan';
-import { isTmuxAvailable, normalizeExitCode } from '@/terminal/tmux';
+import { isTmuxAvailable, normalizeExitCode } from '@/integrations/tmux';
 
 function spawnTmux(params: {
   args: string[];

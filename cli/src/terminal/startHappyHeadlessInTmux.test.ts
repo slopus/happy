@@ -12,7 +12,7 @@ const mockSpawnInTmux = vi.fn(
 );
 const mockExecuteTmuxCommand = vi.fn(async () => ({ stdout: '' }));
 
-vi.mock('@/terminal/tmux', () => {
+vi.mock('@/integrations/tmux', () => {
   class TmuxUtilities {
     static DEFAULT_SESSION_NAME = 'happy';
     constructor() {}

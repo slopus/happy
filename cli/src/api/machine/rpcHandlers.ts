@@ -1,6 +1,6 @@
 import { logger } from '@/ui/logger';
 
-import type { SpawnSessionOptions, SpawnSessionResult } from '../../modules/common/registerCommonHandlers';
+import type { SpawnSessionOptions, SpawnSessionResult } from '@/rpc/handlers/registerSessionHandlers';
 
 import type { RpcHandlerManager } from '../rpc/RpcHandlerManager';
 
@@ -173,4 +173,3 @@ export function registerMachineRpcHandlers(params: Readonly<{
     return { message: 'Daemon stop request acknowledged, starting shutdown sequence...' };
   });
 }
-

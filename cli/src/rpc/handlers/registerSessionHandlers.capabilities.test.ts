@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import type { RpcRequest } from '@/api/rpc/types';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from '@/api/encryption';
-import { registerCommonHandlers } from './registerCommonHandlers';
+import { registerSessionHandlers } from './registerSessionHandlers';
 import { chmod, mkdtemp, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -26,7 +26,7 @@ function createTestRpcManager(params?: { scopePrefix?: string }) {
         logger: () => undefined,
     });
 
-    registerCommonHandlers(manager, process.cwd());
+    registerSessionHandlers(manager, process.cwd());
 
     async function call<TResponse, TRequest>(method: string, request: TRequest): Promise<TResponse> {
         const encryptedParams = encodeBase64(encrypt(encryptionKey, encryptionVariant, request));

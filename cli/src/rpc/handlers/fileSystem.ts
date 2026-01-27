@@ -3,7 +3,7 @@ import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { createHash } from 'crypto';
 import { join } from 'path';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
-import { validatePath } from '@/modules/common/pathSecurity';
+import { validatePath } from './pathSecurity';
 
 interface ReadFileRequest {
     path: string;

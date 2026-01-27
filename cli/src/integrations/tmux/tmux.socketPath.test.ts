@@ -47,7 +47,7 @@ describe('TmuxUtilities tmux socket path', () => {
 
     it('uses -S <socketPath> by default when configured', async () => {
         vi.resetModules();
-        const { TmuxUtilities } = await import('@/terminal/tmux');
+        const { TmuxUtilities } = await import('@/integrations/tmux');
 
         const socketPath = '/tmp/happy-cli-tmux-test.sock';
         const utils = new TmuxUtilities('happy', undefined, socketPath);

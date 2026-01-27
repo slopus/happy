@@ -7,7 +7,7 @@ import { io, Socket } from 'socket.io-client';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
-import { registerCommonHandlers } from '@/modules/common/registerCommonHandlers';
+import { registerSessionHandlers } from '@/rpc/handlers/registerSessionHandlers';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -32,7 +32,7 @@ export class ApiMachineClient {
             logger: (msg, data) => logger.debug(msg, data)
         });
 
-        registerCommonHandlers(this.rpcHandlerManager, process.cwd());
+        registerSessionHandlers(this.rpcHandlerManager, process.cwd());
     }
 
     setRPCHandlers({

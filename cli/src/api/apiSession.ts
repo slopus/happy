@@ -10,7 +10,7 @@ import { RawJSONLines } from '@/claude/types';
 import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
-import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
+import { registerSessionHandlers } from '@/rpc/handlers/registerSessionHandlers';
 import { addDiscardedCommittedMessageLocalIds } from './queue/discardedCommittedMessageLocalIds';
 import { claimMessageQueueV1Next, clearMessageQueueV1InFlight, discardMessageQueueV1All, parseMessageQueueV1 } from './queue/messageQueueV1';
 import { fetchSessionSnapshotUpdateFromServer, shouldSyncSessionSnapshotOnConnect } from './session/snapshotSync';
@@ -102,7 +102,7 @@ export class ApiSessionClient extends EventEmitter {
             encryptionVariant: this.encryptionVariant,
             logger: (msg, data) => logger.debug(msg, data)
         });
-        registerCommonHandlers(this.rpcHandlerManager, this.metadata.path);
+        registerSessionHandlers(this.rpcHandlerManager, this.metadata.path);
 
         //
         // Create socket

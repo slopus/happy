@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import type { RpcRequest } from '@/api/rpc/types';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from '@/api/encryption';
-import { registerCommonHandlers } from './registerCommonHandlers';
+import { registerSessionHandlers } from './registerSessionHandlers';
 
 function createTestRpcManager(params?: { scopePrefix?: string }) {
     const encryptionKey = new Uint8Array(32).fill(7);
@@ -22,7 +22,7 @@ function createTestRpcManager(params?: { scopePrefix?: string }) {
         logger: () => undefined,
     });
 
-    registerCommonHandlers(manager, process.cwd());
+    registerSessionHandlers(manager, process.cwd());
 
     async function call<TResponse, TRequest>(method: string, request: TRequest): Promise<TResponse> {
         const encryptedParams = encodeBase64(encrypt(encryptionKey, encryptionVariant, request));
