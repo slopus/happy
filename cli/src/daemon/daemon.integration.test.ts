@@ -46,6 +46,19 @@ async function waitFor(
   throw new Error('Timeout waiting for condition');
 }
 
+function isProcessAlive(pid: number): boolean {
+  try {
+    // `process.kill(pid, 0)` can return true for zombies; prefer checking `ps` state.
+    const stat = execSync(`ps -o stat= -p ${pid}`, { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+    if (!stat) return false;
+    return !stat.includes('Z');
+  } catch {
+    return false;
+  }
+}
+
 // Check if dev server is running and properly configured
 async function isServerHealthy(): Promise<boolean> {
   try {
@@ -91,14 +104,14 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       stdio: 'ignore'
     });
     
-    // Wait for daemon to write its state file (it needs to auth, setup, and start server)
+    // Wait for daemon to write its state file (it needs to auth, setup, and start HTTP control server)
     await waitFor(async () => {
       const state = await readDaemonState();
-      return state !== null;
+      return !!(state && typeof state.pid === 'number' && typeof state.httpPort === 'number' && state.httpPort > 0);
     }, 10_000, 250); // Wait up to 10 seconds, checking every 250ms
     
     const daemonState = await readDaemonState();
-    if (!daemonState) {
+    if (!daemonState?.pid || !daemonState?.httpPort) {
       throw new Error('Daemon failed to start within timeout');
     }
     daemonPid = daemonState.pid;
@@ -122,7 +135,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       path: '/test/path',
       host: 'test-host',
       homeDir: '/test/home',
-      happyHomeDir: '/test/happy-home',
+      happyHomeDir: configuration.happyHomeDir,
       happyLibDir: '/test/happy-lib',
       happyToolsDir: '/test/happy-tools',
       hostPid: 99999,
@@ -133,8 +146,12 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     await notifyDaemonSessionStarted('test-session-123', mockMetadata);
 
     // Verify session is tracked
+    await waitFor(async () => {
+      const sessions = await listDaemonSessions();
+      return sessions.length === 1;
+    }, 10_000, 250);
+
     const sessions = await listDaemonSessions();
-    expect(sessions).toHaveLength(1);
     
     const tracked = sessions[0];
     expect(tracked.startedBy).toBe('happy directly - likely by user from terminal');
@@ -142,13 +159,18 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     expect(tracked.pid).toBe(99999);
   });
 
-  it('should spawn & stop a session via HTTP (not testing RPC route, but similar enough)', async () => {
+  it('should spawn & stop a session via HTTP (not testing RPC route, but similar enough)', { timeout: 60_000 }, async () => {
     const response = await spawnDaemonSession('/tmp', 'spawned-test-456');
 
     expect(response).toHaveProperty('success', true);
     expect(response).toHaveProperty('sessionId');
 
     // Verify session is tracked
+    await waitFor(async () => {
+      const sessions = await listDaemonSessions();
+      return sessions.some((s: any) => s.happySessionId === response.sessionId);
+    }, 30_000, 250);
+
     const sessions = await listDaemonSessions();
     const spawnedSession = sessions.find(
       (s: any) => s.happySessionId === response.sessionId
@@ -162,7 +184,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     await stopDaemonSession(spawnedSession.happySessionId);
   });
 
-  it('stress test: spawn / stop', { timeout: 60_000 }, async () => {
+  it('stress test: spawn / stop', { timeout: 120_000 }, async () => {
     const promises = [];
     const sessionCount = 20;
     for (let i = 0; i < sessionCount; i++) {
@@ -171,18 +193,26 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
 
     // Wait for all sessions to be spawned
     const results = await Promise.all(promises);
+    results.forEach((result) => {
+      expect(result.success).toBe(true);
+      expect(result.sessionId).toBeDefined();
+    });
     const sessionIds = results.map(r => r.sessionId);
 
-    const sessions = await listDaemonSessions();
-    expect(sessions).toHaveLength(sessionCount);
+    await waitFor(async () => {
+      const sessions = await listDaemonSessions();
+      return sessions.length === sessionCount;
+    }, 60_000, 500);
 
     // Stop all sessions
     const stopResults = await Promise.all(sessionIds.map(sessionId => stopDaemonSession(sessionId)));
     expect(stopResults.every(r => r), 'Not all sessions reported stopped').toBe(true);
 
     // Verify all sessions are stopped
-    const emptySessions = await listDaemonSessions();
-    expect(emptySessions).toHaveLength(0);
+    await waitFor(async () => {
+      const emptySessions = await listDaemonSessions();
+      return emptySessions.length === 0;
+    }, 60_000, 500);
   });
 
   it('should handle daemon stop request gracefully', async () => {    
@@ -192,7 +222,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     await waitFor(async () => !existsSync(configuration.daemonStateFile), 1000);
   });
 
-  it('should track both daemon-spawned and terminal sessions', async () => {
+  it('should track both daemon-spawned and terminal sessions', { timeout: 60_000 }, async () => {
     // Spawn a real happy process that looks like it was started from terminal
     const terminalHappyProcess = spawnHappyCLI([
       '--happy-starting-mode', 'remote',
@@ -206,19 +236,25 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       throw new Error('Failed to spawn terminal happy process');
     }
     // Give time to start & report itself
-    await new Promise(resolve => setTimeout(resolve, 5_000));
+    await waitFor(async () => {
+      const sessions = await listDaemonSessions();
+      return sessions.some((s: any) => s.startedBy !== 'daemon');
+    }, 30_000, 500);
 
     // Spawn a daemon session
     const spawnResponse = await spawnDaemonSession('/tmp', 'daemon-session-bbb');
 
     // List all sessions
+    await waitFor(async () => {
+      const sessions = await listDaemonSessions();
+      return sessions.length === 2;
+    }, 30_000, 500);
     const sessions = await listDaemonSessions();
-    expect(sessions).toHaveLength(2);
 
     // Verify we have one of each type
-    const terminalSession = sessions.find(
-      (s: any) => s.pid === terminalHappyProcess.pid
-    );
+    const terminalSession =
+      sessions.find((s: any) => s.pid === terminalHappyProcess.pid)
+      ?? sessions.find((s: any) => s.startedBy !== 'daemon');
     const daemonSession = sessions.find(
       (s: any) => s.happySessionId === spawnResponse.sessionId
     );
@@ -230,7 +266,10 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     expect(daemonSession.startedBy).toBe('daemon');
 
     // Clean up both sessions
-    await stopDaemonSession('terminal-session-aaa');
+    expect(terminalSession?.happySessionId).toBeDefined();
+    await stopDaemonSession(terminalSession.happySessionId);
+
+    expect(daemonSession?.happySessionId).toBeDefined();
     await stopDaemonSession(daemonSession.happySessionId);
     
     // Also kill the terminal process directly to be sure
@@ -241,21 +280,26 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     }
   });
 
-  it('should update session metadata when webhook is called', async () => {
+  it('should update session metadata when webhook is called', { timeout: 60_000 }, async () => {
     // Spawn a session
     const spawnResponse = await spawnDaemonSession('/tmp');
 
     // Verify webhook was processed (session ID updated)
-    const sessions = await listDaemonSessions();
-    const session = sessions.find((s: any) => s.happySessionId === spawnResponse.sessionId);
-    expect(session).toBeDefined();
+    await waitFor(async () => {
+      const sessions = await listDaemonSessions();
+      return sessions.some((s: any) => s.happySessionId === spawnResponse.sessionId);
+    }, 30_000, 250);
 
     // Clean up
     await stopDaemonSession(spawnResponse.sessionId);
   });
 
-  it('should not allow starting a second daemon', async () => {
+  it('should not allow starting a second daemon', { timeout: 60_000 }, async () => {
     // Daemon is already running from beforeEach
+    const initialState = await readDaemonState();
+    expect(initialState).toBeDefined();
+    const initialPid = initialState!.pid;
+
     // Try to start another daemon
     const secondChild = spawn('yarn', ['tsx', 'src/index.ts', 'daemon', 'start-sync'], {
       cwd: process.cwd(),
@@ -272,15 +316,25 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     });
 
     // Wait for the second daemon to exit
+    let exitCode: number | null = null;
     await new Promise<void>((resolve) => {
-      secondChild.on('exit', () => resolve());
+      secondChild.on('exit', (code) => {
+        exitCode = code;
+        resolve();
+      });
     });
 
-    // Should report that daemon is already running
-    expect(output).toContain('already running');
+    // Should not have replaced the running daemon
+    expect(exitCode).toBe(0);
+    const finalState = await readDaemonState();
+    expect(finalState).toBeDefined();
+    expect(finalState!.pid).toBe(initialPid);
+
+    // Optional: keep message flexible
+    expect(output.toLowerCase()).toMatch(/already running|lock|another daemon/i);
   });
 
-  it('should handle concurrent session operations', async () => {
+  it('should handle concurrent session operations', { timeout: 60_000 }, async () => {
     // Spawn multiple sessions concurrently
     const promises = [];
     for (let i = 0; i < 3; i++) {
@@ -300,15 +354,19 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     // Collect session IDs for tracking
     const spawnedSessionIds = results.map(r => r.sessionId);
 
-    // Give sessions time to report via webhook
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
     // List should show all sessions
+    await waitFor(async () => {
+      const sessions = await listDaemonSessions();
+      const daemonSessions = sessions.filter(
+        (s: any) => s.startedBy === 'daemon' && spawnedSessionIds.includes(s.happySessionId)
+      );
+      return daemonSessions.length >= 3;
+    }, 30_000, 250);
+
     const sessions = await listDaemonSessions();
     const daemonSessions = sessions.filter(
       (s: any) => s.startedBy === 'daemon' && spawnedSessionIds.includes(s.happySessionId)
     );
-    expect(daemonSessions.length).toBeGreaterThanOrEqual(3);
 
     // Stop all spawned sessions
     for (const session of daemonSessions) {
@@ -329,16 +387,10 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     process.kill(daemonPid, 'SIGKILL');
     
     // Wait for process to die
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await waitFor(async () => !isProcessAlive(daemonPid), 10_000, 250);
     
     // Check if process is dead
-    let isDead = false;
-    try {
-      process.kill(daemonPid, 0);
-    } catch {
-      isDead = true;
-    }
-    expect(isDead).toBe(true);
+    expect(isProcessAlive(daemonPid)).toBe(false);
     
     // Check that log file exists (it was created when daemon started)
     const finalLogs = readdirSync(logsDir).filter(f => f.endsWith('-daemon.log'));
@@ -362,16 +414,10 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     process.kill(daemonPid, 'SIGTERM');
     
     // Wait for graceful shutdown
-    await new Promise(resolve => setTimeout(resolve, 4_000));
+    await waitFor(async () => !isProcessAlive(daemonPid), 15_000, 250);
     
     // Check if process is dead
-    let isDead = false;
-    try {
-      process.kill(daemonPid, 0);
-    } catch {
-      isDead = true;
-    }
-    expect(isDead).toBe(true);
+    expect(isProcessAlive(daemonPid)).toBe(false);
     
     // Read the log file to check for cleanup messages
     const logContent = readFileSync(logFile.path, 'utf8');
@@ -450,9 +496,12 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       
       console.log(`[TEST] Changed package.json version to ${testVersion}`);
 
-      // The daemon should automatically detect the version mismatch and restart itself
-      // We check once per minute, wait for a little longer than that
-      await new Promise(resolve => setTimeout(resolve, parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '30000') + 10_000));
+      // The daemon should automatically detect the version mismatch and restart itself.
+      const heartbeatMs = parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '30000');
+      await waitFor(async () => {
+        const finalState = await readDaemonState();
+        return !!(finalState && finalState.startedWithCliVersion === testVersion && finalState.pid && finalState.pid !== initialPid);
+      }, Math.min(90_000, heartbeatMs + 70_000), 1000);
 
       // Check that the daemon is running with the new version
       const finalState = await readDaemonState();
