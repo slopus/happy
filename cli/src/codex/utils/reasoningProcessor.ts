@@ -11,7 +11,7 @@ import {
     ReasoningToolResult,
     ReasoningMessage,
     ReasoningOutput
-} from '@/utils/BaseReasoningProcessor';
+} from '@/agent/BaseReasoningProcessor';
 
 // Re-export types for backwards compatibility
 export type { ReasoningToolCall, ReasoningToolResult, ReasoningMessage, ReasoningOutput };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { openBrowser } from './browser';
+import { openBrowser } from './openBrowser';
 
 function trySetStdoutIsTty(value: boolean): (() => void) | null {
   const desc = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
@@ -36,4 +36,3 @@ describe('openBrowser', () => {
     }
   });
 });
-

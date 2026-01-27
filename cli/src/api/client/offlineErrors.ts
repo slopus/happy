@@ -1,7 +1,7 @@
 import axios from 'axios';
 import chalk from 'chalk';
 
-import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
+import { connectionState, isNetworkError } from '@/api/offline/serverConnectionErrors';
 
 export function shouldReturnNullForGetOrCreateSessionError(
   error: unknown,
@@ -105,4 +105,3 @@ export function shouldReturnMinimalMachineForGetOrCreateMachineError(
 
   return false;
 }
-

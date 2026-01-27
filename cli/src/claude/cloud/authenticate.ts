@@ -7,7 +7,7 @@
 
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { randomBytes } from 'crypto';
-import { openBrowser } from '@/utils/browser';
+import { openBrowser } from '@/ui/openBrowser';
 import { generatePkceCodes } from '@/cloud/oauth/pkce';
 
 export interface ClaudeAuthTokens {

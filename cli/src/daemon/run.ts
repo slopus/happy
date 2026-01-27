@@ -9,7 +9,7 @@ import { SpawnSessionOptions, SpawnSessionResult } from '@/rpc/handlers/register
 import { logger } from '@/ui/logger';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
-import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
+import { startCaffeinate, stopCaffeinate } from '@/integrations/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';

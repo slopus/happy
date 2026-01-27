@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createOfflineSessionStub } from '@/utils/offlineSessionStub';
+import { createOfflineSessionStub } from '@/api/offline/offlineSessionStub';
 
 describe('createOfflineSessionStub', () => {
     it('returns an EventEmitter-compatible ApiSessionClient', () => {
