@@ -13,7 +13,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { AGENTS, resolveAgentCliSubcommand, resolveCatalogAgentId } from '@/backends/catalog';
+import { AGENTS, getVendorResumeSupport, resolveAgentCliSubcommand, resolveCatalogAgentId } from '@/backends/catalog';
 import {
   writeDaemonState,
   DaemonLocallyPersistedState,
@@ -22,7 +22,6 @@ import {
   readSettings,
   readCredentials,
 } from '@/persistence';
-import { supportsVendorResume } from '@/utils/agentCapabilities';
 import { createSessionAttachFile } from './sessionAttachFile';
 import { getDaemonShutdownExitCode, getDaemonShutdownWatchdogTimeoutMs } from './shutdownPolicy';
 
@@ -195,11 +194,15 @@ export async function startDaemon(): Promise<void> {
 		      const effectiveResume = normalizedResume;
 
 		      // Only gate vendor resume. Happy-session reconnect (existingSessionId) is supported for all agents.
-		      if (effectiveResume && !supportsVendorResume(options.agent, { allowExperimentalCodex: experimentalCodexResume === true, allowExperimentalCodexAcp: experimentalCodexAcp === true })) {
+		      if (effectiveResume) {
+            const vendorResumeSupport = await getVendorResumeSupport(options.agent ?? null);
+            const ok = vendorResumeSupport({ experimentalCodexResume, experimentalCodexAcp });
+            if (!ok) {
 		        return {
 		          type: 'error',
 		          errorMessage: `Resume is not supported for agent '${options.agent ?? 'claude'}'. (Upstream supports Claude vendor resume only.)`,
 		        };
+            }
 		      }
 
 		      const normalizedSessionEncryptionKeyBase64 =

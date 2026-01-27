@@ -2,13 +2,13 @@ import chalk from 'chalk';
 
 import { buildHappyCliSubprocessInvocation } from '@/utils/spawnHappyCLI';
 import { isTmuxAvailable, selectPreferredTmuxSessionName, TmuxUtilities } from '@/integrations/tmux';
-import { ensureRemoteStartingModeArgs } from '@/terminal/headlessTmuxArgs';
+import { AGENTS } from '@/backends/catalog';
 
 function removeFlag(argv: string[], flag: string): string[] {
   return argv.filter((arg) => arg !== flag);
 }
 
-function inferAgent(argv: string[]): 'claude' | 'codex' | 'gemini' | 'opencode' {
+function inferAgent(argv: string[]): keyof typeof AGENTS {
   const first = argv[0];
   if (first === 'codex' || first === 'gemini' || first === 'claude' || first === 'opencode') return first;
   return 'claude';
@@ -41,7 +41,9 @@ async function resolveTmuxSessionName(params: {
 export async function startHappyHeadlessInTmux(argv: string[]): Promise<void> {
   const argsWithoutTmux = removeFlag(argv, '--tmux');
   const agent = inferAgent(argsWithoutTmux);
-  const childArgs = agent === 'claude' ? ensureRemoteStartingModeArgs(argsWithoutTmux) : argsWithoutTmux;
+  const entry = AGENTS[agent];
+  const transform = entry.getHeadlessTmuxArgvTransform ? await entry.getHeadlessTmuxArgvTransform() : null;
+  const childArgs = transform ? transform(argsWithoutTmux) : argsWithoutTmux;
 
   if (!(await isTmuxAvailable())) {
     console.error(chalk.red('Error:'), 'tmux is not available on this machine.');

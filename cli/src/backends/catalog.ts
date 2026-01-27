@@ -2,7 +2,7 @@ import type { AgentId } from '@/agent/core';
 import { checklists as codexChecklists } from '@/codex/cli/checklists';
 import { checklists as geminiChecklists } from '@/gemini/cli/checklists';
 import { checklists as openCodeChecklists } from '@/opencode/cli/checklists';
-import type { AgentCatalogEntry, CatalogAgentId } from './types';
+import type { AgentCatalogEntry, CatalogAgentId, VendorResumeSupportFn } from './types';
 
 export type { AgentCatalogEntry, AgentChecklistContributions, CatalogAgentId, CliDetectSpec } from './types';
 
@@ -15,6 +15,8 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
     getCliDetect: async () => (await import('@/claude/cli/detect')).cliDetect,
     getCloudConnectTarget: async () => (await import('@/claude/cloud/connect')).claudeCloudConnect,
     getDaemonSpawnHooks: async () => (await import('@/claude/daemon/spawnHooks')).claudeDaemonSpawnHooks,
+    getVendorResumeSupport: async () => () => true,
+    getHeadlessTmuxArgvTransform: async () => (await import('@/claude/terminal/headlessTmuxTransform')).claudeHeadlessTmuxArgvTransform,
   },
   codex: {
     id: 'codex',
@@ -24,6 +26,7 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
     getCliDetect: async () => (await import('@/codex/cli/detect')).cliDetect,
     getCloudConnectTarget: async () => (await import('@/codex/cloud/connect')).codexCloudConnect,
     getDaemonSpawnHooks: async () => (await import('@/codex/daemon/spawnHooks')).codexDaemonSpawnHooks,
+    getVendorResumeSupport: async () => (await import('@/codex/resume/vendorResumeSupport')).supportsCodexVendorResume,
     getAcpBackendFactory: async () => {
       const { createCodexAcpBackend } = await import('@/codex/acp/backend');
       return (opts) => createCodexAcpBackend(opts as any);
@@ -38,6 +41,7 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
     getCliDetect: async () => (await import('@/gemini/cli/detect')).cliDetect,
     getCloudConnectTarget: async () => (await import('@/gemini/cloud/connect')).geminiCloudConnect,
     getDaemonSpawnHooks: async () => (await import('@/gemini/daemon/spawnHooks')).geminiDaemonSpawnHooks,
+    getVendorResumeSupport: async () => () => true,
     getAcpBackendFactory: async () => {
       const { createGeminiBackend } = await import('@/gemini/acp/backend');
       return (opts) => createGeminiBackend(opts as any);
@@ -51,6 +55,7 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
     getCliCapabilityOverride: async () => (await import('@/opencode/cli/capability')).cliCapability,
     getCliDetect: async () => (await import('@/opencode/cli/detect')).cliDetect,
     getDaemonSpawnHooks: async () => (await import('@/opencode/daemon/spawnHooks')).opencodeDaemonSpawnHooks,
+    getVendorResumeSupport: async () => () => true,
     getAcpBackendFactory: async () => {
       const { createOpenCodeBackend } = await import('@/opencode/acp/backend');
       return (opts) => ({ backend: createOpenCodeBackend(opts as any) });
@@ -58,6 +63,26 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
     checklists: openCodeChecklists,
   },
 };
+
+const cachedVendorResumeSupportPromises = new Map<CatalogAgentId, Promise<VendorResumeSupportFn>>();
+
+export async function getVendorResumeSupport(agentId?: AgentId | null): Promise<VendorResumeSupportFn> {
+  const catalogId = resolveCatalogAgentId(agentId);
+  const existing = cachedVendorResumeSupportPromises.get(catalogId);
+  if (existing) return await existing;
+
+  const entry = AGENTS[catalogId];
+  const promise = (async () => {
+    if (entry.getVendorResumeSupport) {
+      return await entry.getVendorResumeSupport();
+    }
+    // Conservative fallback: only Claude is guaranteed to support vendor resume in upstream.
+    return () => catalogId === 'claude';
+  })();
+
+  cachedVendorResumeSupportPromises.set(catalogId, promise);
+  return await promise;
+}
 
 export function resolveCatalogAgentId(agentId?: AgentId | null): CatalogAgentId {
   const raw = agentId ?? 'claude';

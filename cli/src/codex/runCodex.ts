@@ -35,7 +35,7 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
-import { isExperimentalCodexAcpEnabled, isExperimentalCodexVendorResumeEnabled } from '@/utils/agentCapabilities';
+import { isExperimentalCodexAcpEnabled, isExperimentalCodexVendorResumeEnabled } from '@/codex/experiments';
 import { maybeUpdatePermissionModeMetadata } from '@/agent/runtime/permissionModeMetadata';
 import { parseSpecialCommand } from '@/cli/parsers/specialCommands';
 import { createBaseSessionForAttach } from '@/agent/runtime/createBaseSessionForAttach';

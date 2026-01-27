@@ -11,6 +11,15 @@ export type CatalogAgentId = Extract<AgentId, 'claude' | 'codex' | 'gemini' | 'o
 export type CatalogAcpBackendCreateResult = Readonly<{ backend: AgentBackend }>;
 export type CatalogAcpBackendFactory = (opts: unknown) => CatalogAcpBackendCreateResult;
 
+export type VendorResumeSupportParams = Readonly<{
+  experimentalCodexResume?: boolean;
+  experimentalCodexAcp?: boolean;
+}>;
+
+export type VendorResumeSupportFn = (params: VendorResumeSupportParams) => boolean;
+
+export type HeadlessTmuxArgvTransform = (argv: string[]) => string[];
+
 export type AgentChecklistContributions = Partial<
   Record<ChecklistId, ReadonlyArray<Readonly<{ id: string; params?: Record<string, unknown> }>>>
 >;
@@ -49,6 +58,18 @@ export type AgentCatalogEntry = Readonly<{
    * These are evaluated by the daemon before spawning a child process.
    */
   getDaemonSpawnHooks?: () => Promise<DaemonSpawnHooks>;
+  /**
+   * Whether this agent supports vendor-level resume (NOT Happy session resume).
+   *
+   * Used by the daemon to decide whether it may pass `--resume <vendorSessionId>`.
+   */
+  getVendorResumeSupport?: () => Promise<VendorResumeSupportFn>;
+  /**
+   * Optional argv rewrite when launching headless sessions in tmux.
+   *
+   * Used by the CLI `--tmux` launcher before it spawns a child `happy ...` process.
+   */
+  getHeadlessTmuxArgvTransform?: () => Promise<HeadlessTmuxArgvTransform>;
   /**
    * Optional ACP backend factory for this agent.
    *
