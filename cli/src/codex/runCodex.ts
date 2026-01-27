@@ -22,7 +22,7 @@ import { existsSync } from 'node:fs';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
-import { CodexDisplay } from "@/ui/ink/CodexDisplay";
+import { CodexTerminalDisplay } from "@/codex/ui/CodexTerminalDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import type { CodexSessionConfig, CodexToolResponse } from './types';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
@@ -435,7 +435,7 @@ export async function runCodex(opts: {
 
     if (hasTTY) {
         console.clear();
-        inkInstance = render(React.createElement(CodexDisplay, {
+        inkInstance = render(React.createElement(CodexTerminalDisplay, {
             messageBuffer,
             logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
             onExit: async () => {

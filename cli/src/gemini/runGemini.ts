@@ -41,7 +41,7 @@ import { createGeminiBackend } from '@/agent/factories/gemini';
 import { importAcpReplayHistoryV1 } from '@/agent/acp/history/importAcpReplayHistory';
 import { normalizeAvailableCommands, publishSlashCommandsToMetadata } from '@/agent/acp/commands/publishSlashCommands';
 import type { AgentBackend, AgentMessage } from '@/agent';
-import { GeminiDisplay } from '@/ui/ink/GeminiDisplay';
+import { GeminiTerminalDisplay } from '@/gemini/ui/GeminiTerminalDisplay';
 import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
 import { GeminiReasoningProcessor } from '@/gemini/utils/reasoningProcessor';
 import { GeminiDiffProcessor } from '@/gemini/utils/diffProcessor';
@@ -526,7 +526,7 @@ export async function runGemini(opts: {
       // Read displayedModel from closure - it will have latest value on each render
       const currentModelValue = displayedModel || 'gemini-2.5-pro';
       // Don't log on every render to avoid spam - only log when model changes
-      return React.createElement(GeminiDisplay, {
+      return React.createElement(GeminiTerminalDisplay, {
         messageBuffer,
         logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
         currentModel: currentModelValue,

@@ -36,7 +36,7 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { parseSpecialCommand } from '@/cli/parsers/specialCommands';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
-import { CodexDisplay } from '@/ui/ink/CodexDisplay';
+import { OpenCodeTerminalDisplay } from '@/opencode/ui/OpenCodeTerminalDisplay';
 
 import type { McpServerConfig } from '@/agent';
 import { OpenCodePermissionHandler } from './utils/permissionHandler';
@@ -179,7 +179,7 @@ export async function runOpenCode(opts: {
   let inkInstance: ReturnType<typeof render> | null = null;
   if (hasTTY) {
     console.clear();
-    inkInstance = render(React.createElement(CodexDisplay, {
+    inkInstance = render(React.createElement(OpenCodeTerminalDisplay, {
       messageBuffer,
       logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
       onExit: async () => {
