@@ -114,12 +114,9 @@ export function createOpenCodeBackend(options: OpenCodeBackendOptions): OpenCode
   const model = determineOpenCodeModel(options.model);
 
   // Build args - use acp subcommand
+  // Note: Don't pass --cwd here as it's already set via spawn's cwd option
+  // Adding --print-logs helps with debugging but outputs to stderr (filtered by transport)
   const openCodeArgs = ['acp'];
-  
-  // Add working directory if specified
-  if (options.cwd) {
-    openCodeArgs.push('--cwd', options.cwd);
-  }
 
   const backendOptions: AcpBackendOptions = {
     agentName: 'opencode',
