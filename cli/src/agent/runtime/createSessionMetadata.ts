@@ -13,7 +13,7 @@ import { resolve } from 'node:path';
 import type { AgentState, Metadata, PermissionMode } from '@/api/types';
 import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
-import packageJson from '../../package.json';
+import packageJson from '../../../package.json';
 import type { TerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
 

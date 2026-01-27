@@ -12,7 +12,7 @@ import type { ItemAction } from '@/components/ui/lists/itemActions';
 import type { AIBackendProfile } from '@/sync/settings';
 import { ProfileCompatibilityIcon } from '@/components/sessions/newSession/components/ProfileCompatibilityIcon';
 import { ProfileRequirementsBadge } from '@/components/profiles/ProfileRequirementsBadge';
-import { ignoreNextRowPress } from '@/utils/ignoreNextRowPress';
+import { ignoreNextRowPress } from '@/utils/ui/ignoreNextRowPress';
 import { toggleFavoriteProfileId } from '@/sync/profileGrouping';
 import { buildProfileActions } from '@/components/profiles/profileActions';
 import { getDefaultProfileListStrings, getProfileSubtitle, buildProfilesListGroups } from '@/components/profiles/profileListModel';

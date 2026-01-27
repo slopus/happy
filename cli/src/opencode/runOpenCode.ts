@@ -20,7 +20,7 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { projectPath } from '@/projectPath';
 import { startHappyServer } from '@/mcp/startHappyServer';
-import { createSessionMetadata } from '@/utils/createSessionMetadata';
+import { createSessionMetadata } from '@/agent/runtime/createSessionMetadata';
 import { createBaseSessionForAttach } from '@/agent/runtime/createBaseSessionForAttach';
 import {
   persistTerminalAttachmentInfoIfNeeded,

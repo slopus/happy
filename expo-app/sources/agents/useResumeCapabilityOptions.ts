@@ -3,7 +3,7 @@ import * as React from 'react';
 import type { AgentId } from './registryCore';
 import { buildResumeCapabilityOptionsFromUiState, getResumeRuntimeSupportPrefetchPlan } from './registryUiBehavior';
 import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
-import type { ResumeCapabilityOptions } from '@/utils/agentCapabilities';
+import type { ResumeCapabilityOptions } from '@/agents/resumeCapabilities';
 import type { CapabilitiesDetectRequest } from '@/sync/capabilitiesProtocol';
 
 const NOOP_REQUEST: CapabilitiesDetectRequest = { requests: [] };

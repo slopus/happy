@@ -1,7 +1,7 @@
 import type { AgentId } from './registryCore';
 import { AGENT_IDS, getAgentCore } from './registryCore';
 import type { CapabilitiesDetectRequest, CapabilityDetectResult, CapabilityId } from '@/sync/capabilitiesProtocol';
-import type { ResumeCapabilityOptions } from '@/utils/agentCapabilities';
+import type { ResumeCapabilityOptions } from '@/agents/resumeCapabilities';
 import type { TranslationKey } from '@/text';
 import { buildAcpLoadSessionPrefetchRequest, readAcpLoadSessionSupport, shouldPrefetchAcpCapabilities } from './acpRuntimeResume';
 

@@ -13,7 +13,7 @@ import { useSettingMutable } from '@/sync/storage';
 import { DEFAULT_PROFILES, getBuiltInProfile, getBuiltInProfileNameKey, resolveProfileById } from '@/sync/profileUtils';
 import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 import { Modal } from '@/modal';
-import { promptUnsavedChangesAlert } from '@/utils/promptUnsavedChangesAlert';
+import { promptUnsavedChangesAlert } from '@/utils/ui/promptUnsavedChangesAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { PopoverPortalTargetProvider } from '@/components/ui/popover';
 

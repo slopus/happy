@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { getAgentVendorResumeId } from './agentCapabilities';
+import { getAgentVendorResumeId } from './resumeCapabilities';
 
 describe('getAgentVendorResumeId', () => {
     test('returns null when metadata missing', () => {

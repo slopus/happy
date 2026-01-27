@@ -12,7 +12,7 @@ import { ItemGroup } from '@/components/ui/lists/ItemGroup';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
 import type { AgentId } from '@/agents/registryCore';
 import { DEFAULT_AGENT_ID, getAgentCore, isAgentId } from '@/agents/registryCore';
-import { getClipboardStringTrimmedSafe } from '@/utils/clipboard';
+import { getClipboardStringTrimmedSafe } from '@/utils/ui/clipboard';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {

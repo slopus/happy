@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Platform, View, type StyleProp, type ViewProps, type ViewStyle, useWindowDimensions } from 'react-native';
 import { usePopoverBoundaryRef } from './PopoverBoundary';
-import { requireRadixDismissableLayer } from '@/utils/radixCjs';
+import { requireRadixDismissableLayer } from '@/utils/web/radixCjs';
 import { useOverlayPortal } from './OverlayPortal';
 import { useModalPortalTarget } from '@/modal/portal/ModalPortalTarget';
 import { usePopoverPortalTarget } from './PopoverPortalTarget';

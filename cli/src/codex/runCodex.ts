@@ -19,7 +19,7 @@ import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { createSessionMetadata } from '@/utils/createSessionMetadata';
+import { createSessionMetadata } from '@/agent/runtime/createSessionMetadata';
 import { startHappyServer } from '@/mcp/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexTerminalDisplay } from "@/codex/ui/CodexTerminalDisplay";

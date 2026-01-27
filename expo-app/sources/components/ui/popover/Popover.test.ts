@@ -30,7 +30,7 @@ function nearestView(instance: any) {
     return node;
 }
 
-vi.mock('@/utils/radixCjs', () => {
+vi.mock('@/utils/web/radixCjs', () => {
     const React = require('react');
     return {
         requireRadixDismissableLayer: () => ({
@@ -39,7 +39,7 @@ vi.mock('@/utils/radixCjs', () => {
     };
 });
 
-vi.mock('@/utils/reactDomCjs', () => ({
+vi.mock('@/utils/web/reactDomCjs', () => ({
     requireReactDOM: () => ({
         createPortal: (node: any, target: any) => {
             const React = require('react');

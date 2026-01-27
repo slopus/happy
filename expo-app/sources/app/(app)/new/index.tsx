@@ -37,10 +37,10 @@ import { EnvironmentVariablesPreviewModal } from '@/components/sessions/newSessi
 import { consumeProfileIdParam, consumeSecretIdParam } from '@/profileRouteParams';
 import { getModelOptionsForAgentType } from '@/sync/modelOptions';
 import { useFocusEffect } from '@react-navigation/native';
-import { getRecentPathsForMachine } from '@/utils/recentPaths';
+import { getRecentPathsForMachine } from '@/utils/sessions/recentPaths';
 import { useMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
-import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
-import { getMissingRequiredConfigEnvVarNames } from '@/utils/profileConfigRequirements';
+import { getSecretSatisfaction } from '@/utils/secrets/secretSatisfaction';
+import { getMissingRequiredConfigEnvVarNames } from '@/utils/profiles/profileConfigRequirements';
 import { InteractionManager } from 'react-native';
 import { NewSessionWizard } from '@/components/sessions/newSession/components/NewSessionWizard';
 import { getMachineCapabilitiesSnapshot, prefetchMachineCapabilities, prefetchMachineCapabilitiesIfStale, useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
@@ -51,11 +51,11 @@ import { getInstallableDepRegistryEntries } from '@/capabilities/installableDeps
 import { PopoverBoundaryProvider } from '@/components/ui/popover';
 import { PopoverPortalTargetProvider } from '@/components/ui/popover';
 import { resolveTerminalSpawnOptions } from '@/sync/terminalSettings';
-import { canAgentResume } from '@/utils/agentCapabilities';
+import { canAgentResume } from '@/agents/resumeCapabilities';
 import type { CapabilityId } from '@/sync/capabilitiesProtocol';
 import { buildResumeCapabilityOptionsFromUiState, buildSpawnSessionExtrasFromUiState, getNewSessionPreflightIssues, getNewSessionRelevantInstallableDepKeys, getResumeRuntimeSupportPrefetchPlan } from '@/agents/registryUiBehavior';
 import { buildAcpLoadSessionPrefetchRequest, describeAcpLoadSessionSupport, shouldPrefetchAcpCapabilities } from '@/agents/acpRuntimeResume';
-import type { SecretChoiceByProfileIdByEnvVarName } from '@/utils/secretRequirementApply';
+import type { SecretChoiceByProfileIdByEnvVarName } from '@/utils/secrets/secretRequirementApply';
 import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { computeNewSessionInputMaxHeight } from '@/components/sessions/agentInput/inputMaxHeight';
 import { useProfileMap, transformProfileToEnvironmentVars } from '@/components/sessions/newSession/modules/profileHelpers';

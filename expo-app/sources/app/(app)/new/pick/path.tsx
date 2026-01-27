@@ -10,7 +10,7 @@ import { ItemList } from '@/components/ui/lists/ItemList';
 import { layout } from '@/components/layout';
 import { PathSelector } from '@/components/sessions/newSession/components/PathSelector';
 import { SearchHeader } from '@/components/ui/forms/SearchHeader';
-import { getRecentPathsForMachine } from '@/utils/recentPaths';
+import { getRecentPathsForMachine } from '@/utils/sessions/recentPaths';
 
 export default React.memo(function PathPickerScreen() {
     const { theme } = useUnistyles();

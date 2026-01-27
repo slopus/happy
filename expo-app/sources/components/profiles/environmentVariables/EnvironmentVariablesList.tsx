@@ -9,7 +9,7 @@ import { InlineAddExpander } from '@/components/ui/forms/InlineAddExpander';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
-import { parseEnvVarTemplate } from '@/utils/envVarTemplate';
+import { parseEnvVarTemplate } from '@/utils/profiles/envVarTemplate';
 
 export interface EnvironmentVariablesListProps {
     environmentVariables: Array<{ name: string; value: string; isSecret?: boolean }>;

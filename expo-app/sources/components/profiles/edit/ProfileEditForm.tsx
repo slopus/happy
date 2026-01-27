@@ -25,7 +25,7 @@ import { OptionTiles } from '@/components/ui/forms/OptionTiles';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
 import { layout } from '@/components/layout';
 import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/secrets/requirements';
-import { parseEnvVarTemplate } from '@/utils/envVarTemplate';
+import { parseEnvVarTemplate } from '@/utils/profiles/envVarTemplate';
 import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
 import { getAgentCore, type AgentId, type MachineLoginKey } from '@/agents/registryCore';
 import { useLocalSearchParams, useRouter } from 'expo-router';

@@ -7,7 +7,7 @@ import { ItemGroup } from '@/components/ui/lists/ItemGroup';
 import { Item } from '@/components/ui/lists/Item';
 import { useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
 import { t } from '@/text';
-import { formatEnvVarTemplate, parseEnvVarTemplate } from '@/utils/envVarTemplate';
+import { formatEnvVarTemplate, parseEnvVarTemplate } from '@/utils/profiles/envVarTemplate';
 
 export interface EnvironmentVariablesPreviewModalProps {
     environmentVariables: Record<string, string>;

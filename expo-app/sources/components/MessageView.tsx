@@ -14,7 +14,7 @@ import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
 import { useSetting } from "@/sync/storage";
-import { isCommittedMessageDiscarded } from "@/utils/discardedCommittedMessages";
+import { isCommittedMessageDiscarded } from "@/utils/sessions/discardedCommittedMessages";
 
 export const MessageView = (props: {
   message: Message;

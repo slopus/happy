@@ -31,7 +31,7 @@ import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetada
 import { persistTerminalAttachmentInfoIfNeeded, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/agent/runtime/startupSideEffects';
 import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/runtime/startupMetadataUpdate';
 import { createBaseSessionForAttach } from '@/agent/runtime/createBaseSessionForAttach';
-import { createSessionMetadata } from '@/utils/createSessionMetadata';
+import { createSessionMetadata } from '@/agent/runtime/createSessionMetadata';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'

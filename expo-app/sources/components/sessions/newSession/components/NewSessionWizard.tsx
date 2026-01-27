@@ -22,7 +22,7 @@ import { useSetting } from '@/sync/storage';
 import type { Machine } from '@/sync/storageTypes';
 import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
 import { getPermissionModeOptionsForAgentType } from '@/sync/permissionModeOptions';
-import type { SecretSatisfactionResult } from '@/utils/secretSatisfaction';
+import type { SecretSatisfactionResult } from '@/utils/secrets/secretSatisfaction';
 import type { CLIAvailability } from '@/hooks/useCLIDetection';
 import type { AgentId } from '@/agents/registryCore';
 import { getAgentCore } from '@/agents/registryCore';

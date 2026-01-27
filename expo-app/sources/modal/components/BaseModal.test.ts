@@ -5,7 +5,7 @@ import { useModalPortalTarget } from '@/modal/portal/ModalPortalTarget';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock('@/utils/radixCjs', () => {
+vi.mock('@/utils/web/radixCjs', () => {
     const React = require('react');
     return {
         requireRadixDialog: () => ({

@@ -54,7 +54,7 @@ vi.mock('@/components/sessions/newSession/components/PathSelector', () => ({
     PathSelector: () => null,
 }));
 
-vi.mock('@/utils/recentPaths', () => ({
+vi.mock('@/utils/sessions/recentPaths', () => ({
     getRecentPathsForMachine: () => [],
 }));
 

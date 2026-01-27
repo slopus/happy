@@ -61,7 +61,7 @@ vi.mock('@/components/secrets/requirements', () => ({
     SecretRequirementModal: () => null,
 }));
 
-vi.mock('@/utils/secretSatisfaction', () => ({
+vi.mock('@/utils/secrets/secretSatisfaction', () => ({
     getSecretSatisfaction: () => ({ isSatisfied: true, items: [] }),
 }));
 

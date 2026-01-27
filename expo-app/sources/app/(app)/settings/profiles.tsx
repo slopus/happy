@@ -7,7 +7,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Modal } from '@/modal';
-import { promptUnsavedChangesAlert } from '@/utils/promptUnsavedChangesAlert';
+import { promptUnsavedChangesAlert } from '@/utils/ui/promptUnsavedChangesAlert';
 import { AIBackendProfile } from '@/sync/settings';
 import { DEFAULT_PROFILES, getBuiltInProfileNameKey, resolveProfileById } from '@/sync/profileUtils';
 import { ProfileEditForm } from '@/components/profiles/edit';
@@ -19,7 +19,7 @@ import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfi
 import { useSetting } from '@/sync/storage';
 import { ProfilesList } from '@/components/profiles/ProfilesList';
 import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/secrets/requirements';
-import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
+import { getSecretSatisfaction } from '@/utils/secrets/secretSatisfaction';
 import { getRequiredSecretEnvVarNames } from '@/sync/profileSecrets';
 
 interface ProfileManagerProps {

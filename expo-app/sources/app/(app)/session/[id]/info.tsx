@@ -16,7 +16,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
-import { getAttachCommandForSession, getTmuxFallbackReason, getTmuxTargetForSession } from '@/utils/terminalSessionDetails';
+import { getAttachCommandForSession, getTmuxFallbackReason, getTmuxTargetForSession } from '@/utils/sessions/terminalSessionDetails';
 import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';

@@ -7,7 +7,7 @@ import {
     Platform
 } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import { requireRadixDialog, requireRadixDismissableLayer } from '@/utils/radixCjs';
+import { requireRadixDialog, requireRadixDismissableLayer } from '@/utils/web/radixCjs';
 import { ModalPortalTargetProvider } from '@/modal/portal/ModalPortalTarget';
 
 interface BaseModalProps {

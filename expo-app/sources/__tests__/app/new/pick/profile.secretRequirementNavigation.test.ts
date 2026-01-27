@@ -83,7 +83,7 @@ vi.mock('@/sync/settings', () => ({
     getProfileEnvironmentVariables: () => ({}),
 }));
 
-vi.mock('@/utils/secretSatisfaction', () => ({
+vi.mock('@/utils/secrets/secretSatisfaction', () => ({
     getSecretSatisfaction: () => ({
         isSatisfied: false,
         items: [{ envVarName: 'DEESEEK_AUTH_TOKEN', required: true, isSatisfied: false }],

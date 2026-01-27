@@ -106,7 +106,7 @@ vi.mock('@/modal', () => ({
     Modal: { alert: vi.fn(), show: vi.fn() },
 }));
 
-vi.mock('@/utils/promptUnsavedChangesAlert', () => ({
+vi.mock('@/utils/ui/promptUnsavedChangesAlert', () => ({
     promptUnsavedChangesAlert: vi.fn(async () => 'keep'),
 }));
 

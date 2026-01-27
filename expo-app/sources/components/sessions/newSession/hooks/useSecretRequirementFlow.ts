@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { Platform } from 'react-native';
-import { applySecretRequirementResult, type SecretChoiceByProfileIdByEnvVarName } from '@/utils/secretRequirementApply';
-import { shouldAutoPromptSecretRequirement } from '@/utils/secretRequirementPromptEligibility';
-import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
+import { applySecretRequirementResult, type SecretChoiceByProfileIdByEnvVarName } from '@/utils/secrets/secretRequirementApply';
+import { shouldAutoPromptSecretRequirement } from '@/utils/secrets/secretRequirementPromptEligibility';
+import { getSecretSatisfaction } from '@/utils/secrets/secretSatisfaction';
 import { Modal } from '@/modal';
 import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/secrets/requirements';
 import type { AIBackendProfile, SavedSecret } from '@/sync/settings';

@@ -56,7 +56,7 @@ vi.mock('@/components/sessions/newSession/components/MachineSelector', () => ({
     MachineSelector: () => null,
 }));
 
-vi.mock('@/utils/recentMachines', () => ({
+vi.mock('@/utils/sessions/recentMachines', () => ({
     getRecentMachinesFromSessions: () => [],
 }));
 

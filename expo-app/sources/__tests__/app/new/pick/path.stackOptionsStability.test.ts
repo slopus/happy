@@ -42,7 +42,7 @@ vi.mock('@/components/ui/forms/SearchHeader', () => ({
     SearchHeader: () => null,
 }));
 
-vi.mock('@/utils/recentPaths', () => ({
+vi.mock('@/utils/sessions/recentPaths', () => ({
     getRecentPathsForMachine: () => [],
 }));
 

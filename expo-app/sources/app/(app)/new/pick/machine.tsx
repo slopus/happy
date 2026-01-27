@@ -8,7 +8,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { ItemList } from '@/components/ui/lists/ItemList';
 import { MachineSelector } from '@/components/sessions/newSession/components/MachineSelector';
-import { getRecentMachinesFromSessions } from '@/utils/recentMachines';
+import { getRecentMachinesFromSessions } from '@/utils/sessions/recentMachines';
 import { Ionicons } from '@expo/vector-icons';
 import { sync } from '@/sync/sync';
 import { prefetchMachineCapabilities } from '@/hooks/useMachineCapabilitiesCache';

@@ -51,7 +51,7 @@ vi.mock('@/modal', () => ({
     Modal: { alert: vi.fn(), show: vi.fn() },
 }));
 
-vi.mock('@/utils/promptUnsavedChangesAlert', () => ({
+vi.mock('@/utils/ui/promptUnsavedChangesAlert', () => ({
     promptUnsavedChangesAlert: vi.fn(async () => 'keep'),
 }));
 
@@ -96,7 +96,7 @@ vi.mock('@/components/secrets/requirements', () => ({
     SecretRequirementModal: () => React.createElement('SecretRequirementModal'),
 }));
 
-vi.mock('@/utils/secretSatisfaction', () => ({
+vi.mock('@/utils/secrets/secretSatisfaction', () => ({
     getSecretSatisfaction: () => ({ isSatisfied: true, items: [] }),
 }));
 

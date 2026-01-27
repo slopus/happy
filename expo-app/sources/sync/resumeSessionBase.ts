@@ -1,7 +1,7 @@
 import type { Session } from './storageTypes';
 import type { ResumeSessionOptions } from './ops';
-import type { ResumeCapabilityOptions } from '@/utils/agentCapabilities';
-import { canAgentResume, getAgentVendorResumeId } from '@/utils/agentCapabilities';
+import type { ResumeCapabilityOptions } from '@/agents/resumeCapabilities';
+import { canAgentResume, getAgentVendorResumeId } from '@/agents/resumeCapabilities';
 import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
 import type { PermissionModeOverrideForSpawn } from '@/sync/permissionModeOverride';
 

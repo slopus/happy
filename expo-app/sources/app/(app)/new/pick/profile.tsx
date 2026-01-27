@@ -16,7 +16,7 @@ import { getRequiredSecretEnvVarNames } from '@/sync/profileSecrets';
 import { getTempData, storeTempData } from '@/utils/tempDataStore';
 import { ProfilesList } from '@/components/profiles/ProfilesList';
 import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/secrets/requirements';
-import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
+import { getSecretSatisfaction } from '@/utils/secrets/secretSatisfaction';
 import { useMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
 import { PopoverPortalTargetProvider } from '@/components/ui/popover';
 

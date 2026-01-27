@@ -15,7 +15,7 @@ import { join, resolve } from 'node:path';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
-import { createSessionMetadata } from '@/utils/createSessionMetadata';
+import { createSessionMetadata } from '@/agent/runtime/createSessionMetadata';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';

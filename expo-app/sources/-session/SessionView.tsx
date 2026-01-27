@@ -13,7 +13,7 @@ import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSe
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort, resumeSession } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useMachine, useRealtimeStatus, useSessionMessages, useSessionPendingMessages, useSessionUsage, useSetting } from '@/sync/storage';
-import { canResumeSessionWithOptions, getAgentVendorResumeId } from '@/utils/agentCapabilities';
+import { canResumeSessionWithOptions, getAgentVendorResumeId } from '@/agents/resumeCapabilities';
 import { DEFAULT_AGENT_ID, getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
 import { buildResumeSessionExtrasFromUiState, getResumePreflightIssues } from '@/agents/registryUiBehavior';
 import { useResumeCapabilityOptions } from '@/agents/useResumeCapabilityOptions';

@@ -148,7 +148,7 @@ vi.mock('@/components/layout', () => ({
     layout: { maxWidth: 900 },
 }));
 
-vi.mock('@/utils/envVarTemplate', () => ({
+vi.mock('@/utils/profiles/envVarTemplate', () => ({
     parseEnvVarTemplate: () => ({ variables: [] }),
 }));
 

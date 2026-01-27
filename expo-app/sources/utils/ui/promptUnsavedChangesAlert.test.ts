@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AlertButton } from '@/modal/types';
-import { promptUnsavedChangesAlert } from '@/utils/promptUnsavedChangesAlert';
+import { promptUnsavedChangesAlert } from '@/utils/ui/promptUnsavedChangesAlert';
 
 const basePromptOptions = {
     title: 'Discard changes',

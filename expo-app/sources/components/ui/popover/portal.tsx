@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Platform } from 'react-native';
 
-import { requireReactDOM } from '@/utils/reactDomCjs';
+import { requireReactDOM } from '@/utils/web/reactDomCjs';
 
 type OverlayPortalDispatch = Readonly<{
     setPortalNode: (id: string, node: React.ReactNode) => void;

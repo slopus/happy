@@ -6,7 +6,7 @@ import { Typography } from '@/constants/Typography';
 import { Switch } from '@/components/Switch';
 import { Item } from '@/components/ui/lists/Item';
 import { ItemGroup } from '@/components/ui/lists/ItemGroup';
-import { formatEnvVarTemplate, parseEnvVarTemplate, type EnvVarTemplateOperator } from '@/utils/envVarTemplate';
+import { formatEnvVarTemplate, parseEnvVarTemplate, type EnvVarTemplateOperator } from '@/utils/profiles/envVarTemplate';
 import { t } from '@/text';
 import type { EnvPreviewSecretsPolicy, PreviewEnvValue } from '@/sync/ops';
 
