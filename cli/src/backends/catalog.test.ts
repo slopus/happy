@@ -13,5 +13,10 @@ describe('AGENTS', () => {
       expect(key).toBe(entry.id);
     }
   });
-});
 
+  it('declares vendor resume support for every agent', () => {
+    for (const entry of Object.values(AGENTS)) {
+      expect(entry.vendorResumeSupport).toBeTruthy();
+    }
+  });
+});

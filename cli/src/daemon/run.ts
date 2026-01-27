@@ -192,15 +192,18 @@ export async function startDaemon(): Promise<void> {
 		        }
 		      }
 		      const effectiveResume = normalizedResume;
+          const catalogAgentId = resolveCatalogAgentId(options.agent ?? null);
 
 		      // Only gate vendor resume. Happy-session reconnect (existingSessionId) is supported for all agents.
 		      if (effectiveResume) {
             const vendorResumeSupport = await getVendorResumeSupport(options.agent ?? null);
             const ok = vendorResumeSupport({ experimentalCodexResume, experimentalCodexAcp });
             if (!ok) {
+              const supportLevel = AGENTS[catalogAgentId].vendorResumeSupport;
+              const qualifier = supportLevel === 'experimental' ? ' (experimental and not enabled)' : '';
 		        return {
 		          type: 'error',
-		          errorMessage: `Resume is not supported for agent '${options.agent ?? 'claude'}'. (Upstream supports Claude vendor resume only.)`,
+		          errorMessage: `Resume is not supported for agent '${catalogAgentId}'${qualifier}.`,
 		        };
             }
 		      }
@@ -217,7 +220,6 @@ export async function startDaemon(): Promise<void> {
 		      }
 		      let directoryCreated = false;
 
-          const catalogAgentId = resolveCatalogAgentId(options.agent ?? null);
           const daemonSpawnHooks = AGENTS[catalogAgentId].getDaemonSpawnHooks
             ? await AGENTS[catalogAgentId].getDaemonSpawnHooks!()
             : null;

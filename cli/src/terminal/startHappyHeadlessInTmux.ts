@@ -3,15 +3,16 @@ import chalk from 'chalk';
 import { buildHappyCliSubprocessInvocation } from '@/utils/spawnHappyCLI';
 import { isTmuxAvailable, selectPreferredTmuxSessionName, TmuxUtilities } from '@/integrations/tmux';
 import { AGENTS } from '@/backends/catalog';
+import { DEFAULT_CATALOG_AGENT_ID } from '@/backends/types';
 
 function removeFlag(argv: string[], flag: string): string[] {
   return argv.filter((arg) => arg !== flag);
 }
 
 function inferAgent(argv: string[]): keyof typeof AGENTS {
-  const first = argv[0];
-  if (first === 'codex' || first === 'gemini' || first === 'claude' || first === 'opencode') return first;
-  return 'claude';
+  const first = argv[0] as keyof typeof AGENTS | undefined;
+  if (first && Object.prototype.hasOwnProperty.call(AGENTS, first)) return first;
+  return DEFAULT_CATALOG_AGENT_ID;
 }
 
 function buildWindowEnv(): Record<string, string> {

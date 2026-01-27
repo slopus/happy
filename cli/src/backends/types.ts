@@ -1,4 +1,3 @@
-import type { AgentId } from '@/agent/core';
 import type { AgentBackend } from '@/agent/core';
 import type { ChecklistId } from '@/capabilities/checklistIds';
 import type { Capability } from '@/capabilities/service';
@@ -6,7 +5,9 @@ import type { CommandHandler } from '@/cli/commandRegistry';
 import type { CloudConnectTarget } from '@/cloud/connect/types';
 import type { DaemonSpawnHooks } from '@/daemon/spawnHooks';
 
-export type CatalogAgentId = Extract<AgentId, 'claude' | 'codex' | 'gemini' | 'opencode'>;
+export const CATALOG_AGENT_IDS = ['claude', 'codex', 'gemini', 'opencode'] as const;
+export type CatalogAgentId = (typeof CATALOG_AGENT_IDS)[number];
+export const DEFAULT_CATALOG_AGENT_ID: CatalogAgentId = 'claude';
 
 export type CatalogAcpBackendCreateResult = Readonly<{ backend: AgentBackend }>;
 export type CatalogAcpBackendFactory = (opts: unknown) => CatalogAcpBackendCreateResult;
@@ -17,6 +18,9 @@ export type VendorResumeSupportParams = Readonly<{
 }>;
 
 export type VendorResumeSupportFn = (params: VendorResumeSupportParams) => boolean;
+
+export const VENDOR_RESUME_SUPPORT_LEVELS = ['supported', 'unsupported', 'experimental'] as const;
+export type VendorResumeSupportLevel = (typeof VENDOR_RESUME_SUPPORT_LEVELS)[number];
 
 export type HeadlessTmuxArgvTransform = (argv: string[]) => string[];
 
@@ -62,6 +66,12 @@ export type AgentCatalogEntry = Readonly<{
    * Whether this agent supports vendor-level resume (NOT Happy session resume).
    *
    * Used by the daemon to decide whether it may pass `--resume <vendorSessionId>`.
+   */
+  vendorResumeSupport: VendorResumeSupportLevel;
+  /**
+   * Optional predicate used when vendor resume support is experimental.
+   *
+   * This intentionally stays catalog-driven and lazy-imported.
    */
   getVendorResumeSupport?: () => Promise<VendorResumeSupportFn>;
   /**
