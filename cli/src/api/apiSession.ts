@@ -907,6 +907,16 @@ export class ApiSessionClient extends EventEmitter {
         });
     }
 
+    /**
+     * Read-only snapshot of the currently known session metadata (decrypted).
+     *
+     * This is useful for spawn-time decisions that depend on previous metadata values
+     * (e.g. session-scoped feature toggles) without requiring a metadata write.
+     */
+    getMetadataSnapshot(): Metadata | null {
+        return this.metadata;
+    }
+
     async close() {
         logger.debug('[API] socket.close() called');
         this.closed = true;

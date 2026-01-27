@@ -1,4 +1,5 @@
 import type { AgentId } from '@/agent/core';
+import { checklists as auggieChecklists } from '@/backends/auggie/cli/checklists';
 import { checklists as codexChecklists } from '@/backends/codex/cli/checklists';
 import { checklists as geminiChecklists } from '@/backends/gemini/cli/checklists';
 import { checklists as openCodeChecklists } from '@/backends/opencode/cli/checklists';
@@ -64,6 +65,19 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
       return (opts) => ({ backend: createOpenCodeBackend(opts as any) });
     },
     checklists: openCodeChecklists,
+  },
+  auggie: {
+    id: AGENTS_CORE.auggie.id,
+    cliSubcommand: AGENTS_CORE.auggie.cliSubcommand,
+    getCliCommandHandler: async () => (await import('@/backends/auggie/cli/command')).handleAuggieCliCommand,
+    getCliCapabilityOverride: async () => (await import('@/backends/auggie/cli/capability')).cliCapability,
+    getCliDetect: async () => (await import('@/backends/auggie/cli/detect')).cliDetect,
+    vendorResumeSupport: AGENTS_CORE.auggie.resume.vendorResume,
+    getAcpBackendFactory: async () => {
+      const { createAuggieBackend } = await import('@/backends/auggie/acp/backend');
+      return (opts) => ({ backend: createAuggieBackend(opts as any) });
+    },
+    checklists: auggieChecklists,
   },
 };
 

@@ -379,6 +379,8 @@ export type Metadata = {
   codexSessionId?: string, // Codex session/conversation ID (uuid)
   geminiSessionId?: string, // Gemini ACP session ID (opaque)
   opencodeSessionId?: string, // OpenCode ACP session ID (opaque)
+  auggieSessionId?: string, // Auggie ACP session ID (opaque)
+  auggieAllowIndexing?: boolean, // Auggie indexing enablement (spawn-time)
   tools?: string[],
   slashCommands?: string[],
   slashCommandDetails?: Array<{

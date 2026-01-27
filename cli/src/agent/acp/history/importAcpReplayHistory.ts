@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import type { ApiSessionClient } from '@/api/apiSession';
+import type { ACPProvider, ApiSessionClient } from '@/api/apiSession';
 import type { AcpPermissionHandler } from '@/agent/acp/AcpBackend';
 import type { AcpReplayEvent } from './acpReplayCapture';
 import { logger } from '@/ui/logger';
@@ -95,7 +95,7 @@ function makeImportEventLocalId(params: { provider: string; remoteSessionId: str
 
 export async function importAcpReplayHistoryV1(params: {
   session: ApiSessionClient;
-  provider: 'gemini' | 'codex' | 'opencode';
+  provider: ACPProvider;
   remoteSessionId: string;
   replay: AcpReplayEvent[];
   permissionHandler: AcpPermissionHandler;
@@ -170,7 +170,7 @@ export async function importAcpReplayHistoryV1(params: {
 async function importMessageDeltas(
   params: {
     session: ApiSessionClient;
-    provider: 'gemini' | 'codex' | 'opencode';
+    provider: ACPProvider;
     remoteSessionId: string;
   },
   replayMessages: TranscriptTextItem[],
@@ -218,7 +218,7 @@ async function importMessageDeltas(
 async function importFullReplay(
   params: {
     session: ApiSessionClient;
-    provider: 'gemini' | 'codex' | 'opencode';
+    provider: ACPProvider;
     remoteSessionId: string;
   },
   replay: AcpReplayEvent[],
