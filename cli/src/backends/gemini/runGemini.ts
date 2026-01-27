@@ -55,6 +55,7 @@ import {
   saveGeminiModelToConfig,
   getInitialGeminiModel
 } from '@/backends/gemini/utils/config';
+import { maybeUpdateGeminiSessionIdMetadata } from '@/backends/gemini/utils/geminiSessionIdMetadata';
 import {
   parseOptionsFromText,
   hasIncompleteOptions,
@@ -398,16 +399,6 @@ export async function runGemini(opts: {
   })();
 
   const lastGeminiSessionIdPublished: { value: string | null } = { value: null };
-
-  const publishGeminiSessionIdToMetadata = (nextSessionId: string | null) => {
-    if (!nextSessionId) return;
-    if (lastGeminiSessionIdPublished.value === nextSessionId) return;
-    lastGeminiSessionIdPublished.value = nextSessionId;
-    session.updateMetadata((currentMetadata) => ({
-      ...currentMetadata,
-      geminiSessionId: nextSessionId,
-    }));
-  };
 
   async function handleAbort() {
     logger.debug('[Gemini] Abort requested - stopping current task');
@@ -1042,7 +1033,11 @@ export async function runGemini(opts: {
         const { sessionId } = await geminiBackend.startSession();
         acpSessionId = sessionId;
         logger.debug(`[gemini] New ACP session started: ${acpSessionId}`);
-        publishGeminiSessionIdToMetadata(acpSessionId);
+        maybeUpdateGeminiSessionIdMetadata({
+          getGeminiSessionId: () => acpSessionId,
+          updateHappySessionMetadata: (updater) => session.updateMetadata(updater),
+          lastPublished: lastGeminiSessionIdPublished,
+        });
         
         // Update displayed model in UI (don't save to config - this is backend initialization)
         logger.debug(`[gemini] Calling updateDisplayedModel with: ${actualModel}`);
@@ -1137,7 +1132,11 @@ export async function runGemini(opts: {
               acpSessionId = sessionId;
               logger.debug(`[gemini] ACP session started: ${acpSessionId}`);
             }
-            publishGeminiSessionIdToMetadata(acpSessionId);
+            maybeUpdateGeminiSessionIdMetadata({
+              getGeminiSessionId: () => acpSessionId,
+              updateHappySessionMetadata: (updater) => session.updateMetadata(updater),
+              lastPublished: lastGeminiSessionIdPublished,
+            });
             wasSessionCreated = true;
             currentModeHash = message.hash;
             
