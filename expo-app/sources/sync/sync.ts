@@ -12,7 +12,7 @@ import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from '@/platform/randomUUID';
 import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
-import { Platform, AppState, InteractionManager } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
@@ -54,6 +54,7 @@ import { decodeMessageQueueV1ToPendingMessages, reconcilePendingMessagesFromMeta
 import { didControlReturnToMobile } from './controlledByUserTransitions';
 import { chooseSubmitMode } from './submitMode';
 import type { SavedSecret } from './settings';
+import { scheduleDebouncedPendingSettingsFlush } from './engine/pendingSettings';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -173,30 +174,29 @@ class Sync {
     }
 
     private schedulePendingSettingsFlush = () => {
-        if (this.pendingSettingsFlushTimer) {
-            clearTimeout(this.pendingSettingsFlushTimer);
-        }
-        this.pendingSettingsDirty = true;
-        // Debounce disk write + network sync to keep UI interactions snappy.
-        // IMPORTANT: JSON.stringify + MMKV.set are synchronous and can stall taps on iOS if run too often.
-        this.pendingSettingsFlushTimer = setTimeout(() => {
-            if (!this.pendingSettingsDirty) {
-                return;
-            }
-            this.pendingSettingsDirty = false;
-
-            const flush = () => {
+        scheduleDebouncedPendingSettingsFlush({
+            getTimer: () => this.pendingSettingsFlushTimer,
+            setTimer: (timer) => {
+                this.pendingSettingsFlushTimer = timer;
+            },
+            markDirty: () => {
+                this.pendingSettingsDirty = true;
+            },
+            consumeDirty: () => {
+                if (!this.pendingSettingsDirty) {
+                    return false;
+                }
+                this.pendingSettingsDirty = false;
+                return true;
+            },
+            flush: () => {
                 // Persist pending settings for crash/restart safety.
                 savePendingSettings(this.pendingSettings);
                 // Trigger server sync (can be retried later).
                 this.settingsSync.invalidate();
-            };
-            if (Platform.OS === 'web') {
-                flush();
-            } else {
-                InteractionManager.runAfterInteractions(flush);
-            }
-        }, 900);
+            },
+            delayMs: 900,
+        });
     };
 
     async create(credentials: AuthCredentials, encryption: Encryption) {
