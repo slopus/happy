@@ -3,6 +3,7 @@ import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import { validatePath } from './pathSecurity';
+import { RPC_METHODS } from '@happy/protocol/rpc';
 
 const execAsync = promisify(exec);
 
@@ -22,7 +23,7 @@ interface BashResponse {
 
 export function registerBashHandler(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
     // Shell command handler - executes commands in the default shell
-    rpcHandlerManager.registerHandler<BashRequest, BashResponse>('bash', async (data) => {
+    rpcHandlerManager.registerHandler<BashRequest, BashResponse>(RPC_METHODS.BASH, async (data) => {
         logger.debug('Shell command request:', data.command);
 
         // Validate cwd if provided

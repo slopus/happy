@@ -1,8 +1,8 @@
 import chalk from 'chalk';
 import { readCredentials } from '@/persistence';
 import { ApiClient } from '@/api/api';
-import { decodeJwtPayload } from '@/cloud/jwt/decodeJwtPayload';
-import type { CloudConnectTarget, CloudConnectTargetStatus } from '@/cloud/connect/types';
+import { decodeJwtPayload } from '@/cloud/decodeJwtPayload';
+import type { CloudConnectTarget, CloudConnectTargetStatus } from '@/cloud/connectTypes';
 import { AGENTS } from '@/backends/catalog';
 
 /**

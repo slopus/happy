@@ -1,4 +1,4 @@
-import type { CloudConnectTarget } from '@/cloud/connect/types';
+import type { CloudConnectTarget } from '@/cloud/connectTypes';
 import { AGENTS_CORE } from '@happy/agents';
 import { authenticateClaude } from './authenticate';
 

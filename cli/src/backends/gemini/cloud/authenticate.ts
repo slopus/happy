@@ -9,7 +9,7 @@ import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { randomBytes } from 'crypto';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { generatePkceCodes } from '@/cloud/oauth/pkce';
+import { generatePkceCodes } from '@/cloud/pkce';
 
 const execAsync = promisify(exec);
 
