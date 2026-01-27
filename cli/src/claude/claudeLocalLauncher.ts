@@ -4,7 +4,7 @@ import { Session } from "./session";
 import { Future } from "@/utils/future";
 import { createSessionScanner } from "./utils/sessionScanner";
 
-export type LauncherResult = 'switch' | { type: 'exit', code: number };
+export type LauncherResult = { type: 'switch' } | { type: 'exit', code: number };
 
 export async function claudeLocalLauncher(session: Session): Promise<LauncherResult> {
 
@@ -49,7 +49,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
             // Switching to remote mode
             if (!exitReason) {
-                exitReason = 'switch';
+                exitReason = { type: 'switch' };
             }
 
             // Reset sent messages
@@ -64,7 +64,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
             // Switching to remote mode
             if (!exitReason) {
-                exitReason = 'switch';
+                exitReason = { type: 'switch' };
             }
 
             // Abort
@@ -81,7 +81,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
         // Exit if there are messages in the queue
         if (session.queue.size() > 0) {
-            return 'switch';
+            return { type: 'switch' };
         }
 
         // Handle session start
