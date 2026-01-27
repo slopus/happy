@@ -56,7 +56,12 @@ import { chooseSubmitMode } from './submitMode';
 import type { SavedSecret } from './settings';
 import { scheduleDebouncedPendingSettingsFlush } from './engine/pendingSettings';
 import { repairInvalidReadStateV1 as repairInvalidReadStateV1Engine } from './engine/readStateRepair';
-import { decryptArtifactListItem, decryptArtifactWithBody } from './engine/artifacts';
+import {
+    applySocketArtifactUpdate,
+    decryptArtifactListItem,
+    decryptArtifactWithBody,
+    decryptSocketNewArtifactUpdate,
+} from './engine/artifacts';
 import { inferTaskLifecycleFromMessageContent, parseUpdateContainer } from './engine/updates';
 
 class Sync {
@@ -2253,43 +2258,24 @@ class Sync {
             const artifactId = artifactUpdate.artifactId;
             
             try {
-                // Decrypt the data encryption key
-                const decryptedKey = await this.encryption.decryptEncryptionKey(artifactUpdate.dataEncryptionKey);
-                if (!decryptedKey) {
-                    console.error(`Failed to decrypt key for new artifact ${artifactId}`);
-                    return;
-                }
-                
-                // Store the decrypted key in memory
-                this.artifactDataKeys.set(artifactId, decryptedKey);
-                
-                // Create artifact encryption instance
-                const artifactEncryption = new ArtifactEncryption(decryptedKey);
-                
-                // Decrypt header
-                const header = await artifactEncryption.decryptHeader(artifactUpdate.header);
-                
-                // Decrypt body if provided
-                let decryptedBody: string | null | undefined = undefined;
-                if (artifactUpdate.body && artifactUpdate.bodyVersion !== undefined) {
-                    const body = await artifactEncryption.decryptBody(artifactUpdate.body);
-                    decryptedBody = body?.body || null;
-                }
-                
-                // Add to storage
-                const decryptedArtifact: DecryptedArtifact = {
-                    id: artifactId,
-                    title: header?.title || null,
-                    body: decryptedBody,
+                const decrypted = await decryptSocketNewArtifactUpdate({
+                    artifactId,
+                    dataEncryptionKey: artifactUpdate.dataEncryptionKey,
+                    header: artifactUpdate.header,
                     headerVersion: artifactUpdate.headerVersion,
+                    body: artifactUpdate.body,
                     bodyVersion: artifactUpdate.bodyVersion,
                     seq: artifactUpdate.seq,
                     createdAt: artifactUpdate.createdAt,
                     updatedAt: artifactUpdate.updatedAt,
-                    isDecrypted: !!header,
-                };
-                
-                storage.getState().addArtifact(decryptedArtifact);
+                    encryption: this.encryption,
+                    artifactDataKeys: this.artifactDataKeys,
+                });
+                if (!decrypted) {
+                    return;
+                }
+
+                storage.getState().addArtifact(decrypted);
                 log.log(`📦 Added new artifact ${artifactId} to storage`);
             } catch (error) {
                 console.error(`Failed to process new artifact ${artifactId}:`, error);
@@ -2316,33 +2302,16 @@ class Sync {
                     this.artifactsSync.invalidate();
                     return;
                 }
-                
-                // Create artifact encryption instance
-                const artifactEncryption = new ArtifactEncryption(dataEncryptionKey);
-                
-                // Update artifact with new data  
-                const updatedArtifact: DecryptedArtifact = {
-                    ...existingArtifact,
+
+                const updatedArtifact = await applySocketArtifactUpdate({
+                    existingArtifact,
                     seq: updateData.seq,
-                    updatedAt: updateData.createdAt,
-                };
-                
-                // Decrypt and update header if provided
-                if (artifactUpdate.header) {
-                    const header = await artifactEncryption.decryptHeader(artifactUpdate.header.value);
-                    updatedArtifact.title = header?.title || null;
-                    updatedArtifact.sessions = header?.sessions;
-                    updatedArtifact.draft = header?.draft;
-                    updatedArtifact.headerVersion = artifactUpdate.header.version;
-                }
-                
-                // Decrypt and update body if provided
-                if (artifactUpdate.body) {
-                    const body = await artifactEncryption.decryptBody(artifactUpdate.body.value);
-                    updatedArtifact.body = body?.body || null;
-                    updatedArtifact.bodyVersion = artifactUpdate.body.version;
-                }
-                
+                    createdAt: updateData.createdAt,
+                    dataEncryptionKey,
+                    header: artifactUpdate.header,
+                    body: artifactUpdate.body,
+                });
+
                 storage.getState().updateArtifact(updatedArtifact);
                 log.log(`📦 Updated artifact ${artifactId} in storage`);
             } catch (error) {
