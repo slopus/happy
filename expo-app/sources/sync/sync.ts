@@ -56,6 +56,7 @@ import { chooseSubmitMode } from './submitMode';
 import type { SavedSecret } from './settings';
 import { scheduleDebouncedPendingSettingsFlush } from './engine/pendingSettings';
 import { repairInvalidReadStateV1 as repairInvalidReadStateV1Engine } from './engine/readStateRepair';
+import { decryptArtifactListItem, decryptArtifactWithBody } from './engine/artifacts';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -1096,49 +1097,13 @@ class Sync {
             const decryptedArtifacts: DecryptedArtifact[] = [];
 
             for (const artifact of artifacts) {
-                try {
-                    // Decrypt the data encryption key
-                    const decryptedKey = await this.encryption.decryptEncryptionKey(artifact.dataEncryptionKey);
-                    if (!decryptedKey) {
-                        console.error(`Failed to decrypt key for artifact ${artifact.id}`);
-                        continue;
-                    }
-
-                    // Store the decrypted key in memory
-                    this.artifactDataKeys.set(artifact.id, decryptedKey);
-
-                    // Create artifact encryption instance
-                    const artifactEncryption = new ArtifactEncryption(decryptedKey);
-
-                    // Decrypt header
-                    const header = await artifactEncryption.decryptHeader(artifact.header);
-                    
-                    decryptedArtifacts.push({
-                        id: artifact.id,
-                        title: header?.title || null,
-                        sessions: header?.sessions,  // Include sessions from header
-                        draft: header?.draft,        // Include draft flag from header
-                        body: undefined, // Body not loaded in list
-                        headerVersion: artifact.headerVersion,
-                        bodyVersion: artifact.bodyVersion,
-                        seq: artifact.seq,
-                        createdAt: artifact.createdAt,
-                        updatedAt: artifact.updatedAt,
-                        isDecrypted: !!header,
-                    });
-                } catch (err) {
-                    console.error(`Failed to decrypt artifact ${artifact.id}:`, err);
-                    // Add with decryption failed flag
-                    decryptedArtifacts.push({
-                        id: artifact.id,
-                        title: null,
-                        body: undefined,
-                        headerVersion: artifact.headerVersion,
-                        seq: artifact.seq,
-                        createdAt: artifact.createdAt,
-                        updatedAt: artifact.updatedAt,
-                        isDecrypted: false,
-                    });
+                const decrypted = await decryptArtifactListItem({
+                    artifact,
+                    encryption: this.encryption,
+                    artifactDataKeys: this.artifactDataKeys,
+                });
+                if (decrypted) {
+                    decryptedArtifacts.push(decrypted);
                 }
             }
 
@@ -1157,37 +1122,11 @@ class Sync {
 
         try {
             const artifact = await fetchArtifact(this.credentials, artifactId);
-
-            // Decrypt the data encryption key
-            const decryptedKey = await this.encryption.decryptEncryptionKey(artifact.dataEncryptionKey);
-            if (!decryptedKey) {
-                console.error(`Failed to decrypt key for artifact ${artifactId}`);
-                return null;
-            }
-
-            // Store the decrypted key in memory
-            this.artifactDataKeys.set(artifact.id, decryptedKey);
-
-            // Create artifact encryption instance
-            const artifactEncryption = new ArtifactEncryption(decryptedKey);
-
-            // Decrypt header and body
-            const header = await artifactEncryption.decryptHeader(artifact.header);
-            const body = artifact.body ? await artifactEncryption.decryptBody(artifact.body) : null;
-
-            return {
-                id: artifact.id,
-                title: header?.title || null,
-                sessions: header?.sessions,  // Include sessions from header
-                draft: header?.draft,        // Include draft flag from header
-                body: body?.body || null,
-                headerVersion: artifact.headerVersion,
-                bodyVersion: artifact.bodyVersion,
-                seq: artifact.seq,
-                createdAt: artifact.createdAt,
-                updatedAt: artifact.updatedAt,
-                isDecrypted: !!header,
-            };
+            return await decryptArtifactWithBody({
+                artifact,
+                encryption: this.encryption,
+                artifactDataKeys: this.artifactDataKeys,
+            });
         } catch (error) {
             console.error(`Failed to fetch artifact ${artifactId}:`, error);
             return null;
