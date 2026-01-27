@@ -6,8 +6,8 @@ import Animated, {
     useSharedValue,
     useAnimatedStyle,
     withTiming,
+    runOnJS,
 } from 'react-native-reanimated';
-import { runOnJS } from 'react-native-worklets';
 import WebView from 'react-native-webview';
 import { t } from '@/text';
 import { Modal } from '@/modal';

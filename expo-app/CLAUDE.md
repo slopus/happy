@@ -91,9 +91,17 @@ sources/
 ├── app/              # Expo Router screens
 ├── auth/             # Authentication logic (QR code based)
 ├── components/       # Reusable UI components
+├── clawdbot/         # Clawdbot gateway integration
 ├── sync/             # Real-time sync engine with encryption
 └── utils/            # Utility functions
 ```
+
+### Clawdbot Integration
+The app includes Clawdbot gateway integration for AI chat sessions. Reference implementation:
+- **Clawdbot source code**: `/Users/kirilldubovitskiy/projects/happy/research/clawdbot`
+- **Gateway protocol**: See `research/clawdbot/src/gateway/` for server-side implementation
+- **Web UI reference**: See `research/clawdbot/ui/src/ui/` for official web client implementation
+- **Types**: Match types with `research/clawdbot/ui/src/ui/types.ts` (e.g., `GatewaySessionRow`, `SessionsListResult`)
 
 ### Key Architectural Patterns
 

@@ -388,6 +388,38 @@ export default function RootLayout() {
                     headerBackTitle: t('common.back'),
                 }}
             />
+            <Stack.Screen
+                name="clawdbot/index"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('clawdbot.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="clawdbot/connect"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('clawdbot.connect'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="clawdbot/chat/[sessionKey]"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('clawdbot.chat'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="clawdbot/new"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('clawdbot.newSession'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
         </Stack>
     );
 }

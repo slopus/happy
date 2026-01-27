@@ -12,6 +12,7 @@ import { TabBar, TabType } from './TabBar';
 import { InboxView } from './InboxView';
 import { SettingsViewWrapper } from './SettingsViewWrapper';
 import { SessionsListWrapper } from './SessionsListWrapper';
+import { ClawdbotViewWrapper } from './ClawdbotViewWrapper';
 import { Header } from './navigation/Header';
 import { HeaderLogo } from './HeaderLogo';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
@@ -104,10 +105,11 @@ const TAB_TITLES = {
     sessions: 'tabs.sessions',
     inbox: 'tabs.inbox',
     settings: 'tabs.settings',
+    clawdbot: 'tabs.clawdbot',
 } as const;
 
 // Active tabs (excludes zen which is disabled)
-type ActiveTabType = 'sessions' | 'inbox' | 'settings';
+type ActiveTabType = 'sessions' | 'inbox' | 'settings' | 'clawdbot';
 
 // Header title component with connection status
 const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
@@ -202,6 +204,8 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                 return <InboxView />;
             case 'settings':
                 return <SettingsViewWrapper />;
+            case 'clawdbot':
+                return <ClawdbotViewWrapper />;
             case 'sessions':
             default:
                 return <SessionsListWrapper />;
