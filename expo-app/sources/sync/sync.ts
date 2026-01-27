@@ -36,9 +36,7 @@ import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
 import { computePendingActivityAt } from './unread';
 import { computeNextReadStateV1 } from './readStateV1';
 import { updateSessionMetadataWithRetry as updateSessionMetadataWithRetryRpc, type UpdateMetadataAck } from './updateSessionMetadataWithRetry';
-import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
-import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
-import { ArtifactEncryption } from './encryption/artifactEncryption';
+import type { DecryptedArtifact } from './artifactTypes';
 import { getFriendsList, getUserProfile } from './apiFriends';
 import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
@@ -55,11 +53,13 @@ import { chooseSubmitMode } from './submitMode';
 import type { SavedSecret } from './settings';
 import { scheduleDebouncedPendingSettingsFlush } from './engine/pendingSettings';
 import {
-    decryptArtifactListItem,
-    decryptArtifactWithBody,
+    createArtifactViaApi,
+    fetchAndApplyArtifactsList,
+    fetchArtifactWithBodyFromApi,
     handleDeleteArtifactSocketUpdate,
     handleNewArtifactSocketUpdate,
     handleUpdateArtifactSocketUpdate,
+    updateArtifactViaApi,
 } from './engine/artifacts';
 import { handleNewFeedPostUpdate, handleRelationshipUpdatedSocketUpdate, handleTodoKvBatchUpdate } from './engine/feed';
 import { handleUpdateAccountSocketUpdate } from './engine/account';
@@ -1098,53 +1098,23 @@ class Sync {
 
     // Artifact methods
     public fetchArtifactsList = async (): Promise<void> => {
-        log.log('📦 fetchArtifactsList: Starting artifact sync');
-        if (!this.credentials) {
-            log.log('📦 fetchArtifactsList: No credentials, skipping');
-            return;
-        }
-
-        try {
-            log.log('📦 fetchArtifactsList: Fetching artifacts from server');
-            const artifacts = await fetchArtifacts(this.credentials);
-            log.log(`📦 fetchArtifactsList: Received ${artifacts.length} artifacts from server`);
-            const decryptedArtifacts: DecryptedArtifact[] = [];
-
-            for (const artifact of artifacts) {
-                const decrypted = await decryptArtifactListItem({
-                    artifact,
-                    encryption: this.encryption,
-                    artifactDataKeys: this.artifactDataKeys,
-                });
-                if (decrypted) {
-                    decryptedArtifacts.push(decrypted);
-                }
-            }
-
-            log.log(`📦 fetchArtifactsList: Successfully decrypted ${decryptedArtifacts.length} artifacts`);
-            storage.getState().applyArtifacts(decryptedArtifacts);
-            log.log('📦 fetchArtifactsList: Artifacts applied to storage');
-        } catch (error) {
-            log.log(`📦 fetchArtifactsList: Error fetching artifacts: ${error}`);
-            console.error('Failed to fetch artifacts:', error);
-            throw error;
-        }
+        await fetchAndApplyArtifactsList({
+            credentials: this.credentials,
+            encryption: this.encryption,
+            artifactDataKeys: this.artifactDataKeys,
+            applyArtifacts: (artifacts) => storage.getState().applyArtifacts(artifacts),
+        });
     }
 
     public async fetchArtifactWithBody(artifactId: string): Promise<DecryptedArtifact | null> {
         if (!this.credentials) return null;
 
-        try {
-            const artifact = await fetchArtifact(this.credentials, artifactId);
-            return await decryptArtifactWithBody({
-                artifact,
-                encryption: this.encryption,
-                artifactDataKeys: this.artifactDataKeys,
-            });
-        } catch (error) {
-            console.error(`Failed to fetch artifact ${artifactId}:`, error);
-            return null;
-        }
+        return await fetchArtifactWithBodyFromApi({
+            credentials: this.credentials,
+            artifactId,
+            encryption: this.encryption,
+            artifactDataKeys: this.artifactDataKeys,
+        });
     }
 
     public async createArtifact(
@@ -1157,59 +1127,16 @@ class Sync {
             throw new Error('Not authenticated');
         }
 
-        try {
-            // Generate unique artifact ID
-            const artifactId = this.encryption.generateId();
-
-            // Generate data encryption key
-            const dataEncryptionKey = ArtifactEncryption.generateDataEncryptionKey();
-            
-            // Store the decrypted key in memory
-            this.artifactDataKeys.set(artifactId, dataEncryptionKey);
-            
-            // Encrypt the data encryption key with user's key
-            const encryptedKey = await this.encryption.encryptEncryptionKey(dataEncryptionKey);
-            
-            // Create artifact encryption instance
-            const artifactEncryption = new ArtifactEncryption(dataEncryptionKey);
-            
-            // Encrypt header and body
-            const encryptedHeader = await artifactEncryption.encryptHeader({ title, sessions, draft });
-            const encryptedBody = await artifactEncryption.encryptBody({ body });
-            
-            // Create the request
-            const request: ArtifactCreateRequest = {
-                id: artifactId,
-                header: encryptedHeader,
-                body: encryptedBody,
-                dataEncryptionKey: encodeBase64(encryptedKey, 'base64'),
-            };
-            
-            // Send to server
-            const artifact = await createArtifact(this.credentials, request);
-            
-            // Add to local storage
-            const decryptedArtifact: DecryptedArtifact = {
-                id: artifact.id,
-                title,
-                sessions,
-                draft,
-                body,
-                headerVersion: artifact.headerVersion,
-                bodyVersion: artifact.bodyVersion,
-                seq: artifact.seq,
-                createdAt: artifact.createdAt,
-                updatedAt: artifact.updatedAt,
-                isDecrypted: true,
-            };
-            
-            storage.getState().addArtifact(decryptedArtifact);
-            
-            return artifactId;
-        } catch (error) {
-            console.error('Failed to create artifact:', error);
-            throw error;
-        }
+        return await createArtifactViaApi({
+            credentials: this.credentials,
+            title,
+            body,
+            sessions,
+            draft,
+            encryption: this.encryption,
+            artifactDataKeys: this.artifactDataKeys,
+            addArtifact: (artifact) => storage.getState().addArtifact(artifact),
+        });
     }
 
     public async updateArtifact(
@@ -1223,95 +1150,18 @@ class Sync {
             throw new Error('Not authenticated');
         }
 
-        try {
-            // Get current artifact to get versions and encryption key
-            const currentArtifact = storage.getState().artifacts[artifactId];
-            if (!currentArtifact) {
-                throw new Error('Artifact not found');
-            }
-
-            // Get the data encryption key from memory or fetch it
-            let dataEncryptionKey = this.artifactDataKeys.get(artifactId);
-            
-            // Fetch full artifact if we don't have version info or encryption key
-            let headerVersion = currentArtifact.headerVersion;
-            let bodyVersion = currentArtifact.bodyVersion;
-            
-            if (headerVersion === undefined || bodyVersion === undefined || !dataEncryptionKey) {
-                const fullArtifact = await fetchArtifact(this.credentials, artifactId);
-                headerVersion = fullArtifact.headerVersion;
-                bodyVersion = fullArtifact.bodyVersion;
-                
-                // Decrypt and store the data encryption key if we don't have it
-                if (!dataEncryptionKey) {
-                    const decryptedKey = await this.encryption.decryptEncryptionKey(fullArtifact.dataEncryptionKey);
-                    if (!decryptedKey) {
-                        throw new Error('Failed to decrypt encryption key');
-                    }
-                    this.artifactDataKeys.set(artifactId, decryptedKey);
-                    dataEncryptionKey = decryptedKey;
-                }
-            }
-
-            // Create artifact encryption instance
-            const artifactEncryption = new ArtifactEncryption(dataEncryptionKey);
-
-            // Prepare update request
-            const updateRequest: ArtifactUpdateRequest = {};
-            
-            // Check if header needs updating (title, sessions, or draft changed)
-            if (title !== currentArtifact.title || 
-                JSON.stringify(sessions) !== JSON.stringify(currentArtifact.sessions) ||
-                draft !== currentArtifact.draft) {
-                const encryptedHeader = await artifactEncryption.encryptHeader({ 
-                    title, 
-                    sessions, 
-                    draft 
-                });
-                updateRequest.header = encryptedHeader;
-                updateRequest.expectedHeaderVersion = headerVersion;
-            }
-
-            // Only update body if it changed
-            if (body !== currentArtifact.body) {
-                const encryptedBody = await artifactEncryption.encryptBody({ body });
-                updateRequest.body = encryptedBody;
-                updateRequest.expectedBodyVersion = bodyVersion;
-            }
-
-            // Skip if no changes
-            if (Object.keys(updateRequest).length === 0) {
-                return;
-            }
-
-            // Send update to server
-            const response = await updateArtifact(this.credentials, artifactId, updateRequest);
-            
-            if (!response.success) {
-                // Handle version mismatch
-                if (response.error === 'version-mismatch') {
-                    throw new Error('Artifact was modified by another client. Please refresh and try again.');
-                }
-                throw new Error('Failed to update artifact');
-            }
-
-            // Update local storage
-            const updatedArtifact: DecryptedArtifact = {
-                ...currentArtifact,
-                title,
-                sessions,
-                draft,
-                body,
-                headerVersion: response.headerVersion !== undefined ? response.headerVersion : headerVersion,
-                bodyVersion: response.bodyVersion !== undefined ? response.bodyVersion : bodyVersion,
-                updatedAt: Date.now(),
-            };
-            
-            storage.getState().updateArtifact(updatedArtifact);
-        } catch (error) {
-            console.error('Failed to update artifact:', error);
-            throw error;
-        }
+        await updateArtifactViaApi({
+            credentials: this.credentials,
+            artifactId,
+            title,
+            body,
+            sessions,
+            draft,
+            encryption: this.encryption,
+            artifactDataKeys: this.artifactDataKeys,
+            getArtifact: (id) => storage.getState().artifacts[id],
+            updateArtifact: (artifact) => storage.getState().updateArtifact(artifact),
+        });
     }
 
     private fetchMachines = async () => {
