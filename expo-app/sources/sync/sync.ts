@@ -68,6 +68,7 @@ import { buildUpdatedMachineFromSocketUpdate } from './engine/machineSocketUpdat
 import { handleUpdateAccountSocketUpdate } from './engine/accountSocketUpdates';
 import { buildUpdatedSessionFromSocketUpdate } from './engine/sessionSocketUpdates';
 import { handleNewMessageSocketUpdate } from './engine/newMessageSocketUpdate';
+import { handleDeleteSessionSocketUpdate } from './engine/deleteSessionSocketUpdate';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -2027,21 +2028,14 @@ class Sync {
             this.sessionsSync.invalidate();
         } else if (updateData.body.t === 'delete-session') {
             log.log('🗑️ Delete session update received');
-            const sessionId = updateData.body.sid;
-
-            // Remove session from storage
-            storage.getState().deleteSession(sessionId);
-
-            // Remove encryption keys from memory
-            this.encryption.removeSessionEncryption(sessionId);
-
-            // Remove from project manager
-            projectManager.removeSession(sessionId);
-
-            // Clear any cached git status
-            gitStatusSync.clearForSession(sessionId);
-
-            log.log(`🗑️ Session ${sessionId} deleted from local storage`);
+            handleDeleteSessionSocketUpdate({
+                sessionId: updateData.body.sid,
+                deleteSession: (sessionId) => storage.getState().deleteSession(sessionId),
+                encryption: this.encryption,
+                removeProjectManagerSession: (sessionId) => projectManager.removeSession(sessionId),
+                clearGitStatusForSession: (sessionId) => gitStatusSync.clearForSession(sessionId),
+                log,
+            });
         } else if (updateData.body.t === 'update-session') {
             const session = storage.getState().sessions[updateData.body.id];
             if (session) {
