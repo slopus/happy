@@ -2,6 +2,7 @@ import { logger } from '@/ui/logger';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import { run as runRipgrep } from '@/integrations/ripgrep/index';
 import { validatePath } from './pathSecurity';
+import { RPC_METHODS } from '@happy/protocol/rpc';
 
 interface RipgrepRequest {
     args: string[];
@@ -18,7 +19,7 @@ interface RipgrepResponse {
 
 export function registerRipgrepHandler(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
     // Ripgrep handler - raw interface to ripgrep
-    rpcHandlerManager.registerHandler<RipgrepRequest, RipgrepResponse>('ripgrep', async (data) => {
+    rpcHandlerManager.registerHandler<RipgrepRequest, RipgrepResponse>(RPC_METHODS.RIPGREP, async (data) => {
         logger.debug('Ripgrep request with args:', data.args, 'cwd:', data.cwd);
 
         // Validate cwd if provided

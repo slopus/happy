@@ -22,6 +22,7 @@ vi.mock('./sync', () => ({
 }));
 
 import { sessionAbort } from './ops';
+import { RPC_ERROR_CODES } from '@happy/protocol/rpc';
 
 describe('sessionAbort', () => {
   beforeEach(() => {
@@ -30,7 +31,7 @@ describe('sessionAbort', () => {
 
   it('does not throw when RPC method is unavailable (errorCode)', async () => {
     const err: any = new Error('RPC method not available');
-    err.rpcErrorCode = 'RPC_METHOD_NOT_AVAILABLE';
+    err.rpcErrorCode = RPC_ERROR_CODES.METHOD_NOT_AVAILABLE;
     mockSessionRPC.mockRejectedValue(err);
 
     await expect(sessionAbort('sid-1')).resolves.toBeUndefined();
@@ -48,4 +49,3 @@ describe('sessionAbort', () => {
     await expect(sessionAbort('sid-3')).rejects.toThrow('boom');
   });
 });
-

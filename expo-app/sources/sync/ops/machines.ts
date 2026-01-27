@@ -4,6 +4,7 @@
 
 import type { SpawnSessionResult } from '@happy/protocol';
 import { SPAWN_SESSION_ERROR_CODES } from '@happy/protocol';
+import { RPC_METHODS } from '@happy/protocol/rpc';
 
 import { apiSocket } from '../apiSocket';
 import { sync } from '../sync';
@@ -24,7 +25,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
 
     try {
         const params = buildSpawnHappySessionRpcParams(options);
-        const result = await apiSocket.machineRPC<unknown, SpawnHappySessionRpcParams>(machineId, 'spawn-happy-session', params);
+        const result = await apiSocket.machineRPC<unknown, SpawnHappySessionRpcParams>(machineId, RPC_METHODS.SPAWN_HAPPY_SESSION, params);
         return normalizeSpawnSessionResult(result);
     } catch (error) {
         // Handle RPC errors
@@ -42,7 +43,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {
     const result = await apiSocket.machineRPC<{ message: string }, {}>(
         machineId,
-        'stop-daemon',
+        RPC_METHODS.STOP_DAEMON,
         {}
     );
     return result;
@@ -131,7 +132,7 @@ export async function machinePreviewEnv(
     try {
         const result = await apiSocket.machineRPC<unknown, PreviewEnvRequest>(
             machineId,
-            'preview-env',
+            RPC_METHODS.PREVIEW_ENV,
             params
         );
 

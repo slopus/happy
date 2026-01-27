@@ -9,6 +9,7 @@ import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import type { RpcRequest } from '@/api/rpc/types';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from '@/api/encryption';
 import { registerSessionHandlers } from './registerSessionHandlers';
+import { RPC_METHODS } from '@happy/protocol/rpc';
 
 function createTestRpcManager(params?: { scopePrefix?: string }) {
     const encryptionKey = new Uint8Array(32).fill(7);
@@ -58,7 +59,7 @@ describe('registerCommonHandlers preview-env', () => {
         const result = await call<{ policy: string; values: Record<string, { display: string; value: string | null }> }, {
             keys: string[];
             extraEnv?: Record<string, string>;
-        }>('preview-env', {
+        }>(RPC_METHODS.PREVIEW_ENV, {
             keys: ['PATH'],
             extraEnv: {
                 PATH: '/opt/bin:${PATH}',
@@ -78,7 +79,7 @@ describe('registerCommonHandlers preview-env', () => {
 
         const result = await call<{ policy: string; values: Record<string, { display: string; value: string | null }> }, {
             keys: string[];
-        }>('preview-env', {
+        }>(RPC_METHODS.PREVIEW_ENV, {
             keys: ['npm_config_registry'],
         });
 
@@ -92,7 +93,7 @@ describe('registerCommonHandlers preview-env', () => {
 
         const { call } = createTestRpcManager();
 
-        const result = await call<{ error: string }, { keys: string[] }>('preview-env', {
+        const result = await call<{ error: string }, { keys: string[] }>(RPC_METHODS.PREVIEW_ENV, {
             keys: ['__proto__'],
         });
 
@@ -109,7 +110,7 @@ describe('registerCommonHandlers preview-env', () => {
             keys: string[];
             extraEnv?: Record<string, string>;
             sensitiveKeys?: string[];
-        }>('preview-env', {
+        }>(RPC_METHODS.PREVIEW_ENV, {
             keys: ['ANTHROPIC_AUTH_TOKEN'],
             extraEnv: {
                 ANTHROPIC_AUTH_TOKEN: '${SECRET_TOKEN}',
@@ -135,7 +136,7 @@ describe('registerCommonHandlers preview-env', () => {
             keys: string[];
             extraEnv?: Record<string, string>;
             sensitiveKeys?: string[];
-        }>('preview-env', {
+        }>(RPC_METHODS.PREVIEW_ENV, {
             keys: ['ANTHROPIC_AUTH_TOKEN'],
             extraEnv: {
                 ANTHROPIC_AUTH_TOKEN: '${SECRET_TOKEN}',
@@ -158,7 +159,7 @@ describe('registerCommonHandlers preview-env', () => {
             keys: string[];
             extraEnv?: Record<string, string>;
             sensitiveKeys?: string[];
-        }>('preview-env', {
+        }>(RPC_METHODS.PREVIEW_ENV, {
             keys: ['ANTHROPIC_AUTH_TOKEN'],
             extraEnv: {
                 ANTHROPIC_AUTH_TOKEN: '${SECRET_TOKEN}',
@@ -180,7 +181,7 @@ describe('registerCommonHandlers preview-env', () => {
 
         const result = await call<{ policy: string; values: Record<string, { isSensitive: boolean; isForcedSensitive: boolean; sensitivitySource: string; display: string; value: string | null }> }, {
             keys: string[];
-        }>('preview-env', {
+        }>(RPC_METHODS.PREVIEW_ENV, {
             keys: ['BAR_TOKEN'],
         });
 
@@ -201,7 +202,7 @@ describe('registerCommonHandlers preview-env', () => {
 
         const result = await call<{ policy: string; values: Record<string, { isSensitive: boolean; isForcedSensitive: boolean; sensitivitySource: string; display: string; value: string | null }> }, {
             keys: string[];
-        }>('preview-env', {
+        }>(RPC_METHODS.PREVIEW_ENV, {
             keys: ['BAR_TOKEN'],
         });
 

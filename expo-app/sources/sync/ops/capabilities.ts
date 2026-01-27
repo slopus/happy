@@ -4,6 +4,7 @@
 
 import { apiSocket } from '../apiSocket';
 import { isPlainObject } from './_shared';
+import { RPC_METHODS } from '@happy/protocol/rpc';
 import {
     parseCapabilitiesDescribeResponse,
     parseCapabilitiesDetectResponse,
@@ -29,7 +30,7 @@ export type MachineCapabilitiesDescribeResult =
 
 export async function machineCapabilitiesDescribe(machineId: string): Promise<MachineCapabilitiesDescribeResult> {
     try {
-        const result = await apiSocket.machineRPC<unknown, {}>(machineId, 'capabilities.describe', {});
+        const result = await apiSocket.machineRPC<unknown, {}>(machineId, RPC_METHODS.CAPABILITIES_DESCRIBE, {});
         if (isPlainObject(result) && typeof result.error === 'string') {
             if (result.error === 'Method not found') return { supported: false, reason: 'not-supported' };
             return { supported: false, reason: 'error' };
@@ -54,7 +55,7 @@ export async function machineCapabilitiesDetect(
     try {
         const timeoutMs = typeof options?.timeoutMs === 'number' ? options.timeoutMs : 2500;
         const result = await Promise.race([
-            apiSocket.machineRPC<unknown, CapabilitiesDetectRequest>(machineId, 'capabilities.detect', request),
+            apiSocket.machineRPC<unknown, CapabilitiesDetectRequest>(machineId, RPC_METHODS.CAPABILITIES_DETECT, request),
             new Promise<{ error: string }>((resolve) => {
                 setTimeout(() => resolve({ error: 'Timeout' }), timeoutMs);
             }),
@@ -85,7 +86,7 @@ export async function machineCapabilitiesInvoke(
     try {
         const timeoutMs = typeof options?.timeoutMs === 'number' ? options.timeoutMs : 30_000;
         const result = await Promise.race([
-            apiSocket.machineRPC<unknown, CapabilitiesInvokeRequest>(machineId, 'capabilities.invoke', request),
+            apiSocket.machineRPC<unknown, CapabilitiesInvokeRequest>(machineId, RPC_METHODS.CAPABILITIES_INVOKE, request),
             new Promise<{ error: string }>((resolve) => {
                 setTimeout(() => resolve({ error: 'Timeout' }), timeoutMs);
             }),

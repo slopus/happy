@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { join } from 'path';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import { validatePath } from './pathSecurity';
+import { RPC_METHODS } from '@happy/protocol/rpc';
 
 interface ReadFileRequest {
     path: string;
@@ -66,7 +67,7 @@ interface GetDirectoryTreeResponse {
 
 export function registerFileSystemHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
     // Read file handler - returns base64 encoded content
-    rpcHandlerManager.registerHandler<ReadFileRequest, ReadFileResponse>('readFile', async (data) => {
+    rpcHandlerManager.registerHandler<ReadFileRequest, ReadFileResponse>(RPC_METHODS.READ_FILE, async (data) => {
         logger.debug('Read file request:', data.path);
 
         // Validate path is within working directory
@@ -86,7 +87,7 @@ export function registerFileSystemHandlers(rpcHandlerManager: RpcHandlerManager,
     });
 
     // Write file handler - with hash verification
-    rpcHandlerManager.registerHandler<WriteFileRequest, WriteFileResponse>('writeFile', async (data) => {
+    rpcHandlerManager.registerHandler<WriteFileRequest, WriteFileResponse>(RPC_METHODS.WRITE_FILE, async (data) => {
         logger.debug('Write file request:', data.path);
 
         // Validate path is within working directory
@@ -152,7 +153,7 @@ export function registerFileSystemHandlers(rpcHandlerManager: RpcHandlerManager,
     });
 
     // List directory handler
-    rpcHandlerManager.registerHandler<ListDirectoryRequest, ListDirectoryResponse>('listDirectory', async (data) => {
+    rpcHandlerManager.registerHandler<ListDirectoryRequest, ListDirectoryResponse>(RPC_METHODS.LIST_DIRECTORY, async (data) => {
         logger.debug('List directory request:', data.path);
 
         // Validate path is within working directory
@@ -210,7 +211,7 @@ export function registerFileSystemHandlers(rpcHandlerManager: RpcHandlerManager,
     });
 
     // Get directory tree handler - recursive with depth control
-    rpcHandlerManager.registerHandler<GetDirectoryTreeRequest, GetDirectoryTreeResponse>('getDirectoryTree', async (data) => {
+    rpcHandlerManager.registerHandler<GetDirectoryTreeRequest, GetDirectoryTreeResponse>(RPC_METHODS.GET_DIRECTORY_TREE, async (data) => {
         logger.debug('Get directory tree request:', data.path, 'maxDepth:', data.maxDepth);
 
         // Validate path is within working directory

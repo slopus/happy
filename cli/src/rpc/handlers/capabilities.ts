@@ -13,6 +13,7 @@ import type {
     CapabilitiesInvokeRequest,
     CapabilitiesInvokeResponse,
 } from '@/capabilities/types';
+import { RPC_METHODS } from '@happy/protocol/rpc';
 
 function titleCase(value: string): string {
     if (!value) return value;
@@ -65,15 +66,15 @@ export function registerCapabilitiesHandlers(rpcHandlerManager: RpcHandlerManage
         return servicePromise;
     };
 
-    rpcHandlerManager.registerHandler<{}, CapabilitiesDescribeResponse>('capabilities.describe', async () => {
+    rpcHandlerManager.registerHandler<{}, CapabilitiesDescribeResponse>(RPC_METHODS.CAPABILITIES_DESCRIBE, async () => {
         return (await getService()).describe();
     });
 
-    rpcHandlerManager.registerHandler<CapabilitiesDetectRequest, CapabilitiesDetectResponse>('capabilities.detect', async (data) => {
+    rpcHandlerManager.registerHandler<CapabilitiesDetectRequest, CapabilitiesDetectResponse>(RPC_METHODS.CAPABILITIES_DETECT, async (data) => {
         return await (await getService()).detect(data);
     });
 
-    rpcHandlerManager.registerHandler<CapabilitiesInvokeRequest, CapabilitiesInvokeResponse>('capabilities.invoke', async (data) => {
+    rpcHandlerManager.registerHandler<CapabilitiesInvokeRequest, CapabilitiesInvokeResponse>(RPC_METHODS.CAPABILITIES_INVOKE, async (data) => {
         return await (await getService()).invoke(data);
     });
 }

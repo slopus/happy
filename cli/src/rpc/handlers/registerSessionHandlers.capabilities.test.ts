@@ -13,6 +13,7 @@ import { registerSessionHandlers } from './registerSessionHandlers';
 import { chmod, mkdtemp, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { RPC_METHODS } from '@happy/protocol/rpc';
 
 function createTestRpcManager(params?: { scopePrefix?: string }) {
     const encryptionKey = new Uint8Array(32).fill(7);
@@ -68,7 +69,7 @@ describe('registerCommonHandlers capabilities', () => {
             protocolVersion: 1;
             capabilities: Array<{ id: string; kind: string }>;
             checklists: Record<string, Array<{ id: string; params?: any }>>;
-        }, {}>('capabilities.describe', {});
+        }, {}>(RPC_METHODS.CAPABILITIES_DESCRIBE, {});
 
         expect(result.protocolVersion).toBe(1);
         expect(result.capabilities.map((c) => c.id)).toEqual(
@@ -148,7 +149,7 @@ describe('registerCommonHandlers capabilities', () => {
                     string,
                     { ok: boolean; data?: any; error?: any; checkedAt: number }
                 >;
-            }, { checklistId: string }>('capabilities.detect', { checklistId: 'new-session' });
+            }, { checklistId: string }>(RPC_METHODS.CAPABILITIES_DETECT, { checklistId: 'new-session' });
 
             expect(result.protocolVersion).toBe(1);
             expect(result.results['cli.codex'].ok).toBe(true);
@@ -201,7 +202,7 @@ describe('registerCommonHandlers capabilities', () => {
                 results: Record<string, { ok: boolean; data?: any }>;
             }, {
                 requests: Array<{ id: string; params?: any }>;
-            }>('capabilities.detect', {
+            }>(RPC_METHODS.CAPABILITIES_DETECT, {
                 requests: [
                     { id: 'cli.codex', params: { includeLoginStatus: true } },
                     { id: 'dep.codex-mcp-resume', params: { includeRegistry: true, onlyIfInstalled: true } },

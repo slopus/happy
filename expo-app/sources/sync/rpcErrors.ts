@@ -1,4 +1,7 @@
-export type RpcErrorCode = 'RPC_METHOD_NOT_AVAILABLE';
+import type { RpcErrorCode } from '@happy/protocol/rpc';
+import { RPC_ERROR_CODES } from '@happy/protocol/rpc';
+
+export type { RpcErrorCode };
 
 /**
  * Create a regular Error instance that also carries a structured RPC error code.
@@ -16,10 +19,9 @@ export function createRpcCallError(opts: { error: string; errorCode?: string | n
 }
 
 export function isRpcMethodNotAvailableError(err: { rpcErrorCode?: unknown; message?: unknown }): boolean {
-  if (err.rpcErrorCode === 'RPC_METHOD_NOT_AVAILABLE') {
+  if (err.rpcErrorCode === RPC_ERROR_CODES.METHOD_NOT_AVAILABLE) {
     return true;
   }
   const msg = typeof err.message === 'string' ? err.message.trim().toLowerCase() : '';
   return msg === 'rpc method not available';
 }
-

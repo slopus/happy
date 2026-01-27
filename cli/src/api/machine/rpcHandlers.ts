@@ -5,6 +5,7 @@ import {
   type SpawnSessionOptions,
   type SpawnSessionResult,
 } from '@/rpc/handlers/registerSessionHandlers';
+import { RPC_METHODS } from '@happy/protocol/rpc';
 
 import type { RpcHandlerManager } from '../rpc/RpcHandlerManager';
 
@@ -22,7 +23,7 @@ export function registerMachineRpcHandlers(params: Readonly<{
   const { spawnSession, stopSession, requestShutdown } = handlers;
 
   // Register spawn session handler
-  rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
+  rpcHandlerManager.registerHandler(RPC_METHODS.SPAWN_HAPPY_SESSION, async (params: any) => {
     const {
       directory,
       sessionId,
@@ -164,7 +165,7 @@ export function registerMachineRpcHandlers(params: Readonly<{
   });
 
   // Register stop session handler
-  rpcHandlerManager.registerHandler('stop-session', async (params: any) => {
+  rpcHandlerManager.registerHandler(RPC_METHODS.STOP_SESSION, async (params: any) => {
     const { sessionId } = params || {};
 
     if (!sessionId) {
@@ -181,7 +182,7 @@ export function registerMachineRpcHandlers(params: Readonly<{
   });
 
   // Register stop daemon handler
-  rpcHandlerManager.registerHandler('stop-daemon', () => {
+  rpcHandlerManager.registerHandler(RPC_METHODS.STOP_DAEMON, () => {
     logger.debug('[API MACHINE] Received stop-daemon RPC request');
 
     // Trigger shutdown callback after a delay

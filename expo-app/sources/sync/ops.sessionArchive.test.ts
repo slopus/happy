@@ -24,6 +24,7 @@ vi.mock('./sync', () => ({
 }));
 
 import { sessionArchive } from './ops';
+import { RPC_ERROR_CODES } from '@happy/protocol/rpc';
 
 describe('sessionArchive', () => {
   beforeEach(() => {
@@ -33,7 +34,7 @@ describe('sessionArchive', () => {
 
   it('falls back to session-end when RPC method is unavailable (errorCode)', async () => {
     const err: any = new Error('RPC method not available');
-    err.rpcErrorCode = 'RPC_METHOD_NOT_AVAILABLE';
+    err.rpcErrorCode = RPC_ERROR_CODES.METHOD_NOT_AVAILABLE;
     mockSessionRPC.mockRejectedValue(err);
 
     const res = await sessionArchive('sid-1');

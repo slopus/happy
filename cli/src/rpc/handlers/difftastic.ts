@@ -2,6 +2,7 @@ import { logger } from '@/ui/logger';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import { run as runDifftastic } from '@/integrations/difftastic/index';
 import { validatePath } from './pathSecurity';
+import { RPC_METHODS } from '@happy/protocol/rpc';
 
 interface DifftasticRequest {
     args: string[];
@@ -18,7 +19,7 @@ interface DifftasticResponse {
 
 export function registerDifftasticHandler(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
     // Difftastic handler - raw interface to difftastic
-    rpcHandlerManager.registerHandler<DifftasticRequest, DifftasticResponse>('difftastic', async (data) => {
+    rpcHandlerManager.registerHandler<DifftasticRequest, DifftasticResponse>(RPC_METHODS.DIFFTASTIC, async (data) => {
         logger.debug('Difftastic request with args:', data.args, 'cwd:', data.cwd);
 
         // Validate cwd if provided

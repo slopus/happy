@@ -1,6 +1,7 @@
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { isValidEnvVarKey, sanitizeEnvVarRecord } from '@/terminal/envVarSanitization';
+import { RPC_METHODS } from '@happy/protocol/rpc';
 
 type EnvPreviewSecretsPolicy = 'none' | 'redacted' | 'full';
 
@@ -82,7 +83,7 @@ export function registerPreviewEnvHandler(rpcHandlerManager: RpcHandlerManager):
     // - Uses daemon process.env as the base
     // - Optionally applies profile-provided extraEnv with the same ${VAR} expansion semantics used for spawns
     // - Applies daemon-controlled secret visibility policy (HAPPY_ENV_PREVIEW_SECRETS)
-    rpcHandlerManager.registerHandler<PreviewEnvRequest, PreviewEnvResponse>('preview-env', async (data) => {
+    rpcHandlerManager.registerHandler<PreviewEnvRequest, PreviewEnvResponse>(RPC_METHODS.PREVIEW_ENV, async (data) => {
         const keys = Array.isArray(data?.keys) ? data.keys : [];
         const maxKeys = 200;
         const trimmedKeys = keys.slice(0, maxKeys);
