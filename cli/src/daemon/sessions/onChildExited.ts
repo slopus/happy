@@ -3,8 +3,8 @@ import { logger } from '@/ui/logger';
 import { writeSessionExitReport } from '@/utils/sessionExitReport';
 
 import type { TrackedSession } from '../types';
-import { reportDaemonObservedSessionExit } from './sessionTermination';
-import { removeSessionMarker } from './sessionRegistry';
+import { reportDaemonObservedSessionExit } from '../sessionTermination';
+import { removeSessionMarker } from '../sessionRegistry';
 
 export type ChildExit = { reason: string; code: number | null; signal: string | null };
 
@@ -61,4 +61,3 @@ export function createOnChildExited(params: Readonly<{
     void removeSessionMarker(pid);
   };
 }
-

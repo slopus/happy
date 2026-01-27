@@ -10,7 +10,7 @@
  */
 
 // Core ACP backend
-export { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from './backend/AcpBackend';
+export { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from './AcpBackend';
 
 // Session update handlers (for testing and extension)
 export {
@@ -30,10 +30,10 @@ export {
   handleLegacyMessageChunk,
   handlePlanUpdate,
   handleThinkingUpdate,
-} from './backend/sessionUpdateHandlers';
+} from './sessionUpdateHandlers';
 // Factory helper for generic ACP backends
-export { createAcpBackend, type CreateAcpBackendOptions } from './backend/createAcpBackend';
+export { createAcpBackend, type CreateAcpBackendOptions } from './createAcpBackend';
 
 // Legacy aliases for backwards compatibility
-export { AcpBackend as AcpSdkBackend } from './backend/AcpBackend';
-export type { AcpBackendOptions as AcpSdkBackendOptions } from './backend/AcpBackend';
+export { AcpBackend as AcpSdkBackend } from './AcpBackend';
+export type { AcpBackendOptions as AcpSdkBackendOptions } from './AcpBackend';

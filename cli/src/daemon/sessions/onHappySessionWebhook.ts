@@ -2,9 +2,9 @@ import type { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 import { logger } from '@/ui/logger';
 
-import { findHappyProcessByPid } from '../diagnostics/doctor';
+import { findHappyProcessByPid } from '../doctor';
 import type { TrackedSession } from '../types';
-import { hashProcessCommand, writeSessionMarker } from './sessionRegistry';
+import { hashProcessCommand, writeSessionMarker } from '../sessionRegistry';
 
 export function createOnHappySessionWebhook(params: Readonly<{
   pidToTrackedSession: Map<number, TrackedSession>;
@@ -90,4 +90,3 @@ export function createOnHappySessionWebhook(params: Readonly<{
     });
   };
 }
-

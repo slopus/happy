@@ -1,6 +1,6 @@
 import { logger } from '@/ui/logger';
 
-import { isPidSafeHappySessionProcess } from './pidSafety';
+import { isPidSafeHappySessionProcess } from '../pidSafety';
 import type { TrackedSession } from '../types';
 
 export function createStopSession(params: Readonly<{
@@ -50,4 +50,3 @@ export function createStopSession(params: Readonly<{
     return false;
   };
 }
-

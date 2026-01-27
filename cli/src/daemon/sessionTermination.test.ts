@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { TrackedSession } from '../types';
+import type { TrackedSession } from './types';
 
 describe('daemon session termination reporting', () => {
   it('emits session-end when sessionId is known', async () => {

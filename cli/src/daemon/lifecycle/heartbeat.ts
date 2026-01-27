@@ -9,9 +9,9 @@ import { logger } from '@/ui/logger';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { writeSessionExitReport } from '@/utils/sessionExitReport';
 
-import { reportDaemonObservedSessionExit } from '../sessions/sessionTermination';
+import { reportDaemonObservedSessionExit } from '../sessionTermination';
 import type { TrackedSession } from '../types';
-import { removeSessionMarker } from '../sessions/sessionRegistry';
+import { removeSessionMarker } from '../sessionRegistry';
 
 export function startDaemonHeartbeatLoop(params: Readonly<{
   pidToTrackedSession: Map<number, TrackedSession>;

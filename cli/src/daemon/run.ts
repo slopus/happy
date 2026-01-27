@@ -24,14 +24,14 @@ import {
 } from '@/persistence';
 import { supportsVendorResume } from '@/utils/agentCapabilities';
 import { getCodexAcpDepStatus } from '@/capabilities/deps/codexAcp';
-import { createSessionAttachFile } from './sessions/sessionAttachFile';
-import { getDaemonShutdownExitCode, getDaemonShutdownWatchdogTimeoutMs } from './lifecycle/shutdownPolicy';
+import { createSessionAttachFile } from './sessionAttachFile';
+import { getDaemonShutdownExitCode, getDaemonShutdownWatchdogTimeoutMs } from './shutdownPolicy';
 
-import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './control/client';
-import { startDaemonControlServer } from './control/server';
-import { findHappyProcessByPid } from './diagnostics/doctor';
-import { hashProcessCommand } from './sessions/sessionRegistry';
-import { findRunningTrackedSessionById } from './sessions/findRunningTrackedSessionById';
+import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
+import { startDaemonControlServer } from './controlServer';
+import { findHappyProcessByPid } from './doctor';
+import { hashProcessCommand } from './sessionRegistry';
+import { findRunningTrackedSessionById } from './findRunningTrackedSessionById';
 import { reattachTrackedSessionsFromMarkers } from './sessions/reattachFromMarkers';
 import { createOnHappySessionWebhook } from './sessions/onHappySessionWebhook';
 import { createOnChildExited } from './sessions/onChildExited';

@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { HandlerContext, SessionUpdate } from './sessionUpdateHandlers';
 import { handleToolCall, handleToolCallUpdate } from './sessionUpdateHandlers';
-import { defaultTransport } from '../../transport/DefaultTransport';
-import { GeminiTransport } from '../../transport/handlers/GeminiTransport';
+import { defaultTransport } from '../transport/DefaultTransport';
+import { GeminiTransport } from '../transport/handlers/GeminiTransport';
 
 function createCtx(opts?: { transport?: HandlerContext['transport'] }): HandlerContext & { emitted: any[] } {
   const emitted: any[] = [];

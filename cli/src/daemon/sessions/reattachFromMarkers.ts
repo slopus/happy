@@ -1,9 +1,9 @@
 import { logger } from '@/ui/logger';
 
 import type { TrackedSession } from '../types';
-import { findAllHappyProcesses } from '../diagnostics/doctor';
-import { adoptSessionsFromMarkers } from './reattach';
-import { listSessionMarkers, removeSessionMarker } from './sessionRegistry';
+import { findAllHappyProcesses } from '../doctor';
+import { adoptSessionsFromMarkers } from '../reattach';
+import { listSessionMarkers, removeSessionMarker } from '../sessionRegistry';
 
 export async function reattachTrackedSessionsFromMarkers(params: Readonly<{
   pidToTrackedSession: Map<number, TrackedSession>;
@@ -30,4 +30,3 @@ export async function reattachTrackedSessionsFromMarkers(params: Readonly<{
     logger.debug('[DAEMON RUN] Failed to reattach sessions from disk markers', e);
   }
 }
-
