@@ -3,6 +3,8 @@ import type { AgentBackend } from '@/agent/core';
 import type { ChecklistId } from '@/capabilities/checklistIds';
 import type { Capability } from '@/capabilities/service';
 import type { CommandHandler } from '@/cli/commandRegistry';
+import type { CloudConnectTarget } from '@/cloud/connect/types';
+import type { DaemonSpawnHooks } from '@/daemon/spawnHooks';
 
 export type CatalogAgentId = Extract<AgentId, 'claude' | 'codex' | 'gemini' | 'opencode'>;
 
@@ -35,6 +37,18 @@ export type AgentCatalogEntry = Readonly<{
   getCliCommandHandler?: () => Promise<CommandHandler>;
   getCliCapabilityOverride?: () => Promise<Capability>;
   getCliDetect?: () => Promise<CliDetectSpec>;
+  /**
+   * Optional cloud connect target for this agent.
+   *
+   * When present, `happy connect <agent>` will be available.
+   */
+  getCloudConnectTarget?: () => Promise<CloudConnectTarget>;
+  /**
+   * Optional daemon spawn hooks for this agent.
+   *
+   * These are evaluated by the daemon before spawning a child process.
+   */
+  getDaemonSpawnHooks?: () => Promise<DaemonSpawnHooks>;
   /**
    * Optional ACP backend factory for this agent.
    *

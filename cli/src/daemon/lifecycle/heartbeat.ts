@@ -15,7 +15,7 @@ import { removeSessionMarker } from '../sessionRegistry';
 
 export function startDaemonHeartbeatLoop(params: Readonly<{
   pidToTrackedSession: Map<number, TrackedSession>;
-  codexHomeDirCleanupByPid: Map<number, () => void>;
+  spawnResourceCleanupByPid: Map<number, () => void>;
   sessionAttachCleanupByPid: Map<number, () => Promise<void>>;
   getApiMachineForSessions: () => ApiMachineClient | null;
   controlPort: number;
@@ -25,7 +25,7 @@ export function startDaemonHeartbeatLoop(params: Readonly<{
 }>): NodeJS.Timeout {
   const {
     pidToTrackedSession,
-    codexHomeDirCleanupByPid,
+    spawnResourceCleanupByPid,
     sessionAttachCleanupByPid,
     getApiMachineForSessions,
     controlPort,
@@ -71,10 +71,10 @@ export function startDaemonHeartbeatLoop(params: Readonly<{
               exit: { reason: 'process-missing', code: null, signal: null },
             });
           }
-          void writeSessionExitReport({
-            sessionId: tracked.happySessionId ?? null,
-            pid,
-            report: {
+        void writeSessionExitReport({
+          sessionId: tracked.happySessionId ?? null,
+          pid,
+          report: {
               observedAt: Date.now(),
               observedBy: 'daemon',
               reason: 'process-missing',
@@ -83,13 +83,13 @@ export function startDaemonHeartbeatLoop(params: Readonly<{
             },
           }).catch((e) => logger.debug('[DAEMON RUN] Failed to write session exit report', e));
         }
-        const cleanup = codexHomeDirCleanupByPid.get(pid);
+        const cleanup = spawnResourceCleanupByPid.get(pid);
         if (cleanup) {
-          codexHomeDirCleanupByPid.delete(pid);
+          spawnResourceCleanupByPid.delete(pid);
           try {
             cleanup();
           } catch (cleanupError) {
-            logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', cleanupError);
+            logger.debug('[DAEMON RUN] Failed to cleanup spawn resources', cleanupError);
           }
         }
         const attachCleanup = sessionAttachCleanupByPid.get(pid);
@@ -106,17 +106,17 @@ export function startDaemonHeartbeatLoop(params: Readonly<{
       }
     }
 
-    // Cleanup any CODEX_HOME temp dirs for sessions no longer tracked (e.g. stopSession removed them).
-    for (const [pid, cleanup] of codexHomeDirCleanupByPid.entries()) {
+    // Cleanup any spawn resources for sessions no longer tracked (e.g. stopSession removed them).
+    for (const [pid, cleanup] of spawnResourceCleanupByPid.entries()) {
       if (pidToTrackedSession.has(pid)) continue;
       try {
         process.kill(pid, 0);
       } catch {
-        codexHomeDirCleanupByPid.delete(pid);
+        spawnResourceCleanupByPid.delete(pid);
         try {
           cleanup();
         } catch (cleanupError) {
-          logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', cleanupError);
+          logger.debug('[DAEMON RUN] Failed to cleanup spawn resources', cleanupError);
         }
       }
     }

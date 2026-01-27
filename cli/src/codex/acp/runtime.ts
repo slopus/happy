@@ -5,6 +5,7 @@ import type { AgentBackend, AgentMessage, McpServerConfig } from '@/agent';
 import { createCatalogAcpBackend } from '@/agent/acp';
 import type { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { maybeUpdateCodexSessionIdMetadata } from '@/codex/utils/codexSessionIdMetadata';
+import type { CodexAcpBackendOptions, CodexAcpBackendResult } from '@/codex/acp/backend';
 import {
   handleAcpModelOutputDelta,
   handleAcpStatusRunning,
@@ -176,7 +177,7 @@ export function createCodexAcpRuntime(params: {
 
   const ensureBackend = async (): Promise<AgentBackend> => {
     if (backend) return backend;
-    const created = await createCatalogAcpBackend('codex', {
+    const created = await createCatalogAcpBackend<CodexAcpBackendOptions, CodexAcpBackendResult>('codex', {
       cwd: params.directory,
       mcpServers: params.mcpServers,
       permissionHandler: params.permissionHandler,

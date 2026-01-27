@@ -3,9 +3,7 @@ import { readCredentials } from '@/persistence';
 import { ApiClient } from '@/api/api';
 import { decodeJwtPayload } from '@/cloud/jwt/decodeJwtPayload';
 import type { CloudConnectTarget } from '@/cloud/connect/types';
-import { codexCloudConnect } from '@/codex/cloud/connect';
-import { claudeCloudConnect } from '@/claude/cloud/connect';
-import { geminiCloudConnect } from '@/gemini/cloud/connect';
+import { AGENTS } from '@/backends/catalog';
 
 /**
  * Handle connect subcommand
@@ -18,7 +16,12 @@ import { geminiCloudConnect } from '@/gemini/cloud/connect';
  */
 export async function handleConnectCommand(args: string[]): Promise<void> {
     const subcommand = args[0];
-    const targets: CloudConnectTarget[] = [geminiCloudConnect, codexCloudConnect, claudeCloudConnect];
+    const targets: CloudConnectTarget[] = [];
+    for (const entry of Object.values(AGENTS)) {
+      if (!entry.getCloudConnectTarget) continue;
+      targets.push(await entry.getCloudConnectTarget());
+    }
+    targets.sort((a, b) => a.id.localeCompare(b.id));
     const targetById = new Map(targets.map((t) => [t.id, t] as const));
 
     if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
@@ -43,7 +46,9 @@ export async function handleConnectCommand(args: string[]): Promise<void> {
 }
 
 function showConnectHelp(targets: ReadonlyArray<CloudConnectTarget>): void {
-    const targetLines = targets.map((t) => `  happy connect ${t.id.padEnd(12)} ${t.vendorDisplayName}`).join('\n');
+    const targetLines = targets.length > 0
+      ? targets.map((t) => `  happy connect ${t.id.padEnd(12)} ${t.vendorDisplayName}`).join('\n')
+      : '  (no connect targets registered)';
     console.log(`
 ${chalk.bold('happy connect')} - Connect AI vendor API keys to Happy cloud
 

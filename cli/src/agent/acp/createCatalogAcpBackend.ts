@@ -1,9 +1,6 @@
 import type { AgentBackend } from '@/agent/core';
 import { AGENTS, type CatalogAgentId } from '@/backends/catalog';
-import type { CatalogAcpBackendFactory } from '@/backends/types';
-import type { CodexAcpBackendOptions, CodexAcpBackendResult } from '@/codex/acp/backend';
-import type { GeminiBackendOptions, GeminiBackendResult } from '@/gemini/acp/backend';
-import type { OpenCodeBackendOptions } from '@/opencode/acp/backend';
+import type { CatalogAcpBackendCreateResult, CatalogAcpBackendFactory } from '@/backends/types';
 
 const cachedFactoryPromises = new Map<CatalogAgentId, Promise<CatalogAcpBackendFactory>>();
 
@@ -24,24 +21,13 @@ async function getCatalogAcpFactory(agentId: CatalogAgentId): Promise<CatalogAcp
   return await promise;
 }
 
-export type CatalogAcpAgentId = Extract<CatalogAgentId, 'codex' | 'gemini' | 'opencode'>;
-
-export type CatalogAcpBackendOptionsByAgent = Readonly<{
-  gemini: GeminiBackendOptions;
-  codex: CodexAcpBackendOptions;
-  opencode: OpenCodeBackendOptions;
-}>;
-
-export type CatalogAcpBackendResultByAgent = Readonly<{
-  gemini: GeminiBackendResult;
-  codex: CodexAcpBackendResult;
-  opencode: Readonly<{ backend: AgentBackend }>;
-}>;
-
-export async function createCatalogAcpBackend<TAgentId extends CatalogAcpAgentId>(
-  agentId: TAgentId,
-  opts: CatalogAcpBackendOptionsByAgent[TAgentId],
-): Promise<CatalogAcpBackendResultByAgent[TAgentId]> {
+export async function createCatalogAcpBackend<
+  TOptions,
+  TResult extends CatalogAcpBackendCreateResult = CatalogAcpBackendCreateResult,
+>(
+  agentId: CatalogAgentId,
+  opts: TOptions,
+): Promise<TResult> {
   const factory = await getCatalogAcpFactory(agentId);
-  return factory(opts) as CatalogAcpBackendResultByAgent[TAgentId];
+  return factory(opts as unknown) as TResult;
 }

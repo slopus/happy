@@ -10,11 +10,11 @@ export type ChildExit = { reason: string; code: number | null; signal: string | 
 
 export function createOnChildExited(params: Readonly<{
   pidToTrackedSession: Map<number, TrackedSession>;
-  codexHomeDirCleanupByPid: Map<number, () => void>;
+  spawnResourceCleanupByPid: Map<number, () => void>;
   sessionAttachCleanupByPid: Map<number, () => Promise<void>>;
   getApiMachineForSessions: () => ApiMachineClient | null;
 }>): (pid: number, exit: ChildExit) => void {
-  const { pidToTrackedSession, codexHomeDirCleanupByPid, sessionAttachCleanupByPid, getApiMachineForSessions } = params;
+  const { pidToTrackedSession, spawnResourceCleanupByPid, sessionAttachCleanupByPid, getApiMachineForSessions } = params;
 
   return (pid: number, exit: ChildExit) => {
     logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
@@ -41,13 +41,13 @@ export function createOnChildExited(params: Readonly<{
         },
       }).catch((e) => logger.debug('[DAEMON RUN] Failed to write session exit report', e));
     }
-    const cleanup = codexHomeDirCleanupByPid.get(pid);
+    const cleanup = spawnResourceCleanupByPid.get(pid);
     if (cleanup) {
-      codexHomeDirCleanupByPid.delete(pid);
+      spawnResourceCleanupByPid.delete(pid);
       try {
         cleanup();
       } catch (error) {
-        logger.debug('[DAEMON RUN] Failed to cleanup CODEX_HOME tmp dir', error);
+        logger.debug('[DAEMON RUN] Failed to cleanup spawn resources', error);
       }
     }
     const attachCleanup = sessionAttachCleanupByPid.get(pid);

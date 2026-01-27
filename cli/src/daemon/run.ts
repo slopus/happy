@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import os from 'os';
-import * as tmp from 'tmp';
 
 import { ApiClient } from '@/api/api';
 import type { ApiMachineClient } from '@/api/apiMachine';
@@ -14,7 +13,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { resolveAgentCliSubcommand } from '@/backends/catalog';
+import { AGENTS, resolveAgentCliSubcommand, resolveCatalogAgentId } from '@/backends/catalog';
 import {
   writeDaemonState,
   DaemonLocallyPersistedState,
@@ -24,7 +23,6 @@ import {
   readCredentials,
 } from '@/persistence';
 import { supportsVendorResume } from '@/utils/agentCapabilities';
-import { getCodexAcpDepStatus } from '@/capabilities/deps/codexAcp';
 import { createSessionAttachFile } from './sessionAttachFile';
 import { getDaemonShutdownExitCode, getDaemonShutdownWatchdogTimeoutMs } from './shutdownPolicy';
 
@@ -38,8 +36,6 @@ import { createOnHappySessionWebhook } from './sessions/onHappySessionWebhook';
 import { createOnChildExited } from './sessions/onChildExited';
 import { createStopSession } from './sessions/stopSession';
 import { startDaemonHeartbeatLoop } from './lifecycle/heartbeat';
-import { existsSync } from 'fs';
-import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { selectPreferredTmuxSessionName, TmuxUtilities, isTmuxAvailable } from '@/integrations/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
@@ -51,7 +47,6 @@ export { initialMachineMetadata } from './machine/metadata';
 import { createDaemonShutdownController } from './lifecycle/shutdown';
 import { buildTmuxSpawnConfig, buildTmuxWindowEnv } from './platform/tmux/spawnConfig';
 export { buildTmuxSpawnConfig, buildTmuxWindowEnv } from './platform/tmux/spawnConfig';
-
 export async function startDaemon(): Promise<void> {
   // We don't have cleanup function at the time of server construction
   // Control flow is:
@@ -114,7 +109,7 @@ export async function startDaemon(): Promise<void> {
 
 	    // Setup state - key by PID
 	    const pidToTrackedSession = new Map<number, TrackedSession>();
-	    const codexHomeDirCleanupByPid = new Map<number, () => void>();
+	    const spawnResourceCleanupByPid = new Map<number, () => void>();
 	    const sessionAttachCleanupByPid = new Map<number, () => Promise<void>>();
 	    let apiMachineForSessions: ApiMachineClient | null = null;
 
@@ -219,8 +214,14 @@ export async function startDaemon(): Promise<void> {
 		      }
 		      let directoryCreated = false;
 
-		      let codexHomeDirCleanup: (() => void) | null = null;
-		      let codexHomeDirCleanupArmed = false;
+          const catalogAgentId = resolveCatalogAgentId(options.agent ?? null);
+          const daemonSpawnHooks = AGENTS[catalogAgentId].getDaemonSpawnHooks
+            ? await AGENTS[catalogAgentId].getDaemonSpawnHooks!()
+            : null;
+
+		      let spawnResourceCleanupOnFailure: (() => void) | null = null;
+		      let spawnResourceCleanupOnExit: (() => void) | null = null;
+		      let spawnResourceCleanupArmed = false;
 		      let sessionAttachCleanup: (() => Promise<void>) | null = null;
 
 	      try {
@@ -276,18 +277,12 @@ export async function startDaemon(): Promise<void> {
         // Layer 1: Resolve authentication token if provided
         const authEnv: Record<string, string> = {};
         if (options.token) {
-          if (options.agent === 'codex') {
-
-            // Create a temporary directory for Codex
-            const codexHomeDir = tmp.dirSync();
-            codexHomeDirCleanup = codexHomeDir.removeCallback;
-
-            // Write the token to the temporary directory
-            await fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
-
-            // Set the environment variable for Codex
-            authEnv.CODEX_HOME = codexHomeDir.name;
-          } else { // Assuming claude
+          if (daemonSpawnHooks?.buildAuthEnv) {
+            const built = await daemonSpawnHooks.buildAuthEnv({ token: options.token });
+            Object.assign(authEnv, built.env);
+            spawnResourceCleanupOnFailure = built.cleanupOnFailure ?? null;
+            spawnResourceCleanupOnExit = built.cleanupOnExit ?? null;
+          } else {
             authEnv.CLAUDE_CODE_OAUTH_TOKEN = options.token;
           }
         }
@@ -344,9 +339,10 @@ export async function startDaemon(): Promise<void> {
           const errorMessage = `Authentication will fail - environment variables not found in daemon: ${missingVarDetails.join('; ')}. ` +
             `Ensure these variables are set in the daemon's environment (not just your shell) before starting sessions.`;
           logger.warn(`[DAEMON RUN] ${errorMessage}`);
-          if (codexHomeDirCleanup && !codexHomeDirCleanupArmed) {
-            codexHomeDirCleanup();
-            codexHomeDirCleanup = null;
+          if (spawnResourceCleanupOnFailure && !spawnResourceCleanupArmed) {
+            spawnResourceCleanupOnFailure();
+            spawnResourceCleanupOnFailure = null;
+            spawnResourceCleanupOnExit = null;
           }
           return {
             type: 'error',
@@ -354,41 +350,19 @@ export async function startDaemon(): Promise<void> {
           };
         }
 
-        const cleanupCodexHomeDir = () => {
-          if (codexHomeDirCleanup && !codexHomeDirCleanupArmed) {
-            codexHomeDirCleanup();
-            codexHomeDirCleanup = null;
+        const cleanupSpawnResources = () => {
+          if (spawnResourceCleanupOnFailure && !spawnResourceCleanupArmed) {
+            spawnResourceCleanupOnFailure();
+            spawnResourceCleanupOnFailure = null;
+            spawnResourceCleanupOnExit = null;
           }
         };
 
-        // Experimental Codex ACP (codex-acp) must be installed before we spawn a Codex session.
-        if (options.agent === 'codex' && experimentalCodexAcp === true) {
-          if (experimentalCodexResume === true) {
-            cleanupCodexHomeDir();
-            return {
-              type: 'error',
-              errorMessage: 'Invalid spawn options: Codex ACP and Codex resume MCP cannot both be enabled.',
-            };
-          }
-
-          const envOverride = typeof process.env.HAPPY_CODEX_ACP_BIN === 'string' ? process.env.HAPPY_CODEX_ACP_BIN.trim() : '';
-          if (envOverride) {
-            if (!existsSync(envOverride)) {
-              cleanupCodexHomeDir();
-              return {
-                type: 'error',
-                errorMessage: `Codex ACP is enabled, but HAPPY_CODEX_ACP_BIN does not exist: ${envOverride}`,
-              };
-            }
-          } else {
-            const status = await getCodexAcpDepStatus({ onlyIfInstalled: true });
-            if (!status.installed || !status.binPath) {
-              cleanupCodexHomeDir();
-              return {
-                type: 'error',
-                errorMessage: 'Codex ACP is enabled, but codex-acp is not installed. Install it from the Happy app (Machine details → Codex ACP) or disable the experiment.',
-              };
-            }
+        if (daemonSpawnHooks?.validateSpawn) {
+          const validation = await daemonSpawnHooks.validateSpawn({ experimentalCodexResume, experimentalCodexAcp });
+          if (!validation.ok) {
+            cleanupSpawnResources();
+            return { type: 'error', errorMessage: validation.errorMessage };
           }
         }
 
@@ -403,12 +377,12 @@ export async function startDaemon(): Promise<void> {
 	        const extraEnvForChild = { ...extraEnv };
 	        delete extraEnvForChild.TMUX_SESSION_NAME;
 	        delete extraEnvForChild.TMUX_TMPDIR;
-	        if (options.agent === 'codex' && experimentalCodexResume === true) {
-	          extraEnvForChild.HAPPY_EXPERIMENTAL_CODEX_RESUME = '1';
-	        }
-	        if (options.agent === 'codex' && experimentalCodexAcp === true) {
-	          extraEnvForChild.HAPPY_EXPERIMENTAL_CODEX_ACP = '1';
-	        }
+          if (daemonSpawnHooks?.buildExtraEnvForChild) {
+            Object.assign(
+              extraEnvForChild,
+              daemonSpawnHooks.buildExtraEnvForChild({ experimentalCodexResume, experimentalCodexAcp }),
+            );
+          }
 	        let sessionAttachFilePath: string | null = null;
 	        if (normalizedExistingSessionId) {
 	          const attach = await createSessionAttachFile({
@@ -543,9 +517,9 @@ export async function startDaemon(): Promise<void> {
 
 	            // Add to tracking map so webhook can find it later
 	            pidToTrackedSession.set(tmuxResult.pid, trackedSession);
-	            if (codexHomeDirCleanup) {
-	              codexHomeDirCleanupByPid.set(tmuxResult.pid, codexHomeDirCleanup);
-	              codexHomeDirCleanupArmed = true;
+	            if (spawnResourceCleanupOnExit) {
+	              spawnResourceCleanupByPid.set(tmuxResult.pid, spawnResourceCleanupOnExit);
+	              spawnResourceCleanupArmed = true;
 	            }
 	            if (sessionAttachCleanup) {
 	              sessionAttachCleanupByPid.set(tmuxResult.pid, sessionAttachCleanup);
@@ -642,9 +616,10 @@ export async function startDaemon(): Promise<void> {
 
 	          if (!happyProcess.pid) {
 	            logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
-	            if (codexHomeDirCleanup && !codexHomeDirCleanupArmed) {
-	              codexHomeDirCleanup();
-	              codexHomeDirCleanup = null;
+	            if (spawnResourceCleanupOnFailure && !spawnResourceCleanupArmed) {
+	              spawnResourceCleanupOnFailure();
+	              spawnResourceCleanupOnFailure = null;
+	              spawnResourceCleanupOnExit = null;
 	            }
 	            if (sessionAttachCleanup) {
 	              await sessionAttachCleanup();
@@ -672,9 +647,9 @@ export async function startDaemon(): Promise<void> {
 	          };
 
           pidToTrackedSession.set(happyProcess.pid, trackedSession);
-          if (codexHomeDirCleanup) {
-            codexHomeDirCleanupByPid.set(happyProcess.pid, codexHomeDirCleanup);
-            codexHomeDirCleanupArmed = true;
+          if (spawnResourceCleanupOnExit) {
+            spawnResourceCleanupByPid.set(happyProcess.pid, spawnResourceCleanupOnExit);
+            spawnResourceCleanupArmed = true;
           }
 
           happyProcess.on('exit', (code, signal) => {
@@ -725,9 +700,10 @@ export async function startDaemon(): Promise<void> {
           errorMessage: 'Unexpected error in session spawning'
         };
 	      } catch (error) {
-	        if (codexHomeDirCleanup && !codexHomeDirCleanupArmed) {
-	          codexHomeDirCleanup();
-	          codexHomeDirCleanup = null;
+	        if (spawnResourceCleanupOnFailure && !spawnResourceCleanupArmed) {
+	          spawnResourceCleanupOnFailure();
+	          spawnResourceCleanupOnFailure = null;
+	          spawnResourceCleanupOnExit = null;
 	        }
 	        if (sessionAttachCleanup) {
 	          await sessionAttachCleanup();
@@ -747,7 +723,7 @@ export async function startDaemon(): Promise<void> {
 	    // Handle child process exit
 	    const onChildExited = createOnChildExited({
 	      pidToTrackedSession,
-	      codexHomeDirCleanupByPid,
+	      spawnResourceCleanupByPid,
 	      sessionAttachCleanupByPid,
 	      getApiMachineForSessions: () => apiMachineForSessions,
 	    });
@@ -852,7 +828,7 @@ export async function startDaemon(): Promise<void> {
     // 4. Write heartbeat
     const restartOnStaleVersionAndHeartbeat = startDaemonHeartbeatLoop({
       pidToTrackedSession,
-      codexHomeDirCleanupByPid,
+      spawnResourceCleanupByPid,
       sessionAttachCleanupByPid,
       getApiMachineForSessions: () => apiMachineForSessions,
       controlPort,

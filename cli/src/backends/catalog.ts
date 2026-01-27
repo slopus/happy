@@ -13,6 +13,8 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
     getCliCommandHandler: async () => (await import('@/claude/cli/command')).handleClaudeCliCommand,
     getCliCapabilityOverride: async () => (await import('@/claude/cli/capability')).cliCapability,
     getCliDetect: async () => (await import('@/claude/cli/detect')).cliDetect,
+    getCloudConnectTarget: async () => (await import('@/claude/cloud/connect')).claudeCloudConnect,
+    getDaemonSpawnHooks: async () => (await import('@/claude/daemon/spawnHooks')).claudeDaemonSpawnHooks,
   },
   codex: {
     id: 'codex',
@@ -20,6 +22,8 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
     getCliCommandHandler: async () => (await import('@/codex/cli/command')).handleCodexCliCommand,
     getCliCapabilityOverride: async () => (await import('@/codex/cli/capability')).cliCapability,
     getCliDetect: async () => (await import('@/codex/cli/detect')).cliDetect,
+    getCloudConnectTarget: async () => (await import('@/codex/cloud/connect')).codexCloudConnect,
+    getDaemonSpawnHooks: async () => (await import('@/codex/daemon/spawnHooks')).codexDaemonSpawnHooks,
     getAcpBackendFactory: async () => {
       const { createCodexAcpBackend } = await import('@/codex/acp/backend');
       return (opts) => createCodexAcpBackend(opts as any);
@@ -32,6 +36,8 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
     getCliCommandHandler: async () => (await import('@/gemini/cli/command')).handleGeminiCliCommand,
     getCliCapabilityOverride: async () => (await import('@/gemini/cli/capability')).cliCapability,
     getCliDetect: async () => (await import('@/gemini/cli/detect')).cliDetect,
+    getCloudConnectTarget: async () => (await import('@/gemini/cloud/connect')).geminiCloudConnect,
+    getDaemonSpawnHooks: async () => (await import('@/gemini/daemon/spawnHooks')).geminiDaemonSpawnHooks,
     getAcpBackendFactory: async () => {
       const { createGeminiBackend } = await import('@/gemini/acp/backend');
       return (opts) => createGeminiBackend(opts as any);
@@ -44,6 +50,7 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
     getCliCommandHandler: async () => (await import('@/opencode/cli/command')).handleOpenCodeCliCommand,
     getCliCapabilityOverride: async () => (await import('@/opencode/cli/capability')).cliCapability,
     getCliDetect: async () => (await import('@/opencode/cli/detect')).cliDetect,
+    getDaemonSpawnHooks: async () => (await import('@/opencode/daemon/spawnHooks')).opencodeDaemonSpawnHooks,
     getAcpBackendFactory: async () => {
       const { createOpenCodeBackend } = await import('@/opencode/acp/backend');
       return (opts) => ({ backend: createOpenCodeBackend(opts as any) });
