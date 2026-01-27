@@ -68,6 +68,7 @@ import { buildMachineFromMachineActivityEphemeralUpdate, buildUpdatedMachineFrom
 import {
     buildUpdatedSessionFromSocketUpdate,
     fetchAndApplySessions,
+    fetchAndApplyMessages,
     handleDeleteSessionSocketUpdate,
     handleNewMessageSocketUpdate,
     repairInvalidReadStateV1 as repairInvalidReadStateV1Engine,
@@ -1424,59 +1425,15 @@ class Sync {
     }
 
     private fetchMessages = async (sessionId: string) => {
-        log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
-
-        // Get encryption - may not be ready yet if session was just created
-        // Throwing an error triggers backoff retry in InvalidateSync
-        const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) {
-            log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
-            throw new Error(`Session encryption not ready for ${sessionId}`);
-        }
-
-        // Request (apiSocket.request calibrates server time best-effort from the HTTP Date header)
-        const response = await apiSocket.request(`/v1/sessions/${sessionId}/messages`);
-        const data = await response.json();
-
-        // Collect existing messages
-        let eixstingMessages = this.sessionReceivedMessages.get(sessionId);
-        if (!eixstingMessages) {
-            eixstingMessages = new Set<string>();
-            this.sessionReceivedMessages.set(sessionId, eixstingMessages);
-        }
-
-        // Decrypt and normalize messages
-        let start = Date.now();
-        let normalizedMessages: NormalizedMessage[] = [];
-
-        // Filter out existing messages and prepare for batch decryption
-        const messagesToDecrypt: ApiMessage[] = [];
-        for (const msg of [...data.messages as ApiMessage[]].reverse()) {
-            if (!eixstingMessages.has(msg.id)) {
-                messagesToDecrypt.push(msg);
-            }
-        }
-
-        // Batch decrypt all messages at once
-        const decryptedMessages = await encryption.decryptMessages(messagesToDecrypt);
-
-        // Process decrypted messages
-        for (let i = 0; i < decryptedMessages.length; i++) {
-            const decrypted = decryptedMessages[i];
-            if (decrypted) {
-                eixstingMessages.add(decrypted.id);
-                // Normalize the decrypted message
-                let normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
-                if (normalized) {
-                    normalizedMessages.push(normalized);
-                }
-            }
-        }
-
-        // Apply to storage
-        this.applyMessages(sessionId, normalizedMessages);
-        storage.getState().applyMessagesLoaded(sessionId);
-        log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${normalizedMessages.length} messages`);
+        await fetchAndApplyMessages({
+            sessionId,
+            getSessionEncryption: (id) => this.encryption.getSessionEncryption(id),
+            request: (path) => apiSocket.request(path),
+            sessionReceivedMessages: this.sessionReceivedMessages,
+            applyMessages: (sid, messages) => this.applyMessages(sid, messages),
+            markMessagesLoaded: (sid) => storage.getState().applyMessagesLoaded(sid),
+            log,
+        });
     }
 
     private registerPushToken = async () => {
