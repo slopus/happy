@@ -81,7 +81,7 @@ Avoid flat folders growing without structure:
 - Prefer “noun folders” (e.g. `api/session/`, `daemon/lifecycle/`) over `misc/`.
 
 ### “Canonical entrypoints” rule
-If a file path is already the established entrypoint (e.g. `api/apiMachine.ts`, `daemon/run.ts`), keep it as a real orchestrator and extract internals under subfolders. Avoid turning it into a pure `export * from ...` façade unless it’s clearly temporary.
+If a file path is already the established entrypoint (e.g. `api/apiMachine.ts`, `daemon/run.ts`), keep it as the entrypoint and extract internals under subfolders so the file stays readable and reviewable.
 
 ## Architecture & Key Components
 
