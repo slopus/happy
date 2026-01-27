@@ -8,10 +8,12 @@
  * @module MobileMessageFormat
  */
 
+import type { AgentId } from '@happy/agents';
+
 /**
  * Supported agent types for the mobile app
  */
-export type MobileAgentType = 'gemini' | 'codex' | 'claude' | 'opencode';
+export type MobileAgentType = AgentId;
 
 /**
  * Message roles for the mobile app

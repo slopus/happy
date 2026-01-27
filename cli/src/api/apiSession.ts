@@ -633,7 +633,7 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - The message payload (type: 'message' | 'reasoning' | 'tool-call' | 'tool-result')
      */
     sendAgentMessage(
-        provider: 'gemini' | 'codex' | 'claude' | 'opencode',
+        provider: ACPProvider,
         body: ACPMessageData,
         opts?: { localId?: string; meta?: Record<string, unknown> },
     ) {

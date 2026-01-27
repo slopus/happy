@@ -10,6 +10,8 @@
 import os from 'node:os';
 import { resolve } from 'node:path';
 
+import type { AgentId } from '@happy/agents';
+
 import type { AgentState, Metadata, PermissionMode } from '@/api/types';
 import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
@@ -20,7 +22,7 @@ import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetada
 /**
  * Backend flavor identifier for session metadata.
  */
-export type BackendFlavor = 'claude' | 'codex' | 'gemini' | 'opencode';
+export type BackendFlavor = AgentId;
 
 /**
  * Options for creating session metadata.
