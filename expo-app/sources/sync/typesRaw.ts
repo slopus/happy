@@ -47,7 +47,13 @@ export type RawToolUseContent = z.infer<typeof rawToolUseContentSchema>;
 const rawToolResultContentSchema = z.object({
     type: z.literal('tool_result'),
     tool_use_id: z.string(),
-    content: z.union([z.array(z.object({ type: z.literal('text'), text: z.string() })), z.string()]),
+    content: z.union([
+        z.array(z.union([
+            z.object({ type: z.literal('text'), text: z.string() }),
+            z.object({ type: z.literal('tool_reference'), tool_name: z.string() }),  // Tool references from ToolSearch
+        ])),
+        z.string()
+    ]),
     is_error: z.boolean().optional(),
     permissions: z.object({
         date: z.number(),
@@ -176,6 +182,7 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
         z.object({ type: z.literal('summary'), summary: z.string() }),
         z.object({ type: z.literal('assistant'), message: z.object({ role: z.literal('assistant'), model: z.string(), content: z.array(rawAgentContentSchema), usage: usageDataSchema.optional() }), parent_tool_use_id: z.string().nullable().optional() }),
         z.object({ type: z.literal('user'), message: z.object({ role: z.literal('user'), content: z.union([z.string(), z.array(rawAgentContentSchema)]) }), parent_tool_use_id: z.string().nullable().optional(), toolUseResult: z.any().nullable().optional() }),
+        z.object({ type: z.literal('progress') }).passthrough(),  // Progress events (hook_progress, mcp_progress, etc.)
     ]), z.object({
         isSidechain: z.boolean().nullish(),
         isCompactSummary: z.boolean().nullish(),
@@ -528,7 +535,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                             content.push({
                                 ...c,  // WOLOG: Preserve all fields including unknown ones
                                 type: 'tool-result',
-                                content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content[0].text),
+                                content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : (c.content[0]?.type === 'text' ? c.content[0].text : '')),
                                 is_error: c.is_error || false,
                                 uuid: raw.content.data.uuid,
                                 parentUUID: raw.content.data.parentUuid ?? null,
