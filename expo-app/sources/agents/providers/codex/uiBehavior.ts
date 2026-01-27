@@ -1,13 +1,24 @@
 import { buildAcpLoadSessionPrefetchRequest, readAcpLoadSessionSupport, shouldPrefetchAcpCapabilities } from '@/agents/acpRuntimeResume';
 import type { ResumeCapabilityOptions } from '@/agents/resumeCapabilities';
+import { getCodexAcpDepData } from '@/capabilities/codexAcpDep';
+import { getCodexMcpResumeDepData } from '@/capabilities/codexMcpResume';
+import { CAPABILITIES_REQUEST_RESUME_CODEX } from '@/capabilities/requests';
 
 import type {
+    AgentResumeExperiments,
     AgentUiBehavior,
     NewSessionPreflightContext,
     NewSessionPreflightIssue,
     NewSessionRelevantInstallableDepsContext,
     ResumePreflightContext,
 } from '@/agents/registryUiBehavior';
+
+const CODEX_SWITCH_RESUME_MCP = 'resumeMcp';
+const CODEX_SWITCH_RESUME_ACP = 'resumeAcp';
+
+function getSwitch(experiments: AgentResumeExperiments, id: string): boolean {
+    return experiments.switches[id] === true;
+}
 
 export type CodexSpawnSessionExtras = Readonly<{
     experimentalCodexResume: boolean;
@@ -21,30 +32,26 @@ export type CodexResumeSessionExtras = Readonly<{
 
 export function computeCodexSpawnSessionExtras(opts: {
     agentId: string;
-    experimentsEnabled: boolean;
-    expCodexResume: boolean;
-    expCodexAcp: boolean;
+    experiments: AgentResumeExperiments;
     resumeSessionId: string;
 }): CodexSpawnSessionExtras | null {
     if (opts.agentId !== 'codex') return null;
-    if (opts.experimentsEnabled !== true) return null;
+    if (opts.experiments.enabled !== true) return null;
     return {
-        experimentalCodexResume: opts.expCodexResume === true && opts.resumeSessionId.trim().length > 0,
-        experimentalCodexAcp: opts.expCodexAcp === true,
+        experimentalCodexResume: getSwitch(opts.experiments, CODEX_SWITCH_RESUME_MCP) === true && opts.resumeSessionId.trim().length > 0,
+        experimentalCodexAcp: getSwitch(opts.experiments, CODEX_SWITCH_RESUME_ACP) === true,
     };
 }
 
 export function computeCodexResumeSessionExtras(opts: {
     agentId: string;
-    experimentsEnabled: boolean;
-    expCodexResume: boolean;
-    expCodexAcp: boolean;
+    experiments: AgentResumeExperiments;
 }): CodexResumeSessionExtras | null {
     if (opts.agentId !== 'codex') return null;
-    if (opts.experimentsEnabled !== true) return null;
+    if (opts.experiments.enabled !== true) return null;
     return {
-        experimentalCodexResume: opts.expCodexResume === true,
-        experimentalCodexAcp: opts.expCodexAcp === true,
+        experimentalCodexResume: getSwitch(opts.experiments, CODEX_SWITCH_RESUME_MCP) === true,
+        experimentalCodexAcp: getSwitch(opts.experiments, CODEX_SWITCH_RESUME_ACP) === true,
     };
 }
 
@@ -52,9 +59,7 @@ export function getCodexNewSessionPreflightIssues(ctx: NewSessionPreflightContex
     if (ctx.agentId !== 'codex') return [];
     const extras = computeCodexSpawnSessionExtras({
         agentId: 'codex',
-        experimentsEnabled: ctx.experimentsEnabled,
-        expCodexResume: ctx.expCodexResume,
-        expCodexAcp: ctx.expCodexAcp,
+        experiments: ctx.experiments,
         resumeSessionId: ctx.resumeSessionId,
     });
 
@@ -82,13 +87,11 @@ export function getCodexNewSessionPreflightIssues(ctx: NewSessionPreflightContex
 
 export function getCodexNewSessionRelevantInstallableDepKeys(ctx: NewSessionRelevantInstallableDepsContext): readonly string[] {
     if (ctx.agentId !== 'codex') return [];
-    if (ctx.experimentsEnabled !== true) return [];
+    if (ctx.experiments.enabled !== true) return [];
 
     const extras = computeCodexSpawnSessionExtras({
         agentId: 'codex',
-        experimentsEnabled: ctx.experimentsEnabled,
-        expCodexResume: ctx.expCodexResume,
-        expCodexAcp: ctx.expCodexAcp,
+        experiments: ctx.experiments,
         resumeSessionId: ctx.resumeSessionId,
     });
 
@@ -101,14 +104,19 @@ export function getCodexNewSessionRelevantInstallableDepKeys(ctx: NewSessionRele
 export function getCodexResumePreflightIssues(ctx: ResumePreflightContext): readonly NewSessionPreflightIssue[] {
     const extras = computeCodexResumeSessionExtras({
         agentId: 'codex',
-        experimentsEnabled: ctx.experimentsEnabled,
-        expCodexResume: ctx.expCodexResume,
-        expCodexAcp: ctx.expCodexAcp,
+        experiments: ctx.experiments,
     });
     if (!extras) return [];
 
+    const codexAcpDep = getCodexAcpDepData(ctx.results);
+    const codexMcpResumeDep = getCodexMcpResumeDepData(ctx.results);
+    const deps = {
+        codexAcpInstalled: typeof codexAcpDep?.installed === 'boolean' ? codexAcpDep.installed : null,
+        codexMcpResumeInstalled: typeof codexMcpResumeDep?.installed === 'boolean' ? codexMcpResumeDep.installed : null,
+    };
+
     const issues: NewSessionPreflightIssue[] = [];
-    if (extras.experimentalCodexAcp === true && ctx.deps.codexAcpInstalled === false) {
+    if (extras.experimentalCodexAcp === true && deps.codexAcpInstalled === false) {
         issues.push({
             id: 'codex-acp-not-installed',
             titleKey: 'errors.codexAcpNotInstalledTitle',
@@ -117,7 +125,7 @@ export function getCodexResumePreflightIssues(ctx: ResumePreflightContext): read
             action: 'openMachine',
         });
     }
-    if (extras.experimentalCodexResume === true && ctx.deps.codexMcpResumeInstalled === false) {
+    if (extras.experimentalCodexResume === true && deps.codexMcpResumeInstalled === false) {
         issues.push({
             id: 'codex-mcp-resume-not-installed',
             titleKey: 'errors.codexResumeNotInstalledTitle',
@@ -131,38 +139,55 @@ export function getCodexResumePreflightIssues(ctx: ResumePreflightContext): read
 
 export const CODEX_UI_BEHAVIOR_OVERRIDE: AgentUiBehavior = {
     resume: {
-        getAllowExperimentalVendorResume: ({ experimentsEnabled, expCodexResume, expCodexAcp }) => {
-            return experimentsEnabled && (expCodexResume || expCodexAcp);
+        experimentSwitches: [
+            { id: CODEX_SWITCH_RESUME_MCP, settingKey: 'expCodexResume' },
+            { id: CODEX_SWITCH_RESUME_ACP, settingKey: 'expCodexAcp' },
+        ],
+        getAllowExperimentalVendorResume: ({ experiments }) => {
+            return experiments.enabled === true && (getSwitch(experiments, CODEX_SWITCH_RESUME_MCP) || getSwitch(experiments, CODEX_SWITCH_RESUME_ACP));
+        },
+        getExperimentalVendorResumeRequiresRuntime: ({ experiments }) => {
+            if (experiments.enabled !== true) return false;
+            // ACP-only mode must fail closed until ACP loadSession support is confirmed.
+            return getSwitch(experiments, CODEX_SWITCH_RESUME_ACP) === true && getSwitch(experiments, CODEX_SWITCH_RESUME_MCP) !== true;
         },
         // Codex ACP mode can support vendor-resume via ACP `loadSession`.
         // We probe this dynamically (same as Gemini/OpenCode) and only enforce it when `expCodexAcp` is enabled.
-        getAllowRuntimeResume: (results) => readAcpLoadSessionSupport('codex', results),
-        getRuntimeResumePrefetchPlan: (results) => {
+        getAllowRuntimeResume: ({ experiments, results }) => {
+            if (experiments.enabled !== true) return false;
+            if (getSwitch(experiments, CODEX_SWITCH_RESUME_ACP) !== true) return false;
+            return readAcpLoadSessionSupport('codex', results);
+        },
+        getRuntimeResumePrefetchPlan: ({ experiments, results }) => {
+            if (experiments.enabled !== true) return null;
+            if (getSwitch(experiments, CODEX_SWITCH_RESUME_ACP) !== true) return null;
             if (!shouldPrefetchAcpCapabilities('codex', results)) return null;
             return { request: buildAcpLoadSessionPrefetchRequest('codex'), timeoutMs: 8_000 };
         },
+        getPreflightPrefetchPlan: ({ experiments }) => {
+            if (experiments.enabled !== true) return null;
+            if (!(getSwitch(experiments, CODEX_SWITCH_RESUME_MCP) || getSwitch(experiments, CODEX_SWITCH_RESUME_ACP))) return null;
+            return { request: CAPABILITIES_REQUEST_RESUME_CODEX, timeoutMs: 12_000 };
+        },
+        getPreflightIssues: getCodexResumePreflightIssues,
     },
     newSession: {
         getPreflightIssues: getCodexNewSessionPreflightIssues,
         getRelevantInstallableDepKeys: getCodexNewSessionRelevantInstallableDepKeys,
     },
     payload: {
-        buildSpawnSessionExtras: ({ agentId, experimentsEnabled, expCodexResume, expCodexAcp, resumeSessionId }) => {
+        buildSpawnSessionExtras: ({ agentId, experiments, resumeSessionId }) => {
             const extras = computeCodexSpawnSessionExtras({
                 agentId,
-                experimentsEnabled,
-                expCodexResume,
-                expCodexAcp,
+                experiments,
                 resumeSessionId,
             });
             return extras ?? {};
         },
-        buildResumeSessionExtras: ({ agentId, experimentsEnabled, expCodexResume, expCodexAcp }) => {
+        buildResumeSessionExtras: ({ agentId, experiments }) => {
             const extras = computeCodexResumeSessionExtras({
                 agentId,
-                experimentsEnabled,
-                expCodexResume,
-                expCodexAcp,
+                experiments,
             });
             return extras ?? {};
         },

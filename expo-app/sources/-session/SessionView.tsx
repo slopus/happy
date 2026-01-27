@@ -12,9 +12,9 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort, resumeSession } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useMachine, useRealtimeStatus, useSessionMessages, useSessionPendingMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useMachine, useRealtimeStatus, useSessionMessages, useSessionPendingMessages, useSessionUsage, useSetting, useSettings } from '@/sync/storage';
 import { canResumeSessionWithOptions, getAgentVendorResumeId } from '@/agents/resumeCapabilities';
-import { DEFAULT_AGENT_ID, getAgentCore, resolveAgentIdFromFlavor, buildResumeSessionExtrasFromUiState, getResumePreflightIssues } from '@/agents/catalog';
+import { DEFAULT_AGENT_ID, getAgentCore, resolveAgentIdFromFlavor, buildResumeSessionExtrasFromUiState, getAgentResumeExperimentsFromSettings, getResumePreflightIssues, getResumePreflightPrefetchPlan } from '@/agents/catalog';
 import { useResumeCapabilityOptions } from '@/agents/useResumeCapabilityOptions';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
@@ -25,9 +25,6 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { formatPathRelativeToHome, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
-import { CAPABILITIES_REQUEST_RESUME_CODEX } from '@/capabilities/requests';
-import { getCodexAcpDepData } from '@/capabilities/codexAcpDep';
-import { getCodexMcpResumeDepData } from '@/capabilities/codexMcpResume';
 import { getMachineCapabilitiesSnapshot, prefetchMachineCapabilities, useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import { describeAcpLoadSessionSupport } from '@/agents/acpRuntimeResume';
 import type { ModelMode, PermissionMode } from '@/sync/permissionTypes';
@@ -217,19 +214,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const { messages: pendingMessages } = useSessionPendingMessages(sessionId);
-    const experiments = useSetting('experiments');
     const expFileViewer = useSetting('expFileViewer');
-    const expCodexResume = useSetting('expCodexResume');
-    const expCodexAcp = useSetting('expCodexAcp');
+    const settings = useSettings();
 
     // Inactive session resume state
     const isSessionActive = session.presence === 'online';
     const { resumeCapabilityOptions } = useResumeCapabilityOptions({
         agentId,
         machineId: typeof machineId === 'string' ? machineId : null,
-        experimentsEnabled: experiments === true,
-        expCodexResume: expCodexResume === true,
-        expCodexAcp: expCodexAcp === true,
+        settings,
         enabled: !isSessionActive,
     });
 
@@ -399,44 +392,40 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 return;
             }
 
-            if (agentId === 'codex' && experiments === true && (expCodexResume === true || expCodexAcp === true)) {
+            const snapshotBefore = getMachineCapabilitiesSnapshot(base.machineId);
+            const resultsBefore = snapshotBefore?.response.results as any;
+            const preflightPlan = getResumePreflightPrefetchPlan({ agentId, settings, results: resultsBefore });
+            if (preflightPlan) {
                 try {
                     await prefetchMachineCapabilities({
                         machineId: base.machineId,
-                        request: CAPABILITIES_REQUEST_RESUME_CODEX,
+                        request: preflightPlan.request,
+                        timeoutMs: preflightPlan.timeoutMs,
                     });
                 } catch {
                     // Non-blocking; fall back to attempting resume (pending queue preserves user message).
                 }
+            }
 
-                const snapshot = getMachineCapabilitiesSnapshot(base.machineId);
-                const results = snapshot?.response.results;
-                const codexAcpDep = getCodexAcpDepData(results);
-                const codexMcpResumeDep = getCodexMcpResumeDepData(results);
+            const snapshot = getMachineCapabilitiesSnapshot(base.machineId);
+            const results = snapshot?.response.results as any;
+            const issues = getResumePreflightIssues({
+                agentId,
+                experiments: getAgentResumeExperimentsFromSettings(agentId, settings),
+                results,
+            });
 
-                const issues = getResumePreflightIssues({
-                    agentId: 'codex',
-                    experimentsEnabled: true,
-                    expCodexResume: expCodexResume === true,
-                    expCodexAcp: expCodexAcp === true,
-                    deps: {
-                        codexAcpInstalled: typeof codexAcpDep?.installed === 'boolean' ? codexAcpDep.installed : null,
-                        codexMcpResumeInstalled: typeof codexMcpResumeDep?.installed === 'boolean' ? codexMcpResumeDep.installed : null,
-                    },
-                });
-
-                const blockingIssue = issues[0] ?? null;
-                if (blockingIssue) {
-                    const openMachine = await Modal.confirm(
-                        t(blockingIssue.titleKey),
-                        t(blockingIssue.messageKey),
-                        { confirmText: t(blockingIssue.confirmTextKey) }
-                    );
-                    if (openMachine && blockingIssue.action === 'openMachine') {
-                        router.push(`/machine/${base.machineId}` as any);
-                    }
-                    return;
+            const blockingIssue = issues[0] ?? null;
+            if (blockingIssue) {
+                const openMachine = await Modal.confirm(
+                    t(blockingIssue.titleKey),
+                    t(blockingIssue.messageKey),
+                    { confirmText: t(blockingIssue.confirmTextKey) }
+                );
+                if (openMachine && blockingIssue.action === 'openMachine') {
+                    router.push(`/machine/${base.machineId}` as any);
                 }
+                return;
             }
 
             const result = await resumeSession({
@@ -445,9 +434,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 sessionEncryptionVariant: 'dataKey',
                 ...buildResumeSessionExtrasFromUiState({
                     agentId,
-                    experimentsEnabled: experiments === true,
-                    expCodexResume: expCodexResume === true,
-                    expCodexAcp: expCodexAcp === true,
+                    settings,
                 }),
             });
 
@@ -460,7 +447,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         } finally {
             setIsResuming(false);
         }
-    }, [agentId, experiments, expCodexAcp, expCodexResume, resumeCapabilityOptions, router, session, sessionId]);
+    }, [agentId, resumeCapabilityOptions, router, session, sessionId, settings]);
 
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
@@ -689,7 +676,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 isMicActive={micButtonState.isMicActive}
                 onAbort={() => sessionAbort(sessionId)}
                 showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
-                onFileViewerPress={(experiments && expFileViewer) ? () => router.push(`/session/${sessionId}/files`) : undefined}
+                onFileViewerPress={(settings.experiments === true && expFileViewer === true) ? () => router.push(`/session/${sessionId}/files`) : undefined}
                 // Autocomplete configuration
                 autocompletePrefixes={['@', '/']}
                 autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Platform, useWindowDimensions } from 'react-native';
-import { useAllMachines, storage, useSetting, useSettingMutable } from '@/sync/storage';
+import { useAllMachines, storage, useSetting, useSettingMutable, useSettings } from '@/sync/storage';
 import { useRouter, useLocalSearchParams, useNavigation, usePathname } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -37,10 +37,11 @@ import { resolveTerminalSpawnOptions } from '@/sync/terminalSettings';
 import type { CapabilityId } from '@/sync/capabilitiesProtocol';
 import {
     buildResumeCapabilityOptionsFromUiState,
+    getAgentResumeExperimentsFromSettings,
+    getAllowExperimentalResumeByAgentIdFromUiState,
     getNewSessionRelevantInstallableDepKeys,
     getResumeRuntimeSupportPrefetchPlan,
 } from '@/agents/catalog';
-import { buildAcpLoadSessionPrefetchRequest, shouldPrefetchAcpCapabilities } from '@/agents/acpRuntimeResume';
 import type { SecretChoiceByProfileIdByEnvVarName } from '@/utils/secrets/secretRequirementApply';
 import { getSecretSatisfaction } from '@/utils/secrets/secretSatisfaction';
 import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
@@ -194,19 +195,16 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
     const [secrets, setSecrets] = useSettingMutable('secrets');
     const [secretBindingsByProfileId, setSecretBindingsByProfileId] = useSettingMutable('secretBindingsByProfileId');
     const sessionDefaultPermissionModeByAgent = useSetting('sessionDefaultPermissionModeByAgent');
-    const experimentsEnabled = useSetting('experiments');
+    const settings = useSettings();
+    const experimentsEnabled = settings.experiments;
     const experimentalAgents = useSetting('experimentalAgents');
     const expSessionType = useSetting('expSessionType');
-    const expCodexResume = useSetting('expCodexResume');
-    const expCodexAcp = useSetting('expCodexAcp');
     const resumeCapabilityOptions = React.useMemo(() => {
         return buildResumeCapabilityOptionsFromUiState({
-            experimentsEnabled: experimentsEnabled === true,
-            expCodexResume: expCodexResume === true,
-            expCodexAcp: expCodexAcp === true,
+            settings,
             results: undefined,
         });
-    }, [expCodexAcp, expCodexResume, experimentsEnabled]);
+    }, [settings]);
     const useMachinePickerSearch = useSetting('useMachinePickerSearch');
     const usePathPickerSearch = useSetting('usePathPickerSearch');
     const [profiles, setProfiles] = useSettingMutable('profiles');
@@ -576,12 +574,10 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
 
     const resumeCapabilityOptionsResolved = React.useMemo(() => {
         return buildResumeCapabilityOptionsFromUiState({
-            experimentsEnabled: experimentsEnabled === true,
-            expCodexResume: expCodexResume === true,
-            expCodexAcp: expCodexAcp === true,
+            settings,
             results: selectedMachineCapabilitiesSnapshot?.response.results as any,
         });
-    }, [experimentsEnabled, expCodexAcp, expCodexResume, selectedMachineCapabilitiesSnapshot]);
+    }, [selectedMachineCapabilitiesSnapshot, settings]);
 
     const showResumePicker = React.useMemo(() => {
         const core = getAgentCore(agentType);
@@ -589,9 +585,9 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
             return core.resume.runtimeGate !== null;
         }
         if (core.resume.experimental !== true) return true;
-        // Experimental vendor resume (Codex): only show when explicitly enabled via experiments.
-        return experimentsEnabled === true && (expCodexResume === true || expCodexAcp === true);
-    }, [agentType, expCodexAcp, expCodexResume, experimentsEnabled]);
+        const allowExperimental = getAllowExperimentalResumeByAgentIdFromUiState(settings);
+        return allowExperimental[agentType] === true;
+    }, [agentType, settings]);
 
     const codexMcpResumeDep = React.useMemo(() => {
         return getCodexMcpResumeDepData(selectedMachineCapabilitiesSnapshot?.response.results);
@@ -606,11 +602,10 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
         if (experimentsEnabled !== true) return [];
         if (cliAvailability.available[agentType] !== true) return [];
 
+        const experiments = getAgentResumeExperimentsFromSettings(agentType, settings);
         const relevantKeys = getNewSessionRelevantInstallableDepKeys({
             agentId: agentType,
-            experimentsEnabled: true,
-            expCodexResume: expCodexResume === true,
-            expCodexAcp: expCodexAcp === true,
+            experiments,
             resumeSessionId,
         });
         if (relevantKeys.length === 0) return [];
@@ -625,9 +620,8 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
     }, [
         agentType,
         cliAvailability.available,
-        expCodexAcp,
-        expCodexResume,
         experimentsEnabled,
+        settings,
         resumeSessionId,
         selectedMachineCapabilitiesSnapshot,
         selectedMachineId,
@@ -660,13 +654,7 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
 
     React.useEffect(() => {
         const results = selectedMachineCapabilitiesSnapshot?.response.results as any;
-        const plan =
-            agentType === 'codex' && experimentsEnabled && expCodexAcp === true
-                ? (() => {
-                    if (!shouldPrefetchAcpCapabilities('codex', results)) return null;
-                    return { request: buildAcpLoadSessionPrefetchRequest('codex'), timeoutMs: 8_000 };
-                })()
-                : getResumeRuntimeSupportPrefetchPlan(agentType, results);
+        const plan = getResumeRuntimeSupportPrefetchPlan({ agentId: agentType, settings, results });
         if (!plan) return;
         if (!selectedMachineId) return;
         const machine = machines.find((m) => m.id === selectedMachineId);
@@ -679,7 +667,7 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
                 timeoutMs: plan.timeoutMs,
             });
         });
-    }, [agentType, expCodexAcp, experimentsEnabled, machines, selectedMachineCapabilitiesSnapshot, selectedMachineId]);
+    }, [agentType, experimentsEnabled, machines, selectedMachineCapabilitiesSnapshot, selectedMachineId, settings]);
 
     // Auto-correct invalid agent selection after CLI detection completes
     // This handles the case where lastUsedAgent was 'codex' but codex is not installed
@@ -1400,9 +1388,7 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
         setIsCreating,
         setIsResumeSupportChecking,
         sessionType,
-        experimentsEnabled,
-        expCodexResume,
-        expCodexAcp,
+        settings,
         useProfiles,
         selectedProfileId,
         profileMap,
@@ -1650,8 +1636,6 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
         isResumeSupportChecking,
         sessionPromptInputMaxHeight,
         agentInputExtraActionChips,
-
-        expCodexResume,
     });
 
     return {

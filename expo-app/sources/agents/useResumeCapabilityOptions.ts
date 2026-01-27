@@ -5,15 +5,14 @@ import { buildResumeCapabilityOptionsFromUiState, getResumeRuntimeSupportPrefetc
 import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import type { ResumeCapabilityOptions } from '@/agents/resumeCapabilities';
 import type { CapabilitiesDetectRequest } from '@/sync/capabilitiesProtocol';
+import type { Settings } from '@/sync/settings';
 
 const NOOP_REQUEST: CapabilitiesDetectRequest = { requests: [] };
 
 export function useResumeCapabilityOptions(opts: {
     agentId: AgentId;
     machineId: string | null | undefined;
-    experimentsEnabled: boolean;
-    expCodexResume: boolean;
-    expCodexAcp: boolean;
+    settings: Settings;
     enabled?: boolean;
 }): {
     resumeCapabilityOptions: ResumeCapabilityOptions;
@@ -38,12 +37,8 @@ export function useResumeCapabilityOptions(opts: {
     }, [state]);
 
     const plan = React.useMemo(() => {
-        // Codex is special: ACP probing is only relevant when the Codex ACP experiment is enabled.
-        if (opts.agentId === 'codex') {
-            if (!(opts.experimentsEnabled === true && opts.expCodexAcp === true)) return null;
-        }
-        return getResumeRuntimeSupportPrefetchPlan(opts.agentId, results);
-    }, [opts.agentId, opts.experimentsEnabled, opts.expCodexAcp, results]);
+        return getResumeRuntimeSupportPrefetchPlan({ agentId: opts.agentId, settings: opts.settings, results });
+    }, [opts.agentId, opts.settings, results]);
 
     const lastPrefetchRef = React.useRef<{ key: string; at: number } | null>(null);
 
@@ -67,12 +62,10 @@ export function useResumeCapabilityOptions(opts: {
 
     const resumeCapabilityOptions = React.useMemo(() => {
         return buildResumeCapabilityOptionsFromUiState({
-            experimentsEnabled: opts.experimentsEnabled,
-            expCodexResume: opts.expCodexResume,
-            expCodexAcp: opts.expCodexAcp,
+            settings: opts.settings,
             results,
         });
-    }, [opts.expCodexAcp, opts.expCodexResume, opts.experimentsEnabled, results]);
+    }, [opts.settings, results]);
 
     return { resumeCapabilityOptions };
 }

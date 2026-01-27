@@ -1,22 +1,28 @@
 import { describe, expect, it } from 'vitest';
 
+import { settingsDefaults } from '@/sync/settings';
+
 import {
     buildResumeCapabilityOptionsFromUiState,
     buildResumeSessionExtrasFromUiState,
     buildSpawnSessionExtrasFromUiState,
     buildWakeResumeExtras,
+    getAgentResumeExperimentsFromSettings,
     getNewSessionRelevantInstallableDepKeys,
     getResumePreflightIssues,
+    getResumePreflightPrefetchPlan,
     getResumeRuntimeSupportPrefetchPlan,
 } from './registryUiBehavior';
+
+function makeSettings(overrides: Partial<typeof settingsDefaults> = {}) {
+    return { ...settingsDefaults, ...overrides };
+}
 
 describe('buildSpawnSessionExtrasFromUiState', () => {
     it('enables codex resume only when spawning codex with a non-empty resume id', () => {
         expect(buildSpawnSessionExtrasFromUiState({
             agentId: 'codex',
-            experimentsEnabled: true,
-            expCodexResume: true,
-            expCodexAcp: false,
+            settings: makeSettings({ experiments: true, expCodexResume: true, expCodexAcp: false }),
             resumeSessionId: 'x1',
         })).toEqual({
             experimentalCodexResume: true,
@@ -25,9 +31,7 @@ describe('buildSpawnSessionExtrasFromUiState', () => {
 
         expect(buildSpawnSessionExtrasFromUiState({
             agentId: 'codex',
-            experimentsEnabled: true,
-            expCodexResume: true,
-            expCodexAcp: false,
+            settings: makeSettings({ experiments: true, expCodexResume: true, expCodexAcp: false }),
             resumeSessionId: '   ',
         })).toEqual({
             experimentalCodexResume: false,
@@ -38,9 +42,7 @@ describe('buildSpawnSessionExtrasFromUiState', () => {
     it('enables codex acp only when spawning codex and the flag is enabled', () => {
         expect(buildSpawnSessionExtrasFromUiState({
             agentId: 'codex',
-            experimentsEnabled: true,
-            expCodexResume: false,
-            expCodexAcp: true,
+            settings: makeSettings({ experiments: true, expCodexResume: false, expCodexAcp: true }),
             resumeSessionId: '',
         })).toEqual({
             experimentalCodexResume: false,
@@ -51,9 +53,7 @@ describe('buildSpawnSessionExtrasFromUiState', () => {
     it('returns an empty object for non-codex agents', () => {
         expect(buildSpawnSessionExtrasFromUiState({
             agentId: 'claude',
-            experimentsEnabled: true,
-            expCodexResume: true,
-            expCodexAcp: true,
+            settings: makeSettings({ experiments: true, expCodexResume: true, expCodexAcp: true }),
             resumeSessionId: 'x1',
         })).toEqual({});
     });
@@ -63,9 +63,7 @@ describe('buildResumeSessionExtrasFromUiState', () => {
     it('passes codex experiment flags through when experiments are enabled', () => {
         expect(buildResumeSessionExtrasFromUiState({
             agentId: 'codex',
-            experimentsEnabled: true,
-            expCodexResume: true,
-            expCodexAcp: false,
+            settings: makeSettings({ experiments: true, expCodexResume: true, expCodexAcp: false }),
         })).toEqual({
             experimentalCodexResume: true,
             experimentalCodexAcp: false,
@@ -75,32 +73,26 @@ describe('buildResumeSessionExtrasFromUiState', () => {
     it('returns false flags when experiments are disabled', () => {
         expect(buildResumeSessionExtrasFromUiState({
             agentId: 'codex',
-            experimentsEnabled: false,
-            expCodexResume: true,
-            expCodexAcp: true,
+            settings: makeSettings({ experiments: false, expCodexResume: true, expCodexAcp: true }),
         })).toEqual({});
     });
 
     it('returns an empty object for non-codex agents', () => {
         expect(buildResumeSessionExtrasFromUiState({
             agentId: 'claude',
-            experimentsEnabled: true,
-            expCodexResume: true,
-            expCodexAcp: true,
+            settings: makeSettings({ experiments: true, expCodexResume: true, expCodexAcp: true }),
         })).toEqual({});
     });
 });
 
 describe('getResumePreflightIssues', () => {
     it('returns a blocking issue when codex resume is requested but the resume dep is not installed', () => {
+        const settings = makeSettings({ experiments: true, expCodexResume: true, expCodexAcp: false });
         expect(getResumePreflightIssues({
             agentId: 'codex',
-            experimentsEnabled: true,
-            expCodexResume: true,
-            expCodexAcp: false,
-            deps: {
-                codexAcpInstalled: null,
-                codexMcpResumeInstalled: false,
+            experiments: getAgentResumeExperimentsFromSettings('codex', settings),
+            results: {
+                'dep.codex-mcp-resume': { ok: true, checkedAt: 1, data: { installed: false } },
             },
         })).toEqual([
             expect.objectContaining({
@@ -111,14 +103,12 @@ describe('getResumePreflightIssues', () => {
     });
 
     it('returns a blocking issue when codex acp is requested but the acp dep is not installed', () => {
+        const settings = makeSettings({ experiments: true, expCodexResume: false, expCodexAcp: true });
         expect(getResumePreflightIssues({
             agentId: 'codex',
-            experimentsEnabled: true,
-            expCodexResume: false,
-            expCodexAcp: true,
-            deps: {
-                codexAcpInstalled: false,
-                codexMcpResumeInstalled: null,
+            experiments: getAgentResumeExperimentsFromSettings('codex', settings),
+            results: {
+                'dep.codex-acp': { ok: true, checkedAt: 1, data: { installed: false } },
             },
         })).toEqual([
             expect.objectContaining({
@@ -129,39 +119,30 @@ describe('getResumePreflightIssues', () => {
     });
 
     it('returns empty when experiments are disabled or dep status is unknown', () => {
+        const disabled = makeSettings({ experiments: false, expCodexResume: true, expCodexAcp: true });
         expect(getResumePreflightIssues({
             agentId: 'codex',
-            experimentsEnabled: false,
-            expCodexResume: true,
-            expCodexAcp: true,
-            deps: {
-                codexAcpInstalled: false,
-                codexMcpResumeInstalled: false,
-            },
+            experiments: getAgentResumeExperimentsFromSettings('codex', disabled),
+            results: {
+                'dep.codex-acp': { ok: true, checkedAt: 1, data: { installed: false } },
+                'dep.codex-mcp-resume': { ok: true, checkedAt: 1, data: { installed: false } },
+            } as any,
         })).toEqual([]);
 
+        const unknown = makeSettings({ experiments: true, expCodexResume: true, expCodexAcp: true });
         expect(getResumePreflightIssues({
             agentId: 'codex',
-            experimentsEnabled: true,
-            expCodexResume: true,
-            expCodexAcp: true,
-            deps: {
-                codexAcpInstalled: null,
-                codexMcpResumeInstalled: null,
-            },
+            experiments: getAgentResumeExperimentsFromSettings('codex', unknown),
+            results: {} as any,
         })).toEqual([]);
     });
 
     it('returns empty for non-codex agents', () => {
+        const settings = makeSettings({ experiments: true, expCodexResume: true, expCodexAcp: true });
         expect(getResumePreflightIssues({
             agentId: 'claude',
-            experimentsEnabled: true,
-            expCodexResume: true,
-            expCodexAcp: true,
-            deps: {
-                codexAcpInstalled: false,
-                codexMcpResumeInstalled: false,
-            },
+            experiments: getAgentResumeExperimentsFromSettings('claude', settings),
+            results: {} as any,
         })).toEqual([]);
     });
 });
@@ -185,10 +166,9 @@ describe('buildWakeResumeExtras', () => {
 
 describe('buildResumeCapabilityOptionsFromUiState', () => {
     it('includes codex experimental resume and runtime resume support when detected', () => {
+        const settings = makeSettings({ experiments: true, expCodexResume: true, expCodexAcp: false });
         expect(buildResumeCapabilityOptionsFromUiState({
-            experimentsEnabled: true,
-            expCodexResume: true,
-            expCodexAcp: false,
+            settings,
             results: {
                 'cli.gemini': { ok: true, checkedAt: 1, data: { available: true, acp: { ok: true, loadSession: true } } },
             } as any,
@@ -199,10 +179,9 @@ describe('buildResumeCapabilityOptionsFromUiState', () => {
     });
 
     it('includes OpenCode runtime resume support when detected', () => {
+        const settings = makeSettings({ experiments: false, expCodexResume: false, expCodexAcp: false });
         expect(buildResumeCapabilityOptionsFromUiState({
-            experimentsEnabled: false,
-            expCodexResume: false,
-            expCodexAcp: false,
+            settings,
             results: {
                 'cli.opencode': { ok: true, checkedAt: 1, data: { available: true, acp: { ok: true, loadSession: true } } },
             } as any,
@@ -214,7 +193,7 @@ describe('buildResumeCapabilityOptionsFromUiState', () => {
 
 describe('getResumeRuntimeSupportPrefetchPlan', () => {
     it('prefetches gemini resume support when the ACP data is missing', () => {
-        expect(getResumeRuntimeSupportPrefetchPlan('gemini', undefined)).toEqual({
+        expect(getResumeRuntimeSupportPrefetchPlan({ agentId: 'gemini', settings: makeSettings(), results: undefined })).toEqual({
             request: {
                 requests: [
                     {
@@ -228,7 +207,7 @@ describe('getResumeRuntimeSupportPrefetchPlan', () => {
     });
 
     it('prefetches opencode resume support when the ACP data is missing', () => {
-        expect(getResumeRuntimeSupportPrefetchPlan('opencode', undefined)).toEqual({
+        expect(getResumeRuntimeSupportPrefetchPlan({ agentId: 'opencode', settings: makeSettings(), results: undefined })).toEqual({
             request: {
                 requests: [
                     {
@@ -242,39 +221,48 @@ describe('getResumeRuntimeSupportPrefetchPlan', () => {
     });
 });
 
+describe('getResumePreflightPrefetchPlan', () => {
+    it('prefetches codex resume checklist only when codex experiments are enabled', () => {
+        const disabled = makeSettings({ experiments: false, expCodexResume: true, expCodexAcp: true });
+        expect(getResumePreflightPrefetchPlan({ agentId: 'codex', settings: disabled, results: undefined })).toEqual(null);
+
+        const enabled = makeSettings({ experiments: true, expCodexResume: true, expCodexAcp: false });
+        expect(getResumePreflightPrefetchPlan({ agentId: 'codex', settings: enabled, results: undefined })).toEqual(
+            expect.objectContaining({
+                request: expect.objectContaining({ checklistId: expect.stringContaining('resume.codex') }),
+            }),
+        );
+    });
+});
+
 describe('getNewSessionRelevantInstallableDepKeys', () => {
     it('returns codex deps based on current spawn extras', () => {
+        const settings = makeSettings({ experiments: true, expCodexResume: true, expCodexAcp: true });
         expect(getNewSessionRelevantInstallableDepKeys({
             agentId: 'codex',
-            experimentsEnabled: true,
-            expCodexResume: true,
-            expCodexAcp: true,
+            experiments: getAgentResumeExperimentsFromSettings('codex', settings),
             resumeSessionId: 'x1',
         })).toEqual(['codex-mcp-resume', 'codex-acp']);
 
         expect(getNewSessionRelevantInstallableDepKeys({
             agentId: 'codex',
-            experimentsEnabled: true,
-            expCodexResume: true,
-            expCodexAcp: true,
+            experiments: getAgentResumeExperimentsFromSettings('codex', settings),
             resumeSessionId: '',
         })).toEqual(['codex-acp']);
     });
 
     it('returns empty for non-codex agents and when experiments are disabled', () => {
+        const settings = makeSettings({ experiments: true, expCodexResume: true, expCodexAcp: true });
         expect(getNewSessionRelevantInstallableDepKeys({
             agentId: 'claude',
-            experimentsEnabled: true,
-            expCodexResume: true,
-            expCodexAcp: true,
+            experiments: getAgentResumeExperimentsFromSettings('claude', settings),
             resumeSessionId: 'x1',
         })).toEqual([]);
 
+        const disabled = makeSettings({ experiments: false, expCodexResume: true, expCodexAcp: true });
         expect(getNewSessionRelevantInstallableDepKeys({
             agentId: 'codex',
-            experimentsEnabled: false,
-            expCodexResume: true,
-            expCodexAcp: true,
+            experiments: getAgentResumeExperimentsFromSettings('codex', disabled),
             resumeSessionId: 'x1',
         })).toEqual([]);
     });

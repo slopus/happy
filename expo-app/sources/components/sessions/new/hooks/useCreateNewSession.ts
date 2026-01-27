@@ -12,9 +12,9 @@ import { getSecretSatisfaction } from '@/utils/secrets/secretSatisfaction';
 import type { SecretChoiceByProfileIdByEnvVarName } from '@/utils/secrets/secretRequirementApply';
 import { clearNewSessionDraft } from '@/sync/persistence';
 import { getBuiltInProfile } from '@/sync/profileUtils';
-import type { AIBackendProfile, SavedSecret } from '@/sync/settings';
+import type { AIBackendProfile, SavedSecret, Settings } from '@/sync/settings';
 import { getAgentCore, type AgentId } from '@/agents/catalog';
-import { buildResumeCapabilityOptionsFromUiState, buildSpawnSessionExtrasFromUiState, getNewSessionPreflightIssues, getResumeRuntimeSupportPrefetchPlan } from '@/agents/catalog';
+import { buildResumeCapabilityOptionsFromUiState, buildSpawnSessionExtrasFromUiState, getAgentResumeExperimentsFromSettings, getNewSessionPreflightIssues, getResumeRuntimeSupportPrefetchPlan } from '@/agents/catalog';
 import { describeAcpLoadSessionSupport } from '@/agents/acpRuntimeResume';
 import { canAgentResume } from '@/agents/resumeCapabilities';
 import { formatResumeSupportDetailCode } from '@/components/sessions/new/modules/formatResumeSupportDetailCode';
@@ -23,6 +23,7 @@ import type { UseMachineEnvPresenceResult } from '@/hooks/useMachineEnvPresence'
 import { getMachineCapabilitiesSnapshot, prefetchMachineCapabilities } from '@/hooks/useMachineCapabilitiesCache';
 import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
 import { applyAuggieAllowIndexingEnv } from '@/agents/providers/auggie/indexing';
+import { SPAWN_SESSION_ERROR_CODES } from '@happy/protocol';
 
 export function useCreateNewSession(params: Readonly<{
     router: { push: (options: any) => void; replace: (path: any, options?: any) => void };
@@ -35,9 +36,7 @@ export function useCreateNewSession(params: Readonly<{
     setIsResumeSupportChecking: (v: boolean) => void;
 
     sessionType: 'simple' | 'worktree';
-    experimentsEnabled: boolean | null;
-    expCodexResume: boolean | null;
-    expCodexAcp: boolean | null;
+    settings: Settings;
     useProfiles: boolean;
     selectedProfileId: string | null;
     profileMap: Map<string, AIBackendProfile>;
@@ -80,7 +79,7 @@ export function useCreateNewSession(params: Readonly<{
             let actualPath = params.selectedPath;
 
             // Handle worktree creation
-            if (params.sessionType === 'worktree' && params.experimentsEnabled) {
+            if (params.sessionType === 'worktree' && params.settings.experiments === true) {
                 const worktreeResult = await createWorktree(params.selectedMachineId, params.selectedPath);
 
                 if (!worktreeResult.success) {
@@ -192,11 +191,10 @@ export function useCreateNewSession(params: Readonly<{
                 machineId: params.selectedMachineId,
             });
 
+            const experiments = getAgentResumeExperimentsFromSettings(params.agentType, params.settings);
             const preflightIssues = getNewSessionPreflightIssues({
                 agentId: params.agentType,
-                experimentsEnabled: params.experimentsEnabled === true,
-                expCodexResume: params.expCodexResume === true,
-                expCodexAcp: params.expCodexAcp === true,
+                experiments,
                 resumeSessionId: params.resumeSessionId,
                 deps: {
                     codexAcpInstalled: typeof params.codexAcpDep?.installed === 'boolean' ? params.codexAcpDep.installed : null,
@@ -221,19 +219,14 @@ export function useCreateNewSession(params: Readonly<{
                 const wanted = params.resumeSessionId.trim();
                 if (!wanted) return {};
 
-                const computeOptions = (results: any) => buildResumeCapabilityOptionsFromUiState({
-                    experimentsEnabled: params.experimentsEnabled === true,
-                    expCodexResume: params.expCodexResume === true,
-                    expCodexAcp: params.expCodexAcp === true,
-                    results,
-                });
+                const computeOptions = (results: any) => buildResumeCapabilityOptionsFromUiState({ settings: params.settings, results });
 
                 const snapshot = getMachineCapabilitiesSnapshot(params.selectedMachineId!);
                 const results = snapshot?.response.results as any;
                 let options = computeOptions(results);
 
                 if (!canAgentResume(params.agentType, options)) {
-                    const plan = getResumeRuntimeSupportPrefetchPlan(params.agentType, results);
+                    const plan = getResumeRuntimeSupportPrefetchPlan({ agentId: params.agentType, settings: params.settings, results });
                     if (plan) {
                         params.setIsResumeSupportChecking(true);
                         try {
@@ -292,9 +285,7 @@ export function useCreateNewSession(params: Readonly<{
                 resume: resumeDecision.resume,
                 ...buildSpawnSessionExtrasFromUiState({
                     agentId: params.agentType,
-                    experimentsEnabled: params.experimentsEnabled === true,
-                    expCodexResume: params.expCodexResume === true,
-                    expCodexAcp: params.expCodexAcp === true,
+                    settings: params.settings,
                     resumeSessionId: params.resumeSessionId,
                 }),
                 terminal,
@@ -361,9 +352,6 @@ export function useCreateNewSession(params: Readonly<{
         params.agentType,
         params.codexAcpDep,
         params.codexMcpResumeDep,
-        params.experimentsEnabled,
-        params.expCodexResume,
-        params.expCodexAcp,
         params.machineEnvPresence.meta,
         params.modelMode,
         params.permissionMode,
@@ -371,6 +359,7 @@ export function useCreateNewSession(params: Readonly<{
         params.recentMachinePaths,
         params.resumeSessionId,
         params.router,
+        params.settings,
         params.secretBindingsByProfileId,
         params.secrets,
         params.selectedMachineCapabilities,
@@ -388,4 +377,3 @@ export function useCreateNewSession(params: Readonly<{
 
     return { handleCreateSession };
 }
-import { SPAWN_SESSION_ERROR_CODES } from '@happy/protocol';

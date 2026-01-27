@@ -122,9 +122,6 @@ export function useNewSessionWizardProps(params: Readonly<{
     isResumeSupportChecking: boolean;
     sessionPromptInputMaxHeight: number;
     agentInputExtraActionChips?: ReadonlyArray<AgentInputExtraActionChip>;
-
-    // Kept for memo stability parity with prior implementation
-    expCodexResume: boolean | null;
 }>): Readonly<{
     layout: NewSessionWizardLayoutProps;
     profiles: NewSessionWizardProfilesProps;
@@ -388,7 +385,6 @@ export function useNewSessionWizardProps(params: Readonly<{
         params.agentInputExtraActionChips,
         params.canCreate,
         params.connectionStatus,
-        params.expCodexResume,
         params.experimentsEnabled,
         params.emptyAutocompletePrefixes,
         params.emptyAutocompleteSuggestions,
