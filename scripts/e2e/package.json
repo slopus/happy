@@ -1,0 +1,19 @@
+{
+    "name": "happy-e2e-tests",
+    "version": "1.0.0",
+    "description": "E2E tests for Happy project",
+    "type": "module",
+    "scripts": {
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:webapp": "vitest run --project webapp",
+        "test:cli": "vitest run --project cli",
+        "test:integration": "vitest run --project integration"
+    },
+    "devDependencies": {
+        "@types/node": "^22.0.0",
+        "playwright": "^1.57.0",
+        "typescript": "^5.0.0",
+        "vitest": "^3.0.0"
+    }
+}

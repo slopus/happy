@@ -1,0 +1,43 @@
+USER root
+
+# Install yarn
+RUN npm install -g yarn
+
+# Install system dependencies for happy-server
+RUN apt-get update && apt-get install -y \
+    postgresql \
+    postgresql-contrib \
+    redis-server \
+    lsof \
+    nmap \
+    wget 
+#    && rm -rf /var/lib/apt/lists/*
+
+# Install MinIO server
+RUN wget -q https://dl.min.io/server/minio/release/linux-amd64/minio \
+    && chmod +x minio \
+    && mv minio /usr/local/bin/
+
+# Install MinIO client (mc)
+RUN wget -q https://dl.min.io/client/mc/release/linux-amd64/mc \
+    && chmod +x mc \
+    && mv mc /usr/local/bin/
+
+# Install Playwright for browser automation testing
+RUN npm install -g playwright \
+    && npx playwright install chromium \
+    && npx playwright install-deps chromium
+
+# Expose ports for Happy services
+# happy-server API
+EXPOSE 3005
+# happy web client (Expo)
+EXPOSE 8081
+# MinIO API
+EXPOSE 9000
+# MinIO Console
+EXPOSE 9001
+# PostgreSQL
+EXPOSE 5432
+# Redis
+EXPOSE 6379   
