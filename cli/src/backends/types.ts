@@ -5,9 +5,15 @@ import type { CommandHandler } from '@/cli/commandRegistry';
 import type { CloudConnectTarget } from '@/cloud/connect/types';
 import type { DaemonSpawnHooks } from '@/daemon/spawnHooks';
 
-export const CATALOG_AGENT_IDS = ['claude', 'codex', 'gemini', 'opencode'] as const;
-export type CatalogAgentId = (typeof CATALOG_AGENT_IDS)[number];
-export const DEFAULT_CATALOG_AGENT_ID: CatalogAgentId = 'claude';
+import {
+  AGENT_IDS as CATALOG_AGENT_IDS,
+  DEFAULT_AGENT_ID as DEFAULT_CATALOG_AGENT_ID,
+  type AgentId as CatalogAgentId,
+  type VendorResumeSupportLevel,
+} from '@happy/agents';
+
+export { CATALOG_AGENT_IDS, DEFAULT_CATALOG_AGENT_ID };
+export type { CatalogAgentId, VendorResumeSupportLevel };
 
 export type CatalogAcpBackendCreateResult = Readonly<{ backend: AgentBackend }>;
 export type CatalogAcpBackendFactory = (opts: unknown) => CatalogAcpBackendCreateResult;
@@ -18,9 +24,6 @@ export type VendorResumeSupportParams = Readonly<{
 }>;
 
 export type VendorResumeSupportFn = (params: VendorResumeSupportParams) => boolean;
-
-export const VENDOR_RESUME_SUPPORT_LEVELS = ['supported', 'unsupported', 'experimental'] as const;
-export type VendorResumeSupportLevel = (typeof VENDOR_RESUME_SUPPORT_LEVELS)[number];
 
 export type HeadlessTmuxArgvTransform = (argv: string[]) => string[];
 
