@@ -8,6 +8,7 @@ import {
     buildSpawnSessionExtrasFromUiState,
     buildWakeResumeExtras,
     getAgentResumeExperimentsFromSettings,
+    getNewSessionPreflightIssues,
     getNewSessionRelevantInstallableDepKeys,
     getResumePreflightIssues,
     getResumePreflightPrefetchPlan,
@@ -265,5 +266,23 @@ describe('getNewSessionRelevantInstallableDepKeys', () => {
             experiments: getAgentResumeExperimentsFromSettings('codex', disabled),
             resumeSessionId: 'x1',
         })).toEqual([]);
+    });
+});
+
+describe('getNewSessionPreflightIssues', () => {
+    it('returns codex preflight issues based on machine results (deps missing)', () => {
+        const settings = makeSettings({ experiments: true, expCodexResume: true, expCodexAcp: true });
+        const issues = getNewSessionPreflightIssues({
+            agentId: 'codex',
+            experiments: getAgentResumeExperimentsFromSettings('codex', settings),
+            resumeSessionId: 'x1',
+            results: {
+                'dep.codex-mcp-resume': { ok: true, checkedAt: 1, data: { installed: false } },
+                'dep.codex-acp': { ok: true, checkedAt: 1, data: { installed: false } },
+            } as any,
+        });
+        expect(issues.length).toBeGreaterThan(0);
+        expect(issues[0]).toEqual(expect.objectContaining({ id: 'codex-acp-not-installed' }));
+        expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'codex-mcp-resume-not-installed' })]));
     });
 });

@@ -58,8 +58,6 @@ export function useCreateNewSession(params: Readonly<{
     sessionOnlySecretValueByProfileIdByEnvVarName: SecretChoiceByProfileIdByEnvVarName;
 
     selectedMachineCapabilities: any;
-    codexAcpDep: any;
-    codexMcpResumeDep: any;
 }>): Readonly<{
     handleCreateSession: () => void;
 }> {
@@ -191,15 +189,14 @@ export function useCreateNewSession(params: Readonly<{
                 machineId: params.selectedMachineId,
             });
 
+            const machineCapsSnapshot = getMachineCapabilitiesSnapshot(params.selectedMachineId);
+            const machineCapsResults = machineCapsSnapshot?.response.results as any;
             const experiments = getAgentResumeExperimentsFromSettings(params.agentType, params.settings);
             const preflightIssues = getNewSessionPreflightIssues({
                 agentId: params.agentType,
                 experiments,
                 resumeSessionId: params.resumeSessionId,
-                deps: {
-                    codexAcpInstalled: typeof params.codexAcpDep?.installed === 'boolean' ? params.codexAcpDep.installed : null,
-                    codexMcpResumeInstalled: typeof params.codexMcpResumeDep?.installed === 'boolean' ? params.codexMcpResumeDep.installed : null,
-                },
+                results: machineCapsResults,
             });
             const blockingIssue = preflightIssues[0] ?? null;
             if (blockingIssue) {
@@ -350,8 +347,6 @@ export function useCreateNewSession(params: Readonly<{
         }
     }, [
         params.agentType,
-        params.codexAcpDep,
-        params.codexMcpResumeDep,
         params.machineEnvPresence.meta,
         params.modelMode,
         params.permissionMode,

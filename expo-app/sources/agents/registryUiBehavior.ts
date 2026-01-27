@@ -64,10 +64,7 @@ export type NewSessionPreflightContext = Readonly<{
     agentId: AgentId;
     experiments: AgentResumeExperiments;
     resumeSessionId: string;
-    deps: Readonly<{
-        codexAcpInstalled: boolean | null;
-        codexMcpResumeInstalled: boolean | null;
-    }>;
+    results: CapabilityResults | undefined;
 }>;
 
 export type NewSessionRelevantInstallableDepsContext = Readonly<{

@@ -63,8 +63,15 @@ export function getCodexNewSessionPreflightIssues(ctx: NewSessionPreflightContex
         resumeSessionId: ctx.resumeSessionId,
     });
 
+    const codexAcpDep = getCodexAcpDepData(ctx.results);
+    const codexMcpResumeDep = getCodexMcpResumeDepData(ctx.results);
+    const deps = {
+        codexAcpInstalled: typeof codexAcpDep?.installed === 'boolean' ? codexAcpDep.installed : null,
+        codexMcpResumeInstalled: typeof codexMcpResumeDep?.installed === 'boolean' ? codexMcpResumeDep.installed : null,
+    };
+
     const issues: NewSessionPreflightIssue[] = [];
-    if (extras?.experimentalCodexAcp === true && ctx.deps.codexAcpInstalled === false) {
+    if (extras?.experimentalCodexAcp === true && deps.codexAcpInstalled === false) {
         issues.push({
             id: 'codex-acp-not-installed',
             titleKey: 'errors.codexAcpNotInstalledTitle',
@@ -73,7 +80,7 @@ export function getCodexNewSessionPreflightIssues(ctx: NewSessionPreflightContex
             action: 'openMachine',
         });
     }
-    if (extras?.experimentalCodexResume === true && ctx.deps.codexMcpResumeInstalled === false) {
+    if (extras?.experimentalCodexResume === true && deps.codexMcpResumeInstalled === false) {
         issues.push({
             id: 'codex-mcp-resume-not-installed',
             titleKey: 'errors.codexResumeNotInstalledTitle',

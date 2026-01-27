@@ -30,8 +30,6 @@ import { useMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
 import { InteractionManager } from 'react-native';
 import { getMachineCapabilitiesSnapshot, prefetchMachineCapabilities, prefetchMachineCapabilitiesIfStale, useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import { CAPABILITIES_REQUEST_NEW_SESSION } from '@/capabilities/requests';
-import { getCodexMcpResumeDepData } from '@/capabilities/codexMcpResume';
-import { getCodexAcpDepData } from '@/capabilities/codexAcpDep';
 import { getInstallableDepRegistryEntries } from '@/capabilities/installableDepsRegistry';
 import { resolveTerminalSpawnOptions } from '@/sync/terminalSettings';
 import type { CapabilityId } from '@/sync/capabilitiesProtocol';
@@ -588,14 +586,6 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
         const allowExperimental = getAllowExperimentalResumeByAgentIdFromUiState(settings);
         return allowExperimental[agentType] === true;
     }, [agentType, settings]);
-
-    const codexMcpResumeDep = React.useMemo(() => {
-        return getCodexMcpResumeDepData(selectedMachineCapabilitiesSnapshot?.response.results);
-    }, [selectedMachineCapabilitiesSnapshot]);
-
-    const codexAcpDep = React.useMemo(() => {
-        return getCodexAcpDepData(selectedMachineCapabilitiesSnapshot?.response.results);
-    }, [selectedMachineCapabilitiesSnapshot]);
 
     const wizardInstallableDeps = React.useMemo(() => {
         if (!selectedMachineId) return [];
@@ -1405,8 +1395,6 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
         selectedSecretIdByProfileIdByEnvVarName,
         sessionOnlySecretValueByProfileIdByEnvVarName,
         selectedMachineCapabilities,
-        codexAcpDep,
-        codexMcpResumeDep,
     });
 
     const handleCloseModal = React.useCallback(() => {
