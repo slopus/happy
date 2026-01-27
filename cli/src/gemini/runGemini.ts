@@ -22,9 +22,9 @@ import packageJson from '../../package.json';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
-import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { startHappyServer } from '@/mcp/startHappyServer';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
-import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
+import { registerKillSessionHandler } from '@/session/registerKillSessionHandler';
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -47,7 +47,8 @@ import { GeminiReasoningProcessor } from '@/gemini/utils/reasoningProcessor';
 import { GeminiDiffProcessor } from '@/gemini/utils/diffProcessor';
 import type { GeminiMode, CodexMessagePayload } from '@/gemini/types';
 import { CODEX_GEMINI_PERMISSION_MODES, isCodexGeminiPermissionMode, type CodexGeminiPermissionMode, type PermissionMode } from '@/api/types';
-import { GEMINI_MODEL_ENV, DEFAULT_GEMINI_MODEL, CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
+import { GEMINI_MODEL_ENV, DEFAULT_GEMINI_MODEL } from '@/gemini/constants';
+import { CHANGE_TITLE_INSTRUCTION } from '@/agent/runtime/changeTitleInstruction';
 import {
   readGeminiLocalConfig,
   saveGeminiModelToConfig,

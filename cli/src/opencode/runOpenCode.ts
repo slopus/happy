@@ -19,7 +19,7 @@ import { initialMachineMetadata } from '@/daemon/run';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { projectPath } from '@/projectPath';
-import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { startHappyServer } from '@/mcp/startHappyServer';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { createBaseSessionForAttach } from '@/agent/runtime/createBaseSessionForAttach';
 import {
@@ -30,7 +30,7 @@ import {
 } from '@/agent/runtime/startupSideEffects';
 import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
 import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/runtime/startupMetadataUpdate';
-import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
+import { registerKillSessionHandler } from '@/session/registerKillSessionHandler';
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
