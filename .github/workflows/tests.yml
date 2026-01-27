@@ -160,6 +160,15 @@ jobs:
         working-directory: cli
         run: ./node_modules/.bin/tsc -p ../packages/protocol/tsconfig.json
 
+      - name: Disable remote logging for CI (avoid hanging test process)
+        working-directory: cli
+        run: |
+          set -euo pipefail
+          if [ -f .env.integration-test ]; then
+            sed -i 's/^DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING=.*/DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING=/' .env.integration-test
+            sed -i 's/^DEBUG=.*/DEBUG=/' .env.integration-test
+          fi
+
       - name: Run tests
         working-directory: cli
         run: yarn test
