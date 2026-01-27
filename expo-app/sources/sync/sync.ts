@@ -52,6 +52,7 @@ import { didControlReturnToMobile } from './controlledByUserTransitions';
 import { chooseSubmitMode } from './submitMode';
 import type { SavedSecret } from './settings';
 import { scheduleDebouncedPendingSettingsFlush } from './engine/pendingSettings';
+import { syncSettings as syncSettingsEngine } from './engine/settings';
 import {
     createArtifactViaApi,
     fetchAndApplyArtifactsList,
@@ -1362,152 +1363,15 @@ class Sync {
 
     private syncSettings = async () => {
         if (!this.credentials) return;
-
-        const API_ENDPOINT = getServerUrl();
-        const maxRetries = 3;
-        let retryCount = 0;
-        let lastVersionMismatch: { expectedVersion: number; currentVersion: number; pendingKeys: string[] } | null = null;
-
-        // Apply pending settings
-        if (Object.keys(this.pendingSettings).length > 0) {
-            dbgSettings('syncSettings: pending detected; will POST', {
-                endpoint: API_ENDPOINT,
-                expectedVersion: storage.getState().settingsVersion ?? 0,
-                pendingKeys: Object.keys(this.pendingSettings).sort(),
-                pendingSummary: summarizeSettingsDelta(this.pendingSettings as Partial<Settings>),
-                base: summarizeSettings(storage.getState().settings, { version: storage.getState().settingsVersion }),
-            });
-
-            while (retryCount < maxRetries) {
-                let version = storage.getState().settingsVersion;
-                let settings = applySettings(storage.getState().settings, this.pendingSettings);
-                dbgSettings('syncSettings: POST attempt', {
-                    endpoint: API_ENDPOINT,
-                    attempt: retryCount + 1,
-                    expectedVersion: version ?? 0,
-                    merged: summarizeSettings(settings, { version }),
-                });
-                const response = await fetch(`${API_ENDPOINT}/v1/account/settings`, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        settings: await this.encryption.encryptRaw(settings),
-                        expectedVersion: version ?? 0
-                    }),
-                    headers: {
-                        'Authorization': `Bearer ${this.credentials.token}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-                const data = await response.json() as {
-                    success: false,
-                    error: string,
-                    currentVersion: number,
-                    currentSettings: string | null
-                } | {
-                    success: true
-                };
-                if (data.success) {
-                    this.pendingSettings = {};
-                    savePendingSettings({});
-                    dbgSettings('syncSettings: POST success; pending cleared', {
-                        endpoint: API_ENDPOINT,
-                        newServerVersion: (version ?? 0) + 1,
-                    });
-                    break;
-                }
-                if (data.error === 'version-mismatch') {
-                    lastVersionMismatch = {
-                        expectedVersion: version ?? 0,
-                        currentVersion: data.currentVersion,
-                        pendingKeys: Object.keys(this.pendingSettings).sort(),
-                    };
-                    // Parse server settings
-                    const serverSettings = data.currentSettings
-                        ? settingsParse(await this.encryption.decryptRaw(data.currentSettings))
-                        : { ...settingsDefaults };
-
-                    // Merge: server base + our pending changes (our changes win)
-                    const mergedSettings = applySettings(serverSettings, this.pendingSettings);
-                    dbgSettings('syncSettings: version-mismatch merge', {
-                        endpoint: API_ENDPOINT,
-                        expectedVersion: version ?? 0,
-                        currentVersion: data.currentVersion,
-                        pendingKeys: Object.keys(this.pendingSettings).sort(),
-                        serverParsed: summarizeSettings(serverSettings, { version: data.currentVersion }),
-                        merged: summarizeSettings(mergedSettings, { version: data.currentVersion }),
-                    });
-
-                    // Update local storage with merged result at server's version.
-                    //
-                    // Important: `data.currentVersion` can be LOWER than our local `settingsVersion`
-                    // (e.g. when switching accounts/servers, or after server-side reset). If we only
-                    // "apply when newer", we'd never converge and would retry forever.
-                    storage.getState().replaceSettings(mergedSettings, data.currentVersion);
-
-                    // Sync tracking state with merged settings
-                    if (tracking) {
-                        mergedSettings.analyticsOptOut ? tracking.optOut() : tracking.optIn();
-                    }
-
-                    // Log and retry
-                    retryCount++;
-                    continue;
-                } else {
-                    throw new Error(`Failed to sync settings: ${data.error}`);
-                }
-            }
-        }
-
-        // If exhausted retries, throw to trigger outer backoff delay
-        if (retryCount >= maxRetries) {
-            const mismatchHint = lastVersionMismatch
-                ? ` (expected=${lastVersionMismatch.expectedVersion}, current=${lastVersionMismatch.currentVersion}, pendingKeys=${lastVersionMismatch.pendingKeys.join(',')})`
-                : '';
-            throw new Error(`Settings sync failed after ${maxRetries} retries due to version conflicts${mismatchHint}`);
-        }
-
-        // Run request
-        const response = await fetch(`${API_ENDPOINT}/v1/account/settings`, {
-            headers: {
-                'Authorization': `Bearer ${this.credentials.token}`,
-                'Content-Type': 'application/json'
-            }
+        await syncSettingsEngine({
+            credentials: this.credentials,
+            encryption: this.encryption,
+            pendingSettings: this.pendingSettings,
+            clearPendingSettings: () => {
+                this.pendingSettings = {};
+                savePendingSettings({});
+            },
         });
-        if (!response.ok) {
-            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
-                throw new HappyError(`Failed to fetch settings (${response.status})`, false);
-            }
-            throw new Error(`Failed to fetch settings: ${response.status}`);
-        }
-        const data = await response.json() as {
-            settings: string | null,
-            settingsVersion: number
-        };
-
-        // Parse response
-        let parsedSettings: Settings;
-        if (data.settings) {
-            parsedSettings = settingsParse(await this.encryption.decryptRaw(data.settings));
-        } else {
-            parsedSettings = { ...settingsDefaults };
-        }
-        dbgSettings('syncSettings: GET applied', {
-            endpoint: API_ENDPOINT,
-            serverVersion: data.settingsVersion,
-            parsed: summarizeSettings(parsedSettings, { version: data.settingsVersion }),
-        });
-
-        // Apply settings to storage
-        storage.getState().applySettings(parsedSettings, data.settingsVersion);
-
-        // Sync PostHog opt-out state with settings
-        if (tracking) {
-            if (parsedSettings.analyticsOptOut) {
-                tracking.optOut();
-            } else {
-                tracking.optIn();
-            }
-        }
     }
 
     private fetchProfile = async () => {
