@@ -63,6 +63,8 @@ import {
     decryptSocketNewArtifactUpdate,
 } from './engine/artifacts';
 import { inferTaskLifecycleFromMessageContent, parseUpdateContainer } from './engine/updates';
+import { handleNewFeedPostUpdate } from './engine/feedSocketUpdates';
+import { handleTodoKvBatchUpdate } from './engine/todoSocketUpdates';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -2330,56 +2332,24 @@ class Sync {
         } else if (updateData.body.t === 'new-feed-post') {
             log.log('📰 Received new-feed-post update');
             const feedUpdate = updateData.body;
-            
-            // Convert to FeedItem with counter from cursor
-            const feedItem: FeedItem = {
-                id: feedUpdate.id,
-                body: feedUpdate.body,
-                cursor: feedUpdate.cursor,
-                createdAt: feedUpdate.createdAt,
-                repeatKey: feedUpdate.repeatKey,
-                counter: parseInt(feedUpdate.cursor.substring(2), 10)
-            };
-            
-            // Check if we need to fetch user for friend-related items
-            if (feedItem.body && (feedItem.body.kind === 'friend_request' || feedItem.body.kind === 'friend_accepted')) {
-                await this.assumeUsers([feedItem.body.uid]);
-                
-                // Check if user fetch failed (404) - don't store item if user not found
-                const users = storage.getState().users;
-                const userProfile = users[feedItem.body.uid];
-                if (userProfile === null || userProfile === undefined) {
-                    // User was not found or 404, don't store this item
-                    log.log(`📰 Skipping feed item ${feedItem.id} - user ${feedItem.body.uid} not found`);
-                    return;
-                }
-            }
-            
-            // Apply to storage (will handle repeatKey replacement)
-            storage.getState().applyFeedItems([feedItem]);
+
+            await handleNewFeedPostUpdate({
+                feedUpdate,
+                assumeUsers: (userIds) => this.assumeUsers(userIds),
+                getUsers: () => storage.getState().users,
+                applyFeedItems: (items) => storage.getState().applyFeedItems(items),
+                log,
+            });
         } else if (updateData.body.t === 'kv-batch-update') {
             log.log('📝 Received kv-batch-update');
             const kvUpdate = updateData.body;
 
-            // Process KV changes for todos
-            if (kvUpdate.changes && Array.isArray(kvUpdate.changes)) {
-                const todoChanges = kvUpdate.changes.filter(change =>
-                    change.key && change.key.startsWith('todo.')
-                );
-
-                if (todoChanges.length > 0) {
-                    log.log(`📝 Processing ${todoChanges.length} todo KV changes from socket`);
-
-                    // Apply the changes directly to avoid unnecessary refetch
-                    try {
-                        await this.applyTodoSocketUpdates(todoChanges);
-                    } catch (error) {
-                        console.error('Failed to apply todo socket updates:', error);
-                        // Fallback to refetch on error
-                        this.todosSync.invalidate();
-                    }
-                }
-            }
+            await handleTodoKvBatchUpdate({
+                kvUpdate,
+                applyTodoSocketUpdates: (changes) => this.applyTodoSocketUpdates(changes),
+                invalidateTodosSync: () => this.todosSync.invalidate(),
+                log,
+            });
         }
     }
 
