@@ -11,7 +11,7 @@ import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { AgentState } from "@/api/types";
 import { isToolAllowedForSession, makeToolIdentifier } from "@/utils/permissionToolIdentifier";
-import { recordToolTraceEvent, type ToolTraceProtocol } from '@/agent/toolTrace/toolTrace';
+import { recordToolTraceEvent, type ToolTraceProtocol } from '@/agent/tools/trace/toolTrace';
 
 /**
  * Permission response from the mobile app.

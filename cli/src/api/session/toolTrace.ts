@@ -1,5 +1,5 @@
 import type { RawJSONLines } from '@/claude/types';
-import { recordToolTraceEvent } from '@/agent/toolTrace/toolTrace';
+import { recordToolTraceEvent } from '@/agent/tools/trace/toolTrace';
 
 export function isToolTraceEnabled(): boolean {
     return (
@@ -128,4 +128,3 @@ export function recordAcpToolTraceEventIfNeeded(opts: {
         localId: opts.localId,
     });
 }
-

@@ -38,11 +38,11 @@ import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetada
 import { isExperimentalCodexAcpEnabled, isExperimentalCodexVendorResumeEnabled } from '@/utils/agentCapabilities';
 import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
 import { parseSpecialCommand } from '@/cli/parsers/specialCommands';
-import { createBaseSessionForAttach } from '@/agent/startup/createBaseSessionForAttach';
+import { createBaseSessionForAttach } from '@/agent/runtime/createBaseSessionForAttach';
 import { maybeUpdateCodexSessionIdMetadata } from './utils/codexSessionIdMetadata';
 import { createCodexAcpRuntime } from './acp/codexAcpRuntime';
-import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/startup/startupMetadataUpdate';
-import { persistTerminalAttachmentInfoIfNeeded, primeAgentStateForUi, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/agent/startup/startupSideEffects';
+import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/runtime/startupMetadataUpdate';
+import { persistTerminalAttachmentInfoIfNeeded, primeAgentStateForUi, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/agent/runtime/startupSideEffects';
 
 type ReadyEventOptions = {
     pending: unknown;

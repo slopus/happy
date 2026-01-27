@@ -21,15 +21,15 @@ import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { projectPath } from '@/projectPath';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
-import { createBaseSessionForAttach } from '@/agent/startup/createBaseSessionForAttach';
+import { createBaseSessionForAttach } from '@/agent/runtime/createBaseSessionForAttach';
 import {
   persistTerminalAttachmentInfoIfNeeded,
   primeAgentStateForUi,
   reportSessionToDaemonIfRunning,
   sendTerminalFallbackMessageIfNeeded,
-} from '@/agent/startup/startupSideEffects';
+} from '@/agent/runtime/startupSideEffects';
 import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
-import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/startup/startupMetadataUpdate';
+import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/runtime/startupMetadataUpdate';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
