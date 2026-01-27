@@ -319,16 +319,23 @@ export const ru: TranslationStructure = {
         failedToSendRequest: 'Не удалось отправить запрос в друзья',
         failedToResumeSession: 'Не удалось возобновить сессию',
         failedToSendMessage: 'Не удалось отправить сообщение',
-            missingPermissionId: 'Отсутствует идентификатор запроса разрешения',
-            codexResumeNotInstalledTitle: 'Codex resume не установлен на этой машине',
-            codexResumeNotInstalledMessage:
-                'Чтобы возобновить разговор Codex, установите сервер возобновления Codex на целевой машине (Детали машины → Возобновление Codex).',
-            codexAcpNotInstalledTitle: 'Codex ACP не установлен на этой машине',
-            codexAcpNotInstalledMessage:
-                'Чтобы использовать эксперимент Codex ACP, установите codex-acp на целевой машине (Детали машины → Codex ACP) или отключите эксперимент.',
-        },
+        cannotShareWithSelf: 'Нельзя поделиться с самим собой',
+        canOnlyShareWithFriends: 'Можно делиться только с друзьями',
+        shareNotFound: 'Общий доступ не найден',
+        publicShareNotFound: 'Публичная ссылка не найдена или истекла',
+	        consentRequired: 'Требуется согласие для доступа',
+	        maxUsesReached: 'Достигнут лимит использований',
+	        invalidShareLink: 'Недействительная или просроченная ссылка для обмена',
+	            missingPermissionId: 'Отсутствует идентификатор запроса разрешения',
+	            codexResumeNotInstalledTitle: 'Codex resume не установлен на этой машине',
+	            codexResumeNotInstalledMessage:
+	                'Чтобы возобновить разговор Codex, установите сервер возобновления Codex на целевой машине (Детали машины → Возобновление Codex).',
+	            codexAcpNotInstalledTitle: 'Codex ACP не установлен на этой машине',
+	            codexAcpNotInstalledMessage:
+	                'Чтобы использовать эксперимент Codex ACP, установите codex-acp на целевой машине (Детали машины → Codex ACP) или отключите эксперимент.',
+	    },
 
-    deps: {
+	    deps: {
         installNotSupported: 'Обновите Happy CLI, чтобы установить эту зависимость.',
         installFailed: 'Не удалось установить',
         installed: 'Установлено',
@@ -589,6 +596,8 @@ export const ru: TranslationStructure = {
         deleteSessionWarning: 'Это действие нельзя отменить. Все сообщения и данные, связанные с этой сессией, будут удалены навсегда.',
         failedToDeleteSession: 'Не удалось удалить сессию',
         sessionDeleted: 'Сессия успешно удалена',
+        manageSharing: 'Управление доступом',
+        manageSharingSubtitle: 'Поделиться сессией с друзьями или создать публичную ссылку',
         renameSession: 'Переименовать сессию',
         renameSessionSubtitle: 'Изменить отображаемое имя сессии',
         renameSessionPlaceholder: 'Введите название сессии...',
@@ -687,6 +696,62 @@ export const ru: TranslationStructure = {
         machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
             `“${machine}” не в сети, поэтому Happy пока не может возобновить эту сессию. Подключите машину, чтобы продолжить.`,
         machineOfflineCannotResume: 'Машина не в сети. Подключите её, чтобы возобновить эту сессию.',
+        sharing: {
+            title: 'Общий доступ',
+            directSharing: 'Прямой доступ',
+            addShare: 'Поделиться с другом',
+            accessLevel: 'Уровень доступа',
+            shareWith: 'Поделиться с',
+            sharedWith: 'Доступ предоставлен',
+            noShares: 'Не поделено',
+            viewOnly: 'Только просмотр',
+            viewOnlyDescription: 'Можно просматривать, но нельзя отправлять сообщения.',
+            viewOnlyMode: 'Только просмотр (общая сессия)',
+            noEditPermission: 'У вас доступ только для чтения к этой сессии.',
+            canEdit: 'Можно редактировать',
+            canEditDescription: 'Можно отправлять сообщения.',
+            canManage: 'Можно управлять',
+            canManageDescription: 'Можно управлять настройками общего доступа.',
+            stopSharing: 'Прекратить доступ',
+            recipientMissingKeys: 'Этот пользователь ещё не зарегистрировал ключи шифрования.',
+
+            publicLink: 'Публичная ссылка',
+            publicLinkActive: 'Публичная ссылка активна',
+            publicLinkDescription: 'Создайте ссылку, по которой любой сможет просмотреть эту сессию.',
+            createPublicLink: 'Создать публичную ссылку',
+            regeneratePublicLink: 'Пересоздать публичную ссылку',
+            deletePublicLink: 'Удалить публичную ссылку',
+            linkToken: 'Токен ссылки',
+            tokenNotRecoverable: 'Токен недоступен',
+            tokenNotRecoverableDescription:
+                'По соображениям безопасности токены публичных ссылок хранятся в виде хеша и не могут быть восстановлены. Пересоздайте ссылку, чтобы создать новый токен.',
+
+            expiresIn: 'Истекает через',
+            expiresOn: 'Истекает',
+            days7: '7 дней',
+            days30: '30 дней',
+            never: 'Никогда',
+
+            maxUsesLabel: 'Максимум использований',
+            unlimited: 'Без ограничений',
+            uses10: '10 использований',
+            uses50: '50 использований',
+            usageCount: 'Количество использований',
+            usageCountWithMax: ({ used, max }: { used: number; max: number }) => `${used}/${max} использований`,
+            usageCountUnlimited: ({ used }: { used: number }) => `${used} использований`,
+
+            requireConsent: 'Требовать согласие',
+            requireConsentDescription: 'Запрашивать согласие перед тем, как логировать доступ.',
+            consentRequired: 'Требуется согласие',
+            consentDescription: 'Эта ссылка требует вашего согласия на запись IP-адреса и user agent.',
+            acceptAndView: 'Принять и просмотреть',
+            sharedBy: ({ name }: { name: string }) => `Поделился ${name}`,
+
+            shareNotFound: 'Ссылка не найдена или истекла',
+            failedToDecrypt: 'Не удалось расшифровать сессию',
+            noMessages: 'Сообщений пока нет',
+            session: 'Сессия',
+        },
     },
 
     commandPalette: {
@@ -1238,6 +1303,8 @@ export const ru: TranslationStructure = {
         // Friends feature
         title: 'Друзья',
         manageFriends: 'Управляйте своими друзьями и связями',
+        sharedSessions: 'Общие сессии',
+        noSharedSessions: 'Пока нет общих сессий',
         searchTitle: 'Найти друзей',
         pendingRequests: 'Запросы в друзья',
         myFriends: 'Мои друзья',

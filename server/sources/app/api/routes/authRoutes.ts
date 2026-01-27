@@ -11,7 +11,18 @@ export function authRoutes(app: Fastify) {
             body: z.object({
                 publicKey: z.string(),
                 challenge: z.string(),
-                signature: z.string()
+                signature: z.string(),
+                contentPublicKey: z.string().optional(),
+                contentPublicKeySig: z.string().optional()
+            }).superRefine((value, ctx) => {
+                const hasContentKey = typeof value.contentPublicKey === 'string';
+                const hasContentSig = typeof value.contentPublicKeySig === 'string';
+                if (hasContentKey !== hasContentSig) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: 'contentPublicKey and contentPublicKeySig must be provided together'
+                    });
+                }
             })
         }
     }, async (request, reply) => {
@@ -19,17 +30,57 @@ export function authRoutes(app: Fastify) {
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const challenge = privacyKit.decodeBase64(request.body.challenge);
         const signature = privacyKit.decodeBase64(request.body.signature);
+        if (publicKey.length !== tweetnacl.sign.publicKeyLength) {
+            return reply.code(401).send({ error: 'Invalid public key' });
+        }
+        if (signature.length !== tweetnacl.sign.signatureLength) {
+            return reply.code(401).send({ error: 'Invalid signature' });
+        }
         const isValid = tweetnacl.sign.detached.verify(challenge, signature, publicKey);
         if (!isValid) {
             return reply.code(401).send({ error: 'Invalid signature' });
+        }
+
+        let contentPublicKey: Uint8Array | null = null;
+        let contentPublicKeySig: Uint8Array | null = null;
+        if (request.body.contentPublicKey && request.body.contentPublicKeySig) {
+            try {
+                contentPublicKey = privacyKit.decodeBase64(request.body.contentPublicKey);
+                contentPublicKeySig = privacyKit.decodeBase64(request.body.contentPublicKeySig);
+            } catch {
+                return reply.code(400).send({ error: 'Invalid content key encoding' });
+            }
+            if (contentPublicKey.length !== tweetnacl.box.publicKeyLength) {
+                return reply.code(400).send({ error: 'Invalid contentPublicKey' });
+            }
+            if (contentPublicKeySig.length !== tweetnacl.sign.signatureLength) {
+                return reply.code(400).send({ error: 'Invalid contentPublicKeySig' });
+            }
+
+            const binding = Buffer.concat([
+                Buffer.from('Happy content key v1\u0000', 'utf8'),
+                Buffer.from(contentPublicKey)
+            ]);
+            const isContentKeyValid = tweetnacl.sign.detached.verify(binding, contentPublicKeySig, publicKey);
+            if (!isContentKeyValid) {
+                return reply.code(400).send({ error: 'Invalid contentPublicKeySig' });
+            }
         }
 
         // Create or update user in database
         const publicKeyHex = privacyKit.encodeHex(publicKey);
         const user = await db.account.upsert({
             where: { publicKey: publicKeyHex },
-            update: { updatedAt: new Date() },
-            create: { publicKey: publicKeyHex }
+            update: {
+                updatedAt: new Date(),
+                ...(contentPublicKey ? { contentPublicKey: new Uint8Array(contentPublicKey) } : {}),
+                ...(contentPublicKeySig ? { contentPublicKeySig: new Uint8Array(contentPublicKeySig) } : {}),
+            },
+            create: {
+                publicKey: publicKeyHex,
+                ...(contentPublicKey ? { contentPublicKey: new Uint8Array(contentPublicKey) } : {}),
+                ...(contentPublicKeySig ? { contentPublicKeySig: new Uint8Array(contentPublicKeySig) } : {}),
+            }
         });
 
         return reply.send({

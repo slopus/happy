@@ -11,6 +11,8 @@ export function isPublicRouteForUnauthenticated(segments: string[]): boolean {
     // Restore / link account flows must work unauthenticated.
     if (first === 'restore') return true;
 
+    // Public share links must work unauthenticated.
+    if (first === 'share') return true;
+
     return false;
 }
-

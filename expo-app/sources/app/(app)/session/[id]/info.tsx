@@ -75,6 +75,7 @@ function SessionInfoContent({ session }: { session: Session }) {
     const experimentsEnabled = useSetting('experiments');
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
+    const canManageSharing = !session.accessLevel || session.accessLevel === 'admin';
     const agentId = resolveAgentIdFromFlavor(session.metadata?.flavor) ?? DEFAULT_AGENT_ID;
     const core = getAgentCore(agentId);
 
@@ -345,6 +346,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                             subtitle={t('sessionInfo.viewMachineSubtitle')}
                             icon={<Ionicons name="server-outline" size={29} color="#007AFF" />}
                             onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
+                        />
+                    )}
+                    {canManageSharing && (
+                        <Item
+                            title={t('sessionInfo.manageSharing')}
+                            subtitle={t('sessionInfo.manageSharingSubtitle')}
+                            icon={<Ionicons name="share-outline" size={29} color="#007AFF" />}
+                            onPress={() => router.push(`/session/${session.id}/sharing`)}
                         />
                     )}
                     {sessionStatus.isConnected && (

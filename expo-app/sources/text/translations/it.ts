@@ -591,6 +591,13 @@ export const it: TranslationStructure = {
         failedToSendRequest: 'Impossibile inviare la richiesta di amicizia',
         failedToResumeSession: 'Impossibile riprendere la sessione',
         failedToSendMessage: 'Impossibile inviare il messaggio',
+        cannotShareWithSelf: 'Non puoi condividere con te stesso',
+        canOnlyShareWithFriends: 'Puoi condividere solo con amici',
+        shareNotFound: 'Condivisione non trovata',
+        publicShareNotFound: 'Link pubblico non trovato o scaduto',
+        consentRequired: 'Consenso richiesto per l\'accesso',
+        maxUsesReached: 'Numero massimo di utilizzi raggiunto',
+        invalidShareLink: 'Link di condivisione non valido o scaduto',
         missingPermissionId: 'Manca l\'ID del permesso',
         codexResumeNotInstalledTitle: 'Codex resume non è installato su questa macchina',
         codexResumeNotInstalledMessage:
@@ -798,6 +805,62 @@ export const it: TranslationStructure = {
         machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
             `“${machine}” è offline, quindi Happy non può ancora riprendere questa sessione. Riporta la macchina online per continuare.`,
         machineOfflineCannotResume: 'La macchina è offline. Riportala online per riprendere questa sessione.',
+
+        sharing: {
+            title: 'Condivisione',
+            directSharing: 'Condivisione diretta',
+            addShare: 'Condividi con un amico',
+            accessLevel: 'Livello di accesso',
+            shareWith: 'Condividi con',
+            sharedWith: 'Condiviso con',
+            noShares: 'Non condiviso',
+            viewOnly: 'Solo visualizzazione',
+            viewOnlyDescription: 'Può vedere la sessione ma non inviare messaggi.',
+            viewOnlyMode: 'Solo visualizzazione (sessione condivisa)',
+            noEditPermission: 'Hai accesso in sola lettura a questa sessione.',
+            canEdit: 'Può modificare',
+            canEditDescription: 'Può inviare messaggi.',
+            canManage: 'Può gestire',
+            canManageDescription: 'Può gestire la condivisione.',
+            stopSharing: 'Interrompi condivisione',
+            recipientMissingKeys: 'Questo utente non ha ancora registrato le chiavi di crittografia.',
+
+            publicLink: 'Link pubblico',
+            publicLinkActive: 'Link pubblico attivo',
+            publicLinkDescription: 'Crea un link per permettere a chiunque di visualizzare questa sessione.',
+            createPublicLink: 'Crea link pubblico',
+            regeneratePublicLink: 'Rigenera link pubblico',
+            deletePublicLink: 'Elimina link pubblico',
+            linkToken: 'Token del link',
+            tokenNotRecoverable: 'Token non disponibile',
+            tokenNotRecoverableDescription: 'Per motivi di sicurezza, i token dei link pubblici vengono salvati come hash e non possono essere recuperati. Rigenera il link per creare un nuovo token.',
+
+            expiresIn: 'Scade tra',
+            expiresOn: 'Scade il',
+            days7: '7 giorni',
+            days30: '30 giorni',
+            never: 'Mai',
+
+            maxUsesLabel: 'Utilizzi massimi',
+            unlimited: 'Illimitato',
+            uses10: '10 utilizzi',
+            uses50: '50 utilizzi',
+            usageCount: 'Conteggio utilizzi',
+            usageCountWithMax: ({ used, max }: { used: number; max: number }) => `${used}/${max} utilizzi`,
+            usageCountUnlimited: ({ used }: { used: number }) => `${used} utilizzi`,
+
+            requireConsent: 'Richiedi consenso',
+            requireConsentDescription: "Chiedi il consenso prima di registrare l'accesso.",
+            consentRequired: 'Consenso richiesto',
+            consentDescription: 'Questo link richiede il tuo consenso per registrare IP e user agent.',
+            acceptAndView: 'Accetta e visualizza',
+            sharedBy: ({ name }: { name: string }) => `Condiviso da ${name}`,
+
+            shareNotFound: 'Link di condivisione non trovato o scaduto',
+            failedToDecrypt: 'Impossibile decifrare la sessione',
+            noMessages: 'Nessun messaggio',
+            session: 'Sessione',
+        },
     },
 
     commandPalette: {
@@ -902,12 +965,13 @@ export const it: TranslationStructure = {
         deleteSessionWarning: 'Questa azione non può essere annullata. Tutti i messaggi e i dati associati a questa sessione verranno eliminati definitivamente.',
         failedToDeleteSession: 'Impossibile eliminare la sessione',
         sessionDeleted: 'Sessione eliminata con successo',
+        manageSharing: 'Gestisci condivisione',
+        manageSharingSubtitle: 'Condividi questa sessione con amici o crea un link pubblico',
         renameSession: 'Rinomina sessione',
         renameSessionSubtitle: 'Cambia il nome visualizzato di questa sessione',
         renameSessionPlaceholder: 'Inserisci nome sessione...',
         failedToRenameSession: 'Impossibile rinominare la sessione',
         sessionRenamed: 'Sessione rinominata con successo',
-        
     },
 
     components: {
@@ -1469,6 +1533,8 @@ export const it: TranslationStructure = {
     friends: {
         // Friends feature
         title: 'Amici',
+        sharedSessions: 'Sessioni condivise',
+        noSharedSessions: 'Nessuna sessione condivisa',
         manageFriends: 'Gestisci i tuoi amici e le connessioni',
         searchTitle: 'Trova amici',
         pendingRequests: 'Richieste di amicizia',

@@ -52,6 +52,7 @@
     "@date-fns/tz": "^1.2.0",
     "@fastify/bearer-auth": "^10.1.1",
     "@fastify/cors": "^10.0.1",
+    "@fastify/rate-limit": "^10.3.0",
     "@prisma/client": "^6.11.1",
     "@socket.io/redis-streams-adapter": "^0.2.2",
     "@types/jsonwebtoken": "^9.0.10",

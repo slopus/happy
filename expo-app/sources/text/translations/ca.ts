@@ -337,16 +337,23 @@ export const ca: TranslationStructure = {
         failedToSendRequest: 'No s\'ha pogut enviar la sol·licitud d\'amistat',
         failedToResumeSession: 'No s’ha pogut reprendre la sessió',
         failedToSendMessage: 'No s’ha pogut enviar el missatge',
+        cannotShareWithSelf: 'No pots compartir amb tu mateix',
+        canOnlyShareWithFriends: 'Només pots compartir amb amics',
+        shareNotFound: 'Compartició no trobada',
+        publicShareNotFound: 'Enllaç públic no trobat o expirat',
+        consentRequired: 'Es requereix consentiment per a l\'accés',
+        maxUsesReached: 'S\'ha assolit el màxim d\'usos',
+        invalidShareLink: 'Enllaç de compartició no vàlid o caducat',
             missingPermissionId: 'Falta l’identificador de permís',
             codexResumeNotInstalledTitle: 'Codex resume no està instal·lat en aquesta màquina',
             codexResumeNotInstalledMessage:
                 'Per reprendre una conversa de Codex, instal·la el servidor de represa de Codex a la màquina de destinació (Detalls de la màquina → Represa de Codex).',
-            codexAcpNotInstalledTitle: 'Codex ACP no està instal·lat en aquesta màquina',
-            codexAcpNotInstalledMessage:
-                'Per fer servir l’experiment de Codex ACP, instal·la codex-acp a la màquina de destinació (Detalls de la màquina → Codex ACP) o desactiva l’experiment.',
-        },
+	        codexAcpNotInstalledTitle: 'Codex ACP no està instal·lat en aquesta màquina',
+	        codexAcpNotInstalledMessage:
+	            'Per fer servir l’experiment de Codex ACP, instal·la codex-acp a la màquina de destinació (Detalls de la màquina → Codex ACP) o desactiva l’experiment.',
+	},
 
-    deps: {
+	deps: {
         installNotSupported: 'Actualitza Happy CLI per instal·lar aquesta dependència.',
         installFailed: 'La instal·lació ha fallat',
         installed: 'Instal·lat',
@@ -518,7 +525,7 @@ export const ca: TranslationStructure = {
         empty: 'No s\'han trobat sessions',
         today: 'Avui',
         yesterday: 'Ahir',
-        daysAgo: ({ count }: { count: number }) => `fa ${count} ${count === 1 ? 'dia' : 'dies'}`,
+        daysAgo: ({ count }: { count: number }) => 'fa ' + count + ' ' + (count === 1 ? 'dia' : 'dies'),
         viewAll: 'Veure totes les sessions',
     },
 
@@ -544,6 +551,62 @@ export const ca: TranslationStructure = {
         machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
             `“${machine}” està fora de línia, així que Happy encara no pot reprendre aquesta sessió. Torna-la a posar en línia per continuar.`,
         machineOfflineCannotResume: 'La màquina està fora de línia. Torna-la a posar en línia per reprendre aquesta sessió.',
+
+        sharing: {
+            title: 'Compartició',
+            directSharing: 'Compartició directa',
+            addShare: 'Comparteix amb un amic',
+            accessLevel: "Nivell d'accés",
+            shareWith: 'Comparteix amb',
+            sharedWith: 'Compartit amb',
+            noShares: 'No compartit',
+            viewOnly: 'Només lectura',
+            viewOnlyDescription: 'Pot veure la sessió però no pot enviar missatges.',
+            viewOnlyMode: 'Només lectura (sessió compartida)',
+            noEditPermission: 'Tens accés de només lectura a aquesta sessió.',
+            canEdit: 'Pot editar',
+            canEditDescription: 'Pot enviar missatges.',
+            canManage: 'Pot gestionar',
+            canManageDescription: 'Pot gestionar la compartició.',
+            stopSharing: 'Deixa de compartir',
+            recipientMissingKeys: "Aquest usuari encara no ha registrat claus d'encriptació.",
+
+            publicLink: 'Enllaç públic',
+            publicLinkActive: "L'enllaç públic està actiu",
+            publicLinkDescription: 'Crea un enllaç perquè qualsevol pugui veure aquesta sessió.',
+            createPublicLink: 'Crea un enllaç públic',
+            regeneratePublicLink: "Regenera l'enllaç públic",
+            deletePublicLink: "Suprimeix l'enllaç públic",
+            linkToken: "Token de l'enllaç",
+            tokenNotRecoverable: 'Token no disponible',
+            tokenNotRecoverableDescription: "Per seguretat, els tokens d'enllaç públic es desen com a hash i no es poden recuperar. Regenera l'enllaç per crear un token nou.",
+
+            expiresIn: 'Caduca en',
+            expiresOn: 'Caduca el',
+            days7: '7 dies',
+            days30: '30 dies',
+            never: 'Mai',
+
+            maxUsesLabel: 'Ús màxim',
+            unlimited: 'Il·limitat',
+            uses10: '10 usos',
+            uses50: '50 usos',
+            usageCount: "Comptador d'usos",
+            usageCountWithMax: ({ used, max }: { used: number; max: number }) => `${used}/${max} usos`,
+            usageCountUnlimited: ({ used }: { used: number }) => `${used} usos`,
+
+            requireConsent: 'Requereix consentiment',
+            requireConsentDescription: "Demana consentiment abans de registrar l'accés.",
+            consentRequired: 'Consentiment requerit',
+            consentDescription: "Aquest enllaç requereix el teu consentiment per registrar la teva IP i agent d'usuari.",
+            acceptAndView: 'Accepta i visualitza',
+            sharedBy: ({ name }: { name: string }) => `Compartit per ${name}`,
+
+            shareNotFound: "L'enllaç de compartició no existeix o ha caducat",
+            failedToDecrypt: 'No s’ha pogut desxifrar la sessió',
+            noMessages: 'Encara no hi ha missatges',
+            session: 'Sessió',
+        },
     },
 
     commandPalette: {
@@ -648,6 +711,8 @@ export const ca: TranslationStructure = {
         deleteSessionWarning: 'Aquesta acció no es pot desfer. Tots els missatges i dades associats amb aquesta sessió s\'eliminaran permanentment.',
         failedToDeleteSession: 'Error en eliminar la sessió',
         sessionDeleted: 'Sessió eliminada amb èxit',
+        manageSharing: 'Gestiona l\'accés',
+        manageSharingSubtitle: 'Comparteix aquesta sessió amb amics o crea un enllaç públic',
         renameSession: 'Canvia el nom de la sessió',
         renameSessionSubtitle: 'Canvia el nom de visualització d\'aquesta sessió',
         renameSessionPlaceholder: 'Introduïu el nom de la sessió...',
@@ -1214,6 +1279,8 @@ export const ca: TranslationStructure = {
     friends: {
         // Friends feature
         title: 'Amics',
+        sharedSessions: 'Sessions compartides',
+        noSharedSessions: 'Encara no hi ha sessions compartides',
         manageFriends: 'Gestiona els teus amics i connexions',
         searchTitle: 'Buscar amics',
         pendingRequests: 'Sol·licituds d\'amistat',

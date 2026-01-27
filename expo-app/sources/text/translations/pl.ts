@@ -348,16 +348,23 @@ export const pl: TranslationStructure = {
         failedToSendRequest: 'Nie udało się wysłać zaproszenia do znajomych',
         failedToResumeSession: 'Nie udało się wznowić sesji',
         failedToSendMessage: 'Nie udało się wysłać wiadomości',
-            missingPermissionId: 'Brak identyfikatora prośby o uprawnienie',
-            codexResumeNotInstalledTitle: 'Codex resume nie jest zainstalowane na tej maszynie',
-            codexResumeNotInstalledMessage:
-                'Aby wznowić rozmowę Codex, zainstaluj serwer wznawiania Codex na maszynie docelowej (Szczegóły maszyny → Wznawianie Codex).',
-            codexAcpNotInstalledTitle: 'Codex ACP nie jest zainstalowane na tej maszynie',
-            codexAcpNotInstalledMessage:
-                'Aby użyć eksperymentu Codex ACP, zainstaluj codex-acp na maszynie docelowej (Szczegóły maszyny → Codex ACP) lub wyłącz eksperyment.',
-        },
+        cannotShareWithSelf: 'Nie możesz udostępnić sobie',
+        canOnlyShareWithFriends: 'Można udostępniać tylko znajomym',
+        shareNotFound: 'Udostępnienie nie zostało znalezione',
+        publicShareNotFound: 'Publiczne udostępnienie nie zostało znalezione lub wygasło',
+        consentRequired: 'Wymagana zgoda na dostęp',
+        maxUsesReached: 'Osiągnięto maksymalną liczbę użyć',
+	        invalidShareLink: 'Nieprawidłowy lub wygasły link do udostępnienia',
+	            missingPermissionId: 'Brak identyfikatora prośby o uprawnienie',
+	            codexResumeNotInstalledTitle: 'Codex resume nie jest zainstalowane na tej maszynie',
+	            codexResumeNotInstalledMessage:
+	                'Aby wznowić rozmowę Codex, zainstaluj serwer wznawiania Codex na maszynie docelowej (Szczegóły maszyny → Wznawianie Codex).',
+	            codexAcpNotInstalledTitle: 'Codex ACP nie jest zainstalowane na tej maszynie',
+	            codexAcpNotInstalledMessage:
+	                'Aby użyć eksperymentu Codex ACP, zainstaluj codex-acp na maszynie docelowej (Szczegóły maszyny → Codex ACP) lub wyłącz eksperyment.',
+	    },
 
-    deps: {
+	    deps: {
         installNotSupported: 'Zaktualizuj Happy CLI, aby zainstalować tę zależność.',
         installFailed: 'Instalacja nie powiodła się',
         installed: 'Zainstalowano',
@@ -555,6 +562,62 @@ export const pl: TranslationStructure = {
         machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
             `“${machine}” jest offline, więc Happy nie może jeszcze wznowić tej sesji. Przywróć maszynę online, aby kontynuować.`,
         machineOfflineCannotResume: 'Maszyna jest offline. Przywróć ją online, aby wznowić tę sesję.',
+
+        sharing: {
+            title: 'Udostępnianie',
+            directSharing: 'Udostępnianie bezpośrednie',
+            addShare: 'Udostępnij znajomemu',
+            accessLevel: 'Poziom dostępu',
+            shareWith: 'Udostępnij',
+            sharedWith: 'Udostępniono',
+            noShares: 'Nieudostępnione',
+            viewOnly: 'Tylko podgląd',
+            viewOnlyDescription: 'Może przeglądać sesję, ale nie może wysyłać wiadomości.',
+            viewOnlyMode: 'Tylko podgląd (sesja udostępniona)',
+            noEditPermission: 'Masz dostęp tylko do odczytu do tej sesji.',
+            canEdit: 'Może edytować',
+            canEditDescription: 'Może wysyłać wiadomości.',
+            canManage: 'Może zarządzać',
+            canManageDescription: 'Może zarządzać udostępnianiem.',
+            stopSharing: 'Zatrzymaj udostępnianie',
+            recipientMissingKeys: 'Ten użytkownik nie zarejestrował jeszcze kluczy szyfrowania.',
+
+            publicLink: 'Link publiczny',
+            publicLinkActive: 'Link publiczny jest aktywny',
+            publicLinkDescription: 'Utwórz link, aby każdy mógł zobaczyć tę sesję.',
+            createPublicLink: 'Utwórz link publiczny',
+            regeneratePublicLink: 'Wygeneruj nowy link publiczny',
+            deletePublicLink: 'Usuń link publiczny',
+            linkToken: 'Token linku',
+            tokenNotRecoverable: 'Token niedostępny',
+            tokenNotRecoverableDescription: 'Ze względów bezpieczeństwa tokeny linków publicznych są przechowywane jako hash i nie można ich odzyskać. Wygeneruj nowy link, aby utworzyć nowy token.',
+
+            expiresIn: 'Wygasa za',
+            expiresOn: 'Wygasa',
+            days7: '7 dni',
+            days30: '30 dni',
+            never: 'Nigdy',
+
+            maxUsesLabel: 'Maksymalna liczba użyć',
+            unlimited: 'Bez limitu',
+            uses10: '10 użyć',
+            uses50: '50 użyć',
+            usageCount: 'Liczba użyć',
+            usageCountWithMax: ({ used, max }: { used: number; max: number }) => `${used}/${max} użyć`,
+            usageCountUnlimited: ({ used }: { used: number }) => `${used} użyć`,
+
+            requireConsent: 'Wymagaj zgody',
+            requireConsentDescription: 'Poproś o zgodę przed rejestrowaniem dostępu.',
+            consentRequired: 'Wymagana zgoda',
+            consentDescription: 'Ten link wymaga Twojej zgody na zapisanie adresu IP i user agenta.',
+            acceptAndView: 'Akceptuj i wyświetl',
+            sharedBy: ({ name }: { name: string }) => `Udostępnione przez ${name}`,
+
+            shareNotFound: 'Link udostępniania nie istnieje lub wygasł',
+            failedToDecrypt: 'Nie udało się odszyfrować sesji',
+            noMessages: 'Brak wiadomości',
+            session: 'Sesja',
+        },
     },
 
     commandPalette: {
@@ -659,6 +722,8 @@ export const pl: TranslationStructure = {
         deleteSessionWarning: 'Ta operacja jest nieodwracalna. Wszystkie wiadomości i dane powiązane z tą sesją zostaną trwale usunięte.',
         failedToDeleteSession: 'Nie udało się usunąć sesji',
         sessionDeleted: 'Sesja została pomyślnie usunięta',
+        manageSharing: 'Zarządzanie udostępnianiem',
+        manageSharingSubtitle: 'Udostępnij tę sesję znajomym lub utwórz publiczny link',
         renameSession: 'Zmień nazwę sesji',
         renameSessionSubtitle: 'Zmień wyświetlaną nazwę tej sesji',
         renameSessionPlaceholder: 'Wprowadź nazwę sesji...',
@@ -1238,6 +1303,8 @@ export const pl: TranslationStructure = {
     friends: {
         // Friends feature
         title: 'Przyjaciele',
+        sharedSessions: 'Udostępnione sesje',
+        noSharedSessions: 'Brak udostępnionych sesji',
         manageFriends: 'Zarządzaj swoimi przyjaciółmi i połączeniami',
         searchTitle: 'Znajdź przyjaciół',
         pendingRequests: 'Zaproszenia do znajomych',

@@ -25,7 +25,10 @@ export const UserProfileSchema = z.object({
     }).nullable(),
     username: z.string(),
     bio: z.string().nullable(),
-    status: RelationshipStatusSchema
+    status: RelationshipStatusSchema,
+    publicKey: z.string(),
+    contentPublicKey: z.string().nullable(),
+    contentPublicKeySig: z.string().nullable(),
 });
 
 export type UserProfile = z.infer<typeof UserProfileSchema>;

@@ -584,16 +584,23 @@ export const ja: TranslationStructure = {
         failedToSendRequest: '友達リクエストの送信に失敗しました',
         failedToResumeSession: 'セッションの再開に失敗しました',
         failedToSendMessage: 'メッセージの送信に失敗しました',
-            missingPermissionId: '権限リクエストIDがありません',
-            codexResumeNotInstalledTitle: 'このマシンには Codex resume がインストールされていません',
-            codexResumeNotInstalledMessage:
-                'Codex の会話を再開するには、対象のマシンに Codex resume サーバーをインストールしてください（マシン詳細 → Codex resume）。',
-            codexAcpNotInstalledTitle: 'このマシンには Codex ACP がインストールされていません',
-            codexAcpNotInstalledMessage:
-                'Codex ACP の実験機能を使うには、対象のマシンに codex-acp をインストールしてください（マシン詳細 → Codex ACP）。または実験機能を無効にしてください。',
-        },
+        cannotShareWithSelf: '自分自身とは共有できません',
+        canOnlyShareWithFriends: '友達とのみ共有できます',
+        shareNotFound: '共有が見つかりません',
+        publicShareNotFound: '公開共有が見つからないか期限切れです',
+	        consentRequired: 'アクセスには同意が必要です',
+	        maxUsesReached: '最大使用回数に達しました',
+	        invalidShareLink: '無効または期限切れの共有リンク',
+	            missingPermissionId: '権限リクエストIDがありません',
+	            codexResumeNotInstalledTitle: 'このマシンには Codex resume がインストールされていません',
+	            codexResumeNotInstalledMessage:
+	                'Codex の会話を再開するには、対象のマシンに Codex resume サーバーをインストールしてください（マシン詳細 → Codex resume）。',
+	            codexAcpNotInstalledTitle: 'このマシンには Codex ACP がインストールされていません',
+	            codexAcpNotInstalledMessage:
+	                'Codex ACP の実験機能を使うには、対象のマシンに codex-acp をインストールしてください（マシン詳細 → Codex ACP）。または実験機能を無効にしてください。',
+	    },
 
-    deps: {
+	    deps: {
         installNotSupported: 'この依存関係をインストールするには Happy CLI を更新してください。',
         installFailed: 'インストールに失敗しました',
         installed: 'インストールしました',
@@ -791,6 +798,62 @@ export const ja: TranslationStructure = {
         machineOfflineNoticeBody: ({ machine }: { machine: string }) =>
             `“${machine}” がオフラインのため、Happy はまだこのセッションを再開できません。オンラインに戻して続行してください。`,
         machineOfflineCannotResume: 'マシンがオフラインです。オンラインに戻してこのセッションを再開してください。',
+        sharing: {
+            title: '共有',
+            directSharing: '直接共有',
+            addShare: '友達と共有',
+            accessLevel: 'アクセスレベル',
+            shareWith: '共有先',
+            sharedWith: '共有中',
+            noShares: '未共有',
+            viewOnly: '閲覧のみ',
+            viewOnlyDescription: '閲覧できますが、メッセージは送信できません。',
+            viewOnlyMode: '閲覧のみ（共有セッション）',
+            noEditPermission: 'このセッションは閲覧専用です。',
+            canEdit: '編集可能',
+            canEditDescription: 'メッセージを送信できます。',
+            canManage: '管理可能',
+            canManageDescription: '共有設定を管理できます。',
+            stopSharing: '共有を停止',
+            recipientMissingKeys: 'このユーザーはまだ暗号化キーを登録していません。',
+
+            publicLink: '公開リンク',
+            publicLinkActive: '公開リンクが有効です',
+            publicLinkDescription: '誰でもこのセッションを閲覧できるリンクを作成します。',
+            createPublicLink: '公開リンクを作成',
+            regeneratePublicLink: '公開リンクを再生成',
+            deletePublicLink: '公開リンクを削除',
+            linkToken: 'リンクトークン',
+            tokenNotRecoverable: 'トークンは利用できません',
+            tokenNotRecoverableDescription:
+                'セキュリティ上の理由により、公開リンクのトークンはハッシュ化して保存され復元できません。新しいトークンが必要な場合はリンクを再生成してください。',
+
+            expiresIn: '有効期限',
+            expiresOn: '有効期限',
+            days7: '7日間',
+            days30: '30日間',
+            never: '無期限',
+
+            maxUsesLabel: '最大使用回数',
+            unlimited: '無制限',
+            uses10: '10回使用',
+            uses50: '50回使用',
+            usageCount: '使用回数',
+            usageCountWithMax: ({ used, max }: { used: number; max: number }) => `${used}/${max} 回使用`,
+            usageCountUnlimited: ({ used }: { used: number }) => `${used} 回使用`,
+
+            requireConsent: '同意を要求',
+            requireConsentDescription: 'アクセスを記録する前に同意を求めます。',
+            consentRequired: '同意が必要です',
+            consentDescription: 'このリンクでは、IP アドレスとユーザーエージェントを記録するために同意が必要です。',
+            acceptAndView: '同意して表示',
+            sharedBy: ({ name }: { name: string }) => `${name}さんが共有`,
+
+            shareNotFound: '共有リンクが見つからないか、期限切れです',
+            failedToDecrypt: 'セッションの復号に失敗しました',
+            noMessages: 'まだメッセージがありません',
+            session: 'セッション',
+        },
     },
 
     commandPalette: {
@@ -895,6 +958,8 @@ export const ja: TranslationStructure = {
         deleteSessionWarning: 'この操作は取り消せません。このセッションに関連するすべてのメッセージとデータが完全に削除されます。',
         failedToDeleteSession: 'セッションの削除に失敗しました',
         sessionDeleted: 'セッションが正常に削除されました',
+        manageSharing: '共有を管理',
+        manageSharingSubtitle: '友達とセッションを共有するか、公開リンクを作成',
         renameSession: 'セッション名を変更',
         renameSessionSubtitle: 'このセッションの表示名を変更します',
         renameSessionPlaceholder: 'セッション名を入力...',
@@ -1463,6 +1528,8 @@ export const ja: TranslationStructure = {
         // Friends feature
         title: '友達',
         manageFriends: '友達とつながりを管理',
+        sharedSessions: '共有セッション',
+        noSharedSessions: '共有セッションはまだありません',
         searchTitle: '友達を探す',
         pendingRequests: '友達リクエスト',
         myFriends: 'マイフレンド',

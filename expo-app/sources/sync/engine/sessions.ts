@@ -515,7 +515,6 @@ export async function fetchAndApplySessions(params: {
     const data = await response.json();
     const sessions = data.sessions as Array<{
         id: string;
-        tag: string;
         seq: number;
         metadata: string;
         metadataVersion: number;
@@ -527,6 +526,16 @@ export async function fetchAndApplySessions(params: {
         createdAt: number;
         updatedAt: number;
         lastMessage: ApiMessage | null;
+        // Sharing (present only for sessions shared with the current user)
+        owner?: string;
+        ownerProfile?: {
+            id: string;
+            username: string | null;
+            firstName: string | null;
+            lastName: string | null;
+            avatar: string | null;
+        };
+        accessLevel?: 'view' | 'edit' | 'admin';
     }>;
 
     // Initialize all session encryptions first

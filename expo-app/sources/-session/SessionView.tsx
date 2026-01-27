@@ -565,11 +565,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const inactiveStatusText = inactiveUi.inactiveStatusTextKey ? t(inactiveUi.inactiveStatusTextKey) : null;
 
     const shouldShowInput = inactiveUi.shouldShowInput;
+    const hasWriteAccess = !session.accessLevel || session.accessLevel === 'edit' || session.accessLevel === 'admin';
+    const isReadOnly = session.accessLevel === 'view';
 
     const input = shouldShowInput ? (
         <View>
             <AgentInput
-                placeholder={t('session.inputPlaceholder')}
+                placeholder={isReadOnly ? t('session.sharing.viewOnlyMode') : t('session.inputPlaceholder')}
                 value={message}
                 onChangeText={setMessage}
                 sessionId={sessionId}
@@ -596,6 +598,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     isPulsing: isResuming || sessionStatus.isPulsing
                 }}
                 onSend={() => {
+                    if (!hasWriteAccess) {
+                        Modal.alert(t('common.error'), t('session.sharing.noEditPermission'));
+                        return;
+                    }
                     const text = message.trim();
                     if (!text) return;
                     setMessage('');
@@ -671,7 +677,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                         }
                     })();
                 }}
-                isSendDisabled={!shouldShowInput || isResuming}
+                isSendDisabled={!shouldShowInput || isResuming || isReadOnly}
                 onMicPress={micButtonState.onMicPress}
                 isMicActive={micButtonState.isMicActive}
                 onAbort={() => sessionAbort(sessionId)}
@@ -680,6 +686,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 // Autocomplete configuration
                 autocompletePrefixes={['@', '/']}
                 autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
+                disabled={isReadOnly}
                 usageData={sessionUsage ? {
                     inputTokens: sessionUsage.inputTokens,
                     outputTokens: sessionUsage.outputTokens,

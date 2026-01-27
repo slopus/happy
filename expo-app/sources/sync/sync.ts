@@ -710,6 +710,20 @@ class Sync {
         return encodeBase64(key, 'base64');
     }
 
+    /**
+     * Get the decrypted per-session data encryption key (DEK) if available.
+     *
+     * @remarks
+     * This is intentionally in-memory only; it returns null if the session key
+     * hasn't been fetched/decrypted yet.
+     */
+    public getSessionDataKey(sessionId: string): Uint8Array | null {
+        const key = this.sessionDataKeys.get(sessionId);
+        if (!key) return null;
+        // Defensive copy (callers should treat keys as immutable).
+        return new Uint8Array(key);
+    }
+
     public refreshMachines = async () => {
         return this.fetchMachines();
     }
