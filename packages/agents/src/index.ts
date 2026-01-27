@@ -9,5 +9,5 @@ export {
     type ResumeRuntimeGate,
     type VendorResumeIdField,
     type VendorResumeSupportLevel,
-} from './types';
-export { AGENTS_CORE, DEFAULT_AGENT_ID } from './manifest';
+} from './types.js';
+export { AGENTS_CORE, DEFAULT_AGENT_ID } from './manifest.js';

@@ -1,6 +1,6 @@
 export const HAPPY_PROTOCOL_PACKAGE = '@happy/protocol';
 
-export { SPAWN_SESSION_ERROR_CODES, type SpawnSessionErrorCode, type SpawnSessionResult } from './spawnSession';
+export { SPAWN_SESSION_ERROR_CODES, type SpawnSessionErrorCode, type SpawnSessionResult } from './spawnSession.js';
 export {
   RPC_ERROR_CODES,
   RPC_ERROR_MESSAGES,
@@ -8,9 +8,9 @@ export {
   isRpcMethodNotFoundResult,
   type RpcErrorCode,
   type RpcMethod,
-} from './rpc';
-export { CHECKLIST_IDS, resumeChecklistId, type ChecklistId } from './checklists';
-export { SOCKET_RPC_EVENTS, type SocketRpcEvent } from './socketRpc';
+} from './rpc.js';
+export { CHECKLIST_IDS, resumeChecklistId, type ChecklistId } from './checklists.js';
+export { SOCKET_RPC_EVENTS, type SocketRpcEvent } from './socketRpc.js';
 export {
   type CapabilitiesDescribeResponse,
   type CapabilitiesDetectRequest,
@@ -22,4 +22,4 @@ export {
   type CapabilityDetectResult,
   type CapabilityId,
   type CapabilityKind,
-} from './capabilities';
+} from './capabilities.js';

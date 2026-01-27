@@ -1,4 +1,4 @@
-import type { AgentCore, AgentId } from './types';
+import type { AgentCore, AgentId } from './types.js';
 
 export const DEFAULT_AGENT_ID: AgentId = 'claude';
 
