@@ -44,6 +44,42 @@ import { waitForNextAuggieMessage } from '@/backends/auggie/utils/waitForNextAug
 import { readAuggieAllowIndexingFromEnv } from '@/backends/auggie/utils/env';
 import { AuggieTerminalDisplay } from '@/backends/auggie/ui/AuggieTerminalDisplay';
 
+function formatAuggiePromptError(err: unknown): { message: string; isAuthError: boolean } {
+  if (err instanceof Error) {
+    const lower = err.message.toLowerCase();
+    return { message: err.message, isAuthError: lower.includes('unauthorized') || lower.includes('authentication') || lower.includes('401') };
+  }
+  if (typeof err === 'string') {
+    const lower = err.toLowerCase();
+    return { message: err, isAuthError: lower.includes('unauthorized') || lower.includes('authentication') || lower.includes('401') };
+  }
+  if (err && typeof err === 'object') {
+    const maybeMessage = (err as { message?: unknown }).message;
+    const maybeCode = (err as { code?: unknown }).code;
+    const maybeDetails = (err as { data?: unknown }).data as { details?: unknown } | undefined;
+
+    const message = typeof maybeMessage === 'string' ? maybeMessage : null;
+    const details = typeof maybeDetails?.details === 'string' ? maybeDetails.details : null;
+    const code = typeof maybeCode === 'number' ? maybeCode : null;
+
+    const combined =
+      details && message ? `${message}${typeof code === 'number' ? ` (code ${code})` : ''}: ${details}` : (details ?? message);
+    if (combined) {
+      const lower = combined.toLowerCase();
+      return { message: combined, isAuthError: lower.includes('unauthorized') || lower.includes('authentication') || lower.includes('api key') || lower.includes('token') || lower.includes('401') };
+    }
+
+    try {
+      const json = JSON.stringify(err);
+      const lower = json.toLowerCase();
+      return { message: json, isAuthError: lower.includes('unauthorized') || lower.includes('authentication') || lower.includes('401') };
+    } catch {
+      return { message: String(err), isAuthError: false };
+    }
+  }
+  return { message: String(err), isAuthError: false };
+}
+
 export async function runAuggie(opts: {
   credentials: Credentials;
   startedBy?: 'daemon' | 'terminal';
@@ -347,7 +383,14 @@ export async function runAuggie(opts: {
         await runtime.sendPrompt(message.message);
       } catch (error) {
         logger.debug('[Auggie] Error during prompt:', error);
-        session.sendAgentMessage('auggie', { type: 'message', message: `Error: ${error instanceof Error ? error.message : String(error)}` });
+        const formatted = formatAuggiePromptError(error);
+        const extraHint = formatted.isAuthError
+          ? 'Auggie appears not authenticated. Run `auggie login` on this machine (the same user running the daemon) and try again.'
+          : null;
+        session.sendAgentMessage('auggie', {
+          type: 'message',
+          message: `Error: ${formatted.message}${extraHint ? `\n\n${extraHint}` : ''}`,
+        });
       } finally {
         runtime.flushTurn();
         thinking = false;
