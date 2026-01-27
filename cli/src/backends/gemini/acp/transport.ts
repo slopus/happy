@@ -21,6 +21,14 @@ import type {
 } from '@/agent/transport/TransportHandler';
 import type { AgentMessage } from '@/agent/core';
 import { logger } from '@/ui/logger';
+import { filterJsonObjectOrArrayLine } from '@/agent/transport/utils/jsonStdoutFilter';
+import {
+  findEmptyInputDefaultToolName,
+  findToolNameFromId,
+  findToolNameFromInputFields,
+  isEmptyToolInput,
+  type ToolPatternWithInputFields,
+} from '@/agent/transport/utils/toolPatternInference';
 
 /**
  * Gemini-specific timeout values (in milliseconds)
@@ -48,14 +56,7 @@ export const GEMINI_TIMEOUTS = {
  * - inputFields: optional fields that indicate this tool when present in input
  * - emptyInputDefault: if true, this tool is the default when input is empty
  */
-interface ExtendedToolPattern extends ToolPattern {
-  /** Fields in input that indicate this tool */
-  inputFields?: string[];
-  /** If true, this is the default tool when input is empty and toolName is "other" */
-  emptyInputDefault?: boolean;
-}
-
-const GEMINI_TOOL_PATTERNS: ExtendedToolPattern[] = [
+const GEMINI_TOOL_PATTERNS: ToolPatternWithInputFields[] = [
   {
     name: 'change_title',
     patterns: ['change_title', 'change-title', 'happy__change_title', 'mcp__happy__change_title'],
@@ -139,30 +140,7 @@ export class GeminiTransport implements TransportHandler {
    * that breaks ACP JSON-RPC parsing. We only keep valid JSON lines.
    */
   filterStdoutLine(line: string): string | null {
-    const trimmed = line.trim();
-
-    // Empty lines - skip
-    if (!trimmed) {
-      return null;
-    }
-
-    // Must start with { or [ to be valid JSON-RPC
-    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-      return null;
-    }
-
-    // Validate it's actually parseable JSON and is an object (not a primitive)
-    // JSON-RPC messages are always objects, but numbers like "105887304" parse as valid JSON
-    try {
-      const parsed = JSON.parse(trimmed);
-      // Must be an object or array (for batched requests), not a primitive
-      if (typeof parsed !== 'object' || parsed === null) {
-        return null;
-      }
-      return line;
-    } catch {
-      return null;
-    }
+    return filterJsonObjectOrArrayLine(line);
   }
 
   /**
@@ -266,36 +244,7 @@ export class GeminiTransport implements TransportHandler {
    * Tool IDs often contain the tool name as a prefix (e.g., "change_title-1765385846663" -> "change_title")
    */
   extractToolNameFromId(toolCallId: string): string | null {
-    const lowerId = toolCallId.toLowerCase();
-
-    // Prefer the most-specific match (longest pattern). Gemini tool IDs can contain multiple
-    // substrings (e.g. "write_todos-..." contains "write"), so first-match order is too fragile.
-    let bestName: string | null = null;
-    let bestLen = 0;
-
-    for (const toolPattern of GEMINI_TOOL_PATTERNS) {
-      for (const pattern of toolPattern.patterns) {
-        const needle = pattern.toLowerCase();
-        if (!needle) continue;
-        if (!lowerId.includes(needle)) continue;
-        if (needle.length > bestLen) {
-          bestLen = needle.length;
-          bestName = toolPattern.name;
-        }
-      }
-    }
-
-    return bestName;
-  }
-
-  /**
-   * Check if input is effectively empty
-   */
-  private isEmptyInput(input: Record<string, unknown> | undefined | null): boolean {
-    if (!input) return true;
-    if (Array.isArray(input)) return input.length === 0;
-    if (typeof input === 'object') return Object.keys(input).length === 0;
-    return false;
+    return findToolNameFromId(toolCallId, GEMINI_TOOL_PATTERNS, { preferLongestMatch: true });
   }
 
   /**
@@ -317,7 +266,7 @@ export class GeminiTransport implements TransportHandler {
   ): string {
     // 1. Check toolCallId for known tool names (most reliable)
     // Tool IDs often contain the tool name: "change_title-123456" -> "change_title"
-    const idToolName = this.extractToolNameFromId(toolCallId);
+    const idToolName = findToolNameFromId(toolCallId, GEMINI_TOOL_PATTERNS, { preferLongestMatch: true });
     if (idToolName) {
       return idToolName;
     }
@@ -328,29 +277,14 @@ export class GeminiTransport implements TransportHandler {
     }
 
     // 2. Check input fields for tool-specific signatures
-    if (input && typeof input === 'object' && !Array.isArray(input)) {
-      const inputKeys = Object.keys(input);
-
-      for (const toolPattern of GEMINI_TOOL_PATTERNS) {
-        if (toolPattern.inputFields) {
-          // Check if any input field matches this tool's signature
-          const hasMatchingField = toolPattern.inputFields.some((field) =>
-            inputKeys.some((key) => key.toLowerCase() === field.toLowerCase())
-          );
-          if (hasMatchingField) {
-            return toolPattern.name;
-          }
-        }
-      }
-    }
+    const inputFieldToolName = findToolNameFromInputFields(input, GEMINI_TOOL_PATTERNS);
+    if (inputFieldToolName) return inputFieldToolName;
 
     // 3. For empty input, use the default tool (if configured)
     // This handles cases like change_title where the title is extracted from context
-    if (this.isEmptyInput(input) && toolName === 'other') {
-      const defaultTool = GEMINI_TOOL_PATTERNS.find((p) => p.emptyInputDefault);
-      if (defaultTool) {
-        return defaultTool.name;
-      }
+    if (toolName === 'other' && isEmptyToolInput(input)) {
+      const defaultToolName = findEmptyInputDefaultToolName(GEMINI_TOOL_PATTERNS);
+      if (defaultToolName) return defaultToolName;
     }
 
     // Return original tool name if we couldn't determine it

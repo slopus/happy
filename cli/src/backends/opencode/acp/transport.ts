@@ -22,6 +22,12 @@ import type {
 } from '@/agent/transport/TransportHandler';
 import type { AgentMessage } from '@/agent/core';
 import { logger } from '@/ui/logger';
+import { filterJsonObjectOrArrayLine } from '@/agent/transport/utils/jsonStdoutFilter';
+import {
+  findToolNameFromId,
+  findToolNameFromInputFields,
+  type ToolPatternWithInputFields,
+} from '@/agent/transport/utils/toolPatternInference';
 
 export const OPENCODE_TIMEOUTS = {
   /**
@@ -35,15 +41,7 @@ export const OPENCODE_TIMEOUTS = {
   idle: 500,
 } as const;
 
-type ExtendedToolPattern = ToolPattern & {
-  /**
-   * Fields in input that indicate this tool (heuristic).
-   * Used when OpenCode reports toolName as "other".
-   */
-  inputFields?: readonly string[];
-};
-
-const OPENCODE_TOOL_PATTERNS: readonly ExtendedToolPattern[] = [
+const OPENCODE_TOOL_PATTERNS: readonly ToolPatternWithInputFields[] = [
   {
     name: 'change_title',
     patterns: ['change_title', 'change-title', 'happy__change_title', 'mcp__happy__change_title'],
@@ -105,19 +103,7 @@ export class OpenCodeTransport implements TransportHandler {
   }
 
   filterStdoutLine(line: string): string | null {
-    const trimmed = line.trim();
-    if (!trimmed) return null;
-
-    // ACP messages are JSON objects/arrays. Drop anything else to protect JSON-RPC parsing.
-    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null;
-
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (typeof parsed !== 'object' || parsed === null) return null;
-      return line;
-    } catch {
-      return null;
-    }
+    return filterJsonObjectOrArrayLine(line);
   }
 
   handleStderr(text: string, context: StderrContext): StderrResult {
@@ -188,21 +174,12 @@ export class OpenCodeTransport implements TransportHandler {
     if (toolName !== 'other' && toolName !== 'Unknown tool') return toolName;
 
     // 1) Prefer toolCallId pattern matching (most reliable).
-    const idToolName = this.extractToolNameFromId(toolCallId);
+    const idToolName = findToolNameFromId(toolCallId, OPENCODE_TOOL_PATTERNS, { preferLongestMatch: true });
     if (idToolName) return idToolName;
 
     // 2) Fallback to input field signatures.
-    if (input && typeof input === 'object' && !Array.isArray(input)) {
-      const inputKeys = Object.keys(input);
-      for (const toolPattern of OPENCODE_TOOL_PATTERNS) {
-        const fields = toolPattern.inputFields;
-        if (!fields) continue;
-        const hasMatchingField = fields.some((field) =>
-          inputKeys.some((key) => key.toLowerCase() === field.toLowerCase())
-        );
-        if (hasMatchingField) return toolPattern.name;
-      }
-    }
+    const inputToolName = findToolNameFromInputFields(input, OPENCODE_TOOL_PATTERNS);
+    if (inputToolName) return inputToolName;
 
     if (toolName === 'other' || toolName === 'Unknown tool') {
       const inputKeys = input && typeof input === 'object' ? Object.keys(input) : [];
@@ -216,15 +193,7 @@ export class OpenCodeTransport implements TransportHandler {
   }
 
   extractToolNameFromId(toolCallId: string): string | null {
-    const lowerId = toolCallId.toLowerCase();
-    for (const toolPattern of OPENCODE_TOOL_PATTERNS) {
-      for (const pattern of toolPattern.patterns) {
-        if (lowerId.includes(pattern.toLowerCase())) {
-          return toolPattern.name;
-        }
-      }
-    }
-    return null;
+    return findToolNameFromId(toolCallId, OPENCODE_TOOL_PATTERNS, { preferLongestMatch: true });
   }
 
   isInvestigationTool(toolCallId: string, toolKind?: string): boolean {

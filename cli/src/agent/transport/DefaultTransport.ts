@@ -14,6 +14,7 @@ import type {
   StderrResult,
   ToolNameContext,
 } from './TransportHandler';
+import { filterJsonObjectOrArrayLine } from './utils/jsonStdoutFilter';
 
 /**
  * Default timeout values (in milliseconds)
@@ -57,24 +58,7 @@ export class DefaultTransport implements TransportHandler {
    * Default: pass through all lines that are valid JSON objects/arrays
    */
   filterStdoutLine(line: string): string | null {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      return null;
-    }
-    // Only pass through lines that start with { or [ (JSON)
-    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-      return null;
-    }
-    // Validate it's actually parseable JSON and is an object/array
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (typeof parsed !== 'object' || parsed === null) {
-        return null;
-      }
-      return line;
-    } catch {
-      return null;
-    }
+    return filterJsonObjectOrArrayLine(line);
   }
 
   /**
