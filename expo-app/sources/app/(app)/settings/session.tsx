@@ -16,7 +16,7 @@ import type { MessageSendMode } from '@/sync/submitMode';
 import { getPermissionModeLabelForAgentType, getPermissionModeOptionsForAgentType } from '@/sync/permissionModeOptions';
 import type { PermissionMode } from '@/sync/permissionTypes';
 import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
-import { getAgentCore, type AgentId } from '@/agents/registryCore';
+import { getAgentCore, type AgentId } from '@/agents/catalog';
 
 export default React.memo(function SessionSettingsScreen() {
     const { theme } = useUnistyles();

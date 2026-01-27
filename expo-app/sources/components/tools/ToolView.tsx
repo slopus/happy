@@ -15,7 +15,7 @@ import { PermissionFooter } from './PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
 import { formatMCPTitle } from './views/MCPToolView';
 import { t } from '@/text';
-import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
+import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/catalog';
 import { StructuredResultView } from './views/StructuredResultView';
 import { inferToolNameForRendering } from './utils/toolNameInference';
 import { normalizeToolCallForRendering } from './utils/normalizeToolCallForRendering';

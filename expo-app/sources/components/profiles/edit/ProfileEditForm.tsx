@@ -27,7 +27,7 @@ import { layout } from '@/components/layout';
 import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/secrets/requirements';
 import { parseEnvVarTemplate } from '@/utils/profiles/envVarTemplate';
 import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
-import { getAgentCore, type AgentId, type MachineLoginKey } from '@/agents/registryCore';
+import { getAgentCore, type AgentId, type MachineLoginKey } from '@/agents/catalog';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MachinePreviewModal } from './MachinePreviewModal';
 

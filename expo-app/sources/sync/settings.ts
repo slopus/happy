@@ -7,7 +7,7 @@ import type { AgentType } from './modelOptions';
 import { mapPermissionModeAcrossAgents } from './permissionMapping';
 import type { PermissionMode } from './permissionTypes';
 import { isPermissionMode, normalizePermissionModeForGroup } from './permissionTypes';
-import { AGENT_IDS, DEFAULT_AGENT_ID, getAgentCore, isAgentId, type AgentId } from '@/agents/registryCore';
+import { AGENT_IDS, DEFAULT_AGENT_ID, getAgentCore, isAgentId, type AgentId } from '@/agents/catalog';
 
 //
 // Configuration Profile Schema (for environment variable profiles)

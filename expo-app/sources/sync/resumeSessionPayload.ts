@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AGENT_IDS, type AgentId } from '@/agents/registryCore';
+import { AGENT_IDS, type AgentId } from '@/agents/catalog';
 import { isPermissionMode, type PermissionMode } from '@/sync/permissionTypes';
 
 export type ResumeHappySessionRpcParams = {

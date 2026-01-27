@@ -7,7 +7,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import type { MachineCapabilitiesCacheState } from '@/hooks/useMachineCapabilitiesCache';
 import type { CapabilityDetectResult, CapabilityId, CliCapabilityData, TmuxCapabilityData } from '@/sync/capabilitiesProtocol';
-import { getAgentCore } from '@/agents/registryCore';
+import { getAgentCore } from '@/agents/catalog';
 import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
 
 type Props = {

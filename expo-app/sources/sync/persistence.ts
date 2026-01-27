@@ -4,7 +4,7 @@ import { LocalSettings, localSettingsDefaults, localSettingsParse } from './loca
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
 import { isModelMode, isPermissionMode, type PermissionMode, type ModelMode } from '@/sync/permissionTypes';
-import { isAgentId, type AgentId } from '@/agents/registryCore';
+import { isAgentId, type AgentId } from '@/agents/catalog';
 import { readStorageScopeFromEnv, scopedStorageId } from '@/utils/storageScope';
 import { dbgSettings, summarizeSettingsDelta } from './debugSettings';
 import { SecretStringSchema, type SecretString } from './secretSettings';

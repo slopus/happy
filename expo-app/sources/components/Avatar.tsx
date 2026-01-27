@@ -6,8 +6,13 @@ import { AvatarGradient } from "./AvatarGradient";
 import { AvatarBrutalist } from "./AvatarBrutalist";
 import { useSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { DEFAULT_AGENT_ID, resolveAgentIdFromFlavor } from '@/agents/registryCore';
-import { getAgentAvatarOverlaySizes, getAgentIconSource, getAgentIconTintColor } from '@/agents/registryUi';
+import {
+    DEFAULT_AGENT_ID,
+    resolveAgentIdFromFlavor,
+    getAgentAvatarOverlaySizes,
+    getAgentIconSource,
+    getAgentIconTintColor,
+} from '@/agents/catalog';
 
 interface AvatarProps {
     id: string;

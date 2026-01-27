@@ -1,7 +1,7 @@
 import type { PermissionMode } from './permissionTypes';
 import { CLAUDE_PERMISSION_MODES, CODEX_LIKE_PERMISSION_MODES, normalizePermissionModeForGroup } from './permissionTypes';
 import { mapPermissionModeAcrossAgents } from './permissionMapping';
-import { AGENT_IDS, getAgentCore, type AgentId } from '@/agents/registryCore';
+import { AGENT_IDS, getAgentCore, type AgentId } from '@/agents/catalog';
 import { isPermissionMode } from './permissionTypes';
 
 export type AccountPermissionDefaults = Readonly<Partial<Record<AgentId, PermissionMode>>>;

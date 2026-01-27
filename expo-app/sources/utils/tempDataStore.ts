@@ -1,5 +1,5 @@
 import { randomUUID } from '@/platform/randomUUID';
-import type { AgentId } from '@/agents/registryCore';
+import type { AgentId } from '@/agents/catalog';
 
 export interface TempDataEntry {
     data: any;

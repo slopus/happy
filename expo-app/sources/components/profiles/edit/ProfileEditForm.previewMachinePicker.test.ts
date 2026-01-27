@@ -88,7 +88,7 @@ vi.mock('@/agents/useEnabledAgentIds', () => ({
     useEnabledAgentIds: () => [],
 }));
 
-vi.mock('@/agents/registryCore', () => ({
+vi.mock('@/agents/catalog', () => ({
     getAgentCore: () => ({ permissions: { modeGroup: 'default' } }),
 }));
 

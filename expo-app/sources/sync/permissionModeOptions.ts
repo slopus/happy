@@ -3,7 +3,7 @@ import type { TranslationKey } from '@/text';
 import type { AgentType } from './modelOptions';
 import type { PermissionMode } from './permissionTypes';
 import { CLAUDE_PERMISSION_MODES, CODEX_LIKE_PERMISSION_MODES, normalizePermissionModeForGroup } from './permissionTypes';
-import { DEFAULT_AGENT_ID, getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
+import { DEFAULT_AGENT_ID, getAgentCore, resolveAgentIdFromFlavor } from '@/agents/catalog';
 
 export type PermissionModeOption = Readonly<{
     value: PermissionMode;

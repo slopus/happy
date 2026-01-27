@@ -22,8 +22,7 @@ import { Image } from 'expo-image';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
-import { getAgentCore, resolveAgentIdFromConnectedServiceId } from '@/agents/registryCore';
-import { getAgentIconSource, getAgentIconTintColor } from '@/agents/registryUi';
+import { getAgentCore, resolveAgentIdFromConnectedServiceId, getAgentIconSource, getAgentIconTintColor } from '@/agents/catalog';
 
 export default React.memo(() => {
     const { theme } = useUnistyles();

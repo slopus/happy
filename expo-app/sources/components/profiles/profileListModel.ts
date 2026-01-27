@@ -1,7 +1,7 @@
 import type { AIBackendProfile } from '@/sync/settings';
 import { buildProfileGroups, type ProfileGroups } from '@/sync/profileGrouping';
 import { t } from '@/text';
-import { getAgentCore, type AgentId } from '@/agents/registryCore';
+import { getAgentCore, type AgentId } from '@/agents/catalog';
 import { isProfileCompatibleWithAgent } from '@/sync/settings';
 
 export interface ProfileListStrings {

@@ -7,8 +7,8 @@
  * - experimental (requires explicit opt-in).
  */
 
-import type { AgentId } from '@/agents/registryCore';
-import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
+import type { AgentId } from '@/agents/catalog';
+import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/catalog';
 
 export type ResumeCapabilityOptions = {
     /**

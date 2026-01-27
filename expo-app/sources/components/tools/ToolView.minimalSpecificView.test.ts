@@ -78,7 +78,7 @@ vi.mock('@/text', () => ({
     t: (key: string) => key,
 }));
 
-vi.mock('@/agents/registryCore', () => ({
+vi.mock('@/agents/catalog', () => ({
     getAgentCore: () => ({ toolRendering: { hideUnknownToolsByDefault: false } }),
     resolveAgentIdFromFlavor: () => null,
 }));

@@ -1,5 +1,5 @@
 import type { CapabilitiesDetectRequest } from '@/sync/capabilitiesProtocol';
-import { AGENT_IDS, getAgentCore } from '@/agents/registryCore';
+import { AGENT_IDS, getAgentCore } from '@/agents/catalog';
 
 function buildCliLoginStatusOverrides(): Record<string, { params: { includeLoginStatus: true } }> {
     const overrides: Record<string, { params: { includeLoginStatus: true } }> = {};

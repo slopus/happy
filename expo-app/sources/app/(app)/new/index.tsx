@@ -22,7 +22,7 @@ import { AIBackendProfile, getProfileEnvironmentVariables, isProfileCompatibleWi
 import { getBuiltInProfile, DEFAULT_PROFILES, getProfilePrimaryCli, getProfileSupportedAgentIds, isProfileCompatibleWithAnyAgent } from '@/sync/profileUtils';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
 import { getRequiredSecretEnvVarNames } from '@/sync/profileSecrets';
-import { DEFAULT_AGENT_ID, getAgentCore, isAgentId, resolveAgentIdFromCliDetectKey, type AgentId } from '@/agents/registryCore';
+import { DEFAULT_AGENT_ID, getAgentCore, isAgentId, resolveAgentIdFromCliDetectKey, type AgentId } from '@/agents/catalog';
 import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
 import { applyCliWarningDismissal, isCliWarningDismissed } from '@/agents/cliWarnings';
 

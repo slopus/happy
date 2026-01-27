@@ -1,6 +1,6 @@
 import type { ModelMode } from './permissionTypes';
 import { t } from '@/text';
-import { getAgentCore, type AgentId } from '@/agents/registryCore';
+import { getAgentCore, type AgentId } from '@/agents/catalog';
 
 export type AgentType = AgentId;
 

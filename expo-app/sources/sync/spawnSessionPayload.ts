@@ -1,5 +1,5 @@
 import type { TerminalSpawnOptions } from './terminalSettings';
-import type { AgentId } from '@/agents/registryCore';
+import type { AgentId } from '@/agents/catalog';
 import type { PermissionMode } from '@/sync/permissionTypes';
 
 // Options for spawning a session

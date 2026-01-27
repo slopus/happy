@@ -31,8 +31,7 @@ import { Avatar } from '@/components/Avatar';
 import { t } from '@/text';
 import { MachineCliGlyphs } from '@/components/sessions/newSession/components/MachineCliGlyphs';
 import { HappyError } from '@/utils/errors';
-import { getAgentCore } from '@/agents/registryCore';
-import { getAgentIconSource, getAgentIconTintColor } from '@/agents/registryUi';
+import { getAgentCore, getAgentIconSource, getAgentIconTintColor } from '@/agents/catalog';
 
 export const SettingsView = React.memo(function SettingsView() {
     const { theme } = useUnistyles();

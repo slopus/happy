@@ -3,7 +3,7 @@ import { useMachine } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import type { CapabilityDetectResult, CliCapabilityData, TmuxCapabilityData } from '@/sync/capabilitiesProtocol';
-import { AGENT_IDS, type AgentId, getAgentCore } from '@/agents/registryCore';
+import { AGENT_IDS, type AgentId, getAgentCore } from '@/agents/catalog';
 
 export type CLIAvailability = Readonly<{
     available: Readonly<Record<AgentId, boolean | null>>; // null = unknown/loading, true = installed, false = not installed

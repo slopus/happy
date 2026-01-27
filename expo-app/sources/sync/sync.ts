@@ -32,7 +32,7 @@ import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
 import { systemPrompt } from './prompt/systemPrompt';
 import { nowServerMs } from './time';
-import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
+import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/catalog';
 import { computePendingActivityAt } from './unread';
 import { computeNextReadStateV1 } from './readStateV1';
 import { updateSessionMetadataWithRetry as updateSessionMetadataWithRetryRpc, type UpdateMetadataAck } from './updateSessionMetadataWithRetry';

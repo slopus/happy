@@ -7,7 +7,7 @@ import { ItemList } from '@/components/ui/lists/ItemList';
 import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { Switch } from '@/components/Switch';
 import { t } from '@/text';
-import { AGENT_IDS, getAgentCore, type AgentId } from '@/agents/registryCore';
+import { AGENT_IDS, getAgentCore, type AgentId } from '@/agents/catalog';
 
 export default React.memo(function FeaturesSettingsScreen() {
     const [experiments, setExperiments] = useSettingMutable('experiments');

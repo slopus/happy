@@ -10,8 +10,8 @@ import { t } from '@/text';
 import { ItemList } from '@/components/ui/lists/ItemList';
 import { ItemGroup } from '@/components/ui/lists/ItemGroup';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
-import type { AgentId } from '@/agents/registryCore';
-import { DEFAULT_AGENT_ID, getAgentCore, isAgentId } from '@/agents/registryCore';
+import type { AgentId } from '@/agents/catalog';
+import { DEFAULT_AGENT_ID, getAgentCore, isAgentId } from '@/agents/catalog';
 import { getClipboardStringTrimmedSafe } from '@/utils/ui/clipboard';
 
 const stylesheet = StyleSheet.create((theme) => ({

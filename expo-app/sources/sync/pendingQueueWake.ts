@@ -1,7 +1,6 @@
 import type { ResumeSessionOptions } from './ops';
 import type { Session } from './storageTypes';
-import { resolveAgentIdFromFlavor } from '@/agents/registryCore';
-import { buildWakeResumeExtras } from '@/agents/registryUiBehavior';
+import { resolveAgentIdFromFlavor, buildWakeResumeExtras } from '@/agents/catalog';
 import type { ResumeCapabilityOptions } from '@/agents/resumeCapabilities';
 import type { PermissionModeOverrideForSpawn } from '@/sync/permissionModeOverride';
 import { buildResumeSessionBaseOptionsFromSession } from '@/sync/resumeSessionBase';

@@ -1,6 +1,6 @@
 import { AGENT_IDS, DEFAULT_AGENT_ID, type AgentId } from '@happy/agents';
 
-import type { AgentCoreConfig } from './registryCore';
+import type { AgentCoreConfig, MachineLoginKey } from './registryCore';
 import {
     getAgentCore as getExpoAgentCore,
     isAgentId,
@@ -30,7 +30,7 @@ import {
 } from './registryUiBehavior';
 
 export { AGENT_IDS, DEFAULT_AGENT_ID };
-export type { AgentId };
+export type { AgentId, MachineLoginKey };
 
 export type AgentCatalogEntry = Readonly<{
     id: AgentId;

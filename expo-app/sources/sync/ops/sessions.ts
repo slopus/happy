@@ -6,7 +6,7 @@ import { apiSocket } from '../apiSocket';
 import { sync } from '../sync';
 import { isRpcMethodNotAvailableError } from '../rpcErrors';
 import { buildResumeHappySessionRpcParams, type ResumeHappySessionRpcParams } from '../resumeSessionPayload';
-import type { AgentId } from '@/agents/registryCore';
+import type { AgentId } from '@/agents/catalog';
 import type { PermissionMode } from '@/sync/permissionTypes';
 
 

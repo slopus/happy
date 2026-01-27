@@ -1,6 +1,6 @@
 import { AIBackendProfile } from '@/sync/settings';
 import { DEFAULT_PROFILES, getBuiltInProfile } from '@/sync/profileUtils';
-import type { AgentId } from '@/agents/registryCore';
+import type { AgentId } from '@/agents/catalog';
 import { getProfileCompatibleAgentIds } from '@/sync/profileUtils';
 
 export interface ProfileGroups {

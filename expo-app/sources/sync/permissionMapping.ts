@@ -1,6 +1,6 @@
 import type { PermissionMode } from './permissionTypes';
 import type { AgentType } from './modelOptions';
-import { getAgentCore } from '@/agents/registryCore';
+import { getAgentCore } from '@/agents/catalog';
 
 function isCodexLike(agent: AgentType) {
     return getAgentCore(agent).permissions.modeGroup === 'codexLike';

@@ -1,5 +1,5 @@
 import { AIBackendProfile } from './settings';
-import { AGENT_IDS, getAgentCore, type AgentId } from '@/agents/registryCore';
+import { AGENT_IDS, getAgentCore, type AgentId } from '@/agents/catalog';
 import { isProfileCompatibleWithAgent } from './settings';
 
 export type ProfilePrimaryCli = AgentId | 'multi' | 'none';

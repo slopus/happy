@@ -2,7 +2,7 @@ import type { Session } from './storageTypes';
 import type { ResumeSessionOptions } from './ops';
 import type { ResumeCapabilityOptions } from '@/agents/resumeCapabilities';
 import { canAgentResume, getAgentVendorResumeId } from '@/agents/resumeCapabilities';
-import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/registryCore';
+import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/catalog';
 import type { PermissionModeOverrideForSpawn } from '@/sync/permissionModeOverride';
 
 export type ResumeSessionBaseOptions = Omit<
