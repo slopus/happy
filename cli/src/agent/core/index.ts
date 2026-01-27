@@ -25,18 +25,10 @@ export type {
 } from './AgentBackend';
 
 // ============================================================================
-// AgentRegistry - Factory registry
+// AgentFactory - Factory types (catalog-driven)
 // ============================================================================
 
-export {
-  AgentRegistry,
-  agentRegistry,
-} from './AgentRegistry';
-
-export type {
-  AgentFactory,
-  AgentFactoryOptions,
-} from './AgentRegistry';
+export type { AgentFactory, AgentFactoryOptions } from './AgentFactory';
 
 // ============================================================================
 // AgentMessage - Detailed message types with type guards

@@ -23,8 +23,6 @@ export type {
   AgentFactoryOptions,
 } from './core';
 
-export { AgentRegistry, agentRegistry } from './core';
-
 // ACP backend (low-level)
 export * from './acp';
 
