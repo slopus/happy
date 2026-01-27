@@ -47,8 +47,8 @@ Happy CLI (`handy-cli`) is a command-line tool that wraps Claude Code to enable 
 These conventions are **additive** to the guidelines above. The goal is to keep the CLI easy to reason about and avoid “god files”.
 
 ### Naming
-- Buckets are lowercase (e.g. `api`, `daemon`, `terminal`, `ui`, `commands`, `modules`, `utils`).
-- Feature folders are `camelCase` (e.g. `sessionStartup`, `toolTrace`).
+- Buckets are lowercase (e.g. `api`, `daemon`, `terminal`, `ui`, `commands`, `integrations`, `utils`).
+- Feature folders are `camelCase` (e.g. `agentInput`, `newSession`).
 - Allowed `_*.ts` markers (organization only) inside module-ish folders: `_types.ts`, `_shared.ts`, `_constants.ts`.
 
 ### CLI taxonomy (target intent)
@@ -56,20 +56,22 @@ These conventions are **additive** to the guidelines above. The goal is to keep 
 Top-level domains are “first class” and should remain few:
 - `src/agent/` — agent runtime framework (ACP, transports, adapters, factories)
 - `src/api/` — server communication, crypto, queues, RPC
+- `src/rpc/handlers/` — RPC method registration + validation (session surface)
+- `src/capabilities/` — capability engine (probes, registry, snapshots, deps)
 - `src/daemon/` — daemon lifecycle/control/diagnostics
-- `src/terminal/` — terminal runtime integration (including tmux)
+- `src/integrations/` — OS/tool wrappers and services (tmux, ripgrep, difftastic, proxy, watcher)
+- `src/terminal/` — terminal UX/runtime integration (flags, attach plans, headless helpers)
 - `src/ui/` — user-facing UI and logging (Ink, formatting, QR, auth UI)
 - `src/commands/` — user-facing subcommands
-- `src/modules/` — pluggable modules (ripgrep/difftastic/proxy/etc) and shared handler registries
 - `src/claude/`, `src/codex/`, `src/gemini/`, `src/opencode/` — agent packages (vendor-specific logic + entrypoints)
 - `src/cli/` — argument parsing and command dispatch (keeps `src/index.ts` small)
 - `src/utils/` — shared helpers; prefer named subfolders under `utils/` over dumping unrelated code at the root of `utils/`
 
 ### Specific structure goals
 
-- `tmux` is terminal integration → prefer `src/terminal/tmux/*`.
-- Shared “session startup” pipeline is agent runtime → prefer `src/agent/startup/*`.
-- `toolTrace` is runtime instrumentation → prefer `src/agent/toolTrace/*`.
+- `tmux` is an integration → prefer `src/integrations/tmux/*`.
+- Shared “agent startup/runtime” helpers live in agent runtime → prefer `src/agent/runtime/*`.
+- `toolTrace` is runtime instrumentation → prefer `src/agent/tools/trace/*`.
 - CLI parsing is CLI domain → prefer `src/cli/parsers/*`.
 
 ### When to create subfolders
@@ -77,6 +79,9 @@ Top-level domains are “first class” and should remain few:
 Avoid flat folders growing without structure:
 - If a domain folder becomes “busy” (many files, multiple concerns), add subfolders by subdomain (e.g. `api/session`, `daemon/control`, `daemon/diagnostics`).
 - Prefer “noun folders” (e.g. `api/session/`, `daemon/lifecycle/`) over `misc/`.
+
+### “Canonical entrypoints” rule
+If a file path is already the established entrypoint (e.g. `api/apiMachine.ts`, `daemon/run.ts`), keep it as a real orchestrator and extract internals under subfolders. Avoid turning it into a pure `export * from ...` façade unless it’s clearly temporary.
 
 ## Architecture & Key Components
 

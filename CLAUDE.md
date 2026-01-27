@@ -15,6 +15,7 @@ These are repo-wide defaults. **If a package-specific `CLAUDE.md` conflicts with
 - Buckets: lowercase (e.g. `components`, `hooks`, `utils`, `modules`, `types`)
 - Feature folders: `camelCase` (e.g. `newSession`, `agentInput`)
 - Avoid `_folders` except special/framework files and `__tests__`
+- Prefer not to create a folder that contains only a single file (unless it groups platform variants like `Thing.ios.tsx`/`Thing.web.tsx`, or it’s clearly about to grow).
 
 ### Files
 - React components: `PascalCase.tsx`

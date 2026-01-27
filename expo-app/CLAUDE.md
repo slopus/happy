@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Testing
 - `yarn test` - Run tests in watch mode (Vitest)
-- No existing tests in the codebase yet
+- Tests exist and should be kept green (Vitest)
 
 ### Production
 - `yarn ota` - Deploy over-the-air updates via EAS Update to production branch
@@ -130,12 +130,31 @@ These conventions are **additive** to the guidelines above. The goal is to keep 
 
 ### Screens and feature code
 - Expo Router routes live in `sources/app/**`.
-- Extract non-trivial UI and logic into `sources/components/<feature>/{components,hooks,modules,utils}/*`.
-- Keep “reusable” UI in `sources/components/` and avoid duplicating generic components inside route folders.
+- Keep route files (Expo Router) as the screen entrypoints; extract non-trivial UI/logic into `sources/components/**`.
+
+### Components: domain map (2026-01)
+When adding or refactoring components, prefer placing them under one of these domains:
+- `sources/components/ui/` — reusable UI primitives (lists, popovers, dropdowns, forms)
+- `sources/components/sessions/` — session-related UX (`agentInput`, `newSession`, etc.)
+- `sources/components/profiles/` — profile management UI (edit, list, pickers)
+- `sources/components/secrets/` — secrets + requirements UI
+- `sources/components/machines/` — machine-related UI
+- `sources/components/tools/` — tool rendering + permission UI
+
+Guidance (not a hard rule):
+- Prefer reusing an existing domain over creating a new top-level folder under `sources/components/`.
+- If a new domain is clearly warranted (distinct concept, multiple screens/features, long-term ownership), create it with a clear noun name and keep it cohesive.
+
+Bucket rule:
+- Use `components/`, `hooks/`, `modules/`, `utils/` only when they contain multiple files; avoid creating a 1-file subfolder just for structure.
 
 ### Sync organization
 - Prefer splitting large sync areas by domain (e.g. sessions/messages/machines/settings) using subfolders under `sources/sync/`.
 - Prefer domain “slices” for state when a single file grows too large.
+
+Canonical entrypoints:
+- `sources/sync/{storage.ts,ops.ts,typesRaw.ts,sync.ts}` are canonical entrypoints and should remain real orchestrators.
+- Extract internals under subfolders (`store/`, `ops/`, `typesRaw/`, `reducer/`, etc.) and import from the entry files rather than replacing them with `export * from ...` stubs.
 
 ## Modals & dialogs (web + native)
 
