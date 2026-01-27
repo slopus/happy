@@ -124,7 +124,8 @@ export function startDaemonControlServer({
           }),
           500: z.object({
             success: z.boolean(),
-            error: z.string().optional()
+            error: z.string().optional(),
+            errorCode: z.string().optional(),
           })
         }
       }
@@ -163,7 +164,8 @@ export function startDaemonControlServer({
           reply.code(500);
           return { 
             success: false,
-            error: result.errorMessage
+            error: result.errorMessage,
+            errorCode: result.errorCode,
           };
       }
     });

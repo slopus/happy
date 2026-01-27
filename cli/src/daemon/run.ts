@@ -46,6 +46,7 @@ export { initialMachineMetadata } from './machine/metadata';
 import { createDaemonShutdownController } from './lifecycle/shutdown';
 import { buildTmuxSpawnConfig, buildTmuxWindowEnv } from './platform/tmux/spawnConfig';
 export { buildTmuxSpawnConfig, buildTmuxWindowEnv } from './platform/tmux/spawnConfig';
+import { SPAWN_SESSION_ERROR_CODES } from '@/rpc/handlers/registerSessionHandlers';
 export async function startDaemon(): Promise<void> {
   // We don't have cleanup function at the time of server construction
   // Control flow is:
@@ -146,7 +147,11 @@ export async function startDaemon(): Promise<void> {
 	      });
 
 	      if (!environmentVariablesValidation.ok) {
-	        return { type: 'error', errorMessage: environmentVariablesValidation.error };
+	        return {
+            type: 'error',
+            errorCode: SPAWN_SESSION_ERROR_CODES.INVALID_ENVIRONMENT_VARIABLES,
+            errorMessage: environmentVariablesValidation.error,
+          };
 	      }
 
 			      const {
@@ -203,6 +208,7 @@ export async function startDaemon(): Promise<void> {
               const qualifier = supportLevel === 'experimental' ? ' (experimental and not enabled)' : '';
 		        return {
 		          type: 'error',
+              errorCode: SPAWN_SESSION_ERROR_CODES.RESUME_NOT_SUPPORTED,
 		          errorMessage: `Resume is not supported for agent '${catalogAgentId}'${qualifier}.`,
 		        };
             }
@@ -212,10 +218,18 @@ export async function startDaemon(): Promise<void> {
 		        typeof sessionEncryptionKeyBase64 === 'string' ? sessionEncryptionKeyBase64.trim() : '';
 		      if (normalizedExistingSessionId) {
 		        if (!normalizedSessionEncryptionKeyBase64) {
-		          return { type: 'error', errorMessage: 'Missing session encryption key for resume' };
+		          return {
+                type: 'error',
+                errorCode: SPAWN_SESSION_ERROR_CODES.RESUME_MISSING_ENCRYPTION_KEY,
+                errorMessage: 'Missing session encryption key for resume',
+              };
 		        }
 		        if (sessionEncryptionVariant !== 'dataKey') {
-		          return { type: 'error', errorMessage: 'Unsupported session encryption variant for resume' };
+		          return {
+                type: 'error',
+                errorCode: SPAWN_SESSION_ERROR_CODES.RESUME_UNSUPPORTED_ENCRYPTION_VARIANT,
+                errorMessage: 'Unsupported session encryption variant for resume',
+              };
 		        }
 		      }
 		      let directoryCreated = false;
@@ -267,6 +281,7 @@ export async function startDaemon(): Promise<void> {
           logger.debug(`[DAEMON RUN] Directory creation failed: ${errorMessage}`);
           return {
             type: 'error',
+            errorCode: SPAWN_SESSION_ERROR_CODES.DIRECTORY_CREATE_FAILED,
             errorMessage
           };
         }
@@ -351,6 +366,7 @@ export async function startDaemon(): Promise<void> {
           }
           return {
             type: 'error',
+            errorCode: SPAWN_SESSION_ERROR_CODES.AUTH_ENV_UNEXPANDED,
             errorMessage
           };
         }
@@ -367,7 +383,11 @@ export async function startDaemon(): Promise<void> {
           const validation = await daemonSpawnHooks.validateSpawn({ experimentalCodexResume, experimentalCodexAcp });
           if (!validation.ok) {
             cleanupSpawnResources();
-            return { type: 'error', errorMessage: validation.errorMessage };
+            return {
+              type: 'error',
+              errorCode: SPAWN_SESSION_ERROR_CODES.SPAWN_VALIDATION_FAILED,
+              errorMessage: validation.errorMessage,
+            };
           }
         }
 
@@ -541,6 +561,7 @@ export async function startDaemon(): Promise<void> {
                 logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${tmuxResult.pid} (tmux)`);
                 resolve({
                   type: 'error',
+                  errorCode: SPAWN_SESSION_ERROR_CODES.SESSION_WEBHOOK_TIMEOUT,
                   errorMessage: `Session webhook timeout for PID ${tmuxResult.pid} (tmux)`
                 });
               }, 15_000); // Same timeout as regular sessions
@@ -632,6 +653,7 @@ export async function startDaemon(): Promise<void> {
 	            }
 	            return {
 	              type: 'error',
+                errorCode: SPAWN_SESSION_ERROR_CODES.SPAWN_NO_PID,
 	              errorMessage: 'Failed to spawn Happy process - no PID returned'
 	            };
 	          }
@@ -681,6 +703,7 @@ export async function startDaemon(): Promise<void> {
               logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
               resolve({
                 type: 'error',
+                errorCode: SPAWN_SESSION_ERROR_CODES.SESSION_WEBHOOK_TIMEOUT,
                 errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`
               });
               // 15 second timeout - I have seen timeouts on 10 seconds
@@ -702,6 +725,7 @@ export async function startDaemon(): Promise<void> {
         // This should never be reached, but TypeScript requires a return statement
         return {
           type: 'error',
+          errorCode: SPAWN_SESSION_ERROR_CODES.UNEXPECTED,
           errorMessage: 'Unexpected error in session spawning'
         };
 	      } catch (error) {
@@ -718,6 +742,7 @@ export async function startDaemon(): Promise<void> {
 	        logger.debug('[DAEMON RUN] Failed to spawn session:', error);
 	        return {
 	          type: 'error',
+            errorCode: SPAWN_SESSION_ERROR_CODES.SPAWN_FAILED,
 	          errorMessage: `Failed to spawn session: ${errorMessage}`
         };
       }

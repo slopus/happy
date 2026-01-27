@@ -1,6 +1,10 @@
 import { logger } from '@/ui/logger';
 
-import type { SpawnSessionOptions, SpawnSessionResult } from '@/rpc/handlers/registerSessionHandlers';
+import {
+  SPAWN_SESSION_ERROR_CODES,
+  type SpawnSessionOptions,
+  type SpawnSessionResult,
+} from '@/rpc/handlers/registerSessionHandlers';
 
 import type { RpcHandlerManager } from '../rpc/RpcHandlerManager';
 
@@ -74,16 +78,32 @@ export function registerMachineRpcHandlers(params: Readonly<{
       logger.debug(`[API MACHINE] Resuming inactive session ${existingSessionId}`);
 
       if (!directory) {
-        throw new Error('Directory is required');
+        return {
+          type: 'error',
+          errorCode: SPAWN_SESSION_ERROR_CODES.INVALID_REQUEST,
+          errorMessage: 'Directory is required',
+        };
       }
       if (!existingSessionId) {
-        throw new Error('Session ID is required for resume');
+        return {
+          type: 'error',
+          errorCode: SPAWN_SESSION_ERROR_CODES.INVALID_REQUEST,
+          errorMessage: 'Session ID is required for resume',
+        };
       }
       if (!sessionEncryptionKeyBase64) {
-        throw new Error('Session encryption key is required for resume');
+        return {
+          type: 'error',
+          errorCode: SPAWN_SESSION_ERROR_CODES.RESUME_MISSING_ENCRYPTION_KEY,
+          errorMessage: 'Session encryption key is required for resume',
+        };
       }
       if (sessionEncryptionVariant !== 'dataKey') {
-        throw new Error('Unsupported session encryption variant for resume');
+        return {
+          type: 'error',
+          errorCode: SPAWN_SESSION_ERROR_CODES.RESUME_UNSUPPORTED_ENCRYPTION_VARIANT,
+          errorMessage: 'Unsupported session encryption variant for resume',
+        };
       }
 
       const result = await spawnSession({
@@ -101,7 +121,7 @@ export function registerMachineRpcHandlers(params: Readonly<{
       });
 
       if (result.type === 'error') {
-        throw new Error(result.errorMessage);
+        return result;
       }
 
       // For resume, we don't return a new session ID - we're reusing the existing one
@@ -109,7 +129,7 @@ export function registerMachineRpcHandlers(params: Readonly<{
     }
 
     if (!directory) {
-      throw new Error('Directory is required');
+      return { type: 'error', errorCode: SPAWN_SESSION_ERROR_CODES.INVALID_REQUEST, errorMessage: 'Directory is required' };
     }
 
     const result = await spawnSession({
@@ -139,7 +159,7 @@ export function registerMachineRpcHandlers(params: Readonly<{
         return { type: 'requestToApproveDirectoryCreation', directory: result.directory };
 
       case 'error':
-        throw new Error(result.errorMessage);
+        return result;
     }
   });
 
