@@ -16,7 +16,7 @@ import { Platform, AppState } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
-import { Profile, profileParse } from './profile';
+import { Profile } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
 import { initializeTracking, tracking } from '@/track';
 import { parseToken } from '@/utils/parseToken';
@@ -62,7 +62,7 @@ import {
     updateArtifactViaApi,
 } from './engine/artifacts';
 import { fetchAndApplyFeed, handleNewFeedPostUpdate, handleRelationshipUpdatedSocketUpdate, handleTodoKvBatchUpdate } from './engine/feed';
-import { handleUpdateAccountSocketUpdate } from './engine/account';
+import { fetchAndApplyProfile, handleUpdateAccountSocketUpdate } from './engine/account';
 import { buildMachineFromMachineActivityEphemeralUpdate, buildUpdatedMachineFromSocketUpdate, fetchAndApplyMachines } from './engine/machines';
 import {
     buildUpdatedSessionFromSocketUpdate,
@@ -1224,27 +1224,10 @@ class Sync {
 
     private fetchProfile = async () => {
         if (!this.credentials) return;
-
-        const API_ENDPOINT = getServerUrl();
-        const response = await fetch(`${API_ENDPOINT}/v1/account/profile`, {
-            headers: {
-                'Authorization': `Bearer ${this.credentials.token}`,
-                'Content-Type': 'application/json'
-            }
+        await fetchAndApplyProfile({
+            credentials: this.credentials,
+            applyProfile: (profile) => storage.getState().applyProfile(profile),
         });
-
-        if (!response.ok) {
-            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
-                throw new HappyError(`Failed to fetch profile (${response.status})`, false);
-            }
-            throw new Error(`Failed to fetch profile: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const parsedProfile = profileParse(data);
-
-        // Apply profile to storage
-        storage.getState().applyProfile(parsedProfile);
     }
 
     private fetchNativeUpdate = async () => {

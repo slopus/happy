@@ -1,6 +1,10 @@
 import type { Encryption } from '../encryption/encryption';
 import type { Profile } from '../profile';
+import { profileParse } from '../profile';
 import { settingsParse, SUPPORTED_SCHEMA_VERSION } from '../settings';
+import { getServerUrl } from '../serverConfig';
+import type { AuthCredentials } from '@/auth/tokenStorage';
+import { HappyError } from '@/utils/errors';
 
 export async function handleUpdateAccountSocketUpdate(params: {
     accountUpdate: any;
@@ -52,3 +56,30 @@ export async function handleUpdateAccountSocketUpdate(params: {
     }
 }
 
+export async function fetchAndApplyProfile(params: {
+    credentials: AuthCredentials;
+    applyProfile: (profile: Profile) => void;
+}): Promise<void> {
+    const { credentials, applyProfile } = params;
+
+    const API_ENDPOINT = getServerUrl();
+    const response = await fetch(`${API_ENDPOINT}/v1/account/profile`, {
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
+            'Content-Type': 'application/json',
+        },
+    });
+
+    if (!response.ok) {
+        if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+            throw new HappyError(`Failed to fetch profile (${response.status})`, false);
+        }
+        throw new Error(`Failed to fetch profile: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const parsedProfile = profileParse(data);
+
+    // Apply profile to storage
+    applyProfile(parsedProfile);
+}
