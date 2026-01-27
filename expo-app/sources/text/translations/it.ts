@@ -428,7 +428,7 @@ export const it: TranslationStructure = {
         cliVersionOutdated: 'Aggiornamento CLI richiesto',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Versione ${currentVersion} installata. Aggiorna a ${requiredVersion} o successiva`,
-        updateCliInstructions: 'Esegui npm install -g happy-coder@latest',
+        updateCliInstructions: 'Esegui npm install -g happy-code-cli@latest',
         deleteSession: 'Elimina sessione',
         deleteSessionSubtitle: 'Rimuovi definitivamente questa sessione',
         deleteSessionConfirm: 'Eliminare definitivamente la sessione?',
@@ -776,7 +776,7 @@ export const it: TranslationStructure = {
     machine: {
         launchNewSessionInDirectory: 'Avvia nuova sessione nella directory',
         offlineUnableToSpawn: 'Avvio disabilitato quando la macchina è offline',
-        offlineHelp: '• Assicurati che il tuo computer sia online\n• Esegui `happy daemon status` per diagnosticare\n• Stai usando l\'ultima versione della CLI? Aggiorna con `npm install -g happy-coder@latest`',
+        offlineHelp: '• Assicurati che il tuo computer sia online\n• Esegui `happy daemon status` per diagnosticare\n• Stai usando l\'ultima versione della CLI? Aggiorna con `npm install -g happy-code-cli@latest`',
         daemon: 'Daemon',
         status: 'Stato',
         stopDaemon: 'Arresta daemon',
