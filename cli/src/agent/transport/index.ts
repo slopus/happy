@@ -20,8 +20,8 @@ export { DefaultTransport, defaultTransport } from './DefaultTransport';
 
 // Agent-specific handlers
 export { GeminiTransport, geminiTransport } from './handlers';
+export { OpenCodeTransport, openCodeTransport } from './handlers';
 
 // Future handlers will be exported from ./handlers:
 // export { CodexTransport, codexTransport } from './handlers';
 // export { ClaudeTransport, claudeTransport } from './handlers';
-// export { OpenCodeTransport, openCodeTransport } from './handlers';
