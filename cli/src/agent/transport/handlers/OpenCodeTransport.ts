@@ -25,8 +25,8 @@ import { logger } from '@/ui/logger';
  * OpenCode-specific timeout values (in milliseconds)
  */
 export const OPENCODE_TIMEOUTS = {
-  /** OpenCode starts quickly */
-  init: 60_000,
+  /** OpenCode needs time to load plugins (bun install, etc.) */
+  init: 120_000,
   /** Standard tool call timeout */
   toolCall: 120_000,
   /** Long-running tools (file operations, searches) */
@@ -118,8 +118,8 @@ export class OpenCodeTransport implements TransportHandler {
   /**
    * Filter OpenCode CLI debug output from stdout.
    *
-   * OpenCode may output log messages or debug info to stdout.
-   * We only keep valid JSON lines for ACP parsing.
+   * OpenCode outputs many log messages to stdout that break JSON-RPC parsing.
+   * We only keep valid JSON-RPC lines.
    */
   filterStdoutLine(line: string): string | null {
     const trimmed = line.trim();
@@ -129,9 +129,30 @@ export class OpenCodeTransport implements TransportHandler {
       return null;
     }
 
-    // Skip INFO/DEBUG/WARN/ERROR log lines
+    // Skip INFO/DEBUG/WARN/ERROR log lines (OpenCode format: "INFO  2026-01-27...")
     if (trimmed.startsWith('INFO') || trimmed.startsWith('DEBUG') || 
         trimmed.startsWith('WARN') || trimmed.startsWith('ERROR')) {
+      return null;
+    }
+
+    // Skip service= log lines (OpenCode internal logs)
+    if (trimmed.includes('service=')) {
+      return null;
+    }
+
+    // Skip bun output lines
+    if (trimmed.startsWith('bun ') || trimmed.includes('bun install') || 
+        trimmed.includes('bun add') || trimmed.includes('[') && trimmed.includes('ms]')) {
+      return null;
+    }
+
+    // Skip plugin loading messages
+    if (trimmed.includes('loading plugin') || trimmed.includes('loading internal plugin')) {
+      return null;
+    }
+
+    // Skip "Saved lockfile" and similar messages
+    if (trimmed.includes('Saved lockfile') || trimmed.includes('installed @')) {
       return null;
     }
 
