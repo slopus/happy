@@ -445,6 +445,16 @@ export const SettingsView = React.memo(function SettingsView() {
                 )}
             </ItemGroup>
 
+            {/* Clawdbot */}
+            <ItemGroup title={t('clawdbot.title')}>
+                <Item
+                    title={t('clawdbot.title')}
+                    subtitle={t('clawdbot.connectDescription')}
+                    icon={<Ionicons name="chatbubbles-outline" size={29} color="#FF6B6B" />}
+                    onPress={() => router.push('/(app)/clawdbot')}
+                />
+            </ItemGroup>
+
             {/* Developer */}
             {(__DEV__ || devModeEnabled) && (
                 <ItemGroup title={t('settings.developer')}>

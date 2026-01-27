@@ -9,7 +9,7 @@ import { layout } from '@/components/layout';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 import { useInboxFriendsEnabled } from '@/hooks/useInboxFriendsEnabled';
 
-export type TabType = 'zen' | 'inbox' | 'sessions' | 'settings';
+export type TabType = 'zen' | 'inbox' | 'sessions' | 'settings' | 'clawdbot';
 
 interface TabBarProps {
     activeTab: TabType;
@@ -91,6 +91,7 @@ export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }
         // NOTE: Zen tab removed - the feature never got to a useful state
         const base: { key: TabType; icon: any; label: string }[] = [
             { key: 'sessions', icon: require('@/assets/images/brutalist/Brutalism 15.png'), label: t('tabs.sessions') },
+            { key: 'clawdbot', icon: require('@/assets/images/brutalist/Brutalism 28.png'), label: t('tabs.clawdbot') },
             { key: 'settings', icon: require('@/assets/images/brutalist/Brutalism 9.png'), label: t('tabs.settings') },
         ];
         if (inboxFriendsEnabled) {

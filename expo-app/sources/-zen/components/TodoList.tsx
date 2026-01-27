@@ -6,8 +6,9 @@ import Animated, {
     withSpring,
     useDerivedValue,
     SharedValue,
+    runOnJS,
+    runOnUI,
 } from 'react-native-reanimated';
-import { runOnJS, runOnUI, scheduleOnRN } from 'react-native-worklets';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { TODO_HEIGHT, TodoView } from './TodoView';
 
@@ -128,7 +129,7 @@ const AnimatedTodoItem = React.memo<AnimatedTodoItemProps>(({
 
             // Call the reorder callback with the final position
             if (onReorder && finalPosition !== index) {
-                scheduleOnRN(onReorder, todo.id, finalPosition);
+                runOnJS(onReorder)(todo.id, finalPosition);
             }
         })
         .onFinalize(() => {
