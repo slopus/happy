@@ -49,21 +49,6 @@ function redactSettingsForDisplay(settings: SettingsForDisplay): SettingsForDisp
         delete redactedRecord.localEnvironmentVariables;
     }
 
-    if (Array.isArray(redacted.profiles)) {
-        redacted.profiles = redacted.profiles.map((profile) => {
-            const p = { ...profile };
-
-            if (Array.isArray(p.environmentVariables)) {
-                p.environmentVariables = p.environmentVariables.map((ev) => ({
-                    ...ev,
-                    value: maskValue(ev.value),
-                }));
-            }
-
-            return p;
-        });
-    }
-
     return redacted;
 }
 

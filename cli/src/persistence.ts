@@ -13,9 +13,10 @@ import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64 } from '@/api/encryption';
 import { logger } from '@/ui/logger';
-import { AIBackendProfileSchema, SUPPORTED_SCHEMA_VERSION, validateProfile, type AIBackendProfile } from './persistence/profileSchema';
 
-export * from './persistence/profileSchema';
+// Settings schema version: Integer for overall Settings structure compatibility.
+// Incremented when Settings structure changes.
+export const SUPPORTED_SCHEMA_VERSION = 4;
 
 interface Settings {
   // Schema version for backwards compatibility
@@ -26,15 +27,11 @@ interface Settings {
   machineId?: string
   machineIdConfirmedByServer?: boolean
   daemonAutoStartWhenRunningHappy?: boolean
-  // Profile management settings (synced with happy app)
-  activeProfileId?: string
-  profiles: AIBackendProfile[]
 }
 
 const defaultSettings: Settings = {
   schemaVersion: SUPPORTED_SCHEMA_VERSION,
   onboardingCompleted: false,
-  profiles: [],
 }
 
 /**
@@ -44,22 +41,19 @@ const defaultSettings: Settings = {
 function migrateSettings(raw: any, fromVersion: number): any {
   let migrated = { ...raw };
 
-  // Migration from v1 to v2 (added profile support)
-  if (fromVersion < 2) {
-    // Ensure profiles array exists
-    if (!migrated.profiles) {
-      migrated.profiles = [];
-    }
-    // Update schema version
-    migrated.schemaVersion = 2;
-  }
-
   // Migration from v2 to v3 (removed CLI-local env cache)
   if (fromVersion < 3) {
     if ('localEnvironmentVariables' in migrated) {
       delete migrated.localEnvironmentVariables;
     }
     migrated.schemaVersion = 3;
+  }
+
+  // Migration from v3 to v4 (removed CLI-local profile persistence)
+  if (fromVersion < 4) {
+    if ('profiles' in migrated) delete migrated.profiles;
+    if ('activeProfileId' in migrated) delete migrated.activeProfileId;
+    migrated.schemaVersion = 4;
   }
 
   // Future migrations go here:
@@ -113,24 +107,6 @@ export async function readSettings(): Promise<Settings> {
 
     // Migrate if needed
     const migrated = migrateSettings(raw, schemaVersion);
-
-    // Validate and clean profiles gracefully (don't crash on invalid profiles)
-    if (migrated.profiles && Array.isArray(migrated.profiles)) {
-      const validProfiles: AIBackendProfile[] = [];
-      for (const profile of migrated.profiles) {
-        try {
-          const validated = AIBackendProfileSchema.parse(profile);
-          validProfiles.push(validated);
-        } catch (error: any) {
-          logger.warn(
-            `⚠️ Invalid profile "${profile?.name || profile?.id || 'unknown'}" - skipping. ` +
-            `Error: ${error.message}`
-          );
-          // Continue processing other profiles
-        }
-      }
-      migrated.profiles = validProfiles;
-    }
 
     // Merge with defaults to ensure all required fields exist
     return { ...defaultSettings, ...migrated };
@@ -471,63 +447,4 @@ export async function releaseDaemonLock(lockHandle: FileHandle): Promise<void> {
       unlinkSync(configuration.daemonLockFile);
     }
   } catch { }
-}
-
-//
-// Profile Management
-//
-
-/**
- * Get all profiles from settings
- */
-export async function getProfiles(): Promise<AIBackendProfile[]> {
-  const settings = await readSettings();
-  return settings.profiles || [];
-}
-
-/**
- * Get a specific profile by ID
- */
-export async function getProfile(profileId: string): Promise<AIBackendProfile | null> {
-  const settings = await readSettings();
-  return settings.profiles.find(p => p.id === profileId) || null;
-}
-
-/**
- * Get the active profile
- */
-export async function getActiveProfile(): Promise<AIBackendProfile | null> {
-  const settings = await readSettings();
-  if (!settings.activeProfileId) return null;
-  return settings.profiles.find(p => p.id === settings.activeProfileId) || null;
-}
-
-/**
- * Set the active profile by ID
- */
-export async function setActiveProfile(profileId: string): Promise<void> {
-  await updateSettings(settings => ({
-    ...settings,
-    activeProfileId: profileId
-  }));
-}
-
-/**
- * Update profiles (synced from happy app) with validation
- */
-export async function updateProfiles(profiles: unknown[]): Promise<void> {
-  // Validate all profiles using Zod schema
-  const validatedProfiles = profiles.map(profile => validateProfile(profile));
-
-  await updateSettings(settings => {
-    // Preserve active profile ID if it still exists
-    const activeProfileId = settings.activeProfileId;
-    const activeProfileStillExists = activeProfileId && validatedProfiles.some(p => p.id === activeProfileId);
-
-    return {
-      ...settings,
-      profiles: validatedProfiles,
-      activeProfileId: activeProfileStillExists ? activeProfileId : undefined
-    };
-  });
 }
