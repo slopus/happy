@@ -9,11 +9,12 @@ vi.mock('@/claude/sdk', () => ({
 
 // RED: current implementation waits for the session file to exist (up to 10s)
 // which can block sessionId propagation and switching. We should not call this.
-vi.mock('@/modules/watcher/awaitFileExist', () => ({
+vi.mock('@/integrations/watcher/awaitFileExist', () => ({
   awaitFileExist: vi.fn(() => {
     throw new Error('awaitFileExist should not be called')
   }),
 }))
+
 
 vi.mock('./utils/claudeCheckSession', () => ({
   claudeCheckSession: vi.fn(() => false),

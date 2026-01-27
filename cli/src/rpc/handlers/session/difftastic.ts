@@ -1,6 +1,6 @@
 import { logger } from '@/ui/logger';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
-import { run as runDifftastic } from '@/modules/difftastic/index';
+import { run as runDifftastic } from '@/integrations/difftastic/index';
 import { validatePath } from '@/modules/common/pathSecurity';
 
 interface DifftasticRequest {

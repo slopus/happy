@@ -1,6 +1,6 @@
 import { logger } from '@/ui/logger';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
-import { run as runRipgrep } from '@/modules/ripgrep/index';
+import { run as runRipgrep } from '@/integrations/ripgrep/index';
 import { validatePath } from '@/modules/common/pathSecurity';
 
 interface RipgrepRequest {

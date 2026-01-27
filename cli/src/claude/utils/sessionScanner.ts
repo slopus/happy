@@ -3,7 +3,7 @@ import { RawJSONLines, RawJSONLinesSchema } from "../types";
 import { dirname, join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { logger } from "@/ui/logger";
-import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
+import { startFileWatcher } from "@/integrations/watcher/startFileWatcher";
 import { getProjectPath } from "./path";
 
 /**
