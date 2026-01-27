@@ -65,6 +65,7 @@ import {
 import { inferTaskLifecycleFromMessageContent, parseUpdateContainer } from './engine/updates';
 import { handleNewFeedPostUpdate } from './engine/feedSocketUpdates';
 import { handleTodoKvBatchUpdate } from './engine/todoSocketUpdates';
+import { buildUpdatedMachineFromSocketUpdate } from './engine/machineSocketUpdates';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -2188,50 +2189,14 @@ class Sync {
             const machineId = machineUpdate.machineId;  // Changed from .id to .machineId
             const machine = storage.getState().machines[machineId];
 
-            // Create or update machine with all required fields
-            const updatedMachine: Machine = {
-                id: machineId,
-                seq: updateData.seq,
-                createdAt: machine?.createdAt ?? updateData.createdAt,
-                updatedAt: updateData.createdAt,
-                active: machineUpdate.active ?? true,
-                activeAt: machineUpdate.activeAt ?? updateData.createdAt,
-                metadata: machine?.metadata ?? null,
-                metadataVersion: machine?.metadataVersion ?? 0,
-                daemonState: machine?.daemonState ?? null,
-                daemonStateVersion: machine?.daemonStateVersion ?? 0
-            };
-
-            // Get machine-specific encryption (might not exist if machine wasn't initialized)
-            const machineEncryption = this.encryption.getMachineEncryption(machineId);
-            if (!machineEncryption) {
-                console.error(`Machine encryption not found for ${machineId} - cannot decrypt updates`);
-                return;
-            }
-
-            // If metadata is provided, decrypt and update it
-            const metadataUpdate = machineUpdate.metadata;
-            if (metadataUpdate) {
-                try {
-                    const metadata = await machineEncryption.decryptMetadata(metadataUpdate.version, metadataUpdate.value);
-                    updatedMachine.metadata = metadata;
-                    updatedMachine.metadataVersion = metadataUpdate.version;
-                } catch (error) {
-                    console.error(`Failed to decrypt machine metadata for ${machineId}:`, error);
-                }
-            }
-
-            // If daemonState is provided, decrypt and update it
-            const daemonStateUpdate = machineUpdate.daemonState;
-            if (daemonStateUpdate) {
-                try {
-                    const daemonState = await machineEncryption.decryptDaemonState(daemonStateUpdate.version, daemonStateUpdate.value);
-                    updatedMachine.daemonState = daemonState;
-                    updatedMachine.daemonStateVersion = daemonStateUpdate.version;
-                } catch (error) {
-                    console.error(`Failed to decrypt machine daemonState for ${machineId}:`, error);
-                }
-            }
+            const updatedMachine = await buildUpdatedMachineFromSocketUpdate({
+                machineUpdate,
+                updateSeq: updateData.seq,
+                updateCreatedAt: updateData.createdAt,
+                existingMachine: machine,
+                getMachineEncryption: (id) => this.encryption.getMachineEncryption(id),
+            });
+            if (!updatedMachine) return;
 
             // Update storage using applyMachines which rebuilds sessionListViewData
             storage.getState().applyMachines([updatedMachine]);
