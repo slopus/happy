@@ -1,5 +1,7 @@
 import type { AgentCatalogEntry } from '@/backends/catalog';
 import { AGENTS } from '@/backends/catalog';
+import { CATALOG_AGENT_IDS } from '@/backends/types';
+import type { CatalogAgentId } from '@/backends/types';
 
 import type { ChecklistId } from './checklistIds';
 import type { CapabilityDetectRequest } from './types';
@@ -31,7 +33,11 @@ function mergeChecklistContributions(
     return next;
 }
 
-const baseChecklists: Record<ChecklistId, CapabilityDetectRequest[]> = {
+const resumeChecklistEntries = Object.fromEntries(
+    CATALOG_AGENT_IDS.map((id) => [`resume.${id}`, [] as CapabilityDetectRequest[]] as const),
+) as Record<`resume.${CatalogAgentId}`, CapabilityDetectRequest[]>;
+
+const baseChecklists = {
     'new-session': [
         ...cliAgentRequests,
         { id: 'tool.tmux' },
@@ -42,9 +48,7 @@ const baseChecklists: Record<ChecklistId, CapabilityDetectRequest[]> = {
         { id: 'dep.codex-mcp-resume' },
         { id: 'dep.codex-acp' },
     ],
-    'resume.codex': [],
-    'resume.gemini': [],
-    'resume.opencode': [],
-};
+    ...resumeChecklistEntries,
+} satisfies Record<ChecklistId, CapabilityDetectRequest[]>;
 
 export const checklists: Record<ChecklistId, CapabilityDetectRequest[]> = mergeChecklistContributions(baseChecklists);

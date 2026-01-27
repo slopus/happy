@@ -2,6 +2,8 @@ import chalk from 'chalk';
 import { logger } from '@/ui/logger';
 import type { TerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags';
 import { commandRegistry } from '@/cli/commandRegistry';
+import { AGENTS } from '@/backends/catalog';
+import { DEFAULT_CATALOG_AGENT_ID } from '@/backends/types';
 
 export async function dispatchCli(params: Readonly<{
   args: string[];
@@ -50,6 +52,10 @@ export async function dispatchCli(params: Readonly<{
     return;
   }
 
-  const { handleClaudeCliCommand } = await import('@/claude/cli/command');
-  await handleClaudeCliCommand({ args, rawArgv, terminalRuntime });
+  const defaultEntry = AGENTS[DEFAULT_CATALOG_AGENT_ID];
+  if (!defaultEntry.getCliCommandHandler) {
+    throw new Error(`Default agent '${DEFAULT_CATALOG_AGENT_ID}' has no CLI command handler registered`);
+  }
+  const defaultHandler = await defaultEntry.getCliCommandHandler();
+  await defaultHandler({ args, rawArgv, terminalRuntime });
 }

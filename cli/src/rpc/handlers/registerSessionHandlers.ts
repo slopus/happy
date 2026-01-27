@@ -1,5 +1,6 @@
 import type { TerminalSpawnOptions } from '@/terminal/terminalConfig';
 import type { PermissionMode } from '@/api/types';
+import type { CatalogAgentId } from '@/backends/types';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import { registerCapabilitiesHandlers } from './capabilities';
 import { registerPreviewEnvHandler } from './previewEnv';
@@ -60,7 +61,7 @@ export interface SpawnSessionOptions {
      */
     permissionModeUpdatedAt?: number;
     approvedNewDirectoryCreation?: boolean;
-    agent?: 'claude' | 'codex' | 'gemini' | 'opencode';
+    agent?: CatalogAgentId;
     token?: string;
     /**
      * Daemon/runtime terminal configuration for the spawned session (non-secret).
@@ -105,4 +106,3 @@ export function registerSessionHandlers(rpcHandlerManager: RpcHandlerManager, wo
     registerRipgrepHandler(rpcHandlerManager, workingDirectory);
     registerDifftasticHandler(rpcHandlerManager, workingDirectory);
 }
-

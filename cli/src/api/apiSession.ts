@@ -17,6 +17,7 @@ import { fetchSessionSnapshotUpdateFromServer, shouldSyncSessionSnapshotOnConnec
 import { createSessionScopedSocket, createUserScopedSocket } from './session/sockets';
 import { isToolTraceEnabled, recordAcpToolTraceEventIfNeeded, recordClaudeToolTraceEvents, recordCodexToolTraceEventIfNeeded } from './session/toolTrace';
 import { updateSessionAgentStateWithAck, updateSessionMetadataWithAck } from './session/stateUpdates';
+import type { CatalogAgentId } from '@/backends/types';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -43,7 +44,7 @@ export type ACPMessageData =
     // Usage/metrics
     | { type: 'token_count'; [key: string]: unknown };
 
-export type ACPProvider = 'gemini' | 'codex' | 'claude' | 'opencode';
+export type ACPProvider = CatalogAgentId;
 
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string;

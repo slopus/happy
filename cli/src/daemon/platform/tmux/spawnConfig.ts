@@ -1,4 +1,5 @@
 import { buildHappyCliSubprocessInvocation } from '@/utils/spawnHappyCLI';
+import type { CatalogAgentId } from '@/backends/types';
 
 export function buildTmuxWindowEnv(
   daemonEnv: NodeJS.ProcessEnv,
@@ -12,7 +13,7 @@ export function buildTmuxWindowEnv(
 }
 
 export function buildTmuxSpawnConfig(params: {
-  agent: 'claude' | 'codex' | 'gemini' | 'opencode';
+  agent: CatalogAgentId;
   directory: string;
   extraEnv: Record<string, string>;
   tmuxCommandEnv?: Record<string, string>;
@@ -50,4 +51,3 @@ export function buildTmuxSpawnConfig(params: {
     directory: params.directory,
   };
 }
-

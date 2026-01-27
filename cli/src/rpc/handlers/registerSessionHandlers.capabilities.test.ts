@@ -75,7 +75,7 @@ describe('registerCommonHandlers capabilities', () => {
             expect.arrayContaining(['cli.codex', 'cli.claude', 'cli.gemini', 'cli.opencode', 'tool.tmux', 'dep.codex-mcp-resume']),
         );
         expect(Object.keys(result.checklists)).toEqual(
-            expect.arrayContaining(['new-session', 'machine-details', 'resume.codex', 'resume.gemini']),
+            expect.arrayContaining(['new-session', 'machine-details', 'resume.claude', 'resume.codex', 'resume.gemini', 'resume.opencode']),
         );
         expect(result.checklists['resume.codex'].map((r) => r.id)).toEqual(
             expect.arrayContaining(['cli.codex', 'dep.codex-mcp-resume']),

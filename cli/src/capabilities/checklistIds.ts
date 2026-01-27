@@ -1,2 +1,3 @@
-export type ChecklistId = 'new-session' | 'machine-details' | 'resume.codex' | 'resume.gemini' | 'resume.opencode';
+import type { CatalogAgentId } from '@/backends/types';
 
+export type ChecklistId = 'new-session' | 'machine-details' | `resume.${CatalogAgentId}`;

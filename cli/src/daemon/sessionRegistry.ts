@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as z from 'zod';
+import { CATALOG_AGENT_IDS } from '@/backends/types';
 
 const DaemonSessionMarkerSchema = z.object({
   pid: z.number().int().positive(),
@@ -11,7 +12,7 @@ const DaemonSessionMarkerSchema = z.object({
   happyHomeDir: z.string(),
   createdAt: z.number().int().positive(),
   updatedAt: z.number().int().positive(),
-  flavor: z.enum(['claude', 'codex', 'gemini', 'opencode']).optional(),
+  flavor: z.enum(CATALOG_AGENT_IDS).optional(),
   startedBy: z.enum(['daemon', 'terminal']).optional(),
   cwd: z.string().optional(),
   // Process identity safety (PID reuse mitigation). Hash of the observed process command line.
