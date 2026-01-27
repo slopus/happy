@@ -24,6 +24,7 @@ import { feedRoutes } from "./routes/feedRoutes";
 import { kvRoutes } from "./routes/kvRoutes";
 import { shareRoutes } from "./routes/shareRoutes";
 import { publicShareRoutes } from "./routes/publicShareRoutes";
+import { featuresRoutes } from "./routes/featuresRoutes";
 
 export async function startApi() {
 
@@ -67,6 +68,7 @@ export async function startApi() {
     accessKeysRoutes(typed);
     devRoutes(typed);
     versionRoutes(typed);
+    featuresRoutes(typed);
     voiceRoutes(typed);
     userRoutes(typed);
     feedRoutes(typed);
