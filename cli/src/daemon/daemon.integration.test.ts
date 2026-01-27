@@ -49,12 +49,17 @@ async function waitFor(
 // Check if dev server is running and properly configured
 async function isServerHealthy(): Promise<boolean> {
   try {
+    const configuredServerUrl = process.env.HAPPY_SERVER_URL || 'http://localhost:3005';
+    const healthUrl = new URL('/health', configuredServerUrl);
+    // Avoid IPv6/localhost resolution issues in some CI/container environments.
+    if (healthUrl.hostname === 'localhost') healthUrl.hostname = '127.0.0.1';
+
     // First check if server responds
-    const response = await fetch('http://localhost:3005/', { 
-      signal: AbortSignal.timeout(1000) 
+    const response = await fetch(healthUrl.toString(), {
+      signal: AbortSignal.timeout(3000)
     });
     if (!response.ok) {
-      console.log('[TEST] Server health check failed: root endpoint not OK');
+      console.log('[TEST] Server health check failed:', response.status, response.statusText);
       return false;
     }
     
