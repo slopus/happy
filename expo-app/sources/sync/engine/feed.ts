@@ -1,4 +1,7 @@
 import type { FeedItem } from '../feedTypes';
+import type { AuthCredentials } from '@/auth/tokenStorage';
+import type { UserProfile } from '../friendTypes';
+import { fetchFeed as fetchFeedApi } from '../apiFeed';
 
 export async function handleNewFeedPostUpdate(params: {
     feedUpdate: {
@@ -98,3 +101,93 @@ export function handleRelationshipUpdatedSocketUpdate(params: {
     invalidateFeed();
 }
 
+export async function fetchAndApplyFeed(params: {
+    credentials: AuthCredentials;
+    getFeedItems: () => FeedItem[];
+    getFeedHead: () => string | null;
+    assumeUsers: (userIds: string[]) => Promise<void>;
+    getUsers: () => Record<string, UserProfile | null>;
+    applyFeedItems: (items: FeedItem[]) => void;
+    log: { log: (message: string) => void };
+}): Promise<void> {
+    const { credentials, getFeedItems, getFeedHead, assumeUsers, getUsers, applyFeedItems, log } = params;
+
+    try {
+        log.log('📰 Fetching feed...');
+        const existingItems = getFeedItems();
+        const head = getFeedHead();
+
+        // Load feed items - if we have a head, load newer items
+        const allItems: FeedItem[] = [];
+        let hasMore = true;
+        let cursor = head ? { after: head } : undefined;
+        let loadedCount = 0;
+        const maxItems = 500;
+
+        // Keep loading until we reach known items or hit max limit
+        while (hasMore && loadedCount < maxItems) {
+            const response = await fetchFeedApi(credentials, {
+                limit: 100,
+                ...cursor,
+            });
+
+            // Check if we reached known items
+            const foundKnown = response.items.some((item) => existingItems.some((existing) => existing.id === item.id));
+
+            allItems.push(...response.items);
+            loadedCount += response.items.length;
+            hasMore = response.hasMore && !foundKnown;
+
+            // Update cursor for next page
+            if (response.items.length > 0) {
+                const lastItem = response.items[response.items.length - 1];
+                cursor = { after: lastItem.cursor };
+            }
+        }
+
+        // If this is initial load (no head), also load older items
+        if (!head && allItems.length < 100) {
+            const response = await fetchFeedApi(credentials, {
+                limit: 100,
+            });
+            allItems.push(...response.items);
+        }
+
+        // Collect user IDs from friend-related feed items
+        const userIds = new Set<string>();
+        allItems.forEach((item) => {
+            if (item.body && (item.body.kind === 'friend_request' || item.body.kind === 'friend_accepted')) {
+                userIds.add(item.body.uid);
+            }
+        });
+
+        // Fetch missing users
+        if (userIds.size > 0) {
+            await assumeUsers(Array.from(userIds));
+        }
+
+        // Filter out items where user is not found (404)
+        const users = getUsers();
+        const compatibleItems = allItems.filter((item) => {
+            // Keep text items
+            if (item.body.kind === 'text') return true;
+
+            // For friend-related items, check if user exists and is not null (404)
+            if (item.body.kind === 'friend_request' || item.body.kind === 'friend_accepted') {
+                const userProfile = users[item.body.uid];
+                // Keep item only if user exists and is not null
+                return userProfile !== null && userProfile !== undefined;
+            }
+
+            return true;
+        });
+
+        // Apply only compatible items to storage
+        applyFeedItems(compatibleItems);
+        log.log(
+            `📰 fetchFeed completed - loaded ${compatibleItems.length} compatible items (${allItems.length - compatibleItems.length} filtered)`,
+        );
+    } catch (error) {
+        console.error('Failed to fetch feed:', error);
+    }
+}
