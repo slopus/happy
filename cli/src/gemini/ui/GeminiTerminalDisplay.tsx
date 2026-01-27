@@ -9,6 +9,7 @@ import React, { useEffect, useState } from 'react';
 
 import { AgentLogShell } from '@/ui/ink/AgentLogShell';
 import { MessageBuffer, type BufferedMessage } from '@/ui/ink/messageBuffer';
+import { buildReadOnlyFooterLines } from '@/ui/ink/readOnlyFooterLines';
 
 export type GeminiTerminalDisplayProps = {
   messageBuffer: MessageBuffer;
@@ -53,10 +54,7 @@ export const GeminiTerminalDisplay: React.FC<GeminiTerminalDisplayProps> = ({
     return true;
   };
 
-  const footerLines: string[] = [
-    "Logs only — you can’t send prompts from this terminal.",
-    "Use the Happy app/web (interactive terminal mode isn’t supported for Gemini).",
-  ];
+  const footerLines: string[] = [...buildReadOnlyFooterLines('Gemini')];
   if (model) {
     footerLines.push(`Model: ${model}`);
   }
@@ -73,4 +71,3 @@ export const GeminiTerminalDisplay: React.FC<GeminiTerminalDisplayProps> = ({
     />
   );
 };
-

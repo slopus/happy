@@ -9,6 +9,7 @@ import React from 'react';
 
 import { AgentLogShell } from '@/ui/ink/AgentLogShell';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
+import { buildReadOnlyFooterLines } from '@/ui/ink/readOnlyFooterLines';
 
 export type CodexTerminalDisplayProps = {
   messageBuffer: MessageBuffer;
@@ -23,12 +24,8 @@ export const CodexTerminalDisplay: React.FC<CodexTerminalDisplayProps> = ({ mess
       title="🤖 Codex"
       accentColor="green"
       logPath={logPath}
-      footerLines={[
-        "Logs only — you can’t send prompts from this terminal.",
-        "Use the Happy app/web (interactive terminal mode isn’t supported for Codex).",
-      ]}
+      footerLines={buildReadOnlyFooterLines('Codex')}
       onExit={onExit}
     />
   );
 };
-
