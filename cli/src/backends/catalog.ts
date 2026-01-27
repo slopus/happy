@@ -26,6 +26,7 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
     cliSubcommand: AGENTS_CORE.codex.cliSubcommand,
     getCliCommandHandler: async () => (await import('@/backends/codex/cli/command')).handleCodexCliCommand,
     getCliCapabilityOverride: async () => (await import('@/backends/codex/cli/capability')).cliCapability,
+    getCapabilities: async () => (await import('@/backends/codex/cli/extraCapabilities')).capabilities,
     getCliDetect: async () => (await import('@/backends/codex/cli/detect')).cliDetect,
     getCloudConnectTarget: async () => (await import('@/backends/codex/cloud/connect')).codexCloudConnect,
     getDaemonSpawnHooks: async () => (await import('@/backends/codex/daemon/spawnHooks')).codexDaemonSpawnHooks,

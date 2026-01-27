@@ -3,8 +3,6 @@ import { AGENTS, type AgentCatalogEntry } from '@/backends/catalog';
 import { checklists } from '@/capabilities/checklists';
 import { buildDetectContext } from '@/capabilities/context/buildDetectContext';
 import { buildCliCapabilityData } from '@/capabilities/probes/cliBase';
-import { codexAcpDepCapability } from '@/capabilities/registry/depCodexAcp';
-import { codexMcpResumeDepCapability } from '@/capabilities/registry/depCodexMcpResume';
 import { tmuxCapability } from '@/capabilities/registry/toolTmux';
 import { createCapabilitiesService } from '@/capabilities/service';
 import type { Capability } from '@/capabilities/service';
@@ -46,12 +44,19 @@ export function registerCapabilitiesHandlers(rpcHandlerManager: RpcHandlerManage
                 }),
             );
 
+            const extraCapabilitiesNested = await Promise.all(
+                (Object.values(AGENTS) as AgentCatalogEntry[]).map(async (entry) => {
+                    if (!entry.getCapabilities) return [];
+                    return [...(await entry.getCapabilities())];
+                }),
+            );
+            const extraCapabilities: Capability[] = extraCapabilitiesNested.flat();
+
             return createCapabilitiesService({
                 capabilities: [
                     ...cliCapabilities,
+                    ...extraCapabilities,
                     tmuxCapability,
-                    codexMcpResumeDepCapability,
-                    codexAcpDepCapability,
                 ],
                 checklists,
                 buildContext: buildDetectContext,

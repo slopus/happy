@@ -52,6 +52,13 @@ export type AgentCatalogEntry = Readonly<{
    */
   getCliCommandHandler?: () => Promise<CommandHandler>;
   getCliCapabilityOverride?: () => Promise<Capability>;
+  /**
+   * Optional extra capabilities contributed by this agent.
+   *
+   * Use this for agent-specific deps/tools/experiments, not the base `cli.<agentId>`
+   * capability (handled by `getCliCapabilityOverride` / generic fallback).
+   */
+  getCapabilities?: () => Promise<ReadonlyArray<Capability>>;
   getCliDetect?: () => Promise<CliDetectSpec>;
   /**
    * Optional cloud connect target for this agent.
