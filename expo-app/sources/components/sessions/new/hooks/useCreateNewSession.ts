@@ -14,7 +14,7 @@ import { clearNewSessionDraft } from '@/sync/persistence';
 import { getBuiltInProfile } from '@/sync/profileUtils';
 import type { AIBackendProfile, SavedSecret, Settings } from '@/sync/settings';
 import { getAgentCore, type AgentId } from '@/agents/catalog';
-import { buildResumeCapabilityOptionsFromUiState, buildSpawnSessionExtrasFromUiState, getAgentResumeExperimentsFromSettings, getNewSessionPreflightIssues, getResumeRuntimeSupportPrefetchPlan } from '@/agents/catalog';
+import { buildResumeCapabilityOptionsFromUiState, buildSpawnEnvironmentVariablesFromUiState, buildSpawnSessionExtrasFromUiState, getAgentResumeExperimentsFromSettings, getNewSessionPreflightIssues, getResumeRuntimeSupportPrefetchPlan } from '@/agents/catalog';
 import { describeAcpLoadSessionSupport } from '@/agents/acpRuntimeResume';
 import { canAgentResume } from '@/agents/resumeCapabilities';
 import { formatResumeSupportDetailCode } from '@/components/sessions/new/modules/formatResumeSupportDetailCode';
@@ -22,7 +22,6 @@ import { transformProfileToEnvironmentVars } from '@/components/sessions/new/mod
 import type { UseMachineEnvPresenceResult } from '@/hooks/useMachineEnvPresence';
 import { getMachineCapabilitiesSnapshot, prefetchMachineCapabilities } from '@/hooks/useMachineCapabilitiesCache';
 import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
-import { applyAuggieAllowIndexingEnv } from '@/agents/providers/auggie/indexing';
 import { SPAWN_SESSION_ERROR_CODES } from '@happy/protocol';
 
 export function useCreateNewSession(params: Readonly<{
@@ -49,7 +48,7 @@ export function useCreateNewSession(params: Readonly<{
 
     sessionPrompt: string;
     resumeSessionId: string;
-    auggieAllowIndexing: boolean;
+    agentNewSessionOptions?: Record<string, unknown> | null;
 
     machineEnvPresence: UseMachineEnvPresenceResult;
     secrets: SavedSecret[];
@@ -62,10 +61,10 @@ export function useCreateNewSession(params: Readonly<{
     handleCreateSession: () => void;
 }> {
     const handleCreateSession = React.useCallback(async () => {
-        if (!params.selectedMachineId) {
-            Modal.alert(t('common.error'), t('newSession.noMachineSelected'));
-            return;
-        }
+            if (!params.selectedMachineId) {
+                Modal.alert(t('common.error'), t('newSession.noMachineSelected'));
+                return;
+            }
         if (!params.selectedPath) {
             Modal.alert(t('common.error'), t('newSession.noPathSelected'));
             return;
@@ -180,9 +179,11 @@ export function useCreateNewSession(params: Readonly<{
                 }
             }
 
-            if (params.agentType === 'auggie') {
-                environmentVariables = applyAuggieAllowIndexingEnv(environmentVariables, params.auggieAllowIndexing === true);
-            }
+            environmentVariables = buildSpawnEnvironmentVariablesFromUiState({
+                agentId: params.agentType,
+                environmentVariables,
+                newSessionOptions: params.agentNewSessionOptions,
+            });
 
             const terminal = resolveTerminalSpawnOptions({
                 settings: storage.getState().settings,
@@ -354,6 +355,7 @@ export function useCreateNewSession(params: Readonly<{
         params.recentMachinePaths,
         params.resumeSessionId,
         params.router,
+        params.agentNewSessionOptions,
         params.settings,
         params.secretBindingsByProfileId,
         params.secrets,

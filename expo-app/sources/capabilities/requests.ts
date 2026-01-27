@@ -14,11 +14,6 @@ export const CAPABILITIES_REQUEST_NEW_SESSION: CapabilitiesDetectRequest = {
     checklistId: CHECKLIST_IDS.NEW_SESSION,
 };
 
-export const CAPABILITIES_REQUEST_NEW_SESSION_WITH_LOGIN_STATUS: CapabilitiesDetectRequest = {
-    checklistId: CHECKLIST_IDS.NEW_SESSION,
-    overrides: buildCliLoginStatusOverrides() as any,
-};
-
 export const CAPABILITIES_REQUEST_MACHINE_DETAILS: CapabilitiesDetectRequest = {
     checklistId: CHECKLIST_IDS.MACHINE_DETAILS,
     overrides: buildCliLoginStatusOverrides() as any,
@@ -26,8 +21,4 @@ export const CAPABILITIES_REQUEST_MACHINE_DETAILS: CapabilitiesDetectRequest = {
 
 export const CAPABILITIES_REQUEST_RESUME_CODEX: CapabilitiesDetectRequest = {
     checklistId: resumeChecklistId('codex'),
-};
-
-export const CAPABILITIES_REQUEST_RESUME_GEMINI: CapabilitiesDetectRequest = {
-    checklistId: resumeChecklistId('gemini'),
 };

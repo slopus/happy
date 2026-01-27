@@ -52,6 +52,7 @@ import { useNewSessionDraftAutoPersist } from '@/components/sessions/new/hooks/u
 import { useCreateNewSession } from '@/components/sessions/new/hooks/useCreateNewSession';
 import { useNewSessionWizardProps } from '@/components/sessions/new/hooks/useNewSessionWizardProps';
 import { createAuggieAllowIndexingChip } from '@/agents/providers/auggie/AuggieIndexingChip';
+import { AUGGIE_NEW_SESSION_OPTION_ALLOW_INDEXING } from '@/agents/providers/auggie/indexing';
 
 // Configuration constants
 const RECENT_PATHS_DEFAULT_VISIBLE = 5;
@@ -1369,6 +1370,10 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
         });
     }, [selectedMachine, selectedMachineId, selectedProfileEnvVars, selectedProfileForEnvVars]);
 
+    const agentNewSessionOptions = React.useMemo(() => {
+        if (agentType !== 'auggie') return null;
+        return { [AUGGIE_NEW_SESSION_OPTION_ALLOW_INDEXING]: auggieAllowIndexing === true };
+    }, [agentType, auggieAllowIndexing]);
 
     const { handleCreateSession } = useCreateNewSession({
         router,
@@ -1388,7 +1393,7 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
         modelMode,
         sessionPrompt,
         resumeSessionId,
-        auggieAllowIndexing,
+        agentNewSessionOptions,
         machineEnvPresence,
         secrets,
         secretBindingsByProfileId,

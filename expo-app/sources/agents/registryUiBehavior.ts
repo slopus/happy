@@ -6,6 +6,7 @@ import type { TranslationKey } from '@/text';
 import type { Settings } from '@/sync/settings';
 import { buildAcpLoadSessionPrefetchRequest, readAcpLoadSessionSupport, shouldPrefetchAcpCapabilities } from './acpRuntimeResume';
 import { CODEX_UI_BEHAVIOR_OVERRIDE } from './providers/codex/uiBehavior';
+import { AUGGIE_UI_BEHAVIOR_OVERRIDE } from './providers/auggie/uiBehavior';
 
 type CapabilityResults = Partial<Record<CapabilityId, CapabilityDetectResult>>;
 
@@ -47,6 +48,11 @@ export type AgentUiBehavior = Readonly<{
         getRelevantInstallableDepKeys?: (ctx: NewSessionRelevantInstallableDepsContext) => readonly string[];
     }>;
     payload?: Readonly<{
+        buildSpawnEnvironmentVariables?: (opts: {
+            agentId: AgentId;
+            environmentVariables: Record<string, string> | undefined;
+            newSessionOptions?: Record<string, unknown> | null;
+        }) => Record<string, string> | undefined;
         buildSpawnSessionExtras?: (opts: {
             agentId: AgentId;
             experiments: AgentResumeExperiments;
@@ -114,6 +120,7 @@ function buildDefaultAgentUiBehavior(agentId: AgentId): AgentUiBehavior {
 
 const AGENTS_UI_BEHAVIOR_OVERRIDES: Readonly<Partial<Record<AgentId, AgentUiBehavior>>> = Object.freeze({
     codex: CODEX_UI_BEHAVIOR_OVERRIDE,
+    auggie: AUGGIE_UI_BEHAVIOR_OVERRIDE,
 });
 
 export const AGENTS_UI_BEHAVIOR: Readonly<Record<AgentId, AgentUiBehavior>> = Object.freeze(
@@ -251,6 +258,15 @@ export function buildSpawnSessionExtrasFromUiState(opts: {
     if (!fn) return {};
     const experiments = getAgentResumeExperimentsFromSettings(opts.agentId, opts.settings);
     return fn({ agentId: opts.agentId, experiments, resumeSessionId: opts.resumeSessionId });
+}
+
+export function buildSpawnEnvironmentVariablesFromUiState(opts: {
+    agentId: AgentId;
+    environmentVariables: Record<string, string> | undefined;
+    newSessionOptions?: Record<string, unknown> | null;
+}): Record<string, string> | undefined {
+    const fn = AGENTS_UI_BEHAVIOR[opts.agentId].payload?.buildSpawnEnvironmentVariables;
+    return fn ? fn(opts) : opts.environmentVariables;
 }
 
 export function buildResumeSessionExtrasFromUiState(opts: {

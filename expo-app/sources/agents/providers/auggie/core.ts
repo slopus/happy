@@ -5,7 +5,7 @@ export const AUGGIE_CORE: AgentCoreConfig = {
     displayNameKey: 'agentInput.agent.auggie',
     subtitleKey: 'profiles.aiBackend.auggieSubtitle',
     permissionModeI18nPrefix: 'agentInput.codexPermissionMode',
-    availability: { experimental: false },
+    availability: { experimental: true },
     connectedService: {
         id: null,
         name: 'Auggie',
@@ -46,4 +46,3 @@ export const AUGGIE_CORE: AgentCoreConfig = {
         profileCompatibilityGlyphScale: 1.0,
     },
 };
-
