@@ -1,0 +1,404 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  expo-app:
+    name: Expo App Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: ${{ env.ACT == 'true' && 'npm' || 'yarn' }}
+          cache-dependency-path: yarn.lock
+
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-scripts
+
+      - name: Build workspace link deps (agents/protocol)
+        run: |
+          set -euo pipefail
+          yarn --cwd packages/agents -s build
+          mkdir -p packages/protocol/node_modules/@happy
+          ln -sfn "$(pwd)/packages/agents" "packages/protocol/node_modules/@happy/agents"
+          yarn --cwd packages/protocol -s build
+
+      - name: Run tests
+        working-directory: expo-app
+        run: yarn test
+
+  server:
+    name: Server Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: ${{ env.ACT == 'true' && 'npm' || 'yarn' }}
+          cache-dependency-path: server/yarn.lock
+
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install dependencies
+        working-directory: server
+        run: yarn install --frozen-lockfile
+
+      - name: Build @happy/agents (local workspace link)
+        working-directory: server
+        run: ./node_modules/.bin/tsc -p ../packages/agents/tsconfig.json
+
+      - name: Link @happy/agents for protocol build (CI only)
+        run: |
+          set -euo pipefail
+          mkdir -p packages/protocol/node_modules/@happy
+          ln -sfn "$(pwd)/packages/agents" "packages/protocol/node_modules/@happy/agents"
+
+      - name: Build @happy/protocol (local workspace link)
+        working-directory: server
+        run: ./node_modules/.bin/tsc -p ../packages/protocol/tsconfig.json
+
+      - name: Run tests
+        working-directory: server
+        run: yarn test
+
+  cli:
+    name: CLI Tests (incl. tmux integration)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      HAPPY_CLI_TMUX_INTEGRATION: "1"
+      HAPPY_CLI_DAEMON_REATTACH_INTEGRATION: "1"
+      HAPPY_NO_BROWSER_OPEN: "1"
+      TMPDIR: /tmp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: ${{ env.ACT == 'true' && 'npm' || 'yarn' }}
+          cache-dependency-path: cli/yarn.lock
+
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install system dependencies
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          APT_FLAGS="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          if [ "${ACT:-}" = "true" ] || [ -d /var/run/act ]; then
+            . /etc/os-release || true
+            CODENAME="${VERSION_CODENAME:-noble}"
+            ARCH="$(dpkg --print-architecture)"
+            BASE_URL="http://ports.ubuntu.com/ubuntu-ports"
+            if [ "${ARCH}" = "amd64" ]; then BASE_URL="http://archive.ubuntu.com/ubuntu"; fi
+            if command -v sudo >/dev/null 2>&1; then
+              sudo rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources || true
+              echo "deb ${BASE_URL} ${CODENAME} main universe" | sudo tee /etc/apt/sources.list >/dev/null
+            else
+              rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources || true
+              echo "deb ${BASE_URL} ${CODENAME} main universe" > /etc/apt/sources.list
+            fi
+          fi
+          if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get ${APT_FLAGS} update
+            sudo apt-get ${APT_FLAGS} install -y --no-install-recommends tmux
+          else
+            apt-get ${APT_FLAGS} update
+            apt-get ${APT_FLAGS} install -y --no-install-recommends tmux
+          fi
+          tmux -V
+
+      - name: Install dependencies
+        working-directory: cli
+        env:
+          YARN_PRODUCTION: "false"
+          npm_config_production: "false"
+        run: yarn install --frozen-lockfile
+
+      - name: Build @happy/agents (local workspace link)
+        working-directory: cli
+        run: ./node_modules/.bin/tsc -p ../packages/agents/tsconfig.json
+
+      - name: Link @happy/agents for protocol build (CI only)
+        run: |
+          set -euo pipefail
+          mkdir -p packages/protocol/node_modules/@happy
+          ln -sfn "$(pwd)/packages/agents" "packages/protocol/node_modules/@happy/agents"
+
+      - name: Build @happy/protocol (local workspace link)
+        working-directory: cli
+        run: ./node_modules/.bin/tsc -p ../packages/protocol/tsconfig.json
+
+      - name: Run tests
+        working-directory: cli
+        run: yarn test
+
+  cli-daemon-e2e:
+    name: CLI + Server (light/sqlite) E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PORT: "3005"
+      HAPPY_SERVER_URL: http://localhost:3005
+      HAPPY_WEBAPP_URL: http://localhost:3005
+      DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING: "true"
+      HAPPY_SERVER_LIGHT_DATA_DIR: /tmp/happy-server-light
+      DATABASE_URL: file:///tmp/happy-server-light/happy-server-light.sqlite
+      HANDY_MASTER_SECRET: happy-ci-master-secret-not-a-real-secret
+      HAPPY_NO_BROWSER_OPEN: "1"
+      TMPDIR: /tmp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: ${{ env.ACT == 'true' && 'npm' || 'yarn' }}
+          cache-dependency-path: |
+            cli/yarn.lock
+            server/yarn.lock
+
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install system dependencies
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          APT_FLAGS="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          if [ "${ACT:-}" = "true" ] || [ -d /var/run/act ]; then
+            . /etc/os-release || true
+            CODENAME="${VERSION_CODENAME:-noble}"
+            ARCH="$(dpkg --print-architecture)"
+            BASE_URL="http://ports.ubuntu.com/ubuntu-ports"
+            if [ "${ARCH}" = "amd64" ]; then BASE_URL="http://archive.ubuntu.com/ubuntu"; fi
+            if command -v sudo >/dev/null 2>&1; then
+              sudo rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources || true
+              echo "deb ${BASE_URL} ${CODENAME} main universe" | sudo tee /etc/apt/sources.list >/dev/null
+            else
+              rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources || true
+              echo "deb ${BASE_URL} ${CODENAME} main universe" > /etc/apt/sources.list
+            fi
+          fi
+          if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get ${APT_FLAGS} update
+            sudo apt-get ${APT_FLAGS} install -y --no-install-recommends tmux
+          else
+            apt-get ${APT_FLAGS} update
+            apt-get ${APT_FLAGS} install -y --no-install-recommends tmux
+          fi
+          tmux -V
+
+      - name: Install server dependencies
+        working-directory: server
+        run: yarn install --frozen-lockfile
+
+      - name: Prepare SQLite schema (light)
+        working-directory: server
+        run: yarn -s db:push:light
+
+      - name: Install CLI dependencies
+        working-directory: cli
+        env:
+          YARN_PRODUCTION: "false"
+          npm_config_production: "false"
+        run: yarn install --frozen-lockfile
+
+      - name: Build @happy/agents (local workspace link)
+        working-directory: cli
+        run: ./node_modules/.bin/tsc -p ../packages/agents/tsconfig.json
+
+      - name: Link @happy/agents for protocol build (CI only)
+        run: |
+          set -euo pipefail
+          mkdir -p packages/protocol/node_modules/@happy
+          ln -sfn "$(pwd)/packages/agents" "packages/protocol/node_modules/@happy/agents"
+
+      - name: Build @happy/protocol (local workspace link)
+        working-directory: cli
+        run: ./node_modules/.bin/tsc -p ../packages/protocol/tsconfig.json
+
+      - name: Build CLI
+        working-directory: cli
+        run: yarn build
+
+      - name: Install provider CLI stubs (CI only)
+        run: |
+          set -euo pipefail
+
+          STUB_BIN_DIR="/tmp/ci-bin"
+          mkdir -p "${STUB_BIN_DIR}"
+
+          write_stub() {
+            local name="$1"
+            local version="$2"
+            cat > "${STUB_BIN_DIR}/${name}" <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          case "\${1:-}" in
+            --version|-v|version)
+              echo "${version}"
+              exit 0
+              ;;
+            --help|-h|help)
+              echo "${name} (ci stub)"
+              exit 0
+              ;;
+          esac
+
+          # Some callers expect a long-running interactive process; do not exit.
+          if [ -t 0 ]; then
+            while true; do sleep 3600; done
+          else
+            cat >/dev/null || true
+            while true; do sleep 3600; done
+          fi
+          EOF
+            chmod +x "${STUB_BIN_DIR}/${name}"
+          }
+
+          write_stub "auggie" "0.0.0-ci-stub"
+          write_stub "claude" "0.0.0-ci-stub"
+          write_stub "codex" "0.0.0-ci-stub"
+          write_stub "gemini" "0.0.0-ci-stub"
+          write_stub "opencode" "0.0.0-ci-stub"
+
+          echo "${STUB_BIN_DIR}" >> "${GITHUB_PATH}"
+          export PATH="${STUB_BIN_DIR}:${PATH}"
+
+          command -v auggie && auggie --version
+          command -v claude && claude --version
+          command -v codex && codex --version
+          command -v gemini && gemini --version
+          command -v opencode && opencode --version
+
+      - name: Run daemon integration suite (with light server)
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${HAPPY_SERVER_LIGHT_DATA_DIR}"
+
+          nohup yarn --cwd server start:light > "/tmp/happy-server-light.log" 2>&1 &
+          SERVER_PID=$!
+          echo "${SERVER_PID}" > "/tmp/happy-server-light.pid"
+
+          cleanup() {
+            if [ -n "${SERVER_PID:-}" ]; then
+              kill "${SERVER_PID}" || true
+            fi
+          }
+          trap cleanup EXIT
+
+          for i in $(seq 1 60); do
+            if curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+              echo "Server is healthy"
+              break
+            fi
+            sleep 1
+          done
+
+          if ! curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+            echo "Server failed to become healthy within timeout"
+            tail -n 200 "/tmp/happy-server-light.log" || true
+            exit 1
+          fi
+
+          # Create a real account + token via the normal `/v1/auth` flow (ed25519 signature),
+          # then write the credentials file expected by `.env.integration-test`.
+          (cd server && node --input-type=module - <<'NODE'
+          import fs from "node:fs";
+          import os from "node:os";
+          import path from "node:path";
+          import nacl from "tweetnacl";
+
+          const keyPair = nacl.sign.keyPair();
+          const challenge = nacl.randomBytes(32);
+          const signature = nacl.sign.detached(challenge, keyPair.secretKey);
+          const encode64 = (bytes) => Buffer.from(bytes).toString("base64");
+
+          const serverUrl = process.env.HAPPY_SERVER_URL || "http://127.0.0.1:3005";
+          const url = new URL("/v1/auth", serverUrl);
+          if (url.hostname === "localhost") url.hostname = "127.0.0.1";
+
+          const res = await fetch(url.toString(), {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              publicKey: encode64(keyPair.publicKey),
+              challenge: encode64(challenge),
+              signature: encode64(signature),
+            }),
+          });
+          if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            console.error("Failed to create CI auth token:", res.status, res.statusText, text);
+            process.exit(1);
+          }
+          const data = await res.json();
+          if (!data?.token) {
+            console.error("Auth response missing token:", data);
+            process.exit(1);
+          }
+
+          const happyHomeDir = path.join(os.homedir(), ".happy-dev-test");
+          fs.mkdirSync(happyHomeDir, { recursive: true });
+          const secret = Buffer.alloc(32, 7).toString("base64");
+          fs.writeFileSync(
+            path.join(happyHomeDir, "access.key"),
+            JSON.stringify({ token: data.token, secret }, null, 2),
+            { mode: 0o600 },
+          );
+          NODE
+          )
+
+          yarn --cwd cli -s vitest run src/daemon/daemon.integration.test.ts
+
+      - name: Dump server logs (on failure)
+        if: failure()
+        run: tail -n 300 "/tmp/happy-server-light.log" || true
+
+      - name: Dump daemon logs (on failure)
+        if: failure()
+        run: |
+          LOG_DIR="$HOME/.happy-dev-test/logs"
+          ls -la "$LOG_DIR" || true
+          ls -1t "$LOG_DIR"/*-daemon.log 2>/dev/null | head -n 8 | while read -r f; do
+            echo "=== tail: $f ==="
+            tail -n 200 "$f" || true
+            echo
+          done
