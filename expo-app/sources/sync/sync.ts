@@ -67,6 +67,7 @@ import { handleNewFeedPostUpdate } from './engine/feedSocketUpdates';
 import { handleTodoKvBatchUpdate } from './engine/todoSocketUpdates';
 import { buildUpdatedMachineFromSocketUpdate } from './engine/machineSocketUpdates';
 import { handleUpdateAccountSocketUpdate } from './engine/accountSocketUpdates';
+import { buildUpdatedSessionFromSocketUpdate } from './engine/sessionSocketUpdates';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -2098,31 +2099,15 @@ class Sync {
                     return;
                 }
 
-                const agentState = updateData.body.agentState && sessionEncryption
-                    ? await sessionEncryption.decryptAgentState(updateData.body.agentState.version, updateData.body.agentState.value)
-                    : session.agentState;
-                const metadata = updateData.body.metadata && sessionEncryption
-                    ? await sessionEncryption.decryptMetadata(updateData.body.metadata.version, updateData.body.metadata.value)
-                    : session.metadata;
+                const { nextSession, agentState } = await buildUpdatedSessionFromSocketUpdate({
+                    session,
+                    updateBody: updateData.body,
+                    updateSeq: updateData.seq,
+                    updateCreatedAt: updateData.createdAt,
+                    sessionEncryption,
+                });
 
-                this.applySessions([{
-                    ...session,
-                    agentState,
-                    agentStateVersion: updateData.body.agentState
-                        ? updateData.body.agentState.version
-                        : session.agentStateVersion,
-                    metadata,
-                    metadataVersion: updateData.body.metadata
-                        ? updateData.body.metadata.version
-                        : session.metadataVersion,
-                    updatedAt: updateData.createdAt,
-                    seq: computeNextSessionSeqFromUpdate({
-                        currentSessionSeq: session.seq ?? 0,
-                        updateType: 'update-session',
-                        containerSeq: updateData.seq,
-                        messageSeq: undefined,
-                    }),
-                }]);
+                this.applySessions([nextSession]);
 
                 // Invalidate git status when agent state changes (files may have been modified)
                 if (updateData.body.agentState) {
