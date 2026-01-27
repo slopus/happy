@@ -6,6 +6,9 @@ export type ResumeRuntimeGate = 'acpLoadSession' | null;
 
 export type VendorResumeIdField = 'codexSessionId' | 'geminiSessionId' | 'opencodeSessionId' | 'auggieSessionId';
 
+export type CloudVendorKey = 'openai' | 'anthropic' | 'gemini';
+export type CloudConnectTargetStatus = 'wired' | 'experimental';
+
 export type AgentCore = Readonly<{
     id: AgentId;
     /**
@@ -25,6 +28,12 @@ export type AgentCore = Readonly<{
      * strings; the canonical id should remain the primary persisted value.
      */
     flavorAliases?: ReadonlyArray<string>;
+    /**
+     * Optional cloud-connect config for this agent.
+     *
+     * When present, the CLI/app may offer a `happy connect <agentId>` flow.
+     */
+    cloudConnect?: Readonly<{ vendorKey: CloudVendorKey; status: CloudConnectTargetStatus }> | null;
     resume: Readonly<{
         /**
          * Whether vendor-resume is supported in principle.

@@ -4,6 +4,8 @@ export {
     AGENT_IDS,
     type AgentCore,
     type AgentId,
+    type CloudConnectTargetStatus,
+    type CloudVendorKey,
     type ResumeRuntimeGate,
     type VendorResumeIdField,
     type VendorResumeSupportLevel,

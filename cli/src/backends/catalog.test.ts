@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { AGENT_IDS, DEFAULT_AGENT_ID } from '@happy/agents';
+import { AGENTS_CORE } from '@happy/agents';
 
 import { AGENTS } from './catalog';
 import { DEFAULT_CATALOG_AGENT_ID } from './types';
@@ -31,5 +32,21 @@ describe('AGENTS', () => {
 
   it('uses the shared default agent id', () => {
     expect(DEFAULT_CATALOG_AGENT_ID).toBe(DEFAULT_AGENT_ID);
+  });
+
+  it('keeps cloud connect config in sync with catalog entries', async () => {
+    for (const id of AGENT_IDS) {
+      const core = AGENTS_CORE[id];
+      const entry = AGENTS[id];
+
+      if (core.cloudConnect) {
+        expect(entry.getCloudConnectTarget).toBeTruthy();
+        const target = await entry.getCloudConnectTarget!();
+        expect(target.vendorKey).toBe(core.cloudConnect.vendorKey);
+        expect(target.status).toBe(core.cloudConnect.status);
+      } else {
+        expect(entry.getCloudConnectTarget).toBeFalsy();
+      }
+    }
   });
 });

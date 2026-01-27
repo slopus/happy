@@ -1,10 +1,9 @@
 import type { CatalogAgentId } from '@/backends/types';
+import type { CloudConnectTargetStatus, CloudVendorKey } from '@happy/agents';
 
-export type CloudVendorKey = 'openai' | 'anthropic' | 'gemini';
+export type { CloudConnectTargetStatus, CloudVendorKey };
 
 export type ConnectTargetId = CatalogAgentId;
-
-export type CloudConnectTargetStatus = 'wired' | 'experimental';
 
 export type CloudConnectResult = Readonly<{
   vendorKey: CloudVendorKey;
