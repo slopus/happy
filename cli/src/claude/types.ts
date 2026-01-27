@@ -5,14 +5,9 @@
 
 import { z } from "zod";
 
-// Usage statistics for assistant messages - used in apiSession.ts
-export const UsageSchema = z.object({
-  input_tokens: z.number().int().nonnegative(),
-  cache_creation_input_tokens: z.number().int().nonnegative().optional(),
-  cache_read_input_tokens: z.number().int().nonnegative().optional(),
-  output_tokens: z.number().int().nonnegative(),
-  service_tier: z.string().optional(),
-}).passthrough();
+import { UsageSchema } from "@/api/usage";
+
+export { UsageSchema };
 
 // Main schema with minimal validation for only the fields we use
 // NOTE: Schema is intentionally lenient to handle various Claude Code message formats

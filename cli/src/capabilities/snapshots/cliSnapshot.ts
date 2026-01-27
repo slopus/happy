@@ -5,9 +5,11 @@ import { access } from 'fs/promises';
 import { join, delimiter as PATH_DELIMITER } from 'path';
 import { promisify } from 'util';
 
+import { AGENTS, type CatalogAgentId, type CliDetectSpec } from '@/backends/catalog';
+
 const execFileAsync = promisify(execFile);
 
-export type DetectCliName = 'claude' | 'codex' | 'gemini' | 'opencode';
+export type DetectCliName = CatalogAgentId;
 
 export interface DetectCliRequest {
     /**
@@ -98,6 +100,41 @@ function extractTmuxVersion(value: string | null): string | null {
     return match?.[1] ?? null;
 }
 
+function defaultVersionArgsToTry(): Array<string[]> {
+    return [['--version'], ['version'], ['-v']];
+}
+
+const cliDetectCache = new Map<DetectCliName, CliDetectSpec | null>();
+
+async function resolveCliDetectSpec(name: DetectCliName): Promise<CliDetectSpec | null> {
+    if (cliDetectCache.has(name)) {
+        return cliDetectCache.get(name) ?? null;
+    }
+
+    const entry = AGENTS[name];
+    if (!entry?.getCliDetect) {
+        cliDetectCache.set(name, null);
+        return null;
+    }
+
+    const spec = await entry.getCliDetect();
+    cliDetectCache.set(name, spec);
+    return spec;
+}
+
+async function resolveCliVersionArgsToTry(name: DetectCliName): Promise<Array<string[]>> {
+    const spec = (await resolveCliDetectSpec(name))?.versionArgsToTry;
+    if (!spec || spec.length === 0) return defaultVersionArgsToTry();
+    return spec.map((v) => [...v]);
+}
+
+async function resolveCliLoginStatusArgs(name: DetectCliName): Promise<string[] | null> {
+    const spec = (await resolveCliDetectSpec(name))?.loginStatusArgs;
+    if (spec === null) return null;
+    if (!spec) return null;
+    return [...spec];
+}
+
 async function detectCliVersion(params: { name: DetectCliName; resolvedPath: string }): Promise<string | null> {
     // Best-effort, must never throw.
     try {
@@ -112,20 +149,7 @@ async function detectCliVersion(params: { name: DetectCliName; resolvedPath: str
             return '';
         };
 
-        const argsToTry: Array<string[]> = (() => {
-            switch (params.name) {
-                case 'claude':
-                    return [['--version'], ['version']];
-                case 'codex':
-                    return [['--version'], ['version'], ['-v']];
-                case 'gemini':
-                    return [['--version'], ['version'], ['-v']];
-                case 'opencode':
-                    return [['--version'], ['version'], ['-v']];
-                default:
-                    return [['--version']];
-            }
-        })();
+        const argsToTry: Array<string[]> = await resolveCliVersionArgsToTry(params.name);
 
         const execFileBestEffort = async (file: string, args: string[], options: ExecOptions): Promise<{ stdout: string; stderr: string }> => {
             try {
@@ -141,11 +165,13 @@ async function detectCliVersion(params: { name: DetectCliName; resolvedPath: str
 
         if (isCmdScript) {
             // .cmd/.bat require cmd.exe (best-effort, only --version is supported here)
-            const { stdout, stderr } = await execFileBestEffort(
-                'cmd.exe',
-                ['/d', '/s', '/c', `"${params.resolvedPath}" --version`],
-                { timeout: timeoutMs, windowsHide: true },
-            );
+            const primary = argsToTry.find((args) => args.includes('--version')) ?? ['--version'];
+            const { stdout, stderr } = await execFileBestEffort('cmd.exe', [
+                '/d',
+                '/s',
+                '/c',
+                `"${params.resolvedPath}" ${primary.join(' ')}`,
+            ], { timeout: timeoutMs, windowsHide: true });
             return extractSemver(getFirstLine(`${stdout}\n${stderr}`));
         }
 
@@ -213,6 +239,9 @@ async function detectCliLoginStatus(params: { name: DetectCliName; resolvedPath:
     // Best-effort, must never throw.
     try {
         const timeoutMs = 800;
+        const loginArgs = await resolveCliLoginStatusArgs(params.name);
+        if (!loginArgs) return null;
+
         const isWindows = process.platform === 'win32';
         const isCmdScript = isWindows && /\.(cmd|bat)$/i.test(params.resolvedPath);
 
@@ -231,30 +260,10 @@ async function detectCliLoginStatus(params: { name: DetectCliName; resolvedPath:
             }
         };
 
-        if (params.name === 'codex') {
-            if (isCmdScript) {
-                return await runStatus('cmd.exe', ['/d', '/s', '/c', `"${params.resolvedPath}" login status`]);
-            }
-            return await runStatus(params.resolvedPath, ['login', 'status']);
+        if (isCmdScript) {
+            return await runStatus('cmd.exe', ['/d', '/s', '/c', `"${params.resolvedPath}" ${loginArgs.join(' ')}`]);
         }
-
-        if (params.name === 'gemini') {
-            if (isCmdScript) {
-                return await runStatus('cmd.exe', ['/d', '/s', '/c', `"${params.resolvedPath}" auth status`]);
-            }
-            return await runStatus(params.resolvedPath, ['auth', 'status']);
-        }
-
-        if (params.name === 'opencode') {
-            // Best-effort: OpenCode supports `opencode auth list` which should succeed when configured.
-            if (isCmdScript) {
-                return await runStatus('cmd.exe', ['/d', '/s', '/c', `"${params.resolvedPath}" auth list`]);
-            }
-            return await runStatus(params.resolvedPath, ['auth', 'list']);
-        }
-
-        // claude-code: no stable non-interactive auth-status command (as of early 2026).
-        return null;
+        return await runStatus(params.resolvedPath, loginArgs);
     } catch {
         return null;
     }
@@ -270,7 +279,7 @@ async function detectCliLoginStatus(params: { name: DetectCliName; resolvedPath:
 export async function detectCliSnapshotOnDaemonPath(data: DetectCliRequest): Promise<DetectCliSnapshot> {
     const pathEnv = typeof process.env.PATH === 'string' ? process.env.PATH : null;
     const includeLoginStatus = Boolean(data?.includeLoginStatus);
-    const names: DetectCliName[] = ['claude', 'codex', 'gemini', 'opencode'];
+    const names = Object.keys(AGENTS) as DetectCliName[];
 
     const pairs = await Promise.all(
         names.map(async (name) => {

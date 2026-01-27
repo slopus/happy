@@ -1,15 +1,14 @@
 import type { TerminalRuntimeFlags } from '@/terminal/terminalRuntimeFlags';
 
+import { AGENTS, type AgentCatalogEntry } from '@/backends/catalog';
+
 import { handleAttachCliCommand } from './commands/attach';
 import { handleAuthCliCommand } from './commands/auth';
-import { handleCodexCliCommand } from './commands/codex';
 import { handleConnectCliCommand } from './commands/connect';
 import { handleDaemonCliCommand } from './commands/daemon';
 import { handleDoctorCliCommand } from './commands/doctor';
-import { handleGeminiCliCommand } from './commands/gemini';
 import { handleLogoutCliCommand } from './commands/logout';
 import { handleNotifyCliCommand } from './commands/notify';
-import { handleOpenCodeCliCommand } from './commands/opencode';
 
 export type CommandContext = Readonly<{
   args: string[];
@@ -19,16 +18,27 @@ export type CommandContext = Readonly<{
 
 export type CommandHandler = (context: CommandContext) => Promise<void>;
 
+function buildAgentCommandRegistry(): Readonly<Record<string, CommandHandler>> {
+  const registry: Record<string, CommandHandler> = {};
+
+  for (const entry of Object.values(AGENTS) as AgentCatalogEntry[]) {
+    if (!entry.getCliCommandHandler) continue;
+    registry[entry.cliSubcommand] = async (context) => {
+      const handler = await entry.getCliCommandHandler!();
+      await handler(context);
+    };
+  }
+
+  return registry;
+}
+
 export const commandRegistry: Readonly<Record<string, CommandHandler>> = {
   attach: handleAttachCliCommand,
   auth: handleAuthCliCommand,
-  codex: handleCodexCliCommand,
   connect: handleConnectCliCommand,
   daemon: handleDaemonCliCommand,
   doctor: handleDoctorCliCommand,
-  gemini: handleGeminiCliCommand,
   logout: handleLogoutCliCommand,
   notify: handleNotifyCliCommand,
-  opencode: handleOpenCodeCliCommand,
+  ...buildAgentCommandRegistry(),
 };
-

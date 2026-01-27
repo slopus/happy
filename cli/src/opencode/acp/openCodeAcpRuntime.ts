@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { logger } from '@/ui/logger';
 import type { AgentBackend, AgentMessage, McpServerConfig } from '@/agent';
-import { createOpenCodeBackend } from '@/agent/factories';
+import { createOpenCodeBackend } from '@/opencode/acp/backend';
 import type { MessageBuffer } from '@/ui/ink/messageBuffer';
 import {
   handleAcpModelOutputDelta,

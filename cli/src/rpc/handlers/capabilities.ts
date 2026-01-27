@@ -1,14 +1,13 @@
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
+import { AGENTS, type AgentCatalogEntry } from '@/backends/catalog';
 import { checklists } from '@/capabilities/checklists';
 import { buildDetectContext } from '@/capabilities/context/buildDetectContext';
-import { cliClaudeCapability } from '@/capabilities/registry/cliClaude';
-import { cliCodexCapability } from '@/capabilities/registry/cliCodex';
-import { cliGeminiCapability } from '@/capabilities/registry/cliGemini';
-import { cliOpenCodeCapability } from '@/capabilities/registry/cliOpenCode';
+import { buildCliCapabilityData } from '@/capabilities/probes/cliBase';
 import { codexAcpDepCapability } from '@/capabilities/registry/depCodexAcp';
 import { codexMcpResumeDepCapability } from '@/capabilities/registry/depCodexMcpResume';
 import { tmuxCapability } from '@/capabilities/registry/toolTmux';
 import { createCapabilitiesService } from '@/capabilities/service';
+import type { Capability } from '@/capabilities/service';
 import type {
     CapabilitiesDescribeResponse,
     CapabilitiesDetectRequest,
@@ -17,30 +16,59 @@ import type {
     CapabilitiesInvokeResponse,
 } from '@/capabilities/types';
 
+function titleCase(value: string): string {
+    if (!value) return value;
+    return `${value[0].toUpperCase()}${value.slice(1)}`;
+}
+
+function createGenericCliCapability(agentId: AgentCatalogEntry['id']): Capability {
+    return {
+        descriptor: { id: `cli.${agentId}`, kind: 'cli', title: `${titleCase(agentId)} CLI` },
+        detect: async ({ request, context }) => {
+            const entry = context.cliSnapshot?.clis?.[agentId];
+            return buildCliCapabilityData({ request, entry });
+        },
+    };
+}
+
 export function registerCapabilitiesHandlers(rpcHandlerManager: RpcHandlerManager): void {
-    const service = createCapabilitiesService({
-        capabilities: [
-            cliCodexCapability,
-            cliClaudeCapability,
-            cliGeminiCapability,
-            cliOpenCodeCapability,
-            tmuxCapability,
-            codexMcpResumeDepCapability,
-            codexAcpDepCapability,
-        ],
-        checklists,
-        buildContext: buildDetectContext,
-    });
+    let servicePromise: Promise<ReturnType<typeof createCapabilitiesService>> | null = null;
+
+    const getService = (): Promise<ReturnType<typeof createCapabilitiesService>> => {
+        if (servicePromise) return servicePromise;
+        servicePromise = (async () => {
+            const cliCapabilities = await Promise.all(
+                (Object.values(AGENTS) as AgentCatalogEntry[]).map(async (entry) => {
+                    if (entry.getCliCapabilityOverride) {
+                        return await entry.getCliCapabilityOverride();
+                    }
+                    return createGenericCliCapability(entry.id);
+                }),
+            );
+
+            return createCapabilitiesService({
+                capabilities: [
+                    ...cliCapabilities,
+                    tmuxCapability,
+                    codexMcpResumeDepCapability,
+                    codexAcpDepCapability,
+                ],
+                checklists,
+                buildContext: buildDetectContext,
+            });
+        })();
+        return servicePromise;
+    };
 
     rpcHandlerManager.registerHandler<{}, CapabilitiesDescribeResponse>('capabilities.describe', async () => {
-        return service.describe();
+        return (await getService()).describe();
     });
 
     rpcHandlerManager.registerHandler<CapabilitiesDetectRequest, CapabilitiesDetectResponse>('capabilities.detect', async (data) => {
-        return await service.detect(data);
+        return await (await getService()).detect(data);
     });
 
     rpcHandlerManager.registerHandler<CapabilitiesInvokeRequest, CapabilitiesInvokeResponse>('capabilities.invoke', async (data) => {
-        return await service.invoke(data);
+        return await (await getService()).invoke(data);
     });
 }

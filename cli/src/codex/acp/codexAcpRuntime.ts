@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { logger } from '@/ui/logger';
 import type { AgentBackend, AgentMessage, McpServerConfig } from '@/agent';
-import { createCodexAcpBackend } from '@/agent/factories';
+import { createCodexAcpBackend } from '@/codex/acp/backend';
 import type { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { maybeUpdateCodexSessionIdMetadata } from '@/codex/utils/codexSessionIdMetadata';
 import {

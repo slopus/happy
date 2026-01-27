@@ -1,7 +1,7 @@
-import type { Capability } from '../service';
-import { buildCliCapabilityData } from '../probes/cliBase';
+import type { Capability } from '@/capabilities/service';
+import { buildCliCapabilityData } from '@/capabilities/probes/cliBase';
 
-export const cliClaudeCapability: Capability = {
+export const cliCapability: Capability = {
     descriptor: { id: 'cli.claude', kind: 'cli', title: 'Claude CLI' },
     detect: async ({ request, context }) => {
         const entry = context.cliSnapshot?.clis?.claude;

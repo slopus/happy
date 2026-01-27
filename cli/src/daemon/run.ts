@@ -14,6 +14,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
+import { resolveAgentCliSubcommand } from '@/backends/catalog';
 import {
   writeDaemonState,
   DaemonLocallyPersistedState,
@@ -467,16 +468,8 @@ export async function startDaemon(): Promise<void> {
 	          const sessionDesc = resolvedTmuxSessionName || 'current/most recent session';
 	          logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
 
-          // Determine agent command - support claude, codex, gemini, and opencode
-	          const agent =
-              options.agent === 'gemini'
-                ? 'gemini'
-                : options.agent === 'codex'
-                  ? 'codex'
-                  : options.agent === 'opencode'
-                    ? 'opencode'
-                    : 'claude';
-	          const windowName = `happy-${Date.now()}-${agent}`;
+	          const agentSubcommand = resolveAgentCliSubcommand(options.agent);
+	          const windowName = `happy-${Date.now()}-${agentSubcommand}`;
 	          const tmuxTarget = `${resolvedTmuxSessionName}:${windowName}`;
 
 	          const terminalRuntimeArgs = [
@@ -490,7 +483,7 @@ export async function startDaemon(): Promise<void> {
 	          ];
 
 		          const { commandTokens, tmuxEnv } = buildTmuxSpawnConfig({
-		            agent,
+		            agent: agentSubcommand,
 		            directory,
 		            extraEnv: extraEnvForChildWithMessage,
 		            tmuxCommandEnv,
@@ -594,28 +587,7 @@ export async function startDaemon(): Promise<void> {
 	        if (!useTmux) {
 	          logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
-          // Construct arguments for the CLI - support claude, codex, gemini, and opencode
-          let agentCommand: string;
-          switch (options.agent) {
-            case 'claude':
-            case undefined:
-              agentCommand = 'claude';
-              break;
-            case 'codex':
-              agentCommand = 'codex';
-              break;
-            case 'gemini':
-              agentCommand = 'gemini';
-              break;
-            case 'opencode':
-              agentCommand = 'opencode';
-              break;
-            default:
-              return {
-                type: 'error',
-                errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
-              };
-          }
+          const agentCommand = resolveAgentCliSubcommand(options.agent);
 	          const args = [
 	            agentCommand,
 	            '--happy-starting-mode', 'remote',

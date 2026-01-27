@@ -19,8 +19,8 @@ import type {
   StderrContext,
   StderrResult,
   ToolNameContext,
-} from '../TransportHandler';
-import type { AgentMessage } from '../../core';
+} from '@/agent/transport/TransportHandler';
+import type { AgentMessage } from '@/agent/core';
 import { logger } from '@/ui/logger';
 
 export const OPENCODE_TIMEOUTS = {

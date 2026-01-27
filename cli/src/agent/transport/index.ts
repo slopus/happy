@@ -18,9 +18,5 @@ export type {
 // Default implementation
 export { DefaultTransport, defaultTransport } from './DefaultTransport';
 
-// Agent-specific handlers
-export { GeminiTransport, geminiTransport, OpenCodeTransport, openCodeTransport } from './handlers';
-
-// Future handlers will be exported from ./handlers:
-// export { CodexTransport, codexTransport } from './handlers';
-// export { ClaudeTransport, claudeTransport } from './handlers';
+// Note: provider-specific ACP transport handlers live with the provider
+// implementation (e.g. `@/gemini/acp/transport`).

@@ -1,11 +1,11 @@
-import type { Capability } from '../service';
-import { buildCliCapabilityData } from '../probes/cliBase';
-import { probeAcpAgentCapabilities } from '../probes/acpProbe';
-import { geminiTransport } from '@/agent/transport';
-import { normalizeCapabilityProbeError } from '../utils/normalizeCapabilityProbeError';
-import { resolveAcpProbeTimeoutMs } from '../utils/acpProbeTimeout';
+import type { Capability } from '@/capabilities/service';
+import { buildCliCapabilityData } from '@/capabilities/probes/cliBase';
+import { probeAcpAgentCapabilities } from '@/capabilities/probes/acpProbe';
+import { geminiTransport } from '@/gemini/acp/transport';
+import { normalizeCapabilityProbeError } from '@/capabilities/utils/normalizeCapabilityProbeError';
+import { resolveAcpProbeTimeoutMs } from '@/capabilities/utils/acpProbeTimeout';
 
-export const cliGeminiCapability: Capability = {
+export const cliCapability: Capability = {
     descriptor: { id: 'cli.gemini', kind: 'cli', title: 'Gemini CLI' },
     detect: async ({ request, context }) => {
         const entry = context.cliSnapshot?.clis?.gemini;

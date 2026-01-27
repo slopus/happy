@@ -1,5 +1,5 @@
-import type { RawJSONLines } from '@/claude/types';
 import { recordToolTraceEvent } from '@/agent/tools/trace/toolTrace';
+import type { RawJSONLines } from '@/claude/types';
 
 export function isToolTraceEnabled(): boolean {
     return (

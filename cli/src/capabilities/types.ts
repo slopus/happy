@@ -1,15 +1,17 @@
+import type { CatalogAgentId } from '@/backends/catalog';
+import type { ChecklistId } from './checklistIds';
+
+export type { ChecklistId } from './checklistIds';
+
+export type CliCapabilityId = `cli.${CatalogAgentId}`;
+
 export type CapabilityId =
-    | 'cli.codex'
-    | 'cli.claude'
-    | 'cli.gemini'
-    | 'cli.opencode'
+    | CliCapabilityId
     | 'tool.tmux'
     | 'dep.codex-mcp-resume'
     | 'dep.codex-acp';
 
 export type CapabilityKind = 'cli' | 'tool' | 'dep';
-
-export type ChecklistId = 'new-session' | 'machine-details' | 'resume.codex' | 'resume.gemini' | 'resume.opencode';
 
 export type CapabilityDetectRequest = {
     id: CapabilityId;

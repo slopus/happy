@@ -1,39 +1,50 @@
-import type { CapabilityDetectRequest, ChecklistId } from './types';
-import { CODEX_MCP_RESUME_DIST_TAG } from './deps/codexMcpResume';
+import type { AgentCatalogEntry } from '@/backends/catalog';
+import { AGENTS } from '@/backends/catalog';
 
-export const checklists: Record<ChecklistId, CapabilityDetectRequest[]> = {
+import type { ChecklistId } from './checklistIds';
+import type { CapabilityDetectRequest } from './types';
+
+const cliAgentRequests: CapabilityDetectRequest[] = (Object.values(AGENTS) as AgentCatalogEntry[]).map((entry) => ({
+    id: `cli.${entry.id}`,
+}));
+
+function mergeChecklistContributions(
+    base: Record<ChecklistId, CapabilityDetectRequest[]>,
+): Record<ChecklistId, CapabilityDetectRequest[]> {
+    const next: Record<ChecklistId, CapabilityDetectRequest[]> = { ...base };
+
+    for (const entry of Object.values(AGENTS) as AgentCatalogEntry[]) {
+        const contributions = entry.checklists;
+        if (!contributions) continue;
+
+        for (const [checklistId, requests] of Object.entries(contributions) as Array<
+            [ChecklistId, ReadonlyArray<{ id: string; params?: Record<string, unknown> }>]
+        >) {
+            const normalized: CapabilityDetectRequest[] = requests.map((r) => ({
+                id: r.id as CapabilityDetectRequest['id'],
+                ...(r.params ? { params: r.params } : {}),
+            }));
+            next[checklistId] = [...(next[checklistId] ?? []), ...normalized];
+        }
+    }
+
+    return next;
+}
+
+const baseChecklists: Record<ChecklistId, CapabilityDetectRequest[]> = {
     'new-session': [
-        { id: 'cli.codex' },
-        { id: 'cli.claude' },
-        { id: 'cli.gemini' },
-        { id: 'cli.opencode' },
+        ...cliAgentRequests,
         { id: 'tool.tmux' },
     ],
     'machine-details': [
-        { id: 'cli.codex' },
-        { id: 'cli.claude' },
-        { id: 'cli.gemini' },
-        { id: 'cli.opencode' },
+        ...cliAgentRequests,
         { id: 'tool.tmux' },
         { id: 'dep.codex-mcp-resume' },
         { id: 'dep.codex-acp' },
     ],
-    'resume.codex': [
-        // Codex can be resumed via either:
-        // - MCP resume (codex-mcp-resume), or
-        // - ACP resume (codex-acp + ACP `loadSession` support)
-        //
-        // The app uses this checklist for inactive-session resume UX, so include both:
-        // - `includeAcpCapabilities` so the UI can enable/disable resume correctly when `expCodexAcp` is enabled
-        // - dep statuses so we can block with a helpful install prompt
-        { id: 'cli.codex', params: { includeAcpCapabilities: true, includeLoginStatus: true } },
-        { id: 'dep.codex-acp', params: { onlyIfInstalled: true, includeRegistry: true } },
-        { id: 'dep.codex-mcp-resume', params: { includeRegistry: true, onlyIfInstalled: true, distTag: CODEX_MCP_RESUME_DIST_TAG } },
-    ],
-    'resume.gemini': [
-        { id: 'cli.gemini', params: { includeAcpCapabilities: true, includeLoginStatus: true } },
-    ],
-    'resume.opencode': [
-        { id: 'cli.opencode', params: { includeAcpCapabilities: true, includeLoginStatus: true } },
-    ],
+    'resume.codex': [],
+    'resume.gemini': [],
+    'resume.opencode': [],
 };
+
+export const checklists: Record<ChecklistId, CapabilityDetectRequest[]> = mergeChecklistContributions(baseChecklists);

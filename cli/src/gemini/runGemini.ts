@@ -37,7 +37,7 @@ import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from
 import { createBaseSessionForAttach } from '@/agent/runtime/createBaseSessionForAttach';
 import { persistTerminalAttachmentInfoIfNeeded, primeAgentStateForUi, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/agent/runtime/startupSideEffects';
 
-import { createGeminiBackend } from '@/agent/factories/gemini';
+import { createGeminiBackend } from '@/gemini/acp/backend';
 import { importAcpReplayHistoryV1 } from '@/agent/acp/history/importAcpReplayHistory';
 import { normalizeAvailableCommands, publishSlashCommandsToMetadata } from '@/agent/acp/commands/publishSlashCommands';
 import type { AgentBackend, AgentMessage } from '@/agent';

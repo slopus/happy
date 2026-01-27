@@ -6,7 +6,7 @@ import { AgentState, ClientToServerEvents, MessageContent, Metadata, ServerToCli
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { configuration } from '@/configuration';
-import { RawJSONLines } from '@/claude/types';
+import type { RawJSONLines } from '@/claude/types';
 import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -539,7 +539,12 @@ export class ApiSessionClient extends EventEmitter {
         let content: MessageContent;
 
         // Check if body is already a MessageContent (has role property)
-        if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {
+        if (
+            body.type === 'user' &&
+            typeof body.message.content === 'string' &&
+            body.isSidechain !== true &&
+            body.isMeta !== true
+        ) {
             content = {
                 role: 'user',
                 content: {

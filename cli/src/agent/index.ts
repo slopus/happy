@@ -30,8 +30,7 @@ export { AgentRegistry, agentRegistry } from './core';
 // ACP backend (low-level)
 export * from './acp';
 
-// Agent factories (high-level, recommended)
-export * from './factories';
+// Backend registration driven by the Agent Catalog
 export { agentRegistrarById, registerDefaultAgents, type AgentRegistrar } from './registry';
 
 /**
@@ -39,6 +38,6 @@ export { agentRegistrarById, registerDefaultAgents, type AgentRegistrar } from '
  *
  * Call this function during application startup to make all agents available.
  */
-export function initializeAgents(): void {
-  registerDefaultAgents();
+export async function initializeAgents(): Promise<void> {
+  await registerDefaultAgents();
 }

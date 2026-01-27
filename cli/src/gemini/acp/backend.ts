@@ -8,10 +8,10 @@
  * the --experimental-acp flag for ACP mode.
  */
 
-import { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from '../acp/AcpBackend';
-import type { AgentBackend, McpServerConfig, AgentFactoryOptions } from '../core';
-import { agentRegistry } from '../core';
-import { geminiTransport } from '../transport';
+import { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from '@/agent/acp/AcpBackend';
+import type { AgentBackend, McpServerConfig, AgentFactoryOptions } from '@/agent/core';
+import { agentRegistry } from '@/agent/core';
+import { geminiTransport } from '@/gemini/acp/transport';
 import { logger } from '@/ui/logger';
 import { 
   GEMINI_API_KEY_ENV, 
@@ -184,4 +184,3 @@ export function registerGeminiAgent(): void {
   agentRegistry.register('gemini', (opts) => createGeminiBackend(opts).backend);
   logger.debug('[Gemini] Registered with agent registry');
 }
-

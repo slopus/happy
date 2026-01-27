@@ -1,12 +1,12 @@
-import type { Capability } from '../service';
-import { buildCliCapabilityData } from '../probes/cliBase';
-import { probeAcpAgentCapabilities } from '../probes/acpProbe';
+import type { Capability } from '@/capabilities/service';
+import { buildCliCapabilityData } from '@/capabilities/probes/cliBase';
+import { probeAcpAgentCapabilities } from '@/capabilities/probes/acpProbe';
 import { DefaultTransport } from '@/agent/transport';
 import { resolveCodexAcpCommand } from '@/codex/acp/resolveCodexAcpCommand';
-import { normalizeCapabilityProbeError } from '../utils/normalizeCapabilityProbeError';
-import { resolveAcpProbeTimeoutMs } from '../utils/acpProbeTimeout';
+import { normalizeCapabilityProbeError } from '@/capabilities/utils/normalizeCapabilityProbeError';
+import { resolveAcpProbeTimeoutMs } from '@/capabilities/utils/acpProbeTimeout';
 
-export const cliCodexCapability: Capability = {
+export const cliCapability: Capability = {
     descriptor: { id: 'cli.codex', kind: 'cli', title: 'Codex CLI' },
     detect: async ({ request, context }) => {
         const entry = context.cliSnapshot?.clis?.codex;

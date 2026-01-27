@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { geminiTransport } from './GeminiTransport';
+import { geminiTransport } from './transport';
 
 describe('GeminiTransport determineToolName', () => {
   it('detects write_file tool calls', () => {

@@ -6,7 +6,7 @@
  *
  * Uses the official @agentclientprotocol/sdk from Zed Industries.
  *
- * For agent-specific backends, use the factories in src/agent/factories/.
+ * For agent-specific backends, use the provider ACP backends (e.g. `@/gemini/acp/backend`).
  */
 
 // Core ACP backend

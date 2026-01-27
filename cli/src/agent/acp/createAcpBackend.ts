@@ -5,7 +5,7 @@
  * Use this when you need to create a generic ACP backend without agent-specific
  * configuration (timeouts, filtering, etc.).
  *
- * For agent-specific backends, use the factories in src/agent/factories/:
+ * For agent-specific backends, use the agent ACP backends in:
  * - createGeminiBackend() - Gemini CLI with GeminiTransport
  * - createCodexBackend() - Codex CLI with CodexTransport
  * - createClaudeBackend() - Claude CLI with ClaudeTransport
@@ -54,7 +54,7 @@ export interface CreateAcpBackendOptions {
  *
  * ```typescript
  * // Prefer this:
- * import { createGeminiBackend } from '@/agent/factories';
+ * import { createGeminiBackend } from '@/gemini/acp/backend';
  * const backend = createGeminiBackend({ cwd: '/path/to/project' });
  *
  * // Over this:

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { OpenCodeTransport } from './OpenCodeTransport';
+import { OpenCodeTransport } from './transport';
 
 const ctx = { recentPromptHadChangeTitle: false, toolCallCountSincePrompt: 0 } as const;
 
@@ -61,4 +61,3 @@ describe('OpenCodeTransport timeouts', () => {
     expect(transport.isInvestigationTool('read-123', 'read')).toBe(false);
   });
 });
-

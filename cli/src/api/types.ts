@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { UsageSchema } from '@/claude/types'
+import { UsageSchema } from '@/api/usage'
 
 /**
  * Permission mode values - includes both Claude and Codex modes

@@ -5,8 +5,8 @@
  * Mirrors the Gemini ACP factory pattern (single place for command resolution).
  */
 
-import { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from '../acp/AcpBackend';
-import type { AgentBackend, AgentFactoryOptions, McpServerConfig } from '../core';
+import { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from '@/agent/acp/AcpBackend';
+import type { AgentBackend, AgentFactoryOptions, McpServerConfig } from '@/agent/core';
 import { resolveCodexAcpCommand } from '@/codex/acp/resolveCodexAcpCommand';
 
 export interface CodexAcpBackendOptions extends AgentFactoryOptions {
