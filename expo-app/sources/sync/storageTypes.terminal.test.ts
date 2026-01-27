@@ -26,5 +26,16 @@ describe('MetadataSchema', () => {
             },
         });
     });
-});
 
+    it('should preserve Auggie vendor session metadata when present', () => {
+        const parsed = MetadataSchema.parse({
+            path: '/tmp',
+            host: 'host',
+            auggieSessionId: 'auggie-session-1',
+            auggieAllowIndexing: true,
+        } as any);
+
+        expect((parsed as any).auggieSessionId).toBe('auggie-session-1');
+        expect((parsed as any).auggieAllowIndexing).toBe(true);
+    });
+});
