@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { selectPreferredTmuxSessionName } from './tmuxSessionSelector';
+import { selectPreferredTmuxSessionName } from './sessionSelector';
 
 describe('selectPreferredTmuxSessionName', () => {
   it('prefers attached sessions over detached', () => {
@@ -19,4 +19,3 @@ describe('selectPreferredTmuxSessionName', () => {
     expect(selectPreferredTmuxSessionName('bad-line')).toBeNull();
   });
 });
-

@@ -40,10 +40,9 @@ import { startDaemonHeartbeatLoop } from './lifecycle/heartbeat';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
-import { TmuxUtilities, isTmuxAvailable } from '@/integrations/tmux';
+import { selectPreferredTmuxSessionName, TmuxUtilities, isTmuxAvailable } from '@/integrations/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { resolveTerminalRequestFromSpawnOptions } from '@/terminal/terminalConfig';
-import { selectPreferredTmuxSessionName } from '@/terminal/tmuxSessionSelector';
 import { validateEnvVarRecordStrict } from '@/utils/envVarSanitization';
 
 import { getPreferredHostName, initialMachineMetadata } from './machine/metadata';

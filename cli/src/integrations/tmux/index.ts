@@ -23,6 +23,9 @@ import { spawn, SpawnOptions } from 'child_process';
 import { promisify } from 'util';
 import { logger } from '@/ui/logger';
 
+export type { TmuxSessionListRow } from './sessionSelector';
+export { parseTmuxSessionList, selectPreferredTmuxSessionName } from './sessionSelector';
+
 function readNonNegativeIntegerEnv(name: string, fallback: number): number {
     const raw = process.env[name];
     if (!raw) return fallback;

@@ -1,8 +1,7 @@
 import chalk from 'chalk';
 
 import { buildHappyCliSubprocessInvocation } from '@/utils/spawnHappyCLI';
-import { isTmuxAvailable, TmuxUtilities } from '@/integrations/tmux';
-import { selectPreferredTmuxSessionName } from '@/terminal/tmuxSessionSelector';
+import { isTmuxAvailable, selectPreferredTmuxSessionName, TmuxUtilities } from '@/integrations/tmux';
 import { ensureRemoteStartingModeArgs } from '@/terminal/headlessTmuxArgs';
 
 function removeFlag(argv: string[], flag: string): string[] {

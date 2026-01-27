@@ -22,13 +22,10 @@ vi.mock('@/integrations/tmux', () => {
 
   return {
     isTmuxAvailable: vi.fn(async () => true),
+    selectPreferredTmuxSessionName: () => 'picked',
     TmuxUtilities,
   };
 });
-
-vi.mock('@/terminal/tmuxSessionSelector', () => ({
-  selectPreferredTmuxSessionName: () => 'picked',
-}));
 
 vi.mock('@/utils/spawnHappyCLI', () => ({
   buildHappyCliSubprocessInvocation: () => ({ runtime: 'node', argv: ['happy'] }),
