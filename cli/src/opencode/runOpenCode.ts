@@ -41,7 +41,7 @@ import { OpenCodeTerminalDisplay } from '@/opencode/ui/OpenCodeTerminalDisplay';
 import type { McpServerConfig } from '@/agent';
 import { OpenCodePermissionHandler } from './utils/permissionHandler';
 import { maybeUpdateOpenCodeSessionIdMetadata } from './utils/opencodeSessionIdMetadata';
-import { createOpenCodeAcpRuntime } from './acp/openCodeAcpRuntime';
+import { createOpenCodeAcpRuntime } from './acp/runtime';
 import { waitForNextOpenCodeMessage } from './utils/waitForNextOpenCodeMessage';
 
 export async function runOpenCode(opts: {

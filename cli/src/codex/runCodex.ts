@@ -40,7 +40,7 @@ import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadat
 import { parseSpecialCommand } from '@/cli/parsers/specialCommands';
 import { createBaseSessionForAttach } from '@/agent/runtime/createBaseSessionForAttach';
 import { maybeUpdateCodexSessionIdMetadata } from './utils/codexSessionIdMetadata';
-import { createCodexAcpRuntime } from './acp/codexAcpRuntime';
+import { createCodexAcpRuntime } from './acp/runtime';
 import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/runtime/startupMetadataUpdate';
 import { persistTerminalAttachmentInfoIfNeeded, primeAgentStateForUi, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/agent/runtime/startupSideEffects';
 
