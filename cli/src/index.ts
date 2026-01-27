@@ -520,6 +520,13 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
       } else if (arg === '--no-chrome') {
         chromeOverride = false
         // Happy-specific flag to disable chrome even if default is on
+      } else if (arg === '--settings') {
+        // Intercept --settings flag - Happy uses this internally for session hooks
+        const settingsValue = args[++i] // consume the value
+        console.warn(chalk.yellow(`⚠️  Warning: --settings is used internally by Happy for session tracking.`))
+        console.warn(chalk.yellow(`   Your settings file "${settingsValue}" will be ignored.`))
+        console.warn(chalk.yellow(`   To configure Claude, edit ~/.claude/settings.json instead.`))
+        // Don't pass through to claudeArgs
       } else {
         // Pass unknown arguments through to claude
         unknownArgs.push(arg)
