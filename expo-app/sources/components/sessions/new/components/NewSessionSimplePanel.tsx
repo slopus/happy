@@ -10,7 +10,7 @@ import { PopoverBoundaryProvider } from '@/components/ui/popover';
 import { PopoverPortalTargetProvider } from '@/components/ui/popover';
 import { t } from '@/text';
 
-export function LegacyAgentInputPanel(props: Readonly<{
+export function NewSessionSimplePanel(props: Readonly<{
     popoverBoundaryRef: React.RefObject<View>;
     headerHeight: number;
     safeAreaTop: number;

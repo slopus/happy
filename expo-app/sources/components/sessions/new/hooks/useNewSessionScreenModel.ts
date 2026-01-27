@@ -59,9 +59,9 @@ const styles = newSessionScreenStyles;
 
 export type NewSessionScreenModel =
     | Readonly<{
-        variant: 'legacy';
+        variant: 'simple';
         popoverBoundaryRef: React.RefObject<View>;
-        legacyProps: any;
+        simpleProps: any;
     }>
     | Readonly<{
         variant: 'wizard';
@@ -1484,9 +1484,9 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
     // ========================================================================
     if (!useEnhancedSessionWizard) {
         return {
-            variant: 'legacy',
+            variant: 'simple',
             popoverBoundaryRef,
-            legacyProps: {
+            simpleProps: {
                 popoverBoundaryRef,
                 headerHeight,
                 safeAreaTop: safeArea.top,

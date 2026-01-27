@@ -2,15 +2,15 @@ import React from 'react';
 import { View } from 'react-native';
 
 import { PopoverBoundaryProvider, PopoverPortalTargetProvider } from '@/components/ui/popover';
-import { LegacyAgentInputPanel } from '@/components/sessions/new/components/LegacyAgentInputPanel';
+import { NewSessionSimplePanel } from '@/components/sessions/new/components/NewSessionSimplePanel';
 import { NewSessionWizard } from '@/components/sessions/new/components/NewSessionWizard';
 import { useNewSessionScreenModel } from '@/components/sessions/new/hooks/useNewSessionScreenModel';
 
 function NewSessionScreen() {
     const model = useNewSessionScreenModel();
 
-    if (model.variant === 'legacy') {
-        return <LegacyAgentInputPanel {...model.legacyProps} />;
+    if (model.variant === 'simple') {
+        return <NewSessionSimplePanel {...model.simpleProps} />;
     }
 
     const { layout, profiles, agent, machine, footer } = model.wizardProps;
