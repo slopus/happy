@@ -9,6 +9,22 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./spawnSession": {
+      "types": "./dist/spawnSession.d.ts",
+      "default": "./dist/spawnSession.js"
+    },
+    "./rpc": {
+      "types": "./dist/rpc.d.ts",
+      "default": "./dist/rpc.js"
+    },
+    "./checklists": {
+      "types": "./dist/checklists.d.ts",
+      "default": "./dist/checklists.js"
+    },
+    "./capabilities": {
+      "types": "./dist/capabilities.d.ts",
+      "default": "./dist/capabilities.js"
     }
   },
   "files": [
@@ -21,8 +37,10 @@
     "postinstall": "yarn -s build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@happy/agents": "link:../agents"
+  },
   "devDependencies": {
     "typescript": "^5.9.2"
   }
 }
-
