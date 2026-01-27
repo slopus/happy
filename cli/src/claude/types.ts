@@ -37,6 +37,7 @@ export const RawJSONLinesSchema = z.discriminatedUnion("type", [
     type: z.literal("assistant"),
     message: z.object({
       usage: UsageSchema.optional(), // Used in apiSession.ts
+      model: z.string().optional(), // Used for cost calculation
     }).passthrough().optional()
   }).passthrough(),
 
