@@ -70,7 +70,7 @@ import {
     handleNewMessageSocketUpdate,
     repairInvalidReadStateV1 as repairInvalidReadStateV1Engine,
 } from './engine/sessions';
-import { parseEphemeralUpdate, parseUpdateContainer } from './engine/socket';
+import { handleSocketReconnected, parseEphemeralUpdate, parseUpdateContainer } from './engine/socket';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -1987,24 +1987,18 @@ class Sync {
 
         // Subscribe to connection state changes
         apiSocket.onReconnected(() => {
-            log.log('🔌 Socket reconnected');
-            this.sessionsSync.invalidate();
-            this.machinesSync.invalidate();
-            log.log('🔌 Socket reconnected: Invalidating artifacts sync');
-            this.artifactsSync.invalidate();
-            this.friendsSync.invalidate();
-            this.friendRequestsSync.invalidate();
-            this.feedSync.invalidate();
-            const sessionsData = storage.getState().sessionsData;
-            if (sessionsData) {
-                for (const item of sessionsData) {
-                    if (typeof item !== 'string') {
-                        this.messagesSync.get(item.id)?.invalidate();
-                        // Also invalidate git status on reconnection
-                        gitStatusSync.invalidate(item.id);
-                    }
-                }
-            }
+            handleSocketReconnected({
+                log,
+                invalidateSessions: () => this.sessionsSync.invalidate(),
+                invalidateMachines: () => this.machinesSync.invalidate(),
+                invalidateArtifacts: () => this.artifactsSync.invalidate(),
+                invalidateFriends: () => this.friendsSync.invalidate(),
+                invalidateFriendRequests: () => this.friendRequestsSync.invalidate(),
+                invalidateFeed: () => this.feedSync.invalidate(),
+                getSessionsData: () => storage.getState().sessionsData,
+                invalidateMessagesForSession: (sessionId) => this.messagesSync.get(sessionId)?.invalidate(),
+                invalidateGitStatusForSession: (sessionId) => gitStatusSync.invalidate(sessionId),
+            });
         });
     }
 

@@ -32,3 +32,48 @@ export function inferTaskLifecycleFromMessageContent(content: unknown): { isTask
     return { isTaskComplete, isTaskStarted };
 }
 
+export function handleSocketReconnected(params: {
+    log: { log: (message: string) => void };
+    invalidateSessions: () => void;
+    invalidateMachines: () => void;
+    invalidateArtifacts: () => void;
+    invalidateFriends: () => void;
+    invalidateFriendRequests: () => void;
+    invalidateFeed: () => void;
+    getSessionsData: () => any;
+    invalidateMessagesForSession: (sessionId: string) => void;
+    invalidateGitStatusForSession: (sessionId: string) => void;
+}) {
+    const {
+        log,
+        invalidateSessions,
+        invalidateMachines,
+        invalidateArtifacts,
+        invalidateFriends,
+        invalidateFriendRequests,
+        invalidateFeed,
+        getSessionsData,
+        invalidateMessagesForSession,
+        invalidateGitStatusForSession,
+    } = params;
+
+    log.log('🔌 Socket reconnected');
+    invalidateSessions();
+    invalidateMachines();
+    log.log('🔌 Socket reconnected: Invalidating artifacts sync');
+    invalidateArtifacts();
+    invalidateFriends();
+    invalidateFriendRequests();
+    invalidateFeed();
+
+    const sessionsData = getSessionsData();
+    if (sessionsData) {
+        for (const item of sessionsData as any[]) {
+            if (typeof item !== 'string') {
+                invalidateMessagesForSession(item.id);
+                // Also invalidate git status on reconnection
+                invalidateGitStatusForSession(item.id);
+            }
+        }
+    }
+}
