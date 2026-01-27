@@ -1,5 +1,7 @@
-import { CODEX_MCP_RESUME_DIST_TAG } from '@/capabilities/deps/codexMcpResume';
 import type { AgentId } from '@/agent/core';
+import { checklists as codexChecklists } from '@/codex/checklists';
+import { checklists as geminiChecklists } from '@/gemini/checklists';
+import { checklists as openCodeChecklists } from '@/opencode/checklists';
 import type { AgentCatalogEntry, CatalogAgentId } from './types';
 
 export type { AgentCatalogEntry, AgentChecklistContributions, CatalogAgentId, CliDetectSpec } from './types';
@@ -17,23 +19,7 @@ export const AGENTS = {
     getCliCommandHandler: async () => (await import('@/cli/commands/codex')).handleCodexCliCommand,
     getCliCapabilityOverride: async () => (await import('@/codex/cliCapability')).cliCapability,
     getCliDetect: async () => (await import('@/codex/detect')).cliDetect,
-    checklists: {
-      'resume.codex': [
-        // Codex can be resumed via either:
-        // - MCP resume (codex-mcp-resume), or
-        // - ACP resume (codex-acp + ACP `loadSession` support)
-        //
-        // The app uses this checklist for inactive-session resume UX, so include both:
-        // - `includeAcpCapabilities` so the UI can enable/disable resume correctly when `expCodexAcp` is enabled
-        // - dep statuses so we can block with a helpful install prompt
-        { id: 'cli.codex', params: { includeAcpCapabilities: true, includeLoginStatus: true } },
-        { id: 'dep.codex-acp', params: { onlyIfInstalled: true, includeRegistry: true } },
-        {
-          id: 'dep.codex-mcp-resume',
-          params: { includeRegistry: true, onlyIfInstalled: true, distTag: CODEX_MCP_RESUME_DIST_TAG },
-        },
-      ],
-    },
+    checklists: codexChecklists,
   },
   gemini: {
     id: 'gemini',
@@ -41,9 +27,7 @@ export const AGENTS = {
     getCliCommandHandler: async () => (await import('@/cli/commands/gemini')).handleGeminiCliCommand,
     getCliCapabilityOverride: async () => (await import('@/gemini/cliCapability')).cliCapability,
     getCliDetect: async () => (await import('@/gemini/detect')).cliDetect,
-    checklists: {
-      'resume.gemini': [{ id: 'cli.gemini', params: { includeAcpCapabilities: true, includeLoginStatus: true } }],
-    },
+    checklists: geminiChecklists,
     registerBackend: () => {
       return import('@/gemini/acp/backend').then(({ registerGeminiAgent }) => {
         registerGeminiAgent();
@@ -56,9 +40,7 @@ export const AGENTS = {
     getCliCommandHandler: async () => (await import('@/cli/commands/opencode')).handleOpenCodeCliCommand,
     getCliCapabilityOverride: async () => (await import('@/opencode/cliCapability')).cliCapability,
     getCliDetect: async () => (await import('@/opencode/detect')).cliDetect,
-    checklists: {
-      'resume.opencode': [{ id: 'cli.opencode', params: { includeAcpCapabilities: true, includeLoginStatus: true } }],
-    },
+    checklists: openCodeChecklists,
     registerBackend: () => {
       return import('@/opencode/acp/backend').then(({ registerOpenCodeAgent }) => {
         registerOpenCodeAgent();
