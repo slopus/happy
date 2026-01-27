@@ -115,5 +115,21 @@ describe('sessionRegistry', () => {
     expect(typeof parsed.createdAt).toBe('number');
     expect(typeof parsed.updatedAt).toBe('number');
   });
-});
 
+  it('supports opencode flavor markers', async () => {
+    const { listSessionMarkers, writeSessionMarker } = await import('./sessionRegistry');
+
+    await writeSessionMarker({
+      pid: 777,
+      happySessionId: 'sess-opencode',
+      startedBy: 'terminal',
+      flavor: 'opencode',
+      cwd: '/tmp',
+    });
+
+    const markers = await listSessionMarkers();
+    expect(markers).toHaveLength(1);
+    expect(markers[0].pid).toBe(777);
+    expect(markers[0].flavor).toBe('opencode');
+  });
+});

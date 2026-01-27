@@ -11,7 +11,7 @@ const DaemonSessionMarkerSchema = z.object({
   happyHomeDir: z.string(),
   createdAt: z.number().int().positive(),
   updatedAt: z.number().int().positive(),
-  flavor: z.enum(['claude', 'codex', 'gemini']).optional(),
+  flavor: z.enum(['claude', 'codex', 'gemini', 'opencode']).optional(),
   startedBy: z.enum(['daemon', 'terminal']).optional(),
   cwd: z.string().optional(),
   // Process identity safety (PID reuse mitigation). Hash of the observed process command line.

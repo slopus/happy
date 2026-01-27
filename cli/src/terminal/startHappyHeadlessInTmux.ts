@@ -8,9 +8,9 @@ function removeFlag(argv: string[], flag: string): string[] {
   return argv.filter((arg) => arg !== flag);
 }
 
-function inferAgent(argv: string[]): 'claude' | 'codex' | 'gemini' {
+function inferAgent(argv: string[]): 'claude' | 'codex' | 'gemini' | 'opencode' {
   const first = argv[0];
-  if (first === 'codex' || first === 'gemini' || first === 'claude') return first;
+  if (first === 'codex' || first === 'gemini' || first === 'claude' || first === 'opencode') return first;
   return 'claude';
 }
 
