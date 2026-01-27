@@ -55,6 +55,7 @@ import { didControlReturnToMobile } from './controlledByUserTransitions';
 import { chooseSubmitMode } from './submitMode';
 import type { SavedSecret } from './settings';
 import { scheduleDebouncedPendingSettingsFlush } from './engine/pendingSettings';
+import { repairInvalidReadStateV1 as repairInvalidReadStateV1Engine } from './engine/readStateRepair';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -474,39 +475,15 @@ class Sync {
     }
 
     private repairInvalidReadStateV1 = async (params: { sessionId: string; sessionSeqUpperBound: number }): Promise<void> => {
-        const { sessionId, sessionSeqUpperBound } = params;
-
-        if (this.readStateV1RepairAttempted.has(sessionId) || this.readStateV1RepairInFlight.has(sessionId)) {
-            return;
-        }
-
-        const session = storage.getState().sessions[sessionId];
-        const readState = session?.metadata?.readStateV1;
-        if (!readState) return;
-        if (readState.sessionSeq <= sessionSeqUpperBound) return;
-
-        this.readStateV1RepairAttempted.add(sessionId);
-        this.readStateV1RepairInFlight.add(sessionId);
-        try {
-            await this.updateSessionMetadataWithRetry(sessionId, (metadata) => {
-                const prev = metadata.readStateV1;
-                if (!prev) return metadata;
-                if (prev.sessionSeq <= sessionSeqUpperBound) return metadata;
-
-                const result = computeNextReadStateV1({
-                    prev,
-                    sessionSeq: sessionSeqUpperBound,
-                    pendingActivityAt: prev.pendingActivityAt,
-                    now: nowServerMs(),
-                });
-                if (!result.didChange) return metadata;
-                return { ...metadata, readStateV1: result.next };
-            });
-        } catch {
-            // ignore
-        } finally {
-            this.readStateV1RepairInFlight.delete(sessionId);
-        }
+        await repairInvalidReadStateV1Engine({
+            sessionId: params.sessionId,
+            sessionSeqUpperBound: params.sessionSeqUpperBound,
+            attempted: this.readStateV1RepairAttempted,
+            inFlight: this.readStateV1RepairInFlight,
+            getSession: (sessionId) => storage.getState().sessions[sessionId],
+            updateSessionMetadataWithRetry: (sessionId, updater) => this.updateSessionMetadataWithRetry(sessionId, updater),
+            now: nowServerMs,
+        });
     }
 
     async markSessionViewed(sessionId: string, opts?: { sessionSeq?: number; pendingActivityAt?: number }): Promise<void> {
