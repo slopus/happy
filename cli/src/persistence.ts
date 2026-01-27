@@ -8,6 +8,8 @@ import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
 import { existsSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs'
 import { constants } from 'node:fs'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64 } from '@/api/encryption';
@@ -209,6 +211,8 @@ interface Settings {
   profiles: AIBackendProfile[]
   // CLI-local environment variable cache (not synced)
   localEnvironmentVariables: Record<string, Record<string, string>> // profileId -> env vars
+  // Attribution settings - opt-in (defaults to false)
+  includeAttribution?: boolean
 }
 
 const defaultSettings: Settings = {
@@ -305,6 +309,36 @@ export async function readSettings(): Promise<Settings> {
   } catch (error: any) {
     logger.warn(`Failed to read settings: ${error.message}`);
     // Return defaults on any error
+    return { ...defaultSettings }
+  }
+}
+
+
+/**
+ * Synchronous version of readSettings for use in module initialization
+ * (e.g., system prompt construction at load time)
+ *
+ * Note: Does not perform profile validation or migration warnings to avoid
+ * side effects during module load. Use async readSettings() for full functionality.
+ *
+ * Computes settings path dynamically to support test environment overrides.
+ */
+export function readSettingsSync(): Settings {
+  // Compute path dynamically to support HAPPY_HOME_DIR changes during tests
+  const happyHomeDir = process.env.HAPPY_HOME_DIR
+    ? process.env.HAPPY_HOME_DIR.replace(/^~/, homedir())
+    : join(homedir(), '.happy');
+  const settingsFile = join(happyHomeDir, 'settings.json');
+
+  if (!existsSync(settingsFile)) {
+    return { ...defaultSettings }
+  }
+
+  try {
+    const content = readFileSync(settingsFile, 'utf-8')
+    const raw = JSON.parse(content)
+    return { ...defaultSettings, ...raw }
+  } catch {
     return { ...defaultSettings }
   }
 }

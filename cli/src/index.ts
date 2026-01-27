@@ -24,6 +24,7 @@ import { ApiClient } from './api/api'
 import { runDoctorCommand } from './ui/doctor'
 import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
 import { handleAuthCommand } from './commands/auth'
+import { handleConfigCommand } from './commands/config'
 import { handleConnectCommand } from './commands/connect'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
@@ -73,6 +74,18 @@ import { execFileSync } from 'node:child_process'
     // Handle connect subcommands
     try {
       await handleConnectCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'config') {
+    // Handle config subcommands
+    try {
+      await handleConfigCommand(args.slice(1));
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
@@ -557,6 +570,7 @@ ${chalk.bold('happy')} - Claude Code On the Go
 ${chalk.bold('Usage:')}
   happy [options]         Start Claude with mobile control
   happy auth              Manage authentication
+  happy config            Manage settings (attribution, etc.)
   happy codex             Start Codex mode
   happy gemini            Start Gemini mode (ACP)
   happy connect           Connect AI vendor API keys
