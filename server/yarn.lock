@@ -331,6 +331,15 @@
     "@fastify/forwarded" "^3.0.0"
     ipaddr.js "^2.1.0"
 
+"@fastify/rate-limit@^10.3.0":
+  version "10.3.0"
+  resolved "https://registry.yarnpkg.com/@fastify/rate-limit/-/rate-limit-10.3.0.tgz#3cf6a56c0e3dd18fc0a56727675d7ba1d9a9bd7b"
+  integrity sha512-eIGkG9XKQs0nyynatApA3EVrojHOuq4l6fhB4eeCk4PIOeadvOJz9/4w3vGI44Go17uaXOWEcPkaD8kuKm7g6Q==
+  dependencies:
+    "@lukeed/ms" "^2.0.2"
+    fastify-plugin "^5.0.0"
+    toad-cache "^3.7.0"
+
 "@happy/agents@link:../packages/agents":
   version "0.0.0"
   uid ""
@@ -496,6 +505,11 @@
   dependencies:
     "@jridgewell/resolve-uri" "^3.0.3"
     "@jridgewell/sourcemap-codec" "^1.4.10"
+
+"@lukeed/ms@^2.0.2":
+  version "2.0.2"
+  resolved "https://registry.yarnpkg.com/@lukeed/ms/-/ms-2.0.2.tgz#07f09e59a74c52f4d88c6db5c1054e819538e2a8"
+  integrity sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==
 
 "@msgpack/msgpack@~2.8.0":
   version "2.8.0"
