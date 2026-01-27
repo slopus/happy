@@ -2,9 +2,10 @@ import type { ModelMode } from '@/sync/permissionTypes';
 import type { TranslationKey } from '@/text';
 import type { Href } from 'expo-router';
 
-export const AGENT_IDS = ['claude', 'codex', 'opencode', 'gemini'] as const;
-export type AgentId = (typeof AGENT_IDS)[number];
-export const DEFAULT_AGENT_ID: AgentId = AGENT_IDS[0];
+import { AGENT_IDS, DEFAULT_AGENT_ID, type AgentId } from '@happy/agents';
+
+export { AGENT_IDS, DEFAULT_AGENT_ID };
+export type { AgentId };
 
 export type PermissionModeGroupId = 'claude' | 'codexLike';
 export type PermissionPromptProtocol = 'claude' | 'codexDecision';
