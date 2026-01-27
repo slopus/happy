@@ -238,11 +238,69 @@ export async function claudeLocal(opts: {
             logger.debug(`[ClaudeLocal] Spawning launcher: ${claudeCliPath}`);
             logger.debug(`[ClaudeLocal] Args: ${JSON.stringify(args)}`);
 
+            // Generate a unique session ID for this launcher
+            const sessionId = `happy-session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
             const child = spawn('node', [claudeCliPath, ...args], {
                 stdio: ['inherit', 'inherit', 'inherit', 'pipe'],
-                signal: opts.abort,
                 cwd: opts.path,
-                env,
+                env: {
+                    ...env,
+                    HAPPY_SESSION_ID: sessionId  // Pass session ID to launcher
+                }
+            });
+
+            logger.debug(`[ClaudeLocal] Child spawned with PID: ${child.pid}, session ID: ${sessionId}`);
+
+            // Cleanup: Kill child process and any orphaned processes on abort
+            opts.abort.addEventListener('abort', () => {
+                logger.debug('[ClaudeLocal] Abort signal triggered - terminating Claude processes gracefully');
+
+                const pid = child.pid;
+                if (pid) {
+                    try {
+                        // First: try to kill the child process with SIGTERM (graceful)
+                        process.kill(pid, 'SIGTERM');
+                        logger.debug(`[ClaudeLocal] Sent SIGTERM to child PID ${pid}`);
+                    } catch (e) {
+                        logger.debug(`[ClaudeLocal] Error killing child: ${(e as Error).message}`);
+                    }
+                }
+
+                // Second: wait for graceful shutdown, then hunt down orphaned processes
+                setTimeout(() => {
+                    // Use SIGTERM (15) instead of SIGKILL (9) for graceful shutdown
+                    // Find processes by HAPPY_SESSION_ID environment variable
+                    try {
+                        const { execSync } = require('child_process');
+
+                        // Use pgrep to find processes with our session ID
+                        // Then use pkill with SIGTERM to terminate them gracefully
+                        execSync(`pkill -TERM -f "HAPPY_SESSION_ID=${sessionId}"`, {
+                            stdio: 'ignore',
+                            timeout: 500
+                        });
+                        logger.debug(`[ClaudeLocal] Terminated processes with session ID ${sessionId}`);
+                    } catch (e) {
+                        // No processes found - this is OK
+                        logger.debug(`[ClaudeLocal] No additional processes to terminate (session: ${sessionId})`);
+                    }
+
+                    // Final cleanup: if still alive after 500ms, use SIGKILL
+                    setTimeout(() => {
+                        try {
+                            const { execSync } = require('child_process');
+                            execSync(`pkill -9 -f "HAPPY_SESSION_ID=${sessionId}"`, {
+                                stdio: 'ignore',
+                                timeout: 500
+                            });
+                            logger.debug(`[ClaudeLocal] Force killed remaining processes`);
+                        } catch (e) {
+                            // All processes are dead
+                            logger.debug(`[ClaudeLocal] All processes terminated gracefully`);
+                        }
+                    }, 500);
+                }, 100);
             });
 
             // Listen to the custom fd (fd 3) for thinking state tracking

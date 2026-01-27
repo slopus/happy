@@ -480,12 +480,20 @@ function getClaudeCliPath() {
 function runClaudeCli(cliPath) {
     const { pathToFileURL } = require('url');
     const { spawn } = require('child_process');
-    
+
+    // CRITICAL: Set session ID as environment variable
+    // This allows us to identify all processes from this session
+    const sessionId = process.env.HAPPY_SESSION_ID || process.pid.toString();
+
     // Check if it's a JavaScript file (.js or .cjs) or a binary file
     const isJsFile = cliPath.endsWith('.js') || cliPath.endsWith('.cjs');
 
     if (isJsFile) {
         // JavaScript file - use import to keep interceptors working
+        // Set environment variable before importing
+        process.env.HAPPY_SESSION_ID = sessionId;
+        process.env.HAPPY_LAUNCHER_PID = process.pid.toString();
+
         const importUrl = pathToFileURL(cliPath).href;
         import(importUrl);
     } else {
@@ -495,8 +503,16 @@ function runClaudeCli(cliPath) {
         const args = process.argv.slice(2);
         const child = spawn(cliPath, args, {
             stdio: 'inherit',
-            env: process.env
+            env: {
+                ...process.env,
+                HAPPY_SESSION_ID: sessionId,
+                HAPPY_LAUNCHER_PID: process.pid.toString()
+            }
         });
+
+        // Store child PID for cleanup
+        process.claudeCliChild = child;
+
         child.on('exit', (code) => {
             process.exit(code || 0);
         });
