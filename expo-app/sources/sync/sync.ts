@@ -54,7 +54,6 @@ import { didControlReturnToMobile } from './controlledByUserTransitions';
 import { chooseSubmitMode } from './submitMode';
 import type { SavedSecret } from './settings';
 import { scheduleDebouncedPendingSettingsFlush } from './engine/pendingSettings';
-import { repairInvalidReadStateV1 as repairInvalidReadStateV1Engine } from './engine/readStateRepair';
 import {
     applySocketArtifactUpdate,
     decryptArtifactListItem,
@@ -65,7 +64,12 @@ import {
 import { handleNewFeedPostUpdate, handleRelationshipUpdatedSocketUpdate, handleTodoKvBatchUpdate } from './engine/feed';
 import { handleUpdateAccountSocketUpdate } from './engine/account';
 import { buildUpdatedMachineFromSocketUpdate } from './engine/machines';
-import { buildUpdatedSessionFromSocketUpdate, handleDeleteSessionSocketUpdate, handleNewMessageSocketUpdate } from './engine/sessions';
+import {
+    buildUpdatedSessionFromSocketUpdate,
+    handleDeleteSessionSocketUpdate,
+    handleNewMessageSocketUpdate,
+    repairInvalidReadStateV1 as repairInvalidReadStateV1Engine,
+} from './engine/sessions';
 import { parseEphemeralUpdate, parseUpdateContainer } from './engine/socket';
 
 class Sync {
