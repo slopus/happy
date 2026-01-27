@@ -119,6 +119,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@happy/agents": "link:../packages/agents",
     "@eslint/compat": "^1",
     "@types/node": ">=20",
     "cross-env": "^10.1.0",
