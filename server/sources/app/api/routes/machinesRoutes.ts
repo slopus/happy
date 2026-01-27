@@ -1,7 +1,7 @@
 import { eventRouter } from "@/app/events/eventRouter";
 import { Fastify } from "../types";
 import { z } from "zod";
-import { db } from "@/storage/db";
+import { db, isPrismaErrorCode } from "@/storage/db";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
@@ -51,20 +51,49 @@ export function machinesRoutes(app: Fastify) {
             // Create new machine
             log({ module: 'machines', machineId: id, userId }, 'Creating new machine');
 
-            const newMachine = await db.machine.create({
-                data: {
-                    id,
-                    accountId: userId,
-                    metadata,
-                    metadataVersion: 1,
-                    daemonState: daemonState || null,
-                    daemonStateVersion: daemonState ? 1 : 0,
-                    dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
-                    // Default to offline - in case the user does not start daemon
-                    active: false,
-                    // lastActiveAt and activeAt defaults to now() in schema
+            let newMachine;
+            try {
+                newMachine = await db.machine.create({
+                    data: {
+                        id,
+                        accountId: userId,
+                        metadata,
+                        metadataVersion: 1,
+                        daemonState: daemonState || null,
+                        daemonStateVersion: daemonState ? 1 : 0,
+                        dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
+                        // Default to offline - in case the user does not start daemon
+                        active: false,
+                        // lastActiveAt and activeAt defaults to now() in schema
+                    }
+                });
+            } catch (e) {
+                // Concurrency safety: multiple clients may race to create the same machine (e.g. daemon + session spawns).
+                // If we lost the race, fetch the winner row and return it instead of surfacing a 500.
+                if (isPrismaErrorCode(e, 'P2002')) {
+                    const existing = await db.machine.findFirst({
+                        where: { accountId: userId, id }
+                    });
+                    if (existing) {
+                        log({ module: 'machines', machineId: id, userId }, 'Machine created concurrently; returning existing machine');
+                        return reply.send({
+                            machine: {
+                                id: existing.id,
+                                metadata: existing.metadata,
+                                metadataVersion: existing.metadataVersion,
+                                daemonState: existing.daemonState,
+                                daemonStateVersion: existing.daemonStateVersion,
+                                dataEncryptionKey: existing.dataEncryptionKey ? Buffer.from(existing.dataEncryptionKey).toString('base64') : null,
+                                active: existing.active,
+                                activeAt: existing.lastActiveAt.getTime(),
+                                createdAt: existing.createdAt.getTime(),
+                                updatedAt: existing.updatedAt.getTime()
+                            }
+                        });
+                    }
                 }
-            });
+                throw e;
+            }
 
             // Emit both new-machine and update-machine events for backward compatibility
             const updSeq1 = await allocateUserSeq(userId);
