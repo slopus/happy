@@ -18,7 +18,9 @@ type CodexMcpClientSpawnMode = 'codex-cli' | 'mcp-server';
 
 const ElicitRequestSchemaWithExtras = RequestSchema.extend({
     method: z.literal('elicitation/create'),
-    params: ElicitRequestParamsSchema.passthrough()
+    // Codex adds extra fields beyond the MCP SDK schema; accept any params payload
+    // and decode the codex_* fields at usage sites.
+    params: z.any()
 });
 
 // ============================================================================
@@ -303,12 +305,14 @@ export class CodexMcpClient {
             { capabilities: { elicitation: {} } }
         );
 
-        this.client.setNotificationHandler(z.object({
+        const CodexEventNotificationSchema = z.object({
             method: z.literal('codex/event'),
             params: z.object({
                 msg: z.any()
             })
-        }).passthrough(), (data) => {
+        }).passthrough() as any;
+
+        this.client.setNotificationHandler(CodexEventNotificationSchema, (data: any) => {
             const msg = data.params.msg as Record<string, unknown> | null;
             this.updateIdentifiersFromEvent(msg);
             this.handler?.(msg);
