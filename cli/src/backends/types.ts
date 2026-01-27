@@ -49,12 +49,4 @@ export type AgentCatalogEntry = Readonly<{
    * engine can stay deterministic and easy to inspect.
    */
   checklists?: AgentChecklistContributions;
-  /**
-   * Optional hook to register this agent with the runtime backend factory registry.
-   *
-   * Note: today only ACP-style agents use the AgentRegistry registration pattern.
-   * The agent catalog will later drive backend registration, command routing,
-   * capabilities, and daemon spawn.
-   */
-  registerBackend?: () => Promise<void>;
 }>;

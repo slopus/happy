@@ -37,11 +37,6 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
       return (opts) => createGeminiBackend(opts as any);
     },
     checklists: geminiChecklists,
-    registerBackend: () => {
-      return import('@/gemini/acp/backend').then(({ registerGeminiAgent }) => {
-        registerGeminiAgent();
-      });
-    },
   },
   opencode: {
     id: 'opencode',
@@ -54,11 +49,6 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
       return (opts) => ({ backend: createOpenCodeBackend(opts as any) });
     },
     checklists: openCodeChecklists,
-    registerBackend: () => {
-      return import('@/opencode/acp/backend').then(({ registerOpenCodeAgent }) => {
-        registerOpenCodeAgent();
-      });
-    },
   },
 };
 

@@ -10,7 +10,6 @@
 
 import { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from '@/agent/acp/AcpBackend';
 import type { AgentBackend, McpServerConfig, AgentFactoryOptions } from '@/agent/core';
-import { agentRegistry } from '@/agent/core';
 import { geminiTransport } from '@/gemini/acp/transport';
 import { logger } from '@/ui/logger';
 import { 
@@ -172,15 +171,4 @@ export function createGeminiBackend(options: GeminiBackendOptions): GeminiBacken
     model,
     modelSource,
   };
-}
-
-/**
- * Register Gemini backend with the global agent registry.
- * 
- * This function should be called during application initialization
- * to make the Gemini agent available for use.
- */
-export function registerGeminiAgent(): void {
-  agentRegistry.register('gemini', (opts) => createGeminiBackend(opts).backend);
-  logger.debug('[Gemini] Registered with agent registry');
 }

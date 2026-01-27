@@ -10,7 +10,6 @@
 
 import { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from '@/agent/acp/AcpBackend';
 import type { AgentBackend, McpServerConfig, AgentFactoryOptions } from '@/agent/core';
-import { agentRegistry } from '@/agent/core';
 import { openCodeTransport } from '@/opencode/acp/transport';
 import { logger } from '@/ui/logger';
 
@@ -46,9 +45,4 @@ export function createOpenCodeBackend(options: OpenCodeBackendOptions): AgentBac
   });
 
   return new AcpBackend(backendOptions);
-}
-
-export function registerOpenCodeAgent(): void {
-  agentRegistry.register('opencode', (opts) => createOpenCodeBackend(opts));
-  logger.debug('[OpenCode] Registered with agent registry');
 }

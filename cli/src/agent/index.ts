@@ -6,8 +6,6 @@
  * the Happy CLI and mobile app.
  */
 
-import { registerDefaultAgents } from './registry';
-
 // Core types, interfaces, and registry - re-export from core/
 export type {
   AgentMessage,
@@ -30,14 +28,4 @@ export { AgentRegistry, agentRegistry } from './core';
 // ACP backend (low-level)
 export * from './acp';
 
-// Backend registration driven by the Agent Catalog
-export { agentRegistrarById, registerDefaultAgents, type AgentRegistrar } from './registry';
-
-/**
- * Initialize all agent backends and register them with the global registry.
- *
- * Call this function during application startup to make all agents available.
- */
-export async function initializeAgents(): Promise<void> {
-  await registerDefaultAgents();
-}
+// Note: ACP backend creation is catalog-driven (see `@/agent/acp/createCatalogAcpBackend`).
