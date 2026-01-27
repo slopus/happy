@@ -59,7 +59,7 @@ import type { SecretChoiceByProfileIdByEnvVarName } from '@/utils/secretRequirem
 import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { computeNewSessionInputMaxHeight } from '@/components/sessions/agentInput/inputMaxHeight';
 import { useProfileMap, transformProfileToEnvironmentVars } from '@/components/sessions/newSession/modules/profileHelpers';
-import { newSessionScreenStyles } from '@/components/sessions/newSession/utils/newSessionScreenStyles';
+import { newSessionScreenStyles } from '@/components/sessions/newSession/newSessionScreenStyles';
 import { formatResumeSupportDetailCode } from '@/components/sessions/newSession/modules/formatResumeSupportDetailCode';
 import { useSecretRequirementFlow } from '@/components/sessions/newSession/hooks/useSecretRequirementFlow';
 import { useNewSessionCapabilitiesPrefetch } from '@/components/sessions/newSession/hooks/useNewSessionCapabilitiesPrefetch';

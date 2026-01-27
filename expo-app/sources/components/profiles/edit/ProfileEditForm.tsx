@@ -29,7 +29,7 @@ import { parseEnvVarTemplate } from '@/utils/envVarTemplate';
 import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
 import { getAgentCore, type AgentId, type MachineLoginKey } from '@/agents/registryCore';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { MachinePreviewModal } from './components/MachinePreviewModal';
+import { MachinePreviewModal } from './MachinePreviewModal';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
