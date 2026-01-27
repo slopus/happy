@@ -100,7 +100,7 @@ sources/
 1. **Authentication Flow**: QR code-based authentication using expo-camera with challenge-response mechanism
 2. **Data Synchronization**: WebSocket-based real-time sync with automatic reconnection and state management
 3. **Encryption**: End-to-end encryption using libsodium for all sensitive data
-4. **State Management**: React Context for auth state, custom reducer for sync state
+4. **State Management**: React Context for auth state; sync state is centralized in `sources/sync/storage.ts` (Zustand) with domain slices under `sources/sync/store/domains/*`
 5. **Real-time Voice**: LiveKit integration for voice communication sessions
 6. **Platform-Specific Code**: Separate implementations for web vs native when needed
 
@@ -111,7 +111,7 @@ sources/
 - Path alias `@/*` maps to `./sources/*`
 - TypeScript strict mode is enabled - ensure all code is properly typed
 - Follow existing component patterns when creating new UI components
-- Real-time sync operations are handled through SyncSocket and SyncSession classes
+- Real-time sync is orchestrated by the `Sync` singleton in `sources/sync/sync.ts`, with domain logic extracted into `sources/sync/engine/*`
 - Store all temporary scripts and any test outside of unit tests in sources/trash folder
 - When setting screen parameters ALWAYS set them in _layout.tsx if possible this avoids layout shifts
 - **Never use Alert module from React Native, always use @sources/modal/index.ts instead**
@@ -149,12 +149,18 @@ Bucket rule:
 - Use `components/`, `hooks/`, `modules/`, `utils/` only when they contain multiple files; avoid creating a 1-file subfolder just for structure.
 
 ### Sync organization
-- Prefer splitting large sync areas by domain (e.g. sessions/messages/machines/settings) using subfolders under `sources/sync/`.
-- Prefer domain “slices” for state when a single file grows too large.
+- `sources/sync/sync.ts` is the canonical sync orchestrator (public API + wiring) and remains the entrypoint.
+- Extract cohesive logic into subdomains under `sources/sync/`:
+  - `sources/sync/engine/*` — runtime helpers used by `Sync` (prefer a few domain files like `sessions.ts`, `machines.ts`, `settings.ts`; avoid “one helper per file” sprawl)
+  - `sources/sync/store/domains/*` — Zustand domain slices
+  - `sources/sync/ops/*` — RPC operation helpers (sessions/machines/capabilities)
+  - `sources/sync/reducer/*` — message reducer pipeline (phases/helpers)
+  - `sources/sync/typesRaw/*` — raw message schemas + normalization
+- Prefer splitting by *domain* (sessions/messages/machines/settings) rather than generic `utils/` buckets.
 
 Canonical entrypoints:
-- `sources/sync/{storage.ts,ops.ts,typesRaw.ts,sync.ts}` are canonical entrypoints and should remain real orchestrators.
-- Extract internals under subfolders (`store/`, `ops/`, `typesRaw/`, `reducer/`, etc.) and import from the entry files rather than replacing them with `export * from ...` stubs.
+- `sources/sync/{storage.ts,ops.ts,typesRaw.ts,sync.ts}` are canonical entrypoints that define the public surface for sync.
+- Extract internals under subfolders (`store/`, `ops/`, `typesRaw/`, `reducer/`, etc.) and have the entry files orchestrate them (import and compose).
 
 ## Modals & dialogs (web + native)
 
