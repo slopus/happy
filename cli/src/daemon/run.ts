@@ -40,7 +40,7 @@ import { projectPath } from '@/projectPath';
 import { selectPreferredTmuxSessionName, TmuxUtilities, isTmuxAvailable } from '@/integrations/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { resolveTerminalRequestFromSpawnOptions } from '@/terminal/terminalConfig';
-import { validateEnvVarRecordStrict } from '@/utils/envVarSanitization';
+import { validateEnvVarRecordStrict } from '@/terminal/envVarSanitization';
 
 import { getPreferredHostName, initialMachineMetadata } from './machine/metadata';
 export { initialMachineMetadata } from './machine/metadata';
