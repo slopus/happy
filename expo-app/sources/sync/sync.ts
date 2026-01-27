@@ -60,18 +60,13 @@ import {
     decryptArtifactListItem,
     decryptArtifactWithBody,
     decryptSocketNewArtifactUpdate,
+    handleDeleteArtifactSocketUpdate,
 } from './engine/artifacts';
-import { parseUpdateContainer } from './engine/updates';
-import { handleNewFeedPostUpdate } from './engine/feedSocketUpdates';
-import { handleTodoKvBatchUpdate } from './engine/todoSocketUpdates';
-import { buildUpdatedMachineFromSocketUpdate } from './engine/machineSocketUpdates';
-import { handleUpdateAccountSocketUpdate } from './engine/accountSocketUpdates';
-import { buildUpdatedSessionFromSocketUpdate } from './engine/sessionSocketUpdates';
-import { handleNewMessageSocketUpdate } from './engine/newMessageSocketUpdate';
-import { handleDeleteSessionSocketUpdate } from './engine/deleteSessionSocketUpdate';
-import { handleRelationshipUpdatedSocketUpdate } from './engine/relationshipSocketUpdates';
-import { handleDeleteArtifactSocketUpdate } from './engine/deleteArtifactSocketUpdate';
-import { parseEphemeralUpdate } from './engine/ephemeralUpdates';
+import { handleNewFeedPostUpdate, handleRelationshipUpdatedSocketUpdate, handleTodoKvBatchUpdate } from './engine/feed';
+import { handleUpdateAccountSocketUpdate } from './engine/account';
+import { buildUpdatedMachineFromSocketUpdate } from './engine/machines';
+import { buildUpdatedSessionFromSocketUpdate, handleDeleteSessionSocketUpdate, handleNewMessageSocketUpdate } from './engine/sessions';
+import { parseEphemeralUpdate, parseUpdateContainer } from './engine/socket';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -2034,7 +2029,7 @@ class Sync {
             handleDeleteSessionSocketUpdate({
                 sessionId: updateData.body.sid,
                 deleteSession: (sessionId) => storage.getState().deleteSession(sessionId),
-                encryption: this.encryption,
+                removeSessionEncryption: (sessionId) => this.encryption.removeSessionEncryption(sessionId),
                 removeProjectManagerSession: (sessionId) => projectManager.removeSession(sessionId),
                 clearGitStatusForSession: (sessionId) => gitStatusSync.clearForSession(sessionId),
                 log,

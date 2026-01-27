@@ -1,12 +1,18 @@
-import type { z } from 'zod';
-import { ApiUpdateContainerSchema } from '../apiTypes';
+import { ApiEphemeralUpdateSchema, ApiUpdateContainerSchema } from '../apiTypes';
 
-type ApiUpdateContainer = z.infer<typeof ApiUpdateContainerSchema>;
-
-export function parseUpdateContainer(update: unknown): ApiUpdateContainer | null {
+export function parseUpdateContainer(update: unknown) {
     const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
     if (!validatedUpdate.success) {
         console.error('❌ Sync: Invalid update data:', update);
+        return null;
+    }
+    return validatedUpdate.data;
+}
+
+export function parseEphemeralUpdate(update: unknown) {
+    const validatedUpdate = ApiEphemeralUpdateSchema.safeParse(update);
+    if (!validatedUpdate.success) {
+        console.error('Invalid ephemeral update received:', update);
         return null;
     }
     return validatedUpdate.data;

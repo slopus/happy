@@ -1,16 +1,21 @@
 import type { NormalizedMessage } from '../typesRaw';
 import { normalizeRawMessage } from '../typesRaw';
 import { computeNextSessionSeqFromUpdate } from '../realtimeSessionSeq';
-import { inferTaskLifecycleFromMessageContent } from './updates';
+import { inferTaskLifecycleFromMessageContent } from './socket';
 import type { Session } from '../storageTypes';
 
-type SessionEncryption = {
+type SessionMessageEncryption = {
     decryptMessage: (message: any) => Promise<any>;
+};
+
+type SessionEncryption = {
+    decryptAgentState: (version: number, value: string) => Promise<any>;
+    decryptMetadata: (version: number, value: string) => Promise<any>;
 };
 
 export async function handleNewMessageSocketUpdate(params: {
     updateData: any;
-    getSessionEncryption: (sessionId: string) => SessionEncryption | null;
+    getSessionEncryption: (sessionId: string) => SessionMessageEncryption | null;
     getSession: (sessionId: string) => Session | undefined;
     applySessions: (sessions: Array<Omit<Session, 'presence'> & { presence?: 'online' | number }>) => void;
     fetchSessions: () => void;
@@ -94,3 +99,62 @@ export async function handleNewMessageSocketUpdate(params: {
     onSessionVisible(updateData.body.sid);
 }
 
+export function handleDeleteSessionSocketUpdate(params: {
+    sessionId: string;
+    deleteSession: (sessionId: string) => void;
+    removeSessionEncryption: (sessionId: string) => void;
+    removeProjectManagerSession: (sessionId: string) => void;
+    clearGitStatusForSession: (sessionId: string) => void;
+    log: { log: (message: string) => void };
+}) {
+    const { sessionId, deleteSession, removeSessionEncryption, removeProjectManagerSession, clearGitStatusForSession, log } = params;
+
+    // Remove session from storage
+    deleteSession(sessionId);
+
+    // Remove encryption keys from memory
+    removeSessionEncryption(sessionId);
+
+    // Remove from project manager
+    removeProjectManagerSession(sessionId);
+
+    // Clear any cached git status
+    clearGitStatusForSession(sessionId);
+
+    log.log(`🗑️ Session ${sessionId} deleted from local storage`);
+}
+
+export async function buildUpdatedSessionFromSocketUpdate(params: {
+    session: Session;
+    updateBody: any;
+    updateSeq: number;
+    updateCreatedAt: number;
+    sessionEncryption: SessionEncryption;
+}): Promise<{ nextSession: Session; agentState: any }> {
+    const { session, updateBody, updateSeq, updateCreatedAt, sessionEncryption } = params;
+
+    const agentState = updateBody.agentState
+        ? await sessionEncryption.decryptAgentState(updateBody.agentState.version, updateBody.agentState.value)
+        : session.agentState;
+
+    const metadata = updateBody.metadata
+        ? await sessionEncryption.decryptMetadata(updateBody.metadata.version, updateBody.metadata.value)
+        : session.metadata;
+
+    const nextSession: Session = {
+        ...session,
+        agentState,
+        agentStateVersion: updateBody.agentState ? updateBody.agentState.version : session.agentStateVersion,
+        metadata,
+        metadataVersion: updateBody.metadata ? updateBody.metadata.version : session.metadataVersion,
+        updatedAt: updateCreatedAt,
+        seq: computeNextSessionSeqFromUpdate({
+            currentSessionSeq: session.seq ?? 0,
+            updateType: 'update-session',
+            containerSeq: updateSeq,
+            messageSeq: undefined,
+        }),
+    };
+
+    return { nextSession, agentState };
+}
