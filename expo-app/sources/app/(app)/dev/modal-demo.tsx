@@ -1,9 +1,9 @@
 import React from 'react';
 import { View, Text, ScrollView, Platform } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import { Item } from '@/components/lists/Item';
-import { ItemGroup } from '@/components/lists/ItemGroup';
-import { ItemList } from '@/components/lists/ItemList';
+import { Item } from '@/components/ui/lists/Item';
+import { ItemGroup } from '@/components/ui/lists/ItemGroup';
+import { ItemList } from '@/components/ui/lists/ItemList';
 import { Modal } from '@/modal';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '@/components/RoundButton';

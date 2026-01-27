@@ -5,8 +5,8 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { ItemListStatic } from '@/components/lists/ItemList';
-import { ItemGroup } from '@/components/lists/ItemGroup';
+import { ItemListStatic } from '@/components/ui/lists/ItemList';
+import { ItemGroup } from '@/components/ui/lists/ItemGroup';
 
 export interface SecretAddModalResult {
     name: string;

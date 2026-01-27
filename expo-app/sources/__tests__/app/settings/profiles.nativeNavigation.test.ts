@@ -55,7 +55,7 @@ vi.mock('@/utils/promptUnsavedChangesAlert', () => ({
     promptUnsavedChangesAlert: vi.fn(async () => 'keep'),
 }));
 
-vi.mock('@/components/ProfileEditForm', () => ({
+vi.mock('@/components/profiles/edit', () => ({
     ProfileEditForm: () => React.createElement('ProfileEditForm'),
 }));
 
@@ -79,20 +79,20 @@ vi.mock('@/sync/profileMutations', () => ({
     duplicateProfileForEdit: (p: any) => p,
 }));
 
-vi.mock('@/components/lists/ItemList', () => ({
+vi.mock('@/components/ui/lists/ItemList', () => ({
     ItemList: (props: any) => React.createElement('ItemList', props, props.children),
 }));
-vi.mock('@/components/lists/ItemGroup', () => ({
+vi.mock('@/components/ui/lists/ItemGroup', () => ({
     ItemGroup: (props: any) => React.createElement('ItemGroup', props, props.children),
 }));
-vi.mock('@/components/lists/Item', () => ({
+vi.mock('@/components/ui/lists/Item', () => ({
     Item: (props: any) => React.createElement('Item', props, props.children),
 }));
 vi.mock('@/components/Switch', () => ({
     Switch: (props: any) => React.createElement('Switch', props, props.children),
 }));
 
-vi.mock('@/components/SecretRequirementModal', () => ({
+vi.mock('@/components/secrets/requirements', () => ({
     SecretRequirementModal: () => React.createElement('SecretRequirementModal'),
 }));
 

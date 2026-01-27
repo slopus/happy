@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Item } from '@/components/lists/Item';
-import { ItemGroup } from '@/components/lists/ItemGroup';
-import { ItemList } from '@/components/lists/ItemList';
+import { Item } from '@/components/ui/lists/Item';
+import { ItemGroup } from '@/components/ui/lists/ItemGroup';
+import { ItemList } from '@/components/ui/lists/ItemList';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';

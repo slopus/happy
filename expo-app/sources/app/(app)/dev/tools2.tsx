@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { Stack } from 'expo-router';
 import { ToolView } from '@/components/tools/ToolView';
-import { ItemGroup } from '@/components/lists/ItemGroup';
-import { Item } from '@/components/lists/Item';
+import { ItemGroup } from '@/components/ui/lists/ItemGroup';
+import { Item } from '@/components/ui/lists/Item';
 import { StyleSheet } from 'react-native-unistyles';
 
 export default function Tools2Screen() {

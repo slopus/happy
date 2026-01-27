@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserProfile, getDisplayName } from '@/sync/friendTypes';
-import { Item } from '@/components/lists/Item';
+import { Item } from '@/components/ui/lists/Item';
 import { Avatar } from '@/components/Avatar';
 
 interface UserCardProps {

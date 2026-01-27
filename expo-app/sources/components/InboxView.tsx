@@ -5,7 +5,7 @@ import { useAcceptedFriends, useFriendRequests, useRequestedFriends, useFeedItem
 import { UserCard } from '@/components/UserCard';
 import { t } from '@/text';
 import { trackFriendsSearch, trackFriendsProfileView } from '@/track';
-import { ItemGroup } from '@/components/lists/ItemGroup';
+import { ItemGroup } from '@/components/ui/lists/ItemGroup';
 import { UpdateBanner } from './UpdateBanner';
 import { Typography } from '@/constants/Typography';
 import { useRouter } from 'expo-router';

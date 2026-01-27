@@ -3,7 +3,7 @@ import { Pressable, Text, TextInput, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { StyleProp, ViewStyle } from 'react-native';
 
-import { Item } from '@/components/lists/Item';
+import { Item } from '@/components/ui/lists/Item';
 import { Typography } from '@/constants/Typography';
 
 export interface InlineAddExpanderProps {

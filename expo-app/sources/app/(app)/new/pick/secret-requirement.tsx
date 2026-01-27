@@ -4,9 +4,9 @@ import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-rout
 
 import { useSetting, useSettingMutable } from '@/sync/storage';
 import { getBuiltInProfile } from '@/sync/profileUtils';
-import { SecretRequirementScreen, type SecretRequirementModalResult } from '@/components/SecretRequirementModal';
+import { SecretRequirementScreen, type SecretRequirementModalResult } from '@/components/secrets/requirements';
 import { storeTempData } from '@/utils/tempDataStore';
-import { PopoverPortalTargetProvider } from '@/components/PopoverPortalTargetProvider';
+import { PopoverPortalTargetProvider } from '@/components/ui/popover';
 
 type SecretRequirementRoutePayload = Readonly<{
     profileId: string;

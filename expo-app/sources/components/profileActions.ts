@@ -1,4 +1,4 @@
-import type { ItemAction } from '@/components/itemActions/types';
+import type { ItemAction } from '@/components/ui/lists/itemActions';
 import type { AIBackendProfile } from '@/sync/settings';
 import { t } from '@/text';
 

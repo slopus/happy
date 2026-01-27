@@ -3,14 +3,14 @@ import { View, Text, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 
-import { ItemList } from '@/components/lists/ItemList';
-import { ItemGroup } from '@/components/lists/ItemGroup';
-import { Item } from '@/components/lists/Item';
-import { ItemRowActions } from '@/components/lists/ItemRowActions';
-import type { ItemAction } from '@/components/itemActions/types';
+import { ItemList } from '@/components/ui/lists/ItemList';
+import { ItemGroup } from '@/components/ui/lists/ItemGroup';
+import { Item } from '@/components/ui/lists/Item';
+import { ItemRowActions } from '@/components/ui/lists/ItemRowActions';
+import type { ItemAction } from '@/components/ui/lists/itemActions';
 
 import type { AIBackendProfile } from '@/sync/settings';
-import { ProfileCompatibilityIcon } from '@/components/newSession/components/ProfileCompatibilityIcon';
+import { ProfileCompatibilityIcon } from '@/components/sessions/newSession/components/ProfileCompatibilityIcon';
 import { ProfileRequirementsBadge } from '@/components/ProfileRequirementsBadge';
 import { ignoreNextRowPress } from '@/utils/ignoreNextRowPress';
 import { toggleFavoriteProfileId } from '@/sync/profileGrouping';

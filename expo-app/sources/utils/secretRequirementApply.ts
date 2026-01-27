@@ -1,4 +1,4 @@
-import type { SecretRequirementModalResult } from '@/components/SecretRequirementModal';
+import type { SecretRequirementModalResult } from '@/components/secrets/requirements';
 
 export type SecretChoiceByProfileIdByEnvVarName = Record<string, Record<string, string | null>>;
 

@@ -16,7 +16,7 @@ import { t } from '@/text';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 import { Ionicons } from '@expo/vector-icons';
 import { sync } from '@/sync/sync';
-import { PopoverBoundaryProvider } from '@/components/PopoverBoundary';
+import { PopoverBoundaryProvider } from '@/components/ui/popover';
 import { ConnectionStatusControl } from '@/components/ConnectionStatusControl';
 import { useInboxFriendsEnabled } from '@/hooks/useInboxFriendsEnabled';
 

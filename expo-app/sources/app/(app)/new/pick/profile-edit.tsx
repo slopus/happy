@@ -6,7 +6,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { useHeaderHeight } from '@react-navigation/elements';
 import Constants from 'expo-constants';
 import { t } from '@/text';
-import { ProfileEditForm } from '@/components/ProfileEditForm';
+import { ProfileEditForm } from '@/components/profiles/edit';
 import { AIBackendProfile } from '@/sync/settings';
 import { layout } from '@/components/layout';
 import { useSettingMutable } from '@/sync/storage';
@@ -15,7 +15,7 @@ import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfi
 import { Modal } from '@/modal';
 import { promptUnsavedChangesAlert } from '@/utils/promptUnsavedChangesAlert';
 import { Ionicons } from '@expo/vector-icons';
-import { PopoverPortalTargetProvider } from '@/components/PopoverPortalTargetProvider';
+import { PopoverPortalTargetProvider } from '@/components/ui/popover';
 
 export default React.memo(function ProfileEditScreen() {
     const { theme } = useUnistyles();

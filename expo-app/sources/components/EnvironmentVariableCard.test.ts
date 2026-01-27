@@ -82,7 +82,7 @@ vi.mock('@/components/Switch', () => {
     };
 });
 
-vi.mock('@/components/lists/Item', () => {
+vi.mock('@/components/ui/lists/Item', () => {
     const React = require('react');
     return {
         Item: (props: any) => {
@@ -98,7 +98,7 @@ vi.mock('@/components/lists/Item', () => {
     };
 });
 
-vi.mock('@/components/lists/ItemGroup', () => {
+vi.mock('@/components/ui/lists/ItemGroup', () => {
     const React = require('react');
     return {
         ItemGroup: (props: any) => React.createElement('ItemGroup', props, props.children),

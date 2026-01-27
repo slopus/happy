@@ -4,7 +4,7 @@ import { Modal } from './ModalManager';
 import { WebAlertModal } from './components/WebAlertModal';
 import { WebPromptModal } from './components/WebPromptModal';
 import { CustomModal } from './components/CustomModal';
-import { OverlayPortalHost, OverlayPortalProvider } from '@/components/OverlayPortal';
+import { OverlayPortalHost, OverlayPortalProvider } from '@/components/ui/popover';
 
 const ModalContext = createContext<ModalContextValue | undefined>(undefined);
 

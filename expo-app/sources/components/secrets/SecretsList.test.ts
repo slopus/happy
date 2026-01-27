@@ -49,19 +49,19 @@ vi.mock('react-native', () => {
     };
 });
 
-vi.mock('@/components/lists/ItemList', () => ({
+vi.mock('@/components/ui/lists/ItemList', () => ({
     ItemList: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 
-vi.mock('@/components/lists/ItemGroup', () => ({
+vi.mock('@/components/ui/lists/ItemGroup', () => ({
     ItemGroup: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 
-vi.mock('@/components/lists/ItemRowActions', () => ({
+vi.mock('@/components/ui/lists/ItemRowActions', () => ({
     ItemRowActions: () => null,
 }));
 
-vi.mock('@/components/lists/Item', () => ({
+vi.mock('@/components/ui/lists/Item', () => ({
     Item: (props: any) => React.createElement('Item', props),
 }));
 

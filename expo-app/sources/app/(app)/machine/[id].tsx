@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Item } from '@/components/lists/Item';
-import { ItemGroup } from '@/components/lists/ItemGroup';
-import { ItemGroupTitleWithAction } from '@/components/lists/ItemGroupTitleWithAction';
-import { ItemList } from '@/components/lists/ItemList';
+import { Item } from '@/components/ui/lists/Item';
+import { ItemGroup } from '@/components/ui/lists/ItemGroup';
+import { ItemGroupTitleWithAction } from '@/components/ui/lists/ItemGroupTitleWithAction';
+import { ItemList } from '@/components/ui/lists/ItemList';
 import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines, useMachine, storage, useSetting, useSettingMutable, useSettings } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
@@ -23,12 +23,12 @@ import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
-import { DetectedClisList } from '@/components/machine/DetectedClisList';
+import { DetectedClisList } from '@/components/machines/DetectedClisList';
 import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import { resolveTerminalSpawnOptions } from '@/sync/terminalSettings';
 import { Switch } from '@/components/Switch';
 import { CAPABILITIES_REQUEST_MACHINE_DETAILS } from '@/capabilities/requests';
-import { InstallableDepInstaller } from '@/components/machine/InstallableDepInstaller';
+import { InstallableDepInstaller } from '@/components/machines/InstallableDepInstaller';
 import { getInstallableDepRegistryEntries } from '@/capabilities/installableDepsRegistry';
 
 const styles = StyleSheet.create((theme) => ({

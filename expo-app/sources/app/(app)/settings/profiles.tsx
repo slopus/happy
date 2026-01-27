@@ -10,15 +10,15 @@ import { Modal } from '@/modal';
 import { promptUnsavedChangesAlert } from '@/utils/promptUnsavedChangesAlert';
 import { AIBackendProfile } from '@/sync/settings';
 import { DEFAULT_PROFILES, getBuiltInProfileNameKey, resolveProfileById } from '@/sync/profileUtils';
-import { ProfileEditForm } from '@/components/ProfileEditForm';
-import { ItemList } from '@/components/lists/ItemList';
-import { ItemGroup } from '@/components/lists/ItemGroup';
-import { Item } from '@/components/lists/Item';
+import { ProfileEditForm } from '@/components/profiles/edit';
+import { ItemList } from '@/components/ui/lists/ItemList';
+import { ItemGroup } from '@/components/ui/lists/ItemGroup';
+import { Item } from '@/components/ui/lists/Item';
 import { Switch } from '@/components/Switch';
 import { convertBuiltInProfileToCustom, createEmptyCustomProfile, duplicateProfileForEdit } from '@/sync/profileMutations';
 import { useSetting } from '@/sync/storage';
 import { ProfilesList } from '@/components/profiles/ProfilesList';
-import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/SecretRequirementModal';
+import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/secrets/requirements';
 import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
 import { getRequiredSecretEnvVarNames } from '@/sync/profileSecrets';
 
@@ -389,7 +389,7 @@ const ProfileManager = React.memo(function ProfileManager({ onProfileSelect, sel
     );
 });
 
-// ProfileEditForm now imported from @/components/ProfileEditForm
+// ProfileEditForm now imported from @/components/profiles/edit
 
 const profileManagerStyles = StyleSheet.create((theme) => ({
     modalOverlay: {

@@ -2,23 +2,23 @@ import React from 'react';
 import { Stack, useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform, Pressable } from 'react-native';
-import { Item } from '@/components/lists/Item';
-import { ItemGroup } from '@/components/lists/ItemGroup';
+import { Item } from '@/components/ui/lists/Item';
+import { ItemGroup } from '@/components/ui/lists/ItemGroup';
 import { useSetting, useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { AIBackendProfile } from '@/sync/settings';
 import { Modal } from '@/modal';
-import type { ItemAction } from '@/components/itemActions/types';
+import type { ItemAction } from '@/components/ui/lists/itemActions';
 import { machinePreviewEnv } from '@/sync/ops';
 import { getProfileEnvironmentVariables } from '@/sync/settings';
 import { getRequiredSecretEnvVarNames } from '@/sync/profileSecrets';
 import { getTempData, storeTempData } from '@/utils/tempDataStore';
 import { ProfilesList } from '@/components/profiles/ProfilesList';
-import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/SecretRequirementModal';
+import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/secrets/requirements';
 import { getSecretSatisfaction } from '@/utils/secretSatisfaction';
 import { useMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
-import { PopoverPortalTargetProvider } from '@/components/PopoverPortalTargetProvider';
+import { PopoverPortalTargetProvider } from '@/components/ui/popover';
 
 export default React.memo(function ProfilePickerScreen() {
     const { theme } = useUnistyles();

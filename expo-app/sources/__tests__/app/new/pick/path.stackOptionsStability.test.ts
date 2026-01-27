@@ -17,7 +17,7 @@ vi.mock('@/constants/Typography', () => ({
     Typography: { default: () => ({}) },
 }));
 
-vi.mock('@/components/lists/ItemList', () => ({
+vi.mock('@/components/ui/lists/ItemList', () => ({
     ItemList: ({ children }: any) => React.createElement('ItemList', null, children),
 }));
 
@@ -25,7 +25,7 @@ vi.mock('@/components/layout', () => ({
     layout: { maxWidth: 720 },
 }));
 
-vi.mock('@/components/newSession/components/PathSelector', () => ({
+vi.mock('@/components/sessions/newSession/components/PathSelector', () => ({
     PathSelector: (props: any) => {
         const didTriggerRef = React.useRef(false);
         React.useEffect(() => {

@@ -1,4 +1,4 @@
-import { CommandSuggestion, FileMentionSuggestion } from '@/components/agentInput/components/AgentInputSuggestionView';
+import { CommandSuggestion, FileMentionSuggestion } from '@/components/sessions/agentInput/components/AgentInputSuggestionView';
 import * as React from 'react';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
 import { searchCommands, CommandItem } from '@/sync/suggestionCommands';

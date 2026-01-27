@@ -76,7 +76,7 @@ vi.mock('@/components/FloatingOverlay', () => ({
     FloatingOverlay: () => null,
 }));
 
-vi.mock('@/components/Popover', () => ({
+vi.mock('@/components/ui/popover', () => ({
     Popover: (props: any) => {
         lastPopoverProps = props;
         return null;

@@ -8,8 +8,8 @@ import { UserProfile } from '@/sync/friendTypes';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { trackFriendsConnect } from '@/track';
-import { ItemList } from '@/components/lists/ItemList';
-import { ItemGroup } from '@/components/lists/ItemGroup';
+import { ItemList } from '@/components/ui/lists/ItemList';
+import { ItemGroup } from '@/components/ui/lists/ItemGroup';
 import { useSearch } from '@/hooks/useSearch';
 import { useRequireInboxFriendsEnabled } from '@/hooks/useRequireInboxFriendsEnabled';
 

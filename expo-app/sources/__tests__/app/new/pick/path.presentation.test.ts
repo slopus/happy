@@ -38,7 +38,7 @@ vi.mock('@expo/vector-icons', () => ({
     Ionicons: 'Ionicons',
 }));
 
-vi.mock('@/components/lists/ItemList', () => ({
+vi.mock('@/components/ui/lists/ItemList', () => ({
     ItemList: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 
@@ -50,7 +50,7 @@ vi.mock('@/components/SearchHeader', () => ({
     SearchHeader: () => null,
 }));
 
-vi.mock('@/components/newSession/components/PathSelector', () => ({
+vi.mock('@/components/sessions/newSession/components/PathSelector', () => ({
     PathSelector: () => null,
 }));
 

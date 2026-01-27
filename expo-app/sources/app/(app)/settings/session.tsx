@@ -3,11 +3,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { View, TextInput, Platform } from 'react-native';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 
-import { Item } from '@/components/lists/Item';
-import { ItemGroup } from '@/components/lists/ItemGroup';
-import { ItemList } from '@/components/lists/ItemList';
+import { Item } from '@/components/ui/lists/Item';
+import { ItemGroup } from '@/components/ui/lists/ItemGroup';
+import { ItemList } from '@/components/ui/lists/ItemList';
 import { Switch } from '@/components/Switch';
-import { DropdownMenu } from '@/components/dropdown/DropdownMenu';
+import { DropdownMenu } from '@/components/ui/forms/dropdown/DropdownMenu';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';

@@ -1,5 +1,5 @@
 import { AgentContentView } from '@/components/AgentContentView';
-import { AgentInput } from '@/components/AgentInput';
+import { AgentInput } from '@/components/sessions/agentInput';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';

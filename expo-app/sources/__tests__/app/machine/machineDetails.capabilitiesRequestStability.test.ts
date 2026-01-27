@@ -93,15 +93,15 @@ vi.mock('@/text', () => {
     return { t: (key: string) => key };
 });
 
-vi.mock('@/components/lists/Item', () => ({
+vi.mock('@/components/ui/lists/Item', () => ({
     Item: () => null,
 }));
 
-vi.mock('@/components/lists/ItemGroup', () => ({
+vi.mock('@/components/ui/lists/ItemGroup', () => ({
     ItemGroup: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 
-vi.mock('@/components/lists/ItemList', () => ({
+vi.mock('@/components/ui/lists/ItemList', () => ({
     ItemList: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 
@@ -109,7 +109,7 @@ vi.mock('@/components/MultiTextInput', () => ({
     MultiTextInput: () => null,
 }));
 
-vi.mock('@/components/machine/DetectedClisList', () => ({
+vi.mock('@/components/machines/DetectedClisList', () => ({
     DetectedClisList: () => null,
 }));
 

@@ -27,11 +27,11 @@ vi.mock('@/sync/storage', () => ({
     useSettingMutable: () => [[], vi.fn()],
 }));
 
-vi.mock('@/components/lists/ItemGroup', () => ({
+vi.mock('@/components/ui/lists/ItemGroup', () => ({
     ItemGroup: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 
-vi.mock('@/components/lists/Item', () => ({
+vi.mock('@/components/ui/lists/Item', () => ({
     Item: () => null,
 }));
 
@@ -39,7 +39,7 @@ vi.mock('@/components/profiles/ProfilesList', () => ({
     ProfilesList: () => null,
 }));
 
-vi.mock('@/components/SecretRequirementModal', () => ({
+vi.mock('@/components/secrets/requirements', () => ({
     SecretRequirementModal: () => null,
 }));
 

@@ -77,7 +77,7 @@ vi.mock('@/text', () => ({
     t: (key: string) => key,
 }));
 
-vi.mock('@/components/ProfileEditForm', () => ({
+vi.mock('@/components/profiles/edit', () => ({
     ProfileEditForm: () => React.createElement('ProfileEditForm'),
 }));
 
