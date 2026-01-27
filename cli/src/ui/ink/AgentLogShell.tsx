@@ -4,7 +4,7 @@
  * Reusable Ink “agent display” shell for read-only terminal sessions.
  * Renders a scrolling message log (from MessageBuffer) and a footer with exit controls.
  *
- * Provider-specific displays should live under their provider folders (e.g. src/codex/ui)
+ * Provider-specific displays should live under their backend folders (e.g. src/backends/codex/ui)
  * and use this component as a thin wrapper.
  */
 
@@ -227,4 +227,3 @@ export const AgentLogShell: React.FC<AgentLogShellProps> = ({
     </Box>
   );
 };
-

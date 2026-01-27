@@ -19,4 +19,4 @@ export type {
 export { DefaultTransport, defaultTransport } from './DefaultTransport';
 
 // Note: provider-specific ACP transport handlers live with the provider
-// implementation (e.g. `@/gemini/acp/transport`).
+// implementation (e.g. `@/backends/gemini/acp/transport`).

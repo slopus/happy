@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import type { SDKMessage, SDKAssistantMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage } from '@/claude/sdk';
+import type { SDKMessage, SDKAssistantMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage } from '@/backends/claude/sdk';
 import { logger } from './logger';
 
 export type OnAssistantResultCallback = (result: SDKResultMessage) => void | Promise<void>;

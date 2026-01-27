@@ -14,7 +14,7 @@ import { EventEmitter } from 'node:events';
 import type { ACPMessageData, ACPProvider, ApiSessionClient } from '@/api/apiSession';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import type { AgentState, Metadata, Usage, UserMessage } from '@/api/types';
-import type { RawJSONLines } from '@/claude/types';
+import type { RawJSONLines } from '@/backends/claude/types';
 
 type ApiSessionClientStubContract = Pick<
     ApiSessionClient,

@@ -36,14 +36,14 @@
         "default": "./dist/lib.mjs"
       }
     },
-    "./codex/happyMcpStdioBridge": {
+    "./backends/codex/happyMcpStdioBridge": {
       "require": {
-        "types": "./dist/codex/happyMcpStdioBridge.d.cts",
-        "default": "./dist/codex/happyMcpStdioBridge.cjs"
+        "types": "./dist/backends/codex/happyMcpStdioBridge.d.cts",
+        "default": "./dist/backends/codex/happyMcpStdioBridge.cjs"
       },
       "import": {
-        "types": "./dist/codex/happyMcpStdioBridge.d.mts",
-        "default": "./dist/codex/happyMcpStdioBridge.mjs"
+        "types": "./dist/backends/codex/happyMcpStdioBridge.d.mts",
+        "default": "./dist/backends/codex/happyMcpStdioBridge.mjs"
       }
     }
   },

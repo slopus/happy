@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApiSessionClient } from './apiSession';
-import type { RawJSONLines } from '@/claude/types';
+import type { RawJSONLines } from '@/backends/claude/types';
 import { encodeBase64, encrypt } from './encryption';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

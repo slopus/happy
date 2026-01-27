@@ -54,7 +54,7 @@ export interface CreateAcpBackendOptions {
  *
  * ```typescript
  * // Prefer this:
- * import { createGeminiBackend } from '@/gemini/acp/backend';
+ * import { createGeminiBackend } from '@/backends/gemini/acp/backend';
  * const backend = createGeminiBackend({ cwd: '/path/to/project' });
  *
  * // Over this:

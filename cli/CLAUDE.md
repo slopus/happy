@@ -63,7 +63,7 @@ Top-level domains are “first class” and should remain few:
 - `src/terminal/` — terminal UX/runtime integration (flags, attach plans, headless helpers)
 - `src/ui/` — user-facing UI and logging (Ink, formatting, QR, auth UI)
 - `src/commands/` — user-facing subcommands
-- `src/claude/`, `src/codex/`, `src/gemini/`, `src/opencode/` — agent packages (vendor-specific logic + entrypoints)
+- `src/backends/claude/`, `src/backends/codex/`, `src/backends/gemini/`, `src/backends/opencode/` — agent backends (vendor-specific logic + entrypoints)
 - `src/cli/` — argument parsing and command dispatch (keeps `src/index.ts` small)
 - `src/utils/` — shared helpers; prefer named subfolders under `utils/` over dumping unrelated code at the root of `utils/`
 
@@ -100,7 +100,7 @@ Handles server communication and encryption.
 - Optimistic concurrency control for state updates
 - RPC handler registration for remote procedure calls
 
-### 2. Claude Integration (`/src/claude/`)
+### 2. Claude Integration (`/src/backends/claude/`)
 Core Claude Code integration layer.
 
 - **`loop.ts`**: Main control loop managing interactive/remote modes

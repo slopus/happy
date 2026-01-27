@@ -1,7 +1,7 @@
 import type { AgentId } from '@/agent/core';
-import { checklists as codexChecklists } from '@/codex/cli/checklists';
-import { checklists as geminiChecklists } from '@/gemini/cli/checklists';
-import { checklists as openCodeChecklists } from '@/opencode/cli/checklists';
+import { checklists as codexChecklists } from '@/backends/codex/cli/checklists';
+import { checklists as geminiChecklists } from '@/backends/gemini/cli/checklists';
+import { checklists as openCodeChecklists } from '@/backends/opencode/cli/checklists';
 import { DEFAULT_CATALOG_AGENT_ID } from './types';
 import type { AgentCatalogEntry, CatalogAgentId, VendorResumeSupportFn } from './types';
 
@@ -11,26 +11,26 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
   claude: {
     id: 'claude',
     cliSubcommand: 'claude',
-    getCliCommandHandler: async () => (await import('@/claude/cli/command')).handleClaudeCliCommand,
-    getCliCapabilityOverride: async () => (await import('@/claude/cli/capability')).cliCapability,
-    getCliDetect: async () => (await import('@/claude/cli/detect')).cliDetect,
-    getCloudConnectTarget: async () => (await import('@/claude/cloud/connect')).claudeCloudConnect,
-    getDaemonSpawnHooks: async () => (await import('@/claude/daemon/spawnHooks')).claudeDaemonSpawnHooks,
+    getCliCommandHandler: async () => (await import('@/backends/claude/cli/command')).handleClaudeCliCommand,
+    getCliCapabilityOverride: async () => (await import('@/backends/claude/cli/capability')).cliCapability,
+    getCliDetect: async () => (await import('@/backends/claude/cli/detect')).cliDetect,
+    getCloudConnectTarget: async () => (await import('@/backends/claude/cloud/connect')).claudeCloudConnect,
+    getDaemonSpawnHooks: async () => (await import('@/backends/claude/daemon/spawnHooks')).claudeDaemonSpawnHooks,
     vendorResumeSupport: 'supported',
-    getHeadlessTmuxArgvTransform: async () => (await import('@/claude/terminal/headlessTmuxTransform')).claudeHeadlessTmuxArgvTransform,
+    getHeadlessTmuxArgvTransform: async () => (await import('@/backends/claude/terminal/headlessTmuxTransform')).claudeHeadlessTmuxArgvTransform,
   },
   codex: {
     id: 'codex',
     cliSubcommand: 'codex',
-    getCliCommandHandler: async () => (await import('@/codex/cli/command')).handleCodexCliCommand,
-    getCliCapabilityOverride: async () => (await import('@/codex/cli/capability')).cliCapability,
-    getCliDetect: async () => (await import('@/codex/cli/detect')).cliDetect,
-    getCloudConnectTarget: async () => (await import('@/codex/cloud/connect')).codexCloudConnect,
-    getDaemonSpawnHooks: async () => (await import('@/codex/daemon/spawnHooks')).codexDaemonSpawnHooks,
+    getCliCommandHandler: async () => (await import('@/backends/codex/cli/command')).handleCodexCliCommand,
+    getCliCapabilityOverride: async () => (await import('@/backends/codex/cli/capability')).cliCapability,
+    getCliDetect: async () => (await import('@/backends/codex/cli/detect')).cliDetect,
+    getCloudConnectTarget: async () => (await import('@/backends/codex/cloud/connect')).codexCloudConnect,
+    getDaemonSpawnHooks: async () => (await import('@/backends/codex/daemon/spawnHooks')).codexDaemonSpawnHooks,
     vendorResumeSupport: 'experimental',
-    getVendorResumeSupport: async () => (await import('@/codex/resume/vendorResumeSupport')).supportsCodexVendorResume,
+    getVendorResumeSupport: async () => (await import('@/backends/codex/resume/vendorResumeSupport')).supportsCodexVendorResume,
     getAcpBackendFactory: async () => {
-      const { createCodexAcpBackend } = await import('@/codex/acp/backend');
+      const { createCodexAcpBackend } = await import('@/backends/codex/acp/backend');
       return (opts) => createCodexAcpBackend(opts as any);
     },
     checklists: codexChecklists,
@@ -38,14 +38,14 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
   gemini: {
     id: 'gemini',
     cliSubcommand: 'gemini',
-    getCliCommandHandler: async () => (await import('@/gemini/cli/command')).handleGeminiCliCommand,
-    getCliCapabilityOverride: async () => (await import('@/gemini/cli/capability')).cliCapability,
-    getCliDetect: async () => (await import('@/gemini/cli/detect')).cliDetect,
-    getCloudConnectTarget: async () => (await import('@/gemini/cloud/connect')).geminiCloudConnect,
-    getDaemonSpawnHooks: async () => (await import('@/gemini/daemon/spawnHooks')).geminiDaemonSpawnHooks,
+    getCliCommandHandler: async () => (await import('@/backends/gemini/cli/command')).handleGeminiCliCommand,
+    getCliCapabilityOverride: async () => (await import('@/backends/gemini/cli/capability')).cliCapability,
+    getCliDetect: async () => (await import('@/backends/gemini/cli/detect')).cliDetect,
+    getCloudConnectTarget: async () => (await import('@/backends/gemini/cloud/connect')).geminiCloudConnect,
+    getDaemonSpawnHooks: async () => (await import('@/backends/gemini/daemon/spawnHooks')).geminiDaemonSpawnHooks,
     vendorResumeSupport: 'supported',
     getAcpBackendFactory: async () => {
-      const { createGeminiBackend } = await import('@/gemini/acp/backend');
+      const { createGeminiBackend } = await import('@/backends/gemini/acp/backend');
       return (opts) => createGeminiBackend(opts as any);
     },
     checklists: geminiChecklists,
@@ -53,13 +53,13 @@ export const AGENTS: Record<CatalogAgentId, AgentCatalogEntry> = {
   opencode: {
     id: 'opencode',
     cliSubcommand: 'opencode',
-    getCliCommandHandler: async () => (await import('@/opencode/cli/command')).handleOpenCodeCliCommand,
-    getCliCapabilityOverride: async () => (await import('@/opencode/cli/capability')).cliCapability,
-    getCliDetect: async () => (await import('@/opencode/cli/detect')).cliDetect,
-    getDaemonSpawnHooks: async () => (await import('@/opencode/daemon/spawnHooks')).opencodeDaemonSpawnHooks,
+    getCliCommandHandler: async () => (await import('@/backends/opencode/cli/command')).handleOpenCodeCliCommand,
+    getCliCapabilityOverride: async () => (await import('@/backends/opencode/cli/capability')).cliCapability,
+    getCliDetect: async () => (await import('@/backends/opencode/cli/detect')).cliDetect,
+    getDaemonSpawnHooks: async () => (await import('@/backends/opencode/daemon/spawnHooks')).opencodeDaemonSpawnHooks,
     vendorResumeSupport: 'supported',
     getAcpBackendFactory: async () => {
-      const { createOpenCodeBackend } = await import('@/opencode/acp/backend');
+      const { createOpenCodeBackend } = await import('@/backends/opencode/acp/backend');
       return (opts) => ({ backend: createOpenCodeBackend(opts as any) });
     },
     checklists: openCodeChecklists,

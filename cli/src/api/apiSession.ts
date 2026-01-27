@@ -6,7 +6,7 @@ import { AgentState, ClientToServerEvents, MessageContent, Metadata, ServerToCli
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { configuration } from '@/configuration';
-import type { RawJSONLines } from '@/claude/types';
+import type { RawJSONLines } from '@/backends/claude/types';
 import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
