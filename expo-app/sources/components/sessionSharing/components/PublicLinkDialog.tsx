@@ -1,15 +1,17 @@
 import React, { memo, useState, useEffect } from 'react';
-import { View, Text, ScrollView, Switch } from 'react-native';
+import { View, Text, ScrollView, Switch, Platform, Linking } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import QRCode from 'qrcode';
 import { Image } from 'expo-image';
+import * as Clipboard from 'expo-clipboard';
 import { PublicSessionShare } from '@/sync/sharingTypes';
 import { Item } from '@/components/Item';
 import { ItemList } from '@/components/ItemList';
 import { RoundButton } from '@/components/RoundButton';
 import { t } from '@/text';
-import { getServerUrl } from '@/sync/serverConfig';
 import { Ionicons } from '@expo/vector-icons';
+import { BaseModal } from '@/modal/components/BaseModal';
+import { Modal } from '@/modal';
 
 /**
  * Props for PublicLinkDialog component
@@ -43,21 +45,40 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
     onCancel
 }: PublicLinkDialogProps) {
     const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+    const [shareUrl, setShareUrl] = useState<string | null>(null);
     const [isConfiguring, setIsConfiguring] = useState(false);
     const [expiresInDays, setExpiresInDays] = useState<number | undefined>(7);
     const [maxUses, setMaxUses] = useState<number | undefined>(undefined);
     const [isConsentRequired, setIsConsentRequired] = useState(true);
 
+    const buildPublicShareUrl = (token: string): string => {
+        const path = `/share/${token}`;
+
+        if (Platform.OS === 'web') {
+            const origin =
+                typeof window !== 'undefined' && window.location?.origin
+                    ? window.location.origin
+                    : '';
+            return `${origin}${path}`;
+        }
+
+        const configuredWebAppUrl = (process.env.EXPO_PUBLIC_HAPPY_WEBAPP_URL || '').trim();
+        const webAppUrl = configuredWebAppUrl || 'https://app.happy.engineering';
+        return `${webAppUrl}${path}`;
+    };
+
     // Generate QR code when public share exists
     useEffect(() => {
         if (!publicShare?.token) {
             setQrDataUrl(null);
+            setShareUrl(null);
             return;
         }
 
-        // Use the configured server URL to generate the share link
-        const serverUrl = getServerUrl();
-        const url = `${serverUrl}/share/${publicShare.token}`;
+        // IMPORTANT: Public share links point to the web app route (`/share/:token`),
+        // not the API server URL.
+        const url = buildPublicShareUrl(publicShare.token);
+        setShareUrl(url);
 
         QRCode.toDataURL(url, {
             width: 250,
@@ -84,19 +105,43 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
         return new Date(timestamp).toLocaleDateString();
     };
 
-    return (
-        <View style={styles.container}>
-            <View style={styles.header}>
-                <Text style={styles.title}>{t('session.sharing.publicLink')}</Text>
-                <Item
-                    title={t('common.cancel')}
-                    onPress={onCancel}
-                />
-            </View>
+    const handleOpenLink = async () => {
+        if (!shareUrl) return;
+        try {
+            if (Platform.OS === 'web') {
+                window.open(shareUrl, '_blank', 'noopener,noreferrer');
+                return;
+            }
+            await Linking.openURL(shareUrl);
+        } catch {
+            // ignore
+        }
+    };
 
-            <ScrollView style={styles.content}>
-                {!publicShare || isConfiguring ? (
-                    <ItemList>
+    const handleCopyLink = async () => {
+        if (!shareUrl) return;
+        try {
+            await Clipboard.setStringAsync(shareUrl);
+            Modal.alert(t('common.copied'), t('items.copiedToClipboard', { label: t('session.sharing.publicLink') }));
+        } catch {
+            Modal.alert(t('common.error'), t('textSelection.failedToCopy'));
+        }
+    };
+
+    return (
+        <BaseModal visible={true} onClose={onCancel}>
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <Text style={styles.title}>{t('session.sharing.publicLink')}</Text>
+                    <Item
+                        title={t('common.cancel')}
+                        onPress={onCancel}
+                    />
+                </View>
+
+                <ScrollView style={styles.content}>
+                    {!publicShare || isConfiguring ? (
+                        <ItemList>
                         <Text style={styles.description}>
                             {t('session.sharing.publicLinkDescription')}
                         </Text>
@@ -236,6 +281,23 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                             </View>
                         )}
 
+                        {/* Public link */}
+                        {shareUrl ? (
+                            <>
+                                <Item
+                                    title={t('session.sharing.publicLink')}
+                                    subtitle={<Text selectable>{shareUrl}</Text>}
+                                    subtitleLines={0}
+                                    onPress={handleOpenLink}
+                                />
+                                <Item
+                                    title={t('common.copy')}
+                                    icon={<Ionicons name="copy-outline" size={29} color="#007AFF" />}
+                                    onPress={handleCopyLink}
+                                />
+                            </>
+                        ) : null}
+
                         {/* Info */}
                         {publicShare.token ? (
                             <Item
@@ -288,8 +350,9 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
                         </View>
                     </ItemList>
                 ) : null}
-            </ScrollView>
-        </View>
+                </ScrollView>
+            </View>
+        </BaseModal>
     );
 });
 
