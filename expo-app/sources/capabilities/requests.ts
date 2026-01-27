@@ -1,6 +1,6 @@
 import type { CapabilitiesDetectRequest } from '@/sync/capabilitiesProtocol';
 import { AGENT_IDS, getAgentCore } from '@/agents/catalog';
-import { CHECKLIST_IDS, resumeChecklistId } from '@happy/protocol/checklists';
+import { CHECKLIST_IDS } from '@happy/protocol/checklists';
 
 function buildCliLoginStatusOverrides(): Record<string, { params: { includeLoginStatus: true } }> {
     const overrides: Record<string, { params: { includeLoginStatus: true } }> = {};
@@ -17,8 +17,4 @@ export const CAPABILITIES_REQUEST_NEW_SESSION: CapabilitiesDetectRequest = {
 export const CAPABILITIES_REQUEST_MACHINE_DETAILS: CapabilitiesDetectRequest = {
     checklistId: CHECKLIST_IDS.MACHINE_DETAILS,
     overrides: buildCliLoginStatusOverrides() as any,
-};
-
-export const CAPABILITIES_REQUEST_RESUME_CODEX: CapabilitiesDetectRequest = {
-    checklistId: resumeChecklistId('codex'),
 };

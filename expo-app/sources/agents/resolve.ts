@@ -1,5 +1,5 @@
 import type { AgentId } from './registryCore';
-import { resolveAgentIdFromFlavor } from './registryCore';
+import { DEFAULT_AGENT_ID, resolveAgentIdFromFlavor } from './registryCore';
 
 export function resolveAgentIdOrDefault(
     flavor: string | null | undefined,
@@ -23,5 +23,5 @@ export function resolveAgentIdForPermissionUi(params: {
 
     const byTool = typeof params.toolName === 'string' ? params.toolName.trim() : '';
     if (byTool.startsWith('Codex')) return 'codex';
-    return 'claude';
+    return DEFAULT_AGENT_ID;
 }

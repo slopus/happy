@@ -31,7 +31,7 @@ import { Avatar } from '@/components/Avatar';
 import { t } from '@/text';
 import { MachineCliGlyphs } from '@/components/sessions/new/components/MachineCliGlyphs';
 import { HappyError } from '@/utils/errors';
-import { getAgentCore, getAgentIconSource, getAgentIconTintColor } from '@/agents/catalog';
+import { DEFAULT_AGENT_ID, getAgentCore, getAgentIconSource, getAgentIconTintColor, resolveAgentIdFromConnectedServiceId } from '@/agents/catalog';
 
 export const SettingsView = React.memo(function SettingsView() {
     const { theme } = useUnistyles();
@@ -51,6 +51,9 @@ export const SettingsView = React.memo(function SettingsView() {
     const avatarUrl = getAvatarUrl(profile);
     const bio = getBio(profile);
     const [githubUnavailableReason, setGithubUnavailableReason] = React.useState<string | null>(null);
+
+    const anthropicAgentId = resolveAgentIdFromConnectedServiceId('anthropic') ?? DEFAULT_AGENT_ID;
+    const anthropicAgentCore = getAgentCore(anthropicAgentId);
 
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
     const [refreshingMachines, refreshMachines] = useHappyAction(async () => {
@@ -167,7 +170,7 @@ export const SettingsView = React.memo(function SettingsView() {
 
     // Anthropic connection
     const [connectingAnthropic, connectAnthropic] = useHappyAction(async () => {
-        const route = getAgentCore('claude').connectedService.connectRoute;
+        const route = anthropicAgentCore.connectedService.connectRoute;
         if (route) {
             router.push(route);
         }
@@ -175,9 +178,10 @@ export const SettingsView = React.memo(function SettingsView() {
 
     // Anthropic disconnection
     const [disconnectingAnthropic, handleDisconnectAnthropic] = useHappyAction(async () => {
+        const serviceName = anthropicAgentCore.connectedService.name;
         const confirmed = await Modal.confirm(
-            t('modals.disconnectService', { service: 'Claude' }),
-            t('modals.disconnectServiceConfirm', { service: 'Claude' }),
+            t('modals.disconnectService', { service: serviceName }),
+            t('modals.disconnectServiceConfirm', { service: serviceName }),
             { confirmText: t('modals.disconnect'), destructive: true }
         );
         if (confirmed) {
@@ -270,16 +274,16 @@ export const SettingsView = React.memo(function SettingsView() {
 
             <ItemGroup title={t('settings.connectedAccounts')}>
                 <Item
-                    title={getAgentCore('claude').connectedService.name}
+                    title={anthropicAgentCore.connectedService.name}
                     subtitle={isAnthropicConnected
                         ? t('settingsAccount.statusActive')
                         : t('settings.connectAccount')
                     }
                     icon={
                         <Image
-                            source={getAgentIconSource('claude')}
+                            source={getAgentIconSource(anthropicAgentId)}
                             style={{ width: 29, height: 29 }}
-                            tintColor={getAgentIconTintColor('claude', theme)}
+                            tintColor={getAgentIconTintColor(anthropicAgentId, theme)}
                             contentFit="contain"
                         />
                     }

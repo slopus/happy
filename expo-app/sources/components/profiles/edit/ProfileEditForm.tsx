@@ -27,7 +27,7 @@ import { layout } from '@/components/layout';
 import { SecretRequirementModal, type SecretRequirementModalResult } from '@/components/secrets/requirements';
 import { parseEnvVarTemplate } from '@/utils/profiles/envVarTemplate';
 import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
-import { getAgentCore, type AgentId, type MachineLoginKey } from '@/agents/catalog';
+import { DEFAULT_AGENT_ID, getAgentCore, type AgentId, type MachineLoginKey } from '@/agents/catalog';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MachinePreviewModal } from './MachinePreviewModal';
 
@@ -156,7 +156,7 @@ export function ProfileEditForm({
         const from =
             enabledAgentIds.find((id) => getAgentCore(id).permissions.modeGroup === fromGroup) ??
             enabledAgentIds[0] ??
-            'claude';
+            DEFAULT_AGENT_ID;
         const compat = profile.compatibility ?? {};
 
         for (const agentId of enabledAgentIds) {

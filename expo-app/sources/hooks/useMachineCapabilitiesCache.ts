@@ -5,6 +5,7 @@ import {
 } from '@/sync/ops';
 import type { CapabilitiesDetectRequest, CapabilitiesDetectResponse, CapabilityDetectResult, CapabilityId } from '@/sync/capabilitiesProtocol';
 import { CHECKLIST_IDS, resumeChecklistId } from '@happy/protocol/checklists';
+import { AGENT_IDS } from '@/agents/catalog';
 
 export type MachineCapabilitiesSnapshot = {
     response: CapabilitiesDetectResponse;
@@ -106,11 +107,9 @@ function getTimeoutMsForRequest(request: CapabilitiesDetectRequest, fallback: nu
     // Default fast timeout; opt into longer waits for npm registry checks.
     const requests = Array.isArray(request.requests) ? request.requests : [];
     const hasRegistryCheck = requests.some((r) => Boolean((r.params as any)?.includeRegistry));
-    const isResumeCodexChecklist = request.checklistId === resumeChecklistId('codex');
-    const isResumeGeminiChecklist = request.checklistId === resumeChecklistId('gemini');
+    const isResumeChecklist = AGENT_IDS.some((agentId) => request.checklistId === resumeChecklistId(agentId));
     const isMachineDetailsChecklist = request.checklistId === CHECKLIST_IDS.MACHINE_DETAILS;
-    if (hasRegistryCheck || isResumeCodexChecklist) return Math.max(fallback, 12_000);
-    if (isResumeGeminiChecklist) return Math.max(fallback, 8_000);
+    if (hasRegistryCheck || isResumeChecklist) return Math.max(fallback, 12_000);
     if (isMachineDetailsChecklist) return Math.max(fallback, 8_000);
     return fallback;
 }

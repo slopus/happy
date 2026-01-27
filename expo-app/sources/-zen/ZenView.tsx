@@ -15,6 +15,7 @@ import { storeTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { toCamelCase } from '@/utils/stringUtils';
 import { removeTaskLinks, getSessionsForTask } from '@/-zen/model/taskSessionLink';
 import { t } from '@/text';
+import { DEFAULT_AGENT_ID } from '@/agents/catalog';
 
 export const ZenView = React.memo(() => {
     const router = useRouter();
@@ -112,7 +113,7 @@ export const ZenView = React.memo(() => {
         // Store the prompt data in temporary store
         const sessionData: NewSessionData = {
             prompt: promptText,
-            agentType: 'claude', // Default to Claude for clarification tasks
+            agentType: DEFAULT_AGENT_ID, // Default agent for clarification tasks
             taskId: todoId,
             taskTitle: editedText
         };
@@ -132,7 +133,7 @@ export const ZenView = React.memo(() => {
         // Store the prompt data in temporary store
         const sessionData: NewSessionData = {
             prompt: promptText,
-            agentType: 'claude', // Default to Claude
+            agentType: DEFAULT_AGENT_ID, // Default agent
             taskId: todoId,
             taskTitle: editedText
         };

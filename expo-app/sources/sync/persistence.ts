@@ -4,7 +4,7 @@ import { LocalSettings, localSettingsDefaults, localSettingsParse } from './loca
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
 import { isModelMode, isPermissionMode, type PermissionMode, type ModelMode } from '@/sync/permissionTypes';
-import { isAgentId, type AgentId } from '@/agents/catalog';
+import { DEFAULT_AGENT_ID, isAgentId, type AgentId } from '@/agents/catalog';
 import { readStorageScopeFromEnv, scopedStorageId } from '@/utils/storageScope';
 import { dbgSettings, summarizeSettingsDelta } from './debugSettings';
 import { SecretStringSchema, type SecretString } from './secretSettings';
@@ -288,7 +288,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             parsed.sessionOnlySecretValueEncByProfileIdByEnvVarName,
             parseDraftSecretStringOrNull,
         );
-        const agentType: NewSessionAgentType = isAgentId(parsed.agentType) ? parsed.agentType : 'claude';
+        const agentType: NewSessionAgentType = isAgentId(parsed.agentType) ? parsed.agentType : DEFAULT_AGENT_ID;
         const permissionMode: PermissionMode = isPermissionMode(parsed.permissionMode)
             ? parsed.permissionMode
             : 'default';

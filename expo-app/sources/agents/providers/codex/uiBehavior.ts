@@ -2,7 +2,8 @@ import { buildAcpLoadSessionPrefetchRequest, readAcpLoadSessionSupport, shouldPr
 import type { ResumeCapabilityOptions } from '@/agents/resumeCapabilities';
 import { getCodexAcpDepData } from '@/capabilities/codexAcpDep';
 import { getCodexMcpResumeDepData } from '@/capabilities/codexMcpResume';
-import { CAPABILITIES_REQUEST_RESUME_CODEX } from '@/capabilities/requests';
+import { resumeChecklistId } from '@happy/protocol/checklists';
+import type { CapabilitiesDetectRequest } from '@/sync/capabilitiesProtocol';
 
 import type {
     AgentResumeExperiments,
@@ -174,7 +175,8 @@ export const CODEX_UI_BEHAVIOR_OVERRIDE: AgentUiBehavior = {
         getPreflightPrefetchPlan: ({ experiments }) => {
             if (experiments.enabled !== true) return null;
             if (!(getSwitch(experiments, CODEX_SWITCH_RESUME_MCP) || getSwitch(experiments, CODEX_SWITCH_RESUME_ACP))) return null;
-            return { request: CAPABILITIES_REQUEST_RESUME_CODEX, timeoutMs: 12_000 };
+            const request: CapabilitiesDetectRequest = { checklistId: resumeChecklistId('codex') };
+            return { request, timeoutMs: 12_000 };
         },
         getPreflightIssues: getCodexResumePreflightIssues,
     },

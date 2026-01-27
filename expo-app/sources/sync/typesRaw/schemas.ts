@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { MessageMetaSchema, MessageMeta } from '../typesMessageMeta';
 import { PERMISSION_MODES } from '@/constants/PermissionModes';
+import { AGENT_IDS } from '@happy/agents';
 
 //
 // Raw types
@@ -216,7 +217,7 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
 }), z.object({
     // ACP (Agent Communication Protocol) - unified format for all agent providers
     type: z.literal('acp'),
-    provider: z.enum(['gemini', 'codex', 'claude', 'opencode', 'auggie']),
+    provider: z.enum(AGENT_IDS),
     data: z.discriminatedUnion('type', [
         // Core message types
         z.object({ type: z.literal('reasoning'), message: z.string() }),
