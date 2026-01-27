@@ -31,4 +31,11 @@ export const AGENTS_CORE = {
         flavorAliases: [],
         resume: { vendorResume: 'supported', vendorResumeIdField: 'geminiSessionId', runtimeGate: 'acpLoadSession' },
     },
+    auggie: {
+        id: 'auggie',
+        cliSubcommand: 'auggie',
+        detectKey: 'auggie',
+        flavorAliases: [],
+        resume: { vendorResume: 'supported', vendorResumeIdField: 'auggieSessionId', runtimeGate: 'acpLoadSession' },
+    },
 } as const satisfies Record<AgentId, AgentCore>;

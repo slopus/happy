@@ -1,10 +1,10 @@
-export const AGENT_IDS = ['claude', 'codex', 'opencode', 'gemini'] as const;
+export const AGENT_IDS = ['claude', 'codex', 'opencode', 'gemini', 'auggie'] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 
 export type VendorResumeSupportLevel = 'supported' | 'unsupported' | 'experimental';
 export type ResumeRuntimeGate = 'acpLoadSession' | null;
 
-export type VendorResumeIdField = 'codexSessionId' | 'geminiSessionId' | 'opencodeSessionId';
+export type VendorResumeIdField = 'codexSessionId' | 'geminiSessionId' | 'opencodeSessionId' | 'auggieSessionId';
 
 export type AgentCore = Readonly<{
     id: AgentId;
