@@ -6,6 +6,6 @@ export const claudeCloudConnect: CloudConnectTarget = {
   displayName: 'Claude',
   vendorDisplayName: 'Anthropic Claude',
   vendorKey: 'anthropic',
+  status: 'experimental',
   authenticate: authenticateClaude,
 };
-

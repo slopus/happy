@@ -7,7 +7,7 @@ export const geminiCloudConnect: CloudConnectTarget = {
   displayName: 'Gemini',
   vendorDisplayName: 'Google Gemini',
   vendorKey: 'gemini',
+  status: 'wired',
   authenticate: authenticateGemini,
   postConnect: updateLocalGeminiCredentials,
 };
-

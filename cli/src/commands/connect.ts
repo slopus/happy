@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { readCredentials } from '@/persistence';
 import { ApiClient } from '@/api/api';
 import { decodeJwtPayload } from '@/cloud/jwt/decodeJwtPayload';
-import type { CloudConnectTarget } from '@/cloud/connect/types';
+import type { CloudConnectTarget, CloudConnectTargetStatus } from '@/cloud/connect/types';
 import { AGENTS } from '@/backends/catalog';
 
 /**
@@ -15,39 +15,61 @@ import { AGENTS } from '@/backends/catalog';
  * - connect help: Show help for connect command
  */
 export async function handleConnectCommand(args: string[]): Promise<void> {
-    const subcommand = args[0];
-    const targets: CloudConnectTarget[] = [];
-    for (const entry of Object.values(AGENTS)) {
-      if (!entry.getCloudConnectTarget) continue;
-      targets.push(await entry.getCloudConnectTarget());
-    }
-    targets.sort((a, b) => a.id.localeCompare(b.id));
-    const targetById = new Map(targets.map((t) => [t.id, t] as const));
+    const { includeExperimental, subcommand } = parseConnectArgs(args);
+
+    const allTargets = await loadConnectTargets({ includeExperimental: true });
+    const visibleTargets = includeExperimental ? allTargets : allTargets.filter((t) => t.status === 'wired');
+
+    const targetById = new Map(allTargets.map((t) => [t.id, t] as const));
+    const visibleTargetById = new Map(visibleTargets.map((t) => [t.id, t] as const));
 
     if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
-        showConnectHelp(targets);
+        showConnectHelp(visibleTargets, { includeExperimental });
         return;
     }
 
     const normalized = subcommand.toLowerCase();
     if (normalized === 'status') {
-      await handleConnectStatus(targets);
+      await handleConnectStatus(visibleTargets);
       return;
     }
 
-    const target = targetById.get(normalized as any);
-    if (!target) {
+    const visibleTarget = visibleTargetById.get(normalized as any);
+    if (!visibleTarget) {
+      const hiddenTarget = targetById.get(normalized as any);
+      if (hiddenTarget && hiddenTarget.status === 'experimental' && !includeExperimental) {
+        console.error(chalk.yellow(`Connect target '${hiddenTarget.id}' is experimental and not enabled by default.`));
+        console.error(chalk.gray(`Run: happy connect --all ${hiddenTarget.id}`));
+        process.exit(1);
+      }
       console.error(chalk.red(`Unknown connect target: ${subcommand}`));
-      showConnectHelp(targets);
+      showConnectHelp(visibleTargets, { includeExperimental });
       process.exit(1);
     }
 
-    await handleConnectVendor(target);
+    await handleConnectVendor(visibleTarget);
 }
 
-function showConnectHelp(targets: ReadonlyArray<CloudConnectTarget>): void {
+function parseConnectArgs(args: ReadonlyArray<string>): Readonly<{ includeExperimental: boolean; subcommand: string | null }> {
+  const includeExperimental = args.includes('--all') || args.includes('--experimental');
+  const rest = args.filter((a) => a !== '--all' && a !== '--experimental');
+  const subcommand = rest[0] ?? null;
+  return { includeExperimental, subcommand };
+}
+
+async function loadConnectTargets(params: Readonly<{ includeExperimental: boolean }>): Promise<CloudConnectTarget[]> {
+  const targets: CloudConnectTarget[] = [];
+  for (const entry of Object.values(AGENTS)) {
+    if (!entry.getCloudConnectTarget) continue;
+    targets.push(await entry.getCloudConnectTarget());
+  }
+  targets.sort((a, b) => a.id.localeCompare(b.id));
+  return params.includeExperimental ? targets : targets.filter((t) => t.status === 'wired');
+}
+
+function showConnectHelp(targets: ReadonlyArray<CloudConnectTarget>, opts: Readonly<{ includeExperimental: boolean }>): void {
     const targetLines = targets.length > 0
-      ? targets.map((t) => `  happy connect ${t.id.padEnd(12)} ${t.vendorDisplayName}`).join('\n')
+      ? targets.map((t) => formatTargetLine(t)).join('\n')
       : '  (no connect targets registered)';
     console.log(`
 ${chalk.bold('happy connect')} - Connect AI vendor API keys to Happy cloud
@@ -56,6 +78,7 @@ ${chalk.bold('Usage:')}
 ${targetLines}
   happy connect status       Show connection status for all vendors
   happy connect help         Show this help message
+  happy connect --all ...    Include experimental providers
 
 ${chalk.bold('Description:')}
   The connect command allows you to securely store your AI vendor API keys
@@ -70,7 +93,13 @@ ${chalk.bold('Notes:')}
   • You must be authenticated with Happy first (run 'happy auth login')
   • API keys are encrypted and stored securely in Happy cloud
   • You can manage your stored keys at app.happy.engineering
+  ${opts.includeExperimental ? '' : '• Some providers are experimental; use --all to show them'}
 `);
+}
+
+function formatTargetLine(target: CloudConnectTarget): string {
+  const statusSuffix = target.status === 'wired' ? '' : chalk.gray(' (experimental)');
+  return `  happy connect ${target.id.padEnd(12)} ${target.vendorDisplayName}${statusSuffix}`;
 }
 
 async function handleConnectVendor(target: CloudConnectTarget): Promise<void> {
