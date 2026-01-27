@@ -126,44 +126,6 @@ export interface PublicSessionShare {
 }
 
 /**
- * Shared session with metadata
- *
- * @remarks
- * Represents a session that has been shared with the current user, including
- * the share metadata and session information needed to display it in a list.
- */
-export interface SharedSession {
-    /** Session ID */
-    id: string;
-    /** ID of the share that grants access */
-    shareId: string;
-    /** Session sequence number for sync */
-    seq: number;
-    /** Timestamp when session was created (milliseconds since epoch) */
-    createdAt: number;
-    /** Timestamp when session was last updated (milliseconds since epoch) */
-    updatedAt: number;
-    /** Whether the session is currently active */
-    active: boolean;
-    /** Timestamp of last activity (milliseconds since epoch) */
-    activeAt: number;
-    /** Session metadata (path, name, etc.) */
-    metadata: string;
-    /** Version number of the metadata */
-    metadataVersion: number;
-    /** Agent state (encrypted) */
-    agentState: string | null;
-    /** Agent state version number */
-    agentStateVersion: number;
-    /** User who shared this session */
-    sharedBy: ShareUserProfile;
-    /** Access level granted to current user */
-    accessLevel: ShareAccessLevel;
-    /** Session data encryption key, encrypted with current user's public key (base64) */
-    encryptedDataKey: string;
-}
-
-/**
  * Access log entry for public shares
  *
  * @remarks
@@ -335,64 +297,6 @@ export interface AccessPublicShareResponse {
     owner: ShareUserProfile;
     /** Whether consent is required (echoed) */
     isConsentRequired: boolean;
-}
-
-/** Response containing sessions shared with the current user */
-export interface SharedSessionsResponse {
-    /** List of sessions that have been shared with the current user */
-    shares: SharedSession[];
-}
-
-/**
- * Response containing session details with share information
- *
- * @remarks
- * Used when retrieving a specific session that may be owned or shared.
- * The response structure differs based on whether the user is the owner
- * or has shared access.
- */
-export interface SessionWithShareResponse {
-    /** Session information */
-    session: {
-        /** Session ID */
-        id: string;
-        /** Session sequence number */
-        seq: number;
-        /** Creation timestamp (milliseconds since epoch) */
-        createdAt: number;
-        /** Last update timestamp (milliseconds since epoch) */
-        updatedAt: number;
-        /** Whether session is active */
-        active: boolean;
-        /** Last activity timestamp (milliseconds since epoch) */
-        activeAt: number;
-        /** Session metadata */
-        metadata: any;
-        /** Metadata version number */
-        metadataVersion: number;
-        /** Agent state */
-        agentState: any;
-        /** Agent state version number */
-        agentStateVersion: number;
-        /**
-         * Session data encryption key (base64)
-         *
-         * @remarks
-         * Only present if the current user is the session owner.
-         */
-        dataEncryptionKey?: string;
-    };
-    /** Access level of current user */
-    accessLevel: ShareAccessLevel;
-    /**
-     * Encrypted data key for decrypting session (base64)
-     *
-     * @remarks
-     * Only present if the current user has shared access (not the owner).
-     */
-    encryptedDataKey?: string;
-    /** Whether the current user is the session owner */
-    isOwner: boolean;
 }
 
 /** Response containing access logs for a public share */

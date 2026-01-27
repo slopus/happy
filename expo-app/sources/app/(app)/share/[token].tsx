@@ -9,7 +9,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { Avatar } from '@/components/Avatar';
 import { getServerUrl } from '@/sync/serverConfig';
-import { decryptDataKeyFromPublicShare } from '@/sync/publicShareEncryption';
+import { decryptDataKeyFromPublicShare } from '@/sync/encryption/publicShareEncryption';
 import { AES256Encryption } from '@/sync/encryption/encryptor';
 import { EncryptionCache } from '@/sync/encryption/encryptionCache';
 import { SessionEncryption } from '@/sync/encryption/sessionEncryption';

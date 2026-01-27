@@ -10,8 +10,6 @@ import {
     PublicShareResponse,
     CreatePublicShareRequest,
     AccessPublicShareResponse,
-    SharedSessionsResponse,
-    SessionWithShareResponse,
     PublicShareAccessLogsResponse,
     PublicShareBlockedUsersResponse,
     BlockPublicShareUserRequest,
@@ -193,65 +191,6 @@ export async function deleteSessionShare(
             }
             throw new Error(`Failed to delete session share: ${response.status}`);
         }
-    });
-}
-
-/**
- * Get all sessions shared with the current user
- *
- * @param credentials - User authentication credentials
- * @returns List of sessions that have been shared with the current user
- * @throws {Error} For API errors
- *
- * @remarks
- * Returns sessions where the current user has been granted access by other users.
- * Each entry includes the session metadata, who shared it, and the access level granted.
- */
-export async function getSharedSessions(
-    credentials: AuthCredentials
-): Promise<SharedSessionsResponse> {
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/shares/sessions`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${credentials.token}`,
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to get shared sessions: ${response.status}`);
-        }
-
-        return await response.json();
-    });
-}
-
-/**
- * Get shared session details with encrypted key
- */
-export async function getSharedSessionDetails(
-    credentials: AuthCredentials,
-    sessionId: string
-): Promise<SessionWithShareResponse> {
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/shares/sessions/${sessionId}`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${credentials.token}`,
-            }
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                throw new SessionSharingError('Forbidden');
-            }
-            if (response.status === 404) {
-                throw new ShareNotFoundError();
-            }
-            throw new Error(`Failed to get shared session details: ${response.status}`);
-        }
-
-        return await response.json();
     });
 }
 
