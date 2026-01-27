@@ -200,6 +200,120 @@ export async function applySocketArtifactUpdate(params: {
     return updatedArtifact;
 }
 
+export async function handleNewArtifactSocketUpdate(params: {
+    artifactId: string;
+    dataEncryptionKey: string;
+    header: string;
+    headerVersion: number;
+    body?: string | null;
+    bodyVersion?: number;
+    seq: number;
+    createdAt: number;
+    updatedAt: number;
+    encryption: Encryption;
+    artifactDataKeys: Map<string, Uint8Array>;
+    addArtifact: (artifact: DecryptedArtifact) => void;
+    log: { log: (message: string) => void };
+}): Promise<void> {
+    const {
+        artifactId,
+        dataEncryptionKey,
+        header,
+        headerVersion,
+        body,
+        bodyVersion,
+        seq,
+        createdAt,
+        updatedAt,
+        encryption,
+        artifactDataKeys,
+        addArtifact,
+        log,
+    } = params;
+
+    try {
+        const decrypted = await decryptSocketNewArtifactUpdate({
+            artifactId,
+            dataEncryptionKey,
+            header,
+            headerVersion,
+            body,
+            bodyVersion,
+            seq,
+            createdAt,
+            updatedAt,
+            encryption,
+            artifactDataKeys,
+        });
+        if (!decrypted) {
+            return;
+        }
+
+        addArtifact(decrypted);
+        log.log(`📦 Added new artifact ${artifactId} to storage`);
+    } catch (error) {
+        console.error(`Failed to process new artifact ${artifactId}:`, error);
+    }
+}
+
+export async function handleUpdateArtifactSocketUpdate(params: {
+    artifactId: string;
+    seq: number;
+    createdAt: number;
+    header?: { version: number; value: string } | null;
+    body?: { version: number; value: string } | null;
+    artifactDataKeys: Map<string, Uint8Array>;
+    getExistingArtifact: (artifactId: string) => DecryptedArtifact | undefined;
+    updateArtifact: (artifact: DecryptedArtifact) => void;
+    invalidateArtifactsSync: () => void;
+    log: { log: (message: string) => void };
+}): Promise<void> {
+    const {
+        artifactId,
+        seq,
+        createdAt,
+        header,
+        body,
+        artifactDataKeys,
+        getExistingArtifact,
+        updateArtifact,
+        invalidateArtifactsSync,
+        log,
+    } = params;
+
+    const existingArtifact = getExistingArtifact(artifactId);
+    if (!existingArtifact) {
+        console.error(`Artifact ${artifactId} not found in storage`);
+        // Fetch all artifacts to sync
+        invalidateArtifactsSync();
+        return;
+    }
+
+    try {
+        // Get the data encryption key from memory
+        const dataEncryptionKey = artifactDataKeys.get(artifactId);
+        if (!dataEncryptionKey) {
+            console.error(`Encryption key not found for artifact ${artifactId}, fetching artifacts`);
+            invalidateArtifactsSync();
+            return;
+        }
+
+        const updatedArtifact = await applySocketArtifactUpdate({
+            existingArtifact,
+            seq,
+            createdAt,
+            dataEncryptionKey,
+            header,
+            body,
+        });
+
+        updateArtifact(updatedArtifact);
+        log.log(`📦 Updated artifact ${artifactId} in storage`);
+    } catch (error) {
+        console.error(`Failed to process artifact update ${artifactId}:`, error);
+    }
+}
+
 export function handleDeleteArtifactSocketUpdate(params: {
     artifactId: string;
     deleteArtifact: (artifactId: string) => void;

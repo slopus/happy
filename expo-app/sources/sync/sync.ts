@@ -55,15 +55,15 @@ import { chooseSubmitMode } from './submitMode';
 import type { SavedSecret } from './settings';
 import { scheduleDebouncedPendingSettingsFlush } from './engine/pendingSettings';
 import {
-    applySocketArtifactUpdate,
     decryptArtifactListItem,
     decryptArtifactWithBody,
-    decryptSocketNewArtifactUpdate,
     handleDeleteArtifactSocketUpdate,
+    handleNewArtifactSocketUpdate,
+    handleUpdateArtifactSocketUpdate,
 } from './engine/artifacts';
 import { handleNewFeedPostUpdate, handleRelationshipUpdatedSocketUpdate, handleTodoKvBatchUpdate } from './engine/feed';
 import { handleUpdateAccountSocketUpdate } from './engine/account';
-import { buildMachineFromMachineActivityEphemeralUpdate, buildUpdatedMachineFromSocketUpdate } from './engine/machines';
+import { buildMachineFromMachineActivityEphemeralUpdate, buildUpdatedMachineFromSocketUpdate, fetchAndApplyMachines } from './engine/machines';
 import {
     buildUpdatedSessionFromSocketUpdate,
     handleDeleteSessionSocketUpdate,
@@ -1317,108 +1317,12 @@ class Sync {
     private fetchMachines = async () => {
         if (!this.credentials) return;
 
-        const API_ENDPOINT = getServerUrl();
-        const response = await fetch(`${API_ENDPOINT}/v1/machines`, {
-            headers: {
-                'Authorization': `Bearer ${this.credentials.token}`,
-                'Content-Type': 'application/json'
-            }
+        await fetchAndApplyMachines({
+            credentials: this.credentials,
+            encryption: this.encryption,
+            machineDataKeys: this.machineDataKeys,
+            applyMachines: (machines, replace) => storage.getState().applyMachines(machines, replace),
         });
-
-        if (!response.ok) {
-            console.error(`Failed to fetch machines: ${response.status}`);
-            return;
-        }
-
-        const data = await response.json();
-        const machines = data as Array<{
-            id: string;
-            metadata: string;
-            metadataVersion: number;
-            daemonState?: string | null;
-            daemonStateVersion?: number;
-            dataEncryptionKey?: string | null; // Add support for per-machine encryption keys
-            seq: number;
-            active: boolean;
-            activeAt: number;  // Changed from lastActiveAt
-            createdAt: number;
-            updatedAt: number;
-        }>;
-
-        // First, collect and decrypt encryption keys for all machines
-        const machineKeysMap = new Map<string, Uint8Array | null>();
-        for (const machine of machines) {
-            if (machine.dataEncryptionKey) {
-                const decryptedKey = await this.encryption.decryptEncryptionKey(machine.dataEncryptionKey);
-                if (!decryptedKey) {
-                    console.error(`Failed to decrypt data encryption key for machine ${machine.id}`);
-                    continue;
-                }
-                machineKeysMap.set(machine.id, decryptedKey);
-                this.machineDataKeys.set(machine.id, decryptedKey);
-            } else {
-                machineKeysMap.set(machine.id, null);
-            }
-        }
-
-        // Initialize machine encryptions
-        await this.encryption.initializeMachines(machineKeysMap);
-
-        // Process all machines first, then update state once
-        const decryptedMachines: Machine[] = [];
-
-        for (const machine of machines) {
-            // Get machine-specific encryption (might exist from previous initialization)
-            const machineEncryption = this.encryption.getMachineEncryption(machine.id);
-            if (!machineEncryption) {
-                console.error(`Machine encryption not found for ${machine.id} - this should never happen`);
-                continue;
-            }
-
-            try {
-
-                // Use machine-specific encryption (which handles fallback internally)
-                const metadata = machine.metadata
-                    ? await machineEncryption.decryptMetadata(machine.metadataVersion, machine.metadata)
-                    : null;
-
-                const daemonState = machine.daemonState
-                    ? await machineEncryption.decryptDaemonState(machine.daemonStateVersion || 0, machine.daemonState)
-                    : null;
-
-                decryptedMachines.push({
-                    id: machine.id,
-                    seq: machine.seq,
-                    createdAt: machine.createdAt,
-                    updatedAt: machine.updatedAt,
-                    active: machine.active,
-                    activeAt: machine.activeAt,
-                    metadata,
-                    metadataVersion: machine.metadataVersion,
-                    daemonState,
-                    daemonStateVersion: machine.daemonStateVersion || 0
-                });
-            } catch (error) {
-                console.error(`Failed to decrypt machine ${machine.id}:`, error);
-                // Still add the machine with null metadata
-                decryptedMachines.push({
-                    id: machine.id,
-                    seq: machine.seq,
-                    createdAt: machine.createdAt,
-                    updatedAt: machine.updatedAt,
-                    active: machine.active,
-                    activeAt: machine.activeAt,
-                    metadata: null,
-                    metadataVersion: machine.metadataVersion,
-                    daemonState: null,
-                    daemonStateVersion: 0
-                });
-            }
-        }
-
-        // Replace entire machine state with fetched machines
-        storage.getState().applyMachines(decryptedMachines, true);
-        log.log(`🖥️ fetchMachines completed - processed ${decryptedMachines.length} machines`);
     }
 
     private fetchFriends = async () => {
@@ -2118,67 +2022,39 @@ class Sync {
             log.log('📦 Received new-artifact update');
             const artifactUpdate = updateData.body;
             const artifactId = artifactUpdate.artifactId;
-            
-            try {
-                const decrypted = await decryptSocketNewArtifactUpdate({
-                    artifactId,
-                    dataEncryptionKey: artifactUpdate.dataEncryptionKey,
-                    header: artifactUpdate.header,
-                    headerVersion: artifactUpdate.headerVersion,
-                    body: artifactUpdate.body,
-                    bodyVersion: artifactUpdate.bodyVersion,
-                    seq: artifactUpdate.seq,
-                    createdAt: artifactUpdate.createdAt,
-                    updatedAt: artifactUpdate.updatedAt,
-                    encryption: this.encryption,
-                    artifactDataKeys: this.artifactDataKeys,
-                });
-                if (!decrypted) {
-                    return;
-                }
 
-                storage.getState().addArtifact(decrypted);
-                log.log(`📦 Added new artifact ${artifactId} to storage`);
-            } catch (error) {
-                console.error(`Failed to process new artifact ${artifactId}:`, error);
-            }
+            await handleNewArtifactSocketUpdate({
+                artifactId,
+                dataEncryptionKey: artifactUpdate.dataEncryptionKey,
+                header: artifactUpdate.header,
+                headerVersion: artifactUpdate.headerVersion,
+                body: artifactUpdate.body,
+                bodyVersion: artifactUpdate.bodyVersion,
+                seq: artifactUpdate.seq,
+                createdAt: artifactUpdate.createdAt,
+                updatedAt: artifactUpdate.updatedAt,
+                encryption: this.encryption,
+                artifactDataKeys: this.artifactDataKeys,
+                addArtifact: (artifact) => storage.getState().addArtifact(artifact),
+                log,
+            });
         } else if (updateData.body.t === 'update-artifact') {
             log.log('📦 Received update-artifact update');
             const artifactUpdate = updateData.body;
             const artifactId = artifactUpdate.artifactId;
-            
-            // Get existing artifact
-            const existingArtifact = storage.getState().artifacts[artifactId];
-            if (!existingArtifact) {
-                console.error(`Artifact ${artifactId} not found in storage`);
-                // Fetch all artifacts to sync
-                this.artifactsSync.invalidate();
-                return;
-            }
-            
-            try {
-                // Get the data encryption key from memory
-                let dataEncryptionKey = this.artifactDataKeys.get(artifactId);
-                if (!dataEncryptionKey) {
-                    console.error(`Encryption key not found for artifact ${artifactId}, fetching artifacts`);
-                    this.artifactsSync.invalidate();
-                    return;
-                }
 
-                const updatedArtifact = await applySocketArtifactUpdate({
-                    existingArtifact,
-                    seq: updateData.seq,
-                    createdAt: updateData.createdAt,
-                    dataEncryptionKey,
-                    header: artifactUpdate.header,
-                    body: artifactUpdate.body,
-                });
-
-                storage.getState().updateArtifact(updatedArtifact);
-                log.log(`📦 Updated artifact ${artifactId} in storage`);
-            } catch (error) {
-                console.error(`Failed to process artifact update ${artifactId}:`, error);
-            }
+            await handleUpdateArtifactSocketUpdate({
+                artifactId,
+                seq: updateData.seq,
+                createdAt: updateData.createdAt,
+                header: artifactUpdate.header,
+                body: artifactUpdate.body,
+                artifactDataKeys: this.artifactDataKeys,
+                getExistingArtifact: (id) => storage.getState().artifacts[id],
+                updateArtifact: (artifact) => storage.getState().updateArtifact(artifact),
+                invalidateArtifactsSync: () => this.artifactsSync.invalidate(),
+                log,
+            });
         } else if (updateData.body.t === 'delete-artifact') {
             log.log('📦 Received delete-artifact update');
             const artifactUpdate = updateData.body;
