@@ -66,6 +66,7 @@ import { inferTaskLifecycleFromMessageContent, parseUpdateContainer } from './en
 import { handleNewFeedPostUpdate } from './engine/feedSocketUpdates';
 import { handleTodoKvBatchUpdate } from './engine/todoSocketUpdates';
 import { buildUpdatedMachineFromSocketUpdate } from './engine/machineSocketUpdates';
+import { handleUpdateAccountSocketUpdate } from './engine/accountSocketUpdates';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -2149,41 +2150,15 @@ class Sync {
             const accountUpdate = updateData.body;
             const currentProfile = storage.getState().profile;
 
-            // Build updated profile with new data
-            const updatedProfile: Profile = {
-                ...currentProfile,
-                firstName: accountUpdate.firstName !== undefined ? accountUpdate.firstName : currentProfile.firstName,
-                lastName: accountUpdate.lastName !== undefined ? accountUpdate.lastName : currentProfile.lastName,
-                avatar: accountUpdate.avatar !== undefined ? accountUpdate.avatar : currentProfile.avatar,
-                github: accountUpdate.github !== undefined ? accountUpdate.github : currentProfile.github,
-                timestamp: updateData.createdAt // Update timestamp to latest
-            };
-
-            // Apply the updated profile to storage
-            storage.getState().applyProfile(updatedProfile);
-
-            // Handle settings updates (new for profile sync)
-            if (accountUpdate.settings?.value) {
-                try {
-                    const decryptedSettings = await this.encryption.decryptRaw(accountUpdate.settings.value);
-                    const parsedSettings = settingsParse(decryptedSettings);
-
-                    // Version compatibility check
-                    const settingsSchemaVersion = parsedSettings.schemaVersion ?? 1;
-                    if (settingsSchemaVersion > SUPPORTED_SCHEMA_VERSION) {
-                        console.warn(
-                            `⚠️ Received settings schema v${settingsSchemaVersion}, ` +
-                            `we support v${SUPPORTED_SCHEMA_VERSION}. Update app for full functionality.`
-                        );
-                    }
-
-                    storage.getState().applySettings(parsedSettings, accountUpdate.settings.version);
-                    log.log(`📋 Settings synced from server (schema v${settingsSchemaVersion}, version ${accountUpdate.settings.version})`);
-                } catch (error) {
-                    console.error('❌ Failed to process settings update:', error);
-                    // Don't crash on settings sync errors, just log
-                }
-            }
+            await handleUpdateAccountSocketUpdate({
+                accountUpdate,
+                updateCreatedAt: updateData.createdAt,
+                currentProfile,
+                encryption: this.encryption,
+                applyProfile: (profile) => storage.getState().applyProfile(profile),
+                applySettings: (settings, version) => storage.getState().applySettings(settings, version),
+                log,
+            });
         } else if (updateData.body.t === 'update-machine') {
             const machineUpdate = updateData.body;
             const machineId = machineUpdate.machineId;  // Changed from .id to .machineId
