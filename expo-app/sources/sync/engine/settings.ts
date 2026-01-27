@@ -1,11 +1,12 @@
 import { tracking } from '@/track';
 import { HappyError } from '@/utils/errors';
 import { applySettings, settingsDefaults, settingsParse, type Settings } from '../settings';
-import { summarizeSettings, summarizeSettingsDelta, dbgSettings } from '../debugSettings';
+import { summarizeSettings, summarizeSettingsDelta, dbgSettings, isSettingsSyncDebugEnabled } from '../debugSettings';
 import { getServerUrl } from '../serverConfig';
 import { storage } from '../storage';
 import type { AuthCredentials } from '@/auth/tokenStorage';
 import type { Encryption } from '../encryption/encryption';
+import { sealSecretsDeep } from '../secretSettings';
 
 export async function syncSettings(params: {
     credentials: AuthCredentials;
@@ -164,3 +165,82 @@ export async function syncSettings(params: {
     }
 }
 
+export function applySettingsLocalDelta(params: {
+    delta: Partial<Settings>;
+    settingsSecretsKey: Uint8Array | null;
+    getPendingSettings: () => Partial<Settings>;
+    setPendingSettings: (next: Partial<Settings>) => void;
+    schedulePendingSettingsFlush: () => void;
+}): void {
+    const { settingsSecretsKey, getPendingSettings, setPendingSettings, schedulePendingSettingsFlush } = params;
+    let { delta } = params;
+
+    // Seal secret settings fields before any persistence.
+    delta = sealSecretsDeep(delta, settingsSecretsKey);
+
+    // Avoid no-op writes. Settings writes cause:
+    // - local persistence writes
+    // - pending delta persistence
+    // - a server POST (eventually)
+    //
+    // So we must not write when nothing actually changed.
+    const currentSettings = storage.getState().settings;
+    const deltaEntries = Object.entries(delta) as Array<[keyof Settings, unknown]>;
+    const hasRealChange = deltaEntries.some(([key, next]) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const prev = (currentSettings as any)[key];
+        if (Object.is(prev, next)) return false;
+
+        // Keep this O(1) and UI-friendly:
+        // - For objects/arrays/records, rely on reference changes.
+        // - Settings updates should always replace values immutably.
+        const prevIsObj = prev !== null && typeof prev === 'object';
+        const nextIsObj = next !== null && typeof next === 'object';
+        if (prevIsObj || nextIsObj) {
+            return prev !== next;
+        }
+        return true;
+    });
+    if (!hasRealChange) {
+        dbgSettings('applySettings skipped (no-op delta)', {
+            delta: summarizeSettingsDelta(delta),
+            base: summarizeSettings(currentSettings, { version: storage.getState().settingsVersion }),
+        });
+        return;
+    }
+
+    if (isSettingsSyncDebugEnabled()) {
+        const stack = (() => {
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const s = (new Error('settings-sync trace') as any)?.stack;
+                return typeof s === 'string' ? s.split('\n').slice(0, 10).join('\n') : null;
+            } catch {
+                return null;
+            }
+        })();
+        const st = storage.getState();
+        dbgSettings('applySettings called', {
+            delta: summarizeSettingsDelta(delta),
+            base: summarizeSettings(st.settings, { version: st.settingsVersion }),
+            stack,
+        });
+    }
+
+    storage.getState().applySettingsLocal(delta);
+
+    // Save pending settings
+    const nextPending = { ...getPendingSettings(), ...delta };
+    setPendingSettings(nextPending);
+    dbgSettings('applySettings: pendingSettings updated', {
+        pendingKeys: Object.keys(nextPending).sort(),
+    });
+
+    // Sync PostHog opt-out state if it was changed
+    if (tracking && 'analyticsOptOut' in delta) {
+        const currentSettings = storage.getState().settings;
+        currentSettings.analyticsOptOut ? tracking.optOut() : tracking.optIn();
+    }
+
+    schedulePendingSettingsFlush();
+}
