@@ -203,6 +203,7 @@ interface Settings {
   machineId?: string
   machineIdConfirmedByServer?: boolean
   daemonAutoStartWhenRunningHappy?: boolean
+  chromeMode?: boolean  // Default Chrome mode setting for Claude
   // Profile management settings (synced with happy app)
   activeProfileId?: string
   profiles: AIBackendProfile[]

@@ -1,11 +1,13 @@
 import { logger } from "@/ui/logger";
-import { claudeLocal } from "./claudeLocal";
+import { claudeLocal, ExitCodeError } from "./claudeLocal";
 import { Session } from "./session";
 import { Future } from "@/utils/future";
 import { createSessionScanner } from "./utils/sessionScanner";
 import type { QueueMessageContent } from "./runClaude";
 
-export async function claudeLocalLauncher(session: Session): Promise<'switch' | 'exit'> {
+export type LauncherResult = { type: 'switch' } | { type: 'exit', code: number };
+
+export async function claudeLocalLauncher(session: Session): Promise<LauncherResult> {
 
     // Create scanner
     const scanner = await createSessionScanner({
@@ -28,7 +30,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
 
 
     // Handle abort
-    let exitReason: 'switch' | 'exit' | null = null;
+    let exitReason: LauncherResult | null = null;
     const processAbortController = new AbortController();
     let exutFuture = new Future<void>();
     try {
@@ -48,7 +50,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
 
             // Switching to remote mode
             if (!exitReason) {
-                exitReason = 'switch';
+                exitReason = { type: 'switch' };
             }
 
             // Reset sent messages
@@ -63,7 +65,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
 
             // Switching to remote mode
             if (!exitReason) {
-                exitReason = 'switch';
+                exitReason = { type: 'switch' };
             }
 
             // Abort
@@ -80,7 +82,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
 
         // Exit if there are messages in the queue
         if (session.queue.size() > 0) {
-            return 'switch';
+            return { type: 'switch' };
         }
 
         // Handle session start
@@ -118,11 +120,16 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
 
                 // Normal exit
                 if (!exitReason) {
-                    exitReason = 'exit';
+                    exitReason = { type: 'exit', code: 0 };
                     break;
                 }
             } catch (e) {
                 logger.debug('[local]: launch error', e);
+                // If Claude exited with non-zero exit code, propagate it
+                if (e instanceof ExitCodeError) {
+                    exitReason = { type: 'exit', code: e.exitCode };
+                    break;
+                }
                 if (!exitReason) {
                     session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                     continue;
@@ -150,5 +157,5 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
     }
 
     // Return
-    return exitReason || 'exit';
+    return exitReason || { type: 'exit', code: 0 };
 }

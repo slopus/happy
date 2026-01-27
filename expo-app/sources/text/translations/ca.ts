@@ -556,6 +556,9 @@ export const ca: TranslationStructure = {
         askUserQuestion: {
             submit: 'Envia resposta',
             multipleQuestions: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'pregunta', plural: 'preguntes' })}`,
+            other: 'Altres',
+            otherDescription: 'Escriu la teva pròpia resposta',
+            otherPlaceholder: 'Escriu la teva resposta...',
         }
     },
 
