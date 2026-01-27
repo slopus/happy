@@ -37,6 +37,8 @@ import {
     buildResumeCapabilityOptionsFromUiState,
     getAgentResumeExperimentsFromSettings,
     getAllowExperimentalResumeByAgentIdFromUiState,
+    buildNewSessionOptionsFromUiState,
+    getNewSessionAgentInputExtraActionChips,
     getNewSessionRelevantInstallableDepKeys,
     getResumeRuntimeSupportPrefetchPlan,
 } from '@/agents/catalog';
@@ -51,8 +53,6 @@ import { useNewSessionCapabilitiesPrefetch } from '@/components/sessions/new/hoo
 import { useNewSessionDraftAutoPersist } from '@/components/sessions/new/hooks/useNewSessionDraftAutoPersist';
 import { useCreateNewSession } from '@/components/sessions/new/hooks/useCreateNewSession';
 import { useNewSessionWizardProps } from '@/components/sessions/new/hooks/useNewSessionWizardProps';
-import { createAuggieAllowIndexingChip } from '@/agents/providers/auggie/AuggieIndexingChip';
-import { AUGGIE_NEW_SESSION_OPTION_ALLOW_INDEXING } from '@/agents/providers/auggie/indexing';
 
 // Configuration constants
 const RECENT_PATHS_DEFAULT_VISIBLE = 5;
@@ -133,11 +133,11 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
         return typeof resumeSessionIdParam === 'string' ? resumeSessionIdParam : '';
     });
 
-    const [auggieAllowIndexing, setAuggieAllowIndexing] = React.useState(() => {
-        if (typeof persistedDraft?.auggieAllowIndexing === 'boolean') {
-            return persistedDraft.auggieAllowIndexing;
-        }
-        return false;
+    const [agentNewSessionOptionStateByAgentId, setAgentNewSessionOptionStateByAgentId] = React.useState<
+        Partial<Record<AgentId, Record<string, unknown>>>
+    >(() => {
+        const raw = (persistedDraft as any)?.agentNewSessionOptionStateByAgentId;
+        return raw && typeof raw === 'object' ? (raw as any) : {};
     });
 
     // Settings and state
@@ -1370,10 +1370,10 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
         });
     }, [selectedMachine, selectedMachineId, selectedProfileEnvVars, selectedProfileForEnvVars]);
 
+    const agentOptionState = agentNewSessionOptionStateByAgentId[agentType] ?? null;
     const agentNewSessionOptions = React.useMemo(() => {
-        if (agentType !== 'auggie') return null;
-        return { [AUGGIE_NEW_SESSION_OPTION_ALLOW_INDEXING]: auggieAllowIndexing === true };
-    }, [agentType, auggieAllowIndexing]);
+        return buildNewSessionOptionsFromUiState({ agentId: agentType, agentOptionState });
+    }, [agentOptionState, agentType]);
 
     const { handleCreateSession } = useCreateNewSession({
         router,
@@ -1430,15 +1430,20 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
         };
     }, [selectedMachine, theme]);
 
+    const setAgentOptionStateForCurrentAgent = React.useCallback((key: string, value: unknown) => {
+        setAgentNewSessionOptionStateByAgentId((prev) => {
+            const nextForAgent = { ...(prev[agentType] ?? {}), [key]: value };
+            return { ...prev, [agentType]: nextForAgent };
+        });
+    }, [agentType]);
+
     const agentInputExtraActionChips = React.useMemo(() => {
-        if (agentType !== 'auggie') return undefined;
-        return [
-            createAuggieAllowIndexingChip({
-                allowIndexing: auggieAllowIndexing,
-                setAllowIndexing: setAuggieAllowIndexing,
-            }),
-        ];
-    }, [agentType, auggieAllowIndexing]);
+        return getNewSessionAgentInputExtraActionChips({
+            agentId: agentType,
+            agentOptionState,
+            setAgentOptionState: setAgentOptionStateForCurrentAgent,
+        });
+    }, [agentOptionState, agentType, setAgentOptionStateForCurrentAgent]);
 
     const persistDraftNow = React.useCallback(() => {
         saveNewSessionDraft({
@@ -1454,12 +1459,12 @@ export function useNewSessionScreenModel(): NewSessionScreenModel {
             modelMode,
             sessionType,
             resumeSessionId,
-            auggieAllowIndexing,
+            agentNewSessionOptionStateByAgentId,
             updatedAt: Date.now(),
         });
     }, [
         agentType,
-        auggieAllowIndexing,
+        agentNewSessionOptionStateByAgentId,
         getSessionOnlySecretValueEncByProfileIdByEnvVarName,
         modelMode,
         permissionMode,

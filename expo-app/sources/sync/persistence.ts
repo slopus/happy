@@ -38,7 +38,11 @@ export interface NewSessionDraft {
     modelMode: ModelMode;
     sessionType: NewSessionSessionType;
     resumeSessionId?: string;
-    auggieAllowIndexing?: boolean;
+    /**
+     * Provider-specific new-session option state keyed by agent id.
+     * This is UI-only draft state (not sent to server).
+     */
+    agentNewSessionOptionStateByAgentId?: Partial<Record<AgentId, Record<string, unknown>>> | null;
     updatedAt: number;
 }
 
@@ -89,6 +93,33 @@ function parseDraftSecretStringOrNull(value: unknown): SecretString | null | und
     const parsed = SecretStringSchema.safeParse(value);
     if (parsed.success) return parsed.data;
     return undefined;
+}
+
+function parseDraftAgentNewSessionOptionStateByAgentId(
+    input: unknown,
+): Partial<Record<AgentId, Record<string, unknown>>> | null {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+    const out: Partial<Record<AgentId, Record<string, unknown>>> = {};
+
+    for (const [rawAgentId, rawOptions] of Object.entries(input as Record<string, unknown>)) {
+        if (!isAgentId(rawAgentId)) continue;
+        if (!rawOptions || typeof rawOptions !== 'object' || Array.isArray(rawOptions)) continue;
+
+        const options: Record<string, unknown> = {};
+        for (const [rawKey, rawValue] of Object.entries(rawOptions as Record<string, unknown>)) {
+            const key = typeof rawKey === 'string' ? rawKey.trim() : '';
+            if (!key) continue;
+
+            // Only salvage JSON-safe primitives; objects can be added later if needed.
+            if (rawValue === null || typeof rawValue === 'boolean' || typeof rawValue === 'number' || typeof rawValue === 'string') {
+                options[key] = rawValue;
+            }
+        }
+
+        if (Object.keys(options).length > 0) out[rawAgentId] = options;
+    }
+
+    return Object.keys(out).length > 0 ? out : null;
 }
 
 export function loadSettings(): { settings: Settings, version: number | null } {
@@ -266,8 +297,25 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
         const resumeSessionId = typeof parsed.resumeSessionId === 'string' ? parsed.resumeSessionId : undefined;
-        const auggieAllowIndexing = typeof parsed.auggieAllowIndexing === 'boolean' ? parsed.auggieAllowIndexing : undefined;
+        const agentNewSessionOptionStateByAgentId = parseDraftAgentNewSessionOptionStateByAgentId(
+            (parsed as any).agentNewSessionOptionStateByAgentId,
+        );
+        const legacyAuggieAllowIndexing = typeof (parsed as any).auggieAllowIndexing === 'boolean'
+            ? (parsed as any).auggieAllowIndexing
+            : undefined;
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
+
+        const migratedAgentOptions: Partial<Record<AgentId, Record<string, unknown>>> = {
+            ...(agentNewSessionOptionStateByAgentId ?? {}),
+        };
+        // Legacy migration: older drafts stored `auggieAllowIndexing` at top-level.
+        // Keep reading it so users don't lose their local draft state.
+        if (typeof legacyAuggieAllowIndexing === 'boolean') {
+            migratedAgentOptions.auggie = {
+                ...(migratedAgentOptions.auggie ?? {}),
+                allowIndexing: legacyAuggieAllowIndexing,
+            };
+        }
 
         return {
             input,
@@ -282,7 +330,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             modelMode,
             sessionType,
             ...(resumeSessionId ? { resumeSessionId } : {}),
-            ...(typeof auggieAllowIndexing === 'boolean' ? { auggieAllowIndexing } : {}),
+            ...(Object.keys(migratedAgentOptions).length > 0 ? { agentNewSessionOptionStateByAgentId: migratedAgentOptions } : {}),
             updatedAt,
         };
     } catch (e) {

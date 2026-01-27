@@ -168,7 +168,7 @@ describe('persistence', () => {
             expect(draft?.resumeSessionId).toBe('abc123');
         });
 
-        it('roundtrips auggieAllowIndexing when persisted', () => {
+        it('migrates legacy auggieAllowIndexing into agentNewSessionOptionStateByAgentId', () => {
             store.set(
                 'new-session-draft-v1',
                 JSON.stringify({
@@ -186,7 +186,7 @@ describe('persistence', () => {
             );
 
             const draft = loadNewSessionDraft();
-            expect(draft?.auggieAllowIndexing).toBe(true);
+            expect((draft as any)?.agentNewSessionOptionStateByAgentId?.auggie?.allowIndexing).toBe(true);
         });
 
         it('clamps invalid permissionMode to default', () => {

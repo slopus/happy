@@ -7,6 +7,7 @@ import type { Settings } from '@/sync/settings';
 import { buildAcpLoadSessionPrefetchRequest, readAcpLoadSessionSupport, shouldPrefetchAcpCapabilities } from './acpRuntimeResume';
 import { CODEX_UI_BEHAVIOR_OVERRIDE } from './providers/codex/uiBehavior';
 import { AUGGIE_UI_BEHAVIOR_OVERRIDE } from './providers/auggie/uiBehavior';
+import type { AgentInputExtraActionChip } from '@/components/sessions/agentInput';
 
 type CapabilityResults = Partial<Record<CapabilityId, CapabilityDetectResult>>;
 
@@ -44,6 +45,15 @@ export type AgentUiBehavior = Readonly<{
         getPreflightIssues?: (ctx: ResumePreflightContext) => readonly NewSessionPreflightIssue[];
     }>;
     newSession?: Readonly<{
+        buildNewSessionOptions?: (ctx: {
+            agentId: AgentId;
+            agentOptionState?: Record<string, unknown> | null;
+        }) => Record<string, unknown> | null;
+        getAgentInputExtraActionChips?: (ctx: {
+            agentId: AgentId;
+            agentOptionState?: Record<string, unknown> | null;
+            setAgentOptionState: (key: string, value: unknown) => void;
+        }) => ReadonlyArray<AgentInputExtraActionChip> | undefined;
         getPreflightIssues?: (ctx: NewSessionPreflightContext) => readonly NewSessionPreflightIssue[];
         getRelevantInstallableDepKeys?: (ctx: NewSessionRelevantInstallableDepsContext) => readonly string[];
     }>;
@@ -240,6 +250,23 @@ export function getNewSessionPreflightIssues(ctx: NewSessionPreflightContext): r
 export function getResumePreflightIssues(ctx: ResumePreflightContext): readonly NewSessionPreflightIssue[] {
     const fn = AGENTS_UI_BEHAVIOR[ctx.agentId].resume?.getPreflightIssues;
     return fn ? fn(ctx) : [];
+}
+
+export function buildNewSessionOptionsFromUiState(opts: {
+    agentId: AgentId;
+    agentOptionState?: Record<string, unknown> | null;
+}): Record<string, unknown> | null {
+    const fn = AGENTS_UI_BEHAVIOR[opts.agentId].newSession?.buildNewSessionOptions;
+    return fn ? fn(opts) : null;
+}
+
+export function getNewSessionAgentInputExtraActionChips(opts: {
+    agentId: AgentId;
+    agentOptionState?: Record<string, unknown> | null;
+    setAgentOptionState: (key: string, value: unknown) => void;
+}): ReadonlyArray<AgentInputExtraActionChip> | undefined {
+    const fn = AGENTS_UI_BEHAVIOR[opts.agentId].newSession?.getAgentInputExtraActionChips;
+    return fn ? fn(opts) : undefined;
 }
 
 export function getNewSessionRelevantInstallableDepKeys(
