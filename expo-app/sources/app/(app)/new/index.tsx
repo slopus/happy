@@ -9,10 +9,8 @@ import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { machineSpawnNewSession } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
-import { createWorktree } from '@/utils/createWorktree';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
 import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
@@ -21,28 +19,25 @@ import { readAccountPermissionDefaults, resolveNewSessionDefaultPermissionMode }
 import { AIBackendProfile, getProfileEnvironmentVariables, isProfileCompatibleWithAgent } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES, getProfilePrimaryCli, getProfileSupportedAgentIds, isProfileCompatibleWithAnyAgent } from '@/sync/profileUtils';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
-import { getRequiredSecretEnvVarNames } from '@/sync/profileSecrets';
 import { DEFAULT_AGENT_ID, getAgentCore, isAgentId, resolveAgentIdFromCliDetectKey, type AgentId } from '@/agents/catalog';
 import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
 import { applyCliWarningDismissal, isCliWarningDismissed } from '@/agents/cliWarnings';
 
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
-import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
-import { MachineSelector } from '@/components/sessions/newSession/components/MachineSelector';
-import { PathSelector } from '@/components/sessions/newSession/components/PathSelector';
+import { loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
+import { MachineSelector } from '@/components/sessions/new/components/MachineSelector';
+import { PathSelector } from '@/components/sessions/new/components/PathSelector';
 import { SearchHeader } from '@/components/ui/forms/SearchHeader';
-import { ProfileCompatibilityIcon } from '@/components/sessions/newSession/components/ProfileCompatibilityIcon';
-import { EnvironmentVariablesPreviewModal } from '@/components/sessions/newSession/components/EnvironmentVariablesPreviewModal';
+import { ProfileCompatibilityIcon } from '@/components/sessions/new/components/ProfileCompatibilityIcon';
+import { EnvironmentVariablesPreviewModal } from '@/components/sessions/new/components/EnvironmentVariablesPreviewModal';
 import { consumeProfileIdParam, consumeSecretIdParam } from '@/profileRouteParams';
 import { getModelOptionsForAgentType } from '@/sync/modelOptions';
 import { useFocusEffect } from '@react-navigation/native';
 import { getRecentPathsForMachine } from '@/utils/sessions/recentPaths';
 import { useMachineEnvPresence } from '@/hooks/useMachineEnvPresence';
-import { getSecretSatisfaction } from '@/utils/secrets/secretSatisfaction';
-import { getMissingRequiredConfigEnvVarNames } from '@/utils/profiles/profileConfigRequirements';
 import { InteractionManager } from 'react-native';
-import { NewSessionWizard } from '@/components/sessions/newSession/components/NewSessionWizard';
+import { NewSessionWizard } from '@/components/sessions/new/components/NewSessionWizard';
 import { getMachineCapabilitiesSnapshot, prefetchMachineCapabilities, prefetchMachineCapabilitiesIfStale, useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import { CAPABILITIES_REQUEST_NEW_SESSION } from '@/capabilities/requests';
 import { getCodexMcpResumeDepData } from '@/capabilities/codexMcpResume';
@@ -51,20 +46,25 @@ import { getInstallableDepRegistryEntries } from '@/capabilities/installableDeps
 import { PopoverBoundaryProvider } from '@/components/ui/popover';
 import { PopoverPortalTargetProvider } from '@/components/ui/popover';
 import { resolveTerminalSpawnOptions } from '@/sync/terminalSettings';
-import { canAgentResume } from '@/agents/resumeCapabilities';
 import type { CapabilityId } from '@/sync/capabilitiesProtocol';
-import { buildResumeCapabilityOptionsFromUiState, buildSpawnSessionExtrasFromUiState, getNewSessionPreflightIssues, getNewSessionRelevantInstallableDepKeys, getResumeRuntimeSupportPrefetchPlan } from '@/agents/registryUiBehavior';
-import { buildAcpLoadSessionPrefetchRequest, describeAcpLoadSessionSupport, shouldPrefetchAcpCapabilities } from '@/agents/acpRuntimeResume';
+import {
+    buildResumeCapabilityOptionsFromUiState,
+    getNewSessionRelevantInstallableDepKeys,
+    getResumeRuntimeSupportPrefetchPlan,
+} from '@/agents/catalog';
+import { buildAcpLoadSessionPrefetchRequest, shouldPrefetchAcpCapabilities } from '@/agents/acpRuntimeResume';
 import type { SecretChoiceByProfileIdByEnvVarName } from '@/utils/secrets/secretRequirementApply';
+import { getSecretSatisfaction } from '@/utils/secrets/secretSatisfaction';
 import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { computeNewSessionInputMaxHeight } from '@/components/sessions/agentInput/inputMaxHeight';
-import { useProfileMap, transformProfileToEnvironmentVars } from '@/components/sessions/newSession/modules/profileHelpers';
-import { newSessionScreenStyles } from '@/components/sessions/newSession/newSessionScreenStyles';
-import { formatResumeSupportDetailCode } from '@/components/sessions/newSession/modules/formatResumeSupportDetailCode';
-import { useSecretRequirementFlow } from '@/components/sessions/newSession/hooks/useSecretRequirementFlow';
-import { useNewSessionCapabilitiesPrefetch } from '@/components/sessions/newSession/hooks/useNewSessionCapabilitiesPrefetch';
-import { useNewSessionDraftAutoPersist } from '@/components/sessions/newSession/hooks/useNewSessionDraftAutoPersist';
-import { LegacyAgentInputPanel } from '@/components/sessions/newSession/components/LegacyAgentInputPanel';
+import { useProfileMap, transformProfileToEnvironmentVars } from '@/components/sessions/new/modules/profileHelpers';
+import { newSessionScreenStyles } from '@/components/sessions/new/newSessionScreenStyles';
+import { useSecretRequirementFlow } from '@/components/sessions/new/hooks/useSecretRequirementFlow';
+import { useNewSessionCapabilitiesPrefetch } from '@/components/sessions/new/hooks/useNewSessionCapabilitiesPrefetch';
+import { useNewSessionDraftAutoPersist } from '@/components/sessions/new/hooks/useNewSessionDraftAutoPersist';
+import { useCreateNewSession } from '@/components/sessions/new/hooks/useCreateNewSession';
+import { useNewSessionWizardProps } from '@/components/sessions/new/hooks/useNewSessionWizardProps';
+import { LegacyAgentInputPanel } from '@/components/sessions/new/components/LegacyAgentInputPanel';
 
 // Configuration constants
 const RECENT_PATHS_DEFAULT_VISIBLE = 5;
@@ -1378,303 +1378,36 @@ function NewSessionScreen() {
         });
     }, [selectedMachine, selectedMachineId, selectedProfileEnvVars, selectedProfileForEnvVars]);
 
-    // Session creation
-    const handleCreateSession = React.useCallback(async () => {
-        if (!selectedMachineId) {
-            Modal.alert(t('common.error'), t('newSession.noMachineSelected'));
-            return;
-        }
-        if (!selectedPath) {
-            Modal.alert(t('common.error'), t('newSession.noPathSelected'));
-            return;
-        }
 
-        setIsCreating(true);
-
-        try {
-            let actualPath = selectedPath;
-
-            // Handle worktree creation
-            if (sessionType === 'worktree' && experimentsEnabled) {
-                const worktreeResult = await createWorktree(selectedMachineId, selectedPath);
-
-                if (!worktreeResult.success) {
-                    if (worktreeResult.error === 'Not a Git repository') {
-                        Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
-                    } else {
-                        Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));
-                    }
-                    setIsCreating(false);
-                    return;
-                }
-
-                actualPath = worktreeResult.worktreePath;
-            }
-
-            // Save settings
-            const updatedPaths = [{ machineId: selectedMachineId, path: selectedPath }, ...recentMachinePaths.filter(rp => rp.machineId !== selectedMachineId)].slice(0, 10);
-            const profilesActive = useProfiles;
-
-            // Keep prod session creation behavior unchanged:
-            // only persist/apply profiles & model when an explicit opt-in flag is enabled.
-            const settingsUpdate: Parameters<typeof sync.applySettings>[0] = {
-                recentMachinePaths: updatedPaths,
-                lastUsedAgent: agentType,
-                lastUsedPermissionMode: permissionMode,
-            };
-            if (profilesActive) {
-                settingsUpdate.lastUsedProfile = selectedProfileId;
-            }
-            sync.applySettings(settingsUpdate);
-
-            // Get environment variables from selected profile
-            let environmentVariables = undefined;
-            if (profilesActive && selectedProfileId) {
-                const selectedProfile = profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId);
-                if (selectedProfile) {
-                    environmentVariables = transformProfileToEnvironmentVars(selectedProfile);
-
-                    // Spawn-time secret injection overlay (saved key / session-only key)
-                    const selectedSecretIdByEnvVarName = selectedSecretIdByProfileIdByEnvVarName[selectedProfileId] ?? {};
-                    const sessionOnlySecretValueByEnvVarName = sessionOnlySecretValueByProfileIdByEnvVarName[selectedProfileId] ?? {};
-                    const machineEnvReadyByName = Object.fromEntries(
-                        Object.entries(machineEnvPresence.meta ?? {}).map(([k, v]) => [k, Boolean(v?.isSet)]),
-                    );
-
-	                    if (machineEnvPresence.isPreviewEnvSupported && !machineEnvPresence.isLoading) {
-	                        const missingConfig = getMissingRequiredConfigEnvVarNames(selectedProfile, machineEnvReadyByName);
-	                        if (missingConfig.length > 0) {
-	                            Modal.alert(
-	                                t('common.error'),
-                                t('profiles.requirements.missingConfigForProfile', { env: missingConfig[0]! }),
-                            );
-                            setIsCreating(false);
-                            return;
-                        }
-                    }
-
-                    const satisfaction = getSecretSatisfaction({
-                        profile: selectedProfile,
-                        secrets,
-                        defaultBindings: secretBindingsByProfileId[selectedProfile.id] ?? null,
-                        selectedSecretIds: selectedSecretIdByEnvVarName,
-                        sessionOnlyValues: sessionOnlySecretValueByEnvVarName,
-                        machineEnvReadyByName,
-                    });
-
-                    if (satisfaction.hasSecretRequirements && !satisfaction.isSatisfied) {
-                        const missing = satisfaction.items.find((i) => i.required && !i.isSatisfied)?.envVarName ?? null;
-                        Modal.alert(
-                            t('common.error'),
-                            t('secrets.missingForProfile', { env: missing ?? t('profiles.requirements.secretRequired') }),
-                        );
-                        setIsCreating(false);
-                        return;
-                    }
-
-                    // Inject any secrets that were satisfied via saved key or session-only.
-                    // Machine-env satisfied secrets are not injected (daemon will resolve from its env).
-                    for (const item of satisfaction.items) {
-                        if (!item.isSatisfied) continue;
-                        let injected: string | null = null;
-
-                        if (item.satisfiedBy === 'sessionOnly') {
-                            injected = sessionOnlySecretValueByEnvVarName[item.envVarName] ?? null;
-                        } else if (
-                            item.satisfiedBy === 'selectedSaved' ||
-                            item.satisfiedBy === 'rememberedSaved' ||
-                            item.satisfiedBy === 'defaultSaved'
-                        ) {
-                            const id = item.savedSecretId;
-                            const secret = id ? (secrets.find((k) => k.id === id) ?? null) : null;
-                            injected = sync.decryptSecretValue(secret?.encryptedValue ?? null);
-                        }
-
-                        if (typeof injected === 'string' && injected.length > 0) {
-                            environmentVariables = {
-                                ...environmentVariables,
-                                [item.envVarName]: injected,
-                            };
-                        }
-                    }
-                }
-            }
-
-            const terminal = resolveTerminalSpawnOptions({
-                settings: storage.getState().settings,
-                machineId: selectedMachineId,
-            });
-
-            const preflightIssues = getNewSessionPreflightIssues({
-                agentId: agentType,
-                experimentsEnabled: experimentsEnabled === true,
-                expCodexResume: expCodexResume === true,
-                expCodexAcp: expCodexAcp === true,
-                resumeSessionId,
-                deps: {
-                    codexAcpInstalled: typeof codexAcpDep?.installed === 'boolean' ? codexAcpDep.installed : null,
-                    codexMcpResumeInstalled: typeof codexMcpResumeDep?.installed === 'boolean' ? codexMcpResumeDep.installed : null,
-                },
-            });
-            const blockingIssue = preflightIssues[0] ?? null;
-            if (blockingIssue) {
-                const openMachine = await Modal.confirm(
-                    t(blockingIssue.titleKey),
-                    t(blockingIssue.messageKey),
-                    { confirmText: t(blockingIssue.confirmTextKey) }
-                );
-                if (openMachine && blockingIssue.action === 'openMachine') {
-                    router.push(`/machine/${selectedMachineId}` as any);
-                }
-                setIsCreating(false);
-                return;
-            }
-
-            const resumeDecision = await (async (): Promise<{ resume?: string; reason?: string }> => {
-                const wanted = resumeSessionId.trim();
-                if (!wanted) return {};
-
-                const computeOptions = (results: any) => buildResumeCapabilityOptionsFromUiState({
-                    experimentsEnabled: experimentsEnabled === true,
-                    expCodexResume: expCodexResume === true,
-                    expCodexAcp: expCodexAcp === true,
-                    results,
-                });
-
-                const snapshot = getMachineCapabilitiesSnapshot(selectedMachineId);
-                const results = snapshot?.response.results as any;
-                let options = computeOptions(results);
-
-                if (!canAgentResume(agentType, options)) {
-                    const plan = getResumeRuntimeSupportPrefetchPlan(agentType, results);
-                    if (plan) {
-                        setIsResumeSupportChecking(true);
-                        try {
-                            await prefetchMachineCapabilities({
-                                machineId: selectedMachineId,
-                                request: plan.request,
-                                timeoutMs: plan.timeoutMs,
-                            });
-                        } catch {
-                            // Non-blocking: we'll fall back to starting a new session if resume is still gated.
-                        } finally {
-                            setIsResumeSupportChecking(false);
-                        }
-
-                        const snapshot2 = getMachineCapabilitiesSnapshot(selectedMachineId);
-                        const results2 = snapshot2?.response.results as any;
-                        options = computeOptions(results2);
-                    }
-                }
-
-                if (canAgentResume(agentType, options)) return { resume: wanted };
-
-                const snapshotFinal = getMachineCapabilitiesSnapshot(selectedMachineId);
-                const resultsFinal = snapshotFinal?.response.results as any;
-                const desc = describeAcpLoadSessionSupport(agentType, resultsFinal);
-                const detailLines: string[] = [];
-                if (desc.code) {
-                    detailLines.push(formatResumeSupportDetailCode(desc.code));
-                }
-                if (desc.rawMessage) {
-                    detailLines.push(desc.rawMessage);
-                }
-                const detail = detailLines.length > 0 ? `\n\n${t('common.details')}: ${detailLines.join('\n')}` : '';
-                return { reason: `${t('newSession.resume.cannotApplyBody')}${detail}` };
-            })();
-
-            if (resumeSessionId.trim() && !resumeDecision.resume) {
-                const proceed = await Modal.confirm(
-                    t('session.resumeFailed'),
-                    resumeDecision.reason ?? t('newSession.resume.cannotApplyBody'),
-                    { confirmText: t('common.continue') },
-                );
-                if (!proceed) {
-                    setIsCreating(false);
-                    return;
-                }
-            }
-
-            const result = await machineSpawnNewSession({
-                machineId: selectedMachineId,
-                directory: actualPath,
-                approvedNewDirectoryCreation: true,
-                agent: agentType,
-                profileId: profilesActive ? (selectedProfileId ?? '') : undefined,
-                environmentVariables,
-                resume: resumeDecision.resume,
-                ...buildSpawnSessionExtrasFromUiState({
-                    agentId: agentType,
-                    experimentsEnabled: experimentsEnabled === true,
-                    expCodexResume: expCodexResume === true,
-                    expCodexAcp: expCodexAcp === true,
-                    resumeSessionId,
-                }),
-                terminal,
-            });
-
-            if ('sessionId' in result && result.sessionId) {
-                // Clear draft state on successful session creation
-                clearNewSessionDraft();
-
-                await sync.refreshSessions();
-
-                // Set permission mode and model mode on the session
-                storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
-                if (getAgentCore(agentType).model.supportsSelection && modelMode && modelMode !== 'default') {
-                    storage.getState().updateSessionModelMode(result.sessionId, modelMode);
-                }
-
-                // Send initial message if provided
-                if (sessionPrompt.trim()) {
-                    await sync.sendMessage(result.sessionId, sessionPrompt);
-                }
-
-                router.replace(`/session/${result.sessionId}`, {
-                    dangerouslySingular() {
-                        return 'session'
-                    },
-                });
-            } else {
-                throw new Error('Session spawning failed - no session ID returned.');
-            }
-        } catch (error) {
-            console.error('Failed to start session', error);
-            let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
-            if (error instanceof Error) {
-                if (error.message.includes('timeout')) {
-                    errorMessage = 'Session startup timed out. The machine may be slow or the daemon may not be responding.';
-                } else if (error.message.includes('Socket not connected')) {
-                    errorMessage = 'Not connected to server. Check your internet connection.';
-                }
-            }
-            Modal.alert(t('common.error'), errorMessage);
-            setIsCreating(false);
-        }
-    }, [
-        agentType,
-        experimentsEnabled,
-        expCodexResume,
-        machineEnvPresence.meta,
-        modelMode,
-        permissionMode,
-        profileMap,
-        recentMachinePaths,
-        resumeSessionId,
+    const { handleCreateSession } = useCreateNewSession({
         router,
-        secretBindingsByProfileId,
-        secrets,
-        selectedMachineCapabilities,
-        selectedSecretIdByProfileIdByEnvVarName,
         selectedMachineId,
         selectedPath,
-        selectedProfileId,
-        sessionOnlySecretValueByProfileIdByEnvVarName,
-        sessionPrompt,
+        selectedMachine,
+        setIsCreating,
+        setIsResumeSupportChecking,
         sessionType,
-        useEnhancedSessionWizard,
+        experimentsEnabled,
+        expCodexResume,
+        expCodexAcp,
         useProfiles,
-    ]);
+        selectedProfileId,
+        profileMap,
+        recentMachinePaths,
+        agentType,
+        permissionMode,
+        modelMode,
+        sessionPrompt,
+        resumeSessionId,
+        machineEnvPresence,
+        secrets,
+        secretBindingsByProfileId,
+        selectedSecretIdByProfileIdByEnvVarName,
+        sessionOnlySecretValueByProfileIdByEnvVarName,
+        selectedMachineCapabilities,
+        codexAcpDep,
+        codexMcpResumeDep,
+    });
 
     const handleCloseModal = React.useCallback(() => {
         // On web (especially mobile), `router.back()` can be a no-op if the modal is the first history entry.
@@ -1795,266 +1528,101 @@ function NewSessionScreen() {
     // Full wizard with numbered sections, profile management, CLI detection
     // ========================================================================
 
-    const wizardLayoutProps = React.useMemo(() => {
-        return {
-            theme,
-            styles,
-            safeAreaBottom: safeArea.bottom,
-            headerHeight,
-            newSessionSidePadding,
-            newSessionBottomPadding,
-        };
-    }, [headerHeight, newSessionBottomPadding, newSessionSidePadding, safeArea.bottom, theme]);
+    const {
+        layout: wizardLayoutProps,
+        profiles: wizardProfilesProps,
+        agent: wizardAgentProps,
+        machine: wizardMachineProps,
+        footer: wizardFooterProps,
+    } = useNewSessionWizardProps({
+        theme,
+        styles,
+        safeAreaBottom: safeArea.bottom,
+        headerHeight,
+        newSessionSidePadding,
+        newSessionBottomPadding,
 
-    const getSecretSatisfactionForProfile = React.useCallback((profile: AIBackendProfile) => {
-        const selectedSecretIds = selectedSecretIdByProfileIdByEnvVarName[profile.id] ?? null;
-        const sessionOnlyValues = sessionOnlySecretValueByProfileIdByEnvVarName[profile.id] ?? null;
-        const machineEnvReadyByName = Object.fromEntries(
-            Object.entries(machineEnvPresence.meta ?? {}).map(([k, v]) => [k, Boolean(v?.isSet)]),
-        );
-        return getSecretSatisfaction({
-            profile,
-            secrets,
-            defaultBindings: secretBindingsByProfileId[profile.id] ?? null,
-            selectedSecretIds,
-            sessionOnlyValues,
-            machineEnvReadyByName,
-        });
-    }, [
-        machineEnvPresence.meta,
+        useProfiles,
+        profiles,
+        favoriteProfileIds,
+        setFavoriteProfileIds,
+        experimentsEnabled,
+        selectedProfileId,
+        onPressDefaultEnvironment,
+        onPressProfile,
+        selectedMachineId,
+        getProfileDisabled,
+        getProfileSubtitleExtra,
+        handleAddProfile,
+        openProfileEdit,
+        handleDuplicateProfile,
+        handleDeleteProfile,
+        openProfileEnvVarsPreview,
+        suppressNextSecretAutoPromptKeyRef,
+        openSecretRequirementModal,
+        profilesGroupTitles,
+
+        machineEnvPresence,
         secrets,
         secretBindingsByProfileId,
         selectedSecretIdByProfileIdByEnvVarName,
         sessionOnlySecretValueByProfileIdByEnvVarName,
-    ]);
 
-    const getSecretOverrideReady = React.useCallback((profile: AIBackendProfile): boolean => {
-        const satisfaction = getSecretSatisfactionForProfile(profile);
-        // Override should only represent non-machine satisfaction (defaults / saved / session-only).
-        if (!satisfaction.hasSecretRequirements) return false;
-        const required = satisfaction.items.filter((i) => i.required);
-        if (required.length === 0) return false;
-        if (!required.every((i) => i.isSatisfied)) return false;
-        return required.some((i) => i.satisfiedBy !== 'machineEnv');
-    }, [getSecretSatisfactionForProfile]);
+        wizardInstallableDeps,
+        selectedMachineCapabilities,
 
-    const getSecretMachineEnvOverride = React.useCallback((profile: AIBackendProfile) => {
-        if (!selectedMachineId) return null;
-        if (!machineEnvPresence.isPreviewEnvSupported) return null;
-        const requiredNames = getRequiredSecretEnvVarNames(profile);
-        if (requiredNames.length === 0) return null;
-        return {
-            isReady: requiredNames.every((name) => Boolean(machineEnvPresence.meta[name]?.isSet)),
-            isLoading: machineEnvPresence.isLoading,
-        };
-    }, [
-        machineEnvPresence.isLoading,
-        machineEnvPresence.isPreviewEnvSupported,
-        machineEnvPresence.meta,
-        selectedMachineId,
-    ]);
-
-    const wizardProfilesProps = React.useMemo(() => {
-        return {
-            useProfiles,
-            profiles,
-            favoriteProfileIds,
-            setFavoriteProfileIds,
-            experimentsEnabled,
-            selectedProfileId,
-            onPressDefaultEnvironment,
-            onPressProfile,
-            selectedMachineId,
-            getProfileDisabled,
-            getProfileSubtitleExtra,
-            handleAddProfile,
-            openProfileEdit,
-            handleDuplicateProfile,
-            handleDeleteProfile,
-            openProfileEnvVarsPreview,
-            suppressNextSecretAutoPromptKeyRef,
-            openSecretRequirementModal,
-            profilesGroupTitles,
-            getSecretOverrideReady,
-            getSecretSatisfactionForProfile,
-            getSecretMachineEnvOverride,
-        };
-    }, [
-        experimentsEnabled,
-        favoriteProfileIds,
-        getSecretOverrideReady,
-        getProfileDisabled,
-        getProfileSubtitleExtra,
-        getSecretSatisfactionForProfile,
-        getSecretMachineEnvOverride,
-        handleAddProfile,
-        handleDeleteProfile,
-        handleDuplicateProfile,
-        onPressDefaultEnvironment,
-        onPressProfile,
-        openSecretRequirementModal,
-        openProfileEdit,
-        openProfileEnvVarsPreview,
-        profiles,
-        profilesGroupTitles,
-        selectedMachineId,
-        selectedProfileId,
-        setFavoriteProfileIds,
-        suppressNextSecretAutoPromptKeyRef,
-        useProfiles,
-    ]);
-
-    const installableDepInstallers = React.useMemo(() => {
-        if (!selectedMachineId) return [];
-        if (wizardInstallableDeps.length === 0) return [];
-
-        return wizardInstallableDeps.map(({ entry, depStatus }) => ({
-            machineId: selectedMachineId,
-            enabled: true,
-            groupTitle: `${t(entry.groupTitleKey)}${entry.experimental ? ' (experimental)' : ''}`,
-            depId: entry.depId,
-            depTitle: entry.depTitle,
-            depIconName: entry.depIconName as any,
-            depStatus,
-            capabilitiesStatus: selectedMachineCapabilities.status,
-            installSpecSettingKey: entry.installSpecSettingKey,
-            installSpecTitle: entry.installSpecTitle,
-            installSpecDescription: entry.installSpecDescription,
-            installLabels: {
-                install: t(entry.installLabels.installKey),
-                update: t(entry.installLabels.updateKey),
-                reinstall: t(entry.installLabels.reinstallKey),
-            },
-            installModal: {
-                installTitle: t(entry.installModal.installTitleKey),
-                updateTitle: t(entry.installModal.updateTitleKey),
-                reinstallTitle: t(entry.installModal.reinstallTitleKey),
-                description: t(entry.installModal.descriptionKey),
-            },
-            refreshStatus: () => {
-                void prefetchMachineCapabilities({ machineId: selectedMachineId, request: CAPABILITIES_REQUEST_NEW_SESSION });
-            },
-            refreshRegistry: () => {
-                void prefetchMachineCapabilities({ machineId: selectedMachineId, request: entry.buildRegistryDetectRequest(), timeoutMs: 12_000 });
-            },
-        }));
-    }, [selectedMachineCapabilities.status, selectedMachineId, wizardInstallableDeps]);
-
-    const wizardAgentProps = React.useMemo(() => {
-        return {
-            cliAvailability,
-            tmuxRequested,
-            enabledAgentIds,
-            isCliBannerDismissed,
-            dismissCliBanner,
-            agentType,
-            setAgentType,
-            modelOptions,
-            modelMode,
-            setModelMode,
-            selectedIndicatorColor,
-            profileMap,
-            permissionMode,
-            handlePermissionModeChange,
-            sessionType,
-            setSessionType,
-            installableDepInstallers,
-        };
-    }, [
-        agentType,
         cliAvailability,
-        dismissCliBanner,
-        enabledAgentIds,
-        installableDepInstallers,
-        isCliBannerDismissed,
-        modelMode,
-        modelOptions,
-        permissionMode,
-        profileMap,
-        selectedIndicatorColor,
-        sessionType,
-        setAgentType,
-        setModelMode,
-        setSessionType,
-        handlePermissionModeChange,
         tmuxRequested,
-    ]);
-
-    const wizardMachineProps = React.useMemo(() => {
-        return {
-            machines,
-            selectedMachine: selectedMachine || null,
-            recentMachines,
-            favoriteMachineItems,
-            useMachinePickerSearch,
-            onRefreshMachines: refreshMachineData,
-            setSelectedMachineId,
-            getBestPathForMachine,
-            setSelectedPath,
-            favoriteMachines,
-            setFavoriteMachines,
-            selectedPath,
-            recentPaths,
-            usePathPickerSearch,
-            favoriteDirectories,
-            setFavoriteDirectories,
-        };
-    }, [
-        favoriteDirectories,
-        favoriteMachineItems,
-        favoriteMachines,
-        getBestPathForMachine,
-        machines,
-        recentMachines,
-        recentPaths,
-        refreshMachineData,
-        selectedMachine,
-        selectedPath,
-        setFavoriteDirectories,
-        setFavoriteMachines,
-        setSelectedMachineId,
-        setSelectedPath,
-        useMachinePickerSearch,
-        usePathPickerSearch,
-    ]);
-
-    const wizardFooterProps = React.useMemo(() => {
-        return {
-            sessionPrompt,
-            setSessionPrompt,
-            handleCreateSession,
-            canCreate,
-            isCreating,
-            emptyAutocompletePrefixes,
-            emptyAutocompleteSuggestions,
-            connectionStatus,
-            selectedProfileEnvVarsCount,
-            handleEnvVarsClick,
-            resumeSessionId,
-            onResumeClick: showResumePicker ? handleResumeClick : undefined,
-            resumeIsChecking: isResumeSupportChecking,
-            inputMaxHeight: sessionPromptInputMaxHeight,
-        };
-    }, [
+        enabledAgentIds,
+        isCliBannerDismissed,
+        dismissCliBanner,
         agentType,
+        setAgentType,
+        modelOptions,
+        modelMode,
+        setModelMode,
+        selectedIndicatorColor,
+        profileMap,
+        permissionMode,
+        handlePermissionModeChange,
+        sessionType,
+        setSessionType,
+
+        machines,
+        selectedMachine: selectedMachine ?? null,
+        recentMachines,
+        favoriteMachineItems,
+        useMachinePickerSearch,
+        refreshMachineData,
+        setSelectedMachineId,
+        getBestPathForMachine,
+        setSelectedPath,
+        favoriteMachines,
+        setFavoriteMachines,
+        selectedPath,
+        recentPaths,
+        usePathPickerSearch,
+        favoriteDirectories,
+        setFavoriteDirectories,
+
+        sessionPrompt,
+        setSessionPrompt,
+        handleCreateSession,
         canCreate,
-        connectionStatus,
-        expCodexResume,
-        experimentsEnabled,
+        isCreating,
         emptyAutocompletePrefixes,
         emptyAutocompleteSuggestions,
-        handleCreateSession,
-        handleEnvVarsClick,
-        handleResumeClick,
-        isCreating,
-        isResumeSupportChecking,
-        resumeSessionId,
+        connectionStatus,
         selectedProfileEnvVarsCount,
-        sessionPrompt,
-        sessionPromptInputMaxHeight,
+        handleEnvVarsClick,
+        resumeSessionId,
         showResumePicker,
-        setSessionPrompt,
-    ]);
+        handleResumeClick,
+        isResumeSupportChecking,
+        sessionPromptInputMaxHeight,
+
+        expCodexResume,
+    });
 
     return (
         <View ref={popoverBoundaryRef} style={{ flex: 1, width: '100%' }}>

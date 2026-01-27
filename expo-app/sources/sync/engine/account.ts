@@ -1,3 +1,8 @@
+import Constants from 'expo-constants';
+import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
+
+import { registerPushToken as registerPushTokenApi } from '../apiPush';
 import type { Encryption } from '../encryption/encryption';
 import type { Profile } from '../profile';
 import { profileParse } from '../profile';
@@ -82,4 +87,46 @@ export async function fetchAndApplyProfile(params: {
 
     // Apply profile to storage
     applyProfile(parsedProfile);
+}
+
+export async function registerPushTokenIfAvailable(params: {
+    credentials: AuthCredentials;
+    log: { log: (message: string) => void };
+}): Promise<void> {
+    const { credentials, log } = params;
+
+    // Only register on mobile platforms
+    if (Platform.OS === 'web') {
+        return;
+    }
+
+    // Request permission
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    log.log('existingStatus: ' + JSON.stringify(existingStatus));
+
+    if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+    }
+    log.log('finalStatus: ' + JSON.stringify(finalStatus));
+
+    if (finalStatus !== 'granted') {
+        log.log('Failed to get push token for push notification!');
+        return;
+    }
+
+    // Get push token
+    const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+    log.log('tokenData: ' + JSON.stringify(tokenData));
+
+    // Register with server
+    try {
+        await registerPushTokenApi(credentials, tokenData.data);
+        log.log('Push token registered successfully');
+    } catch (error) {
+        log.log('Failed to register push token: ' + JSON.stringify(error));
+    }
 }

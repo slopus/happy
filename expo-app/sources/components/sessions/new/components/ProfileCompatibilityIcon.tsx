@@ -4,9 +4,8 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import type { AIBackendProfile } from '@/sync/settings';
 import { isProfileCompatibleWithAgent } from '@/sync/settings';
-import { getAgentCliGlyph } from '@/agents/registryUi';
+import { getAgentCliGlyph, getAgentCore } from '@/agents/catalog';
 import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
-import { getAgentCore } from '@/agents/registryCore';
 
 type Props = {
     profile: Pick<AIBackendProfile, 'compatibility' | 'isBuiltIn'>;

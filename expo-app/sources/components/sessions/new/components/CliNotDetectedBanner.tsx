@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { getAgentCore, type AgentId } from '@/agents/registryCore';
+import { getAgentCore, type AgentId } from '@/agents/catalog';
 
 export type CliNotDetectedBannerDismissScope = 'machine' | 'global' | 'temporary';
 

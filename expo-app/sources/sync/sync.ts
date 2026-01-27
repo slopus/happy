@@ -10,8 +10,6 @@ import { Session, Machine, type Metadata } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from '@/platform/randomUUID';
-import * as Notifications from 'expo-notifications';
-import { registerPushToken } from './apiPush';
 import { Platform, AppState } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
@@ -44,8 +42,6 @@ import { buildOutgoingMessageMeta } from './messageMeta';
 import { HappyError } from '@/utils/errors';
 import { dbgSettings, isSettingsSyncDebugEnabled, summarizeSettings, summarizeSettingsDelta } from './debugSettings';
 import { deriveSettingsSecretsKey, decryptSecretValue, encryptSecretString, sealSecretsDeep } from './secretSettings';
-import { deleteMessageQueueV1DiscardedItem, deleteMessageQueueV1Item, discardMessageQueueV1Item, enqueueMessageQueueV1Item, restoreMessageQueueV1DiscardedItem, updateMessageQueueV1Item } from './messageQueueV1';
-import { decodeMessageQueueV1ToPendingMessages, reconcilePendingMessagesFromMetadata } from './messageQueueV1Pending';
 import { didControlReturnToMobile } from './controlledByUserTransitions';
 import { chooseSubmitMode } from './submitMode';
 import type { SavedSecret } from './settings';
@@ -62,18 +58,30 @@ import {
     updateArtifactViaApi,
 } from './engine/artifacts';
 import { fetchAndApplyFeed, handleNewFeedPostUpdate, handleRelationshipUpdatedSocketUpdate, handleTodoKvBatchUpdate } from './engine/feed';
-import { fetchAndApplyProfile, handleUpdateAccountSocketUpdate } from './engine/account';
+import { fetchAndApplyProfile, handleUpdateAccountSocketUpdate, registerPushTokenIfAvailable } from './engine/account';
 import { buildMachineFromMachineActivityEphemeralUpdate, buildUpdatedMachineFromSocketUpdate, fetchAndApplyMachines } from './engine/machines';
 import { applyTodoSocketUpdates as applyTodoSocketUpdatesEngine, fetchTodos as fetchTodosEngine } from './engine/todos';
 import {
     buildUpdatedSessionFromSocketUpdate,
     fetchAndApplySessions,
     fetchAndApplyMessages,
+    fetchAndApplyPendingMessages as fetchAndApplyPendingMessagesEngine,
     handleDeleteSessionSocketUpdate,
     handleNewMessageSocketUpdate,
+    enqueuePendingMessage as enqueuePendingMessageEngine,
+    updatePendingMessage as updatePendingMessageEngine,
+    deletePendingMessage as deletePendingMessageEngine,
+    discardPendingMessage as discardPendingMessageEngine,
+    restoreDiscardedPendingMessage as restoreDiscardedPendingMessageEngine,
+    deleteDiscardedPendingMessage as deleteDiscardedPendingMessageEngine,
     repairInvalidReadStateV1 as repairInvalidReadStateV1Engine,
 } from './engine/sessions';
-import { handleSocketReconnected, parseEphemeralUpdate, parseUpdateContainer } from './engine/socket';
+import {
+    flushActivityUpdates as flushActivityUpdatesEngine,
+    handleEphemeralSocketUpdate,
+    handleSocketReconnected,
+    handleSocketUpdate,
+} from './engine/socket';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -535,163 +543,35 @@ class Sync {
     }
 
     async fetchPendingMessages(sessionId: string): Promise<void> {
-        const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) {
-            storage.getState().applyPendingLoaded(sessionId);
-            storage.getState().applyDiscardedPendingMessages(sessionId, []);
-            return;
-        }
-
-        const session = storage.getState().sessions[sessionId];
-        if (!session) {
-            storage.getState().applyPendingLoaded(sessionId);
-            storage.getState().applyDiscardedPendingMessages(sessionId, []);
-            return;
-        }
-
-        const decoded = await decodeMessageQueueV1ToPendingMessages({
-            messageQueueV1: session.metadata?.messageQueueV1,
-            messageQueueV1Discarded: session.metadata?.messageQueueV1Discarded,
-            decryptRaw: (encrypted) => encryption.decryptRaw(encrypted),
-        });
-
-        const existingPendingState = storage.getState().sessionPending[sessionId];
-        const reconciled = reconcilePendingMessagesFromMetadata({
-            messageQueueV1: session.metadata?.messageQueueV1,
-            messageQueueV1Discarded: session.metadata?.messageQueueV1Discarded,
-            decodedPending: decoded.pending,
-            decodedDiscarded: decoded.discarded,
-            existingPending: existingPendingState?.messages ?? [],
-            existingDiscarded: existingPendingState?.discarded ?? [],
-        });
-
-        storage.getState().applyPendingMessages(sessionId, reconciled.pending);
-        storage.getState().applyDiscardedPendingMessages(sessionId, reconciled.discarded);
+        await fetchAndApplyPendingMessagesEngine({ sessionId, encryption: this.encryption });
     }
 
     async enqueuePendingMessage(sessionId: string, text: string, displayText?: string): Promise<void> {
-        storage.getState().markSessionOptimisticThinking(sessionId);
-
-        const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) {
-            storage.getState().clearSessionOptimisticThinking(sessionId);
-            throw new Error(`Session ${sessionId} not found`);
-        }
-
-        const session = storage.getState().sessions[sessionId];
-        if (!session) {
-            storage.getState().clearSessionOptimisticThinking(sessionId);
-            throw new Error(`Session ${sessionId} not found in storage`);
-        }
-
-        const permissionMode = session.permissionMode || 'default';
-        const flavor = session.metadata?.flavor;
-        const agentId = resolveAgentIdFromFlavor(flavor);
-        const modelMode = session.modelMode || (agentId ? getAgentCore(agentId).model.defaultMode : 'default');
-        const model = agentId && getAgentCore(agentId).model.supportsSelection && modelMode !== 'default' ? modelMode : undefined;
-
-        const localId = randomUUID();
-
-        let sentFrom: string;
-        if (Platform.OS === 'web') {
-            sentFrom = 'web';
-        } else if (Platform.OS === 'android') {
-            sentFrom = 'android';
-        } else if (Platform.OS === 'ios') {
-            sentFrom = isRunningOnMac() ? 'mac' : 'ios';
-        } else {
-            sentFrom = 'web';
-        }
-
-        const content: RawRecord = {
-            role: 'user',
-            content: {
-                type: 'text',
-                text
-            },
-            meta: buildOutgoingMessageMeta({
-                sentFrom,
-                permissionMode: permissionMode || 'default',
-                model,
-                appendSystemPrompt: systemPrompt,
-                displayText,
-            }),
-        };
-
-        const createdAt = nowServerMs();
-        const updatedAt = createdAt;
-        const encryptedRawRecord = await encryption.encryptRawRecord(content);
-
-        storage.getState().upsertPendingMessage(sessionId, {
-            id: localId,
-            localId,
-            createdAt,
-            updatedAt,
+        await enqueuePendingMessageEngine({
+            sessionId,
             text,
             displayText,
-            rawRecord: content,
+            encryption: this.encryption,
+            updateSessionMetadataWithRetry: (id, updater) => this.updateSessionMetadataWithRetry(id, updater),
         });
-
-        try {
-            await this.updateSessionMetadataWithRetry(sessionId, (metadata) => enqueueMessageQueueV1Item(metadata, {
-                localId,
-                message: encryptedRawRecord,
-                createdAt,
-                updatedAt,
-            }));
-        } catch (e) {
-            storage.getState().removePendingMessage(sessionId, localId);
-            storage.getState().clearSessionOptimisticThinking(sessionId);
-            throw e;
-        }
     }
 
     async updatePendingMessage(sessionId: string, pendingId: string, text: string): Promise<void> {
-        const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) {
-            throw new Error(`Session ${sessionId} not found`);
-        }
-
-        const existing = storage.getState().sessionPending[sessionId]?.messages?.find((m) => m.id === pendingId);
-        if (!existing) {
-            throw new Error('Pending message not found');
-        }
-
-        const content: RawRecord = existing.rawRecord ? {
-            ...(existing.rawRecord as any),
-            content: {
-                type: 'text',
-                text
-            },
-        } : {
-            role: 'user',
-            content: { type: 'text', text },
-            meta: {
-                appendSystemPrompt: systemPrompt,
-            }
-        };
-
-        const encryptedRawRecord = await encryption.encryptRawRecord(content);
-        const updatedAt = nowServerMs();
-
-        await this.updateSessionMetadataWithRetry(sessionId, (metadata) => updateMessageQueueV1Item(metadata, {
-            localId: pendingId,
-            message: encryptedRawRecord,
-            createdAt: existing.createdAt,
-            updatedAt,
-        }));
-
-        storage.getState().upsertPendingMessage(sessionId, {
-            ...existing,
+        await updatePendingMessageEngine({
+            sessionId,
+            pendingId,
             text,
-            updatedAt,
-            rawRecord: content,
+            encryption: this.encryption,
+            updateSessionMetadataWithRetry: (id, updater) => this.updateSessionMetadataWithRetry(id, updater),
         });
     }
 
     async deletePendingMessage(sessionId: string, pendingId: string): Promise<void> {
-        await this.updateSessionMetadataWithRetry(sessionId, (metadata) => deleteMessageQueueV1Item(metadata, pendingId));
-        storage.getState().removePendingMessage(sessionId, pendingId);
+        await deletePendingMessageEngine({
+            sessionId,
+            pendingId,
+            updateSessionMetadataWithRetry: (id, updater) => this.updateSessionMetadataWithRetry(id, updater),
+        });
     }
 
     async discardPendingMessage(
@@ -699,25 +579,31 @@ class Sync {
         pendingId: string,
         opts?: { reason?: 'switch_to_local' | 'manual' }
     ): Promise<void> {
-        const discardedAt = nowServerMs();
-        await this.updateSessionMetadataWithRetry(sessionId, (metadata) => discardMessageQueueV1Item(metadata, {
-            localId: pendingId,
-            discardedAt,
-            discardedReason: opts?.reason ?? 'manual',
-        }));
-        await this.fetchPendingMessages(sessionId);
+        await discardPendingMessageEngine({
+            sessionId,
+            pendingId,
+            opts,
+            encryption: this.encryption,
+            updateSessionMetadataWithRetry: (id, updater) => this.updateSessionMetadataWithRetry(id, updater),
+        });
     }
 
     async restoreDiscardedPendingMessage(sessionId: string, pendingId: string): Promise<void> {
-        await this.updateSessionMetadataWithRetry(sessionId, (metadata) =>
-            restoreMessageQueueV1DiscardedItem(metadata, { localId: pendingId, now: nowServerMs() })
-        );
-        await this.fetchPendingMessages(sessionId);
+        await restoreDiscardedPendingMessageEngine({
+            sessionId,
+            pendingId,
+            encryption: this.encryption,
+            updateSessionMetadataWithRetry: (id, updater) => this.updateSessionMetadataWithRetry(id, updater),
+        });
     }
 
     async deleteDiscardedPendingMessage(sessionId: string, pendingId: string): Promise<void> {
-        await this.updateSessionMetadataWithRetry(sessionId, (metadata) => deleteMessageQueueV1DiscardedItem(metadata, pendingId));
-        await this.fetchPendingMessages(sessionId);
+        await deleteDiscardedPendingMessageEngine({
+            sessionId,
+            pendingId,
+            encryption: this.encryption,
+            updateSessionMetadataWithRetry: (id, updater) => this.updateSessionMetadataWithRetry(id, updater),
+        });
     }
 
     applySettings = (delta: Partial<Settings>) => {
@@ -1109,40 +995,7 @@ class Sync {
 
     private registerPushToken = async () => {
         log.log('registerPushToken');
-        // Only register on mobile platforms
-        if (Platform.OS === 'web') {
-            return;
-        }
-
-        // Request permission
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        log.log('existingStatus: ' + JSON.stringify(existingStatus));
-
-        if (existingStatus !== 'granted') {
-            const { status } = await Notifications.requestPermissionsAsync();
-            finalStatus = status;
-        }
-        log.log('finalStatus: ' + JSON.stringify(finalStatus));
-
-        if (finalStatus !== 'granted') {
-            log.log('Failed to get push token for push notification!');
-            return;
-        }
-
-        // Get push token
-        const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
-
-        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-        log.log('tokenData: ' + JSON.stringify(tokenData));
-
-        // Register with server
-        try {
-            await registerPushToken(this.credentials, tokenData.data);
-            log.log('Push token registered successfully');
-        } catch (error) {
-            log.log('Failed to register push token: ' + JSON.stringify(error));
-        }
+        await registerPushTokenIfAvailable({ credentials: this.credentials, log });
     }
 
     private subscribeToUpdates = () => {
@@ -1168,233 +1021,39 @@ class Sync {
     }
 
     private handleUpdate = async (update: unknown) => {
-        const updateData = parseUpdateContainer(update);
-        if (!updateData) return;
-
-        if (updateData.body.t === 'new-message') {
-            await handleNewMessageSocketUpdate({
-                updateData,
-                getSessionEncryption: (sessionId) => this.encryption.getSessionEncryption(sessionId),
-                getSession: (sessionId) => storage.getState().sessions[sessionId],
-                applySessions: (sessions) => this.applySessions(sessions),
-                fetchSessions: () => this.fetchSessions(),
-                applyMessages: (sessionId, messages) => this.applyMessages(sessionId, messages),
-                isMutableToolCall: (sessionId, toolUseId) => storage.getState().isMutableToolCall(sessionId, toolUseId),
-                invalidateGitStatus: (sessionId) => gitStatusSync.invalidate(sessionId),
-                onSessionVisible: (sessionId) => this.onSessionVisible(sessionId),
-            });
-
-        } else if (updateData.body.t === 'new-session') {
-            log.log('🆕 New session update received');
-            this.sessionsSync.invalidate();
-        } else if (updateData.body.t === 'delete-session') {
-            log.log('🗑️ Delete session update received');
-            handleDeleteSessionSocketUpdate({
-                sessionId: updateData.body.sid,
-                deleteSession: (sessionId) => storage.getState().deleteSession(sessionId),
-                removeSessionEncryption: (sessionId) => this.encryption.removeSessionEncryption(sessionId),
-                removeProjectManagerSession: (sessionId) => projectManager.removeSession(sessionId),
-                clearGitStatusForSession: (sessionId) => gitStatusSync.clearForSession(sessionId),
-                log,
-            });
-        } else if (updateData.body.t === 'update-session') {
-            const session = storage.getState().sessions[updateData.body.id];
-            if (session) {
-                // Get session encryption
-                const sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
-                if (!sessionEncryption) {
-                    console.error(`Session encryption not found for ${updateData.body.id} - this should never happen`);
-                    return;
-                }
-
-                const { nextSession, agentState } = await buildUpdatedSessionFromSocketUpdate({
-                    session,
-                    updateBody: updateData.body,
-                    updateSeq: updateData.seq,
-                    updateCreatedAt: updateData.createdAt,
-                    sessionEncryption,
-                });
-
-                this.applySessions([nextSession]);
-
-                // Invalidate git status when agent state changes (files may have been modified)
-                if (updateData.body.agentState) {
-                    gitStatusSync.invalidate(updateData.body.id);
-
-                    // Check for new permission requests and notify voice assistant
-                    if (agentState?.requests && Object.keys(agentState.requests).length > 0) {
-                        const requestIds = Object.keys(agentState.requests);
-                        const firstRequest = agentState.requests[requestIds[0]];
-                        const toolName = firstRequest?.tool;
-                        voiceHooks.onPermissionRequested(updateData.body.id, requestIds[0], toolName, firstRequest?.arguments);
-                    }
-
-                    // Re-fetch messages when control returns to mobile (local -> remote mode switch)
-                    // This catches up on any messages that were exchanged while desktop had control
-                    const wasControlledByUser = session.agentState?.controlledByUser;
-                    const isNowControlledByUser = agentState?.controlledByUser;
-                    if (didControlReturnToMobile(wasControlledByUser, isNowControlledByUser)) {
-                        log.log(`🔄 Control returned to mobile for session ${updateData.body.id}, re-fetching messages`);
-                        this.onSessionVisible(updateData.body.id);
-                    }
-                }
-            }
-        } else if (updateData.body.t === 'update-account') {
-            const accountUpdate = updateData.body;
-            const currentProfile = storage.getState().profile;
-
-            await handleUpdateAccountSocketUpdate({
-                accountUpdate,
-                updateCreatedAt: updateData.createdAt,
-                currentProfile,
-                encryption: this.encryption,
-                applyProfile: (profile) => storage.getState().applyProfile(profile),
-                applySettings: (settings, version) => storage.getState().applySettings(settings, version),
-                log,
-            });
-        } else if (updateData.body.t === 'update-machine') {
-            const machineUpdate = updateData.body;
-            const machineId = machineUpdate.machineId;  // Changed from .id to .machineId
-            const machine = storage.getState().machines[machineId];
-
-            const updatedMachine = await buildUpdatedMachineFromSocketUpdate({
-                machineUpdate,
-                updateSeq: updateData.seq,
-                updateCreatedAt: updateData.createdAt,
-                existingMachine: machine,
-                getMachineEncryption: (id) => this.encryption.getMachineEncryption(id),
-            });
-            if (!updatedMachine) return;
-
-            // Update storage using applyMachines which rebuilds sessionListViewData
-            storage.getState().applyMachines([updatedMachine]);
-        } else if (updateData.body.t === 'relationship-updated') {
-            log.log('👥 Received relationship-updated update');
-            const relationshipUpdate = updateData.body;
-
-            handleRelationshipUpdatedSocketUpdate({
-                relationshipUpdate,
-                applyRelationshipUpdate: (update) => storage.getState().applyRelationshipUpdate(update),
-                invalidateFriends: () => this.friendsSync.invalidate(),
-                invalidateFriendRequests: () => this.friendRequestsSync.invalidate(),
-                invalidateFeed: () => this.feedSync.invalidate(),
-            });
-        } else if (updateData.body.t === 'new-artifact') {
-            log.log('📦 Received new-artifact update');
-            const artifactUpdate = updateData.body;
-            const artifactId = artifactUpdate.artifactId;
-
-            await handleNewArtifactSocketUpdate({
-                artifactId,
-                dataEncryptionKey: artifactUpdate.dataEncryptionKey,
-                header: artifactUpdate.header,
-                headerVersion: artifactUpdate.headerVersion,
-                body: artifactUpdate.body,
-                bodyVersion: artifactUpdate.bodyVersion,
-                seq: artifactUpdate.seq,
-                createdAt: artifactUpdate.createdAt,
-                updatedAt: artifactUpdate.updatedAt,
-                encryption: this.encryption,
-                artifactDataKeys: this.artifactDataKeys,
-                addArtifact: (artifact) => storage.getState().addArtifact(artifact),
-                log,
-            });
-        } else if (updateData.body.t === 'update-artifact') {
-            log.log('📦 Received update-artifact update');
-            const artifactUpdate = updateData.body;
-            const artifactId = artifactUpdate.artifactId;
-
-            await handleUpdateArtifactSocketUpdate({
-                artifactId,
-                seq: updateData.seq,
-                createdAt: updateData.createdAt,
-                header: artifactUpdate.header,
-                body: artifactUpdate.body,
-                artifactDataKeys: this.artifactDataKeys,
-                getExistingArtifact: (id) => storage.getState().artifacts[id],
-                updateArtifact: (artifact) => storage.getState().updateArtifact(artifact),
-                invalidateArtifactsSync: () => this.artifactsSync.invalidate(),
-                log,
-            });
-        } else if (updateData.body.t === 'delete-artifact') {
-            log.log('📦 Received delete-artifact update');
-            const artifactUpdate = updateData.body;
-            const artifactId = artifactUpdate.artifactId;
-
-            handleDeleteArtifactSocketUpdate({
-                artifactId,
-                deleteArtifact: (id) => storage.getState().deleteArtifact(id),
-                artifactDataKeys: this.artifactDataKeys,
-            });
-        } else if (updateData.body.t === 'new-feed-post') {
-            log.log('📰 Received new-feed-post update');
-            const feedUpdate = updateData.body;
-
-            await handleNewFeedPostUpdate({
-                feedUpdate,
-                assumeUsers: (userIds) => this.assumeUsers(userIds),
-                getUsers: () => storage.getState().users,
-                applyFeedItems: (items) => storage.getState().applyFeedItems(items),
-                log,
-            });
-        } else if (updateData.body.t === 'kv-batch-update') {
-            log.log('📝 Received kv-batch-update');
-            const kvUpdate = updateData.body;
-
-            await handleTodoKvBatchUpdate({
-                kvUpdate,
-                applyTodoSocketUpdates: (changes) => this.applyTodoSocketUpdates(changes),
-                invalidateTodosSync: () => this.todosSync.invalidate(),
-                log,
-            });
-        }
+        await handleSocketUpdate({
+            update,
+            encryption: this.encryption,
+            artifactDataKeys: this.artifactDataKeys,
+            applySessions: (sessions) => this.applySessions(sessions),
+            fetchSessions: () => {
+                void this.fetchSessions();
+            },
+            applyMessages: (sessionId, messages) => this.applyMessages(sessionId, messages),
+            onSessionVisible: (sessionId) => this.onSessionVisible(sessionId),
+            assumeUsers: (userIds) => this.assumeUsers(userIds),
+            applyTodoSocketUpdates: (changes) => this.applyTodoSocketUpdates(changes),
+            invalidateSessions: () => this.sessionsSync.invalidate(),
+            invalidateArtifacts: () => this.artifactsSync.invalidate(),
+            invalidateFriends: () => this.friendsSync.invalidate(),
+            invalidateFriendRequests: () => this.friendRequestsSync.invalidate(),
+            invalidateFeed: () => this.feedSync.invalidate(),
+            invalidateTodos: () => this.todosSync.invalidate(),
+            log,
+        });
     }
 
     private flushActivityUpdates = (updates: Map<string, ApiEphemeralActivityUpdate>) => {
-        // log.log(`🔄 Flushing activity updates for ${updates.size} sessions - acquiring lock`);
-
-
-        const sessions: Session[] = [];
-
-        for (const [sessionId, update] of updates) {
-            const session = storage.getState().sessions[sessionId];
-            if (session) {
-                sessions.push({
-                    ...session,
-                    active: update.active,
-                    activeAt: update.activeAt,
-                    thinking: update.thinking ?? false,
-                    thinkingAt: update.activeAt // Always use activeAt for consistency
-                });
-            }
-        }
-
-        if (sessions.length > 0) {
-            this.applySessions(sessions);
-            // log.log(`🔄 Activity updates flushed - updated ${sessions.length} sessions`);
-        }
+        flushActivityUpdatesEngine({ updates, applySessions: (sessions) => this.applySessions(sessions) });
     }
 
     private handleEphemeralUpdate = (update: unknown) => {
-        const updateData = parseEphemeralUpdate(update);
-        if (!updateData) return;
-
-        // Process activity updates through smart debounce accumulator
-        if (updateData.type === 'activity') {
-            this.activityAccumulator.addUpdate(updateData);
-        }
-
-        // Handle machine activity updates
-        if (updateData.type === 'machine-activity') {
-            // Update machine's active status and lastActiveAt
-            const machine = storage.getState().machines[updateData.id];
-            if (machine) {
-                const updatedMachine: Machine = buildMachineFromMachineActivityEphemeralUpdate({ machine, updateData });
-                storage.getState().applyMachines([updatedMachine]);
-            }
-        }
-
-        // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity
+        handleEphemeralSocketUpdate({
+            update,
+            addActivityUpdate: (ephemeralUpdate) => {
+                this.activityAccumulator.addUpdate(ephemeralUpdate);
+            },
+        });
     }
 
     //

@@ -49,7 +49,7 @@ vi.mock('@/components/ui/forms/SearchHeader', () => ({
     SearchHeader: () => null,
 }));
 
-vi.mock('@/components/sessions/newSession/components/PathSelector', () => ({
+vi.mock('@/components/sessions/new/components/PathSelector', () => ({
     PathSelector: (props: any) => {
         lastPathSelectorProps = props;
         return null;

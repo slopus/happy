@@ -10,7 +10,7 @@ import { ItemRowActions } from '@/components/ui/lists/ItemRowActions';
 import type { ItemAction } from '@/components/ui/lists/itemActions';
 
 import type { AIBackendProfile } from '@/sync/settings';
-import { ProfileCompatibilityIcon } from '@/components/sessions/newSession/components/ProfileCompatibilityIcon';
+import { ProfileCompatibilityIcon } from '@/components/sessions/new/components/ProfileCompatibilityIcon';
 import { ProfileRequirementsBadge } from '@/components/profiles/ProfileRequirementsBadge';
 import { ignoreNextRowPress } from '@/utils/ui/ignoreNextRowPress';
 import { toggleFavoriteProfileId } from '@/sync/profileGrouping';

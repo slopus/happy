@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { MachineSelector } from '@/components/sessions/newSession/components/MachineSelector';
+import { MachineSelector } from '@/components/sessions/new/components/MachineSelector';
 import type { Machine } from '@/sync/storageTypes';
 
 export interface MachinePreviewModalProps {

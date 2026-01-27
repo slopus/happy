@@ -1,7 +1,6 @@
-import type { NormalizedMessage } from '../typesRaw';
+import type { NormalizedMessage, RawRecord } from '../typesRaw';
 import { normalizeRawMessage } from '../typesRaw';
 import { computeNextSessionSeqFromUpdate } from '../realtimeSessionSeq';
-import { inferTaskLifecycleFromMessageContent } from './socket';
 import type { Session } from '../storageTypes';
 import type { Metadata } from '../storageTypes';
 import { computeNextReadStateV1 } from '../readStateV1';
@@ -9,10 +8,42 @@ import { getServerUrl } from '../serverConfig';
 import type { AuthCredentials } from '@/auth/tokenStorage';
 import { HappyError } from '@/utils/errors';
 import type { ApiMessage } from '../apiTypes';
+import { storage } from '../storage';
+import type { Encryption } from '../encryption/encryption';
+import { nowServerMs } from '../time';
+import { systemPrompt } from '../prompt/systemPrompt';
+import { Platform } from 'react-native';
+import { isRunningOnMac } from '@/utils/platform';
+import { randomUUID } from '@/platform/randomUUID';
+import { buildOutgoingMessageMeta } from '../messageMeta';
+import { getAgentCore, resolveAgentIdFromFlavor } from '@/agents/catalog';
+import {
+    deleteMessageQueueV1DiscardedItem,
+    deleteMessageQueueV1Item,
+    discardMessageQueueV1Item,
+    enqueueMessageQueueV1Item,
+    restoreMessageQueueV1DiscardedItem,
+    updateMessageQueueV1Item,
+} from '../messageQueueV1';
+import { decodeMessageQueueV1ToPendingMessages, reconcilePendingMessagesFromMetadata } from '../messageQueueV1Pending';
 
 type SessionMessageEncryption = {
     decryptMessage: (message: any) => Promise<any>;
 };
+
+function inferTaskLifecycleFromMessageContent(content: unknown): { isTaskComplete: boolean; isTaskStarted: boolean } {
+    const rawContent = content as { content?: { type?: string; data?: { type?: string } } } | null;
+    const contentType = rawContent?.content?.type;
+    const dataType = rawContent?.content?.data?.type;
+
+    const isTaskComplete =
+        (contentType === 'acp' || contentType === 'codex') &&
+        (dataType === 'task_complete' || dataType === 'turn_aborted');
+
+    const isTaskStarted = (contentType === 'acp' || contentType === 'codex') && dataType === 'task_started';
+
+    return { isTaskComplete, isTaskStarted };
+}
 
 type SessionEncryption = {
     decryptAgentState: (version: number, value: string | null) => Promise<any>;
@@ -207,6 +238,247 @@ export async function repairInvalidReadStateV1(params: {
     } finally {
         inFlight.delete(sessionId);
     }
+}
+
+type UpdateSessionMetadataWithRetry = (sessionId: string, updater: (metadata: Metadata) => Metadata) => Promise<void>;
+
+export async function fetchAndApplyPendingMessages(params: {
+    sessionId: string;
+    encryption: Encryption;
+}): Promise<void> {
+    const { sessionId, encryption } = params;
+
+    const sessionEncryption = encryption.getSessionEncryption(sessionId);
+    if (!sessionEncryption) {
+        storage.getState().applyPendingLoaded(sessionId);
+        storage.getState().applyDiscardedPendingMessages(sessionId, []);
+        return;
+    }
+
+    const session = storage.getState().sessions[sessionId];
+    if (!session) {
+        storage.getState().applyPendingLoaded(sessionId);
+        storage.getState().applyDiscardedPendingMessages(sessionId, []);
+        return;
+    }
+
+    const decoded = await decodeMessageQueueV1ToPendingMessages({
+        messageQueueV1: session.metadata?.messageQueueV1,
+        messageQueueV1Discarded: session.metadata?.messageQueueV1Discarded,
+        decryptRaw: (encrypted) => sessionEncryption.decryptRaw(encrypted),
+    });
+
+    const existingPendingState = storage.getState().sessionPending[sessionId];
+    const reconciled = reconcilePendingMessagesFromMetadata({
+        messageQueueV1: session.metadata?.messageQueueV1,
+        messageQueueV1Discarded: session.metadata?.messageQueueV1Discarded,
+        decodedPending: decoded.pending,
+        decodedDiscarded: decoded.discarded,
+        existingPending: existingPendingState?.messages ?? [],
+        existingDiscarded: existingPendingState?.discarded ?? [],
+    });
+
+    storage.getState().applyPendingMessages(sessionId, reconciled.pending);
+    storage.getState().applyDiscardedPendingMessages(sessionId, reconciled.discarded);
+}
+
+export async function enqueuePendingMessage(params: {
+    sessionId: string;
+    text: string;
+    displayText?: string;
+    encryption: Encryption;
+    updateSessionMetadataWithRetry: UpdateSessionMetadataWithRetry;
+}): Promise<void> {
+    const { sessionId, text, displayText, encryption, updateSessionMetadataWithRetry } = params;
+
+    storage.getState().markSessionOptimisticThinking(sessionId);
+
+    const sessionEncryption = encryption.getSessionEncryption(sessionId);
+    if (!sessionEncryption) {
+        storage.getState().clearSessionOptimisticThinking(sessionId);
+        throw new Error(`Session ${sessionId} not found`);
+    }
+
+    const session = storage.getState().sessions[sessionId];
+    if (!session) {
+        storage.getState().clearSessionOptimisticThinking(sessionId);
+        throw new Error(`Session ${sessionId} not found in storage`);
+    }
+
+    const permissionMode = session.permissionMode || 'default';
+    const flavor = session.metadata?.flavor;
+    const agentId = resolveAgentIdFromFlavor(flavor);
+    const modelMode = session.modelMode || (agentId ? getAgentCore(agentId).model.defaultMode : 'default');
+    const model = agentId && getAgentCore(agentId).model.supportsSelection && modelMode !== 'default' ? modelMode : undefined;
+
+    const localId = randomUUID();
+
+    let sentFrom: string;
+    if (Platform.OS === 'web') {
+        sentFrom = 'web';
+    } else if (Platform.OS === 'android') {
+        sentFrom = 'android';
+    } else if (Platform.OS === 'ios') {
+        sentFrom = isRunningOnMac() ? 'mac' : 'ios';
+    } else {
+        sentFrom = 'web';
+    }
+
+    const content: RawRecord = {
+        role: 'user',
+        content: {
+            type: 'text',
+            text,
+        },
+        meta: buildOutgoingMessageMeta({
+            sentFrom,
+            permissionMode: permissionMode || 'default',
+            model,
+            appendSystemPrompt: systemPrompt,
+            displayText,
+        }),
+    };
+
+    const createdAt = nowServerMs();
+    const updatedAt = createdAt;
+    const encryptedRawRecord = await sessionEncryption.encryptRawRecord(content);
+
+    storage.getState().upsertPendingMessage(sessionId, {
+        id: localId,
+        localId,
+        createdAt,
+        updatedAt,
+        text,
+        displayText,
+        rawRecord: content,
+    });
+
+    try {
+        await updateSessionMetadataWithRetry(sessionId, (metadata) =>
+            enqueueMessageQueueV1Item(metadata, {
+                localId,
+                message: encryptedRawRecord,
+                createdAt,
+                updatedAt,
+            }),
+        );
+    } catch (e) {
+        storage.getState().removePendingMessage(sessionId, localId);
+        storage.getState().clearSessionOptimisticThinking(sessionId);
+        throw e;
+    }
+}
+
+export async function updatePendingMessage(params: {
+    sessionId: string;
+    pendingId: string;
+    text: string;
+    encryption: Encryption;
+    updateSessionMetadataWithRetry: UpdateSessionMetadataWithRetry;
+}): Promise<void> {
+    const { sessionId, pendingId, text, encryption, updateSessionMetadataWithRetry } = params;
+
+    const sessionEncryption = encryption.getSessionEncryption(sessionId);
+    if (!sessionEncryption) {
+        throw new Error(`Session ${sessionId} not found`);
+    }
+
+    const existing = storage.getState().sessionPending[sessionId]?.messages?.find((m) => m.id === pendingId);
+    if (!existing) {
+        throw new Error('Pending message not found');
+    }
+
+    const content: RawRecord = existing.rawRecord
+        ? {
+              ...(existing.rawRecord as any),
+              content: {
+                  type: 'text',
+                  text,
+              },
+          }
+        : {
+              role: 'user',
+              content: { type: 'text', text },
+              meta: {
+                  appendSystemPrompt: systemPrompt,
+              },
+          };
+
+    const encryptedRawRecord = await sessionEncryption.encryptRawRecord(content);
+    const updatedAt = nowServerMs();
+
+    await updateSessionMetadataWithRetry(sessionId, (metadata) =>
+        updateMessageQueueV1Item(metadata, {
+            localId: pendingId,
+            message: encryptedRawRecord,
+            createdAt: existing.createdAt,
+            updatedAt,
+        }),
+    );
+
+    storage.getState().upsertPendingMessage(sessionId, {
+        ...existing,
+        text,
+        updatedAt,
+        rawRecord: content,
+    });
+}
+
+export async function deletePendingMessage(params: {
+    sessionId: string;
+    pendingId: string;
+    updateSessionMetadataWithRetry: UpdateSessionMetadataWithRetry;
+}): Promise<void> {
+    const { sessionId, pendingId, updateSessionMetadataWithRetry } = params;
+
+    await updateSessionMetadataWithRetry(sessionId, (metadata) => deleteMessageQueueV1Item(metadata, pendingId));
+    storage.getState().removePendingMessage(sessionId, pendingId);
+}
+
+export async function discardPendingMessage(params: {
+    sessionId: string;
+    pendingId: string;
+    opts?: { reason?: 'switch_to_local' | 'manual' };
+    updateSessionMetadataWithRetry: UpdateSessionMetadataWithRetry;
+    encryption: Encryption;
+}): Promise<void> {
+    const { sessionId, pendingId, opts, updateSessionMetadataWithRetry, encryption } = params;
+
+    const discardedAt = nowServerMs();
+    await updateSessionMetadataWithRetry(sessionId, (metadata) =>
+        discardMessageQueueV1Item(metadata, {
+            localId: pendingId,
+            discardedAt,
+            discardedReason: opts?.reason ?? 'manual',
+        }),
+    );
+    await fetchAndApplyPendingMessages({ sessionId, encryption });
+}
+
+export async function restoreDiscardedPendingMessage(params: {
+    sessionId: string;
+    pendingId: string;
+    updateSessionMetadataWithRetry: UpdateSessionMetadataWithRetry;
+    encryption: Encryption;
+}): Promise<void> {
+    const { sessionId, pendingId, updateSessionMetadataWithRetry, encryption } = params;
+
+    await updateSessionMetadataWithRetry(sessionId, (metadata) =>
+        restoreMessageQueueV1DiscardedItem(metadata, { localId: pendingId, now: nowServerMs() }),
+    );
+    await fetchAndApplyPendingMessages({ sessionId, encryption });
+}
+
+export async function deleteDiscardedPendingMessage(params: {
+    sessionId: string;
+    pendingId: string;
+    updateSessionMetadataWithRetry: UpdateSessionMetadataWithRetry;
+    encryption: Encryption;
+}): Promise<void> {
+    const { sessionId, pendingId, updateSessionMetadataWithRetry, encryption } = params;
+
+    await updateSessionMetadataWithRetry(sessionId, (metadata) => deleteMessageQueueV1DiscardedItem(metadata, pendingId));
+    await fetchAndApplyPendingMessages({ sessionId, encryption });
 }
 
 type SessionListEncryption = {

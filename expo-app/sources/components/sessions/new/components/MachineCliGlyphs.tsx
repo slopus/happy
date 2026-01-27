@@ -6,8 +6,7 @@ import { Modal } from '@/modal';
 import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import { DetectedClisModal } from '@/components/machines/DetectedClisModal';
 import { CAPABILITIES_REQUEST_NEW_SESSION } from '@/capabilities/requests';
-import { getAgentCore } from '@/agents/registryCore';
-import { getAgentCliGlyph } from '@/agents/registryUi';
+import { getAgentCore, getAgentCliGlyph } from '@/agents/catalog';
 import { useEnabledAgentIds } from '@/agents/useEnabledAgentIds';
 import type { CapabilityId } from '@/sync/capabilitiesProtocol';
 

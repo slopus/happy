@@ -8,9 +8,9 @@ import { Typography } from '@/constants/Typography';
 import { AgentInput } from '@/components/sessions/agentInput';
 import { Item } from '@/components/ui/lists/Item';
 import { ItemGroup } from '@/components/ui/lists/ItemGroup';
-import { MachineSelector } from '@/components/sessions/newSession/components/MachineSelector';
-import { PathSelector } from '@/components/sessions/newSession/components/PathSelector';
-import { WizardSectionHeaderRow } from '@/components/sessions/newSession/components/WizardSectionHeaderRow';
+import { MachineSelector } from '@/components/sessions/new/components/MachineSelector';
+import { PathSelector } from '@/components/sessions/new/components/PathSelector';
+import { WizardSectionHeaderRow } from '@/components/sessions/new/components/WizardSectionHeaderRow';
 import { ProfilesList } from '@/components/profiles/ProfilesList';
 import { SessionTypeSelectorRows } from '@/components/SessionTypeSelector';
 import { layout } from '@/components/layout';
@@ -24,10 +24,10 @@ import type { PermissionMode, ModelMode } from '@/sync/permissionTypes';
 import { getPermissionModeOptionsForAgentType } from '@/sync/permissionModeOptions';
 import type { SecretSatisfactionResult } from '@/utils/secrets/secretSatisfaction';
 import type { CLIAvailability } from '@/hooks/useCLIDetection';
-import type { AgentId } from '@/agents/registryCore';
-import { getAgentCore } from '@/agents/registryCore';
+import type { AgentId } from '@/agents/catalog';
+import { getAgentCore } from '@/agents/catalog';
 import { getAgentPickerOptions } from '@/agents/agentPickerOptions';
-import { CliNotDetectedBanner, type CliNotDetectedBannerDismissScope } from '@/components/sessions/newSession/components/CliNotDetectedBanner';
+import { CliNotDetectedBanner, type CliNotDetectedBannerDismissScope } from '@/components/sessions/new/components/CliNotDetectedBanner';
 import { InstallableDepInstaller, type InstallableDepInstallerProps } from '@/components/machines/InstallableDepInstaller';
 
 export interface NewSessionWizardLayoutProps {

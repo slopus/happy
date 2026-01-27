@@ -4,7 +4,7 @@ import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-rout
 import { Ionicons } from '@expo/vector-icons';
 
 import { ItemList } from '@/components/ui/lists/ItemList';
-import { MachineSelector } from '@/components/sessions/newSession/components/MachineSelector';
+import { MachineSelector } from '@/components/sessions/new/components/MachineSelector';
 import { useAllMachines, useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
 import { useUnistyles } from 'react-native-unistyles';

@@ -8,7 +8,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { ItemList } from '@/components/ui/lists/ItemList';
 import { layout } from '@/components/layout';
-import { PathSelector } from '@/components/sessions/newSession/components/PathSelector';
+import { PathSelector } from '@/components/sessions/new/components/PathSelector';
 import { SearchHeader } from '@/components/ui/forms/SearchHeader';
 import { getRecentPathsForMachine } from '@/utils/sessions/recentPaths';
 
