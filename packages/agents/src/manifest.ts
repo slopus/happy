@@ -7,25 +7,28 @@ export const AGENTS_CORE = {
         id: 'claude',
         cliSubcommand: 'claude',
         detectKey: 'claude',
-        resume: { vendorResume: 'supported', runtimeGate: null },
+        flavorAliases: [],
+        resume: { vendorResume: 'supported', vendorResumeIdField: null, runtimeGate: null },
     },
     codex: {
         id: 'codex',
         cliSubcommand: 'codex',
         detectKey: 'codex',
-        resume: { vendorResume: 'experimental', runtimeGate: null },
+        flavorAliases: ['codex-acp', 'codex-mcp'],
+        resume: { vendorResume: 'experimental', vendorResumeIdField: 'codexSessionId', runtimeGate: null },
     },
     opencode: {
         id: 'opencode',
         cliSubcommand: 'opencode',
         detectKey: 'opencode',
-        resume: { vendorResume: 'unsupported', runtimeGate: 'acpLoadSession' },
+        flavorAliases: [],
+        resume: { vendorResume: 'supported', vendorResumeIdField: 'opencodeSessionId', runtimeGate: 'acpLoadSession' },
     },
     gemini: {
         id: 'gemini',
         cliSubcommand: 'gemini',
         detectKey: 'gemini',
-        resume: { vendorResume: 'unsupported', runtimeGate: 'acpLoadSession' },
+        flavorAliases: [],
+        resume: { vendorResume: 'supported', vendorResumeIdField: 'geminiSessionId', runtimeGate: 'acpLoadSession' },
     },
 } as const satisfies Record<AgentId, AgentCore>;
-
