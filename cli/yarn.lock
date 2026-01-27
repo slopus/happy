@@ -428,6 +428,10 @@
   version "0.0.0"
   uid ""
 
+"@happy/protocol@link:../packages/protocol":
+  version "0.0.0"
+  uid ""
+
 "@humanfs/core@^0.19.1":
   version "0.19.1"
   resolved "https://registry.npmjs.org/@humanfs/core/-/core-0.19.1.tgz"

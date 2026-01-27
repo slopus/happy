@@ -2,6 +2,9 @@ import type { TerminalSpawnOptions } from '@/terminal/terminalConfig';
 import type { PermissionMode } from '@/api/types';
 import type { CatalogAgentId } from '@/backends/types';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
+import type { SpawnSessionErrorCode } from '@happy/protocol';
+export { SPAWN_SESSION_ERROR_CODES } from '@happy/protocol';
+export type { SpawnSessionErrorCode } from '@happy/protocol';
 import { registerCapabilitiesHandlers } from './capabilities';
 import { registerPreviewEnvHandler } from './previewEnv';
 import { registerBashHandler } from './bash';
@@ -88,23 +91,6 @@ export interface SpawnSessionOptions {
      */
     environmentVariables?: Record<string, string>;
 }
-
-export const SPAWN_SESSION_ERROR_CODES = {
-    INVALID_REQUEST: 'INVALID_REQUEST',
-    INVALID_ENVIRONMENT_VARIABLES: 'INVALID_ENVIRONMENT_VARIABLES',
-    AUTH_ENV_UNEXPANDED: 'AUTH_ENV_UNEXPANDED',
-    RESUME_NOT_SUPPORTED: 'RESUME_NOT_SUPPORTED',
-    RESUME_MISSING_ENCRYPTION_KEY: 'RESUME_MISSING_ENCRYPTION_KEY',
-    RESUME_UNSUPPORTED_ENCRYPTION_VARIANT: 'RESUME_UNSUPPORTED_ENCRYPTION_VARIANT',
-    DIRECTORY_CREATE_FAILED: 'DIRECTORY_CREATE_FAILED',
-    SPAWN_VALIDATION_FAILED: 'SPAWN_VALIDATION_FAILED',
-    SPAWN_NO_PID: 'SPAWN_NO_PID',
-    SESSION_WEBHOOK_TIMEOUT: 'SESSION_WEBHOOK_TIMEOUT',
-    SPAWN_FAILED: 'SPAWN_FAILED',
-    UNEXPECTED: 'UNEXPECTED',
-} as const;
-
-export type SpawnSessionErrorCode = (typeof SPAWN_SESSION_ERROR_CODES)[keyof typeof SPAWN_SESSION_ERROR_CODES];
 
 export type SpawnSessionResult =
     | { type: 'success'; sessionId?: string }

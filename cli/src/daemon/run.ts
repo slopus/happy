@@ -115,6 +115,8 @@ export async function startDaemon(): Promise<void> {
 
     // Session spawning awaiter system
     const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
+    const pidToSpawnResultResolver = new Map<number, (result: SpawnSessionResult) => void>();
+    const pidToSpawnWebhookTimeout = new Map<number, NodeJS.Timeout>();
 
     // Helper functions
     const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
@@ -554,28 +556,33 @@ export async function startDaemon(): Promise<void> {
             // Wait for webhook to populate session with happySessionId (exact same as regular flow)
             logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${tmuxResult.pid} (tmux)`);
 
-            return new Promise((resolve) => {
-              // Set timeout for webhook (same as regular flow)
-              const timeout = setTimeout(() => {
-                pidToAwaiter.delete(tmuxResult.pid!);
-                logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${tmuxResult.pid} (tmux)`);
-                resolve({
-                  type: 'error',
-                  errorCode: SPAWN_SESSION_ERROR_CODES.SESSION_WEBHOOK_TIMEOUT,
-                  errorMessage: `Session webhook timeout for PID ${tmuxResult.pid} (tmux)`
-                });
-              }, 15_000); // Same timeout as regular sessions
+          return new Promise((resolve) => {
+            // Set timeout for webhook (same as regular flow)
+            const timeout = setTimeout(() => {
+              pidToAwaiter.delete(tmuxResult.pid!);
+              pidToSpawnResultResolver.delete(tmuxResult.pid!);
+              pidToSpawnWebhookTimeout.delete(tmuxResult.pid!);
+              logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${tmuxResult.pid} (tmux)`);
+              resolve({
+                type: 'error',
+                errorCode: SPAWN_SESSION_ERROR_CODES.SESSION_WEBHOOK_TIMEOUT,
+                errorMessage: `Session webhook timeout for PID ${tmuxResult.pid} (tmux)`
+              });
+            }, 15_000); // Same timeout as regular sessions
+            pidToSpawnWebhookTimeout.set(tmuxResult.pid!, timeout);
 
-              // Register awaiter for tmux session (exact same as regular flow)
-              pidToAwaiter.set(tmuxResult.pid!, (completedSession) => {
-                clearTimeout(timeout);
-                logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook (tmux)`);
-                resolve({
-                  type: 'success',
-                  sessionId: completedSession.happySessionId!
-                });
+            // Register awaiter for tmux session (exact same as regular flow)
+            pidToAwaiter.set(tmuxResult.pid!, (completedSession) => {
+              clearTimeout(timeout);
+              pidToSpawnWebhookTimeout.delete(tmuxResult.pid!);
+              pidToSpawnResultResolver.delete(tmuxResult.pid!);
+              logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook (tmux)`);
+              resolve({
+                type: 'success',
+                sessionId: completedSession.happySessionId!
               });
             });
+          });
 	          } else {
 	            tmuxFallbackReason = tmuxResult.error ?? 'tmux spawn failed';
 	            logger.debug(`[DAEMON RUN] Failed to spawn in tmux: ${tmuxResult.error}, falling back to regular spawning`);
@@ -682,6 +689,19 @@ export async function startDaemon(): Promise<void> {
           happyProcess.on('exit', (code, signal) => {
             logger.debug(`[DAEMON RUN] Child PID ${happyProcess.pid} exited with code ${code}, signal ${signal}`);
             if (happyProcess.pid) {
+              const resolveSpawn = pidToSpawnResultResolver.get(happyProcess.pid);
+              if (resolveSpawn) {
+                pidToSpawnResultResolver.delete(happyProcess.pid);
+                const timeout = pidToSpawnWebhookTimeout.get(happyProcess.pid);
+                if (timeout) clearTimeout(timeout);
+                pidToSpawnWebhookTimeout.delete(happyProcess.pid);
+                pidToAwaiter.delete(happyProcess.pid);
+                resolveSpawn({
+                  type: 'error',
+                  errorCode: SPAWN_SESSION_ERROR_CODES.CHILD_EXITED_BEFORE_WEBHOOK,
+                  errorMessage: `Child process exited before session webhook (pid=${happyProcess.pid}, code=${code ?? 'null'}, signal=${signal ?? 'null'})`,
+                });
+              }
               onChildExited(happyProcess.pid, { reason: 'process-exited', code, signal });
             }
           });
@@ -689,6 +709,19 @@ export async function startDaemon(): Promise<void> {
           happyProcess.on('error', (error) => {
             logger.debug(`[DAEMON RUN] Child process error:`, error);
             if (happyProcess.pid) {
+              const resolveSpawn = pidToSpawnResultResolver.get(happyProcess.pid);
+              if (resolveSpawn) {
+                pidToSpawnResultResolver.delete(happyProcess.pid);
+                const timeout = pidToSpawnWebhookTimeout.get(happyProcess.pid);
+                if (timeout) clearTimeout(timeout);
+                pidToSpawnWebhookTimeout.delete(happyProcess.pid);
+                pidToAwaiter.delete(happyProcess.pid);
+                resolveSpawn({
+                  type: 'error',
+                  errorCode: SPAWN_SESSION_ERROR_CODES.CHILD_EXITED_BEFORE_WEBHOOK,
+                  errorMessage: `Child process error before session webhook (pid=${happyProcess.pid})`,
+                });
+              }
               onChildExited(happyProcess.pid, { reason: 'process-error', code: null, signal: null });
             }
           });
@@ -697,9 +730,12 @@ export async function startDaemon(): Promise<void> {
           logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${happyProcess.pid}`);
 
           return new Promise((resolve) => {
+            pidToSpawnResultResolver.set(happyProcess.pid!, resolve);
             // Set timeout for webhook
             const timeout = setTimeout(() => {
               pidToAwaiter.delete(happyProcess.pid!);
+              pidToSpawnResultResolver.delete(happyProcess.pid!);
+              pidToSpawnWebhookTimeout.delete(happyProcess.pid!);
               logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
               resolve({
                 type: 'error',
@@ -709,10 +745,13 @@ export async function startDaemon(): Promise<void> {
               // 15 second timeout - I have seen timeouts on 10 seconds
               // even though session was still created successfully in ~2 more seconds
             }, 15_000);
+            pidToSpawnWebhookTimeout.set(happyProcess.pid!, timeout);
 
             // Register awaiter
             pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
               clearTimeout(timeout);
+              pidToSpawnWebhookTimeout.delete(happyProcess.pid!);
+              pidToSpawnResultResolver.delete(happyProcess.pid!);
               logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook`);
               resolve({
                 type: 'success',

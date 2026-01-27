@@ -12,6 +12,8 @@
  * - Stream model output and events
  */
 
+import type { AgentId as CatalogAgentId } from '@happy/agents';
+
 /** Unique identifier for an agent session */
 export type SessionId = string;
 
@@ -48,7 +50,7 @@ export interface McpServerConfig {
 export type AgentTransport = 'native-claude' | 'mcp-codex' | 'acp';
 
 /** Agent identifier */
-export type AgentId = 'claude' | 'codex' | 'gemini' | 'opencode' | 'claude-acp' | 'codex-acp';
+export type AgentId = CatalogAgentId;
 
 /**
  * Configuration for creating an agent backend
