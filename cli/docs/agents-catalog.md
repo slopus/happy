@@ -1,9 +1,6 @@
-# 2026-01 Agent Catalog (How-To)
+# Agent Catalog - CLI
 
 This doc explains how the **Agent Catalog** works in Happy, and how to add a new agent/backend without guessing.
-
-This is an **implementation guide** (not a refactor plan). For historical context and prior decisions, see:
-- `.project/docs/2026-01-cli-agent-catalog-backends-plan.md`
 
 ---
 
@@ -237,14 +234,4 @@ yarn --cwd cli test
 - Don’t do side-effect self-registration (“import this file and it registers itself”). It makes ordering brittle and behavior hard to audit.
 - Don’t leave long-lived “stubs” (re-export shims) as an architectural layer. Prefer canonical entrypoints and direct imports.
 
----
-
-## Server catalog (recommended pattern)
-
-If/when the server needs an “agent catalog”, mirror the same pattern:
-- `server/.../backends/<agentId>/index.ts` exports a typed `agent` entry (server-specific hooks)
-- `server/.../backends/catalog.ts` assembles them explicitly
-- ids and shared invariants still come from `@happy/agents`
-
-This keeps server wiring co-located and avoids a giant central registry file.
 
