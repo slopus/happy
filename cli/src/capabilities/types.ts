@@ -4,12 +4,13 @@ import type { ChecklistId } from './checklistIds';
 export type { ChecklistId } from './checklistIds';
 
 export type CliCapabilityId = `cli.${CatalogAgentId}`;
+export type ToolCapabilityId = `tool.${string}`;
+export type DepCapabilityId = `dep.${string}`;
 
 export type CapabilityId =
     | CliCapabilityId
-    | 'tool.tmux'
-    | 'dep.codex-mcp-resume'
-    | 'dep.codex-acp';
+    | ToolCapabilityId
+    | DepCapabilityId;
 
 export type CapabilityKind = 'cli' | 'tool' | 'dep';
 

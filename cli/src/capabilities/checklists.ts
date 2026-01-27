@@ -2,6 +2,7 @@ import type { AgentCatalogEntry } from '@/backends/catalog';
 import { AGENTS } from '@/backends/catalog';
 import { CATALOG_AGENT_IDS } from '@/backends/types';
 import type { CatalogAgentId } from '@/backends/types';
+import { AGENTS_CORE } from '@happy/agents';
 
 import type { ChecklistId } from './checklistIds';
 import type { CapabilityDetectRequest } from './types';
@@ -34,7 +35,17 @@ function mergeChecklistContributions(
 }
 
 const resumeChecklistEntries = Object.fromEntries(
-    CATALOG_AGENT_IDS.map((id) => [`resume.${id}`, [] as CapabilityDetectRequest[]] as const),
+    CATALOG_AGENT_IDS.map((id) => {
+        const runtimeGate = AGENTS_CORE[id].resume.runtimeGate;
+        const requests: CapabilityDetectRequest[] = [];
+        if (runtimeGate === 'acpLoadSession') {
+            requests.push({
+                id: `cli.${id}`,
+                params: { includeAcpCapabilities: true, includeLoginStatus: true },
+            });
+        }
+        return [`resume.${id}`, requests] as const;
+    }),
 ) as Record<`resume.${CatalogAgentId}`, CapabilityDetectRequest[]>;
 
 const baseChecklists = {

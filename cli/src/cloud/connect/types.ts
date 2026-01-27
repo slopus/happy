@@ -1,6 +1,8 @@
+import type { CatalogAgentId } from '@/backends/types';
+
 export type CloudVendorKey = 'openai' | 'anthropic' | 'gemini';
 
-export type ConnectTargetId = 'codex' | 'claude' | 'gemini';
+export type ConnectTargetId = CatalogAgentId;
 
 export type CloudConnectTargetStatus = 'wired' | 'experimental';
 
