@@ -3,6 +3,12 @@ import type { UnistylesThemes } from 'react-native-unistyles';
 
 import type { AgentId } from './registryCore';
 
+import { CLAUDE_UI } from './providers/claude/ui';
+import { CODEX_UI } from './providers/codex/ui';
+import { OPENCODE_UI } from './providers/opencode/ui';
+import { GEMINI_UI } from './providers/gemini/ui';
+import { AUGGIE_UI } from './providers/auggie/ui';
+
 export type AgentUiConfig = Readonly<{
     id: AgentId;
     icon: ImageSourcePropType;
@@ -24,57 +30,11 @@ export type AgentUiConfig = Readonly<{
 }>;
 
 export const AGENTS_UI: Readonly<Record<AgentId, AgentUiConfig>> = Object.freeze({
-    claude: {
-        id: 'claude',
-        icon: require('@/assets/images/icon-claude.png'),
-        tintColor: null,
-        avatarOverlay: {
-            circleScale: 0.35,
-            iconScale: ({ size }: { size: number }) => Math.round(size * 0.28),
-        },
-        // iOS can render dingbat glyphs as emoji; force text presentation (U+FE0E).
-        cliGlyph: '\u2733\uFE0E',
-    },
-    codex: {
-        id: 'codex',
-        icon: require('@/assets/images/icon-gpt.png'),
-        tintColor: (theme: UnistylesThemes[keyof UnistylesThemes]) => theme.colors.text,
-        avatarOverlay: {
-            circleScale: 0.35,
-            iconScale: ({ size }: { size: number }) => Math.round(size * 0.25),
-        },
-        cliGlyph: '꩜',
-    },
-    opencode: {
-        id: 'opencode',
-        icon: require('@/assets/images/icon-monochrome.png'),
-        tintColor: (theme: UnistylesThemes[keyof UnistylesThemes]) => theme.colors.text,
-        avatarOverlay: {
-            circleScale: 0.35,
-            iconScale: ({ size }: { size: number }) => Math.round(size * 0.25),
-        },
-        cliGlyph: '</>',
-    },
-    gemini: {
-        id: 'gemini',
-        icon: require('@/assets/images/icon-gemini.png'),
-        tintColor: null,
-        avatarOverlay: {
-            circleScale: 0.35,
-            iconScale: ({ size }: { size: number }) => Math.round(size * 0.35),
-        },
-        cliGlyph: '\u2726\uFE0E',
-    },
-    auggie: {
-        id: 'auggie',
-        icon: require('@/assets/images/icon-monochrome.png'),
-        tintColor: (theme: UnistylesThemes[keyof UnistylesThemes]) => theme.colors.text,
-        avatarOverlay: {
-            circleScale: 0.35,
-            iconScale: ({ size }: { size: number }) => Math.round(size * 0.25),
-        },
-        cliGlyph: 'A',
-    },
+    claude: CLAUDE_UI,
+    codex: CODEX_UI,
+    opencode: OPENCODE_UI,
+    gemini: GEMINI_UI,
+    auggie: AUGGIE_UI,
 });
 
 export function getAgentIconSource(agentId: AgentId): ImageSourcePropType {
