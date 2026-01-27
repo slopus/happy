@@ -30,7 +30,7 @@ import {
 } from '@/agent/runtime/startupSideEffects';
 import { maybeUpdatePermissionModeMetadata } from '@/agent/runtime/permissionModeMetadata';
 import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/runtime/startupMetadataUpdate';
-import { registerKillSessionHandler } from '@/session/registerKillSessionHandler';
+import { registerKillSessionHandler } from '@/rpc/handlers/killSession';
 import { stopCaffeinate } from '@/integrations/caffeinate';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';

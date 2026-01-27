@@ -24,7 +24,7 @@ import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { startHappyServer } from '@/mcp/startHappyServer';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
-import { registerKillSessionHandler } from '@/session/registerKillSessionHandler';
+import { registerKillSessionHandler } from '@/rpc/handlers/killSession';
 import { stopCaffeinate } from '@/integrations/caffeinate';
 import { connectionState } from '@/api/offline/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/api/offline/setupOfflineReconnection';

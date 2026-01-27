@@ -26,7 +26,7 @@ import { CodexTerminalDisplay } from "@/backends/codex/ui/CodexTerminalDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import type { CodexSessionConfig, CodexToolResponse } from './types';
 import { CHANGE_TITLE_INSTRUCTION } from '@/agent/runtime/changeTitleInstruction';
-import { registerKillSessionHandler } from '@/session/registerKillSessionHandler';
+import { registerKillSessionHandler } from '@/rpc/handlers/killSession';
 import { delay } from "@/utils/time";
 import { stopCaffeinate } from '@/integrations/caffeinate';
 import { formatErrorForUi } from '@/ui/formatErrorForUi';

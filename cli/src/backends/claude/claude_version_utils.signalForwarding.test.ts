@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { attachChildSignalForwarding } = require('../../scripts/claude_version_utils.cjs') as any;
+const { attachChildSignalForwarding } = require('../../../scripts/claude_version_utils.cjs') as any;
 
 describe('claude_version_utils attachChildSignalForwarding', () => {
     it('forwards SIGTERM and SIGINT to child', () => {

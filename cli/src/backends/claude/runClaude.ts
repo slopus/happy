@@ -19,7 +19,7 @@ import { initialMachineMetadata } from '@/daemon/run';
 import { startHappyServer } from '@/mcp/startHappyServer';
 import { startHookServer } from '@/backends/claude/utils/startHookServer';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/backends/claude/utils/generateHookSettings';
-import { registerKillSessionHandler } from '@/session/registerKillSessionHandler';
+import { registerKillSessionHandler } from '@/rpc/handlers/killSession';
 import { projectPath } from '../../projectPath';
 import { resolve } from 'node:path';
 import { startOfflineReconnection, connectionState } from '@/api/offline/serverConnectionErrors';
