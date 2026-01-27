@@ -67,6 +67,7 @@ import { handleUpdateAccountSocketUpdate } from './engine/account';
 import { buildMachineFromMachineActivityEphemeralUpdate, buildUpdatedMachineFromSocketUpdate, fetchAndApplyMachines } from './engine/machines';
 import {
     buildUpdatedSessionFromSocketUpdate,
+    fetchAndApplySessions,
     handleDeleteSessionSocketUpdate,
     handleNewMessageSocketUpdate,
     repairInvalidReadStateV1 as repairInvalidReadStateV1Engine,
@@ -938,96 +939,14 @@ class Sync {
 
     private fetchSessions = async () => {
         if (!this.credentials) return;
-
-        const API_ENDPOINT = getServerUrl();
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
-            headers: {
-                'Authorization': `Bearer ${this.credentials.token}`,
-                'Content-Type': 'application/json'
-            }
+        await fetchAndApplySessions({
+            credentials: this.credentials,
+            encryption: this.encryption,
+            sessionDataKeys: this.sessionDataKeys,
+            applySessions: (sessions) => this.applySessions(sessions),
+            repairInvalidReadStateV1: (params) => this.repairInvalidReadStateV1(params),
+            log,
         });
-
-        if (!response.ok) {
-            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
-                throw new HappyError(`Failed to fetch sessions (${response.status})`, false);
-            }
-            throw new Error(`Failed to fetch sessions: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const sessions = data.sessions as Array<{
-            id: string;
-            tag: string;
-            seq: number;
-            metadata: string;
-            metadataVersion: number;
-            agentState: string | null;
-            agentStateVersion: number;
-            dataEncryptionKey: string | null;
-            active: boolean;
-            activeAt: number;
-            createdAt: number;
-            updatedAt: number;
-            lastMessage: ApiMessage | null;
-        }>;
-
-        // Initialize all session encryptions first
-        const sessionKeys = new Map<string, Uint8Array | null>();
-        for (const session of sessions) {
-            if (session.dataEncryptionKey) {
-                let decrypted = await this.encryption.decryptEncryptionKey(session.dataEncryptionKey);
-                if (!decrypted) {
-                    console.error(`Failed to decrypt data encryption key for session ${session.id}`);
-                    continue;
-                }
-                sessionKeys.set(session.id, decrypted);
-                this.sessionDataKeys.set(session.id, decrypted);
-            } else {
-                sessionKeys.set(session.id, null);
-                this.sessionDataKeys.delete(session.id);
-            }
-        }
-        await this.encryption.initializeSessions(sessionKeys);
-
-        // Decrypt sessions
-        let decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
-        for (const session of sessions) {
-            // Get session encryption (should always exist after initialization)
-            const sessionEncryption = this.encryption.getSessionEncryption(session.id);
-            if (!sessionEncryption) {
-                console.error(`Session encryption not found for ${session.id} - this should never happen`);
-                continue;
-            }
-
-            // Decrypt metadata using session-specific encryption
-            let metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
-
-            // Decrypt agent state using session-specific encryption
-            let agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
-
-            // Put it all together
-            const processedSession = {
-                ...session,
-                thinking: false,
-                thinkingAt: 0,
-                metadata,
-                agentState
-            };
-            decryptedSessions.push(processedSession);
-        }
-
-        // Apply to storage
-        this.applySessions(decryptedSessions);
-        log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
-        void (async () => {
-            for (const session of decryptedSessions) {
-                const readState = session.metadata?.readStateV1;
-                if (!readState) continue;
-                if (readState.sessionSeq <= session.seq) continue;
-                await this.repairInvalidReadStateV1({ sessionId: session.id, sessionSeqUpperBound: session.seq });
-            }
-        })();
-
     }
 
     /**

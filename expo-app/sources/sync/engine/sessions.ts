@@ -5,13 +5,17 @@ import { inferTaskLifecycleFromMessageContent } from './socket';
 import type { Session } from '../storageTypes';
 import type { Metadata } from '../storageTypes';
 import { computeNextReadStateV1 } from '../readStateV1';
+import { getServerUrl } from '../serverConfig';
+import type { AuthCredentials } from '@/auth/tokenStorage';
+import { HappyError } from '@/utils/errors';
+import type { ApiMessage } from '../apiTypes';
 
 type SessionMessageEncryption = {
     decryptMessage: (message: any) => Promise<any>;
 };
 
 type SessionEncryption = {
-    decryptAgentState: (version: number, value: string) => Promise<any>;
+    decryptAgentState: (version: number, value: string | null) => Promise<any>;
     decryptMetadata: (version: number, value: string) => Promise<any>;
 };
 
@@ -203,4 +207,110 @@ export async function repairInvalidReadStateV1(params: {
     } finally {
         inFlight.delete(sessionId);
     }
+}
+
+type SessionListEncryption = {
+    decryptEncryptionKey: (value: string) => Promise<Uint8Array | null>;
+    initializeSessions: (sessionKeys: Map<string, Uint8Array | null>) => Promise<void>;
+    getSessionEncryption: (sessionId: string) => SessionEncryption | null;
+};
+
+export async function fetchAndApplySessions(params: {
+    credentials: AuthCredentials;
+    encryption: SessionListEncryption;
+    sessionDataKeys: Map<string, Uint8Array>;
+    applySessions: (sessions: Array<Omit<Session, 'presence'> & { presence?: 'online' | number }>) => void;
+    repairInvalidReadStateV1: (params: { sessionId: string; sessionSeqUpperBound: number }) => Promise<void>;
+    log: { log: (message: string) => void };
+}): Promise<void> {
+    const { credentials, encryption, sessionDataKeys, applySessions, repairInvalidReadStateV1, log } = params;
+
+    const API_ENDPOINT = getServerUrl();
+    const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
+            'Content-Type': 'application/json',
+        },
+    });
+
+    if (!response.ok) {
+        if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+            throw new HappyError(`Failed to fetch sessions (${response.status})`, false);
+        }
+        throw new Error(`Failed to fetch sessions: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const sessions = data.sessions as Array<{
+        id: string;
+        tag: string;
+        seq: number;
+        metadata: string;
+        metadataVersion: number;
+        agentState: string | null;
+        agentStateVersion: number;
+        dataEncryptionKey: string | null;
+        active: boolean;
+        activeAt: number;
+        createdAt: number;
+        updatedAt: number;
+        lastMessage: ApiMessage | null;
+    }>;
+
+    // Initialize all session encryptions first
+    const sessionKeys = new Map<string, Uint8Array | null>();
+    for (const session of sessions) {
+        if (session.dataEncryptionKey) {
+            const decrypted = await encryption.decryptEncryptionKey(session.dataEncryptionKey);
+            if (!decrypted) {
+                console.error(`Failed to decrypt data encryption key for session ${session.id}`);
+                continue;
+            }
+            sessionKeys.set(session.id, decrypted);
+            sessionDataKeys.set(session.id, decrypted);
+        } else {
+            sessionKeys.set(session.id, null);
+            sessionDataKeys.delete(session.id);
+        }
+    }
+    await encryption.initializeSessions(sessionKeys);
+
+    // Decrypt sessions
+    const decryptedSessions: (Omit<Session, 'presence'> & { presence?: 'online' | number })[] = [];
+    for (const session of sessions) {
+        // Get session encryption (should always exist after initialization)
+        const sessionEncryption = encryption.getSessionEncryption(session.id);
+        if (!sessionEncryption) {
+            console.error(`Session encryption not found for ${session.id} - this should never happen`);
+            continue;
+        }
+
+        // Decrypt metadata using session-specific encryption
+        const metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
+
+        // Decrypt agent state using session-specific encryption
+        const agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
+
+        // Put it all together
+        decryptedSessions.push({
+            ...session,
+            thinking: false,
+            thinkingAt: 0,
+            metadata,
+            agentState,
+        });
+    }
+
+    // Apply to storage
+    applySessions(decryptedSessions);
+    log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
+
+    void (async () => {
+        for (const session of decryptedSessions) {
+            const readState = session.metadata?.readStateV1;
+            if (!readState) continue;
+            if (readState.sessionSeq <= session.seq) continue;
+            await repairInvalidReadStateV1({ sessionId: session.id, sessionSeqUpperBound: session.seq });
+        }
+    })();
 }
