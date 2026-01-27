@@ -63,7 +63,7 @@ import {
 } from './engine/artifacts';
 import { handleNewFeedPostUpdate, handleRelationshipUpdatedSocketUpdate, handleTodoKvBatchUpdate } from './engine/feed';
 import { handleUpdateAccountSocketUpdate } from './engine/account';
-import { buildUpdatedMachineFromSocketUpdate } from './engine/machines';
+import { buildMachineFromMachineActivityEphemeralUpdate, buildUpdatedMachineFromSocketUpdate } from './engine/machines';
 import {
     buildUpdatedSessionFromSocketUpdate,
     handleDeleteSessionSocketUpdate,
@@ -2252,11 +2252,7 @@ class Sync {
             // Update machine's active status and lastActiveAt
             const machine = storage.getState().machines[updateData.id];
             if (machine) {
-                const updatedMachine: Machine = {
-                    ...machine,
-                    active: updateData.active,
-                    activeAt: updateData.activeAt
-                };
+                const updatedMachine: Machine = buildMachineFromMachineActivityEphemeralUpdate({ machine, updateData });
                 storage.getState().applyMachines([updatedMachine]);
             }
         }

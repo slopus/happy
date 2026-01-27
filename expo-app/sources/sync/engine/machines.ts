@@ -64,3 +64,14 @@ export async function buildUpdatedMachineFromSocketUpdate(params: {
     return updatedMachine;
 }
 
+export function buildMachineFromMachineActivityEphemeralUpdate(params: {
+    machine: Machine;
+    updateData: { active: boolean; activeAt: number };
+}): Machine {
+    const { machine, updateData } = params;
+    return {
+        ...machine,
+        active: updateData.active,
+        activeAt: updateData.activeAt,
+    };
+}
