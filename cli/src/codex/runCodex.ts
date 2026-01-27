@@ -31,6 +31,8 @@ import { stopCaffeinate } from "@/utils/caffeinate";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
+import { formatMessageForCodex } from '@/utils/formatImageMessage';
+import type { ImageContent } from '@/api/types';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -72,6 +74,7 @@ export async function runCodex(opts: {
     interface EnhancedMode {
         permissionMode: PermissionMode;
         model?: string;
+        images?: ImageContent[];
     }
 
     //
@@ -182,11 +185,23 @@ export async function runCodex(opts: {
             logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
         }
 
+        // Extract text and images based on content type (text-only or mixed)
+        const isMixedContent = message.content.type === 'mixed';
+        const messageText = message.content.text;
+        const images: ImageContent[] = isMixedContent && 'images' in message.content
+            ? message.content.images
+            : [];
+
+        if (images.length > 0) {
+            logger.debug(`[Codex] Received mixed message with ${images.length} image(s)`);
+        }
+
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode || 'default',
             model: messageModel,
+            images: images.length > 0 ? images : undefined,
         };
-        messageQueue.push(message.content.text, enhancedMode);
+        messageQueue.push(messageText, enhancedMode);
     });
     let thinking = false;
     session.keepAlive(thinking, 'remote');
@@ -662,8 +677,20 @@ export async function runCodex(opts: {
                 })();
 
                 if (!wasCreated) {
+                    // Build prompt text
+                    const promptText = first ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION : message.message;
+
+                    // Format prompt with images if present
+                    let prompt: string | import('./types').CodexContent[];
+                    if (message.mode.images && message.mode.images.length > 0) {
+                        logger.debug(`[Codex] Formatting prompt with ${message.mode.images.length} image(s)`);
+                        prompt = await formatMessageForCodex(promptText, message.mode.images);
+                    } else {
+                        prompt = promptText;
+                    }
+
                     const startConfig: CodexSessionConfig = {
-                        prompt: first ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION : message.message,
+                        prompt,
                         sandbox,
                         'approval-policy': approvalPolicy,
                         config: { mcp_servers: mcpServers }
@@ -671,10 +698,10 @@ export async function runCodex(opts: {
                     if (message.mode.model) {
                         startConfig.model = message.mode.model;
                     }
-                    
+
                     // Check for resume file from multiple sources
                     let resumeFile: string | null = null;
-                    
+
                     // Priority 1: Explicit resume file from mode change
                     if (nextExperimentalResume) {
                         resumeFile = nextExperimentalResume;
@@ -691,12 +718,12 @@ export async function runCodex(opts: {
                         }
                         storedSessionIdForResume = null; // consume once
                     }
-                    
+
                     // Apply resume file if found
                     if (resumeFile) {
                         (startConfig.config as any).experimental_resume = resumeFile;
                     }
-                    
+
                     await client.startSession(
                         startConfig,
                         { signal: abortController.signal }
@@ -704,8 +731,17 @@ export async function runCodex(opts: {
                     wasCreated = true;
                     first = false;
                 } else {
+                    // Format prompt with images if present for continue session
+                    let prompt: string | import('./types').CodexContent[];
+                    if (message.mode.images && message.mode.images.length > 0) {
+                        logger.debug(`[Codex] Formatting continue prompt with ${message.mode.images.length} image(s)`);
+                        prompt = await formatMessageForCodex(message.message, message.mode.images);
+                    } else {
+                        prompt = message.message;
+                    }
+
                     const response = await client.continueSession(
-                        message.message,
+                        prompt,
                         { signal: abortController.signal }
                     );
                     logger.debug('[Codex] continueSession response:', response);

@@ -14,7 +14,9 @@ import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
 import { Platform, AppState } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
-import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
+import { NormalizedMessage, normalizeRawMessage, RawRecord, ImageContent } from './typesRaw';
+import { uploadChatImage } from './uploadChatImage';
+import { LocalImage } from '@/components/ImagePreview';
 import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
@@ -209,7 +211,7 @@ class Sync {
     }
 
 
-    async sendMessage(sessionId: string, text: string, displayText?: string) {
+    async sendMessage(sessionId: string, text: string, displayText?: string, images?: LocalImage[]) {
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -227,7 +229,7 @@ class Sync {
 
         // Read permission mode from session state
         const permissionMode = session.permissionMode || 'default';
-        
+
         // Read model mode - for Gemini, default to gemini-2.5-pro if not set
         const flavor = session.metadata?.flavor;
         const isGemini = flavor === 'gemini';
@@ -261,13 +263,35 @@ class Sync {
         }
         const fallbackModel: string | null = null;
 
+        // Upload images if present
+        let messageContent: { type: 'text'; text: string } | { type: 'mixed'; text: string; images: ImageContent[] };
+
+        if (images && images.length > 0) {
+            const uploadedImages: ImageContent[] = [];
+            const apiUrl = getServerUrl();
+            const token = this.credentials.token;
+
+            for (const img of images) {
+                const uploaded = await uploadChatImage(sessionId, img, token, apiUrl);
+                uploadedImages.push(uploaded);
+            }
+
+            messageContent = {
+                type: 'mixed',
+                text,
+                images: uploadedImages,
+            };
+        } else {
+            messageContent = {
+                type: 'text',
+                text,
+            };
+        }
+
         // Create user message content with metadata
         const content: RawRecord = {
             role: 'user',
-            content: {
-                type: 'text',
-                text
-            },
+            content: messageContent,
             meta: {
                 sentFrom,
                 permissionMode: permissionMode || 'default',

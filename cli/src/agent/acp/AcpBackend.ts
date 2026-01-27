@@ -29,6 +29,7 @@ import type {
   SessionId,
   StartSessionResult,
   McpServerConfig,
+  SendPromptOptions,
 } from '../core';
 import { logger } from '@/ui/logger';
 import { delay } from '@/utils/time';
@@ -871,14 +872,14 @@ export class AcpBackend implements AgentBackend {
   private idleResolver: (() => void) | null = null;
   private waitingForResponse = false;
 
-  async sendPrompt(sessionId: SessionId, prompt: string): Promise<void> {
+  async sendPrompt(sessionId: SessionId, prompt: string, options?: SendPromptOptions): Promise<void> {
     // Check if prompt contains change_title instruction (via optional callback)
     const promptHasChangeTitle = this.options.hasChangeTitleInstruction?.(prompt) ?? false;
 
     // Reset tool call counter and set flag
     this.toolCallCountSincePrompt = 0;
     this.recentPromptHadChangeTitle = promptHasChangeTitle;
-    
+
     if (promptHasChangeTitle) {
       logger.debug('[AcpBackend] Prompt contains change_title instruction - will auto-approve first "other" tool call if it matches pattern');
     }
@@ -896,18 +897,34 @@ export class AcpBackend implements AgentBackend {
     try {
       logger.debug(`[AcpBackend] Sending prompt (length: ${prompt.length}): ${prompt.substring(0, 100)}...`);
       logger.debug(`[AcpBackend] Full prompt: ${prompt}`);
-      
-      const contentBlock: ContentBlock = {
+
+      // Build content blocks array - images first, then text
+      const contentBlocks: ContentBlock[] = [];
+
+      // Add image content blocks if provided
+      if (options?.images && options.images.length > 0) {
+        logger.debug(`[AcpBackend] Including ${options.images.length} image(s) in prompt`);
+        for (const image of options.images) {
+          contentBlocks.push({
+            type: 'image',
+            data: image.data,
+            mimeType: image.mimeType,
+          });
+        }
+      }
+
+      // Add text content block
+      contentBlocks.push({
         type: 'text',
         text: prompt,
-      };
+      });
 
       const promptRequest: PromptRequest = {
         sessionId: this.acpSessionId,
-        prompt: [contentBlock],
+        prompt: contentBlocks,
       };
 
-      logger.debug(`[AcpBackend] Prompt request:`, JSON.stringify(promptRequest, null, 2));
+      logger.debug(`[AcpBackend] Prompt request:`, JSON.stringify(promptRequest, null, 2).substring(0, 1000));
       await this.connection.prompt(promptRequest);
       logger.debug('[AcpBackend] Prompt request sent to ACP connection');
       

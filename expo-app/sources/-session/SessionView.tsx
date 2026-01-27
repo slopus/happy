@@ -7,6 +7,7 @@ import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
+import { useImagePicker } from '@/hooks/useImagePicker';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
@@ -179,6 +180,27 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
 
+    // Image picker hook for handling image attachments
+    const {
+        images,
+        pickFromGallery,
+        pickFromCamera,
+        addImageFromUri,
+        removeImage,
+        clearImages,
+        canAddMore,
+    } = useImagePicker({ maxImages: 4 });
+    const [isUploadingImages, setIsUploadingImages] = React.useState(false);
+
+    // Ref for hidden file input (web only)
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    // Check if the current session flavor supports images
+    const supportsImages = React.useMemo(() => {
+        const flavor = session?.metadata?.flavor;
+        return flavor === 'claude' || flavor === 'gemini' || flavor === 'codex';
+    }, [session?.metadata?.flavor]);
+
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
         if (machineId && cliVersion) {
@@ -242,6 +264,69 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         isMicActive: realtimeStatus === 'connected' || realtimeStatus === 'connecting'
     }), [handleMicrophonePress, realtimeStatus]);
 
+    // Handle image button press - platform-specific behavior
+    const handleImageButtonPress = React.useCallback(() => {
+        if (Platform.OS === 'web') {
+            // Web: directly open file picker
+            fileInputRef.current?.click();
+        } else {
+            // Native: show action sheet with camera and gallery options
+            Modal.alert(t('session.selectImageSource'), undefined, [
+                { text: t('session.takePhoto'), onPress: pickFromCamera },
+                { text: t('session.chooseFromLibrary'), onPress: pickFromGallery },
+                { text: t('common.cancel'), style: 'cancel' },
+            ]);
+        }
+    }, [pickFromCamera, pickFromGallery]);
+
+    // Handle file input change (web only)
+    const handleFileInputChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files;
+        if (!files || files.length === 0) return;
+
+        Array.from(files).forEach(file => {
+            if (file.type.startsWith('image/')) {
+                const url = URL.createObjectURL(file);
+                addImageFromUri(url, file.type);
+            }
+        });
+
+        // Reset input so same file can be selected again
+        event.target.value = '';
+    }, [addImageFromUri]);
+
+    // Handle paste event for images (both web and native through input)
+    const handlePaste = React.useCallback(async (event: ClipboardEvent) => {
+        if (!canAddMore || !supportsImages) return;
+
+        const items = event.clipboardData?.items;
+        if (!items) return;
+
+        for (const item of Array.from(items)) {
+            if (item.type.startsWith('image/')) {
+                event.preventDefault();
+                const file = item.getAsFile();
+                if (file) {
+                    const url = URL.createObjectURL(file);
+                    await addImageFromUri(url, file.type);
+                }
+                break;
+            }
+        }
+    }, [canAddMore, supportsImages, addImageFromUri]);
+
+    // Handle image drop (web only) - passed to AgentInput
+    const handleImageDrop = React.useCallback(async (files: File[]) => {
+        if (!canAddMore || !supportsImages) return;
+
+        for (const file of files) {
+            if (file.type.startsWith('image/') && canAddMore) {
+                const url = URL.createObjectURL(file);
+                await addImageFromUri(url, file.type);
+            }
+        }
+    }, [canAddMore, supportsImages, addImageFromUri]);
+
     // Trigger session visibility and initialize git status sync
     React.useLayoutEffect(() => {
 
@@ -252,6 +337,18 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         // Initialize git status sync for this session
         gitStatusSync.getSync(sessionId);
     }, [sessionId, realtimeStatus]);
+
+    // Add paste event listener for images (web only)
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+
+        const pasteListener = (e: Event) => handlePaste(e as ClipboardEvent);
+        document.addEventListener('paste', pasteListener);
+
+        return () => {
+            document.removeEventListener('paste', pasteListener);
+        };
+    }, [handlePaste]);
 
     let content = (
         <>
@@ -289,12 +386,25 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 dotColor: sessionStatus.statusDotColor,
                 isPulsing: sessionStatus.isPulsing
             }}
-            onSend={() => {
-                if (message.trim()) {
+            onSend={async () => {
+                if (message.trim() || images.length > 0) {
+                    const messageToSend = message;
+                    const imagesToSend = images.length > 0 ? [...images] : undefined;
+
                     setMessage('');
                     clearDraft();
-                    sync.sendMessage(sessionId, message);
-                    trackMessageSent();
+
+                    if (imagesToSend) {
+                        setIsUploadingImages(true);
+                    }
+                    clearImages();
+
+                    try {
+                        await sync.sendMessage(sessionId, messageToSend, undefined, imagesToSend);
+                        trackMessageSent();
+                    } finally {
+                        setIsUploadingImages(false);
+                    }
                 }
             }}
             onMicPress={micButtonState.onMicPress}
@@ -319,12 +429,40 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 contextSize: session.latestUsage.contextSize
             } : undefined}
             alwaysShowContextSize={alwaysShowContextSize}
+            images={images}
+            onImagesChange={(newImages) => {
+                // Handle image removal by finding removed index
+                // Since useImagePicker manages state, we call removeImage for each removed image
+                const currentUris = new Set(newImages.map(img => img.uri));
+                images.forEach((img, index) => {
+                    if (!currentUris.has(img.uri)) {
+                        removeImage(index);
+                    }
+                });
+            }}
+            onImageButtonPress={handleImageButtonPress}
+            supportsImages={supportsImages}
+            isUploadingImages={isUploadingImages}
+            onImageDrop={handleImageDrop}
         />
     );
 
 
     return (
         <>
+            {/* Hidden file input for web image upload */}
+            {Platform.OS === 'web' && (
+                <input
+                    ref={fileInputRef as any}
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={handleFileInputChange as any}
+                />
+            )}
+
+
             {/* CLI Version Warning Overlay - Subtle centered pill */}
             {shouldShowCliWarning && !(isLandscape && deviceType === 'phone') && (
                 <Pressable

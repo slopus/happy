@@ -328,6 +328,10 @@ export const pt: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Digite uma mensagem ...',
+        selectImageSource: 'Selecionar fonte da imagem',
+        takePhoto: 'Tirar foto',
+        chooseFromLibrary: 'Escolher da galeria',
+        pasteFromClipboard: 'Colar da área de transferência',
     },
 
     commandPalette: {

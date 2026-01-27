@@ -12,6 +12,8 @@ import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
+import { formatMessageForClaude, ClaudeContent } from '@/utils/formatImageMessage';
+import { ImageContent } from '@/api/types';
 
 export type InterruptState = {
     pendingUserMessage: boolean;
@@ -35,7 +37,7 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
+    nextMessage: () => Promise<{ message: string | { type: 'text'; text: string } | { type: 'mixed'; text: string; images: ImageContent[] }, mode: EnhancedMode } | null>,
     onReady: () => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -93,8 +95,13 @@ export async function claudeRemote(opts: {
         return;
     }
 
+    // Extract text from message for special command parsing
+    const initialText = typeof initial.message === 'string'
+        ? initial.message
+        : initial.message.text;
+
     // Handle special commands
-    const specialCommand = parseSpecialCommand(initial.message);
+    const specialCommand = parseSpecialCommand(initialText);
 
     // Handle /clear command
     if (specialCommand.type === 'clear') {
@@ -153,11 +160,31 @@ export async function claudeRemote(opts: {
 
     // Push initial message
     let messages = new PushableAsyncIterable<SDKUserMessage>();
+
+    // Handle different message content types for initial message
+    let initialMessageContent: string | ClaudeContent[];
+
+    if (typeof initial.message === 'object' && 'type' in initial.message) {
+        if (initial.message.type === 'mixed') {
+            // Mixed message with images
+            initialMessageContent = await formatMessageForClaude(
+                initial.message.text,
+                initial.message.images
+            );
+        } else {
+            // Text type message
+            initialMessageContent = initial.message.text;
+        }
+    } else {
+        // Plain string message (legacy)
+        initialMessageContent = initial.message;
+    }
+
     messages.push({
         type: 'user',
         message: {
             role: 'user',
-            content: initial.message,
+            content: initialMessageContent,
         },
     });
 
@@ -230,7 +257,27 @@ export async function claudeRemote(opts: {
                     return;
                 }
                 mode = next.mode;
-                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+
+                // Handle different message content types
+                let messageContent: string | ClaudeContent[];
+
+                if (typeof next.message === 'object' && 'type' in next.message) {
+                    if (next.message.type === 'mixed') {
+                        // Mixed message with images
+                        messageContent = await formatMessageForClaude(
+                            next.message.text,
+                            next.message.images
+                        );
+                    } else {
+                        // Text type message
+                        messageContent = next.message.text;
+                    }
+                } else {
+                    // Plain string message (legacy)
+                    messageContent = next.message;
+                }
+
+                messages.push({ type: 'user', message: { role: 'user', content: messageContent } });
             }
 
             // Handle tool result

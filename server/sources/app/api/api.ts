@@ -21,6 +21,7 @@ import { enableAuthentication } from "./utils/enableAuthentication";
 import { userRoutes } from "./routes/userRoutes";
 import { feedRoutes } from "./routes/feedRoutes";
 import { kvRoutes } from "./routes/kvRoutes";
+import { chatRoutes } from "./routes/chatRoutes";
 
 export async function startApi() {
 
@@ -36,6 +37,11 @@ export async function startApi() {
         origin: '*',
         allowedHeaders: '*',
         methods: ['GET', 'POST', 'DELETE']
+    });
+    app.register(import('@fastify/multipart'), {
+        limits: {
+            fileSize: 10 * 1024 * 1024, // 10MB max file size
+        }
     });
     app.get('/', function (request, reply) {
         reply.send('Welcome to Happy Server!');
@@ -66,6 +72,7 @@ export async function startApi() {
     userRoutes(typed);
     feedRoutes(typed);
     kvRoutes(typed);
+    chatRoutes(typed);
 
     // Start HTTP 
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;

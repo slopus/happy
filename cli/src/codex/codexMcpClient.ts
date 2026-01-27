@@ -5,7 +5,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { logger } from '@/ui/logger';
-import type { CodexSessionConfig, CodexToolResponse } from './types';
+import type { CodexSessionConfig, CodexToolResponse, CodexContent } from './types';
 import { z } from 'zod';
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { CodexPermissionHandler } from './utils/permissionHandler';
@@ -200,7 +200,7 @@ export class CodexMcpClient {
         return response as CodexToolResponse;
     }
 
-    async continueSession(prompt: string, options?: { signal?: AbortSignal }): Promise<CodexToolResponse> {
+    async continueSession(prompt: string | CodexContent[], options?: { signal?: AbortSignal }): Promise<CodexToolResponse> {
         if (!this.connected) await this.connect();
 
         if (!this.sessionId) {

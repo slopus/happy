@@ -1029,7 +1029,10 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     expect(Array.isArray(content[0].content)).toBe(true);
                     if (Array.isArray(content[0].content)) {
                         expect(content[0].content.length).toBe(2);
-                        expect(content[0].content[0].text).toBe('First block');
+                        const firstContent = content[0].content[0];
+                        if (firstContent.type === 'text') {
+                            expect(firstContent.text).toBe('First block');
+                        }
                     }
                 }
             }

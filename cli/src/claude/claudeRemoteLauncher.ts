@@ -16,6 +16,7 @@ import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import type { PermissionMode } from "@/api/types";
+import type { QueueMessageContent } from "./runClaude";
 
 interface PermissionsField {
     date: number;
@@ -126,11 +127,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         interruptRequested: false
     };
 
-    session.queue.setOnMessage((message: string) => {
+    session.queue.setOnMessage((message: QueueMessageContent) => {
         if (!session.thinking) {
             return;
         }
-        if (message === PLAN_FAKE_RESTART) {
+        // Extract text for comparison - handle both string and object message types
+        const messageText = typeof message === 'string' ? message : message.text;
+        if (messageText === PLAN_FAKE_RESTART) {
             return;
         }
         if (!interruptState.pendingUserMessage) {
@@ -326,7 +329,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     try {
         let pending: {
-            message: string;
+            message: QueueMessageContent;
             mode: EnhancedMode;
         } | null = null;
 

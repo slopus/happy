@@ -272,15 +272,33 @@ export const CreateSessionResponseSchema = z.object({
 
 export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>
 
+export const ImageContentSchema = z.object({
+    type: z.literal('image'),
+    url: z.string(),
+    width: z.number(),
+    height: z.number(),
+    mimeType: z.string(),
+    thumbhash: z.string().optional(),
+});
+
+export type ImageContent = z.infer<typeof ImageContentSchema>;
+
 export const UserMessageSchema = z.object({
-  role: z.literal('user'),
-  content: z.object({
-    type: z.literal('text'),
-    text: z.string()
-  }),
-  localKey: z.string().optional(), // Mobile messages include this
-  meta: MessageMetaSchema.optional()
-})
+    role: z.literal('user'),
+    content: z.union([
+        z.object({
+            type: z.literal('text'),
+            text: z.string(),
+        }),
+        z.object({
+            type: z.literal('mixed'),
+            text: z.string(),
+            images: z.array(ImageContentSchema),
+        }),
+    ]),
+    localKey: z.string().optional(),
+    meta: MessageMetaSchema.optional(),
+});
 
 export type UserMessage = z.infer<typeof UserMessageSchema>
 

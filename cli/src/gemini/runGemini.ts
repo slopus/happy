@@ -38,7 +38,8 @@ import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
 import { GeminiReasoningProcessor } from '@/gemini/utils/reasoningProcessor';
 import { GeminiDiffProcessor } from '@/gemini/utils/diffProcessor';
 import type { GeminiMode, CodexMessagePayload } from '@/gemini/types';
-import type { PermissionMode } from '@/api/types';
+import type { ImageContent, PermissionMode } from '@/api/types';
+import { formatMessageForGemini } from '@/utils/formatImageMessage';
 import { GEMINI_MODEL_ENV, DEFAULT_GEMINI_MODEL, CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import {
   readGeminiLocalConfig,
@@ -260,7 +261,17 @@ export async function runGemini(opts: {
 
     // Build the full prompt with appendSystemPrompt if provided
     // Only include system prompt for the first message to avoid forcing tool usage on every message
+    // Extract text and images based on content type (text-only or mixed)
+    const isMixedContent = message.content.type === 'mixed';
     const originalUserMessage = message.content.text;
+    const images: ImageContent[] = isMixedContent && 'images' in message.content
+        ? message.content.images
+        : [];
+
+    if (images.length > 0) {
+        logger.debug(`[Gemini] Received mixed message with ${images.length} image(s)`);
+    }
+
     let fullPrompt = originalUserMessage;
     if (isFirstMessage && message.meta?.appendSystemPrompt) {
       // Prepend system prompt to user message only for first message
@@ -276,6 +287,7 @@ export async function runGemini(opts: {
       permissionMode: messagePermissionMode || 'default',
       model: messageModel,
       originalUserMessage, // Store original message separately
+      images: images.length > 0 ? images : undefined, // Include images if present
     };
     messageQueue.push(fullPrompt, mode);
     
@@ -1087,15 +1099,32 @@ export async function runGemini(opts: {
         
         logger.debug(`[gemini] Sending prompt to Gemini (length: ${promptToSend.length}): ${promptToSend.substring(0, 100)}...`);
         logger.debug(`[gemini] Full prompt: ${promptToSend}`);
-        
+
+        // Download and format images if present in the message mode
+        let promptImages: { data: string; mimeType: string }[] | undefined;
+        if (message.mode.images && message.mode.images.length > 0) {
+          logger.debug(`[gemini] Downloading ${message.mode.images.length} image(s) for prompt`);
+          const formattedContent = await formatMessageForGemini(promptToSend, message.mode.images);
+          // Extract image parts from the formatted content
+          promptImages = formattedContent.parts
+            .filter((part): part is { inlineData: { mimeType: string; data: string } } =>
+              'inlineData' in part && part.inlineData !== undefined
+            )
+            .map(part => ({
+              data: part.inlineData.data,
+              mimeType: part.inlineData.mimeType,
+            }));
+          logger.debug(`[gemini] Prepared ${promptImages.length} image(s) for ACP prompt`);
+        }
+
         // Retry logic for transient Gemini API errors (empty response, internal errors)
         const MAX_RETRIES = 3;
         const RETRY_DELAY_MS = 2000;
         let lastError: unknown = null;
-        
+
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
           try {
-            await geminiBackend.sendPrompt(acpSessionId, promptToSend);
+            await geminiBackend.sendPrompt(acpSessionId, promptToSend, { images: promptImages });
             logger.debug('[gemini] Prompt sent successfully');
             
             // Wait for Gemini to finish responding (all chunks received + final idle)

@@ -420,6 +420,10 @@ export const ru: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Введите сообщение...',
+        selectImageSource: 'Выберите источник изображения',
+        takePhoto: 'Сделать фото',
+        chooseFromLibrary: 'Выбрать из галереи',
+        pasteFromClipboard: 'Вставить из буфера обмена',
     },
 
     commandPalette: {

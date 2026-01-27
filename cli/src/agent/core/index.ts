@@ -13,6 +13,8 @@
 export type {
   SessionId,
   ToolCallId,
+  PromptImageContent,
+  SendPromptOptions,
   AgentMessage,
   AgentMessageHandler,
   AgentBackend,

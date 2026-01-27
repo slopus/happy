@@ -19,6 +19,24 @@ export type SessionId = string;
 export type ToolCallId = string;
 
 /**
+ * Image content for multimodal prompts
+ */
+export interface PromptImageContent {
+    /** Base64-encoded image data */
+    data: string;
+    /** MIME type of the image (e.g., 'image/jpeg', 'image/png') */
+    mimeType: string;
+}
+
+/**
+ * Options for sending a prompt to the agent
+ */
+export interface SendPromptOptions {
+    /** Optional images to include with the prompt */
+    images?: PromptImageContent[];
+}
+
+/**
  * Messages emitted by an agent backend during a session.
  * These messages are forwarded to the Happy server and mobile app.
  */
@@ -112,11 +130,12 @@ export interface AgentBackend {
   
   /**
    * Send a prompt to an existing session.
-   * 
+   *
    * @param sessionId - The session to send the prompt to
    * @param prompt - The user's prompt text
+   * @param options - Optional settings including images for multimodal prompts
    */
-  sendPrompt(sessionId: SessionId, prompt: string): Promise<void>;
+  sendPrompt(sessionId: SessionId, prompt: string, options?: SendPromptOptions): Promise<void>;
   
   /**
    * Cancel the current operation in a session.

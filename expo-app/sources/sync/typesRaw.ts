@@ -76,6 +76,21 @@ const rawThinkingContentSchema = z.object({
 }).passthrough();  // ROBUST: Accept signature and future fields
 export type RawThinkingContent = z.infer<typeof rawThinkingContentSchema>;
 
+/**
+ * Image content for user messages with attached images
+ * Contains dimensions and optional thumbhash for placeholder rendering
+ */
+export const ImageContentSchema = z.object({
+    type: z.literal('image'),
+    url: z.string(),
+    width: z.number(),
+    height: z.number(),
+    mimeType: z.string(),
+    thumbhash: z.string().optional(),
+});
+
+export type ImageContent = z.infer<typeof ImageContentSchema>;
+
 // ============================================================================
 // WOLOG: Type-Safe Content Normalization via Zod Transform
 // ============================================================================
@@ -323,10 +338,17 @@ const rawRecordSchema = z.preprocess(
         }),
         z.object({
             role: z.literal('user'),
-            content: z.object({
-                type: z.literal('text'),
-                text: z.string()
-            }),
+            content: z.discriminatedUnion('type', [
+                z.object({
+                    type: z.literal('text'),
+                    text: z.string()
+                }),
+                z.object({
+                    type: z.literal('mixed'),
+                    text: z.string(),
+                    images: z.array(ImageContentSchema)
+                })
+            ]),
             meta: MessageMetaSchema.optional()
         })
     ])
@@ -389,6 +411,10 @@ export type NormalizedMessage = ({
     content: {
         type: 'text';
         text: string;
+    } | {
+        type: 'mixed';
+        text: string;
+        images: ImageContent[];
     }
 } | {
     role: 'agent'

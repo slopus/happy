@@ -357,6 +357,10 @@ export const it: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Scrivi un messaggio ...',
+        selectImageSource: 'Seleziona fonte immagine',
+        takePhoto: 'Scatta foto',
+        chooseFromLibrary: 'Scegli dalla galleria',
+        pasteFromClipboard: 'Incolla dagli appunti',
     },
 
     commandPalette: {

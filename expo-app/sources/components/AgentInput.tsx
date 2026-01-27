@@ -23,6 +23,8 @@ import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile } from '@/sync/profileUtils';
+import { ImagePreview, LocalImage } from '@/components/ImagePreview';
+import { Modal } from '@/modal';
 
 interface AgentInputProps {
     value: string;
@@ -73,6 +75,12 @@ interface AgentInputProps {
     minHeight?: number;
     profileId?: string | null;
     onProfileClick?: () => void;
+    images?: LocalImage[];
+    onImagesChange?: (images: LocalImage[]) => void;
+    onImageButtonPress?: () => void;
+    supportsImages?: boolean;
+    isUploadingImages?: boolean;
+    onImageDrop?: (files: File[]) => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -86,6 +94,20 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     innerContainer: {
         width: '100%',
         position: 'relative',
+    },
+    dragOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderWidth: 2,
+        borderColor: '#007AFF',
+        borderStyle: 'dashed',
+        borderRadius: Platform.select({ default: 16, android: 20 }),
+        backgroundColor: 'rgba(0, 122, 255, 0.05)',
+        pointerEvents: 'none',
+        zIndex: 10,
     },
     unifiedPanel: {
         backgroundColor: theme.colors.input.background,
@@ -275,6 +297,15 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sendButtonIcon: {
         color: theme.colors.button.primary.tint,
     },
+    iconButton: {
+        width: 40,
+        height: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    iconButtonDisabled: {
+        opacity: 0.4,
+    },
 }));
 
 const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
@@ -327,6 +358,65 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const [isAborting, setIsAborting] = React.useState(false);
     const shakerRef = React.useRef<ShakeInstance>(null);
     const inputRef = React.useRef<MultiTextInputHandle>(null);
+
+    // Drag and drop state (web only)
+    const [isDragging, setIsDragging] = React.useState(false);
+    const dragCounterRef = React.useRef(0);
+    const dropZoneRef = React.useRef<View>(null);
+
+    // Set up native drag event listeners for web
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || !props.supportsImages || !props.onImageDrop) return;
+
+        const element = dropZoneRef.current as unknown as HTMLElement | null;
+        if (!element) return;
+
+        const handleDragEnter = (e: DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dragCounterRef.current++;
+            setIsDragging(true);
+        };
+
+        const handleDragLeave = (e: DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dragCounterRef.current--;
+            if (dragCounterRef.current === 0) {
+                setIsDragging(false);
+            }
+        };
+
+        const handleDragOver = (e: DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+        };
+
+        const handleDrop = (e: DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(false);
+            dragCounterRef.current = 0;
+
+            if (!e.dataTransfer) return;
+            const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+            if (files.length > 0) {
+                props.onImageDrop!(files);
+            }
+        };
+
+        element.addEventListener('dragenter', handleDragEnter);
+        element.addEventListener('dragleave', handleDragLeave);
+        element.addEventListener('dragover', handleDragOver);
+        element.addEventListener('drop', handleDrop);
+
+        return () => {
+            element.removeEventListener('dragenter', handleDragEnter);
+            element.removeEventListener('dragleave', handleDragLeave);
+            element.removeEventListener('dragover', handleDragOver);
+            element.removeEventListener('drop', handleDrop);
+        };
+    }, [props.supportsImages, props.onImageDrop]);
 
     // Forward ref to the MultiTextInput
     React.useImperativeHandle(ref, () => inputRef.current!, []);
@@ -490,16 +580,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
 
 
-
     return (
         <View style={[
             styles.container,
             { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
         ]}>
-            <View style={[
-                styles.innerContainer,
-                { maxWidth: layout.maxWidth }
-            ]}>
+            <View
+                style={[
+                    styles.innerContainer,
+                    { maxWidth: layout.maxWidth },
+                ]}
+            >
                 {/* Autocomplete suggestions overlay */}
                 {suggestions.length > 0 && (
                     <View style={[
@@ -929,7 +1020,22 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
 
                 {/* Box 2: Action Area (Input + Send) */}
-                <View style={styles.unifiedPanel}>
+                <View ref={dropZoneRef} style={styles.unifiedPanel}>
+                    {/* Drag overlay */}
+                    {isDragging && <View style={styles.dragOverlay} />}
+
+                    {/* Image preview */}
+                    {props.images && props.images.length > 0 && props.onImagesChange && (
+                        <ImagePreview
+                            images={props.images}
+                            onRemove={(index) => {
+                                const newImages = props.images!.filter((_, i) => i !== index);
+                                props.onImagesChange!(newImages);
+                            }}
+                            disabled={props.isUploadingImages}
+                        />
+                    )}
+
                     {/* Input field */}
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
                         <MultiTextInput
@@ -1085,6 +1191,26 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 {/* Git Status Badge */}
                                 <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
                                 </View>
+
+                                {/* Image button */}
+                                {props.onImageButtonPress && (
+                                    <Pressable
+                                        onPress={props.supportsImages !== false ? props.onImageButtonPress : () => {
+                                            Modal.alert('Not Supported', 'This AI does not support images');
+                                        }}
+                                        style={[
+                                            styles.iconButton,
+                                            props.supportsImages === false && styles.iconButtonDisabled
+                                        ]}
+                                        disabled={props.isUploadingImages}
+                                    >
+                                        <Ionicons
+                                            name="image-outline"
+                                            size={24}
+                                            color={props.supportsImages !== false ? theme.colors.text : theme.colors.textSecondary}
+                                        />
+                                    </Pressable>
+                                )}
 
                                 {/* Send/Voice button - aligned with first row */}
                                 <View

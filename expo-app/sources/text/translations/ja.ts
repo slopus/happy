@@ -360,6 +360,10 @@ export const ja: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'メッセージを入力...',
+        selectImageSource: '画像ソースを選択',
+        takePhoto: '写真を撮る',
+        chooseFromLibrary: 'ライブラリから選択',
+        pasteFromClipboard: 'クリップボードから貼り付け',
     },
 
     commandPalette: {

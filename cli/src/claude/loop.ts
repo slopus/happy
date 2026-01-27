@@ -5,7 +5,7 @@ import { Session } from "./session"
 import { claudeLocalLauncher } from "./claudeLocalLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from "@/lib"
-import type { JsRuntime } from "./runClaude"
+import type { JsRuntime, QueueMessageContent } from "./runClaude"
 
 // Re-export permission mode type from api/types
 // Single unified type with 7 modes - Codex modes mapped at SDK boundary
@@ -33,7 +33,7 @@ interface LoopOptions {
     api: ApiClient,
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
-    messageQueue: MessageQueue2<EnhancedMode>
+    messageQueue: MessageQueue2<EnhancedMode, QueueMessageContent>
     allowedTools?: string[]
     onSessionReady?: (session: Session) => void
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */

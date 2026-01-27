@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
-import { AgentState, Metadata } from '@/api/types';
+import { AgentState, ImageContent, Metadata } from '@/api/types';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
@@ -31,6 +31,15 @@ import { Session } from './session';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
+
+/**
+ * Message content type for the queue.
+ * Can be a plain string (text-only) or a structured object (with images).
+ */
+export type QueueMessageContent =
+    | string
+    | { type: 'text'; text: string }
+    | { type: 'mixed'; text: string; images: ImageContent[] };
 
 export interface StartOptions {
     model?: string
@@ -288,7 +297,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     }
 
     // Import MessageQueue2 and create message queue
-    const messageQueue = new MessageQueue2<EnhancedMode>(mode => hashObject({
+    // The queue accepts QueueMessageContent which can be string or structured content with images
+    const messageQueue = new MessageQueue2<EnhancedMode, QueueMessageContent>(mode => hashObject({
         isPlan: mode.permissionMode === 'plan',
         model: mode.model,
         fallbackModel: mode.fallbackModel,
@@ -424,7 +434,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             allowedTools: messageAllowedTools,
             disallowedTools: messageDisallowedTools
         };
-        messageQueue.push(message.content.text, enhancedMode);
+
+        // Pass full content object for mixed messages (with images), otherwise just text
+        if (message.content.type === 'mixed') {
+            messageQueue.push(message.content, enhancedMode);
+        } else {
+            messageQueue.push(message.content.text, enhancedMode);
+        }
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 

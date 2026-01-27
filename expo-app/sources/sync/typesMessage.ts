@@ -1,4 +1,4 @@
-import { AgentEvent } from "./typesRaw";
+import { AgentEvent, ImageContent } from "./typesRaw";
 import { MessageMeta } from "./typesMessageMeta";
 
 export type ToolCall = {
@@ -29,6 +29,7 @@ export type UserTextMessage = {
     createdAt: number;
     text: string;
     displayText?: string; // Optional text to display in UI instead of actual text
+    images?: ImageContent[]; // Optional images attached to the message
     meta?: MessageMeta;
 }
 

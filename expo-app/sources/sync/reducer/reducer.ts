@@ -111,7 +111,7 @@
  */
 
 import { Message, ToolCall } from "../typesMessage";
-import { AgentEvent, NormalizedMessage, UsageData } from "../typesRaw";
+import { AgentEvent, ImageContent, NormalizedMessage, UsageData } from "../typesRaw";
 import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState } from "../storageTypes";
 import { MessageMeta } from "../typesMessageMeta";
@@ -126,6 +126,7 @@ type ReducerMessage = {
     isThinking?: boolean;
     event: AgentEvent | null;
     tool: ToolCall | null;
+    images?: ImageContent[];
     meta?: MessageMeta;
 }
 
@@ -604,6 +605,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 text: msg.content.text,
                 tool: null,
                 event: null,
+                images: msg.content.type === 'mixed' ? msg.content.images : undefined,
                 meta: msg.meta,
             });
 
@@ -1110,6 +1112,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             kind: 'user-text',
             text: reducerMsg.text,
             ...(reducerMsg.meta?.displayText && { displayText: reducerMsg.meta.displayText }),
+            ...(reducerMsg.images && { images: reducerMsg.images }),
             meta: reducerMsg.meta
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.text !== null) {
