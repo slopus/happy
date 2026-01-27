@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { rpcHandler } from './rpcHandler';
+import { RPC_ERROR_CODES } from '@happy/protocol/rpc';
 
 class FakeSocket {
   public connected = true;
@@ -37,9 +38,8 @@ describe('rpcHandler', () => {
       expect.objectContaining({
         ok: false,
         error: 'RPC method not available',
-        errorCode: 'RPC_METHOD_NOT_AVAILABLE',
+        errorCode: RPC_ERROR_CODES.METHOD_NOT_AVAILABLE,
       }),
     );
   });
 });
-

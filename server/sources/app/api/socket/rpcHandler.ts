@@ -1,6 +1,7 @@
 import { eventRouter } from "@/app/events/eventRouter";
 import { log } from "@/utils/log";
 import { Socket } from "socket.io";
+import { RPC_ERROR_CODES } from "@happy/protocol/rpc";
 
 export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<string, Socket>) {
     
@@ -87,7 +88,7 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
                         error: 'RPC method not available',
                         // Backward compatible: older clients rely on the error string.
                         // Newer clients should prefer this structured code.
-                        errorCode: 'RPC_METHOD_NOT_AVAILABLE'
+                        errorCode: RPC_ERROR_CODES.METHOD_NOT_AVAILABLE
                     });
                 }
                 return;
