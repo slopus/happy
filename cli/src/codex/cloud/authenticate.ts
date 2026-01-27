@@ -6,34 +6,21 @@
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'http';
-import { randomBytes, createHash } from 'crypto';
-import { CodexAuthTokens, PKCECodes } from './types';
+import { randomBytes } from 'crypto';
 import { openBrowser } from '@/utils/browser';
+import { generatePkceCodes } from '@/cloud/oauth/pkce';
+
+export interface CodexAuthTokens {
+    id_token: string;
+    access_token: string;
+    refresh_token: string;
+    account_id: string;
+}
 
 // Configuration
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const AUTH_BASE_URL = 'https://auth.openai.com';
 const DEFAULT_PORT = 1455;
-
-/**
- * Generate PKCE codes for OAuth flow
- */
-function generatePKCE(): PKCECodes {
-    // Generate code verifier (43-128 characters, base64url)
-    const verifier = randomBytes(32)
-        .toString('base64url')
-        .replace(/[^a-zA-Z0-9\-._~]/g, '');
-
-    // Generate code challenge (SHA256 of verifier, base64url encoded)
-    const challenge = createHash('sha256')
-        .update(verifier)
-        .digest('base64url')
-        .replace(/=/g, '')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_');
-
-    return { verifier, challenge };
-}
 
 /**
  * Generate random state for OAuth security
@@ -222,7 +209,7 @@ export async function authenticateCodex(): Promise<CodexAuthTokens> {
     // console.log('🚀 Starting Codex authentication...');
 
     // Generate PKCE codes and state
-    const { verifier, challenge } = generatePKCE();
+    const { verifier, challenge } = generatePkceCodes();
     const state = generateState();
 
     // Try to use default port, or find an available one

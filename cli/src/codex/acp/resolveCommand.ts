@@ -3,6 +3,11 @@ import { join } from 'node:path';
 
 import { configuration } from '@/configuration';
 
+/**
+ * Resolve the Codex ACP binary.
+ *
+ * Codex ACP is provided by the optional `codex-acp` capability install.
+ */
 export function resolveCodexAcpCommand(): string {
   const envOverride = typeof process.env.HAPPY_CODEX_ACP_BIN === 'string'
     ? process.env.HAPPY_CODEX_ACP_BIN.trim()

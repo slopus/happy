@@ -7,7 +7,7 @@
 
 import { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from '@/agent/acp/AcpBackend';
 import type { AgentBackend, AgentFactoryOptions, McpServerConfig } from '@/agent/core';
-import { resolveCodexAcpCommand } from '@/codex/acp/resolveCodexAcpCommand';
+import { resolveCodexAcpCommand } from '@/codex/acp/resolveCommand';
 
 export interface CodexAcpBackendOptions extends AgentFactoryOptions {
   mcpServers?: Record<string, McpServerConfig>;

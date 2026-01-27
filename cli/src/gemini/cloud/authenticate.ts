@@ -1,47 +1,44 @@
 /**
- * Anthropic authentication helper
+ * Gemini/Google authentication helper
  * 
- * Provides OAuth authentication flow for Anthropic Claude
+ * Provides OAuth authentication flow for Google Gemini
  * Uses local callback server to handle OAuth redirect
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'http';
-import { randomBytes, createHash } from 'crypto';
-import { openBrowser } from '@/utils/browser';
-import { ClaudeAuthTokens, PKCECodes } from './types';
+import { randomBytes } from 'crypto';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { generatePkceCodes } from '@/cloud/oauth/pkce';
 
-// Anthropic OAuth Configuration for Claude.ai
-const CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
-const CLAUDE_AI_AUTHORIZE_URL = 'https://claude.ai/oauth/authorize';
-const TOKEN_URL = 'https://console.anthropic.com/v1/oauth/token';
-const DEFAULT_PORT = 54545;
-const SCOPE = 'user:inference';
+const execAsync = promisify(exec);
 
-/**
- * Generate PKCE codes for OAuth flow
- */
-function generatePKCE(): PKCECodes {
-    // Generate code verifier (43-128 characters, base64url)
-    const verifier = randomBytes(32)
-        .toString('base64url')
-        .replace(/[^a-zA-Z0-9\-._~]/g, '');
-
-    // Generate code challenge (SHA256 of verifier, base64url encoded)
-    const challenge = createHash('sha256')
-        .update(verifier)
-        .digest('base64url')
-        .replace(/=/g, '')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_');
-
-    return { verifier, challenge };
+export interface GeminiAuthTokens {
+    access_token: string;
+    refresh_token?: string;
+    token_type: string;
+    expires_in: number;
+    scope: string;
+    id_token?: string;
 }
+
+// Google OAuth Configuration for Gemini
+const CLIENT_ID = '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com';
+const CLIENT_SECRET = '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';
+const AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const DEFAULT_PORT = 54545;
+const SCOPES = [
+    'https://www.googleapis.com/auth/cloud-platform',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+].join(' ');
 
 /**
  * Generate random state for OAuth security
  */
 function generateState(): string {
-    return randomBytes(32).toString('base64url');
+    return randomBytes(32).toString('hex');
 }
 
 /**
@@ -75,56 +72,34 @@ async function isPortAvailable(port: number): Promise<boolean> {
 
 /**
  * Exchange authorization code for tokens
- * The Anthropic SDK actually creates an API key, not standard OAuth tokens
  */
 async function exchangeCodeForTokens(
     code: string,
     verifier: string,
-    port: number,
-    state: string
-): Promise<ClaudeAuthTokens> {
-
-    // Exchange code for tokens
-    const tokenResponse = await fetch(TOKEN_URL, {
+    port: number
+): Promise<GeminiAuthTokens> {
+    const response = await fetch(TOKEN_URL, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: JSON.stringify({
+        body: new URLSearchParams({
             grant_type: 'authorization_code',
-            code: code,
-            redirect_uri: `http://localhost:${port}/callback`,
             client_id: CLIENT_ID,
+            client_secret: CLIENT_SECRET,
+            code: code,
             code_verifier: verifier,
-            state: state,
+            redirect_uri: `http://localhost:${port}/oauth2callback`,
         }),
     });
-    if (!tokenResponse.ok) {
-        throw new Error(`Token exchange failed: ${tokenResponse.statusText}`);
+    
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Token exchange failed: ${error}`);
     }
-
-    // {
-    //     token_type: 'Bearer',
-    //     access_token: string,
-    //     expires_in: number,
-    //     refresh_token: string,
-    //     scope: 'user:inference',
-    //     organization: {
-    //       uuid: string,
-    //       name: string
-    //     },
-    //     account: {
-    //       uuid: string,
-    //       email_address: string
-    //     }
-    //   }
-    const tokenData = await tokenResponse.json() as any;
-
-    return {
-        raw: tokenData,
-        token: tokenData.access_token,
-        expires: Date.now() + tokenData.expires_in * 1000,
-    };
+    
+    const data = await response.json() as GeminiAuthTokens;
+    return data;
 }
 
 /**
@@ -134,23 +109,34 @@ async function startCallbackServer(
     state: string,
     verifier: string,
     port: number
-): Promise<ClaudeAuthTokens> {
+): Promise<GeminiAuthTokens> {
     return new Promise((resolve, reject) => {
         const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
             const url = new URL(req.url!, `http://localhost:${port}`);
-
-            if (url.pathname === '/callback') {
+            
+            if (url.pathname === '/oauth2callback') {
                 const code = url.searchParams.get('code');
                 const receivedState = url.searchParams.get('state');
-
+                const error = url.searchParams.get('error');
+                
+                if (error) {
+                    res.writeHead(302, { 
+                        'Location': 'https://developers.google.com/gemini-code-assist/auth_failure_gemini' 
+                    });
+                    res.end();
+                    server.close();
+                    reject(new Error(`Authentication error: ${error}`));
+                    return;
+                }
+                
                 if (receivedState !== state) {
                     res.writeHead(400);
-                    res.end('Invalid state parameter');
+                    res.end('State mismatch. Possible CSRF attack');
                     server.close();
                     reject(new Error('Invalid state parameter'));
                     return;
                 }
-
+                
                 if (!code) {
                     res.writeHead(400);
                     res.end('No authorization code received');
@@ -158,17 +144,17 @@ async function startCallbackServer(
                     reject(new Error('No authorization code received'));
                     return;
                 }
-
+                
                 try {
                     // Exchange code for tokens
-                    const tokens = await exchangeCodeForTokens(code, verifier, port, state);
-
-                    // Redirect to Anthropic's success page
-                    res.writeHead(302, {
-                        'Location': 'https://console.anthropic.com/oauth/code/success?app=claude-code'
+                    const tokens = await exchangeCodeForTokens(code, verifier, port);
+                    
+                    // Redirect to success page
+                    res.writeHead(302, { 
+                        'Location': 'https://developers.google.com/gemini-code-assist/auth_success_gemini' 
                     });
                     res.end();
-
+                    
                     server.close();
                     resolve(tokens);
                 } catch (error) {
@@ -179,11 +165,11 @@ async function startCallbackServer(
                 }
             }
         });
-
+        
         server.listen(port, '127.0.0.1', () => {
             // console.log(`🔐 OAuth callback server listening on port ${port}`);
         });
-
+        
         // Timeout after 5 minutes
         setTimeout(() => {
             server.close();
@@ -193,7 +179,7 @@ async function startCallbackServer(
 }
 
 /**
- * Authenticate with Anthropic Claude and return tokens
+ * Authenticate with Google Gemini and return tokens
  * 
  * This function handles the complete OAuth flow:
  * 1. Generates PKCE codes and state
@@ -202,68 +188,76 @@ async function startCallbackServer(
  * 4. Handles callback and token exchange
  * 5. Returns complete token object
  * 
- * @returns Promise resolving to AnthropicAuthTokens with all token information
+ * @returns Promise resolving to GeminiAuthTokens with all token information
  */
-export async function authenticateClaude(): Promise<ClaudeAuthTokens> {
-    console.log('🚀 Starting Anthropic Claude authentication...');
-
+export async function authenticateGemini(): Promise<GeminiAuthTokens> {
+    console.log('🚀 Starting Google Gemini authentication...');
+    
     // Generate PKCE codes and state
-    const { verifier, challenge } = generatePKCE();
+    const { verifier, challenge } = generatePkceCodes();
     const state = generateState();
-
+    
     // Try to use default port, or find an available one
     let port = DEFAULT_PORT;
     const portAvailable = await isPortAvailable(port);
-
+    
     if (!portAvailable) {
         console.log(`Port ${port} is in use, finding an available port...`);
         port = await findAvailablePort();
     }
-
+    
     console.log(`📡 Using callback port: ${port}`);
-
+    
     // Start callback server FIRST (before opening browser)
     const serverPromise = startCallbackServer(state, verifier, port);
-
+    
     // Wait a moment to ensure server is listening
     await new Promise(resolve => setTimeout(resolve, 100));
-
+    
     // Build authorization URL
-    const redirect_uri = `http://localhost:${port}/callback`;
-
-    // Build authorization URL with code=true for Claude.ai
+    const redirect_uri = `http://localhost:${port}/oauth2callback`;
+    
     const params = new URLSearchParams({
-        code: 'true',  // This tells Claude.ai to show the code AND redirect
         client_id: CLIENT_ID,
         response_type: 'code',
         redirect_uri: redirect_uri,
-        scope: SCOPE,
+        scope: SCOPES,
+        access_type: 'offline',  // To get refresh token
         code_challenge: challenge,
         code_challenge_method: 'S256',
         state: state,
+        prompt: 'consent',  // Force consent to get refresh token
     });
-
-    const authUrl = `${CLAUDE_AI_AUTHORIZE_URL}?${params}`;
-
-    console.log('📋 Opening browser for authentication...');
+    
+    const authUrl = `${AUTHORIZE_URL}?${params}`;
+    
+    console.log('\n📋 Opening browser for authentication...');
     console.log('If browser doesn\'t open, visit this URL:');
-    console.log();
-    console.log(`${authUrl}`);
-    console.log();
-
+    console.log(`\n${authUrl}\n`);
+    
     // Open browser AFTER server is running
-    await openBrowser(authUrl);
-
+    const platform = process.platform;
+    const openCommand = 
+        platform === 'darwin' ? 'open' :
+        platform === 'win32' ? 'start' :
+        'xdg-open';
+    
+    try {
+        await execAsync(`${openCommand} "${authUrl}"`);
+    } catch {
+        console.log('⚠️  Could not open browser automatically');
+    }
+    
     // Wait for authentication and return tokens
     try {
         const tokens = await serverPromise;
-
-        console.log('🎉 Authentication successful!');
+        
+        console.log('\n🎉 Authentication successful!');
         console.log('✅ OAuth tokens received');
-
+        
         return tokens;
     } catch (error) {
-        console.error('\n❌ Failed to authenticate with Anthropic');
+        console.error('\n❌ Failed to authenticate with Google');
         throw error;
     }
 }

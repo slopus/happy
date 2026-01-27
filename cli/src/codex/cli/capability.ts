@@ -2,7 +2,7 @@ import type { Capability } from '@/capabilities/service';
 import { buildCliCapabilityData } from '@/capabilities/probes/cliBase';
 import { probeAcpAgentCapabilities } from '@/capabilities/probes/acpProbe';
 import { DefaultTransport } from '@/agent/transport';
-import { resolveCodexAcpCommand } from '@/codex/acp/resolveCodexAcpCommand';
+import { resolveCodexAcpCommand } from '@/codex/acp/resolveCommand';
 import { normalizeCapabilityProbeError } from '@/capabilities/utils/normalizeCapabilityProbeError';
 import { resolveAcpProbeTimeoutMs } from '@/capabilities/utils/acpProbeTimeout';
 
