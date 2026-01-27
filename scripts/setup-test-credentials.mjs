@@ -398,9 +398,9 @@ async function main() {
         console.log('  4. You\'ll be logged in and can control CLI sessions!\n');
 
         console.log('To use the CLI:');
-        console.log(`  HAPPY_HOME_DIR=${HAPPY_HOME_DIR} HAPPY_SERVER_URL=${SERVER_URL} ./happy-cli/bin/happy.mjs\n`);
+        console.log(`  HAPPY_HOME_DIR=${HAPPY_HOME_DIR} HAPPY_SERVER_URL=${SERVER_URL} ./cli/bin/happy.mjs\n`);
         console.log(`Or run the integration tests with:`);
-        console.log(`  cd happy-cli && yarn test:integration-test-env\n`);
+        console.log(`  cd cli && yarn test:integration-test-env\n`);
     } catch (error) {
         console.error('\n✗ Setup failed:', error.message);
         process.exit(1);

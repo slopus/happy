@@ -129,9 +129,9 @@ if [ "$E2E_ONLY" = false ]; then
     echo "=== Build Validation ==="
     echo ""
 
-    run_test "happy-cli build" "cd '$ROOT_DIR/happy-cli' && yarn build" || true
-    run_test "happy-server typecheck" "cd '$ROOT_DIR/happy-server' && yarn build" || true
-    run_test "happy webapp typecheck" "cd '$ROOT_DIR/happy' && yarn typecheck" || true
+    run_test "cli build" "cd '$ROOT_DIR/cli' && yarn build" || true
+    run_test "server typecheck" "cd '$ROOT_DIR/server' && yarn build" || true
+    run_test "expo-app typecheck" "cd '$ROOT_DIR/expo-app' && yarn typecheck" || true
 
     # =============================================================================
     # Unit Tests
@@ -140,18 +140,18 @@ if [ "$E2E_ONLY" = false ]; then
     echo "=== Unit Tests ==="
     echo ""
 
-    # happy-server unit tests (if they exist)
-    if [ -f "$ROOT_DIR/happy-server/package.json" ] && grep -q '"test"' "$ROOT_DIR/happy-server/package.json"; then
-        run_test "happy-server unit tests" "cd '$ROOT_DIR/happy-server' && yarn test --run 2>/dev/null || true" || true
+    # server unit tests (if they exist)
+    if [ -f "$ROOT_DIR/server/package.json" ] && grep -q '"test"' "$ROOT_DIR/server/package.json"; then
+        run_test "server unit tests" "cd '$ROOT_DIR/server' && yarn test --run 2>/dev/null || true" || true
     else
-        echo "  Skipping happy-server unit tests (no test script found)"
+        echo "  Skipping server unit tests (no test script found)"
     fi
 
-    # happy-cli unit tests (if they exist)
-    if [ -f "$ROOT_DIR/happy-cli/package.json" ] && grep -q '"test"' "$ROOT_DIR/happy-cli/package.json"; then
-        run_test "happy-cli unit tests" "cd '$ROOT_DIR/happy-cli' && yarn test --run 2>/dev/null || true" || true
+    # cli unit tests (if they exist)
+    if [ -f "$ROOT_DIR/cli/package.json" ] && grep -q '"test"' "$ROOT_DIR/cli/package.json"; then
+        run_test "cli unit tests" "cd '$ROOT_DIR/cli' && yarn test --run 2>/dev/null || true" || true
     else
-        echo "  Skipping happy-cli unit tests (no test script found)"
+        echo "  Skipping cli unit tests (no test script found)"
     fi
 
     echo ""

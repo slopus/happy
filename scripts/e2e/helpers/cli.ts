@@ -10,7 +10,7 @@ import * as fs from 'node:fs';
 import { SlotConfig } from './slots.js';
 
 const ROOT_DIR = path.resolve(import.meta.dirname, '..', '..', '..');
-const CLI_PATH = path.join(ROOT_DIR, 'happy-cli', 'bin', 'happy.mjs');
+const CLI_PATH = path.join(ROOT_DIR, 'cli', 'bin', 'happy.mjs');
 
 export interface DaemonHandle {
     process: ChildProcess | null;

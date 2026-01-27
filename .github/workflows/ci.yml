@@ -48,9 +48,9 @@ jobs:
           node-version: '24'
           cache: 'yarn'
           cache-dependency-path: |
-            happy-cli/yarn.lock
-            happy-server/yarn.lock
-            happy/yarn.lock
+            cli/yarn.lock
+            server/yarn.lock
+            expo-app/yarn.lock
 
       - name: Install yarn
         run: npm install -g yarn
@@ -70,26 +70,26 @@ jobs:
           npx playwright install chromium
           npx playwright install-deps chromium
 
-      - name: Install happy-cli dependencies
-        working-directory: happy-cli
+      - name: Install cli dependencies
+        working-directory: cli
         run: yarn install --frozen-lockfile
 
-      - name: Install happy-server dependencies
-        working-directory: happy-server
+      - name: Install server dependencies
+        working-directory: server
         run: yarn install --frozen-lockfile
 
       # Note: Slot-specific databases (handy_test_N) are created automatically
       # by happy-launcher.sh when starting services for that slot.
       # We pre-run migrations here to ensure the schema is ready and to catch
       # any migration errors early in the CI pipeline.
-      - name: Setup happy-server database (Prisma migrations)
-        working-directory: happy-server
+      - name: Setup server database (Prisma migrations)
+        working-directory: server
         run: yarn migrate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/handy
 
-      - name: Install happy webapp dependencies
-        working-directory: happy
+      - name: Install expo-app dependencies
+        working-directory: expo-app
         run: yarn install --frozen-lockfile
 
       - name: Install E2E test dependencies
