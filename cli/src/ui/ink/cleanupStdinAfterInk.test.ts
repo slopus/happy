@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanupStdinAfterInk } from './terminalStdinCleanup';
+import { cleanupStdinAfterInk } from './cleanupStdinAfterInk';
 
 function createFakeStdin() {
   const listeners = new Map<string, Set<(...args: any[]) => void>>();

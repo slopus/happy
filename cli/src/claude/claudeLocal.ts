@@ -4,7 +4,7 @@ import { createInterface } from "node:readline";
 import { mkdirSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { logger } from "@/ui/logger";
-import { attachProcessSignalForwardingToChild } from "@/utils/signalForwarding";
+import { attachProcessSignalForwardingToChild } from '@/agent/runtime/signalForwarding';
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { claudeFindLastSession } from "./utils/claudeFindLastSession";
 import { getProjectPath } from "./utils/path";

@@ -1,6 +1,6 @@
 import type { ApiMachineClient } from '@/api/apiMachine';
 import { logger } from '@/ui/logger';
-import { writeSessionExitReport } from '@/utils/sessionExitReport';
+import { writeSessionExitReport } from '@/daemon/sessionExitReport';
 
 import type { TrackedSession } from '../types';
 import { reportDaemonObservedSessionExit } from '../sessionTermination';

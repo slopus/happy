@@ -1,6 +1,6 @@
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
-import { isValidEnvVarKey, sanitizeEnvVarRecord } from '@/utils/envVarSanitization';
+import { isValidEnvVarKey, sanitizeEnvVarRecord } from '@/terminal/envVarSanitization';
 
 type EnvPreviewSecretsPolicy = 'none' | 'redacted' | 'full';
 

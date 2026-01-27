@@ -12,7 +12,7 @@ import {
     BasePermissionHandler,
     PermissionResult,
     PendingRequest
-} from '@/utils/BasePermissionHandler';
+} from '@/agent/permissions/BasePermissionHandler';
 
 // Re-export types for backwards compatibility
 export type { PermissionResult, PendingRequest };

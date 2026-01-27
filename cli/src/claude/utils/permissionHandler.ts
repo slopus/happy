@@ -14,7 +14,7 @@ import { getToolName } from "./getToolName";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
 import { delay } from "@/utils/time";
-import { isShellCommandAllowed } from "@/utils/shellCommandAllowlist";
+import { isShellCommandAllowed } from '@/agent/permissions/shellCommandAllowlist';
 import { recordToolTraceEvent } from '@/agent/tools/trace/toolTrace';
 
 interface PermissionResponse {

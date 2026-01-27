@@ -28,11 +28,11 @@ import { registerKillSessionHandler } from '@/session/registerKillSessionHandler
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
-import { waitForMessagesOrPending } from '@/utils/waitForMessagesOrPending';
+import { waitForMessagesOrPending } from '@/agent/runtime/waitForMessagesOrPending';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { formatGeminiErrorForUi } from '@/gemini/utils/formatGeminiErrorForUi';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
-import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
+import { maybeUpdatePermissionModeMetadata } from '@/agent/runtime/permissionModeMetadata';
 import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/runtime/startupMetadataUpdate';
 import { createBaseSessionForAttach } from '@/agent/runtime/createBaseSessionForAttach';
 import { persistTerminalAttachmentInfoIfNeeded, primeAgentStateForUi, reportSessionToDaemonIfRunning, sendTerminalFallbackMessageIfNeeded } from '@/agent/runtime/startupSideEffects';

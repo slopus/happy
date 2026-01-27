@@ -10,7 +10,7 @@
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { AgentState } from "@/api/types";
-import { isToolAllowedForSession, makeToolIdentifier } from "@/utils/permissionToolIdentifier";
+import { isToolAllowedForSession, makeToolIdentifier } from './permissionToolIdentifier';
 import { recordToolTraceEvent, type ToolTraceProtocol } from '@/agent/tools/trace/toolTrace';
 
 /**

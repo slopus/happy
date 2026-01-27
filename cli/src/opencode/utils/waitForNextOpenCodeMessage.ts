@@ -1,7 +1,7 @@
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { PermissionMode } from '@/api/types';
-import type { MessageBatch } from '@/utils/waitForMessagesOrPending';
-import { waitForMessagesOrPending } from '@/utils/waitForMessagesOrPending';
+import type { MessageBatch } from '@/agent/runtime/waitForMessagesOrPending';
+import { waitForMessagesOrPending } from '@/agent/runtime/waitForMessagesOrPending';
 import type { MessageQueue2 } from '@/utils/MessageQueue2';
 
 export async function waitForNextOpenCodeMessage(opts: {
@@ -16,4 +16,3 @@ export async function waitForNextOpenCodeMessage(opts: {
         waitForMetadataUpdate: (signal) => opts.session.waitForMetadataUpdate(signal),
     });
 }
-

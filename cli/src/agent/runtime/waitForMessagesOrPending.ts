@@ -1,4 +1,4 @@
-import { MessageQueue2 } from './MessageQueue2';
+import { MessageQueue2 } from '@/utils/MessageQueue2';
 
 export type MessageBatch<T> = {
     message: string;

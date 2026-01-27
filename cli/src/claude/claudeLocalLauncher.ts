@@ -3,7 +3,7 @@ import { claudeLocal } from "./claudeLocal";
 import { Session, type SessionFoundInfo } from "./session";
 import { Future } from "@/utils/future";
 import { createSessionScanner } from "./utils/sessionScanner";
-import { formatErrorForUi } from "@/utils/formatErrorForUi";
+import { formatErrorForUi } from '@/ui/formatErrorForUi';
 import type { PermissionMode } from "@/api/types";
 import { mapToClaudeMode } from "./utils/permissionMode";
 import { createInterface } from "node:readline";

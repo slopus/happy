@@ -29,14 +29,14 @@ import { CHANGE_TITLE_INSTRUCTION } from '@/agent/runtime/changeTitleInstruction
 import { registerKillSessionHandler } from '@/session/registerKillSessionHandler';
 import { delay } from "@/utils/time";
 import { stopCaffeinate } from "@/utils/caffeinate";
-import { formatErrorForUi } from "@/utils/formatErrorForUi";
-import { waitForMessagesOrPending } from "@/utils/waitForMessagesOrPending";
+import { formatErrorForUi } from '@/ui/formatErrorForUi';
+import { waitForMessagesOrPending } from '@/agent/runtime/waitForMessagesOrPending';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { buildTerminalMetadataFromRuntimeFlags } from '@/terminal/terminalMetadata';
 import { isExperimentalCodexAcpEnabled, isExperimentalCodexVendorResumeEnabled } from '@/utils/agentCapabilities';
-import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
+import { maybeUpdatePermissionModeMetadata } from '@/agent/runtime/permissionModeMetadata';
 import { parseSpecialCommand } from '@/cli/parsers/specialCommands';
 import { createBaseSessionForAttach } from '@/agent/runtime/createBaseSessionForAttach';
 import { maybeUpdateCodexSessionIdMetadata } from './utils/codexSessionIdMetadata';

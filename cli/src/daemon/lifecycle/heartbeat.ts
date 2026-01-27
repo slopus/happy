@@ -7,7 +7,7 @@ import { readDaemonState, writeDaemonState } from '@/persistence';
 import { projectPath } from '@/projectPath';
 import { logger } from '@/ui/logger';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeSessionExitReport } from '@/utils/sessionExitReport';
+import { writeSessionExitReport } from '@/daemon/sessionExitReport';
 
 import { reportDaemonObservedSessionExit } from '../sessionTermination';
 import type { TrackedSession } from '../types';

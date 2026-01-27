@@ -28,7 +28,7 @@ import {
   reportSessionToDaemonIfRunning,
   sendTerminalFallbackMessageIfNeeded,
 } from '@/agent/runtime/startupSideEffects';
-import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
+import { maybeUpdatePermissionModeMetadata } from '@/agent/runtime/permissionModeMetadata';
 import { applyStartupMetadataUpdateToSession, buildPermissionModeOverride } from '@/agent/runtime/startupMetadataUpdate';
 import { registerKillSessionHandler } from '@/session/registerKillSessionHandler';
 import { stopCaffeinate } from '@/utils/caffeinate';

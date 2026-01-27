@@ -1,5 +1,5 @@
 import type { AgentState, Metadata, Session as ApiSession } from '@/api/types';
-import { readSessionAttachFromEnv } from '@/utils/sessionAttach';
+import { readSessionAttachFromEnv } from '@/agent/runtime/sessionAttach';
 
 export async function createBaseSessionForAttach(opts: {
     existingSessionId: string;
@@ -27,4 +27,3 @@ export async function createBaseSessionForAttach(opts: {
         agentStateVersion: -1,
     };
 }
-

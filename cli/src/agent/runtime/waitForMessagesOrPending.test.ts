@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MessageQueue2 } from './MessageQueue2';
+import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { waitForMessagesOrPending } from './waitForMessagesOrPending';
 
 describe('waitForMessagesOrPending', () => {

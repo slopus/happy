@@ -1,4 +1,4 @@
-import { formatErrorForUi } from '@/utils/formatErrorForUi';
+import { formatErrorForUi } from '@/ui/formatErrorForUi';
 
 export function formatGeminiErrorForUi(error: unknown, displayedModel?: string | null): string {
     // Parse error message (keep existing UX-focused heuristics; avoid dumping stacks unless needed)

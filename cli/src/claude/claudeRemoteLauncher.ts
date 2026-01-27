@@ -14,9 +14,9 @@ import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
-import { formatErrorForUi } from "@/utils/formatErrorForUi";
-import { waitForMessagesOrPending } from "@/utils/waitForMessagesOrPending";
-import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
+import { formatErrorForUi } from '@/ui/formatErrorForUi';
+import { waitForMessagesOrPending } from '@/agent/runtime/waitForMessagesOrPending';
+import { cleanupStdinAfterInk } from '@/ui/ink/cleanupStdinAfterInk';
 
 interface PermissionsField {
     date: number;
