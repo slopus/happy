@@ -40,7 +40,6 @@ import type { DecryptedArtifact } from './artifactTypes';
 import { getFriendsList, getUserProfile } from './apiFriends';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
-import { initializeTodoSync } from '../-zen/model/ops';
 import { buildOutgoingMessageMeta } from './messageMeta';
 import { HappyError } from '@/utils/errors';
 import { dbgSettings, isSettingsSyncDebugEnabled, summarizeSettings, summarizeSettingsDelta } from './debugSettings';
@@ -65,6 +64,7 @@ import {
 import { fetchAndApplyFeed, handleNewFeedPostUpdate, handleRelationshipUpdatedSocketUpdate, handleTodoKvBatchUpdate } from './engine/feed';
 import { fetchAndApplyProfile, handleUpdateAccountSocketUpdate } from './engine/account';
 import { buildMachineFromMachineActivityEphemeralUpdate, buildUpdatedMachineFromSocketUpdate, fetchAndApplyMachines } from './engine/machines';
+import { applyTodoSocketUpdates as applyTodoSocketUpdatesEngine, fetchTodos as fetchTodosEngine } from './engine/todos';
 import {
     buildUpdatedSessionFromSocketUpdate,
     fetchAndApplySessions,
@@ -1059,83 +1059,16 @@ class Sync {
 
     private fetchTodos = async () => {
         if (!this.credentials) return;
-
-        try {
-            log.log('📝 Fetching todos...');
-            await initializeTodoSync(this.credentials);
-            log.log('📝 Todos loaded');
-        } catch (error) {
-            log.log('📝 Failed to fetch todos:');
-        }
+        await fetchTodosEngine({ credentials: this.credentials });
     }
 
     private applyTodoSocketUpdates = async (changes: any[]) => {
         if (!this.credentials || !this.encryption) return;
-
-        const currentState = storage.getState();
-        const todoState = currentState.todoState;
-        if (!todoState) {
-            // No todo state yet, just refetch
-            this.todosSync.invalidate();
-            return;
-        }
-
-        const { todos, undoneOrder, doneOrder, versions } = todoState;
-        let updatedTodos = { ...todos };
-        let updatedVersions = { ...versions };
-        let indexUpdated = false;
-        let newUndoneOrder = undoneOrder;
-        let newDoneOrder = doneOrder;
-
-        // Process each change
-        for (const change of changes) {
-            try {
-                const key = change.key;
-                const version = change.version;
-
-                // Update version tracking
-                updatedVersions[key] = version;
-
-                if (change.value === null) {
-                    // Item was deleted
-                    if (key.startsWith('todo.') && key !== 'todo.index') {
-                        const todoId = key.substring(5); // Remove 'todo.' prefix
-                        delete updatedTodos[todoId];
-                        newUndoneOrder = newUndoneOrder.filter(id => id !== todoId);
-                        newDoneOrder = newDoneOrder.filter(id => id !== todoId);
-                    }
-                } else {
-                    // Item was added or updated
-                    const decrypted = await this.encryption.decryptRaw(change.value);
-
-                    if (key === 'todo.index') {
-                        // Update the index
-                        const index = decrypted as any;
-                        newUndoneOrder = index.undoneOrder || [];
-                        newDoneOrder = index.completedOrder || []; // Map completedOrder to doneOrder
-                        indexUpdated = true;
-                    } else if (key.startsWith('todo.')) {
-                        // Update a todo item
-                        const todoId = key.substring(5);
-                        if (todoId && todoId !== 'index') {
-                            updatedTodos[todoId] = decrypted as any;
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error(`Failed to process todo change for key ${change.key}:`, error);
-            }
-        }
-
-        // Apply the updated state
-        storage.getState().applyTodos({
-            todos: updatedTodos,
-            undoneOrder: newUndoneOrder,
-            doneOrder: newDoneOrder,
-            versions: updatedVersions
+        await applyTodoSocketUpdatesEngine({
+            changes,
+            encryption: this.encryption,
+            invalidateTodosSync: () => this.todosSync.invalidate(),
         });
-
-        log.log('📝 Applied todo socket updates successfully');
     }
 
     private fetchFeed = async () => {
