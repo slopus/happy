@@ -1,7 +1,7 @@
 import type { AgentId } from '@/agent/core';
-import { checklists as codexChecklists } from '@/codex/checklists';
-import { checklists as geminiChecklists } from '@/gemini/checklists';
-import { checklists as openCodeChecklists } from '@/opencode/checklists';
+import { checklists as codexChecklists } from '@/codex/cli/checklists';
+import { checklists as geminiChecklists } from '@/gemini/cli/checklists';
+import { checklists as openCodeChecklists } from '@/opencode/cli/checklists';
 import type { AgentCatalogEntry, CatalogAgentId } from './types';
 
 export type { AgentCatalogEntry, AgentChecklistContributions, CatalogAgentId, CliDetectSpec } from './types';
@@ -10,23 +10,24 @@ export const AGENTS = {
   claude: {
     id: 'claude',
     cliSubcommand: 'claude',
-    getCliCapabilityOverride: async () => (await import('@/claude/cliCapability')).cliCapability,
-    getCliDetect: async () => (await import('@/claude/detect')).cliDetect,
+    getCliCommandHandler: async () => (await import('@/claude/cli/command')).handleClaudeCliCommand,
+    getCliCapabilityOverride: async () => (await import('@/claude/cli/capability')).cliCapability,
+    getCliDetect: async () => (await import('@/claude/cli/detect')).cliDetect,
   },
   codex: {
     id: 'codex',
     cliSubcommand: 'codex',
-    getCliCommandHandler: async () => (await import('@/cli/commands/codex')).handleCodexCliCommand,
-    getCliCapabilityOverride: async () => (await import('@/codex/cliCapability')).cliCapability,
-    getCliDetect: async () => (await import('@/codex/detect')).cliDetect,
+    getCliCommandHandler: async () => (await import('@/codex/cli/command')).handleCodexCliCommand,
+    getCliCapabilityOverride: async () => (await import('@/codex/cli/capability')).cliCapability,
+    getCliDetect: async () => (await import('@/codex/cli/detect')).cliDetect,
     checklists: codexChecklists,
   },
   gemini: {
     id: 'gemini',
     cliSubcommand: 'gemini',
-    getCliCommandHandler: async () => (await import('@/cli/commands/gemini')).handleGeminiCliCommand,
-    getCliCapabilityOverride: async () => (await import('@/gemini/cliCapability')).cliCapability,
-    getCliDetect: async () => (await import('@/gemini/detect')).cliDetect,
+    getCliCommandHandler: async () => (await import('@/gemini/cli/command')).handleGeminiCliCommand,
+    getCliCapabilityOverride: async () => (await import('@/gemini/cli/capability')).cliCapability,
+    getCliDetect: async () => (await import('@/gemini/cli/detect')).cliDetect,
     checklists: geminiChecklists,
     registerBackend: () => {
       return import('@/gemini/acp/backend').then(({ registerGeminiAgent }) => {
@@ -37,9 +38,9 @@ export const AGENTS = {
   opencode: {
     id: 'opencode',
     cliSubcommand: 'opencode',
-    getCliCommandHandler: async () => (await import('@/cli/commands/opencode')).handleOpenCodeCliCommand,
-    getCliCapabilityOverride: async () => (await import('@/opencode/cliCapability')).cliCapability,
-    getCliDetect: async () => (await import('@/opencode/detect')).cliDetect,
+    getCliCommandHandler: async () => (await import('@/opencode/cli/command')).handleOpenCodeCliCommand,
+    getCliCapabilityOverride: async () => (await import('@/opencode/cli/capability')).cliCapability,
+    getCliDetect: async () => (await import('@/opencode/cli/detect')).cliDetect,
     checklists: openCodeChecklists,
     registerBackend: () => {
       return import('@/opencode/acp/backend').then(({ registerOpenCodeAgent }) => {

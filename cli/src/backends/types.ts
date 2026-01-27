@@ -27,9 +27,6 @@ export type AgentCatalogEntry = Readonly<{
   cliSubcommand: CatalogAgentId;
   /**
    * Optional CLI subcommand handler for this agent.
-   *
-   * Note: "claude" is currently handled by the legacy default flow in
-   * `cli/src/cli/dispatch.ts`, so it intentionally has no handler here.
    */
   getCliCommandHandler?: () => Promise<CommandHandler>;
   getCliCapabilityOverride?: () => Promise<Capability>;
@@ -50,4 +47,3 @@ export type AgentCatalogEntry = Readonly<{
    */
   registerBackend?: () => Promise<void>;
 }>;
-
