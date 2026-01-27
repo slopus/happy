@@ -14,6 +14,7 @@ import { chmod, mkdtemp, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { RPC_METHODS } from '@happy/protocol/rpc';
+import { CHECKLIST_IDS, resumeChecklistId } from '@happy/protocol/checklists';
 
 function createTestRpcManager(params?: { scopePrefix?: string }) {
     const encryptionKey = new Uint8Array(32).fill(7);
@@ -76,9 +77,16 @@ describe('registerCommonHandlers capabilities', () => {
             expect.arrayContaining(['cli.codex', 'cli.claude', 'cli.gemini', 'cli.opencode', 'tool.tmux', 'dep.codex-mcp-resume']),
         );
         expect(Object.keys(result.checklists)).toEqual(
-            expect.arrayContaining(['new-session', 'machine-details', 'resume.claude', 'resume.codex', 'resume.gemini', 'resume.opencode']),
+            expect.arrayContaining([
+                CHECKLIST_IDS.NEW_SESSION,
+                CHECKLIST_IDS.MACHINE_DETAILS,
+                resumeChecklistId('claude'),
+                resumeChecklistId('codex'),
+                resumeChecklistId('gemini'),
+                resumeChecklistId('opencode'),
+            ]),
         );
-        expect(result.checklists['resume.codex'].map((r) => r.id)).toEqual(
+        expect(result.checklists[resumeChecklistId('codex')].map((r) => r.id)).toEqual(
             expect.arrayContaining(['cli.codex', 'dep.codex-mcp-resume']),
         );
     });
@@ -149,7 +157,7 @@ describe('registerCommonHandlers capabilities', () => {
                     string,
                     { ok: boolean; data?: any; error?: any; checkedAt: number }
                 >;
-            }, { checklistId: string }>(RPC_METHODS.CAPABILITIES_DETECT, { checklistId: 'new-session' });
+            }, { checklistId: string }>(RPC_METHODS.CAPABILITIES_DETECT, { checklistId: CHECKLIST_IDS.NEW_SESSION });
 
             expect(result.protocolVersion).toBe(1);
             expect(result.results['cli.codex'].ok).toBe(true);

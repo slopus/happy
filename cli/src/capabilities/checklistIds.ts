@@ -1,3 +1,2 @@
-import type { CatalogAgentId } from '@/backends/types';
-
-export type ChecklistId = 'new-session' | 'machine-details' | `resume.${CatalogAgentId}`;
+export { CHECKLIST_IDS, resumeChecklistId } from '@happy/protocol/checklists';
+export type { ChecklistId } from '@happy/protocol/checklists';

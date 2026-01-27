@@ -12,6 +12,8 @@ import {
     RpcHandlerConfig,
 } from './types';
 import { Socket } from 'socket.io-client';
+import { SOCKET_RPC_EVENTS } from '@happy/protocol/socketRpc';
+import { RPC_ERROR_CODES, RPC_ERROR_MESSAGES } from '@happy/protocol/rpc';
 
 export class RpcHandlerManager {
     private handlers: RpcHandlerMap = new Map();
@@ -43,7 +45,7 @@ export class RpcHandlerManager {
         this.handlers.set(prefixedMethod, handler);
 
         if (this.socket) {
-            this.socket.emit('rpc-register', { method: prefixedMethod });
+            this.socket.emit(SOCKET_RPC_EVENTS.REGISTER, { method: prefixedMethod });
         }
     }
 
@@ -60,7 +62,7 @@ export class RpcHandlerManager {
 
             if (!handler) {
                 this.logger('[RPC] [ERROR] Method not found', { method: request.method });
-                const errorResponse = { error: 'Method not found' };
+                const errorResponse = { error: RPC_ERROR_MESSAGES.METHOD_NOT_FOUND, errorCode: RPC_ERROR_CODES.METHOD_NOT_FOUND };
                 const encryptedError = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, errorResponse));
                 return encryptedError;
             }
@@ -89,7 +91,7 @@ export class RpcHandlerManager {
     onSocketConnect(socket: Socket): void {
         this.socket = socket;
         for (const [prefixedMethod] of this.handlers) {
-            socket.emit('rpc-register', { method: prefixedMethod });
+            socket.emit(SOCKET_RPC_EVENTS.REGISTER, { method: prefixedMethod });
         }
     }
 

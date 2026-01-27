@@ -4,7 +4,7 @@ import { CATALOG_AGENT_IDS } from '@/backends/types';
 import type { CatalogAgentId } from '@/backends/types';
 import { AGENTS_CORE } from '@happy/agents';
 
-import type { ChecklistId } from './checklistIds';
+import { CHECKLIST_IDS, resumeChecklistId, type ChecklistId } from './checklistIds';
 import type { CapabilityDetectRequest } from './types';
 
 const cliAgentRequests: CapabilityDetectRequest[] = (Object.values(AGENTS) as AgentCatalogEntry[]).map((entry) => ({
@@ -44,16 +44,16 @@ const resumeChecklistEntries = Object.fromEntries(
                 params: { includeAcpCapabilities: true, includeLoginStatus: true },
             });
         }
-        return [`resume.${id}`, requests] as const;
+        return [resumeChecklistId(id), requests] as const;
     }),
 ) as Record<`resume.${CatalogAgentId}`, CapabilityDetectRequest[]>;
 
 const baseChecklists = {
-    'new-session': [
+    [CHECKLIST_IDS.NEW_SESSION]: [
         ...cliAgentRequests,
         { id: 'tool.tmux' },
     ],
-    'machine-details': [
+    [CHECKLIST_IDS.MACHINE_DETAILS]: [
         ...cliAgentRequests,
         { id: 'tool.tmux' },
         { id: 'dep.codex-mcp-resume' },

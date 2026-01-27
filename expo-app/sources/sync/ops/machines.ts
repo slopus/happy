@@ -4,7 +4,7 @@
 
 import type { SpawnSessionResult } from '@happy/protocol';
 import { SPAWN_SESSION_ERROR_CODES } from '@happy/protocol';
-import { RPC_METHODS } from '@happy/protocol/rpc';
+import { RPC_METHODS, isRpcMethodNotFoundResult } from '@happy/protocol/rpc';
 
 import { apiSocket } from '../apiSocket';
 import { sync } from '../sync';
@@ -136,15 +136,11 @@ export async function machinePreviewEnv(
             params
         );
 
-        if (isPlainObject(result) && typeof result.error === 'string') {
-            // Older daemons (or errors) return an encrypted `{ error: ... }` payload.
-            // Treat method-not-found as “unsupported” and fallback to bash-based probing.
-            if (result.error === 'Method not found') {
-                return { supported: false };
-            }
-            // For any other error, degrade gracefully in UI by using fallback behavior.
-            return { supported: false };
-        }
+        // Older daemons (or errors) return an encrypted `{ error: ... }` payload.
+        // Treat method-not-found as “unsupported” and fallback to bash-based probing.
+        if (isRpcMethodNotFoundResult(result)) return { supported: false };
+        // For any other error, degrade gracefully in UI by using fallback behavior.
+        if (isPlainObject(result) && typeof result.error === 'string') return { supported: false };
 
         // Basic shape validation (be defensive for mixed daemon versions).
         if (

@@ -7,3 +7,6 @@ export const CHECKLIST_IDS = {
 
 export type ChecklistId = (typeof CHECKLIST_IDS)[keyof typeof CHECKLIST_IDS] | `resume.${AgentId}`;
 
+export function resumeChecklistId(agentId: AgentId): `resume.${AgentId}` {
+  return `resume.${agentId}`;
+}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import renderer, { act } from 'react-test-renderer';
+import { CHECKLIST_IDS } from '@happy/protocol/checklists';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -21,7 +22,7 @@ describe('useMachineCapabilitiesCache (race)', () => {
 
     const { prefetchMachineCapabilities, useMachineCapabilitiesCache } = await import('./useMachineCapabilitiesCache');
 
-    const request = { checklistId: 'new-session', requests: [] } as any;
+    const request = { checklistId: CHECKLIST_IDS.NEW_SESSION, requests: [] } as any;
 
     const p1 = prefetchMachineCapabilities({ machineId: 'm1', request, timeoutMs: 10_000 });
     const p2 = prefetchMachineCapabilities({ machineId: 'm1', request, timeoutMs: 10_000 });
@@ -71,4 +72,3 @@ describe('useMachineCapabilitiesCache (race)', () => {
     expect(latest?.snapshot?.response?.results?.['dep.test']?.data?.version).toBe('2');
   });
 });
-

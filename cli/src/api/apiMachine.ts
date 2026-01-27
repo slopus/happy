@@ -11,6 +11,7 @@ import { registerSessionHandlers } from '@/rpc/handlers/registerSessionHandlers'
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+import { SOCKET_RPC_EVENTS } from '@happy/protocol/socketRpc';
 
 import type { DaemonToServerEvents, ServerToDaemonEvents } from './machine/socketTypes';
 import { registerMachineRpcHandlers, type MachineRpcHandlers } from './machine/rpcHandlers';
@@ -169,7 +170,7 @@ export class ApiMachineClient {
         });
 
         // Single consolidated RPC handler
-        this.socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
+        this.socket.on(SOCKET_RPC_EVENTS.REQUEST, async (data: { method: string, params: string }, callback: (response: string) => void) => {
             logger.debugLargeJson(`[API MACHINE] Received RPC request:`, data);
             callback(await this.rpcHandlerManager.handleRequest(data));
         });

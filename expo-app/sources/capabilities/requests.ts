@@ -1,5 +1,6 @@
 import type { CapabilitiesDetectRequest } from '@/sync/capabilitiesProtocol';
 import { AGENT_IDS, getAgentCore } from '@/agents/catalog';
+import { CHECKLIST_IDS, resumeChecklistId } from '@happy/protocol/checklists';
 
 function buildCliLoginStatusOverrides(): Record<string, { params: { includeLoginStatus: true } }> {
     const overrides: Record<string, { params: { includeLoginStatus: true } }> = {};
@@ -10,23 +11,23 @@ function buildCliLoginStatusOverrides(): Record<string, { params: { includeLogin
 }
 
 export const CAPABILITIES_REQUEST_NEW_SESSION: CapabilitiesDetectRequest = {
-    checklistId: 'new-session',
+    checklistId: CHECKLIST_IDS.NEW_SESSION,
 };
 
 export const CAPABILITIES_REQUEST_NEW_SESSION_WITH_LOGIN_STATUS: CapabilitiesDetectRequest = {
-    checklistId: 'new-session',
+    checklistId: CHECKLIST_IDS.NEW_SESSION,
     overrides: buildCliLoginStatusOverrides() as any,
 };
 
 export const CAPABILITIES_REQUEST_MACHINE_DETAILS: CapabilitiesDetectRequest = {
-    checklistId: 'machine-details',
+    checklistId: CHECKLIST_IDS.MACHINE_DETAILS,
     overrides: buildCliLoginStatusOverrides() as any,
 };
 
 export const CAPABILITIES_REQUEST_RESUME_CODEX: CapabilitiesDetectRequest = {
-    checklistId: 'resume.codex',
+    checklistId: resumeChecklistId('codex'),
 };
 
 export const CAPABILITIES_REQUEST_RESUME_GEMINI: CapabilitiesDetectRequest = {
-    checklistId: 'resume.gemini',
+    checklistId: resumeChecklistId('gemini'),
 };

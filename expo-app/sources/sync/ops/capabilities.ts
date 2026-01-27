@@ -4,7 +4,7 @@
 
 import { apiSocket } from '../apiSocket';
 import { isPlainObject } from './_shared';
-import { RPC_METHODS } from '@happy/protocol/rpc';
+import { RPC_METHODS, isRpcMethodNotFoundResult } from '@happy/protocol/rpc';
 import {
     parseCapabilitiesDescribeResponse,
     parseCapabilitiesDetectResponse,
@@ -31,10 +31,8 @@ export type MachineCapabilitiesDescribeResult =
 export async function machineCapabilitiesDescribe(machineId: string): Promise<MachineCapabilitiesDescribeResult> {
     try {
         const result = await apiSocket.machineRPC<unknown, {}>(machineId, RPC_METHODS.CAPABILITIES_DESCRIBE, {});
-        if (isPlainObject(result) && typeof result.error === 'string') {
-            if (result.error === 'Method not found') return { supported: false, reason: 'not-supported' };
-            return { supported: false, reason: 'error' };
-        }
+        if (isRpcMethodNotFoundResult(result)) return { supported: false, reason: 'not-supported' };
+        if (isPlainObject(result) && typeof result.error === 'string') return { supported: false, reason: 'error' };
         const parsed = parseCapabilitiesDescribeResponse(result);
         if (!parsed) return { supported: false, reason: 'error' };
         return { supported: true, response: parsed };
@@ -61,10 +59,8 @@ export async function machineCapabilitiesDetect(
             }),
         ]);
 
-        if (isPlainObject(result) && typeof result.error === 'string') {
-            if (result.error === 'Method not found') return { supported: false, reason: 'not-supported' };
-            return { supported: false, reason: 'error' };
-        }
+        if (isRpcMethodNotFoundResult(result)) return { supported: false, reason: 'not-supported' };
+        if (isPlainObject(result) && typeof result.error === 'string') return { supported: false, reason: 'error' };
 
         const parsed = parseCapabilitiesDetectResponse(result);
         if (!parsed) return { supported: false, reason: 'error' };
@@ -92,10 +88,8 @@ export async function machineCapabilitiesInvoke(
             }),
         ]);
 
-        if (isPlainObject(result) && typeof result.error === 'string') {
-            if (result.error === 'Method not found') return { supported: false, reason: 'not-supported' };
-            return { supported: false, reason: 'error' };
-        }
+        if (isRpcMethodNotFoundResult(result)) return { supported: false, reason: 'not-supported' };
+        if (isPlainObject(result) && typeof result.error === 'string') return { supported: false, reason: 'error' };
 
         const parsed = parseCapabilitiesInvokeResponse(result);
         if (!parsed) return { supported: false, reason: 'error' };

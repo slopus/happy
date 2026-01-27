@@ -25,6 +25,10 @@
     "./capabilities": {
       "types": "./dist/capabilities.d.ts",
       "default": "./dist/capabilities.js"
+    },
+    "./socketRpc": {
+      "types": "./dist/socketRpc.d.ts",
+      "default": "./dist/socketRpc.js"
     }
   },
   "files": [

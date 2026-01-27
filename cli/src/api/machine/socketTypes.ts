@@ -1,11 +1,12 @@
 import type { Update } from '../types';
+import { SOCKET_RPC_EVENTS } from '@happy/protocol/socketRpc';
 
 export interface ServerToDaemonEvents {
   update: (data: Update) => void;
-  'rpc-request': (data: { method: string; params: string }, callback: (response: string) => void) => void;
-  'rpc-registered': (data: { method: string }) => void;
-  'rpc-unregistered': (data: { method: string }) => void;
-  'rpc-error': (data: { type: string; error: string }) => void;
+  [SOCKET_RPC_EVENTS.REQUEST]: (data: { method: string; params: string }, callback: (response: string) => void) => void;
+  [SOCKET_RPC_EVENTS.REGISTERED]: (data: { method: string }) => void;
+  [SOCKET_RPC_EVENTS.UNREGISTERED]: (data: { method: string }) => void;
+  [SOCKET_RPC_EVENTS.ERROR]: (data: { type: string; error: string }) => void;
   auth: (data: { success: boolean; user: string }) => void;
   error: (data: { message: string }) => void;
 }
@@ -34,11 +35,10 @@ export interface DaemonToServerEvents {
     ) => void
   ) => void;
 
-  'rpc-register': (data: { method: string }) => void;
-  'rpc-unregister': (data: { method: string }) => void;
-  'rpc-call': (
+  [SOCKET_RPC_EVENTS.REGISTER]: (data: { method: string }) => void;
+  [SOCKET_RPC_EVENTS.UNREGISTER]: (data: { method: string }) => void;
+  [SOCKET_RPC_EVENTS.CALL]: (
     data: { method: string; params: any },
     callback: (response: { ok: boolean; result?: any; error?: string }) => void
   ) => void;
 }
-

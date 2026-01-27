@@ -3,6 +3,7 @@ import { TokenStorage } from '@/auth/tokenStorage';
 import { Encryption } from './encryption/encryption';
 import { observeServerTimestamp } from './time';
 import { createRpcCallError } from './rpcErrors';
+import { SOCKET_RPC_EVENTS } from '@happy/protocol/socketRpc';
 
 //
 // Types
@@ -125,7 +126,7 @@ class ApiSocket {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
         
-        const result: any = await this.socket!.emitWithAck('rpc-call', {
+        const result: any = await this.socket!.emitWithAck(SOCKET_RPC_EVENTS.CALL, {
             method: `${sessionId}:${method}`,
             params: await sessionEncryption.encryptRaw(params)
         });
@@ -148,7 +149,7 @@ class ApiSocket {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const result: any = await this.socket!.emitWithAck('rpc-call', {
+        const result: any = await this.socket!.emitWithAck(SOCKET_RPC_EVENTS.CALL, {
             method: `${machineId}:${method}`,
             params: await machineEncryption.encryptRaw(params)
         });

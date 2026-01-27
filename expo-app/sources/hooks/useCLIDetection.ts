@@ -4,6 +4,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { useMachineCapabilitiesCache } from '@/hooks/useMachineCapabilitiesCache';
 import type { CapabilityDetectResult, CliCapabilityData, TmuxCapabilityData } from '@/sync/capabilitiesProtocol';
 import { AGENT_IDS, type AgentId, getAgentCore } from '@/agents/catalog';
+import { CHECKLIST_IDS } from '@happy/protocol/checklists';
 
 export type CLIAvailability = Readonly<{
     available: Readonly<Record<AgentId, boolean | null>>; // null = unknown/loading, true = installed, false = not installed
@@ -53,13 +54,13 @@ export function useCLIDetection(machineId: string | null, options?: UseCLIDetect
 
     const includeLoginStatus = Boolean(options?.includeLoginStatus);
     const request = useMemo(() => {
-        if (!includeLoginStatus) return { checklistId: 'new-session' as const };
+        if (!includeLoginStatus) return { checklistId: CHECKLIST_IDS.NEW_SESSION };
         const overrides: Record<string, { params: { includeLoginStatus: true } }> = {};
         for (const agentId of AGENT_IDS) {
             overrides[`cli.${getAgentCore(agentId).cli.detectKey}`] = { params: { includeLoginStatus: true } };
         }
         return {
-            checklistId: 'new-session' as const,
+            checklistId: CHECKLIST_IDS.NEW_SESSION,
             overrides: overrides as any,
         };
     }, [includeLoginStatus]);

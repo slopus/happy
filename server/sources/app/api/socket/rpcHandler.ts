@@ -2,16 +2,17 @@ import { eventRouter } from "@/app/events/eventRouter";
 import { log } from "@/utils/log";
 import { Socket } from "socket.io";
 import { RPC_ERROR_CODES } from "@happy/protocol/rpc";
+import { SOCKET_RPC_EVENTS } from "@happy/protocol/socketRpc";
 
 export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<string, Socket>) {
     
     // RPC register - Register this socket as a listener for an RPC method
-    socket.on('rpc-register', async (data: any) => {
+    socket.on(SOCKET_RPC_EVENTS.REGISTER, async (data: any) => {
         try {
             const { method } = data;
 
             if (!method || typeof method !== 'string') {
-                socket.emit('rpc-error', { type: 'register', error: 'Invalid method name' });
+                socket.emit(SOCKET_RPC_EVENTS.ERROR, { type: 'register', error: 'Invalid method name' });
                 return;
             }
 
@@ -24,22 +25,22 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
             // Register this socket as the listener for this method
             rpcListeners.set(method, socket);
 
-            socket.emit('rpc-registered', { method });
+            socket.emit(SOCKET_RPC_EVENTS.REGISTERED, { method });
             // log({ module: 'websocket-rpc' }, `RPC method registered: ${method} on socket ${socket.id} (user: ${userId})`);
             // log({ module: 'websocket-rpc' }, `Active RPC methods for user ${userId}: ${Array.from(rpcListeners.keys()).join(', ')}`);
         } catch (error) {
             log({ module: 'websocket', level: 'error' }, `Error in rpc-register: ${error}`);
-            socket.emit('rpc-error', { type: 'register', error: 'Internal error' });
+            socket.emit(SOCKET_RPC_EVENTS.ERROR, { type: 'register', error: 'Internal error' });
         }
     });
 
     // RPC unregister - Remove this socket as a listener for an RPC method
-    socket.on('rpc-unregister', async (data: any) => {
+    socket.on(SOCKET_RPC_EVENTS.UNREGISTER, async (data: any) => {
         try {
             const { method } = data;
 
             if (!method || typeof method !== 'string') {
-                socket.emit('rpc-error', { type: 'unregister', error: 'Invalid method name' });
+                socket.emit(SOCKET_RPC_EVENTS.ERROR, { type: 'unregister', error: 'Invalid method name' });
                 return;
             }
 
@@ -57,15 +58,15 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
                 // log({ module: 'websocket-rpc' }, `RPC unregister ignored: ${method} not registered on socket ${socket.id}`);
             }
 
-            socket.emit('rpc-unregistered', { method });
+            socket.emit(SOCKET_RPC_EVENTS.UNREGISTERED, { method });
         } catch (error) {
             log({ module: 'websocket', level: 'error' }, `Error in rpc-unregister: ${error}`);
-            socket.emit('rpc-error', { type: 'unregister', error: 'Internal error' });
+            socket.emit(SOCKET_RPC_EVENTS.ERROR, { type: 'unregister', error: 'Internal error' });
         }
     });
 
     // RPC call - Call an RPC method on another socket of the same user
-    socket.on('rpc-call', async (data: any, callback: (response: any) => void) => {
+    socket.on(SOCKET_RPC_EVENTS.CALL, async (data: any, callback: (response: any) => void) => {
         try {
             const { method, params } = data;
 
@@ -112,7 +113,7 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
 
             // Forward the RPC request to the target socket using emitWithAck
             try {
-                const response = await targetSocket.timeout(30000).emitWithAck('rpc-request', {
+                const response = await targetSocket.timeout(30000).emitWithAck(SOCKET_RPC_EVENTS.REQUEST, {
                     method,
                     params
                 });

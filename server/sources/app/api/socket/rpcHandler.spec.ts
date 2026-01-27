@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { rpcHandler } from './rpcHandler';
 import { RPC_ERROR_CODES } from '@happy/protocol/rpc';
+import { SOCKET_RPC_EVENTS } from '@happy/protocol/socketRpc';
 
 class FakeSocket {
   public connected = true;
@@ -28,7 +29,7 @@ describe('rpcHandler', () => {
 
     rpcHandler('user-1', socket as any, rpcListeners as any);
 
-    const handler = socket.handlers.get('rpc-call');
+    const handler = socket.handlers.get(SOCKET_RPC_EVENTS.CALL);
     expect(typeof handler).toBe('function');
 
     const callback = vi.fn();

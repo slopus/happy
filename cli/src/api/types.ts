@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { UsageSchema } from '@/api/usage'
+import { SOCKET_RPC_EVENTS } from '@happy/protocol/socketRpc'
 
 /**
  * Permission mode values - includes both Claude and Codex modes
@@ -144,10 +145,10 @@ export type Update = z.infer<typeof UpdateSchema>
  */
 export interface ServerToClientEvents {
   update: (data: Update) => void
-  'rpc-request': (data: { method: string, params: string }, callback: (response: string) => void) => void
-  'rpc-registered': (data: { method: string }) => void
-  'rpc-unregistered': (data: { method: string }) => void
-  'rpc-error': (data: { type: string, error: string }) => void
+  [SOCKET_RPC_EVENTS.REQUEST]: (data: { method: string, params: string }, callback: (response: string) => void) => void
+  [SOCKET_RPC_EVENTS.REGISTERED]: (data: { method: string }) => void
+  [SOCKET_RPC_EVENTS.UNREGISTERED]: (data: { method: string }) => void
+  [SOCKET_RPC_EVENTS.ERROR]: (data: { type: string, error: string }) => void
   ephemeral: (data: { type: 'activity', id: string, active: boolean, activeAt: number, thinking: boolean }) => void
   auth: (data: { success: boolean, user: string }) => void
   error: (data: { message: string }) => void
@@ -189,9 +190,9 @@ export interface ClientToServerEvents {
     agentState: string | null
   }) => void) => void,
   'ping': (callback: () => void) => void
-  'rpc-register': (data: { method: string }) => void
-  'rpc-unregister': (data: { method: string }) => void
-  'rpc-call': (data: { method: string, params: string }, callback: (response: {
+  [SOCKET_RPC_EVENTS.REGISTER]: (data: { method: string }) => void
+  [SOCKET_RPC_EVENTS.UNREGISTER]: (data: { method: string }) => void
+  [SOCKET_RPC_EVENTS.CALL]: (data: { method: string, params: string }, callback: (response: {
     ok: boolean
     result?: string
     error?: string

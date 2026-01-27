@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import renderer, { act } from 'react-test-renderer';
+import { CHECKLIST_IDS } from '@happy/protocol/checklists';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -20,7 +21,7 @@ describe('useMachineCapabilitiesCache (hook)', () => {
 
         await expect(prefetchMachineCapabilities({
             machineId: 'm1',
-            request: { checklistId: 'new-session' } as any,
+            request: { checklistId: CHECKLIST_IDS.NEW_SESSION } as any,
             timeoutMs: 1,
         })).resolves.toBeUndefined();
 
@@ -29,7 +30,7 @@ describe('useMachineCapabilitiesCache (hook)', () => {
             latest = useMachineCapabilitiesCache({
                 machineId: 'm1',
                 enabled: false,
-                request: { checklistId: 'new-session' } as any,
+                request: { checklistId: CHECKLIST_IDS.NEW_SESSION } as any,
                 timeoutMs: 1,
             }).state;
             return React.createElement('View');
@@ -57,8 +58,8 @@ describe('useMachineCapabilitiesCache (hook)', () => {
 
         const { useMachineCapabilitiesCache } = await import('./useMachineCapabilitiesCache');
 
-        const requestA = { checklistId: 'new-session' } as any;
-        const requestB = { checklistId: 'new-session' } as any;
+        const requestA = { checklistId: CHECKLIST_IDS.NEW_SESSION } as any;
+        const requestB = { checklistId: CHECKLIST_IDS.NEW_SESSION } as any;
 
         let latestRefresh: null | (() => void) = null;
 
@@ -146,7 +147,7 @@ describe('useMachineCapabilitiesCache (hook)', () => {
 
         await prefetchMachineCapabilities({
             machineId: 'm1',
-            request: { checklistId: 'new-session' } as any,
+            request: { checklistId: CHECKLIST_IDS.NEW_SESSION } as any,
         });
 
         expect(getMachineCapabilitiesSnapshot('m1')?.response.results).toEqual({
@@ -172,7 +173,7 @@ describe('useMachineCapabilitiesCache (hook)', () => {
         await prefetchMachineCapabilitiesIfStale({
             machineId: 'm1',
             staleMs: 60_000,
-            request: { checklistId: 'new-session' } as any,
+            request: { checklistId: CHECKLIST_IDS.NEW_SESSION } as any,
             timeoutMs: 1,
         });
         expect(machineCapabilitiesDetect).toHaveBeenCalledTimes(1);
@@ -181,7 +182,7 @@ describe('useMachineCapabilitiesCache (hook)', () => {
         await prefetchMachineCapabilitiesIfStale({
             machineId: 'm1',
             staleMs: 60_000,
-            request: { checklistId: 'new-session' } as any,
+            request: { checklistId: CHECKLIST_IDS.NEW_SESSION } as any,
             timeoutMs: 1,
         });
         expect(machineCapabilitiesDetect).toHaveBeenCalledTimes(1);
@@ -190,7 +191,7 @@ describe('useMachineCapabilitiesCache (hook)', () => {
         await prefetchMachineCapabilitiesIfStale({
             machineId: 'm1',
             staleMs: -1,
-            request: { checklistId: 'new-session' } as any,
+            request: { checklistId: CHECKLIST_IDS.NEW_SESSION } as any,
             timeoutMs: 1,
         });
         expect(machineCapabilitiesDetect).toHaveBeenCalledTimes(2);

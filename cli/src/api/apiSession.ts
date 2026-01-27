@@ -18,6 +18,7 @@ import { createSessionScopedSocket, createUserScopedSocket } from './session/soc
 import { isToolTraceEnabled, recordAcpToolTraceEventIfNeeded, recordClaudeToolTraceEvents, recordCodexToolTraceEventIfNeeded } from './session/toolTrace';
 import { updateSessionAgentStateWithAck, updateSessionMetadataWithAck } from './session/stateUpdates';
 import type { CatalogAgentId } from '@/backends/types';
+import { SOCKET_RPC_EVENTS } from '@happy/protocol/socketRpc';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -140,7 +141,7 @@ export class ApiSessionClient extends EventEmitter {
         })
 
         // Set up global RPC request handler
-        this.socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
+        this.socket.on(SOCKET_RPC_EVENTS.REQUEST, async (data: { method: string, params: string }, callback: (response: string) => void) => {
             callback(await this.rpcHandlerManager.handleRequest(data));
         })
 
