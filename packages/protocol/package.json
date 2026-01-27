@@ -38,7 +38,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "postinstall": "yarn -s build",
+    "postinstall": "yarn --cwd ../agents -s build && yarn -s build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
