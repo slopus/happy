@@ -2,6 +2,13 @@
 
 Technical deep-dive into how Runline Arc works.
 
+## Documentation Index
+
+| Document | Description |
+|----------|-------------|
+| [Sync & Messages](./architecture/sync-and-messages.md) | Real-time sync, message normalization, reducer pipeline |
+| [UI & Theming](./architecture/ui-theming.md) | Design tokens, component library, platform handling |
+
 ## Core Principle
 
 **Agents live in repositories, not in the mobile app.**
@@ -159,6 +166,33 @@ git merge upstream/main
 Conflicts should be minimal because:
 - All Arc code is in `sources/arc/` (new directory)
 - Happy files are unmodified (or use patch-package)
+
+## Terminology
+
+| Term | Definition |
+|------|------------|
+| **Runner** | A purpose-built agent aligned to a team/domain. Runners have Runline-hosted capabilities and SOPs for enterprises. |
+| **Arc** | Internal project name for Runline's mobile interface into Runners. |
+| **Session** | A connection to a running Claude Code instance in a repository. |
+| **`.arc.yaml`** | Configuration file in a Runner repository defining display, voice, and org settings. |
+
+Note: The codebase uses `agent` in variable names for backwards compatibility, but conceptually these are Runners.
+
+## Deep Dives
+
+For detailed architecture documentation:
+
+- **[Sync & Messages](./architecture/sync-and-messages.md)**: How messages flow from CLI to UI
+  - Normalization layers (Raw → Normalized → UI types)
+  - Message reducer and deduplication
+  - Permission matching algorithm
+  - Real-time WebSocket updates
+
+- **[UI & Theming](./architecture/ui-theming.md)**: Visual architecture
+  - Design tokens (spacing, colors, typography)
+  - Component library (Item, ItemGroup, Avatar, ShimmerView)
+  - Platform-specific handling (iOS/Android/Web)
+  - Animation with Reanimated and Skia
 
 ## Future: Enterprise
 
