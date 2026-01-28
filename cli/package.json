@@ -129,7 +129,7 @@
     "shx": "^0.3.3",
     "ts-node": "^10",
     "tsx": "^4.20.6",
-    "typescript": "^5",
+    "typescript": "5.9.3",
     "vitest": "^3.2.4"
   },
   "resolutions": {
