@@ -486,20 +486,27 @@ export class MoltbotTunnelManager {
         token: string | null;
         nonce: string | null;
     }): string {
+        // Moltbot protocol: v2 format required when nonce is present
+        // Format: v2|deviceId|clientId|clientMode|role|scopes|signedAtMs|token|nonce
+        const version = params.nonce ? 'v2' : 'v1';
+        const scopes = params.scopes.join(',');
+        const token = params.token ?? '';
+
         const parts = [
+            version,
             params.deviceId,
             params.clientId,
             params.clientMode,
             params.role,
-            params.scopes.sort().join(','),
+            scopes,
             params.signedAtMs.toString(),
+            token,
         ];
-        if (params.token) {
-            parts.push(params.token);
+
+        if (version === 'v2') {
+            parts.push(params.nonce ?? '');
         }
-        if (params.nonce) {
-            parts.push(params.nonce);
-        }
+
         return parts.join('|');
     }
 
