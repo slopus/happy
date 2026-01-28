@@ -2,7 +2,7 @@
 
 Code on the go — control AI coding agents from your mobile device.
 
-Part of [Runline](https://runline.ai). Open source. Code anywhere.
+Part of [Runline](https://runlineai.com). Open source. Code anywhere.
 
 ## Installation
 
@@ -132,7 +132,7 @@ arc gemini project get          # Show current Google Cloud Project ID
 ### Arc Configuration
 
 - `ARC_SERVER_URL` - Custom server URL (default: https://api.cluster-fluster.com)
-- `ARC_WEBAPP_URL` - Custom web app URL (default: https://app.runline.ai)
+- `ARC_WEBAPP_URL` - Custom web app URL (default: https://app.runlineai.com)
 - `ARC_HOME_DIR` - Custom home directory for Arc data (default: ~/.arc)
 - `ARC_DISABLE_CAFFEINATE` - Disable macOS sleep prevention (set to `true`, `1`, or `yes`)
 - `ARC_EXPERIMENTAL` - Enable experimental features (set to `true`, `1`, or `yes`)

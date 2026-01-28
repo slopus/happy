@@ -262,7 +262,7 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
         // Support and bug reports
         console.log(chalk.bold('\n🐛 Support & Bug Reports'));
         console.log(`Report issues: ${chalk.blue('https://github.com/runline-ai/arc/issues')}`);
-        console.log(`Documentation: ${chalk.blue('https://runline.ai/')}`);
+        console.log(`Documentation: ${chalk.blue('https://runlineai.com/')}`);
     }
 
     console.log(chalk.green('\n✅ Doctor diagnosis complete!\n'));

@@ -30,7 +30,7 @@ class Configuration {
   constructor() {
     // Server configuration - priority: parameter > environment > default
     this.serverUrl = process.env.ARC_SERVER_URL || 'https://api.cluster-fluster.com'
-    this.webappUrl = process.env.ARC_WEBAPP_URL || 'https://app.runline.ai'
+    this.webappUrl = process.env.ARC_WEBAPP_URL || 'https://app.happy.engineering'
 
     // Check if we're running as daemon based on process args
     const args = process.argv.slice(2)

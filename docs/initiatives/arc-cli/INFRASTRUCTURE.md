@@ -255,7 +255,7 @@ cd /workspace && npm install
 arc daemon start
 
 # 5. Register with control plane
-curl -X POST https://api.runline.ai/agents/register \
+curl -X POST https://api.runlineai.com/agents/register \
   -H "Authorization: Bearer $AGENT_TOKEN" \
   -d '{"agent_id": "emila-1", "status": "ready"}'
 ```
@@ -431,7 +431,7 @@ pools:
 ┌─────────────────────────────────────────────────────────────┐
 │                 Runline Control Plane                       │
 │  (Auth, Agent Registry, Session Routing, Observability)     │
-│                    runline.ai                               │
+│                    runlineai.com                               │
 └──────────────────────────┬──────────────────────────────────┘
                            │ HTTPS / WebSocket
            ┌───────────────┼───────────────┐
@@ -517,7 +517,7 @@ RUN npm install
 # Environment (injected at runtime)
 ENV ANTHROPIC_API_KEY=""
 ENV RUNLINE_AGENT_TOKEN=""
-ENV RUNLINE_CONTROL_PLANE="https://api.runline.ai"
+ENV RUNLINE_CONTROL_PLANE="https://api.runlineai.com"
 
 # Start Arc daemon (connects to control plane)
 CMD ["arc", "daemon", "start", "--foreground"]
@@ -538,7 +538,7 @@ CMD ["arc", "daemon", "start", "--foreground"]
 
 ```
 CU Agent → Internet (outbound only)
-├── api.runline.ai:443      # Control plane
+├── api.runlineai.com:443      # Control plane
 ├── api.anthropic.com:443   # Claude API
 ├── *.mcp-servers.com:443   # MCP tools (varies)
 └── (internal CU systems)   # Via MCP connectors
