@@ -9,13 +9,13 @@ import React from 'react';
 import {
     View,
     Text,
-    TextInput,
     FlatList,
     Pressable,
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
+import { randomUUID } from 'expo-crypto';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,9 +23,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
+import { MultiTextInput, KeyPressEvent } from '@/components/MultiTextInput';
+import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { useMoltbotConnection } from '@/moltbot/connection';
 import { useMoltbotMachine } from '@/sync/storage';
 import type { MoltbotChatMessage, MoltbotChatEvent } from '@/moltbot/types';
+
+// Local message type with send status for UI tracking
+type MessageStatus = 'sending' | 'sent' | 'failed';
+
+interface LocalMessage extends MoltbotChatMessage {
+    localId: string;           // Unique ID for tracking
+    status?: MessageStatus;    // Only for user messages
+    errorMessage?: string;     // Error details for failed messages
+}
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -37,25 +48,24 @@ const styles = StyleSheet.create((theme) => ({
     },
     messageListContent: {
         paddingHorizontal: 16,
-        paddingVertical: 8,
+        paddingTop: 8,
+        paddingBottom: 16,
         maxWidth: layout.maxWidth,
         alignSelf: 'center',
         width: '100%',
+        rowGap: 12,
     },
     messageBubble: {
-        maxWidth: '85%',
+        flexShrink: 1,
         paddingHorizontal: 12,
         paddingVertical: 10,
         borderRadius: 16,
-        marginVertical: 4,
     },
     userBubble: {
-        alignSelf: 'flex-end',
         backgroundColor: theme.colors.button.primary.background,
         borderBottomRightRadius: 4,
     },
     assistantBubble: {
-        alignSelf: 'flex-start',
         backgroundColor: theme.colors.surfacePressed,
         borderBottomLeftRadius: 4,
     },
@@ -71,44 +81,40 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.text,
     },
     inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
         paddingHorizontal: 16,
         paddingVertical: 8,
         backgroundColor: theme.colors.surface,
-        borderTopWidth: 1,
-        borderTopColor: theme.colors.divider,
+        alignItems: 'center',
+    },
+    inputInner: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+    },
+    inputPanel: {
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 16,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        gap: 8,
     },
     inputWrapper: {
         flex: 1,
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        backgroundColor: theme.colors.input.background,
-        borderRadius: 20,
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        minHeight: 40,
-        maxHeight: 120,
-    },
-    textInput: {
-        flex: 1,
-        fontSize: 16,
-        color: theme.colors.text,
-        ...Typography.default(),
-        paddingTop: 0,
-        paddingBottom: 0,
     },
     sendButton: {
-        marginLeft: 8,
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: theme.colors.button.primary.background,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
+        flexShrink: 0,
+    },
+    sendButtonActive: {
+        backgroundColor: theme.colors.button.primary.background,
     },
     sendButtonDisabled: {
-        backgroundColor: theme.colors.button.primary.disabled,
+        backgroundColor: theme.colors.surfacePressed,
     },
     streamingIndicator: {
         flexDirection: 'row',
@@ -123,6 +129,25 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 14,
         color: theme.colors.textSecondary,
         ...Typography.default(),
+    },
+    messageRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 6,
+        maxWidth: '85%',
+    },
+    messageRowUser: {
+        alignSelf: 'flex-end',
+    },
+    messageRowAssistant: {
+        alignSelf: 'flex-start',
+    },
+    statusContainer: {
+        width: 28,
+        height: 30,
+        marginTop: 6,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     emptyContainer: {
         flex: 1,
@@ -159,12 +184,15 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 interface MessageItemProps {
-    message: MoltbotChatMessage;
+    message: LocalMessage;
+    onRetry?: (localId: string) => void;
 }
 
-const MessageItem = React.memo(({ message }: MessageItemProps) => {
+const MessageItem = React.memo(({ message, onRetry }: MessageItemProps) => {
     const { theme } = useUnistyles();
     const isUser = message.role === 'user';
+    const isFailed = message.status === 'failed';
+    const isSending = message.status === 'sending';
 
     // Extract text content from message
     const getTextContent = () => {
@@ -177,21 +205,66 @@ const MessageItem = React.memo(({ message }: MessageItemProps) => {
             .join('\n');
     };
 
+    // Render status indicator for user messages
+    const renderStatusIndicator = () => {
+        if (!isUser) return null;
+
+        if (isSending) {
+            return (
+                <View style={styles.statusContainer}>
+                    <ActivityIndicator
+                        size={14}
+                        color={theme.colors.textSecondary}
+                    />
+                </View>
+            );
+        }
+
+        if (isFailed) {
+            return (
+                <Pressable
+                    style={styles.statusContainer}
+                    onPress={() => onRetry?.(message.localId)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                    <Ionicons
+                        name="alert-circle"
+                        size={20}
+                        color={theme.colors.status.disconnected}
+                    />
+                </Pressable>
+            );
+        }
+
+        return null;
+    };
+
     return (
         <View
             style={[
-                styles.messageBubble,
-                isUser ? styles.userBubble : styles.assistantBubble,
+                styles.messageRow,
+                isUser ? styles.messageRowUser : styles.messageRowAssistant,
             ]}
         >
-            <Text
+            {/* Status indicator before bubble for user messages */}
+            {isUser && renderStatusIndicator()}
+
+            <View
                 style={[
-                    styles.messageText,
-                    isUser ? styles.userMessageText : styles.assistantMessageText,
+                    styles.messageBubble,
+                    isUser ? styles.userBubble : styles.assistantBubble,
+                    isFailed && { opacity: 0.7 },
                 ]}
             >
-                {getTextContent()}
-            </Text>
+                <Text
+                    style={[
+                        styles.messageText,
+                        isUser ? styles.userMessageText : styles.assistantMessageText,
+                    ]}
+                >
+                    {getTextContent()}
+                </Text>
+            </View>
         </View>
     );
 });
@@ -226,13 +299,13 @@ export default function MoltbotChatPage() {
     });
 
     // Chat state
-    const [messages, setMessages] = React.useState<MoltbotChatMessage[]>([]);
+    const [messages, setMessages] = React.useState<LocalMessage[]>([]);
     const [inputText, setInputText] = React.useState('');
     const [isLoading, setIsLoading] = React.useState(false);
     const [isStreaming, setIsStreaming] = React.useState(false);
     const [streamingText, setStreamingText] = React.useState('');
 
-    const flatListRef = React.useRef<FlatList>(null);
+    const flatListRef = React.useRef<FlatList<LocalMessage>>(null);
 
     // Handle incoming chat events
     const handleChatEvent = React.useCallback((event: MoltbotChatEvent) => {
@@ -247,14 +320,25 @@ export default function MoltbotChatPage() {
                 setStreamingText('Thinking...');
                 break;
             case 'delta':
-                if (event.delta) {
+                // Gateway sends delta text in message.content[0].text
+                if (event.message) {
+                    const content = event.message.content;
+                    if (Array.isArray(content) && content.length > 0 && content[0].text) {
+                        setStreamingText(content[0].text);
+                    }
+                } else if (event.delta) {
+                    // Fallback for legacy format
                     setStreamingText((prev) => prev + event.delta);
                 }
                 break;
             case 'final':
                 setIsStreaming(false);
                 if (event.message) {
-                    setMessages((prev) => [...prev, event.message!]);
+                    const finalMessage: LocalMessage = {
+                        ...event.message,
+                        localId: randomUUID(),
+                    };
+                    setMessages((prev) => [...prev, finalMessage]);
                 }
                 setStreamingText('');
                 break;
@@ -279,7 +363,13 @@ export default function MoltbotChatPage() {
             const result = await send('chat.history', { sessionKey });
             if (result.ok && result.payload) {
                 const history = (result.payload as { messages?: MoltbotChatMessage[] }).messages ?? [];
-                setMessages(history);
+                // Convert to LocalMessage format
+                const localMessages: LocalMessage[] = history.map((msg) => ({
+                    ...msg,
+                    localId: randomUUID(),
+                    status: msg.role === 'user' ? 'sent' : undefined,
+                }));
+                setMessages(localMessages);
             }
         } catch (err) {
             console.error('Failed to fetch chat history:', err);
@@ -288,38 +378,98 @@ export default function MoltbotChatPage() {
         }
     };
 
-    // Send message
+    // Send a message (new or retry)
+    const sendMessage = React.useCallback(async (localId: string, text: string) => {
+        // Mark message as sending
+        setMessages((prev) =>
+            prev.map((msg) =>
+                msg.localId === localId
+                    ? { ...msg, status: 'sending' as MessageStatus, errorMessage: undefined }
+                    : msg
+            )
+        );
+
+        // Send to gateway
+        const result = await send('chat.send', {
+            sessionKey,
+            message: text,
+            idempotencyKey: randomUUID(),
+        });
+
+        if (!result.ok) {
+            // Mark message as failed
+            setMessages((prev) =>
+                prev.map((msg) =>
+                    msg.localId === localId
+                        ? { ...msg, status: 'failed' as MessageStatus, errorMessage: result.error }
+                        : msg
+                )
+            );
+        } else {
+            // Mark message as sent
+            setMessages((prev) =>
+                prev.map((msg) =>
+                    msg.localId === localId
+                        ? { ...msg, status: 'sent' as MessageStatus }
+                        : msg
+                )
+            );
+        }
+    }, [sessionKey, send]);
+
+    // Handle new message send
     const handleSend = React.useCallback(async () => {
         const text = inputText.trim();
-        if (!text || !isConnected || isStreaming) return;
+        if (!text || !isConnected || isStreaming) {
+            return;
+        }
 
-        // Add user message immediately
-        const userMessage: MoltbotChatMessage = {
+        // Create user message with sending status
+        const localId = randomUUID();
+        const userMessage: LocalMessage = {
             role: 'user',
             content: text,
             timestamp: Date.now(),
+            localId,
+            status: 'sending',
         };
         setMessages((prev) => [...prev, userMessage]);
         setInputText('');
 
-        // Scroll to bottom
-        setTimeout(() => {
-            flatListRef.current?.scrollToEnd({ animated: true });
-        }, 100);
+        // Send the message
+        await sendMessage(localId, text);
+    }, [inputText, isConnected, isStreaming, sendMessage]);
 
-        // Send to gateway
-        try {
-            await send('chat.send', {
-                sessionKey,
-                message: text,
-            });
-        } catch (err) {
-            console.error('Failed to send message:', err);
+    // Handle retry for failed messages
+    const handleRetry = React.useCallback((localId: string) => {
+        const message = messages.find((msg) => msg.localId === localId);
+        if (!message || message.status !== 'failed') return;
+
+        const text = typeof message.content === 'string'
+            ? message.content
+            : message.content
+                .filter((block) => block.type === 'text')
+                .map((block) => block.text)
+                .join('\n');
+
+        sendMessage(localId, text);
+    }, [messages, sendMessage]);
+
+    // Handle keyboard shortcuts: Enter to send, Shift+Enter for newline
+    const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
+        if (Platform.OS === 'web' && event.key === 'Enter' && !event.shiftKey) {
+            if (inputText.trim() && isConnected && !isStreaming) {
+                handleSend();
+                return true;
+            }
         }
-    }, [inputText, isConnected, isStreaming, sessionKey, send]);
+        return false;
+    }, [inputText, isConnected, isStreaming, handleSend]);
 
-    // Get header title
-    const headerTitle = machine?.metadata?.name || t('moltbot.sessions');
+    // Session name for header title (decode URL encoding)
+    const sessionName = sessionKey ? decodeURIComponent(sessionKey) : t('moltbot.sessions');
+    // Machine name for header subtitle
+    const machineName = machine?.metadata?.name;
 
     const canSend = inputText.trim().length > 0 && isConnected && !isStreaming;
 
@@ -331,9 +481,15 @@ export default function MoltbotChatPage() {
         >
             <Stack.Screen
                 options={{
-                    headerTitle: headerTitle,
-                    headerBackTitle: t('common.back'),
+                    headerShown: false,
                 }}
+            />
+
+            {/* Custom header */}
+            <ChatHeaderView
+                title={sessionName}
+                subtitle={machineName}
+                onBackPress={() => router.back()}
             />
 
             {/* Connection status banner */}
@@ -353,7 +509,7 @@ export default function MoltbotChatPage() {
                                 {t('moltbot.disconnected')}
                             </Text>
                             <Pressable onPress={() => connect()}>
-                                <Text style={[styles.connectionText, { color: theme.colors.button.primary.background }]}>
+                                <Text style={[styles.connectionText, { color: theme.colors.textLink }]}>
                                     {t('moltbot.connect')}
                                 </Text>
                             </Pressable>
@@ -381,13 +537,10 @@ export default function MoltbotChatPage() {
                 <FlatList
                     ref={flatListRef}
                     style={styles.messageList}
-                    contentContainerStyle={[
-                        styles.messageListContent,
-                        { paddingBottom: 16 },
-                    ]}
+                    contentContainerStyle={styles.messageListContent}
                     data={messages}
-                    keyExtractor={(item, index) => `${item.role}-${item.timestamp || index}`}
-                    renderItem={({ item }) => <MessageItem message={item} />}
+                    keyExtractor={(item) => item.localId}
+                    renderItem={({ item }) => <MessageItem message={item} onRetry={handleRetry} />}
                     onContentSizeChange={() => {
                         flatListRef.current?.scrollToEnd({ animated: false });
                     }}
@@ -405,32 +558,42 @@ export default function MoltbotChatPage() {
             )}
 
             {/* Input area */}
-            <View style={[styles.inputContainer, { paddingBottom: safeArea.bottom + 8 }]}>
-                <View style={styles.inputWrapper}>
-                    <TextInput
-                        style={styles.textInput}
-                        value={inputText}
-                        onChangeText={setInputText}
-                        placeholder={t('session.inputPlaceholder')}
-                        placeholderTextColor={theme.colors.textSecondary}
-                        multiline
-                        maxLength={10000}
-                        editable={isConnected && !isStreaming}
-                        onSubmitEditing={handleSend}
-                        blurOnSubmit={false}
-                    />
+            <View style={[styles.inputContainer, { paddingBottom: safeArea.bottom + 16 }]}>
+                <View style={styles.inputInner}>
+                    <View style={[
+                        styles.inputPanel,
+                        !(isConnected && !isStreaming) && { opacity: 0.5 },
+                    ]}>
+                        <View style={styles.inputWrapper}>
+                            <MultiTextInput
+                                value={inputText}
+                                onChangeText={setInputText}
+                                placeholder={t('session.inputPlaceholder')}
+                                maxHeight={150}
+                                lineHeight={24}
+                                paddingTop={4}
+                                paddingBottom={4}
+                                onKeyPress={handleKeyPress}
+                            />
+                        </View>
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.sendButton,
+                                canSend ? styles.sendButtonActive : styles.sendButtonDisabled,
+                                pressed && canSend && { opacity: 0.7 },
+                            ]}
+                            onPress={handleSend}
+                            disabled={!canSend}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                            <Ionicons
+                                name="arrow-up"
+                                size={18}
+                                color={canSend ? '#FFFFFF' : theme.colors.textSecondary}
+                            />
+                        </Pressable>
+                    </View>
                 </View>
-                <Pressable
-                    style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
-                    onPress={handleSend}
-                    disabled={!canSend}
-                >
-                    <Ionicons
-                        name="arrow-up"
-                        size={24}
-                        color={canSend ? '#FFFFFF' : theme.colors.textSecondary}
-                    />
-                </Pressable>
             </View>
         </KeyboardAvoidingView>
     );

@@ -1,9 +1,10 @@
 import { getRandomBytes } from 'expo-crypto';
-import sodium from '@/encryption/libsodium.lib';
+import { getPublicKeyAsync, signAsync } from '@noble/ed25519';
 
-export function authChallenge(secret: Uint8Array) {
-    const keypair = sodium.crypto_sign_seed_keypair(secret);
+export async function authChallenge(secret: Uint8Array) {
+    // secret is used as the 32-byte seed for Ed25519
+    const publicKey = await getPublicKeyAsync(secret);
     const challenge = getRandomBytes(32);
-    const signature = sodium.crypto_sign_detached(challenge, keypair.privateKey);
-    return { challenge, signature, publicKey: keypair.publicKey };
+    const signature = await signAsync(challenge, secret);
+    return { challenge, signature, publicKey };
 }

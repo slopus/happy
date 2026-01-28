@@ -370,7 +370,8 @@ export function createConnection(
         const client = createTunnelClient({
             machineId: machine.happyMachineId,
             url: 'ws://localhost:18789', // Default Moltbot gateway port
-            token: machine.pairingData?.deviceToken,
+            // Gateway auth token - read from metadata (encrypted/synced) or legacy gatewayToken field
+            token: machine.metadata?.gatewayToken ?? machine.gatewayToken ?? undefined,
             pairingData: machine.pairingData ?? undefined,
             onEvent,
             onStatusChange,
@@ -388,7 +389,7 @@ export function createConnection(
         const client = createDirectClient({
             url: machine.directConfig.url,
             password: machine.directConfig.password,
-            token: machine.pairingData?.deviceToken,
+            token: machine.directConfig.token ?? machine.pairingData?.deviceToken,
             pairingData: machine.pairingData ?? undefined,
             onEvent,
             onStatusChange,

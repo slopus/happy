@@ -36,6 +36,7 @@ interface MultiTextInputProps {
     paddingBottom?: number;
     paddingLeft?: number;
     paddingRight?: number;
+    lineHeight?: number;
     onKeyPress?: OnKeyPressCallback;
     onSelectionChange?: (selection: { start: number; end: number }) => void;
     onStateChange?: (state: TextInputState) => void;
@@ -56,7 +57,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
     // Convert maxHeight to approximate maxRows (assuming ~24px line height)
-    const maxRows = Math.floor(maxHeight / 24);
+    const maxRows = Math.floor(maxHeight / (props.lineHeight ?? 24));
 
     const handleKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (!onKeyPress) return;
@@ -184,7 +185,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     resize: 'none' as const,
                     backgroundColor: 'transparent',
                     fontFamily: Typography.default().fontFamily,
-                    lineHeight: '1.4',
+                    lineHeight: props.lineHeight ? `${props.lineHeight}px` : '1.4',
                     scrollbarWidth: 'none',
                     paddingTop: props.paddingTop,
                     paddingBottom: props.paddingBottom,

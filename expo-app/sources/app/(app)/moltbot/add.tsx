@@ -11,6 +11,7 @@ import { View, Text, ScrollView, TextInput, Pressable, ActivityIndicator, Alert 
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Crypto from 'expo-crypto';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
@@ -19,6 +20,8 @@ import { Item } from '@/components/Item';
 import { useAllMachines } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import type { Machine } from '@/sync/storageTypes';
+import { generateSignKeypair } from '@/encryption/libsodium';
+import { encodeBase64 } from '@/encryption/base64';
 
 type MachineType = 'happy' | 'direct';
 
@@ -43,9 +46,6 @@ const styles = StyleSheet.create((theme) => ({
         paddingVertical: 12,
         fontSize: 17,
         color: theme.colors.text,
-        outlineStyle: 'none',
-        outlineWidth: 0,
-        outlineColor: 'transparent',
         ...Typography.default(),
     },
     submitButton: {
@@ -110,7 +110,7 @@ export default function AddMoltbotMachinePage() {
     const [machineName, setMachineName] = React.useState('');
     const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(null);
     const [gatewayUrl, setGatewayUrl] = React.useState('');
-    const [gatewayPassword, setGatewayPassword] = React.useState('');
+    const [gatewayToken, setGatewayToken] = React.useState('');
     const [isSubmitting, setIsSubmitting] = React.useState(false);
 
     // Auto-select first machine
@@ -154,16 +154,31 @@ export default function AddMoltbotMachinePage() {
         }
 
         try {
+            // Generate Ed25519 keypair for device authentication
+            const keypair = await generateSignKeypair();
+            // Derive deviceId from public key SHA-256 hash (hex encoded)
+            // This matches the Moltbot gateway's expected device identity format
+            const hashBuffer = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, keypair.publicKey);
+            const deviceId = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+            const pairingData = {
+                deviceId,
+                publicKey: encodeBase64(keypair.publicKey, 'base64url'),
+                privateKey: encodeBase64(keypair.privateKey, 'base64url'),
+            };
+
             await sync.createMoltbotMachine({
                 type: machineType,
                 happyMachineId: machineType === 'happy' ? selectedMachineId! : undefined,
                 directConfig: machineType === 'direct' ? {
                     url: gatewayUrl.trim(),
-                    password: gatewayPassword.trim() || undefined,
+                    token: gatewayToken.trim() || undefined,
                 } : undefined,
                 metadata: {
                     name,
+                    // Store gatewayToken in metadata for type='happy' so it gets encrypted and synced
+                    gatewayToken: machineType === 'happy' && gatewayToken.trim() ? gatewayToken.trim() : undefined,
                 },
+                pairingData,
             });
 
             router.back();
@@ -176,7 +191,7 @@ export default function AddMoltbotMachinePage() {
         } finally {
             setIsSubmitting(false);
         }
-    }, [canSubmit, isSubmitting, machineType, selectedMachineId, gatewayUrl, gatewayPassword, machineName, router]);
+    }, [canSubmit, isSubmitting, machineType, selectedMachineId, gatewayUrl, gatewayToken, machineName, router]);
 
     return (
         <View style={styles.container}>
@@ -232,25 +247,42 @@ export default function AddMoltbotMachinePage() {
 
                 {/* Happy Machine Selection */}
                 {machineType === 'happy' && (
-                    <ItemGroup title={t('moltbot.selectMachine')}>
-                        {machines.length === 0 ? (
-                            <Item
-                                title={t('settings.machines')}
-                                subtitle={t('moltbot.noSessionsDescription')}
-                                disabled
-                                showChevron={false}
-                            />
-                        ) : (
-                            machines.map((machine) => (
-                                <MachineItem
-                                    key={machine.id}
-                                    machine={machine}
-                                    isSelected={selectedMachineId === machine.id}
-                                    onSelect={() => setSelectedMachineId(machine.id)}
+                    <>
+                        <ItemGroup title={t('moltbot.selectMachine')}>
+                            {machines.length === 0 ? (
+                                <Item
+                                    title={t('settings.machines')}
+                                    subtitle={t('moltbot.noSessionsDescription')}
+                                    disabled
+                                    showChevron={false}
                                 />
-                            ))
-                        )}
-                    </ItemGroup>
+                            ) : (
+                                machines.map((machine) => (
+                                    <MachineItem
+                                        key={machine.id}
+                                        machine={machine}
+                                        isSelected={selectedMachineId === machine.id}
+                                        onSelect={() => setSelectedMachineId(machine.id)}
+                                    />
+                                ))
+                            )}
+                        </ItemGroup>
+
+                        <ItemGroup title={`${t('moltbot.gatewayToken')} (${t('common.optional')})`}>
+                            <View style={styles.inputWrapper}>
+                                <TextInput
+                                    style={styles.input}
+                                    value={gatewayToken}
+                                    onChangeText={setGatewayToken}
+                                    placeholder=""
+                                    placeholderTextColor={theme.colors.textSecondary}
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                    secureTextEntry
+                                />
+                            </View>
+                        </ItemGroup>
+                    </>
                 )}
 
                 {/* Direct Connection Config */}
@@ -271,12 +303,12 @@ export default function AddMoltbotMachinePage() {
                             </View>
                         </ItemGroup>
 
-                        <ItemGroup title={`${t('moltbot.gatewayPassword')} (${t('common.optional')})`}>
+                        <ItemGroup title={`${t('moltbot.gatewayToken')} (${t('common.optional')})`}>
                             <View style={styles.inputWrapper}>
                                 <TextInput
                                     style={styles.input}
-                                    value={gatewayPassword}
-                                    onChangeText={setGatewayPassword}
+                                    value={gatewayToken}
+                                    onChangeText={setGatewayToken}
                                     placeholder=""
                                     placeholderTextColor={theme.colors.textSecondary}
                                     autoCapitalize="none"

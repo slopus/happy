@@ -8,7 +8,7 @@
 import WebSocket from 'ws';
 import { randomUUID } from 'crypto';
 import { logger } from '@/ui/logger';
-import * as nacl from 'tweetnacl';
+import nacl from 'tweetnacl';
 import { encode as encodeBase64, decode as decodeBase64 } from '@stablelib/base64';
 import type {
     MoltbotTunnelStatus,
@@ -138,16 +138,38 @@ export class MoltbotTunnelManager {
                 });
 
                 ws.on('close', (code, reason) => {
-                    logger.debug(`[MoltbotTunnel] WebSocket closed for tunnel ${tunnelId}: ${code} ${reason}`);
-                    this.failAllPending(tunnel, new Error('Connection closed'));
+                    const reasonStr = reason?.toString() || '';
+                    logger.debug(`[MoltbotTunnel] WebSocket closed for tunnel ${tunnelId}: ${code} ${reasonStr}`);
+
+                    // Check if this is a pairing-related close
+                    // Moltbot gateway closes connection with code 1008 for auth failures
+                    const isPairingRequired = reasonStr.includes('unauthorized') || reasonStr.includes('NOT_PAIRED');
+
+                    this.failAllPending(tunnel, new Error(reasonStr || 'Connection closed'));
+
                     if (tunnel.status === 'connecting') {
-                        resolve({
-                            ok: false,
-                            status: 'disconnected',
-                            error: 'Connection closed',
-                        });
+                        if (isPairingRequired) {
+                            // Extract requestId if present
+                            const match = reasonStr.match(/requestId['":\s]+([a-f0-9-]+)/i);
+                            tunnel.pairingRequestId = match?.[1] ?? null;
+                            tunnel.status = 'pairing_required';
+                            resolve({
+                                ok: false,
+                                status: 'pairing_required',
+                                error: 'Device pairing required',
+                                pairingRequestId: tunnel.pairingRequestId ?? undefined,
+                            });
+                        } else {
+                            tunnel.status = 'disconnected';
+                            resolve({
+                                ok: false,
+                                status: 'disconnected',
+                                error: reasonStr || 'Connection closed',
+                            });
+                        }
+                    } else {
+                        tunnel.status = 'disconnected';
                     }
-                    tunnel.status = 'disconnected';
                 });
 
                 // Timeout for initial connection
@@ -347,7 +369,7 @@ export class MoltbotTunnelManager {
                 minProtocol: PROTOCOL_VERSION,
                 maxProtocol: PROTOCOL_VERSION,
                 client: {
-                    id: 'happy-tunnel',
+                    id: 'gateway-client',
                     displayName: 'Happy Tunnel',
                     version: '1.0.0',
                     platform: process.platform,
@@ -362,7 +384,7 @@ export class MoltbotTunnelManager {
                 const signedAtMs = Date.now();
                 const payload = this.buildDeviceAuthPayload({
                     deviceId: tunnel.device.id,
-                    clientId: 'happy-tunnel',
+                    clientId: 'gateway-client',
                     clientMode: 'ui',
                     role: 'operator',
                     scopes: ['operator.admin', 'operator.approvals', 'operator.pairing'],
@@ -432,7 +454,10 @@ export class MoltbotTunnelManager {
                         const errorMsg = error.message;
 
                         // Check for pairing required
-                        if (errorMsg.includes('NOT_PAIRED')) {
+                        // Moltbot gateway may return different error formats:
+                        // - "NOT_PAIRED: ..." with requestId
+                        // - "unauthorized: gateway token missing"
+                        if (errorMsg.includes('NOT_PAIRED') || errorMsg.includes('unauthorized')) {
                             const match = errorMsg.match(/requestId['":\s]+([a-f0-9-]+)/i);
                             tunnel.pairingRequestId = match?.[1] ?? null;
                             tunnel.status = 'pairing_required';
@@ -510,9 +535,12 @@ export class MoltbotTunnelManager {
         return parts.join('|');
     }
 
-    private signPayload(privateKey: Uint8Array, payload: string): string {
+    private signPayload(seed: Uint8Array, payload: string): string {
         const message = new TextEncoder().encode(payload);
-        const signature = nacl.sign.detached(message, privateKey);
+        // tweetnacl requires 64-byte secret key (seed + public key)
+        // Generate full keypair from 32-byte seed
+        const keyPair = nacl.sign.keyPair.fromSeed(seed);
+        const signature = nacl.sign.detached(message, keyPair.secretKey);
         return this.base64UrlEncode(signature);
     }
 

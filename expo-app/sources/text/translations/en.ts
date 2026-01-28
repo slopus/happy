@@ -56,7 +56,7 @@ export const en: TranslationStructure = {
         machineTypeDirect: 'Direct Connection',
         machineTypeDirectDescription: 'Connect directly to a Moltbot gateway',
         gatewayUrl: 'Gateway URL',
-        gatewayPassword: 'Gateway Password',
+        gatewayToken: 'Gateway Token',
         selectMachine: 'Select Machine',
         connecting: 'Connecting...',
         connected: 'Connected',
@@ -81,6 +81,15 @@ export const en: TranslationStructure = {
         initialMessage: 'Initial Message',
         initialMessagePlaceholder: 'What would you like to work on?',
         createSession: 'Create Session',
+        // Machine management
+        editMachine: 'Edit Machine',
+        deleteMachine: 'Delete Machine',
+        renameMachine: 'Rename Machine',
+        machineNamePlaceholder: 'Machine name',
+        deleteMachineConfirm: 'Are you sure you want to delete this machine?',
+        deleteMachineConfirmMessage: 'This action cannot be undone.',
+        editGatewayUrl: 'Edit Gateway URL',
+        editGatewayPassword: 'Edit Gateway Token',
     },
 
     common: {

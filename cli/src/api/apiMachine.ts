@@ -96,6 +96,38 @@ export class ApiMachineClient {
 
         registerCommonHandlers(this.rpcHandlerManager, process.cwd());
         registerMoltbotHandlers(this.rpcHandlerManager);
+
+        // Set up Moltbot event forwarding
+        moltbotTunnelManager.setEventCallback((tunnelId, event, payload) => {
+            this.broadcastMoltbotEvent(tunnelId, event, payload);
+        });
+    }
+
+    /**
+     * Broadcast a Moltbot tunnel event to connected clients
+     */
+    private broadcastMoltbotEvent(tunnelId: string, event: string, payload: unknown): void {
+        if (!this.socket?.connected) {
+            return;
+        }
+
+        const eventData = {
+            type: 'moltbot-tunnel-event',
+            tunnelId,
+            event,
+            payload,
+        };
+
+        // Encrypt and send as RPC call to be forwarded to the mobile client
+        const encryptedData = encodeBase64(encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, eventData));
+        const rpcMethod = `${this.machine.id}:moltbot-tunnel-event`;
+
+        this.socket.emit('rpc-call', {
+            method: rpcMethod,
+            params: encryptedData,
+        }, () => {
+            // Callback required but result not needed
+        });
     }
 
     setRPCHandlers({

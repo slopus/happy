@@ -43,6 +43,8 @@ import { UserProfile } from './friendTypes';
 import { initializeTodoSync } from '../-zen/model/ops';
 import {
     createMoltbotMachine,
+    updateMoltbotMachine,
+    deleteMoltbotMachine,
     processNewMoltbotMachineEvent,
     processUpdateMoltbotMachineEvent,
 } from '../moltbot/storage';
@@ -1068,6 +1070,7 @@ class Sync {
             id: string;
             type: 'happy' | 'direct';
             happyMachineId: string | null;
+            gatewayToken: string | null;
             directConfig: any | null;
             metadata: any | null;
             metadataVersion: number;
@@ -1122,6 +1125,7 @@ class Sync {
                     id: raw.id,
                     type: raw.type as 'happy' | 'direct',
                     happyMachineId: raw.happyMachineId,
+                    gatewayToken: null, // Stored locally only, not synced
                     directConfig,
                     metadata,
                     metadataVersion: raw.metadataVersion,
@@ -1145,8 +1149,8 @@ class Sync {
     public async createMoltbotMachine(params: {
         type: 'happy' | 'direct';
         happyMachineId?: string;
-        directConfig?: { url: string; password?: string };
-        metadata: { name: string };
+        directConfig?: { url: string; token?: string };
+        metadata: { name: string; gatewayToken?: string };
         pairingData?: { deviceId: string; publicKey: string; privateKey: string };
     }): Promise<string> {
         if (!this.credentials || !this.encryption) {
@@ -1195,6 +1199,105 @@ class Sync {
         }
 
         throw new Error('Failed to create Moltbot machine');
+    }
+
+    /**
+     * Update a Moltbot machine's metadata and/or direct config
+     */
+    public async updateMoltbotMachine(
+        machineId: string,
+        updates: {
+            name?: string;
+            directConfig?: { url: string; password?: string };
+        }
+    ): Promise<void> {
+        if (!this.credentials || !this.encryption) {
+            throw new Error('Not authenticated');
+        }
+
+        // Get current machine from storage
+        const currentMachine = storage.getState().moltbotMachines[machineId];
+        if (!currentMachine) {
+            throw new Error('Machine not found');
+        }
+
+        // Get data encryption key
+        const dataKey = this.moltbotMachineDataKeys.get(machineId);
+        if (!dataKey) {
+            throw new Error('Encryption key not found for machine');
+        }
+
+        const encryptionAdapter = {
+            decryptWithKey: async (encryptedData: string, key: Uint8Array): Promise<unknown> => {
+                const encryptor = await this.encryption.openEncryption(key);
+                const decoded = decodeBase64(encryptedData);
+                const results = await encryptor.decrypt([decoded]);
+                return results[0];
+            },
+            encryptWithKey: async (data: unknown, key: Uint8Array): Promise<string> => {
+                const encryptor = await this.encryption.openEncryption(key);
+                const results = await encryptor.encrypt([data]);
+                return encodeBase64(results[0]);
+            },
+            decryptEncryptionKey: async (encryptedKey: string): Promise<Uint8Array | null> => {
+                return this.encryption.decryptEncryptionKey(encryptedKey);
+            },
+            generateDataKey: async () => {
+                const key = getRandomBytes(32);
+                const encryptedKey = await this.encryption.encryptEncryptionKey(key);
+                return { key, encryptedKey: encodeBase64(encryptedKey, 'base64') };
+            },
+        };
+
+        // Build updated metadata if name is provided
+        const updatedMetadata = updates.name !== undefined ? {
+            ...currentMachine.metadata,
+            name: updates.name ?? currentMachine.metadata?.name ?? '',
+        } : undefined;
+
+        // Build updated directConfig if provided
+        const updatedDirectConfig = updates.directConfig !== undefined ? {
+            url: updates.directConfig.url,
+            password: updates.directConfig.password,
+        } : undefined;
+
+        const updatedMachine = await updateMoltbotMachine(
+            this.credentials,
+            encryptionAdapter,
+            machineId,
+            dataKey,
+            currentMachine.metadataVersion,
+            {
+                metadata: updatedMetadata,
+                directConfig: updatedDirectConfig,
+            }
+        );
+
+        if (updatedMachine) {
+            storage.getState().applyMoltbotMachines([updatedMachine]);
+            log.log(`🤖 Updated Moltbot machine ${machineId}`);
+        } else {
+            throw new Error('Failed to update Moltbot machine');
+        }
+    }
+
+    /**
+     * Delete a Moltbot machine
+     */
+    public async deleteMoltbotMachine(machineId: string): Promise<void> {
+        if (!this.credentials) {
+            throw new Error('Not authenticated');
+        }
+
+        const success = await deleteMoltbotMachine(this.credentials, machineId);
+
+        if (success) {
+            storage.getState().removeMoltbotMachine(machineId);
+            this.moltbotMachineDataKeys.delete(machineId);
+            log.log(`🤖 Deleted Moltbot machine ${machineId}`);
+        } else {
+            throw new Error('Failed to delete Moltbot machine');
+        }
     }
 
     private applyTodoSocketUpdates = async (changes: any[]) => {

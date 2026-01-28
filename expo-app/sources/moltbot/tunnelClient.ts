@@ -391,15 +391,16 @@ export class MoltbotTunnelClient {
 
     /**
      * Subscribe to tunnel events from the daemon
-     * Events are forwarded from the Moltbot gateway through the daemon
+     * Events are forwarded from the Moltbot gateway through the daemon via RPC
      */
     private subscribeToEvents(): void {
-        // Events from the daemon are delivered through the socket message system
-        // The daemon forwards Moltbot gateway events as messages with a specific format
-        // We listen for messages that contain tunnel events for our tunnel ID
-        const handleEvent = (data: unknown) => {
+        // Register an RPC handler to receive events from the daemon
+        // The method name is: machineId:moltbot-tunnel-event
+        const rpcMethod = `${this.machineId}:moltbot-tunnel-event`;
+
+        this.eventUnsubscribe = apiSocket.registerRpcHandler(rpcMethod, (data: unknown) => {
             if (!data || typeof data !== 'object') {
-                return;
+                return { ok: true };
             }
 
             const eventData = data as {
@@ -413,9 +414,9 @@ export class MoltbotTunnelClient {
             if (eventData.type === 'moltbot-tunnel-event' && eventData.tunnelId === this.tunnelId) {
                 this.handleTunnelEvent(eventData.event ?? '', eventData.payload);
             }
-        };
 
-        this.eventUnsubscribe = apiSocket.onMessage('moltbot-tunnel-event', handleEvent);
+            return { ok: true };
+        });
     }
 
     /**

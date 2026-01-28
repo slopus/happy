@@ -17,7 +17,7 @@
 
 import { randomUUID } from 'expo-crypto';
 import { Platform } from 'react-native';
-import sodium from '@/encryption/libsodium.lib';
+import { signDetached } from '@/encryption/libsodium';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import type {
     MoltbotConnectionStatus,
@@ -351,7 +351,6 @@ export class MoltbotDirectClient {
         if (frame.event === 'connect.challenge' && !this.connectSent) {
             const nonce = (payload as { nonce?: string } | undefined)?.nonce;
             if (nonce) {
-                console.log('[MoltbotDirect] Received challenge nonce');
                 this.connectNonce = nonce;
             }
             this.sendConnect();
@@ -376,7 +375,7 @@ export class MoltbotDirectClient {
                 minProtocol: PROTOCOL_VERSION,
                 maxProtocol: PROTOCOL_VERSION,
                 client: {
-                    id: 'happy-mobile',
+                    id: 'gateway-client',
                     displayName: 'Happy Mobile',
                     version: '1.0.0',
                     platform: Platform.OS,
@@ -391,7 +390,7 @@ export class MoltbotDirectClient {
                 const signedAtMs = Date.now();
                 const payload = this.buildDeviceAuthPayload({
                     deviceId: this.pairingData.deviceId,
-                    clientId: 'happy-mobile',
+                    clientId: 'gateway-client',
                     clientMode: 'ui',
                     role: 'operator',
                     scopes: ['operator.admin', 'operator.approvals', 'operator.pairing'],
@@ -399,7 +398,7 @@ export class MoltbotDirectClient {
                     token: this.config.token ?? null,
                     nonce: this.connectNonce,
                 });
-                const signature = this.signPayload(payload);
+                const signature = await this.signPayload(payload);
 
                 params.device = {
                     id: this.pairingData.deviceId,
@@ -537,14 +536,14 @@ export class MoltbotDirectClient {
         return parts.join('|');
     }
 
-    private signPayload(payload: string): string {
+    private async signPayload(payload: string): Promise<string> {
         if (!this.pairingData) {
             throw new Error('No pairing data available for signing');
         }
 
         const privateKey = decodeBase64(this.pairingData.privateKey, 'base64url');
         const message = new TextEncoder().encode(payload);
-        const signature = sodium.crypto_sign_detached(message, privateKey);
+        const signature = await signDetached(message, privateKey);
         return encodeBase64(signature, 'base64url');
     }
 

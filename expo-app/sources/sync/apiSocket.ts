@@ -33,6 +33,8 @@ class ApiSocket {
     private reconnectedListeners: Set<() => void> = new Set();
     private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
     private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
+    private rpcHandlers: Map<string, (params: any) => Promise<any> | any> = new Map();
+    private registeredRpcMethods: Set<string> = new Set();
 
     //
     // Initialization
@@ -106,6 +108,44 @@ class ApiSocket {
 
     offMessage(event: string, handler: (data: any) => void) {
         this.messageHandlers.delete(event);
+    }
+
+    //
+    // RPC Handler Registration
+    //
+
+    /**
+     * Register an RPC handler that can be called by other clients (e.g., daemon)
+     * @param method - The method name (will be prefixed with machine/session ID by caller)
+     * @param handler - The handler function
+     */
+    registerRpcHandler(method: string, handler: (params: any) => Promise<any> | any) {
+        this.rpcHandlers.set(method, handler);
+
+        // If connected, register with server
+        if (this.socket?.connected && !this.registeredRpcMethods.has(method)) {
+            this.socket.emit('rpc-register', { method });
+            this.registeredRpcMethods.add(method);
+        }
+
+        return () => {
+            this.rpcHandlers.delete(method);
+            if (this.socket?.connected && this.registeredRpcMethods.has(method)) {
+                this.socket.emit('rpc-unregister', { method });
+                this.registeredRpcMethods.delete(method);
+            }
+        };
+    }
+
+    /**
+     * Unregister an RPC handler
+     */
+    unregisterRpcHandler(method: string) {
+        this.rpcHandlers.delete(method);
+        if (this.socket?.connected && this.registeredRpcMethods.has(method)) {
+            this.socket.emit('rpc-unregister', { method });
+            this.registeredRpcMethods.delete(method);
+        }
     }
 
     /**
@@ -220,6 +260,15 @@ class ApiSocket {
             // console.log('🔌 SyncSocket: Connected, recovered: ' + this.socket?.recovered);
             // console.log('🔌 SyncSocket: Socket ID:', this.socket?.id);
             this.updateStatus('connected');
+
+            // Re-register all RPC handlers on connect
+            for (const method of this.rpcHandlers.keys()) {
+                if (!this.registeredRpcMethods.has(method)) {
+                    this.socket?.emit('rpc-register', { method });
+                    this.registeredRpcMethods.add(method);
+                }
+            }
+
             if (!this.socket?.recovered) {
                 this.reconnectedListeners.forEach(listener => listener());
             }
@@ -228,6 +277,8 @@ class ApiSocket {
         this.socket.on('disconnect', (reason) => {
             // console.log('🔌 SyncSocket: Disconnected', reason);
             this.updateStatus('disconnected');
+            // Clear registered methods on disconnect - they'll be re-registered on connect
+            this.registeredRpcMethods.clear();
         });
 
         // Error events
@@ -250,6 +301,52 @@ class ApiSocket {
                 handler(data);
             } else {
                 // console.log(`📥 SyncSocket: No handler registered for '${event}'`);
+            }
+        });
+
+        // RPC request handling
+        this.socket.on('rpc-request', async (data: { method: string; params: string }, callback: (response: any) => void) => {
+            // console.log(`📥 SyncSocket: Received RPC request for '${data.method}'`);
+            const handler = this.rpcHandlers.get(data.method);
+            if (!handler) {
+                callback({ error: 'Method not found' });
+                return;
+            }
+
+            try {
+                // Decrypt params using the machine encryption
+                // Extract machineId from method name (format: machineId:methodName)
+                const colonIndex = data.method.indexOf(':');
+                if (colonIndex === -1) {
+                    callback({ error: 'Invalid method format' });
+                    return;
+                }
+
+                const machineId = data.method.substring(0, colonIndex);
+                const machineEncryption = this.encryption?.getMachineEncryption(machineId);
+
+                let decryptedParams: any;
+                if (machineEncryption && data.params) {
+                    decryptedParams = await machineEncryption.decryptRaw(data.params);
+                } else {
+                    // If no encryption or no params, use params as-is
+                    decryptedParams = data.params;
+                }
+
+                const result = await handler(decryptedParams);
+
+                // Encrypt the response
+                let encryptedResult: any;
+                if (machineEncryption && result !== undefined) {
+                    encryptedResult = await machineEncryption.encryptRaw(result);
+                } else {
+                    encryptedResult = result;
+                }
+
+                callback(encryptedResult);
+            } catch (error) {
+                console.error('RPC handler error:', error);
+                callback({ error: error instanceof Error ? error.message : 'Handler error' });
             }
         });
     }

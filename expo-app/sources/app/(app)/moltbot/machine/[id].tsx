@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl, Platform, ActionSheetIOS } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,9 +16,12 @@ import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { StatusDot } from '@/components/StatusDot';
 import { useMoltbotMachine, useMachine } from '@/sync/storage';
 import { useMoltbotConnection } from '@/moltbot/connection';
+import { sync } from '@/sync/sync';
+import { Modal } from '@/modal/ModalManager';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import type { ActionMenuItem } from '@/components/ActionMenu';
 import type { MoltbotSession } from '@/moltbot/types';
 
 const styles = StyleSheet.create((theme) => ({
@@ -31,33 +34,6 @@ const styles = StyleSheet.create((theme) => ({
         alignSelf: 'center',
         width: '100%',
         paddingBottom: 24,
-    },
-    statusBanner: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        marginHorizontal: 16,
-        marginTop: 16,
-        borderRadius: 8,
-        gap: 8,
-    },
-    statusBannerConnected: {
-        backgroundColor: 'rgba(52, 199, 89, 0.15)',
-    },
-    statusBannerConnecting: {
-        backgroundColor: 'rgba(255, 159, 10, 0.15)',
-    },
-    statusBannerError: {
-        backgroundColor: 'rgba(255, 59, 48, 0.15)',
-    },
-    statusBannerPairing: {
-        backgroundColor: 'rgba(0, 122, 255, 0.15)',
-    },
-    statusText: {
-        fontSize: 14,
-        ...Typography.default('semiBold'),
     },
     sessionIcon: {
         width: 32,
@@ -106,9 +82,6 @@ const styles = StyleSheet.create((theme) => ({
     sessionStatusText: {
         fontSize: 12,
         ...Typography.default(),
-    },
-    headerRight: {
-        paddingHorizontal: 16,
     },
 }));
 
@@ -185,6 +158,11 @@ export default function MoltbotMachineDetailPage() {
     const machine = useMoltbotMachine(machineId ?? '');
     const happyMachine = useMachine(machine?.happyMachineId ?? '');
 
+    // Loading state for operations
+    const [isUpdating, setIsUpdating] = React.useState(false);
+    // Menu visibility state
+    const [menuVisible, setMenuVisible] = React.useState(false);
+
     // Connection hook
     const {
         status,
@@ -259,53 +237,218 @@ export default function MoltbotMachineDetailPage() {
         });
     }, [router, machineId]);
 
+    // Handle rename machine
+    const handleRenameMachine = React.useCallback(async () => {
+        if (!machineId || !machine) return;
+
+        const currentName = machine.metadata?.name || '';
+        const newName = await Modal.prompt(
+            t('moltbot.renameMachine'),
+            undefined,
+            {
+                placeholder: t('moltbot.machineNamePlaceholder'),
+                defaultValue: currentName,
+                confirmText: t('common.save'),
+                cancelText: t('common.cancel'),
+            }
+        );
+
+        if (newName && newName !== currentName) {
+            setIsUpdating(true);
+            try {
+                await sync.updateMoltbotMachine(machineId, { name: newName });
+            } catch (err) {
+                console.error('Failed to update machine:', err);
+                Modal.alert(t('common.error'), err instanceof Error ? err.message : 'Failed to update machine');
+            } finally {
+                setIsUpdating(false);
+            }
+        }
+    }, [machineId, machine]);
+
+    // Handle edit gateway URL (for direct type machines)
+    const handleEditGatewayUrl = React.useCallback(async () => {
+        if (!machineId || !machine || machine.type !== 'direct') return;
+
+        const currentUrl = machine.directConfig?.url || '';
+        const newUrl = await Modal.prompt(
+            t('moltbot.editGatewayUrl'),
+            undefined,
+            {
+                placeholder: t('moltbot.gatewayUrl'),
+                defaultValue: currentUrl,
+                confirmText: t('common.save'),
+                cancelText: t('common.cancel'),
+            }
+        );
+
+        if (newUrl && newUrl !== currentUrl) {
+            setIsUpdating(true);
+            try {
+                await sync.updateMoltbotMachine(machineId, {
+                    directConfig: {
+                        url: newUrl,
+                        password: machine.directConfig?.password,
+                    }
+                });
+            } catch (err) {
+                console.error('Failed to update gateway URL:', err);
+                Modal.alert(t('common.error'), err instanceof Error ? err.message : 'Failed to update gateway URL');
+            } finally {
+                setIsUpdating(false);
+            }
+        }
+    }, [machineId, machine]);
+
+    // Handle edit gateway password (for direct type machines)
+    const handleEditGatewayPassword = React.useCallback(async () => {
+        if (!machineId || !machine || machine.type !== 'direct') return;
+
+        const currentPassword = machine.directConfig?.password || '';
+        const newPassword = await Modal.prompt(
+            t('moltbot.editGatewayPassword'),
+            undefined,
+            {
+                placeholder: t('moltbot.gatewayToken'),
+                defaultValue: currentPassword,
+                confirmText: t('common.save'),
+                cancelText: t('common.cancel'),
+                inputType: 'secure-text',
+            }
+        );
+
+        if (newPassword !== null && newPassword !== currentPassword) {
+            setIsUpdating(true);
+            try {
+                await sync.updateMoltbotMachine(machineId, {
+                    directConfig: {
+                        url: machine.directConfig?.url || '',
+                        password: newPassword || undefined,
+                    }
+                });
+            } catch (err) {
+                console.error('Failed to update gateway password:', err);
+                Modal.alert(t('common.error'), err instanceof Error ? err.message : 'Failed to update gateway password');
+            } finally {
+                setIsUpdating(false);
+            }
+        }
+    }, [machineId, machine]);
+
+    // Handle delete machine
+    const handleDeleteMachine = React.useCallback(async () => {
+        if (!machineId) return;
+
+        const confirmed = await Modal.confirm(
+            t('moltbot.deleteMachine'),
+            t('moltbot.deleteMachineConfirmMessage'),
+            {
+                confirmText: t('common.delete'),
+                cancelText: t('common.cancel'),
+                destructive: true,
+            }
+        );
+
+        if (confirmed) {
+            setIsUpdating(true);
+            try {
+                await sync.deleteMoltbotMachine(machineId);
+                router.back();
+            } catch (err) {
+                console.error('Failed to delete machine:', err);
+                Modal.alert(t('common.error'), err instanceof Error ? err.message : 'Failed to delete machine');
+                setIsUpdating(false);
+            }
+        }
+    }, [machineId, router]);
+
+    // Handle menu button press
+    const handleMenuPress = React.useCallback(() => {
+        if (Platform.OS === 'ios') {
+            // Build options based on machine type
+            const isDirectType = machine?.type === 'direct';
+            const options = isDirectType
+                ? [t('common.cancel'), t('moltbot.renameMachine'), t('moltbot.editGatewayUrl'), t('moltbot.editGatewayPassword'), t('moltbot.deleteMachine')]
+                : [t('common.cancel'), t('moltbot.renameMachine'), t('moltbot.deleteMachine')];
+            const destructiveIndex = isDirectType ? 4 : 2;
+
+            ActionSheetIOS.showActionSheetWithOptions(
+                {
+                    options,
+                    destructiveButtonIndex: destructiveIndex,
+                    cancelButtonIndex: 0,
+                },
+                (buttonIndex) => {
+                    if (isDirectType) {
+                        if (buttonIndex === 1) handleRenameMachine();
+                        else if (buttonIndex === 2) handleEditGatewayUrl();
+                        else if (buttonIndex === 3) handleEditGatewayPassword();
+                        else if (buttonIndex === 4) handleDeleteMachine();
+                    } else {
+                        if (buttonIndex === 1) handleRenameMachine();
+                        else if (buttonIndex === 2) handleDeleteMachine();
+                    }
+                }
+            );
+        } else {
+            // For Android and Web, use ActionMenuModal
+            setMenuVisible(true);
+        }
+    }, [machine?.type, handleRenameMachine, handleEditGatewayUrl, handleEditGatewayPassword, handleDeleteMachine]);
+
+    // Menu items for ActionMenuModal
+    const menuItems: ActionMenuItem[] = React.useMemo(() => {
+        const items: ActionMenuItem[] = [
+            { label: t('moltbot.renameMachine'), onPress: handleRenameMachine },
+        ];
+        // Add direct config options for direct type machines
+        if (machine?.type === 'direct') {
+            items.push(
+                { label: t('moltbot.editGatewayUrl'), onPress: handleEditGatewayUrl },
+                { label: t('moltbot.editGatewayPassword'), onPress: handleEditGatewayPassword },
+            );
+        }
+        items.push({ label: t('moltbot.deleteMachine'), onPress: handleDeleteMachine, destructive: true });
+        return items;
+    }, [machine?.type, handleRenameMachine, handleEditGatewayUrl, handleEditGatewayPassword, handleDeleteMachine]);
+
     // Get machine name
     const machineName = machine?.metadata?.name ||
         (machine?.type === 'happy' ? happyMachine?.metadata?.host : machine?.directConfig?.url) ||
         t('moltbot.unknownMachine');
 
-    // Get status banner config
-    const getStatusBannerConfig = () => {
+    // Get status config for header subtitle
+    const getStatusConfig = () => {
         switch (status) {
             case 'connected':
                 return {
-                    style: styles.statusBannerConnected,
                     color: theme.colors.status.connected,
                     text: t('status.connected'),
-                    icon: 'checkmark-circle' as const,
                 };
             case 'connecting':
                 return {
-                    style: styles.statusBannerConnecting,
                     color: theme.colors.status.connecting,
                     text: t('status.connecting'),
-                    icon: 'sync' as const,
                 };
             case 'pairing_required':
                 return {
-                    style: styles.statusBannerPairing,
-                    color: theme.colors.button.primary.background,
+                    color: theme.colors.radio.active,
                     text: t('moltbot.pairingRequired'),
-                    icon: 'key' as const,
                 };
             case 'error':
                 return {
-                    style: styles.statusBannerError,
                     color: theme.colors.status.disconnected,
                     text: error || t('status.error'),
-                    icon: 'alert-circle' as const,
                 };
             default:
                 return {
-                    style: styles.statusBannerError,
                     color: theme.colors.textSecondary,
                     text: t('status.disconnected'),
-                    icon: 'cloud-offline' as const,
                 };
         }
     };
 
-    const statusConfig = getStatusBannerConfig();
+    const statusConfig = getStatusConfig();
 
     if (!machine) {
         return (
@@ -323,19 +466,74 @@ export default function MoltbotMachineDetailPage() {
         <View style={styles.container}>
             <Stack.Screen
                 options={{
-                    headerTitle: machineName,
+                    headerLeft: () => (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Pressable
+                                onPress={() => router.back()}
+                                style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                            >
+                                <Ionicons
+                                    name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                                    size={Platform.OS === 'ios' ? 28 : 24}
+                                    color={theme.colors.header.tint}
+                                />
+                            </Pressable>
+                            <View style={{ width: 44 }} />
+                        </View>
+                    ),
+                    headerTitle: () => (
+                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                            <Text
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                                style={[Typography.default('semiBold'), { fontSize: 17, color: theme.colors.header.tint }]}
+                            >
+                                {machineName}
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                                <View style={{
+                                    width: 6,
+                                    height: 6,
+                                    borderRadius: 3,
+                                    backgroundColor: statusConfig.color,
+                                    marginRight: 4
+                                }} />
+                                <Text
+                                    numberOfLines={1}
+                                    style={[Typography.default(), {
+                                    fontSize: 12,
+                                    color: statusConfig.color
+                                }]}>
+                                    {statusConfig.text}
+                                </Text>
+                            </View>
+                        </View>
+                    ),
                     headerRight: () => (
-                        <Pressable
-                            onPress={handleNewSession}
-                            style={styles.headerRight}
-                            disabled={!isConnected}
-                        >
-                            <Ionicons
-                                name="add"
-                                size={24}
-                                color={isConnected ? theme.colors.header.tint : theme.colors.textSecondary}
-                            />
-                        </Pressable>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Pressable
+                                onPress={handleNewSession}
+                                style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                                disabled={!isConnected || isUpdating}
+                            >
+                                <Ionicons
+                                    name="add"
+                                    size={24}
+                                    color={isConnected && !isUpdating ? theme.colors.header.tint : theme.colors.textSecondary}
+                                />
+                            </Pressable>
+                            <Pressable
+                                onPress={handleMenuPress}
+                                style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                                disabled={isUpdating}
+                            >
+                                <Ionicons
+                                    name="ellipsis-vertical"
+                                    size={20}
+                                    color={isUpdating ? theme.colors.textSecondary : theme.colors.header.tint}
+                                />
+                            </Pressable>
+                        </View>
                     ),
                 }}
             />
@@ -352,18 +550,6 @@ export default function MoltbotMachineDetailPage() {
                     />
                 }
             >
-                {/* Status Banner */}
-                <View style={[styles.statusBanner, statusConfig.style]}>
-                    {isConnecting ? (
-                        <ActivityIndicator size="small" color={statusConfig.color} />
-                    ) : (
-                        <Ionicons name={statusConfig.icon} size={20} color={statusConfig.color} />
-                    )}
-                    <Text style={[styles.statusText, { color: statusConfig.color }]}>
-                        {statusConfig.text}
-                    </Text>
-                </View>
-
                 {/* Error/Disconnected state with connect button */}
                 {(status === 'disconnected' || status === 'error') && (
                     <View style={styles.emptyContainer}>
@@ -379,7 +565,7 @@ export default function MoltbotMachineDetailPage() {
                 {/* Pairing required state */}
                 {isPairingRequired && (
                     <View style={styles.emptyContainer}>
-                        <Ionicons name="key" size={48} color={theme.colors.button.primary.background} />
+                        <Ionicons name="key" size={48} color={theme.colors.radio.active} />
                         <Text style={[styles.emptyTitle, { marginTop: 16 }]}>
                             {t('moltbot.pairingRequired')}
                         </Text>
@@ -424,6 +610,13 @@ export default function MoltbotMachineDetailPage() {
                     </ItemGroup>
                 )}
             </ScrollView>
+
+            {/* Action Menu for Android/Web */}
+            <ActionMenuModal
+                visible={menuVisible}
+                items={menuItems}
+                onClose={() => setMenuVisible(false)}
+            />
         </View>
     );
 }

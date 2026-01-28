@@ -9,11 +9,8 @@ import React from 'react';
 import {
     View,
     Text,
-    TextInput,
     ScrollView,
     Pressable,
-    ActivityIndicator,
-    Alert,
 } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -25,7 +22,6 @@ import { layout } from '@/components/layout';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { useMoltbotConnection } from '@/moltbot/connection';
-import { useMoltbotMachine } from '@/sync/storage';
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -38,16 +34,15 @@ const styles = StyleSheet.create((theme) => ({
         width: '100%',
         paddingBottom: 24,
     },
-    inputContainer: {
-        marginHorizontal: 16,
-        marginTop: 8,
+    inputWrapper: {
+        backgroundColor: theme.colors.surface,
+        borderRadius: 10,
+        overflow: 'hidden',
     },
     input: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: 8,
         paddingHorizontal: 16,
         paddingVertical: 12,
-        fontSize: 16,
+        fontSize: 17,
         color: theme.colors.text,
         ...Typography.default(),
         minHeight: 100,
@@ -56,60 +51,30 @@ const styles = StyleSheet.create((theme) => ({
     singleLineInput: {
         minHeight: 44,
     },
+    typeIcon: {
+        width: 28,
+        height: 28,
+        borderRadius: 6,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     submitButton: {
         backgroundColor: theme.colors.button.primary.background,
         marginHorizontal: 16,
         marginTop: 24,
         paddingVertical: 14,
-        borderRadius: 8,
+        borderRadius: 10,
         alignItems: 'center',
+        justifyContent: 'center',
+        height: 50,
     },
     submitButtonDisabled: {
         opacity: 0.5,
     },
     submitButtonText: {
         color: '#FFFFFF',
-        fontSize: 16,
+        fontSize: 17,
         ...Typography.default('semiBold'),
-    },
-    statusContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        marginHorizontal: 16,
-        marginTop: 16,
-        borderRadius: 8,
-        gap: 8,
-    },
-    statusConnected: {
-        backgroundColor: 'rgba(52, 199, 89, 0.15)',
-    },
-    statusConnecting: {
-        backgroundColor: 'rgba(255, 159, 10, 0.15)',
-    },
-    statusError: {
-        backgroundColor: 'rgba(255, 59, 48, 0.15)',
-    },
-    statusText: {
-        fontSize: 14,
-        ...Typography.default('semiBold'),
-    },
-    sessionTypeOption: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-    },
-    sessionTypeIcon: {
-        width: 32,
-        height: 32,
-        borderRadius: 8,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    checkmark: {
-        marginLeft: 'auto',
     },
 }));
 
@@ -121,96 +86,56 @@ export default function MoltbotNewSessionPage() {
     const safeArea = useSafeAreaInsets();
     const { machineId } = useLocalSearchParams<{ machineId: string }>();
 
-    // Get machine data
-    const machine = useMoltbotMachine(machineId ?? '');
-
     // Connection hook
     const {
         status,
         isConnected,
         isConnecting,
-        error,
-        send,
-        connect,
     } = useMoltbotConnection(machineId ?? '', {
         autoConnect: true,
     });
 
     // Form state
-    const [sessionName, setSessionName] = React.useState('');
     const [sessionKind, setSessionKind] = React.useState<SessionKind>('direct');
-    const [initialMessage, setInitialMessage] = React.useState('');
-    const [isCreating, setIsCreating] = React.useState(false);
 
-    const canCreate = isConnected && !isCreating;
+    const canCreate = isConnected;
 
-    const handleCreate = React.useCallback(async () => {
+    const handleCreate = React.useCallback(() => {
         if (!canCreate) return;
 
-        setIsCreating(true);
+        // Moltbot creates sessions on-demand when first message is sent.
+        // The session key determines the session type:
+        // - 'direct': main DM session (shared across channels)
+        // - 'global': global scope session
+        const sessionKey = sessionKind === 'direct' ? 'direct' : 'global';
 
-        try {
-            // Create session via gateway
-            const result = await send('sessions.create', {
-                kind: sessionKind,
-                label: sessionName.trim() || undefined,
-                initialMessage: initialMessage.trim() || undefined,
-            });
+        // Navigate to the chat page - session will be created when first message is sent
+        router.replace({
+            pathname: '/moltbot/chat',
+            params: {
+                machineId: machineId,
+                sessionKey: sessionKey,
+            },
+        });
+    }, [canCreate, sessionKind, machineId, router]);
 
-            if (result.ok && result.payload) {
-                const session = result.payload as { key: string };
-
-                // Navigate to the new chat
-                router.replace({
-                    pathname: '/moltbot/chat',
-                    params: {
-                        machineId: machineId,
-                        sessionKey: session.key,
-                    },
-                });
-            } else {
-                Alert.alert(
-                    t('common.error'),
-                    (result.error as { message?: string })?.message || 'Failed to create session'
-                );
-            }
-        } catch (err) {
-            console.error('Failed to create session:', err);
-            Alert.alert(
-                t('common.error'),
-                err instanceof Error ? err.message : 'Failed to create session'
-            );
-        } finally {
-            setIsCreating(false);
-        }
-    }, [canCreate, send, sessionKind, sessionName, initialMessage, machineId, router]);
-
-    // Get header title
-    const machineName = machine?.metadata?.name || t('moltbot.unknownMachine');
-
-    // Get status config
+    // Get status config for header subtitle
     const getStatusConfig = () => {
         switch (status) {
             case 'connected':
                 return {
-                    style: styles.statusConnected,
                     color: theme.colors.status.connected,
                     text: t('status.connected'),
-                    icon: 'checkmark-circle' as const,
                 };
             case 'connecting':
                 return {
-                    style: styles.statusConnecting,
                     color: theme.colors.status.connecting,
                     text: t('status.connecting'),
-                    icon: 'sync' as const,
                 };
             default:
                 return {
-                    style: styles.statusError,
                     color: theme.colors.status.disconnected,
-                    text: error || t('status.disconnected'),
-                    icon: 'alert-circle' as const,
+                    text: t('status.disconnected'),
                 };
         }
     };
@@ -221,7 +146,33 @@ export default function MoltbotNewSessionPage() {
         <View style={styles.container}>
             <Stack.Screen
                 options={{
-                    headerTitle: t('moltbot.newSession'),
+                    headerTitle: () => (
+                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                            <Text
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                                style={[Typography.default('semiBold'), { fontSize: 17, color: theme.colors.header.tint }]}
+                            >
+                                {t('moltbot.newSession')}
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                                <View style={{
+                                    width: 6,
+                                    height: 6,
+                                    borderRadius: 3,
+                                    backgroundColor: statusConfig.color,
+                                    marginRight: 4
+                                }} />
+                                <Text
+                                    numberOfLines={1}
+                                    style={[Typography.default(), { fontSize: 12, color: statusConfig.color }]}
+                                >
+                                    {statusConfig.text}
+                                </Text>
+                            </View>
+                        </View>
+                    ),
+                    headerRight: () => <View style={{ width: 24, height: 24 }} />,
                 }}
             />
             <ScrollView
@@ -230,34 +181,6 @@ export default function MoltbotNewSessionPage() {
                     { paddingBottom: safeArea.bottom + 24 },
                 ]}
             >
-                {/* Connection Status */}
-                <View style={[styles.statusContainer, statusConfig.style]}>
-                    {isConnecting ? (
-                        <ActivityIndicator size="small" color={statusConfig.color} />
-                    ) : (
-                        <Ionicons name={statusConfig.icon} size={20} color={statusConfig.color} />
-                    )}
-                    <Text style={[styles.statusText, { color: statusConfig.color }]}>
-                        {machineName} - {statusConfig.text}
-                    </Text>
-                </View>
-
-                {/* Session Name (Optional) */}
-                <ItemGroup title={`${t('moltbot.sessionName')} (${t('common.optional')})`}>
-                    <View style={styles.inputContainer}>
-                        <TextInput
-                            style={[styles.input, styles.singleLineInput, { borderWidth: 1, borderColor: theme.colors.divider }]}
-                            value={sessionName}
-                            onChangeText={setSessionName}
-                            placeholder="My Chat Session"
-                            placeholderTextColor={theme.colors.textSecondary}
-                            autoCapitalize="words"
-                            autoCorrect={false}
-                            editable={isConnected}
-                        />
-                    </View>
-                </ItemGroup>
-
                 {/* Session Type */}
                 <ItemGroup title={t('moltbot.sessionType')}>
                     <Item
@@ -265,46 +188,35 @@ export default function MoltbotNewSessionPage() {
                         subtitle={t('moltbot.sessionTypeDirectDescription')}
                         subtitleLines={2}
                         leftElement={
-                            <View style={[styles.sessionTypeIcon, { backgroundColor: theme.colors.surfacePressed }]}>
-                                <Ionicons name="chatbubble" size={18} color={theme.colors.textSecondary} />
+                            <View style={[styles.typeIcon, { backgroundColor: theme.colors.status.connected + '20' }]}>
+                                <Ionicons name="chatbubble" size={16} color={theme.colors.status.connected} />
                             </View>
                         }
                         rightElement={sessionKind === 'direct' ? (
-                            <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} style={styles.checkmark} />
-                        ) : null}
+                            <Ionicons name="checkmark-circle" size={24} color={theme.colors.status.connected} />
+                        ) : (
+                            <View style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: theme.colors.divider }} />
+                        )}
                         onPress={() => setSessionKind('direct')}
+                        showChevron={false}
                     />
                     <Item
                         title={t('moltbot.sessionTypeGlobal')}
                         subtitle={t('moltbot.sessionTypeGlobalDescription')}
                         subtitleLines={2}
                         leftElement={
-                            <View style={[styles.sessionTypeIcon, { backgroundColor: theme.colors.surfacePressed }]}>
-                                <Ionicons name="globe" size={18} color={theme.colors.textSecondary} />
+                            <View style={[styles.typeIcon, { backgroundColor: theme.colors.surfacePressed }]}>
+                                <Ionicons name="globe" size={16} color={theme.colors.text} />
                             </View>
                         }
                         rightElement={sessionKind === 'global' ? (
-                            <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} style={styles.checkmark} />
-                        ) : null}
+                            <Ionicons name="checkmark-circle" size={24} color={theme.colors.status.connected} />
+                        ) : (
+                            <View style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: theme.colors.divider }} />
+                        )}
                         onPress={() => setSessionKind('global')}
+                        showChevron={false}
                     />
-                </ItemGroup>
-
-                {/* Initial Message (Optional) */}
-                <ItemGroup title={`${t('moltbot.initialMessage')} (${t('common.optional')})`}>
-                    <View style={styles.inputContainer}>
-                        <TextInput
-                            style={[styles.input, { borderWidth: 1, borderColor: theme.colors.divider }]}
-                            value={initialMessage}
-                            onChangeText={setInitialMessage}
-                            placeholder={t('moltbot.initialMessagePlaceholder')}
-                            placeholderTextColor={theme.colors.textSecondary}
-                            multiline
-                            autoCapitalize="sentences"
-                            autoCorrect
-                            editable={isConnected}
-                        />
-                    </View>
                 </ItemGroup>
 
                 {/* Create Button */}
@@ -313,11 +225,7 @@ export default function MoltbotNewSessionPage() {
                     onPress={handleCreate}
                     disabled={!canCreate}
                 >
-                    {isCreating ? (
-                        <ActivityIndicator color="#FFFFFF" />
-                    ) : (
-                        <Text style={styles.submitButtonText}>{t('moltbot.createSession')}</Text>
-                    )}
+                    <Text style={styles.submitButtonText}>{t('moltbot.createSession')}</Text>
                 </Pressable>
             </ScrollView>
         </View>

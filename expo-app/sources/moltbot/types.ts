@@ -13,7 +13,8 @@ import { z } from 'zod';
  */
 export const MoltbotMetadataSchema = z.object({
     name: z.string(),
-    // Additional metadata fields can be added here
+    // Gateway auth token for type='happy' machines (stored encrypted in metadata)
+    gatewayToken: z.string().optional(),
 });
 
 export type MoltbotMetadata = z.infer<typeof MoltbotMetadataSchema>;
@@ -36,6 +37,7 @@ export type MoltbotPairingData = z.infer<typeof MoltbotPairingDataSchema>;
 export const MoltbotDirectConfigSchema = z.object({
     url: z.string(),
     password: z.string().optional(),
+    token: z.string().optional(),
 });
 
 export type MoltbotDirectConfig = z.infer<typeof MoltbotDirectConfigSchema>;
@@ -49,6 +51,8 @@ export interface MoltbotMachine {
 
     // type='happy' - Reference to Happy machine for relay
     happyMachineId: string | null;
+    // type='happy' - Gateway auth token for tunnel mode (optional)
+    gatewayToken: string | null;
 
     // type='direct' - Direct connection config (decrypted)
     directConfig: MoltbotDirectConfig | null;
