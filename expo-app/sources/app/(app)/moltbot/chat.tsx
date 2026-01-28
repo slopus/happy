@@ -168,19 +168,6 @@ const styles = StyleSheet.create((theme) => ({
         textAlign: 'center',
         ...Typography.default(),
     },
-    connectionBanner: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-        backgroundColor: theme.colors.groupped.background,
-        gap: 8,
-    },
-    connectionText: {
-        fontSize: 14,
-        ...Typography.default(),
-    },
 }));
 
 interface MessageItemProps {
@@ -283,11 +270,9 @@ export default function MoltbotChatPage() {
 
     // Connection hook
     const {
-        status,
         isConnected,
         isConnecting,
         send,
-        connect,
     } = useMoltbotConnection(machineId ?? '', {
         autoConnect: true,
         onEvent: (event, payload) => {
@@ -490,33 +475,8 @@ export default function MoltbotChatPage() {
                 title={sessionName}
                 subtitle={machineName}
                 onBackPress={() => router.back()}
+                isConnecting={isConnecting}
             />
-
-            {/* Connection status banner */}
-            {!isConnected && (
-                <View style={styles.connectionBanner}>
-                    {isConnecting ? (
-                        <>
-                            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                            <Text style={[styles.connectionText, { color: theme.colors.textSecondary }]}>
-                                {t('moltbot.connecting')}
-                            </Text>
-                        </>
-                    ) : (
-                        <>
-                            <Ionicons name="cloud-offline" size={18} color={theme.colors.status.disconnected} />
-                            <Text style={[styles.connectionText, { color: theme.colors.status.disconnected }]}>
-                                {t('moltbot.disconnected')}
-                            </Text>
-                            <Pressable onPress={() => connect()}>
-                                <Text style={[styles.connectionText, { color: theme.colors.textLink }]}>
-                                    {t('moltbot.connect')}
-                                </Text>
-                            </Pressable>
-                        </>
-                    )}
-                </View>
-            )}
 
             {/* Messages list */}
             {isLoading ? (

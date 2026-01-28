@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Platform, Pressable, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -18,6 +18,7 @@ interface ChatHeaderViewProps {
     backgroundColor?: string;
     tintColor?: string;
     isConnected?: boolean;
+    isConnecting?: boolean;
     flavor?: string | null;
 }
 
@@ -28,6 +29,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     onAvatarPress,
     avatarId,
     isConnected = true,
+    isConnecting = false,
     flavor,
 }) => {
     const { theme } = useUnistyles();
@@ -87,6 +89,12 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                     )}
                 </View>
                 
+                {isConnecting && (
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="small" color={theme.colors.header.tint} />
+                    </View>
+                )}
+
                 {avatarId && onAvatarPress && (
                     <Pressable
                         onPress={onAvatarPress}
@@ -152,5 +160,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: Platform.select({ ios: -8, default: -8 }),
+    },
+    loadingContainer: {
+        width: 24,
+        height: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 });

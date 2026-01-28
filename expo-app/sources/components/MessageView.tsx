@@ -85,7 +85,7 @@ function UserTextBlock(props: {
               <Image
                 key={index}
                 source={{ uri: img.url }}
-                style={{ width: 120, height: 120, borderRadius: 8, marginRight: 8 }}
+                style={{ width: 120, height: 120, borderRadius: 8 }}
                 contentFit="cover"
                 placeholder={img.thumbhash ? { thumbhash: img.thumbhash } : undefined}
               />
@@ -238,7 +238,8 @@ const styles = StyleSheet.create((theme) => ({
   messageImages: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    marginTop: 8,
     marginBottom: 8,
-    gap: 8,
+    gap: 12,
   },
 }));
