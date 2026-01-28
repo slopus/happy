@@ -3,13 +3,13 @@ name: Expo App TypeScript typecheck
 on:
     pull_request:
         paths:
-            - 'expo-app/**'
+            - 'packages/happy-app/**'
             - '.github/workflows/typecheck.yml'
     push:
         branches:
             - main
         paths:
-            - 'expo-app/**'
+            - 'packages/happy-app/**'
             - '.github/workflows/typecheck.yml'
 
 jobs:
@@ -28,8 +28,6 @@ jobs:
 
             - name: Install dependencies
               run: yarn install --frozen-lockfile
-              working-directory: expo-app
 
             - name: TypeScript typecheck
-              run: yarn typecheck
-              working-directory: expo-app
+              run: yarn workspace happy-app typecheck

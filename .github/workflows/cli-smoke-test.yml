@@ -4,12 +4,12 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'cli/**'
+      - 'packages/happy-cli/**'
       - '.github/workflows/cli-smoke-test.yml'
   pull_request:
     branches: [ main ]
     paths:
-      - 'cli/**'
+      - 'packages/happy-cli/**'
       - '.github/workflows/cli-smoke-test.yml'
   workflow_dispatch:
 
@@ -29,23 +29,20 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'yarn'
-        cache-dependency-path: cli/yarn.lock
+        cache-dependency-path: yarn.lock
 
     - name: Install dependencies
       run: yarn install --immutable
-      working-directory: cli
 
     - name: Build package
-      run: yarn build
-      working-directory: cli
+      run: yarn workspace happy-coder build
 
     - name: Pack package
-      run: yarn pack
-      working-directory: cli
+      run: yarn workspace happy-coder pack
 
     - name: Install packed package globally
       run: |
-        PACKAGE_FILE=$(ls cli/*.tgz)
+        PACKAGE_FILE=$(ls packages/happy-cli/*.tgz)
         npm install -g "./$PACKAGE_FILE"
 
     - name: Test binary execution
@@ -92,24 +89,21 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'yarn'
-        cache-dependency-path: cli/yarn.lock
+        cache-dependency-path: yarn.lock
 
     - name: Install dependencies
       run: yarn install --immutable
-      working-directory: cli
 
     - name: Build package
-      run: yarn build
-      working-directory: cli
+      run: yarn workspace happy-coder build
 
     - name: Pack package
-      run: yarn pack
-      working-directory: cli
+      run: yarn workspace happy-coder pack
 
     - name: Install packed package globally
       shell: cmd
       run: |
-        for %%f in (cli\*.tgz) do npm install -g "%%f"
+        for %%f in (packages\happy-cli\*.tgz) do npm install -g "%%f"
 
     - name: Debug npm global installation structure
       shell: cmd
