@@ -121,18 +121,37 @@ export default function AddMoltbotMachinePage() {
     }, [machines, machineType, selectedMachineId]);
 
     const canSubmit = React.useMemo(() => {
-        if (!machineName.trim()) return false;
         if (machineType === 'happy') {
             return !!selectedMachineId;
         } else {
             return !!gatewayUrl.trim();
         }
-    }, [machineName, machineType, selectedMachineId, gatewayUrl]);
+    }, [machineType, selectedMachineId, gatewayUrl]);
 
     const handleSubmit = React.useCallback(async () => {
         if (!canSubmit || isSubmitting) return;
 
         setIsSubmitting(true);
+
+        // Auto-generate name if empty
+        let name = machineName.trim();
+        if (!name) {
+            if (machineType === 'happy' && selectedMachineId) {
+                const selectedMachine = machines.find(m => m.id === selectedMachineId);
+                const machineName = selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || 'Machine';
+                name = `${machineName} Moltbot`;
+            } else if (machineType === 'direct') {
+                // Extract host from URL for name
+                try {
+                    const url = new URL(gatewayUrl.trim());
+                    name = `${url.hostname} Moltbot`;
+                } catch {
+                    name = 'My Moltbot';
+                }
+            } else {
+                name = 'My Moltbot';
+            }
+        }
 
         try {
             await sync.createMoltbotMachine({
@@ -143,7 +162,7 @@ export default function AddMoltbotMachinePage() {
                     password: gatewayPassword.trim() || undefined,
                 } : undefined,
                 metadata: {
-                    name: machineName.trim(),
+                    name,
                 },
             });
 
@@ -163,7 +182,7 @@ export default function AddMoltbotMachinePage() {
         <View style={styles.container}>
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 {/* Machine Name */}
-                <ItemGroup title={t('moltbot.sessionName')}>
+                <ItemGroup title={`${t('moltbot.sessionName')} (${t('common.optional')})`}>
                     <View style={styles.inputWrapper}>
                         <TextInput
                             style={styles.input}
