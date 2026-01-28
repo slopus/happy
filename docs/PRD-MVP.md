@@ -26,6 +26,8 @@
 | Terminology update | ✅ | Terminals→Runners |
 | GitHub URLs | ✅ | runline-ai/arc |
 | Translation key renames | ✅ | happySessionId→runlineSessionId, etc. |
+| CLI rebrand | ✅ | happy→arc command, @runline-ai/arc on GitHub Packages |
+| Upstream merge | ✅ | Merged upstream Happy changes (libsodium 0.8.2, zh-Hant, etc.) |
 
 ### Remaining ❌
 
@@ -104,7 +106,7 @@ eas submit --platform ios
 ### After Deploy
 - [ ] Install via TestFlight
 - [ ] Login (new account or existing Happy account)
-- [ ] Pair with computer running `happy` CLI
+- [ ] Pair with computer running `arc` CLI
 - [ ] See sessions in list
 - [ ] Open Emila session
 - [ ] Send message, receive response
@@ -136,9 +138,12 @@ eas submit --platform ios
 
 ## Known Issues / Risks
 
-1. **Relay compatibility**
-   - Runline uses Happy's relay (no changes needed)
-   - Same account works on both apps
+1. **Relay Infrastructure (Intentional)**
+   - Arc CLI and Runline app use Happy's relay server (`api.cluster-fluster.com`)
+   - Same account works on both Happy and Runline apps
+   - This is intentional for MVP - avoids managing infrastructure
+   - Sessions started with `arc` CLI appear in Happy mobile app too
+   - Future: Deploy own relay when needed for security/features (see ROADMAP.md)
 
 2. **Code signing**
    - Need Apple Developer account
