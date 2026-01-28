@@ -527,6 +527,9 @@ export const zhHans: TranslationStructure = {
         askUserQuestion: {
             submit: '提交答案',
             multipleQuestions: ({ count }: { count: number }) => `${count} 个问题`,
+            other: '其他',
+            otherDescription: '输入您自己的答案',
+            otherPlaceholder: '输入您的答案...',
         }
     },
 

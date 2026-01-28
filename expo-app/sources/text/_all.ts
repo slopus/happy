@@ -12,7 +12,7 @@
 /**
  * Supported language codes
  */
-export type SupportedLanguage = 'en' | 'ru' | 'pl' | 'es' | 'it' | 'pt' | 'ca' | 'zh-Hans' | 'ja';
+export type SupportedLanguage = 'en' | 'ru' | 'pl' | 'es' | 'it' | 'pt' | 'ca' | 'zh-Hans' | 'zh-Hant' | 'ja';
 
 /**
  * Language metadata interface
@@ -33,13 +33,13 @@ export const SUPPORTED_LANGUAGES: Record<SupportedLanguage, LanguageInfo> = {
         englishName: 'English'
     },
     ru: {
-        code: 'ru', 
+        code: 'ru',
         nativeName: 'Русский',
         englishName: 'Russian'
     },
     pl: {
         code: 'pl',
-        nativeName: 'Polski', 
+        nativeName: 'Polski',
         englishName: 'Polish'
     },
     es: {
@@ -66,6 +66,11 @@ export const SUPPORTED_LANGUAGES: Record<SupportedLanguage, LanguageInfo> = {
         code: 'zh-Hans',
         nativeName: '中文(简体)',
         englishName: 'Chinese (Simplified)'
+    },
+'zh-Hant': {
+        code: 'zh-Hant',
+        nativeName: '中文(繁體)',
+        englishName: 'Chinese (Traditional)'
     },
     ja: {
         code: 'ja',

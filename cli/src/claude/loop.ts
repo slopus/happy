@@ -2,7 +2,7 @@ import { ApiSessionClient } from "@/api/apiSession"
 import { MessageQueue2 } from "@/utils/MessageQueue2"
 import { logger } from "@/ui/logger"
 import { Session } from "./session"
-import { claudeLocalLauncher } from "./claudeLocalLauncher"
+import { claudeLocalLauncher, LauncherResult } from "./claudeLocalLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from "@/lib"
 import type { JsRuntime } from "./runClaude"
@@ -42,7 +42,7 @@ interface LoopOptions {
     jsRuntime?: JsRuntime
 }
 
-export async function loop(opts: LoopOptions) {
+export async function loop(opts: LoopOptions): Promise<number> {
 
     // Get log path for debug display
     const logPath = logger.logFilePath;
@@ -62,43 +62,46 @@ export async function loop(opts: LoopOptions) {
         jsRuntime: opts.jsRuntime
     });
 
-    // Notify that session is ready
-    if (opts.onSessionReady) {
-        opts.onSessionReady(session);
-    }
+    opts.onSessionReady?.(session)
 
     let mode: 'local' | 'remote' = opts.startingMode ?? 'local';
     while (true) {
         logger.debug(`[loop] Iteration with mode: ${mode}`);
 
-        // Run local mode if applicable
-        if (mode === 'local') {
-            let reason = await claudeLocalLauncher(session);
-            if (reason === 'exit') { // Normal exit - Exit loop
-                return;
+        switch (mode) {
+            case 'local': {
+                const result = await claudeLocalLauncher(session);
+                switch (result.type ) {
+                    case 'switch':
+                        mode = 'remote';
+                        opts.onModeChange?.(mode);
+                        break;
+                    case 'exit':
+                        return result.code;
+                    default:
+                        const _: never = result satisfies never;
+                }
+                break;
             }
 
-            // Non "exit" reason means we need to switch to remote mode
-            mode = 'remote';
-            if (opts.onModeChange) {
-                opts.onModeChange(mode);
+            case 'remote': {
+                const reason = await claudeRemoteLauncher(session);
+                switch (reason) {
+                    case 'exit':
+                        return 0;
+                    case 'switch':
+                        mode = 'local';
+                        opts.onModeChange?.(mode);
+                        break;
+                    default:
+                        const _: never = reason satisfies never;
+                }
+                break;
             }
-            continue;
-        }
 
-        // Start remote mode
-        if (mode === 'remote') {
-            let reason = await claudeRemoteLauncher(session);
-            if (reason === 'exit') { // Normal exit - Exit loop
-                return;
+            default: {
+                const _: never = mode satisfies never;
             }
-
-            // Non "exit" reason means we need to switch to local mode
-            mode = 'local';
-            if (opts.onModeChange) {
-                opts.onModeChange(mode);
-            }
-            continue;
         }
     }
 }

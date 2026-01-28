@@ -10,6 +10,19 @@ import { getProjectPath } from "./utils/path";
 import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 
+/**
+ * Error thrown when the Claude process exits with a non-zero exit code.
+ */
+export class ExitCodeError extends Error {
+    public readonly exitCode: number;
+
+    constructor(exitCode: number) {
+        super(`Process exited with code: ${exitCode}`);
+        this.name = 'ExitCodeError';
+        this.exitCode = exitCode;
+    }
+}
+
 
 // Get Claude CLI path from project root
 export const claudeCliPath = resolve(join(projectPath(), 'scripts', 'claude_local_launcher.cjs'))
@@ -308,6 +321,9 @@ export async function claudeLocal(opts: {
                     r();
                 } else if (signal) {
                     reject(new Error(`Process terminated with signal: ${signal}`));
+                } else if (code !== 0 && code !== null) {
+                    // Non-zero exit code - propagate it
+                    reject(new ExitCodeError(code));
                 } else {
                     r();
                 }

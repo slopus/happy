@@ -10,7 +10,7 @@
 import chalk from 'chalk'
 import { runClaude, StartOptions } from '@/claude/runClaude'
 import { logger } from './ui/logger'
-import { readCredentials } from './persistence'
+import { readCredentials, readSettings } from './persistence'
 import { authAndSetupMachineIfNeeded } from './ui/auth'
 import packageJson from '../package.json'
 import { z } from 'zod'
@@ -473,6 +473,7 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
     const options: StartOptions = {}
     let showHelp = false
     let showVersion = false
+    let chromeOverride: boolean | undefined = undefined  // Track explicit --chrome or --no-chrome
     const unknownArgs: string[] = [] // Collect unknown args to pass through to claude
 
     for (let i = 0; i < args.length; i++) {
@@ -513,6 +514,19 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
           console.error(chalk.red(`Invalid --claude-env format: ${envArg}. Expected KEY=VALUE`))
           process.exit(1)
         }
+      } else if (arg === '--chrome') {
+        chromeOverride = true
+        // We'll add --chrome to claudeArgs after resolving settings default
+      } else if (arg === '--no-chrome') {
+        chromeOverride = false
+        // Happy-specific flag to disable chrome even if default is on
+      } else if (arg === '--settings') {
+        // Intercept --settings flag - Happy uses this internally for session hooks
+        const settingsValue = args[++i] // consume the value
+        console.warn(chalk.yellow(`⚠️  Warning: --settings is used internally by Happy for session tracking.`))
+        console.warn(chalk.yellow(`   Your settings file "${settingsValue}" will be ignored.`))
+        console.warn(chalk.yellow(`   To configure Claude, edit ~/.claude/settings.json instead.`))
+        // Don't pass through to claudeArgs
       } else {
         // Pass unknown arguments through to claude
         unknownArgs.push(arg)
@@ -526,6 +540,13 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
     // Add unknown args to claudeArgs
     if (unknownArgs.length > 0) {
       options.claudeArgs = [...(options.claudeArgs || []), ...unknownArgs]
+    }
+
+    // Resolve Chrome mode: explicit flag > settings > false
+    const settings = await readSettings()
+    const chromeEnabled = chromeOverride ?? settings.chromeMode ?? false
+    if (chromeEnabled) {
+      options.claudeArgs = [...(options.claudeArgs || []), '--chrome']
     }
 
     // Show help
@@ -548,6 +569,8 @@ ${chalk.bold('Examples:')}
   happy                    Start session
   happy --yolo             Start with bypassing permissions
                             happy sugar for --dangerously-skip-permissions
+  happy --chrome           Enable Chrome browser access for this session
+  happy --no-chrome        Disable Chrome even if default is on
   happy --js-runtime bun   Use bun instead of node to spawn Claude Code
   happy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
                            Use a custom API endpoint (e.g., claude-code-router)
