@@ -10,15 +10,19 @@ import { View, Text, ScrollView, ActivityIndicator, Pressable } from 'react-nati
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { layout } from '@/components/layout';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { useAllMoltbotMachines, useIsDataReady, useAllMachines } from '@/sync/storage';
+import { useAllMoltbotMachines, useIsDataReady, useAllMachines, useRealtimeStatus } from '@/sync/storage';
 import type { MoltbotMachine } from '@/moltbot/types';
 import type { Machine } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
+import { Header } from './navigation/Header';
+import { useIsTablet } from '@/utils/responsive';
+import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -60,10 +64,6 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 16,
         ...Typography.default('semiBold'),
     },
-    machineIcon: {
-        width: 32,
-        height: 32,
-    },
     statusContainer: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -74,6 +74,40 @@ const styles = StyleSheet.create((theme) => ({
         ...Typography.default(),
     },
 }));
+
+// Header components for tablet mode only (phone mode header is in MainView)
+function HeaderTitleTablet() {
+    const { theme } = useUnistyles();
+    return (
+        <Text style={{
+            fontSize: 17,
+            color: theme.colors.header.tint,
+            fontWeight: '600',
+            ...Typography.default('semiBold'),
+        }}>
+            {t('tabs.moltbot')}
+        </Text>
+    );
+}
+
+function HeaderRightTablet() {
+    const router = useRouter();
+    const { theme } = useUnistyles();
+    return (
+        <Pressable
+            onPress={() => router.push('/moltbot/add')}
+            hitSlop={15}
+            style={{
+                width: 32,
+                height: 32,
+                alignItems: 'center',
+                justifyContent: 'center',
+            }}
+        >
+            <Ionicons name="add-outline" size={24} color={theme.colors.header.tint} />
+        </Pressable>
+    );
+}
 
 interface MoltbotMachineCardProps {
     machine: MoltbotMachine;
@@ -108,7 +142,7 @@ const MoltbotMachineCard = React.memo(({ machine, happyMachine, onPress }: Moltb
         <Image
             source={require('@/assets/images/brutalist/Brutalism 3.png')}
             contentFit="contain"
-            style={styles.machineIcon}
+            style={{ width: 32, height: 32 }}
             tintColor={theme.colors.text}
         />
     );
@@ -132,6 +166,8 @@ export const MoltbotView = React.memo(() => {
     const isDataReady = useIsDataReady();
     const moltbotMachines = useAllMoltbotMachines();
     const happyMachines = useAllMachines();
+    const isTablet = useIsTablet();
+    const realtimeStatus = useRealtimeStatus();
 
     // Create a map of Happy machines by ID for quick lookup
     const happyMachinesMap = React.useMemo(() => {
@@ -150,10 +186,27 @@ export const MoltbotView = React.memo(() => {
         router.push('/moltbot/add');
     }, [router]);
 
+    // Tablet header component (reused across all states)
+    const tabletHeader = isTablet ? (
+        <View style={{ backgroundColor: theme.colors.groupped.background }}>
+            <Header
+                title={<HeaderTitleTablet />}
+                headerRight={() => <HeaderRightTablet />}
+                headerLeft={() => null}
+                headerShadowVisible={false}
+                headerTransparent={true}
+            />
+            {realtimeStatus !== 'disconnected' && (
+                <VoiceAssistantStatusBar variant="full" />
+            )}
+        </View>
+    ) : null;
+
     // Loading state
     if (!isDataReady) {
         return (
             <View style={styles.container}>
+                {tabletHeader}
                 <View style={styles.emptyContainer}>
                     <ActivityIndicator size="large" color={theme.colors.textSecondary} />
                 </View>
@@ -165,6 +218,7 @@ export const MoltbotView = React.memo(() => {
     if (moltbotMachines.length === 0) {
         return (
             <View style={styles.container}>
+                {tabletHeader}
                 <View style={styles.emptyContainer}>
                     <Image
                         source={require('@/assets/images/brutalist/Brutalism 3.png')}
@@ -185,6 +239,7 @@ export const MoltbotView = React.memo(() => {
     // List view
     return (
         <View style={styles.container}>
+            {tabletHeader}
             <ScrollView contentContainerStyle={{
                 maxWidth: layout.maxWidth,
                 alignSelf: 'center',

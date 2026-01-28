@@ -362,6 +362,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="moltbot/index"
+                options={{
+                    headerShown: false,
+                    headerTitle: t('tabs.moltbot'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="moltbot/add"
                 options={{
                     headerTitle: t('moltbot.addMachine'),
