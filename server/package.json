@@ -29,7 +29,7 @@
     "@types/uuid": "^9.0.8",
     "dotenv-cli": "^8.0.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.3",
+    "typescript": "5.9.3",
     "yaml": "^2.4.2"
   },
   "dependencies": {

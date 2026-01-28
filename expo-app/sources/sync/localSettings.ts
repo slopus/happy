@@ -22,7 +22,7 @@ export const LocalSettingsSchema = z.object({
 // These are preferences that make sense to be different on each device.
 //
 
-const LocalSettingsSchemaPartial = LocalSettingsSchema.loose().partial();
+const LocalSettingsSchemaPartial = LocalSettingsSchema.passthrough().partial();
 
 export type LocalSettings = z.infer<typeof LocalSettingsSchema>;
 

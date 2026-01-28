@@ -43,7 +43,7 @@ export const knownTools = {
         input: z.object({
             prompt: z.string().describe('The task for the agent to perform'),
             subagent_type: z.string().optional().describe('The type of specialized agent to use')
-        }).partial().loose()
+        }).partial().passthrough()
     },
     'Bash': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
@@ -63,7 +63,7 @@ export const knownTools = {
         result: z.object({
             stderr: z.string(),
             stdout: z.string(),
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.command === 'string') {
                 const cmd = opts.tool.input.command;
@@ -97,7 +97,7 @@ export const knownTools = {
         input: z.object({
             pattern: z.string().describe('The glob pattern to match files against'),
             path: z.string().optional().describe('The directory to search in')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.pattern === 'string') {
                 return t('tools.desc.searchPattern', { pattern: opts.tool.input.pattern });
@@ -127,7 +127,7 @@ export const knownTools = {
             type: z.string().optional().describe('File type to search'),
             head_limit: z.number().optional().describe('Limit output to first N lines/entries'),
             multiline: z.boolean().optional().describe('Enable multiline mode')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.pattern === 'string') {
                 const pattern = opts.tool.input.pattern.length > 20
@@ -150,7 +150,7 @@ export const knownTools = {
         input: z.object({
             path: z.string().describe('The absolute path to the directory to list'),
             ignore: z.array(z.string()).optional().describe('List of glob patterns to ignore')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.path === 'string') {
                 const path = resolvePath(opts.tool.input.path, opts.metadata);
@@ -165,14 +165,14 @@ export const knownTools = {
         icon: ICON_EXIT,
         input: z.object({
             plan: z.string().describe('The plan you came up with')
-        }).partial().loose()
+        }).partial().passthrough()
     },
     'exit_plan_mode': {
         title: t('tools.names.planProposal'),
         icon: ICON_EXIT,
         input: z.object({
             plan: z.string().describe('The plan you came up with')
-        }).partial().loose()
+        }).partial().passthrough()
     },
     'Read': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
@@ -195,8 +195,8 @@ export const knownTools = {
             offset: z.number().optional().describe('The line number to start reading from'),
             // Gemini format
             items: z.array(z.any()).optional(),
-            locations: z.array(z.object({ path: z.string() }).loose()).optional()
-        }).partial().loose(),
+            locations: z.array(z.object({ path: z.string() }).passthrough()).optional()
+        }).partial().passthrough(),
         result: z.object({
             file: z.object({
                 filePath: z.string().describe('The absolute path to the file to read'),
@@ -204,8 +204,8 @@ export const knownTools = {
                 numLines: z.number().describe('The number of lines in the file'),
                 startLine: z.number().describe('The line number to start reading from'),
                 totalLines: z.number().describe('The total number of lines in the file')
-            }).loose().optional()
-        }).partial().loose()
+            }).passthrough().optional()
+        }).partial().passthrough()
     },
     // Gemini uses lowercase 'read'
     'read': {
@@ -225,9 +225,9 @@ export const knownTools = {
         icon: ICON_READ,
         input: z.object({
             items: z.array(z.any()).optional(),
-            locations: z.array(z.object({ path: z.string() }).loose()).optional(),
+            locations: z.array(z.object({ path: z.string() }).passthrough()).optional(),
             file_path: z.string().optional()
-        }).partial().loose()
+        }).partial().passthrough()
     },
     'Edit': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
@@ -244,7 +244,7 @@ export const knownTools = {
             old_string: z.string().describe('The text to replace'),
             new_string: z.string().describe('The text to replace it with'),
             replace_all: z.boolean().optional().default(false).describe('Replace all occurrences')
-        }).partial().loose()
+        }).partial().passthrough()
     },
     'MultiEdit': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
@@ -267,7 +267,7 @@ export const knownTools = {
                 new_string: z.string().describe('The text to replace it with'),
                 replace_all: z.boolean().optional().default(false).describe('Replace all occurrences')
             })).describe('Array of edit operations')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractStatus: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.file_path === 'string') {
                 const path = resolvePath(opts.tool.input.file_path, opts.metadata);
@@ -293,7 +293,7 @@ export const knownTools = {
         input: z.object({
             file_path: z.string().describe('The absolute path to the file to write'),
             content: z.string().describe('The content to write to the file')
-        }).partial().loose()
+        }).partial().passthrough()
     },
     'WebFetch': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
@@ -312,7 +312,7 @@ export const knownTools = {
         input: z.object({
             url: z.string().url().describe('The URL to fetch content from'),
             prompt: z.string().describe('The prompt to run on the fetched content')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.url === 'string') {
                 try {
@@ -338,7 +338,7 @@ export const knownTools = {
         input: z.object({
             notebook_path: z.string().describe('The absolute path to the Jupyter notebook file'),
             cell_id: z.string().optional().describe('The ID of a specific cell to read')
-        }).partial().loose()
+        }).partial().passthrough()
     },
     'NotebookEdit': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
@@ -356,7 +356,7 @@ export const knownTools = {
             cell_id: z.string().optional().describe('The ID of the cell to edit'),
             cell_type: z.enum(['code', 'markdown']).optional().describe('The type of the cell'),
             edit_mode: z.enum(['replace', 'insert', 'delete']).optional().describe('The type of edit to make')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.notebook_path === 'string') {
                 const path = resolvePath(opts.tool.input.notebook_path, opts.metadata);
@@ -389,22 +389,22 @@ export const knownTools = {
                 status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
                 priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
                 id: z.string().optional().describe('Unique identifier for the todo')
-            }).loose()).describe('The updated todo list')
-        }).partial().loose(),
+            }).passthrough()).describe('The updated todo list')
+        }).partial().passthrough(),
         result: z.object({
             oldTodos: z.array(z.object({
                 content: z.string().describe('The todo item content'),
                 status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
                 priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
                 id: z.string().describe('Unique identifier for the todo')
-            }).loose()).describe('The old todo list'),
+            }).passthrough()).describe('The old todo list'),
             newTodos: z.array(z.object({
                 content: z.string().describe('The todo item content'),
                 status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
                 priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
                 id: z.string().describe('Unique identifier for the todo')
-            }).loose()).describe('The new todo list')
-        }).partial().loose(),
+            }).passthrough()).describe('The new todo list')
+        }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (Array.isArray(opts.tool.input.todos)) {
                 const count = opts.tool.input.todos.length;
@@ -426,7 +426,7 @@ export const knownTools = {
             query: z.string().min(2).describe('The search query to use'),
             allowed_domains: z.array(z.string()).optional().describe('Only include results from these domains'),
             blocked_domains: z.array(z.string()).optional().describe('Never include results from these domains')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.query === 'string') {
                 const query = opts.tool.input.query.length > 30
@@ -462,8 +462,8 @@ export const knownTools = {
                 type: z.string().describe('Type of parsed command (read, write, bash, etc.)'),
                 cmd: z.string().optional().describe('The command string'),
                 name: z.string().optional().describe('File name or resource name')
-            }).loose()).optional().describe('Parsed command information')
-        }).partial().loose(),
+            }).passthrough()).optional().describe('Parsed command information')
+        }).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // For single read commands, show the actual command
             if (opts.tool.input?.parsed_cmd && 
@@ -528,11 +528,11 @@ export const knownTools = {
         minimal: true,
         input: z.object({
             title: z.string().describe('The title of the reasoning')
-        }).partial().loose(),
+        }).partial().passthrough(),
         result: z.object({
             content: z.string().describe('The reasoning content'),
             status: z.enum(['completed', 'in_progress', 'error']).optional().describe('The status of the reasoning')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (opts.tool.input?.title && typeof opts.tool.input.title === 'string') {
                 return opts.tool.input.title;
@@ -552,11 +552,11 @@ export const knownTools = {
         minimal: true,
         input: z.object({
             title: z.string().describe('The title of the reasoning')
-        }).partial().loose(),
+        }).partial().passthrough(),
         result: z.object({
             content: z.string().describe('The reasoning content'),
             status: z.enum(['completed', 'in_progress', 'canceled']).optional().describe('The status of the reasoning')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (opts.tool.input?.title && typeof opts.tool.input.title === 'string') {
                 return opts.tool.input.title;
@@ -578,12 +578,12 @@ export const knownTools = {
             title: z.string().optional().describe('The title of the thinking'),
             items: z.array(z.any()).optional().describe('Items to think about'),
             locations: z.array(z.any()).optional().describe('Locations to consider')
-        }).partial().loose(),
+        }).partial().passthrough(),
         result: z.object({
             content: z.string().optional().describe('The reasoning content'),
             text: z.string().optional().describe('The reasoning text'),
             status: z.enum(['completed', 'in_progress', 'canceled']).optional().describe('The status')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (opts.tool.input?.title && typeof opts.tool.input.title === 'string') {
                 return opts.tool.input.title;
@@ -598,8 +598,8 @@ export const knownTools = {
         noStatus: true,
         input: z.object({
             title: z.string().optional().describe('New session title')
-        }).partial().loose(),
-        result: z.object({}).partial().loose()
+        }).partial().passthrough(),
+        result: z.object({}).partial().passthrough()
     },
     // Gemini internal tools - should be hidden (minimal)
     'search': {
@@ -609,7 +609,7 @@ export const knownTools = {
         input: z.object({
             items: z.array(z.any()).optional(),
             locations: z.array(z.any()).optional()
-        }).partial().loose()
+        }).partial().passthrough()
     },
     'edit': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
@@ -645,14 +645,14 @@ export const knownTools = {
             oldText: z.string().describe('The text to replace'),
             newText: z.string().describe('The new text'),
             type: z.string().optional().describe('Type of edit (diff)')
-        }).partial().loose()
+        }).partial().passthrough()
     },
     'shell': {
         title: t('tools.names.terminal'),
         icon: ICON_TERMINAL,
         minimal: true,
         isMutable: true,
-        input: z.object({}).partial().loose()
+        input: z.object({}).partial().passthrough()
     },
     'execute': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
@@ -671,7 +671,7 @@ export const knownTools = {
         },
         icon: ICON_TERMINAL,
         isMutable: true,
-        input: z.object({}).partial().loose(),
+        input: z.object({}).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Extract description from parentheses at the end
             if (opts.tool.input?.toolCall?.title) {
@@ -702,8 +702,8 @@ export const knownTools = {
                 delete: z.object({
                     content: z.string()
                 }).optional()
-            }).loose()).describe('File changes to apply')
-        }).partial().loose(),
+            }).passthrough()).describe('File changes to apply')
+        }).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Show the first file being modified
             if (opts.tool.input?.changes && typeof opts.tool.input.changes === 'object') {
@@ -747,7 +747,7 @@ export const knownTools = {
         input: z.object({
             command: z.array(z.string()).describe('The command array to execute'),
             cwd: z.string().optional().describe('Current working directory')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
                 let cmdArray = opts.tool.input.command;
@@ -779,8 +779,8 @@ export const knownTools = {
                 delete: z.object({
                     content: z.string()
                 }).optional()
-            }).loose()).describe('File changes to apply')
-        }).partial().loose(),
+            }).passthrough()).describe('File changes to apply')
+        }).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Show the first file being modified
             if (opts.tool.input?.changes && typeof opts.tool.input.changes === 'object') {
@@ -823,10 +823,10 @@ export const knownTools = {
         noStatus: true,  // Always successful, stateless like Task
         input: z.object({
             unified_diff: z.string().describe('Unified diff content')
-        }).partial().loose(),
+        }).partial().passthrough(),
         result: z.object({
             status: z.literal('completed').describe('Always completed')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Try to extract filename from unified diff
             if (opts.tool.input?.unified_diff && typeof opts.tool.input.unified_diff === 'string') {
@@ -855,10 +855,10 @@ export const knownTools = {
             unified_diff: z.string().optional().describe('Unified diff content'),
             filePath: z.string().optional().describe('File path'),
             description: z.string().optional().describe('Edit description')
-        }).partial().loose(),
+        }).partial().passthrough(),
         result: z.object({
             status: z.literal('completed').describe('Always completed')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Try to extract filename from filePath first
             if (opts.tool.input?.filePath && typeof opts.tool.input.filePath === 'string') {
@@ -906,7 +906,7 @@ export const knownTools = {
                 })).describe('Available choices'),
                 multiSelect: z.boolean().describe('Allow multiple selections')
             })).describe('Questions to ask the user')
-        }).partial().loose(),
+        }).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (opts.tool.input?.questions && Array.isArray(opts.tool.input.questions)) {
                 const count = opts.tool.input.questions.length;

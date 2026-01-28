@@ -18,7 +18,7 @@ export const PurchasesSchema = z.object({
 // - Preserved through schema changes
 //
 
-const PurchasesSchemaPartial = PurchasesSchema.loose().partial();
+const PurchasesSchemaPartial = PurchasesSchema.passthrough().partial();
 
 export type Purchases = z.infer<typeof PurchasesSchema>;
 
