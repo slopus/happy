@@ -36,6 +36,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     titleText: {
         fontSize: 17,
+        lineHeight: 24,
         color: theme.colors.header.tint,
         fontWeight: '600',
         ...Typography.default('semiBold'),

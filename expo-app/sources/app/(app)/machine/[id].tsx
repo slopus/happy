@@ -288,11 +288,15 @@ export default function MachineDetailScreen() {
                                     color={theme.colors.header.tint}
                                     style={{ marginRight: 6 }}
                                 />
-                                <Text style={[Typography.default('semiBold'), { fontSize: 17, color: theme.colors.header.tint }]}>
+                                <Text
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                    style={[Typography.default('semiBold'), { fontSize: 17, lineHeight: 24, color: theme.colors.header.tint }]}
+                                >
                                     {machineName}
                                 </Text>
                             </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: -2 }}>
                                 <View style={{
                                     width: 6,
                                     height: 6,
@@ -300,10 +304,10 @@ export default function MachineDetailScreen() {
                                     backgroundColor: isMachineOnline(machine) ? '#34C759' : '#999',
                                     marginRight: 4
                                 }} />
-                                <Text style={[Typography.default(), {
-                                    fontSize: 12,
-                                    color: isMachineOnline(machine) ? '#34C759' : '#999'
-                                }]}>
+                                <Text
+                                    numberOfLines={1}
+                                    style={[Typography.default(), { fontSize: 12, color: isMachineOnline(machine) ? '#34C759' : '#999' }]}
+                                >
                                     {isMachineOnline(machine) ? t('status.online') : t('status.offline')}
                                 </Text>
                             </View>

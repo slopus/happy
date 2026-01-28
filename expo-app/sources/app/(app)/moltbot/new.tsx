@@ -151,11 +151,11 @@ export default function MoltbotNewSessionPage() {
                             <Text
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
-                                style={[Typography.default('semiBold'), { fontSize: 17, color: theme.colors.header.tint }]}
+                                style={[Typography.default('semiBold'), { fontSize: 17, lineHeight: 24, color: theme.colors.header.tint }]}
                             >
                                 {t('moltbot.newSession')}
                             </Text>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: -2 }}>
                                 <View style={{
                                     width: 6,
                                     height: 6,
