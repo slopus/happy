@@ -15,8 +15,8 @@ if (!hasNoWarnings || !hasNoDeprecation) {
   const scriptPath = join(dirname(__filename), '../dist/index.mjs');
 
   // Set development environment variables
-  process.env.HAPPY_HOME_DIR = join(homedir(), '.happy-dev');
-  process.env.HAPPY_VARIANT = 'dev';
+  process.env.ARC_HOME_DIR = join(homedir(), '.arc-dev');
+  process.env.ARC_VARIANT = 'dev';
 
   try {
     execFileSync(
@@ -34,8 +34,8 @@ if (!hasNoWarnings || !hasNoDeprecation) {
 } else {
   // Already have the flags, import normally
   // Set development environment variables
-  process.env.HAPPY_HOME_DIR = join(homedir(), '.happy-dev');
-  process.env.HAPPY_VARIANT = 'dev';
+  process.env.ARC_HOME_DIR = join(homedir(), '.arc-dev');
+  process.env.ARC_VARIANT = 'dev';
 
   await import('../dist/index.mjs');
 }

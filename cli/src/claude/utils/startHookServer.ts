@@ -14,7 +14,7 @@
  *     │                                         
  *     ├─► startHookServer() ──► HTTP server on random port (e.g., 52290)
  *     │                                         
- *     ├─► generateHookSettingsFile(port) ──► ~/.happy/tmp/hooks/session-hook-<pid>.json
+ *     ├─► generateHookSettingsFile(port) ──► .arc/tmp/hooks/session-hook-<pid>.json
  *     │   (contains SessionStart hook pointing to our server)
  *     │                                         
  *     └─► loop() ──► claudeLocal/claudeRemote

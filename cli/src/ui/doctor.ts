@@ -23,15 +23,15 @@ import packageJson from '../../package.json'
 export function getEnvironmentInfo(): Record<string, any> {
     return {
         PWD: process.env.PWD,
-        HAPPY_HOME_DIR: process.env.HAPPY_HOME_DIR,
-        HAPPY_SERVER_URL: process.env.HAPPY_SERVER_URL,
-        HAPPY_PROJECT_ROOT: process.env.HAPPY_PROJECT_ROOT,
+        ARC_HOME_DIR: process.env.ARC_HOME_DIR,
+        ARC_SERVER_URL: process.env.ARC_SERVER_URL,
+        ARC_PROJECT_ROOT: process.env.ARC_PROJECT_ROOT,
         DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING: process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING,
         NODE_ENV: process.env.NODE_ENV,
         DEBUG: process.env.DEBUG,
         workingDirectory: process.cwd(),
         processArgv: process.argv,
-        happyDir: configuration?.happyHomeDir,
+        happyDir: configuration?.arcHomeDir,
         serverUrl: configuration?.serverUrl,
         logsDir: configuration?.logsDir,
         processPid: process.pid,
@@ -91,7 +91,7 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
         // Daemon spawn diagnostics
         console.log(chalk.bold('🔧 Daemon Spawn Diagnostics'));
         const projectRoot = projectPath();
-        const wrapperPath = join(projectRoot, 'bin', 'happy.mjs');
+        const wrapperPath = join(projectRoot, 'bin', 'arc.mjs');
         const cliEntrypoint = join(projectRoot, 'dist', 'index.mjs');
         
         console.log(`Project Root: ${chalk.blue(projectRoot)}`);
@@ -103,15 +103,15 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
 
         // Configuration
         console.log(chalk.bold('⚙️  Configuration'));
-        console.log(`Happy Home: ${chalk.blue(configuration.happyHomeDir)}`);
+        console.log(`Happy Home: ${chalk.blue(configuration.arcHomeDir)}`);
         console.log(`Server URL: ${chalk.blue(configuration.serverUrl)}`);
         console.log(`Logs Dir: ${chalk.blue(configuration.logsDir)}`);
 
         // Environment
         console.log(chalk.bold('\n🌍 Environment Variables'));
         const env = getEnvironmentInfo();
-        console.log(`HAPPY_HOME_DIR: ${env.HAPPY_HOME_DIR ? chalk.green(env.HAPPY_HOME_DIR) : chalk.gray('not set')}`);
-        console.log(`HAPPY_SERVER_URL: ${env.HAPPY_SERVER_URL ? chalk.green(env.HAPPY_SERVER_URL) : chalk.gray('not set')}`);
+        console.log(`ARC_HOME_DIR: ${env.ARC_HOME_DIR ? chalk.green(env.ARC_HOME_DIR) : chalk.gray('not set')}`);
+        console.log(`ARC_SERVER_URL: ${env.ARC_SERVER_URL ? chalk.green(env.ARC_SERVER_URL) : chalk.gray('not set')}`);
         console.log(`DANGEROUSLY_LOG_TO_SERVER: ${env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING ? chalk.yellow('ENABLED') : chalk.gray('not set')}`);
         console.log(`DEBUG: ${env.DEBUG ? chalk.green(env.DEBUG) : chalk.gray('not set')}`);
         console.log(`NODE_ENV: ${env.NODE_ENV ? chalk.green(env.NODE_ENV) : chalk.gray('not set')}`);
@@ -205,12 +205,12 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
                 });
             });
         } else {
-            console.log(chalk.red('❌ No happy processes found'));
+            console.log(chalk.red('❌ No arc processes found'));
         }
 
         if (filter === 'all' && allProcesses.length > 1) { // More than just current process
             console.log(chalk.bold('\n💡 Process Management'));
-            console.log(chalk.gray('To clean up runaway processes: happy doctor clean'));
+            console.log(chalk.gray('To clean up runaway processes: arc doctor clean'));
         }
     } catch (error) {
         console.log(chalk.red('❌ Error checking daemon status'));
@@ -261,8 +261,8 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
 
         // Support and bug reports
         console.log(chalk.bold('\n🐛 Support & Bug Reports'));
-        console.log(`Report issues: ${chalk.blue('https://github.com/slopus/happy-cli/issues')}`);
-        console.log(`Documentation: ${chalk.blue('https://happy.engineering/')}`);
+        console.log(`Report issues: ${chalk.blue('https://github.com/runline-ai/arc/issues')}`);
+        console.log(`Documentation: ${chalk.blue('https://runline.ai/')}`);
     }
 
     console.log(chalk.green('\n✅ Doctor diagnosis complete!\n'));

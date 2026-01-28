@@ -36,9 +36,9 @@ describe('ApiSessionClient connection handling', () => {
                 path: '/tmp',
                 host: 'localhost',
                 homeDir: '/home/user',
-                happyHomeDir: '/home/user/.happy',
-                happyLibDir: '/home/user/.happy/lib',
-                happyToolsDir: '/home/user/.happy/tools'
+                arcHomeDir: '/home/user/.happy',
+                arcLibDir: '/home/user/.arc/lib',
+                arcToolsDir: '/home/user/.arc/tools'
             },
             metadataVersion: 0,
             agentState: null,

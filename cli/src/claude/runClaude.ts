@@ -17,7 +17,7 @@ import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
-import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { startArcServer } from '@/claude/utils/startArcServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/utils/generateHookSettings';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
@@ -56,7 +56,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Validate daemon spawn requirements - fail fast on invalid config
     if (options.startedBy === 'daemon' && options.startingMode === 'local') {
-        throw new Error('Daemon-spawned sessions cannot use local/interactive mode. Use --happy-starting-mode remote or spawn sessions directly from terminal.');
+        throw new Error('Daemon-spawned sessions cannot use local/interactive mode. Use --arc-starting-mode remote or spawn sessions directly from terminal.');
     }
 
     // Set backend for offline warnings (before any API calls)
@@ -72,7 +72,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const settings = await readSettings();
     let machineId = settings?.machineId
     if (!machineId) {
-        console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);
+        console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/runline-ai/arc/issues`);
         process.exit(1);
     }
     logger.debug(`Using machineId: ${machineId}`);
@@ -90,9 +90,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         os: os.platform(),
         machineId: machineId,
         homeDir: os.homedir(),
-        happyHomeDir: configuration.happyHomeDir,
-        happyLibDir: projectPath(),
-        happyToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
+        arcHomeDir: configuration.arcHomeDir,
+        arcLibDir: projectPath(),
+        arcToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
         startedFromDaemon: options.startedBy === 'daemon',
         hostPid: process.pid,
         startedBy: options.startedBy || 'terminal',
@@ -181,9 +181,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Create realtime session
     const session = api.sessionSyncClient(response);
 
-    // Start Happy MCP server
-    const happyServer = await startHappyServer(session);
-    logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
+    // Start Arc MCP server
+    const arcServer = await startArcServer(session);
+    logger.debug(`[START] Arc MCP server started at ${arcServer.url}`);
 
     // Variable to track current session instance (updated via onSessionReady callback)
     // Used by hook server to notify Session when Claude changes session ID
@@ -395,8 +395,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // Stop caffeinate
             stopCaffeinate();
 
-            // Stop Happy MCP server
-            happyServer.stop();
+            // Stop Arc MCP server
+            arcServer.stop();
 
             // Stop Hook server and cleanup settings file
             hookServer.stop();
@@ -435,7 +435,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         startingMode: options.startingMode,
         messageQueue,
         api,
-        allowedTools: happyServer.toolNames.map(toolName => `mcp__happy__${toolName}`),
+        allowedTools: arcServer.toolNames.map(toolName => `mcp__happy__${toolName}`),
         onModeChange: (newMode) => {
             session.sendSessionEvent({ type: 'switch', mode: newMode });
             session.updateAgentState((currentState) => ({
@@ -450,7 +450,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         mcpServers: {
             'happy': {
                 type: 'http' as const,
-                url: happyServer.url,
+                url: arcServer.url,
             }
         },
         session,
@@ -479,9 +479,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     stopCaffeinate();
     logger.debug('Stopped sleep prevention');
 
-    // Stop Happy MCP server
-    happyServer.stop();
-    logger.debug('Stopped Happy MCP server');
+    // Stop Arc MCP server
+    arcServer.stop();
+    logger.debug('Stopped Arc MCP server');
 
     // Stop Hook server and cleanup settings file
     hookServer.stop();

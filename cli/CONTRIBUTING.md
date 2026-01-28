@@ -1,4 +1,4 @@
-# Contributing to Happy CLI
+# Contributing to Arc CLI
 
 ## Prerequisites
 
@@ -10,8 +10,8 @@
 ## Getting Started
 
 ```bash
-git clone https://github.com/slopus/happy-cli.git
-cd happy-cli
+git clone https://github.com/slopus/arc-cli.git
+cd arc-cli
 yarn install
 yarn build
 ```
@@ -31,7 +31,7 @@ This creates a `happy-dev` command in your PATH pointing to your local build, wh
 
 | Command | Runs |
 |---------|------|
-| `happy` | Stable npm version (from `npm install -g happy-coder`) |
+| `happy` | Stable npm version (from `npm install -g @runline/arc`) |
 | `happy-dev` | Local development version (from this repo) |
 
 **Note:** Run `yarn build` before `yarn link:dev` to ensure the binary exists.
@@ -56,8 +56,8 @@ npm run setup:dev
 ```
 
 This creates:
-- `~/.happy/` - Stable version data (production-ready)
-- `~/.happy-dev/` - Development version data (for testing changes)
+- `~/.arc/` - Stable version data (production-ready)
+- `~/.arc-dev/` - Development version data (for testing changes)
 
 ### Daily Usage
 
@@ -74,8 +74,8 @@ npm run dev:daemon:start
 ## Visual Indicators
 
 You'll always see which version you're using:
-- `✅ STABLE MODE - Data: ~/.happy`
-- `🔧 DEV MODE - Data: ~/.happy-dev`
+- `✅ STABLE MODE - Data: ~/.arc`
+- `🔧 DEV MODE - Data: ~/.arc-dev`
 
 ## Common Tasks
 
@@ -128,11 +128,11 @@ Both versions maintain complete separation:
 
 | Aspect | Stable | Development |
 |--------|--------|-------------|
-| Data Directory | `~/.happy/` | `~/.happy-dev/` |
-| Settings | `~/.happy/settings.json` | `~/.happy-dev/settings.json` |
-| Auth Keys | `~/.happy/access.key` | `~/.happy-dev/access.key` |
-| Daemon State | `~/.happy/daemon.state.json` | `~/.happy-dev/daemon.state.json` |
-| Logs | `~/.happy/logs/` | `~/.happy-dev/logs/` |
+| Data Directory | `~/.arc/` | `~/.arc-dev/` |
+| Settings | `~/.arc/settings.json` | `~/.arc-dev/settings.json` |
+| Auth Keys | `~/.arc/access.key` | `~/.arc-dev/access.key` |
+| Daemon State | `~/.arc/daemon.state.json` | `~/.arc-dev/daemon.state.json` |
+| Logs | `~/.arc/logs/` | `~/.arc-dev/logs/` |
 
 **No conflicts!** Both can run simultaneously with separate:
 - Authentication sessions
@@ -160,7 +160,7 @@ For automatic environment switching when entering directories:
    direnv allow
    ```
 
-3. Now `cd` into the directory automatically sets `HAPPY_VARIANT=dev`!
+3. Now `cd` into the directory automatically sets `ARC_VARIANT=dev`!
 
 ## Troubleshooting
 
@@ -189,8 +189,8 @@ Look for the visual indicator:
 
 Or check the daemon status:
 ```bash
-npm run stable:daemon:status   # Shows ~/.happy/ data location
-npm run dev:daemon:status       # Shows ~/.happy-dev/ data location
+npm run stable:daemon:status   # Shows ~/.arc/ data location
+npm run dev:daemon:status       # Shows ~/.arc-dev/ data location
 ```
 
 ### `yarn link:dev` fails with permission denied?
@@ -209,7 +209,7 @@ sudo yarn link:dev
 2. **Use dev for testing changes** - Test new features without breaking your workflow
 3. **Run both simultaneously** - Compare behavior side-by-side
 4. **Different accounts** - Use different Happy accounts for dev/stable if needed
-5. **Check logs** - Logs are separated: `~/.happy/logs/` vs `~/.happy-dev/logs/`
+5. **Check logs** - Logs are separated: `~/.arc/logs/` vs `~/.arc-dev/logs/`
 
 ## Example Workflow
 
@@ -241,12 +241,12 @@ npm run stable:daemon:start
 
 ## How It Works
 
-The system uses the built-in `HAPPY_HOME_DIR` environment variable to separate data:
+The system uses the built-in `ARC_HOME_DIR` environment variable to separate data:
 
-- **Stable scripts** set: `HAPPY_HOME_DIR=~/.happy`
-- **Dev scripts** set: `HAPPY_HOME_DIR=~/.happy-dev`
+- **Stable scripts** set: `ARC_HOME_DIR=~/.arc`
+- **Dev scripts** set: `ARC_HOME_DIR=~/.arc-dev`
 
-Everything else (auth, sessions, logs, daemon) automatically follows the `HAPPY_HOME_DIR` setting.
+Everything else (auth, sessions, logs, daemon) automatically follows the `ARC_HOME_DIR` setting.
 
 Cross-platform via Node.js - works identically on Windows, macOS, and Linux!
 
@@ -278,7 +278,7 @@ The profile schema is defined in both repositories:
    npm run dev:daemon:start
 
    # Check daemon logs
-   tail -f ~/.happy-dev/logs/*.log | grep -i profile
+   tail -f ~/.arc-dev/logs/*.log | grep -i profile
    ```
 
 3. **Test profile-based session spawning:**

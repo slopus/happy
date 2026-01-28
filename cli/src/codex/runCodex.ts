@@ -18,7 +18,7 @@ import { projectPath } from '@/projectPath';
 import { resolve, join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import fs from 'node:fs';
-import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { startArcServer } from '@/claude/utils/startArcServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
@@ -300,7 +300,7 @@ export async function runCodex(opts: {
             stopCaffeinate();
 
             // Stop Happy MCP server
-            happyServer.stop();
+            arcServer.stop();
 
             logger.debug('[Codex] Session termination complete, exiting');
             process.exit(0);
@@ -549,12 +549,12 @@ export async function runCodex(opts: {
     });
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
-    const happyServer = await startHappyServer(session);
+    const arcServer = await startArcServer(session);
     const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
     const mcpServers = {
         happy: {
             command: bridgeCommand,
-            args: ['--url', happyServer.url]
+            args: ['--url', arcServer.url]
         }
     } as const;
     let first = true;
@@ -773,8 +773,8 @@ export async function runCodex(opts: {
         await client.forceCloseSession();
         logger.debug('[codex]: client.forceCloseSession done');
         // Stop Happy MCP server
-        logger.debug('[codex]: happyServer.stop');
-        happyServer.stop();
+        logger.debug('[codex]: arcServer.stop');
+        arcServer.stop();
 
         // Clean up ink UI
         if (process.stdin.isTTY) {

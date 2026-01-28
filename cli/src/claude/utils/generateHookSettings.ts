@@ -18,7 +18,7 @@ import { projectPath } from '@/projectPath';
  * @returns Path to the generated settings file
  */
 export function generateHookSettingsFile(port: number): string {
-    const hooksDir = join(configuration.happyHomeDir, 'tmp', 'hooks');
+    const hooksDir = join(configuration.arcHomeDir, 'tmp', 'hooks');
     mkdirSync(hooksDir, { recursive: true });
 
     // Unique filename per process to avoid conflicts

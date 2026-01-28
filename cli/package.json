@@ -1,16 +1,16 @@
 {
-  "name": "happy-coder",
+  "name": "@runline/arc",
   "version": "0.14.0-0",
   "description": "Mobile and Web client for Claude Code and Codex",
-  "author": "Kirill Dubovitskiy",
-  "license": "MIT",
+  "author": "Runline AI",
+  "license": "Apache-2.0",
   "type": "module",
-  "homepage": "https://github.com/slopus/happy-cli",
-  "bugs": "https://github.com/slopus/happy-cli/issues",
-  "repository": "slopus/happy-cli",
+  "homepage": "https://github.com/runline-ai/arc",
+  "bugs": "https://github.com/runline-ai/arc/issues",
+  "repository": "runline-ai/arc",
   "bin": {
-    "happy": "./bin/happy.mjs",
-    "happy-mcp": "./bin/happy-mcp.mjs"
+    "arc": "./bin/arc.mjs",
+    "arc-mcp": "./bin/arc-mcp.mjs"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -36,14 +36,14 @@
         "default": "./dist/lib.mjs"
       }
     },
-    "./codex/happyMcpStdioBridge": {
+    "./codex/arcMcpStdioBridge": {
       "require": {
-        "types": "./dist/codex/happyMcpStdioBridge.d.cts",
-        "default": "./dist/codex/happyMcpStdioBridge.cjs"
+        "types": "./dist/codex/arcMcpStdioBridge.d.cts",
+        "default": "./dist/codex/arcMcpStdioBridge.cjs"
       },
       "import": {
-        "types": "./dist/codex/happyMcpStdioBridge.d.mts",
-        "default": "./dist/codex/happyMcpStdioBridge.mjs"
+        "types": "./dist/codex/arcMcpStdioBridge.d.mts",
+        "default": "./dist/codex/arcMcpStdioBridge.mjs"
       }
     }
   },
@@ -138,7 +138,8 @@
     "@types/parse-path": "7.0.3"
   },
   "publishConfig": {
-    "registry": "https://registry.npmjs.org"
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   },
   "packageManager": "yarn@1.22.22"
 }

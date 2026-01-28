@@ -185,10 +185,10 @@ export type Session = {
 export const MachineMetadataSchema = z.object({
   host: z.string(),
   platform: z.string(),
-  happyCliVersion: z.string(),
+  arcCliVersion: z.string(),
   homeDir: z.string(),
-  happyHomeDir: z.string(),
-  happyLibDir: z.string()
+  arcHomeDir: z.string(),
+  arcLibDir: z.string()
 })
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>
@@ -314,9 +314,9 @@ export type Metadata = {
   tools?: string[],
   slashCommands?: string[],
   homeDir: string,
-  happyHomeDir: string,
-  happyLibDir: string,
-  happyToolsDir: string,
+  arcHomeDir: string,
+  arcLibDir: string,
+  arcToolsDir: string,
   startedFromDaemon?: boolean,
   hostPid?: number,
   startedBy?: 'daemon' | 'terminal',

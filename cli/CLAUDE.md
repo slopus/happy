@@ -1,8 +1,8 @@
-# Happy CLI Codebase Overview
+# Arc CLI Codebase Overview
 
 ## Project Overview
 
-Happy CLI (`handy-cli`) is a command-line tool that wraps Claude Code to enable remote control and session sharing. It's part of a three-component system:
+Arc CLI (`handy-cli`) is a command-line tool that wraps Claude Code to enable remote control and session sharing. It's part of a three-component system:
 
 1. **handy-cli** (this project) - CLI wrapper for Claude Code
 2. **handy** - React Native mobile client
@@ -140,21 +140,21 @@ User interface components.
 
 ## Starting the Daemon
 ```bash
-# From the happy-cli directory:
-./bin/happy.mjs daemon start
+# From the arc-cli directory:
+./bin/arc.mjs daemon start
 
 # With custom server URL (for local development):
-HAPPY_SERVER_URL=http://localhost:3005 ./bin/happy.mjs daemon start
+ARC_SERVER_URL=http://localhost:3005 ./bin/arc.mjs daemon start
 
 # Stop the daemon:
-./bin/happy.mjs daemon stop
+./bin/arc.mjs daemon stop
 
 # Check daemon status:
-./bin/happy.mjs daemon status
+./bin/arc.mjs daemon status
 ```
 
 ## Daemon Logs
-- Daemon logs are stored in `~/.happy-dev/logs/` (or `$HAPPY_HOME_DIR/logs/`)
+- Daemon logs are stored in `~/.arc-dev/logs/` (or `$ARC_HOME_DIR/logs/`)
 - Named with format: `YYYY-MM-DD-HH-MM-SS-daemon.log`
 
 # Session Forking `claude` and sdk behavior

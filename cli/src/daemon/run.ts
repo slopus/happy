@@ -27,10 +27,10 @@ import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 export const initialMachineMetadata: MachineMetadata = {
   host: os.hostname(),
   platform: os.platform(),
-  happyCliVersion: packageJson.version,
+  arcCliVersion: packageJson.version,
   homeDir: os.homedir(),
-  happyHomeDir: configuration.happyHomeDir,
-  happyLibDir: projectPath()
+  arcHomeDir: configuration.arcHomeDir,
+  arcLibDir: projectPath()
 };
 
 // Get environment variables for a profile, filtered for agent compatibility
@@ -388,7 +388,7 @@ export async function startDaemon(): Promise<void> {
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
           // Determine agent command - support claude, codex, and gemini
           const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --arc-starting-mode remote --started-by daemon`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -491,7 +491,7 @@ export async function startDaemon(): Promise<void> {
           }
           const args = [
             agentCommand,
-            '--happy-starting-mode', 'remote',
+            '--arc-starting-mode', 'remote',
             '--started-by', 'daemon'
           ];
 
@@ -693,7 +693,7 @@ export async function startDaemon(): Promise<void> {
     // 2. Check if daemon needs update
     // 3. If outdated, restart with latest version
     // 4. Write heartbeat
-    const heartbeatIntervalMs = parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '60000');
+    const heartbeatIntervalMs = parseInt(process.env.ARC_DAEMON_HEARTBEAT_INTERVAL || '60000');
     let heartbeatRunning = false
     const restartOnStaleVersionAndHeartbeat = setInterval(async () => {
       if (heartbeatRunning) {

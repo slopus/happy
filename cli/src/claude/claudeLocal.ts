@@ -224,7 +224,7 @@ export async function claudeLocal(opts: {
             }
 
             if (!claudeCliPath || !existsSync(claudeCliPath)) {
-                throw new Error('Claude local launcher not found. Please ensure HAPPY_PROJECT_ROOT is set correctly for development.');
+                throw new Error('Claude local launcher not found. Please ensure ARC_PROJECT_ROOT is set correctly for development.');
             }
 
             // Prepare environment variables

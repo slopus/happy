@@ -10,8 +10,8 @@
 #
 # The .envrc file is gitignored, so each developer can customize it.
 
-export HAPPY_HOME_DIR="$HOME/.happy-dev"
-export HAPPY_VARIANT="dev"
-export HAPPY_SERVER_URL="${HAPPY_SERVER_URL:-https://api.cluster-fluster.com}"
+export ARC_HOME_DIR="$HOME/.arc-dev"
+export ARC_VARIANT="dev"
+export ARC_SERVER_URL="${ARC_SERVER_URL:-https://api.cluster-fluster.com}"
 
-echo "🔧 DEV environment activated (data: $HAPPY_HOME_DIR)"
+echo "🔧 DEV environment activated (data: $ARC_HOME_DIR)"

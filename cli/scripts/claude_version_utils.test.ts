@@ -338,7 +338,7 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
   });
 });
 
-describe('HAPPY_CLAUDE_PATH env var', () => {
+describe('ARC_CLAUDE_PATH env var', () => {
   const testClaudePath = '/tmp/test-claude-path';
 
   beforeEach(() => {
@@ -349,25 +349,25 @@ describe('HAPPY_CLAUDE_PATH env var', () => {
 
   afterEach(() => {
     if (fs.existsSync(testClaudePath)) fs.unlinkSync(testClaudePath);
-    delete process.env.HAPPY_CLAUDE_PATH;
+    delete process.env.ARC_CLAUDE_PATH;
   });
 
-  it('should use HAPPY_CLAUDE_PATH when set', () => {
-    process.env.HAPPY_CLAUDE_PATH = testClaudePath;
+  it('should use ARC_CLAUDE_PATH when set', () => {
+    process.env.ARC_CLAUDE_PATH = testClaudePath;
     const result = findGlobalClaudeCliPath();
-    expect(result?.source).toBe('HAPPY_CLAUDE_PATH');
+    expect(result?.source).toBe('ARC_CLAUDE_PATH');
     // Use realpathSync to handle macOS symlink (/tmp -> /private/tmp)
     expect(fs.realpathSync(result?.path ?? '')).toBe(fs.realpathSync(testClaudePath));
   });
 
   it('should fall back to auto-discovery when env var not set', () => {
     const result = findGlobalClaudeCliPath();
-    expect(result?.source).not.toBe('HAPPY_CLAUDE_PATH');
+    expect(result?.source).not.toBe('ARC_CLAUDE_PATH');
   });
 
   it('should ignore env var if path does not exist', () => {
-    process.env.HAPPY_CLAUDE_PATH = '/nonexistent/path/claude';
+    process.env.ARC_CLAUDE_PATH = '/nonexistent/path/claude';
     const result = findGlobalClaudeCliPath();
-    expect(result?.source).not.toBe('HAPPY_CLAUDE_PATH');
+    expect(result?.source).not.toBe('ARC_CLAUDE_PATH');
   });
 });

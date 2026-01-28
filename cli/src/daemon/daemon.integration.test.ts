@@ -10,8 +10,8 @@
  * and the daemon will not work properly!
  * 
  * The integration test environment uses .env.integration-test which sets:
- * - HAPPY_HOME_DIR=~/.happy-dev-test (DIFFERENT from dev's ~/.happy-dev!)
- * - HAPPY_SERVER_URL=http://localhost:3005 (local dev server)
+ * - ARC_HOME_DIR=~/.arc-dev-test (DIFFERENT from dev's ~/.arc-dev!)
+ * - ARC_SERVER_URL=http://localhost:3005 (local dev server)
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -59,10 +59,10 @@ async function isServerHealthy(): Promise<boolean> {
     }
     
     // Check if we have test credentials
-    const testCredentials = existsSync(join(configuration.happyHomeDir, 'access.key'));
+    const testCredentials = existsSync(join(configuration.arcHomeDir, 'access.key'));
     if (!testCredentials) {
-      console.log('[TEST] No test credentials found in', configuration.happyHomeDir);
-      console.log('[TEST] Run "happy auth login" with HAPPY_HOME_DIR=~/.happy-dev-test first');
+      console.log('[TEST] No test credentials found in', configuration.arcHomeDir);
+      console.log('[TEST] Run "arc auth login" with ARC_HOME_DIR=~/.arc-dev-test first');
       return false;
     }
     
@@ -117,9 +117,9 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       path: '/test/path',
       host: 'test-host',
       homeDir: '/test/home',
-      happyHomeDir: '/test/happy-home',
-      happyLibDir: '/test/happy-lib',
-      happyToolsDir: '/test/happy-tools',
+      arcHomeDir: '/test/happy-home',
+      arcLibDir: '/test/arc-lib',
+      arcToolsDir: '/test/arc-tools',
       hostPid: 99999,
       startedBy: 'terminal',
       machineId: 'test-machine-123'
@@ -190,7 +190,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
   it('should track both daemon-spawned and terminal sessions', async () => {
     // Spawn a real happy process that looks like it was started from terminal
     const terminalHappyProcess = spawnHappyCLI([
-      '--happy-starting-mode', 'remote',
+      '--arc-starting-mode', 'remote',
       '--started-by', 'terminal'
     ], {
       cwd: '/tmp',
@@ -447,7 +447,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
 
       // The daemon should automatically detect the version mismatch and restart itself
       // We check once per minute, wait for a little longer than that
-      await new Promise(resolve => setTimeout(resolve, parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '30000') + 10_000));
+      await new Promise(resolve => setTimeout(resolve, parseInt(process.env.ARC_DAEMON_HEARTBEAT_INTERVAL || '30000') + 10_000));
 
       // Check that the daemon is running with the new version
       const finalState = await readDaemonState();

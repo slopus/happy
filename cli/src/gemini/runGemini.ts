@@ -22,7 +22,7 @@ import packageJson from '../../package.json';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
-import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { startArcServer } from '@/claude/utils/startArcServer';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
@@ -80,7 +80,7 @@ export async function runGemini(opts: {
   const settings = await readSettings();
   const machineId = settings?.machineId;
   if (!machineId) {
-    console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);
+    console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/runline-ai/arc/issues`);
     process.exit(1);
   }
   logger.debug(`Using machineId: ${machineId}`);
@@ -90,7 +90,7 @@ export async function runGemini(opts: {
   });
 
   //
-  // Fetch Gemini cloud token (from 'happy connect gemini')
+  // Fetch Gemini cloud token (from 'arc connect gemini')
   //
   let cloudToken: string | undefined = undefined;
   let currentUserEmail: string | undefined = undefined;
@@ -385,7 +385,7 @@ export async function runGemini(opts: {
       }
 
       stopCaffeinate();
-      happyServer.stop();
+      arcServer.stop();
 
       if (geminiBackend) {
         await geminiBackend.dispose();
@@ -491,12 +491,12 @@ export async function runGemini(opts: {
   // Start Happy MCP server and create Gemini backend
   //
 
-  const happyServer = await startHappyServer(session);
-  const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
+  const arcServer = await startArcServer(session);
+  const bridgeCommand = join(projectPath(), 'bin', 'arc-mcp.mjs');
   const mcpServers = {
     happy: {
       command: bridgeCommand,
-      args: ['--url', happyServer.url]
+      args: ['--url', arcServer.url]
     }
   };
 
@@ -631,8 +631,8 @@ export async function runGemini(opts: {
           // Check for authentication error and provide helpful message
           if (errorMessage.includes('Authentication required')) {
             errorMessage = `Authentication required.\n` +
-              `For Google Workspace accounts, run: happy gemini project set <project-id>\n` +
-              `Or use a different Google account: happy connect gemini\n` +
+              `For Google Workspace accounts, run: arc gemini project set <project-id>\n` +
+              `Or use a different Google account: arc connect gemini\n` +
               `Guide: https://goo.gle/gemini-cli-auth-docs#workspace-gca`;
           }
           
@@ -1197,8 +1197,8 @@ export async function runGemini(opts: {
                      errorDetails.includes('Authentication required') ||
                      errorCode === -32000) {
               errorMsg = `Authentication required. For Google Workspace accounts, you need to set a Google Cloud Project:\n` +
-                         `  happy gemini project set <your-project-id>\n` +
-                         `Or use a different Google account: happy connect gemini\n` +
+                         `  arc gemini project set <your-project-id>\n` +
+                         `Or use a different Google account: arc connect gemini\n` +
                          `Guide: https://goo.gle/gemini-cli-auth-docs#workspace-gca`;
             }
             // Check for empty error (command not found)
@@ -1306,7 +1306,7 @@ export async function runGemini(opts: {
       await geminiBackend.dispose();
     }
 
-    happyServer.stop();
+    arcServer.stop();
 
     if (process.stdin.isTTY) {
       try { process.stdin.setRawMode(false); } catch { /* ignore */ }

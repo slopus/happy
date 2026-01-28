@@ -48,18 +48,18 @@ const testMetadata = {
     path: '/tmp',
     host: 'localhost',
     homeDir: '/home/user',
-    happyHomeDir: '/home/user/.happy',
-    happyLibDir: '/home/user/.happy/lib',
-    happyToolsDir: '/home/user/.happy/tools'
+    arcHomeDir: '/home/user/.happy',
+    arcLibDir: '/home/user/.arc/lib',
+    arcToolsDir: '/home/user/.arc/tools'
 };
 
 const testMachineMetadata = {
     host: 'localhost',
     platform: 'darwin',
-    happyCliVersion: '1.0.0',
+    arcCliVersion: '1.0.0',
     homeDir: '/home/user',
-    happyHomeDir: '/home/user/.happy',
-    happyLibDir: '/home/user/.happy/lib'
+    arcHomeDir: '/home/user/.happy',
+    arcLibDir: '/home/user/.arc/lib'
 };
 
 describe('Api server error handling', () => {

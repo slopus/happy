@@ -10,7 +10,7 @@ const hasNoDeprecation = process.execArgv.includes('--no-deprecation');
 
 if (!hasNoWarnings || !hasNoDeprecation) {
   const projectRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-  const entrypoint = join(projectRoot, 'dist', 'codex', 'happyMcpStdioBridge.mjs');
+  const entrypoint = join(projectRoot, 'dist', 'codex', 'arcMcpStdioBridge.mjs');
 
   try {
     execFileSync(process.execPath, [
@@ -27,6 +27,6 @@ if (!hasNoWarnings || !hasNoDeprecation) {
   }
 } else {
   // Already have desired flags; import module directly
-  import('../dist/codex/happyMcpStdioBridge.mjs');
+  import('../dist/codex/arcMcpStdioBridge.mjs');
 }
 

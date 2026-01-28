@@ -18,7 +18,7 @@ let caffeinateProcess: ChildProcess | null = null
 export function startCaffeinate(): boolean {
     // Check if caffeinate is disabled via configuration
     if (configuration.disableCaffeinate) {
-        logger.debug('[caffeinate] Caffeinate disabled via HAPPY_DISABLE_CAFFEINATE environment variable')
+        logger.debug('[caffeinate] Caffeinate disabled via ARC_DISABLE_CAFFEINATE environment variable')
         return false
     }
 

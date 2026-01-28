@@ -130,21 +130,21 @@ function findGlobalClaudePath(): string | null {
  * Compares global and bundled versions, uses the newer one
  * 
  * Environment variables:
- * - HAPPY_CLAUDE_PATH: Force a specific path to claude executable
- * - HAPPY_USE_BUNDLED_CLAUDE=1: Force use of node_modules version (skip global search)
- * - HAPPY_USE_GLOBAL_CLAUDE=1: Force use of global version (if available)
+ * - ARC_CLAUDE_PATH: Force a specific path to claude executable
+ * - ARC_USE_BUNDLED_CLAUDE=1: Force use of node_modules version (skip global search)
+ * - ARC_USE_GLOBAL_CLAUDE=1: Force use of global version (if available)
  */
 export function getDefaultClaudeCodePath(): string {
     const nodeModulesPath = join(__dirname, '..', '..', '..', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js')
     
     // Allow explicit override via env var
-    if (process.env.HAPPY_CLAUDE_PATH) {
-        logger.debug(`[Claude SDK] Using HAPPY_CLAUDE_PATH: ${process.env.HAPPY_CLAUDE_PATH}`)
-        return process.env.HAPPY_CLAUDE_PATH
+    if (process.env.ARC_CLAUDE_PATH) {
+        logger.debug(`[Claude SDK] Using ARC_CLAUDE_PATH: ${process.env.ARC_CLAUDE_PATH}`)
+        return process.env.ARC_CLAUDE_PATH
     }
 
     // Force bundled version if requested
-    if (process.env.HAPPY_USE_BUNDLED_CLAUDE === '1') {
+    if (process.env.ARC_USE_BUNDLED_CLAUDE === '1') {
         logger.debug(`[Claude SDK] Forced bundled version: ${nodeModulesPath}`)
         return nodeModulesPath
     }

@@ -18,7 +18,7 @@ import { logger } from '@/ui/logger';
 import { trimIdent } from '@/utils/trimIdent';
 import os from 'os';
 
-const PLIST_LABEL = 'com.happy-cli.daemon';
+const PLIST_LABEL = 'com.runline.arc.daemon';
 const PLIST_FILE = `/Library/LaunchDaemons/${PLIST_LABEL}.plist`;
 
 // NOTE: Local installation like --local does not make too much sense I feel like
@@ -53,7 +53,7 @@ export async function install(): Promise<void> {
                 
                 <key>EnvironmentVariables</key>
                 <dict>
-                    <key>HAPPY_DAEMON_MODE</key>
+                    <key>ARC_DAEMON_MODE</key>
                     <string>true</string>
                 </dict>
                 
@@ -64,10 +64,10 @@ export async function install(): Promise<void> {
                 <true/>
                 
                 <key>StandardErrorPath</key>
-                <string>${os.homedir()}/.happy/daemon.err</string>
+                <string>${os.homedir()}/.arc/daemon.err</string>
                 
                 <key>StandardOutPath</key>
-                <string>${os.homedir()}/.happy/daemon.log</string>
+                <string>${os.homedir()}/.arc/daemon.log</string>
                 
                 <key>WorkingDirectory</key>
                 <string>/tmp</string>
@@ -85,7 +85,7 @@ export async function install(): Promise<void> {
         execSync(`launchctl load ${PLIST_FILE}`, { stdio: 'inherit' });
 
         logger.info('Daemon installed and started successfully');
-        logger.info('Check logs at ~/.happy/daemon.log');
+        logger.info('Check logs at ~/.arc/daemon.log');
 
     } catch (error) {
         logger.debug('Failed to install daemon:', error);

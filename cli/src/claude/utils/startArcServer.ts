@@ -12,7 +12,7 @@ import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
 
-export async function startHappyServer(client: ApiSessionClient) {
+export async function startArcServer(client: ApiSessionClient) {
     // Handler that sends title updates via the client
     const handler = async (title: string) => {
         logger.debug('[happyMCP] Changing title to:', title);
