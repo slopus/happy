@@ -4,7 +4,7 @@
     "appVersionSource": "remote"
   },
   "build": {
-    "base": "expo-app",
+    "base": "packages/happy-app",
     "development": {
       "autoIncrement": true,
       "developmentClient": true,
