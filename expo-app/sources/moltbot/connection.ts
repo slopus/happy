@@ -504,6 +504,12 @@ export interface UseMoltbotConnectionOptions {
     onEvent?: ConnectionEventCallback;
     /** Callback when a new device token is received */
     onDeviceToken?: (deviceToken: string) => void;
+    /** Maximum number of auto-reconnect attempts (default: 5) */
+    maxRetries?: number;
+    /** Initial retry delay in ms (default: 1000) */
+    initialRetryDelay?: number;
+    /** Maximum retry delay in ms (default: 30000) */
+    maxRetryDelay?: number;
 }
 
 /**
@@ -568,7 +574,14 @@ export function useMoltbotConnection(
     machineId: string,
     options: UseMoltbotConnectionOptions = {}
 ): UseMoltbotConnectionReturn {
-    const { autoConnect = false, onEvent, onDeviceToken } = options;
+    const {
+        autoConnect = false,
+        onEvent,
+        onDeviceToken,
+        maxRetries = 5,
+        initialRetryDelay = 1000,
+        maxRetryDelay = 30000,
+    } = options;
 
     // Get the Moltbot machine from storage
     const machine = useMoltbotMachine(machineId);
@@ -588,19 +601,49 @@ export function useMoltbotConnection(
     const connectionRef = React.useRef<MoltbotConnection | null>(null);
     const mountedRef = React.useRef(true);
 
+    // Auto-reconnect state (refs to avoid triggering effect re-runs)
+    const retryCountRef = React.useRef(0);
+    const retryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
     // Status change callback
     const handleStatusChange = React.useCallback((newStatus: MoltbotConnectionStatus, newError?: string) => {
         if (mountedRef.current) {
             setStatus(newStatus);
             setError(newError ?? null);
+
+            // Reset retry count on successful connection
+            if (newStatus === 'connected') {
+                retryCountRef.current = 0;
+            }
         }
     }, []);
 
+    // Track machine ID to detect actual machine changes (not just object reference changes)
+    const prevMachineIdRef = React.useRef<string | null>(null);
+
     // Create connection when machine changes
     React.useEffect(() => {
+        const machineId = machine?.id ?? null;
+        const machineChanged = machineId !== prevMachineIdRef.current;
+        prevMachineIdRef.current = machineId;
+
+        // Only reset retry count when machine actually changes
+        if (machineChanged) {
+            retryCountRef.current = 0;
+            if (retryTimeoutRef.current) {
+                clearTimeout(retryTimeoutRef.current);
+                retryTimeoutRef.current = null;
+            }
+        }
+
         if (!machine) {
             setStatus('disconnected');
             setError('Machine not found');
+            return;
+        }
+
+        // Only recreate connection when machine actually changes
+        if (!machineChanged && connectionRef.current) {
             return;
         }
 
@@ -622,23 +665,59 @@ export function useMoltbotConnection(
         }
     }, [machine, onEvent, onDeviceToken, handleStatusChange]);
 
-    // Auto-connect effect
-    React.useEffect(() => {
-        if (autoConnect && connectionRef.current && status === 'disconnected' && !error) {
-            // For tunnel connections, only auto-connect if Happy machine is online
-            if (machine?.type === 'happy' && happyMachine && !happyMachine.active) {
-                return;
-            }
+    // Extract stable values for dependency array (avoid object reference changes)
+    const machineType = machine?.type;
+    const happyMachineActive = happyMachine?.active ?? false;
 
-            connectionRef.current.connect();
+    // Auto-connect effect with exponential backoff
+    React.useEffect(() => {
+        if (!autoConnect || !connectionRef.current || status !== 'disconnected') {
+            return;
         }
-    }, [autoConnect, status, error, machine?.type, happyMachine]);
+
+        // For tunnel connections, only auto-connect if Happy machine is online
+        if (machineType === 'happy' && !happyMachineActive) {
+            return;
+        }
+
+        // Check retry limit
+        if (retryCountRef.current >= maxRetries) {
+            console.log(`[MoltbotConnection] Max retries (${maxRetries}) reached, stopping auto-reconnect`);
+            return;
+        }
+
+        // Calculate delay with exponential backoff
+        const delay = retryCountRef.current === 0
+            ? 0  // First attempt is immediate
+            : Math.min(initialRetryDelay * Math.pow(2, retryCountRef.current - 1), maxRetryDelay);
+
+        console.log(`[MoltbotConnection] Auto-reconnect attempt ${retryCountRef.current + 1}/${maxRetries} in ${delay}ms`);
+
+        retryTimeoutRef.current = setTimeout(() => {
+            retryTimeoutRef.current = null;
+            if (mountedRef.current && connectionRef.current) {
+                retryCountRef.current++;
+                connectionRef.current.connect();
+            }
+        }, delay);
+
+        return () => {
+            if (retryTimeoutRef.current) {
+                clearTimeout(retryTimeoutRef.current);
+                retryTimeoutRef.current = null;
+            }
+        };
+    }, [autoConnect, status, machineType, happyMachineActive, maxRetries, initialRetryDelay, maxRetryDelay]);
 
     // Cleanup on unmount
     React.useEffect(() => {
         mountedRef.current = true;
         return () => {
             mountedRef.current = false;
+            if (retryTimeoutRef.current) {
+                clearTimeout(retryTimeoutRef.current);
+                retryTimeoutRef.current = null;
+            }
             if (connectionRef.current) {
                 connectionRef.current.close();
                 connectionRef.current = null;
