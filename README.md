@@ -67,9 +67,9 @@ On your computer, run `happy` instead of `claude` or `happy codex` instead of `c
 
 ## 📦 Project Components
 
-- **[happy UI](https://github.com/slopus/happy/tree/main/expo-app)** - Web UI + mobile client (Expo)
-- **[happy-cli](https://github.com/slopus/happy/tree/main/cli)** - Command-line interface for Claude Code and Codex
-- **[happy-server](https://github.com/slopus/happy/tree/main/server)** - Backend server for encrypted sync
+- **[Happy App](https://github.com/slopus/happy/tree/main/packages/happy-app)** - Web UI + mobile client (Expo)
+- **[Happy CLI](https://github.com/slopus/happy/tree/main/packages/happy-cli)** - Command-line interface for Claude Code and Codex
+- **[Happy Server](https://github.com/slopus/happy/tree/main/packages/happy-server)** - Backend server for encrypted sync
 
 ## 🏠 Who We Are
 
