@@ -16,11 +16,11 @@ gh auth login
 gh auth refresh -s read:packages
 
 # Configure npm to use your gh token for @runline packages
-echo "@runline:registry=https://npm.pkg.github.com" >> ~/.npmrc
+echo "@runline-ai:registry=https://npm.pkg.github.com" >> ~/.npmrc
 echo "//npm.pkg.github.com/:_authToken=$(gh auth token)" >> ~/.npmrc
 
 # Install Arc globally
-npm install -g @runline/arc
+npm install -g @runline-ai/arc
 ```
 
 ### Manual Setup
@@ -29,14 +29,14 @@ npm install -g @runline/arc
 2. Add to your `~/.npmrc`:
 
 ```
-@runline:registry=https://npm.pkg.github.com
+@runline-ai:registry=https://npm.pkg.github.com
 //npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
 ```
 
 3. Install:
 
 ```bash
-npm install -g @runline/arc
+npm install -g @runline-ai/arc
 ```
 
 ### Development Install (from source)
