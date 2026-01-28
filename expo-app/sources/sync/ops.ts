@@ -138,7 +138,7 @@ export interface SpawnSessionOptions {
     directory: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
-    agent?: 'codex' | 'claude' | 'gemini';
+    agent?: 'codex' | 'claude' | 'gemini' | 'opencode';
     // Environment variables from AI backend profile
     // Accepts any environment variables - daemon will pass them to the agent process
     // Common variables include:
@@ -167,7 +167,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             directory: string
             approvedNewDirectoryCreation?: boolean,
             token?: string,
-            agent?: 'codex' | 'claude' | 'gemini',
+            agent?: 'codex' | 'claude' | 'gemini' | 'opencode',
             environmentVariables?: Record<string, string>;
         }>(
             machineId,

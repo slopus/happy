@@ -22,6 +22,8 @@ const flavorIcons = {
     claude: require('@/assets/images/icon-claude.png'),
     codex: require('@/assets/images/icon-gpt.png'),
     gemini: require('@/assets/images/icon-gemini.png'),
+    opencode: require('@/assets/images/icon-opencode.png'),
+    'opencode-dark': require('@/assets/images/icon-opencode-dark.png'),
 };
 
 const styles = StyleSheet.create((theme) => ({
@@ -67,13 +69,17 @@ export const Avatar = React.memo((props: AvatarProps) => {
         // Add flavor icon overlay if enabled
         if (showFlavorIcons && flavor) {
             const effectiveFlavor = flavor || 'claude';
-            const flavorIcon = flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude;
+            const flavorIcon = effectiveFlavor === 'opencode'
+                ? (theme.dark ? flavorIcons['opencode-dark'] : flavorIcons.opencode)
+                : (flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude);
             const circleSize = Math.round(size * 0.35);
             const iconSize = effectiveFlavor === 'codex'
                 ? Math.round(size * 0.25)
                 : effectiveFlavor === 'claude'
                     ? Math.round(size * 0.28)
-                    : Math.round(size * 0.35);
+                    : effectiveFlavor === 'opencode'
+                        ? Math.round(size * 0.30)
+                        : Math.round(size * 0.35);
 
             return (
                 <View style={[styles.container, { width: size, height: size }]}>
@@ -111,7 +117,9 @@ export const Avatar = React.memo((props: AvatarProps) => {
 
     // Determine flavor icon for generated avatars
     const effectiveFlavor = flavor || 'claude';
-    const flavorIcon = flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude;
+    const flavorIcon = effectiveFlavor === 'opencode'
+        ? (theme.dark ? flavorIcons['opencode-dark'] : flavorIcons.opencode)
+        : (flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude);
     // Make icons smaller while keeping same circle size
     // Claude slightly bigger than codex
     const circleSize = Math.round(size * 0.35);
@@ -119,7 +127,9 @@ export const Avatar = React.memo((props: AvatarProps) => {
         ? Math.round(size * 0.25)
         : effectiveFlavor === 'claude'
             ? Math.round(size * 0.28)
-            : Math.round(size * 0.35);
+            : effectiveFlavor === 'opencode'
+                ? Math.round(size * 0.30)
+                : Math.round(size * 0.35);
 
     // Only wrap in container if showing flavor icons
     if (showFlavorIcons) {

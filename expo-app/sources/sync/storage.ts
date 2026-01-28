@@ -116,7 +116,7 @@ interface StorageState {
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
-    updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
+    updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | 'build') => void;
     updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
@@ -778,7 +778,7 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
-        updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => set((state) => {
+        updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | 'build') => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
 
