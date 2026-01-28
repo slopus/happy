@@ -361,6 +361,37 @@ export default function RootLayout() {
                     headerBackTitle: t('common.back'),
                 }}
             />
+            <Stack.Screen
+                name="moltbot/add"
+                options={{
+                    headerTitle: t('moltbot.addMachine'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="moltbot/machine/[id]"
+                options={{
+                    headerShown: true,
+                    headerTitle: '',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="moltbot/chat"
+                options={{
+                    headerShown: true,
+                    headerTitle: '',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="moltbot/new"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('moltbot.newSession'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
         </Stack>
     );
 }

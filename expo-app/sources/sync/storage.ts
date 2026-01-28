@@ -21,6 +21,7 @@ import { isMutableTool } from "@/components/tools/knownTools";
 import { projectManager } from "./projectManager";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
+import type { MoltbotMachine } from "../moltbot/types";
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -77,6 +78,7 @@ interface StorageState {
     sessionMessages: Record<string, SessionMessages>;
     sessionGitStatus: Record<string, GitStatus | null>;
     machines: Record<string, Machine>;
+    moltbotMachines: Record<string, MoltbotMachine>;  // Moltbot machine configurations
     artifacts: Record<string, DecryptedArtifact>;  // New artifacts storage
     friends: Record<string, UserProfile>;  // All relationships (friends, pending, requested, etc.)
     users: Record<string, UserProfile | null>;  // Global user cache, null = 404/failed fetch
@@ -97,6 +99,8 @@ interface StorageState {
     todosLoaded: boolean;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
+    applyMoltbotMachines: (machines: MoltbotMachine[], replace?: boolean) => void;
+    removeMoltbotMachine: (machineId: string) => void;
     applyLoaded: () => void;
     applyReady: () => void;
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
@@ -258,6 +262,7 @@ export const storage = create<StorageState>()((set, get) => {
         profile,
         sessions: {},
         machines: {},
+        moltbotMachines: {},  // Initialize Moltbot machines
         artifacts: {},  // Initialize artifacts
         friends: {},  // Initialize relationships cache
         users: {},  // Initialize global user cache
@@ -877,6 +882,37 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
+        // Moltbot machine methods
+        applyMoltbotMachines: (machines: MoltbotMachine[], replace: boolean = false) => set((state) => {
+            let mergedMachines: Record<string, MoltbotMachine>;
+
+            if (replace) {
+                mergedMachines = {};
+                machines.forEach(machine => {
+                    mergedMachines[machine.id] = machine;
+                });
+            } else {
+                mergedMachines = { ...state.moltbotMachines };
+                machines.forEach(machine => {
+                    mergedMachines[machine.id] = machine;
+                });
+            }
+
+            console.log(`🤖 Storage.applyMoltbotMachines: Total Moltbot machines after merge: ${Object.keys(mergedMachines).length}`);
+
+            return {
+                ...state,
+                moltbotMachines: mergedMachines
+            };
+        }),
+        removeMoltbotMachine: (machineId: string) => set((state) => {
+            const { [machineId]: removed, ...remaining } = state.moltbotMachines;
+            console.log(`🤖 Storage.removeMoltbotMachine: Removed machine ${machineId}`);
+            return {
+                ...state,
+                moltbotMachines: remaining
+            };
+        }),
         // Artifact methods
         applyArtifacts: (artifacts: DecryptedArtifact[]) => set((state) => {
             console.log(`🗂️ Storage.applyArtifacts: Applying ${artifacts.length} artifacts`);
@@ -1140,6 +1176,17 @@ export function useAllMachines(): Machine[] {
 
 export function useMachine(machineId: string): Machine | null {
     return storage(useShallow((state) => state.machines[machineId] ?? null));
+}
+
+export function useAllMoltbotMachines(): MoltbotMachine[] {
+    return storage(useShallow((state) => {
+        if (!state.isDataReady) return [];
+        return Object.values(state.moltbotMachines).sort((a, b) => b.updatedAt - a.updatedAt);
+    }));
+}
+
+export function useMoltbotMachine(machineId: string): MoltbotMachine | null {
+    return storage(useShallow((state) => state.moltbotMachines[machineId] ?? null));
 }
 
 export function useSessionListViewData(): SessionListViewItem[] | null {

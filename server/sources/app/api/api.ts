@@ -22,6 +22,7 @@ import { userRoutes } from "./routes/userRoutes";
 import { feedRoutes } from "./routes/feedRoutes";
 import { kvRoutes } from "./routes/kvRoutes";
 import { chatRoutes } from "./routes/chatRoutes";
+import { moltbotRoutes } from "./routes/moltbotRoutes";
 
 export async function startApi() {
 
@@ -73,6 +74,7 @@ export async function startApi() {
     feedRoutes(typed);
     kvRoutes(typed);
     chatRoutes(typed);
+    moltbotRoutes(typed);
 
     // Start HTTP 
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;

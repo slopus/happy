@@ -21,6 +21,7 @@ export const zhHant: TranslationStructure = {
         // Tab navigation labels
         inbox: '收件匣',
         sessions: '終端',
+        moltbot: 'Moltbot',
         settings: '設定',
     },
 
@@ -29,6 +30,43 @@ export const zhHant: TranslationStructure = {
         emptyTitle: '收件匣是空的',
         emptyDescription: '與好友建立連結，開始共享工作階段',
         updates: '更新',
+    },
+
+    moltbot: {
+        emptyTitle: '沒有 Moltbot 機器',
+        emptyDescription: '新增 Moltbot 閘道以開始與 Claude 聊天',
+        addMachine: '新增機器',
+        machineType: '機器類型',
+        machineTypeHappy: 'Happy 機器',
+        machineTypeHappyDescription: '透過電腦上的 Happy 機器連線',
+        machineTypeDirect: '直接連線',
+        machineTypeDirectDescription: '直接連線到 Moltbot 閘道',
+        gatewayUrl: '閘道 URL',
+        gatewayPassword: '閘道密碼',
+        selectMachine: '選擇機器',
+        connecting: '連線中...',
+        connected: '已連線',
+        disconnected: '已斷線',
+        pairingRequired: '需要配對',
+        pairingDescription: '請在您的電腦上核准此裝置以繼續',
+        pairingInstructions: '請在電腦上核准此裝置以繼續',
+        sessions: '工作階段',
+        newSession: '新建工作階段',
+        noSessions: '沒有工作階段',
+        noSessionsDescription: '開始新工作階段以與 Claude 聊天',
+        unknownMachine: '未知機器',
+        machineNotFound: '找不到機器',
+        notConnected: '未連線到閘道',
+        connect: '連線',
+        sessionName: '工作階段名稱',
+        sessionType: '工作階段類型',
+        sessionTypeDirect: '直接聊天',
+        sessionTypeDirectDescription: '與 Claude 一對一對話',
+        sessionTypeGlobal: '全域工作階段',
+        sessionTypeGlobalDescription: '持久工作階段，跨對話記住上下文',
+        initialMessage: '初始訊息',
+        initialMessagePlaceholder: '從一條訊息開始...',
+        createSession: '建立工作階段',
     },
 
     common: {
@@ -62,6 +100,7 @@ export const zhHant: TranslationStructure = {
         retry: '重試',
         delete: '刪除',
         optional: '選填',
+        notFound: '未找到',
     },
 
     profile: {
@@ -113,6 +152,8 @@ export const zhHant: TranslationStructure = {
         appearanceSubtitle: '自訂應用程式外觀',
         voiceAssistant: '語音助理',
         voiceAssistantSubtitle: '設定語音互動偏好',
+        notifications: '通知',
+        notificationsSubtitle: '控制通知顯示方式',
         featuresTitle: '功能',
         featuresSubtitle: '啟用或停用應用程式功能',
         developer: '開發者',
@@ -137,6 +178,9 @@ export const zhHant: TranslationStructure = {
         usageSubtitle: '查看 API 使用情況和費用',
         profiles: '設定檔',
         profilesSubtitle: '管理工作階段的環境變數設定檔',
+        history: '歷史',
+        sessionHistorySubtitle: '查看過去的 Happy 工作階段',
+        claudeSessionsSubtitle: '瀏覽此裝置上的 Claude CLI 工作階段',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已連結 ${service} 帳戶`,
@@ -209,6 +253,15 @@ export const zhHant: TranslationStructure = {
         enhancedSessionWizard: '增強工作階段精靈',
         enhancedSessionWizardEnabled: '設定檔優先的工作階段啟動器已啟用',
         enhancedSessionWizardDisabled: '使用標準工作階段啟動器',
+    },
+
+    settingsNotifications: {
+        title: '通知',
+        footer: '這些設定僅在應用程式啟用時影響通知。',
+        hideAllTitle: '應用程式啟用時隱藏通知',
+        hideAllSubtitle: '使用應用程式時不顯示橫幅、聲音或徽章',
+        hideSessionTitle: '隱藏目前工作階段的通知',
+        hideSessionSubtitle: '僅隱藏與目前工作階段匹配的通知',
     },
 
     errors: {
@@ -298,10 +351,27 @@ export const zhHant: TranslationStructure = {
         yesterday: '昨天',
         daysAgo: ({ count }: { count: number }) => `${count} 天前`,
         viewAll: '查看所有工作階段',
+        resumeConfirmTitle: '繼續工作階段',
+        resumeConfirmMessage: '是否要繼續此工作階段？',
+    },
+
+    claudeHistory: {
+        // Used by Claude session history screen
+        title: 'Claude 工作階段',
+        loadFailed: '無法載入 Claude 工作階段',
+        empty: '未找到 Claude 工作階段',
+        noMachines: '未找到機器',
+        pathUnavailable: '此工作階段的原始路徑不可用',
+        directoryNotFound: '原始目錄已不存在於此機器上。',
+        resumeFailed: '無法繼續 Claude 工作階段',
     },
 
     session: {
         inputPlaceholder: '輸入訊息...',
+        selectImageSource: '選擇圖片來源',
+        takePhoto: '拍照',
+        chooseFromLibrary: '從圖庫選擇',
+        pasteFromClipboard: '從剪貼簿貼上',
     },
 
     commandPalette: {

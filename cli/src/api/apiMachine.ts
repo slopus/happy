@@ -8,6 +8,7 @@ import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
+import { registerMoltbotHandlers, moltbotTunnelManager } from '../modules/moltbot';
 import { listClaudeSessionsFromIndex } from '@/claude/utils/claudeSessionIndex';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
@@ -94,6 +95,7 @@ export class ApiMachineClient {
         });
 
         registerCommonHandlers(this.rpcHandlerManager, process.cwd());
+        registerMoltbotHandlers(this.rpcHandlerManager);
     }
 
     setRPCHandlers({
@@ -332,6 +334,7 @@ export class ApiMachineClient {
 
     shutdown() {
         logger.debug('[API MACHINE] Shutting down');
+        moltbotTunnelManager.closeAll();
         this.stopKeepAlive();
         if (this.socket) {
             this.socket.close();

@@ -147,6 +147,38 @@ export const ApiKvBatchUpdateSchema = z.object({
     }))
 });
 
+// Moltbot machine update schemas
+export const ApiNewMoltbotMachineSchema = z.object({
+    t: z.literal('new-moltbot-machine'),
+    machineId: z.string(),
+    machineType: z.enum(['happy', 'direct']),
+    happyMachineId: z.string().nullable(),
+    directConfig: z.string().nullable(),
+    metadata: z.string(),
+    metadataVersion: z.number(),
+    pairingData: z.string().nullable(),
+    dataEncryptionKey: z.string().nullable(),
+    seq: z.number(),
+    createdAt: z.number(),
+    updatedAt: z.number()
+});
+
+export const ApiUpdateMoltbotMachineSchema = z.object({
+    t: z.literal('update-moltbot-machine'),
+    machineId: z.string(),
+    metadata: z.object({
+        value: z.string(),
+        version: z.number()
+    }).optional(),
+    pairingData: z.string().nullable().optional(),
+    directConfig: z.string().nullable().optional()
+});
+
+export const ApiDeleteMoltbotMachineSchema = z.object({
+    t: z.literal('delete-moltbot-machine'),
+    machineId: z.string()
+});
+
 export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiUpdateNewMessageSchema,
     ApiUpdateNewSessionSchema,
@@ -159,12 +191,18 @@ export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiDeleteArtifactSchema,
     ApiRelationshipUpdatedSchema,
     ApiNewFeedPostSchema,
-    ApiKvBatchUpdateSchema
+    ApiKvBatchUpdateSchema,
+    ApiNewMoltbotMachineSchema,
+    ApiUpdateMoltbotMachineSchema,
+    ApiDeleteMoltbotMachineSchema
 ]);
 
 export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;
 export type ApiRelationshipUpdated = z.infer<typeof ApiRelationshipUpdatedSchema>;
 export type ApiKvBatchUpdate = z.infer<typeof ApiKvBatchUpdateSchema>;
+export type ApiNewMoltbotMachine = z.infer<typeof ApiNewMoltbotMachineSchema>;
+export type ApiUpdateMoltbotMachine = z.infer<typeof ApiUpdateMoltbotMachineSchema>;
+export type ApiDeleteMoltbotMachine = z.infer<typeof ApiDeleteMoltbotMachineSchema>;
 export type ApiUpdate = z.infer<typeof ApiUpdateSchema>;
 
 //

@@ -9,7 +9,7 @@ import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
-import { randomUUID } from 'expo-crypto';
+import { randomUUID, getRandomBytes } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
 import { Platform, AppState } from 'react-native';
@@ -41,6 +41,11 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { initializeTodoSync } from '../-zen/model/ops';
+import {
+    createMoltbotMachine,
+    processNewMoltbotMachineEvent,
+    processUpdateMoltbotMachineEvent,
+} from '../moltbot/storage';
 
 type PermissionMode = NonNullable<Session['permissionMode']>;
 
@@ -70,6 +75,8 @@ class Sync {
     private friendRequestsSync: InvalidateSync;
     private feedSync: InvalidateSync;
     private todosSync: InvalidateSync;
+    private moltbotMachinesSync: InvalidateSync;
+    private moltbotMachineDataKeys = new Map<string, Uint8Array>(); // Store Moltbot machine data encryption keys
     private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     revenueCatInitialized = false;
@@ -90,6 +97,7 @@ class Sync {
         this.friendRequestsSync = new InvalidateSync(this.fetchFriendRequests);
         this.feedSync = new InvalidateSync(this.fetchFeed);
         this.todosSync = new InvalidateSync(this.fetchTodos);
+        this.moltbotMachinesSync = new InvalidateSync(this.fetchMoltbotMachines);
 
         const registerPushToken = async () => {
             if (__DEV__) {
@@ -107,6 +115,7 @@ class Sync {
                 this.purchasesSync.invalidate();
                 this.profileSync.invalidate();
                 this.machinesSync.invalidate();
+                this.moltbotMachinesSync.invalidate();
                 this.pushTokenSync.invalidate();
                 this.sessionsSync.invalidate();
                 this.nativeUpdateSync.invalidate();
@@ -171,6 +180,7 @@ class Sync {
         this.profileSync.invalidate();
         this.purchasesSync.invalidate();
         this.machinesSync.invalidate();
+        this.moltbotMachinesSync.invalidate();
         this.pushTokenSync.invalidate();
         this.nativeUpdateSync.invalidate();
         this.friendsSync.invalidate();
@@ -1019,6 +1029,172 @@ class Sync {
         } catch (error) {
             log.log('📝 Failed to fetch todos:');
         }
+    }
+
+    private fetchMoltbotMachines = async () => {
+        if (!this.credentials) return;
+
+        console.log('🤖 Sync: Fetching Moltbot machines...');
+        const API_ENDPOINT = getServerUrl();
+        const response = await fetch(`${API_ENDPOINT}/v1/moltbot/machines`, {
+            headers: {
+                'Authorization': `Bearer ${this.credentials.token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            console.error(`Failed to fetch Moltbot machines: ${response.status}`);
+            return;
+        }
+
+        const rawMachines = await response.json() as Array<{
+            id: string;
+            type: string;
+            happyMachineId: string | null;
+            directConfig: string | null;
+            metadata: string;
+            metadataVersion: number;
+            pairingData: string | null;
+            dataEncryptionKey: string | null;
+            seq: number;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        console.log(`🤖 Sync: Fetched ${rawMachines.length} Moltbot machines from server`);
+
+        // Decrypt and process machines
+        const decryptedMachines: Array<{
+            id: string;
+            type: 'happy' | 'direct';
+            happyMachineId: string | null;
+            directConfig: any | null;
+            metadata: any | null;
+            metadataVersion: number;
+            pairingData: any | null;
+            seq: number;
+            createdAt: number;
+            updatedAt: number;
+        }> = [];
+
+        for (const raw of rawMachines) {
+            try {
+                // Decrypt the data encryption key if present
+                let dataKey: Uint8Array | null = null;
+                if (raw.dataEncryptionKey) {
+                    dataKey = await this.encryption.decryptEncryptionKey(raw.dataEncryptionKey);
+                    if (dataKey) {
+                        this.moltbotMachineDataKeys.set(raw.id, dataKey);
+                    }
+                }
+
+                if (!dataKey) {
+                    console.error(`No data encryption key for Moltbot machine ${raw.id}`);
+                    continue;
+                }
+
+                // Create encryptor for decrypting fields
+                const encryptor = await this.encryption.openEncryption(dataKey);
+
+                // Decrypt fields
+                let metadata: any | null = null;
+                if (raw.metadata) {
+                    const decoded = decodeBase64(raw.metadata);
+                    const results = await encryptor.decrypt([decoded]);
+                    metadata = results[0];
+                }
+
+                let directConfig: any | null = null;
+                if (raw.directConfig) {
+                    const decoded = decodeBase64(raw.directConfig);
+                    const results = await encryptor.decrypt([decoded]);
+                    directConfig = results[0];
+                }
+
+                let pairingData: any | null = null;
+                if (raw.pairingData) {
+                    const decoded = decodeBase64(raw.pairingData);
+                    const results = await encryptor.decrypt([decoded]);
+                    pairingData = results[0];
+                }
+
+                decryptedMachines.push({
+                    id: raw.id,
+                    type: raw.type as 'happy' | 'direct',
+                    happyMachineId: raw.happyMachineId,
+                    directConfig,
+                    metadata,
+                    metadataVersion: raw.metadataVersion,
+                    pairingData,
+                    seq: raw.seq,
+                    createdAt: raw.createdAt,
+                    updatedAt: raw.updatedAt,
+                });
+            } catch (error) {
+                console.error(`Failed to decrypt Moltbot machine ${raw.id}:`, error);
+            }
+        }
+
+        storage.getState().applyMoltbotMachines(decryptedMachines, true);
+        log.log(`🤖 fetchMoltbotMachines completed - processed ${decryptedMachines.length} machines`);
+    }
+
+    /**
+     * Create a new Moltbot machine
+     */
+    public async createMoltbotMachine(params: {
+        type: 'happy' | 'direct';
+        happyMachineId?: string;
+        directConfig?: { url: string; password?: string };
+        metadata: { name: string };
+        pairingData?: { deviceId: string; publicKey: string; privateKey: string };
+    }): Promise<string> {
+        if (!this.credentials || !this.encryption) {
+            throw new Error('Not authenticated');
+        }
+
+        const encryptionAdapter = {
+            decryptWithKey: async (encryptedData: string, key: Uint8Array): Promise<unknown> => {
+                const encryptor = await this.encryption.openEncryption(key);
+                const decoded = decodeBase64(encryptedData);
+                const results = await encryptor.decrypt([decoded]);
+                return results[0];
+            },
+            encryptWithKey: async (data: unknown, key: Uint8Array): Promise<string> => {
+                const encryptor = await this.encryption.openEncryption(key);
+                const results = await encryptor.encrypt([data]);
+                return encodeBase64(results[0]);
+            },
+            decryptEncryptionKey: async (encryptedKey: string): Promise<Uint8Array | null> => {
+                return this.encryption.decryptEncryptionKey(encryptedKey);
+            },
+            generateDataKey: async () => {
+                // Generate 256-bit key for AES-256
+                const key = getRandomBytes(32);
+                const encryptedKey = await this.encryption.encryptEncryptionKey(key);
+                return { key, encryptedKey: encodeBase64(encryptedKey, 'base64') };
+            },
+        };
+
+        const machine = await createMoltbotMachine(
+            this.credentials,
+            encryptionAdapter,
+            {
+                type: params.type,
+                happyMachineId: params.happyMachineId,
+                directConfig: params.directConfig,
+                metadata: params.metadata,
+                pairingData: params.pairingData,
+            }
+        );
+
+        if (machine) {
+            storage.getState().applyMoltbotMachines([machine]);
+            log.log(`🤖 Created Moltbot machine ${machine.id}`);
+            return machine.id;
+        }
+
+        throw new Error('Failed to create Moltbot machine');
     }
 
     private applyTodoSocketUpdates = async (changes: any[]) => {
@@ -1985,6 +2161,124 @@ class Sync {
                     }
                 }
             }
+        } else if (updateData.body.t === 'new-moltbot-machine') {
+            log.log('🤖 Received new-moltbot-machine update');
+            const moltbotUpdate = updateData.body;
+
+            try {
+                // Create encryption adapter for processing using openEncryption
+                const createEncryptionAdapter = async (key: Uint8Array) => {
+                    const encryptor = await this.encryption.openEncryption(key);
+                    return {
+                        decryptWithKey: async (encryptedData: string, _key: Uint8Array): Promise<unknown> => {
+                            const decoded = decodeBase64(encryptedData);
+                            const results = await encryptor.decrypt([decoded]);
+                            return results[0];
+                        },
+                        encryptWithKey: async (data: unknown, _key: Uint8Array): Promise<string> => {
+                            const results = await encryptor.encrypt([data]);
+                            return encodeBase64(results[0]);
+                        },
+                        decryptEncryptionKey: async (encryptedKey: string): Promise<Uint8Array | null> => {
+                            return this.encryption.decryptEncryptionKey(encryptedKey);
+                        },
+                        generateDataKey: async () => {
+                            throw new Error('Not needed for receiving events');
+                        },
+                    };
+                };
+
+                // First decrypt the data encryption key
+                if (!moltbotUpdate.dataEncryptionKey) {
+                    console.error('No data encryption key for new Moltbot machine');
+                    return;
+                }
+
+                const dataKey = await this.encryption.decryptEncryptionKey(moltbotUpdate.dataEncryptionKey);
+                if (!dataKey) {
+                    console.error('Failed to decrypt data encryption key for new Moltbot machine');
+                    return;
+                }
+
+                const encryptionAdapter = await createEncryptionAdapter(dataKey);
+                const machine = await processNewMoltbotMachineEvent(moltbotUpdate, encryptionAdapter);
+                if (machine) {
+                    // Store the data encryption key
+                    this.moltbotMachineDataKeys.set(machine.id, dataKey);
+
+                    storage.getState().applyMoltbotMachines([machine]);
+                    log.log(`🤖 Added new Moltbot machine ${machine.id} to storage`);
+                }
+            } catch (error) {
+                console.error('Failed to process new Moltbot machine:', error);
+            }
+        } else if (updateData.body.t === 'update-moltbot-machine') {
+            log.log('🤖 Received update-moltbot-machine update');
+            const moltbotUpdate = updateData.body;
+            const machineId = moltbotUpdate.machineId;
+
+            // Get existing machine
+            const existingMachine = storage.getState().moltbotMachines[machineId];
+            if (!existingMachine) {
+                console.error(`Moltbot machine ${machineId} not found in storage`);
+                // Fetch all machines to sync
+                this.moltbotMachinesSync.invalidate();
+                return;
+            }
+
+            // Get the data encryption key from memory
+            const dataKey = this.moltbotMachineDataKeys.get(machineId);
+            if (!dataKey) {
+                console.error(`Encryption key not found for Moltbot machine ${machineId}, fetching machines`);
+                this.moltbotMachinesSync.invalidate();
+                return;
+            }
+
+            try {
+                // Create encryption adapter using openEncryption
+                const encryptor = await this.encryption.openEncryption(dataKey);
+                const encryptionAdapter = {
+                    decryptWithKey: async (encryptedData: string, _key: Uint8Array): Promise<unknown> => {
+                        const decoded = decodeBase64(encryptedData);
+                        const results = await encryptor.decrypt([decoded]);
+                        return results[0];
+                    },
+                    encryptWithKey: async (data: unknown, _key: Uint8Array): Promise<string> => {
+                        const results = await encryptor.encrypt([data]);
+                        return encodeBase64(results[0]);
+                    },
+                    decryptEncryptionKey: async (encryptedKey: string): Promise<Uint8Array | null> => {
+                        return this.encryption.decryptEncryptionKey(encryptedKey);
+                    },
+                    generateDataKey: async () => {
+                        throw new Error('Not needed for receiving events');
+                    },
+                };
+
+                const updatedMachine = await processUpdateMoltbotMachineEvent(
+                    moltbotUpdate,
+                    existingMachine,
+                    encryptionAdapter,
+                    dataKey
+                );
+
+                storage.getState().applyMoltbotMachines([updatedMachine]);
+                log.log(`🤖 Updated Moltbot machine ${machineId} in storage`);
+            } catch (error) {
+                console.error(`Failed to process Moltbot machine update ${machineId}:`, error);
+            }
+        } else if (updateData.body.t === 'delete-moltbot-machine') {
+            log.log('🤖 Received delete-moltbot-machine update');
+            const moltbotUpdate = updateData.body;
+            const machineId = moltbotUpdate.machineId;
+
+            // Remove from storage
+            storage.getState().removeMoltbotMachine(machineId);
+
+            // Remove encryption key from memory
+            this.moltbotMachineDataKeys.delete(machineId);
+
+            log.log(`🤖 Deleted Moltbot machine ${machineId} from storage`);
         }
     }
 

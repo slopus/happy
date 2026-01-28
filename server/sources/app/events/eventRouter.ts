@@ -152,6 +152,31 @@ export type UpdateEvent = {
         value: string | null; // null indicates deletion
         version: number; // -1 for deleted keys
     }>;
+} | {
+    type: 'new-moltbot-machine';
+    machineId: string;
+    machineType: 'happy' | 'direct';
+    happyMachineId: string | null;
+    directConfig: string | null;
+    metadata: string;
+    metadataVersion: number;
+    pairingData: string | null;
+    dataEncryptionKey: string | null;
+    seq: number;
+    createdAt: number;
+    updatedAt: number;
+} | {
+    type: 'update-moltbot-machine';
+    machineId: string;
+    metadata?: {
+        value: string;
+        version: number;
+    };
+    pairingData?: string | null;
+    directConfig?: string | null;
+} | {
+    type: 'delete-moltbot-machine';
+    machineId: string;
 };
 
 // === EPHEMERAL EVENT TYPES (Transient) ===
@@ -627,6 +652,78 @@ export function buildKVBatchUpdateUpdate(
         body: {
             t: 'kv-batch-update',
             changes
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildNewMoltbotMachineUpdate(machine: {
+    id: string;
+    type: string;
+    happyMachineId: string | null;
+    directConfig: string | null;
+    metadata: string;
+    metadataVersion: number;
+    pairingData: string | null;
+    dataEncryptionKey: Uint8Array | null;
+    seq: number;
+    createdAt: Date;
+    updatedAt: Date;
+}, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'new-moltbot-machine',
+            machineId: machine.id,
+            machineType: machine.type as 'happy' | 'direct',
+            happyMachineId: machine.happyMachineId,
+            directConfig: machine.directConfig,
+            metadata: machine.metadata,
+            metadataVersion: machine.metadataVersion,
+            pairingData: machine.pairingData,
+            dataEncryptionKey: machine.dataEncryptionKey ? Buffer.from(machine.dataEncryptionKey).toString('base64') : null,
+            seq: machine.seq,
+            createdAt: machine.createdAt.getTime(),
+            updatedAt: machine.updatedAt.getTime()
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildUpdateMoltbotMachineUpdate(
+    machineId: string,
+    updateSeq: number,
+    updateId: string,
+    updates: {
+        metadata?: { value: string; version: number };
+        pairingData?: string | null;
+        directConfig?: string | null;
+    }
+): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'update-moltbot-machine',
+            machineId,
+            ...updates
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildDeleteMoltbotMachineUpdate(
+    machineId: string,
+    updateSeq: number,
+    updateId: string
+): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'delete-moltbot-machine',
+            machineId
         },
         createdAt: Date.now()
     };

@@ -34,6 +34,7 @@ export const en: TranslationStructure = {
         // Tab navigation labels
         inbox: 'Inbox',
         sessions: 'Terminals',
+        moltbot: 'Moltbot',
         settings: 'Settings',
     },
 
@@ -42,6 +43,44 @@ export const en: TranslationStructure = {
         emptyTitle: 'Empty Inbox',
         emptyDescription: 'Connect with friends to start sharing sessions',
         updates: 'Updates',
+    },
+
+    moltbot: {
+        // Moltbot screen
+        emptyTitle: 'No Moltbot Machines',
+        emptyDescription: 'Add a Moltbot gateway to start chatting with Claude',
+        addMachine: 'Add Machine',
+        machineType: 'Machine Type',
+        machineTypeHappy: 'Happy Machine',
+        machineTypeHappyDescription: 'Connect through a Happy machine on your computer',
+        machineTypeDirect: 'Direct Connection',
+        machineTypeDirectDescription: 'Connect directly to a Moltbot gateway',
+        gatewayUrl: 'Gateway URL',
+        gatewayPassword: 'Gateway Password',
+        selectMachine: 'Select Machine',
+        connecting: 'Connecting...',
+        connected: 'Connected',
+        disconnected: 'Disconnected',
+        pairingRequired: 'Pairing Required',
+        pairingDescription: 'Approve this device on your computer to continue',
+        pairingInstructions: 'Please approve this device on your computer to continue',
+        sessions: 'Sessions',
+        newSession: 'New Session',
+        noSessions: 'No Sessions',
+        noSessionsDescription: 'Start a new session to chat with Claude',
+        unknownMachine: 'Unknown Machine',
+        machineNotFound: 'Machine not found',
+        notConnected: 'Not connected to gateway',
+        connect: 'Connect',
+        sessionName: 'Session Name',
+        sessionType: 'Session Type',
+        sessionTypeDirect: 'Direct Chat',
+        sessionTypeDirectDescription: 'Private conversation with Claude on this machine',
+        sessionTypeGlobal: 'Global Session',
+        sessionTypeGlobalDescription: 'Shared session accessible from any device',
+        initialMessage: 'Initial Message',
+        initialMessagePlaceholder: 'What would you like to work on?',
+        createSession: 'Create Session',
     },
 
     common: {
@@ -75,6 +114,7 @@ export const en: TranslationStructure = {
         retry: 'Retry',
         delete: 'Delete',
         optional: 'optional',
+        notFound: 'Not Found',
     },
 
     profile: {
