@@ -1,9 +1,10 @@
 import { log } from "@/utils/log";
 import { Fastify } from "../types";
+import { FastifyError } from "fastify";
 
 export function enableErrorHandlers(app: Fastify) {
     // Global error handler
-    app.setErrorHandler(async (error, request, reply) => {
+    app.setErrorHandler(async (error: FastifyError, request, reply) => {
         const method = request.method;
         const url = request.url;
         const userAgent = request.headers['user-agent'] || 'unknown';

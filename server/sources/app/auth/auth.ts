@@ -33,7 +33,7 @@ class AuthModule {
         
         const verifier = await privacyKit.createPersistentTokenVerifier({
             service: 'handy',
-            publicKey: generator.publicKey
+            publicKey: Uint8Array.from(generator.publicKey)
         });
         
         const githubGenerator = await privacyKit.createEphemeralTokenGenerator({
@@ -44,7 +44,7 @@ class AuthModule {
 
         const githubVerifier = await privacyKit.createEphemeralTokenVerifier({
             service: 'github-happy',
-            publicKey: githubGenerator.publicKey,
+            publicKey: Uint8Array.from(githubGenerator.publicKey),
         });
 
 

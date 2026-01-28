@@ -4,16 +4,18 @@
     "workspaces": {
         "packages": [
             "expo-app",
-            "hello-world"
+            "cli",
+            "server"
         ],
         "nohoist": [
-           "**/react",
-           "**/react-dom",
-           "**/react-native",
-           "**/react-native/**",
-           "**/react-native-edge-to-edge/**",
-           "**/react-native-incall-manager/**"
-     ]
+            "**/zod",
+            "**/react",
+            "**/react-dom",
+            "**/react-native",
+            "**/react-native/**",
+            "**/react-native-edge-to-edge/**",
+            "**/react-native-incall-manager/**"
+        ]
     },
     "packageManager": "yarn@1.22.22"
 }
