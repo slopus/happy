@@ -27,6 +27,8 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
     endsAt: z.number(),
 }), z.object({
     type: z.literal('ready'),
+}), z.object({
+    type: z.literal('hidden'),
 })]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
 

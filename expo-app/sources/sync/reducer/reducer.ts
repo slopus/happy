@@ -305,6 +305,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
     // Process converted events immediately
     for (const { message, event } of convertedEvents) {
+        // Skip hidden events - they should not be displayed
+        if (event.type === 'hidden') {
+            continue;
+        }
         const mid = allocateId();
         state.messages.set(mid, {
             id: mid,

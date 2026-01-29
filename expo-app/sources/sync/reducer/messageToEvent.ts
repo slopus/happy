@@ -54,6 +54,16 @@ export function parseMessageAsEvent(msg: NormalizedMessage): AgentEvent | null {
                     } as AgentEvent;
                 }
             }
+
+            // Hide ToolSearch calls that are only for loading change_title tool
+            if (content.type === 'tool-call' && content.name === 'ToolSearch') {
+                const query = content.input?.query;
+                if (typeof query === 'string' && query.includes('change_title')) {
+                    return {
+                        type: 'hidden',
+                    } as AgentEvent;
+                }
+            }
         }
     }
 
