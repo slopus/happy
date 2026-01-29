@@ -79,6 +79,14 @@ export default {
         plugins: [
             require("./plugins/withEinkCompatibility.js"),
             [
+                "expo-build-properties",
+                {
+                    ios: {
+                        deploymentTarget: "16.0"
+                    }
+                }
+            ],
+            [
                 "expo-router",
                 {
                     root: "./sources/app"

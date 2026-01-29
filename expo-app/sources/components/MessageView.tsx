@@ -1,6 +1,7 @@
 import * as React from "react";
 import { View, Text } from "react-native";
 import { Image } from "expo-image";
+import { Galeria } from "@nandorojo/galeria";
 import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
@@ -74,28 +75,29 @@ function UserTextBlock(props: {
     sync.sendMessage(props.sessionId, option.title);
   }, [props.sessionId]);
 
-  const hasImages = props.message.images && props.message.images.length > 0;
+  const images = props.message.images ?? [];
+  const imageUrls = images.map(img => img.url);
 
   return (
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
-        {hasImages && (
-          <View style={styles.messageImages}>
-            {props.message.images!.map((img, index) => (
-              <Image
-                key={index}
-                source={{ uri: img.url }}
-                style={{ width: 120, height: 120, borderRadius: 8 }}
-                contentFit="cover"
-                placeholder={img.thumbhash ? { thumbhash: img.thumbhash } : undefined}
-              />
-            ))}
-          </View>
+        {images.length > 0 && (
+          <Galeria urls={imageUrls} theme="dark">
+            <View style={styles.messageImages}>
+              {images.map((img, index) => (
+                <Galeria.Image key={index} index={index}>
+                  <Image
+                    source={{ uri: img.url }}
+                    style={{ width: 120, height: 120, borderRadius: 8 }}
+                    contentFit="cover"
+                    placeholder={img.thumbhash ? { thumbhash: img.thumbhash } : undefined}
+                  />
+                </Galeria.Image>
+              ))}
+            </View>
+          </Galeria>
         )}
         <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} />
-        {/* {__DEV__ && (
-          <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
-        )} */}
       </View>
     </View>
   );
