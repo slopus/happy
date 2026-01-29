@@ -13,12 +13,14 @@ import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
 import { useSetting } from "@/sync/storage";
+import { Modal } from '@/modal';
 
 export const MessageView = (props: {
   message: Message;
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  isNewestMessage?: boolean;
 }) => {
   return (
     <View style={styles.messageContainer} renderToHardwareTextureAndroid={true}>
@@ -28,6 +30,7 @@ export const MessageView = (props: {
           metadata={props.metadata}
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
+          isNewestMessage={props.isNewestMessage}
         />
       </View>
     </View>
@@ -40,13 +43,14 @@ function RenderBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  isNewestMessage?: boolean;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
-      return <UserTextBlock message={props.message} sessionId={props.sessionId} />;
+      return <UserTextBlock message={props.message} sessionId={props.sessionId} isNewestMessage={props.isNewestMessage} />;
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
+      return <AgentTextBlock message={props.message} sessionId={props.sessionId} isNewestMessage={props.isNewestMessage} />;
 
     case 'tool-call':
       return <ToolCallBlock
@@ -70,10 +74,19 @@ function RenderBlock(props: {
 function UserTextBlock(props: {
   message: UserTextMessage;
   sessionId: string;
+  isNewestMessage?: boolean;
 }) {
-  const handleOptionPress = React.useCallback((option: Option) => {
+  const handleOptionPress = React.useCallback(async (option: Option) => {
+    if (!props.isNewestMessage) {
+      const confirmed = await Modal.confirm(
+        t('message.confirmOldOption'),
+        t('message.confirmOldOptionMessage'),
+        { confirmText: t('common.yes'), cancelText: t('common.cancel') }
+      );
+      if (!confirmed) return;
+    }
     sync.sendMessage(props.sessionId, option.title);
-  }, [props.sessionId]);
+  }, [props.sessionId, props.isNewestMessage]);
 
   const images = props.message.images ?? [];
   const imageUrls = images.map(img => img.url);
@@ -106,11 +119,20 @@ function UserTextBlock(props: {
 function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
+  isNewestMessage?: boolean;
 }) {
   const experiments = useSetting('experiments');
-  const handleOptionPress = React.useCallback((option: Option) => {
+  const handleOptionPress = React.useCallback(async (option: Option) => {
+    if (!props.isNewestMessage) {
+      const confirmed = await Modal.confirm(
+        t('message.confirmOldOption'),
+        t('message.confirmOldOptionMessage'),
+        { confirmText: t('common.yes'), cancelText: t('common.cancel') }
+      );
+      if (!confirmed) return;
+    }
     sync.sendMessage(props.sessionId, option.title);
-  }, [props.sessionId]);
+  }, [props.sessionId, props.isNewestMessage]);
 
   // Hide thinking messages unless experiments is enabled
   if (props.message.isThinking && !experiments) {

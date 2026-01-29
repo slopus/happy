@@ -836,6 +836,8 @@ export const zhHans: TranslationStructure = {
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         unknownTime: '未知时间',
+        confirmOldOption: '发送旧选项？',
+        confirmOldOptionMessage: '这是历史消息中的选项，确定要发送吗？',
     },
 
     codex: {

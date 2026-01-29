@@ -834,6 +834,8 @@ export const es: TranslationStructure = {
         unknownEvent: 'Evento desconocido',
         usageLimitUntil: ({ time }: { time: string }) => `Límite de uso alcanzado hasta ${time}`,
         unknownTime: 'tiempo desconocido',
+        confirmOldOption: '¿Enviar opción antigua?',
+        confirmOldOptionMessage: 'Esta es una opción de un mensaje anterior. ¿Estás seguro de que quieres enviarla?',
     },
 
     codex: {

@@ -39,8 +39,13 @@ const ChatListInternal = React.memo((props: {
     messages: Message[],
 }) => {
     const keyExtractor = useCallback((item: any) => item.id, []);
-    const renderItem = useCallback(({ item }: { item: any }) => (
-        <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
+    const renderItem = useCallback(({ item, index }: { item: any, index: number }) => (
+        <MessageView
+            message={item}
+            metadata={props.metadata}
+            sessionId={props.sessionId}
+            isNewestMessage={index === 0}
+        />
     ), [props.metadata, props.sessionId]);
     return (
         <FlatList

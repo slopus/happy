@@ -844,6 +844,8 @@ export const pl: TranslationStructure = {
         unknownEvent: 'Nieznane zdarzenie',
         usageLimitUntil: ({ time }: { time: string }) => `Osiągnięto limit użycia do ${time}`,
         unknownTime: 'nieznany czas',
+        confirmOldOption: 'Wysłać starą opcję?',
+        confirmOldOptionMessage: 'To jest opcja z wcześniejszej wiadomości. Czy na pewno chcesz ją wysłać?',
     },
 
     codex: {

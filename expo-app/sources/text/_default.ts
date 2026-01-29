@@ -835,6 +835,8 @@ export const en = {
         unknownEvent: 'Unknown event',
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
         unknownTime: 'unknown time',
+        confirmOldOption: 'Send old option?',
+        confirmOldOptionMessage: 'This option is from an earlier message. Are you sure you want to send it?',
     },
 
     codex: {
