@@ -398,7 +398,7 @@ export async function startDaemon(): Promise<void> {
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
           // Determine agent command - support claude, codex, and gemini
           const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
-          const resumeArgs = resumeSessionId && isClaudeAgent ? ` --resume ${resumeSessionId}` : '';
+          const resumeArgs = resumeSessionId && isClaudeAgent ? ` --resume ${resumeSessionId} --fork-session` : '';
           const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeArgs}`;
 
           // Spawn in tmux with environment variables
@@ -506,7 +506,7 @@ export async function startDaemon(): Promise<void> {
             '--started-by', 'daemon'
           ];
           if (resumeSessionId && isClaudeAgent) {
-            args.push('--resume', resumeSessionId);
+            args.push('--resume', resumeSessionId, '--fork-session');
           }
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions

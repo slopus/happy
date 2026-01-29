@@ -169,6 +169,7 @@ export interface QueryOptions {
     permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
     continue?: boolean
     resume?: string
+    forkSession?: boolean
     model?: string
     fallbackModel?: string
     strictMcpConfig?: boolean
