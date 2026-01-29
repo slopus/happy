@@ -29,12 +29,19 @@
 | CLI rebrand | ✅ | happy→arc command, @runline-ai/arc on GitHub Packages |
 | Upstream merge | ✅ | Merged upstream Happy changes (libsodium 0.8.2, zh-Hant, etc.) |
 
+### In Progress 🔄
+
+| Item | Status | Notes |
+|------|--------|-------|
+| EAS build setup | ✅ | projectId: `cdbf75d0-33e5-4874-a238-e8c65281c100`, owner: `runline` |
+| iOS build | ✅ | Build succeeded, ready for TestFlight submit |
+| Android build | ❌ | Build failed - debug later (iOS is priority for MVP) |
+| TestFlight deploy | ⏳ | Run `eas submit --platform ios` |
+
 ### Remaining ❌
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| EAS build setup | P0 | Run `eas build:configure` (blocked on Apple Dev) |
-| TestFlight deploy | P0 | Build and upload |
 | Hook up display name | P1 | Patch session list |
 | Hook up avatar | P2 | Custom avatar from .arc.yaml |
 | Voice binding | P2 | Per-session ElevenLabs |
@@ -44,64 +51,60 @@
 
 ## Next Steps for Deploy
 
-### 1. EAS Build Setup
+### 1. Submit iOS to TestFlight
+
+iOS build succeeded. Submit it:
 
 ```bash
 cd ~/src/runline/arc/expo-app
-
-# Install EAS CLI (if not installed)
-npm install -g eas-cli
-
-# Login to Expo account
-eas login
-
-# Configure EAS for this project (creates new project)
-eas build:configure
-
-# This will:
-# - Create/update eas.json
-# - Generate a new project ID
-# - You'll need to update app.config.js with the new projectId
-```
-
-### 2. Update app.config.js
-
-After running `eas build:configure`, uncomment and update:
-
-```javascript
-extra: {
-    eas: {
-        projectId: "YOUR_NEW_PROJECT_ID"  // From EAS
-    }
-},
-owner: "your-expo-username"  // Your Expo account
-```
-
-### 3. Build for TestFlight
-
-```bash
-# Build iOS preview (for TestFlight)
-eas build --platform ios --profile preview
-
-# Or build for simulator first to test
-eas build --platform ios --profile development --local
-```
-
-### 4. Submit to TestFlight
-
-```bash
-# After build completes
 eas submit --platform ios
 ```
+
+### 2. Debug Android Build (Later)
+
+Android build failed. Not blocking MVP - iOS is the priority.
+
+```bash
+# Check build logs
+eas build:list --platform android --status errored --limit 1
+
+# Retry when ready
+eas build --platform android --profile development
+```
+
+---
+
+## CLI Installation (Done)
+
+Arc CLI is published to GitHub Packages as `@runline-ai/arc`.
+
+```bash
+# Configure npm for GitHub Packages
+echo "@runline-ai:registry=https://npm.pkg.github.com" >> ~/.npmrc
+gh auth refresh -h github.com -s read:packages
+echo "//npm.pkg.github.com/:_authToken=$(gh auth token)" >> ~/.npmrc
+
+# Install globally
+npm install -g @runline-ai/arc
+
+# Migrate credentials from Happy (one-time)
+cp ~/.happy/access.key ~/.arc/
+cp ~/.happy/settings.json ~/.arc/
+
+# Verify
+arc --help
+```
+
+**Confirmed working:** Sessions started with `arc` CLI appear in Happy mobile app (same relay server).
 
 ---
 
 ## Testing Checklist
 
 ### Before Deploy
-- [ ] App builds without errors locally
-- [ ] Icon displays correctly in simulator
-- [ ] Can connect to relay in dev mode
+- [x] App builds without errors (iOS EAS build succeeded)
+- [x] Icon displays correctly (verified matches runline-context branding)
+- [x] Arc CLI connects to relay and appears in Happy mobile app
 
 ### After Deploy
 - [ ] Install via TestFlight
