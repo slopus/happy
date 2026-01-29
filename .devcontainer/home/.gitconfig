@@ -1,0 +1,32 @@
+[core]
+
+[color]
+	diff = auto
+	status = auto
+	branch = auto
+
+[alias]
+	br = branch
+	co = checkout
+	st = status
+	ci = commit
+	subup = submodule update --init --recursive
+        lol = log --graph --decorate --pretty=oneline --abbrev-commit
+        lola = log --graph --decorate --pretty=oneline --abbrev-commit --all
+
+[user]
+	name = Ryan Newton + Claude
+	email = rrnewton@gmail.com
+
+# [push]
+# 	default = matching # historical default
+[pull]
+	rebase = true
+[credential "https://github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
+[credential "https://gist.github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
+[credential]
+#	helper = "!f() { /root/.vscode-server/bin/1e3c50d64110be466c0b4a45222e81d2c9352888/node /tmp/vscode-remote-containers-859a1c15-80d3-43d7-96f0-ffcd44892d48.js git-credential-helper $*; }; f"

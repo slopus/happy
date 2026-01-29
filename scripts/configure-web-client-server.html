@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Configure Happy Web Client for Local Server</title>
+    <style>
+        body {
+            font-family: monospace;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        h1 { color: #00ff00; }
+        .box {
+            background: #2a2a2a;
+            border: 2px solid #00ff00;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        button:hover {
+            background: #00cc00;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            background: #333;
+            border-radius: 4px;
+        }
+        .success { color: #00ff00; }
+        .error { color: #ff0000; }
+        input {
+            width: 100%;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            background: #1a1a1a;
+            border: 2px solid #00ff00;
+            color: #00ff00;
+            border-radius: 4px;
+        }
+        label {
+            display: block;
+            margin-bottom: 10px;
+            color: #00ff00;
+        }
+    </style>
+</head>
+<body>
+    <h1>🛠️ Configure Happy Web Client</h1>
+
+    <div class="box">
+        <p><strong>This tool configures your browser to use the local Happy server.</strong></p>
+        <p>It sets the server URL in browser localStorage so the web client connects to your local server instead of production.</p>
+    </div>
+
+    <div class="box">
+        <label for="serverUrl">Server URL:</label>
+        <input type="text" id="serverUrl" value="http://localhost:3005" />
+        <br><br>
+        <button onclick="configureServer()">✓ Configure Local Server</button>
+        <button onclick="resetServer()" style="background: #ff6600;">⟲ Reset to Production</button>
+
+        <div id="status" class="status"></div>
+    </div>
+
+    <div class="box">
+        <h3>Current Configuration:</h3>
+        <div id="currentConfig"></div>
+    </div>
+
+    <script>
+        // This matches the MMKV storage key from happy/sources/sync/serverConfig.ts
+        const STORAGE_KEY = 'server-config.custom-server-url';
+
+        function showStatus(message, isError = false) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<span class="${isError ? 'error' : 'success'}">${message}</span>`;
+        }
+
+        function updateCurrentConfig() {
+            const storedUrl = localStorage.getItem(STORAGE_KEY);
+            const currentConfigDiv = document.getElementById('currentConfig');
+
+            if (storedUrl) {
+                currentConfigDiv.innerHTML = `
+                    <p>✓ Using custom server: <code>${storedUrl}</code></p>
+                    <p style="color: #888;">Stored in localStorage as: ${STORAGE_KEY}</p>
+                `;
+            } else {
+                currentConfigDiv.innerHTML = `
+                    <p style="color: #ff6600;">⚠ No custom server configured</p>
+                    <p style="color: #888;">Will use production server (https://api.cluster-fluster.com)</p>
+                `;
+            }
+        }
+
+        function configureServer() {
+            const serverUrl = document.getElementById('serverUrl').value.trim();
+
+            if (!serverUrl) {
+                showStatus('❌ Please enter a server URL', true);
+                return;
+            }
+
+            try {
+                // Validate URL format
+                new URL(serverUrl);
+
+                // Set in localStorage (MMKV on web uses localStorage)
+                localStorage.setItem(STORAGE_KEY, serverUrl);
+
+                showStatus(`✓ Server configured: ${serverUrl}<br>Reload the web client to apply changes.`);
+                updateCurrentConfig();
+
+                // Reload after 2 seconds
+                setTimeout(() => {
+                    window.location.href = 'http://localhost:8081';
+                }, 2000);
+            } catch (e) {
+                showStatus('❌ Invalid URL format', true);
+            }
+        }
+
+        function resetServer() {
+            localStorage.removeItem(STORAGE_KEY);
+            showStatus('✓ Server configuration reset to production.<br>Reload the web client to apply changes.');
+            updateCurrentConfig();
+        }
+
+        // Show current config on page load
+        updateCurrentConfig();
+    </script>
+</body>
+</html>

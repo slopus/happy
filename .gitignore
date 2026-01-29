@@ -48,3 +48,18 @@ CLAUDE.local.md
 
 # Development planning notes (keep local, don't commit)
 notes/
+
+*~
+dump.rdb
+
+# Node
+node_modules/
+package.json
+package-lock.json
+
+# Slot PID tracking directories
+.pids-slot-*/
+
+# Symlinks created for backwards compatibility
+happy-demo.sh
+trash

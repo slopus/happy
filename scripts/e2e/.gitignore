@@ -1,0 +1,9 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+
+# Test artifacts
+*.log
+screenshots/
