@@ -1,6 +1,8 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readdir, readFile, stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { createInterface } from 'node:readline';
 import type { Dirent } from 'node:fs';
 
 export interface ClaudeSessionIndexEntry {
@@ -280,4 +282,112 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
 
     results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     return results;
+}
+
+/**
+ * Preview message from a Claude session JSONL file
+ */
+export interface ClaudeSessionPreviewMessage {
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp?: string;
+}
+
+/**
+ * Extract text content from a message object
+ * Handles both string content and array content with text blocks
+ */
+function extractTextContent(message: any): string {
+    if (!message || typeof message !== 'object') return '';
+
+    const content = message.content;
+
+    // String content
+    if (typeof content === 'string') {
+        return content;
+    }
+
+    // Array content - extract text blocks
+    if (Array.isArray(content)) {
+        const textParts: string[] = [];
+        for (const block of content) {
+            if (typeof block === 'string') {
+                textParts.push(block);
+            } else if (block && typeof block === 'object') {
+                if (block.type === 'text' && typeof block.text === 'string') {
+                    textParts.push(block.text);
+                } else if (block.type === 'tool_result' && typeof block.content === 'string') {
+                    // Skip tool results for preview, they're usually verbose
+                    continue;
+                }
+            }
+        }
+        return textParts.join('\n');
+    }
+
+    return '';
+}
+
+/**
+ * Read last N messages from a Claude session JSONL file
+ * Returns messages in chronological order (oldest first)
+ */
+export async function getClaudeSessionPreview(
+    projectId: string,
+    sessionId: string,
+    limit: number = 10
+): Promise<ClaudeSessionPreviewMessage[]> {
+    const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+    const jsonlPath = join(claudeConfigDir, 'projects', projectId, `${sessionId}.jsonl`);
+
+    const messages: ClaudeSessionPreviewMessage[] = [];
+
+    try {
+        // Read the file line by line
+        const fileStream = createReadStream(jsonlPath, { encoding: 'utf8' });
+        const rl = createInterface({
+            input: fileStream,
+            crlfDelay: Infinity
+        });
+
+        const allMessages: ClaudeSessionPreviewMessage[] = [];
+
+        for await (const line of rl) {
+            if (!line.trim()) continue;
+
+            try {
+                const entry = JSON.parse(line);
+
+                // Only extract user and assistant messages
+                if (entry.type === 'user' && entry.message?.role === 'user') {
+                    const text = extractTextContent(entry.message);
+                    if (text) {
+                        allMessages.push({
+                            role: 'user',
+                            content: text,
+                            timestamp: entry.timestamp
+                        });
+                    }
+                } else if (entry.type === 'assistant' && entry.message) {
+                    const text = extractTextContent(entry.message);
+                    if (text) {
+                        allMessages.push({
+                            role: 'assistant',
+                            content: text,
+                            timestamp: entry.timestamp
+                        });
+                    }
+                }
+            } catch {
+                // Skip malformed lines
+                continue;
+            }
+        }
+
+        // Return last N messages (most recent)
+        return allMessages.slice(-limit);
+    } catch (error) {
+        // Return empty array if file doesn't exist or can't be read
+        return [];
+    }
 }

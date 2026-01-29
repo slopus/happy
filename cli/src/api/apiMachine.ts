@@ -9,7 +9,7 @@ import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
 import { registerMoltbotHandlers, moltbotTunnelManager } from '../modules/moltbot';
-import { listClaudeSessionsFromIndex } from '@/claude/utils/claudeSessionIndex';
+import { listClaudeSessionsFromIndex, getClaudeSessionPreview } from '@/claude/utils/claudeSessionIndex';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -198,6 +198,22 @@ export class ApiMachineClient {
             const total = sessions.length;
             const paged = sessions.slice(offset, offset + limit);
             return { sessions: paged, total, offset, limit };
+        });
+
+        // Get preview messages from a Claude session
+        this.rpcHandlerManager.registerHandler('claude-session-preview', async (params: any) => {
+            const { projectId, sessionId, limit = 10 } = params || {};
+
+            if (!projectId || typeof projectId !== 'string') {
+                throw new Error('projectId is required');
+            }
+            if (!sessionId || typeof sessionId !== 'string') {
+                throw new Error('sessionId is required');
+            }
+
+            const messageLimit = typeof limit === 'number' && limit > 0 ? Math.min(Math.floor(limit), 50) : 10;
+            const messages = await getClaudeSessionPreview(projectId, sessionId, messageLimit);
+            return { messages };
         });
     }
 

@@ -374,6 +374,13 @@ export const es: TranslationStructure = {
         resumeFailed: 'Failed to resume Claude session',
     },
 
+    sessionPreview: {
+        noMessages: 'No hay mensajes para previsualizar',
+        olderMessagesHint: 'Los mensajes anteriores no se muestran en la vista previa',
+        resume: 'Reanudar sesión',
+        loadFailed: 'Error al cargar vista previa',
+    },
+
     session: {
         inputPlaceholder: 'Escriba un mensaje ...',
         selectImageSource: 'Seleccionar fuente de imagen',

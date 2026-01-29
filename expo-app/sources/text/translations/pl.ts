@@ -385,6 +385,13 @@ export const pl: TranslationStructure = {
         resumeFailed: 'Failed to resume Claude session',
     },
 
+    sessionPreview: {
+        noMessages: 'Brak wiadomości do podglądu',
+        olderMessagesHint: 'Starsze wiadomości nie są wyświetlane w podglądzie',
+        resume: 'Wznów sesję',
+        loadFailed: 'Nie udało się załadować podglądu',
+    },
+
     session: {
         inputPlaceholder: 'Wpisz wiadomość...',
         selectImageSource: 'Wybierz źródło obrazu',

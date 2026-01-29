@@ -356,6 +356,13 @@ export const ru: TranslationStructure = {
         resumeFailed: 'Failed to resume Claude session',
     },
 
+    sessionPreview: {
+        noMessages: 'Нет сообщений для предпросмотра',
+        olderMessagesHint: 'Старые сообщения не отображаются в предпросмотре',
+        resume: 'Возобновить сеанс',
+        loadFailed: 'Не удалось загрузить предпросмотр',
+    },
+
     server: {
         // Used by Server Configuration screen (app/(app)/server.tsx)
         serverConfiguration: 'Настройка сервера',

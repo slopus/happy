@@ -390,6 +390,14 @@ export const en: TranslationStructure = {
         resumeFailed: 'Failed to resume Claude session',
     },
 
+    sessionPreview: {
+        // Used by session preview sheet
+        noMessages: 'No messages to preview',
+        olderMessagesHint: 'Older messages not shown in preview',
+        resume: 'Resume Session',
+        loadFailed: 'Failed to load preview',
+    },
+
     session: {
         inputPlaceholder: 'Type a message ...',
         selectImageSource: 'Select Image Source',

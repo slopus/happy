@@ -403,6 +403,13 @@ export const it: TranslationStructure = {
         resumeFailed: 'Failed to resume Claude session',
     },
 
+    sessionPreview: {
+        noMessages: 'Nessun messaggio da visualizzare',
+        olderMessagesHint: "I messaggi precedenti non vengono mostrati nell'anteprima",
+        resume: 'Riprendi sessione',
+        loadFailed: 'Impossibile caricare anteprima',
+    },
+
     session: {
         inputPlaceholder: 'Scrivi un messaggio ...',
         selectImageSource: 'Seleziona fonte immagine',

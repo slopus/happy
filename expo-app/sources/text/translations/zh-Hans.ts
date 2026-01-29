@@ -376,6 +376,13 @@ export const zhHans: TranslationStructure = {
         resumeFailed: '恢复 Claude 会话失败',
     },
 
+    sessionPreview: {
+        noMessages: '暂无消息预览',
+        olderMessagesHint: '较早的消息未在预览中显示',
+        resume: '恢复会话',
+        loadFailed: '加载预览失败',
+    },
+
     session: {
         inputPlaceholder: '输入消息...',
         selectImageSource: '选择图片来源',

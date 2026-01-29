@@ -9,7 +9,8 @@ import { ItemList } from '@/components/ItemList';
 import { Text } from '@/components/StyledText';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { machineListClaudeSessions, machineSpawnNewSession, ClaudeSessionIndexEntry } from '@/sync/ops';
+import { machineListClaudeSessions, machineSpawnNewSession, machineGetClaudeSessionPreview, ClaudeSessionIndexEntry, ClaudeSessionPreviewMessage } from '@/sync/ops';
+import { SessionPreviewSheet } from '@/components/SessionPreviewSheet';
 import { Modal } from '@/modal';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -118,6 +119,12 @@ export default function ClaudeSessionHistory() {
     const [loadingMore, setLoadingMore] = React.useState(false);
     const [totalCount, setTotalCount] = React.useState<number | null>(null);
     const [resumingSessionId, setResumingSessionId] = React.useState<string | null>(null);
+
+    // Preview sheet state
+    const [previewEntry, setPreviewEntry] = React.useState<ClaudeSessionIndexEntry | null>(null);
+    const [previewMessages, setPreviewMessages] = React.useState<ClaudeSessionPreviewMessage[] | null>(null);
+    const [previewLoading, setPreviewLoading] = React.useState(false);
+    const lastPreviewSessionIdRef = React.useRef<string | null>(null);
     const selectedMachine = React.useMemo(
         () => machines.find((machine) => machine.id === selectedMachineId) || null,
         [machines, selectedMachineId]
@@ -221,6 +228,68 @@ export default function ClaudeSessionHistory() {
         }
     }, [hasMore, loadingMore, loading, handleLoadMore]);
 
+    const handleOpenPreview = React.useCallback(async (entry: ClaudeSessionIndexEntry) => {
+        if (!selectedMachineId) return;
+
+        const isSameSession = lastPreviewSessionIdRef.current === entry.sessionId;
+
+        // Show the sheet immediately
+        setPreviewEntry(entry);
+
+        // If reopening the same session and we have cached messages, use them
+        if (isSameSession && previewMessages !== null) {
+            return;
+        }
+
+        // Clear messages and start loading for new session
+        lastPreviewSessionIdRef.current = entry.sessionId;
+        setPreviewMessages(null);
+        setPreviewLoading(true);
+
+        // Record start time for animation sync
+        // Spring animation with damping=20, stiffness=300 takes ~400ms to visually settle
+        const startTime = Date.now();
+        const animationDuration = 700;
+
+        // Start loading data in parallel with animation
+        try {
+            const result = await machineGetClaudeSessionPreview(
+                selectedMachineId,
+                entry.projectId,
+                entry.sessionId,
+                { limit: 10 }
+            );
+
+            // Calculate how long to wait before showing data
+            const elapsed = Date.now() - startTime;
+            const remainingDelay = Math.max(0, animationDuration - elapsed);
+
+            if (remainingDelay > 0) {
+                // Wait for animation to complete
+                await new Promise(resolve => setTimeout(resolve, remainingDelay));
+            }
+
+            setPreviewMessages(result.messages);
+        } catch (error) {
+            console.error('Failed to load preview', error);
+            // Still wait for animation if needed
+            const elapsed = Date.now() - startTime;
+            const remainingDelay = Math.max(0, animationDuration - elapsed);
+            if (remainingDelay > 0) {
+                await new Promise(resolve => setTimeout(resolve, remainingDelay));
+            }
+            setPreviewMessages([]);
+        } finally {
+            setPreviewLoading(false);
+        }
+    }, [selectedMachineId, previewMessages]);
+
+    const handleClosePreview = React.useCallback(() => {
+        // Only set entry to null to trigger close animation
+        // Keep messages cached for potential reopening of same session
+        setPreviewEntry(null);
+    }, []);
+
     const handleResume = React.useCallback(async (entry: ClaudeSessionIndexEntry) => {
         if (!selectedMachineId || resumingSessionId) return;
         if (!entry.originalPath) {
@@ -271,6 +340,13 @@ export default function ClaudeSessionHistory() {
             setResumingSessionId(null);
         }
     }, [selectedMachineId, resumingSessionId, router]);
+
+    const handleResumeFromPreview = React.useCallback(() => {
+        if (previewEntry) {
+            handleClosePreview();
+            handleResume(previewEntry);
+        }
+    }, [previewEntry, handleClosePreview, handleResume]);
 
     return (
         <ItemList style={{ paddingTop: 0 }} onScroll={handleScroll} scrollEventThrottle={200}>
@@ -360,7 +436,19 @@ export default function ClaudeSessionHistory() {
                                     subtitleLines={2}
                                     disabled={!entry.originalPath || resumingSessionId !== null}
                                     showChevron={false}
-                                    iconContainerStyle={{ width: 48, height: 48 }}
+                                    titleStyle={{
+                                        fontSize: 15,
+                                        fontWeight: '500',
+                                    }}
+                                    subtitleStyle={{
+                                        fontSize: 13,
+                                        lineHeight: 16,
+                                    }}
+                                    iconContainerStyle={{ 
+                                        width: 48, 
+                                        height: 48,
+                                        marginRight: 16
+                                    }}
                                     icon={(
                                         <Image
                                             source={require('@/assets/images/icon-claude.png')}
@@ -387,7 +475,7 @@ export default function ClaudeSessionHistory() {
                                             <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                                         </View>
                                     )}
-                                    onPress={() => handleResume(entry)}
+                                    onPress={() => handleOpenPreview(entry)}
                                 />
                             );
                         })}
@@ -399,6 +487,15 @@ export default function ClaudeSessionHistory() {
                     </View>
                 )}
             </View>
+
+            <SessionPreviewSheet
+                visible={previewEntry !== null}
+                entry={previewEntry}
+                messages={previewMessages}
+                loading={previewLoading}
+                onClose={handleClosePreview}
+                onResume={handleResumeFromPreview}
+            />
         </ItemList>
     );
 }

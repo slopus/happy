@@ -375,6 +375,13 @@ export const zhHant: TranslationStructure = {
         resumeFailed: '無法繼續 Claude 工作階段',
     },
 
+    sessionPreview: {
+        noMessages: '暫無訊息預覽',
+        olderMessagesHint: '較早的訊息未在預覽中顯示',
+        resume: '繼續工作階段',
+        loadFailed: '載入預覽失敗',
+    },
+
     session: {
         inputPlaceholder: '輸入訊息...',
         selectImageSource: '選擇圖片來源',

@@ -406,6 +406,13 @@ export const ja: TranslationStructure = {
         resumeFailed: 'Failed to resume Claude session',
     },
 
+    sessionPreview: {
+        noMessages: 'プレビューするメッセージがありません',
+        olderMessagesHint: '古いメッセージはプレビューに表示されません',
+        resume: 'セッションを再開',
+        loadFailed: 'プレビューの読み込みに失敗しました',
+    },
+
     session: {
         inputPlaceholder: 'メッセージを入力...',
         selectImageSource: '画像ソースを選択',

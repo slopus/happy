@@ -164,6 +164,12 @@ export interface ClaudeSessionIndexEntry {
     gitBranch?: string | null;
 }
 
+export interface ClaudeSessionPreviewMessage {
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp?: string;
+}
+
 // Exported session operation functions
 
 /**
@@ -245,6 +251,42 @@ export async function machineListClaudeSessions(
     }
     const total = typeof result.total === 'number' ? result.total : result.sessions.length;
     return { sessions: result.sessions, total };
+}
+
+/**
+ * Get preview messages from a Claude session
+ */
+export async function machineGetClaudeSessionPreview(
+    machineId: string,
+    projectId: string,
+    sessionId: string,
+    options?: { limit?: number; timeoutMs?: number }
+): Promise<{ messages: ClaudeSessionPreviewMessage[] }> {
+    const timeoutMs = options?.timeoutMs ?? 10000;
+    const limit = options?.limit ?? 10;
+
+    const rpcPromise = apiSocket.machineRPC<any, { projectId: string; sessionId: string; limit: number }>(
+        machineId,
+        'claude-session-preview',
+        { projectId, sessionId, limit }
+    );
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+    });
+
+    const result = await Promise.race([rpcPromise, timeoutPromise]);
+
+    if (!result) {
+        throw new Error('RPC returned empty response');
+    }
+    if (result.error) {
+        throw new Error(result.error);
+    }
+    if (!Array.isArray(result.messages)) {
+        return { messages: [] };
+    }
+    return { messages: result.messages };
 }
 
 /**
