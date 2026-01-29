@@ -105,6 +105,30 @@ packet-beta
 - `version` is currently `0`.
 
 ## Data encryption key (dataKey variant)
+
+```mermaid
+flowchart LR
+    subgraph "Key Wrapping"
+        DEK[Data Encryption Key]
+        Eph[Ephemeral Keypair]
+        Box[tweetnacl.box]
+        Bundle[Key Bundle]
+    end
+
+    DEK --> Box
+    Eph --> Box
+    Box --> Bundle
+
+    subgraph "Content Encryption"
+        Plain[Plaintext]
+        AES[AES-256-GCM]
+        Cipher[Ciphertext]
+    end
+
+    DEK --> AES
+    Plain --> AES --> Cipher
+```
+
 When `dataKey` is used, the actual content key is encrypted for storage/transport.
 
 **Algorithm**: `tweetnacl.box` with an ephemeral keypair.
@@ -116,6 +140,13 @@ When `dataKey` is used, the actual content key is encrypted for storage/transpor
 [ ephPublicKey (32) | nonce (24) | ciphertext (...) ]
 ```
 
+```mermaid
+packet-beta
+  0-31: "ephPublicKey (32 bytes)"
+  32-55: "nonce (24 bytes)"
+  56-87: "ciphertext (...)"
+```
+
 This blob is then wrapped with a version byte before being sent/stored:
 ```
 [ version (1 = 0) | boxBundle (...) ]
@@ -124,6 +155,43 @@ This blob is then wrapped with a version byte before being sent/stored:
 The resulting bytes are base64-encoded and placed in fields such as `dataEncryptionKey` for sessions/machines/artifacts.
 
 ## Where encryption is applied
+
+```mermaid
+graph TB
+    subgraph "Client-Encrypted Fields"
+        direction TB
+        S1[Session metadata]
+        S2[Session agent state]
+        S3[Session messages]
+        M1[Machine metadata]
+        M2[Daemon state]
+        A1[Artifact header]
+        A2[Artifact body]
+        K1[KV store values]
+        AK[Access keys]
+    end
+
+    subgraph "Server Storage"
+        DB[(Postgres)]
+    end
+
+    S1 & S2 & S3 --> |opaque strings| DB
+    M1 & M2 --> |opaque strings| DB
+    A1 & A2 --> |opaque bytes| DB
+    K1 --> |opaque bytes| DB
+    AK --> |opaque string| DB
+
+    style S1 fill:#e1f5fe
+    style S2 fill:#e1f5fe
+    style S3 fill:#e1f5fe
+    style M1 fill:#e1f5fe
+    style M2 fill:#e1f5fe
+    style A1 fill:#e1f5fe
+    style A2 fill:#e1f5fe
+    style K1 fill:#e1f5fe
+    style AK fill:#e1f5fe
+```
+
 The server treats these fields as opaque strings/blobs. The client encrypts them before sending.
 
 ### Session metadata + agent state
@@ -134,6 +202,23 @@ The server treats these fields as opaque strings/blobs. The client encrypts them
   - `update-session` events
 
 ### Session messages
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server
+    participant DB as Postgres
+
+    Client->>Client: Encrypt message
+    Client->>Server: emit "message" { sid, message: "<base64>" }
+    Server->>DB: Store { t: "encrypted", c: "<base64>" }
+
+    Note over Server: Later, sync to other clients
+
+    Server->>Client: update "new-message"<br/>content: { t: "encrypted", c: "<base64>" }
+    Client->>Client: Decrypt message
+```
+
 - Client emits `message` with a base64 encrypted blob.
 - Server stores it as `SessionMessage.content`:
   - `{ t: "encrypted", c: "<base64>" }`
@@ -160,11 +245,26 @@ The server treats these fields as opaque strings/blobs. The client encrypts them
 - `kvMutate` expects base64 strings; `kvGet/list/bulk` return base64 strings.
 
 ## On-wire formats (encrypted fields)
+
+```mermaid
+graph LR
+    subgraph "Wire Format"
+        JSON[JSON payload]
+        B64["base64 strings<br/>(encrypted bytes)"]
+        Plain["plain values<br/>(ids, versions, timestamps)"]
+    end
+
+    JSON --> B64
+    JSON --> Plain
+```
+
 Below are the typical JSON shapes that carry encrypted data. All `...` values are base64 strings representing encrypted bytes.
 
 ### Session creation
-```
+```http
 POST /v1/sessions
+```
+```json
 {
   "tag": "<string>",
   "metadata": "<base64 encrypted>",
@@ -176,6 +276,8 @@ POST /v1/sessions
 ### Encrypted message (client -> server)
 ```
 Socket emit: "message"
+```
+```json
 {
   "sid": "<session id>",
   "message": "<base64 encrypted>"
@@ -185,7 +287,9 @@ Socket emit: "message"
 ### Encrypted message (server -> client)
 ```
 update.body.t = "new-message"
-update.body.message.content = {
+```
+```json
+{
   "t": "encrypted",
   "c": "<base64 encrypted>"
 }
@@ -194,6 +298,8 @@ update.body.message.content = {
 ### Session metadata update (WebSocket)
 ```
 Socket emit: "update-metadata"
+```
+```json
 {
   "sid": "<session id>",
   "metadata": "<base64 encrypted>",
@@ -204,6 +310,8 @@ Socket emit: "update-metadata"
 ### Machine update (WebSocket)
 ```
 Socket emit: "machine-update-state"
+```
+```json
 {
   "machineId": "<machine id>",
   "daemonState": "<base64 encrypted>",
@@ -212,8 +320,10 @@ Socket emit: "machine-update-state"
 ```
 
 ### Artifact create/update (HTTP)
-```
+```http
 POST /v1/artifacts
+```
+```json
 {
   "id": "<uuid>",
   "header": "<base64 encrypted>",
@@ -223,8 +333,10 @@ POST /v1/artifacts
 ```
 
 ### KV mutate (HTTP)
-```
+```http
 POST /v1/kv
+```
+```json
 {
   "mutations": [
     { "key": "prefs.theme", "value": "<base64 encrypted>", "version": 2 },
@@ -234,8 +346,136 @@ POST /v1/kv
 ```
 
 ## Client-side types (shapes used before encryption)
-These are the client-side structures that get encrypted and sent over the wire. They are defined in `packages/happy-cli/src/api/types.ts`.\n\n### Session message content (encrypted)\nThe payload stored in `SessionMessage.content` is always encrypted and wrapped as:\n```\n{ \"t\": \"encrypted\", \"c\": \"<base64 encrypted>\" }\n```\n\n### Encrypted message payload (plaintext before encryption)\nMessages are encrypted as `MessageContent` and then base64 encoded:\n\n**User message**\n```\n{\n  \"role\": \"user\",\n  \"content\": { \"type\": \"text\", \"text\": \"...\" },\n  \"localKey\"?: \"...\",\n  \"meta\"?: { ... }\n}\n```\n\n**Agent message**\n```\n{\n  \"role\": \"agent\",\n  \"content\": { \"type\": \"output\" | \"codex\" | \"acp\" | \"event\", \"data\": ... },\n  \"meta\"?: { ... }\n}\n```\n\n### Metadata (encrypted)\n```\n{\n  \"path\": \"...\",\n  \"host\": \"...\",\n  \"homeDir\": \"...\",\n  \"happyHomeDir\": \"...\",\n  \"happyLibDir\": \"...\",\n  \"happyToolsDir\": \"...\",\n  \"version\"?: \"...\",\n  \"name\"?: \"...\",\n  \"os\"?: \"...\",\n  \"summary\"?: { \"text\": \"...\", \"updatedAt\": 123 },\n  \"machineId\"?: \"...\",\n  \"claudeSessionId\"?: \"...\",\n  \"tools\"?: [\"...\"],\n  \"slashCommands\"?: [\"...\"],\n  \"startedFromDaemon\"?: true,\n  \"hostPid\"?: 12345,\n  \"startedBy\"?: \"daemon\" | \"terminal\",\n  \"lifecycleState\"?: \"running\" | \"archiveRequested\" | \"archived\" | string,\n  \"lifecycleStateSince\"?: 123,\n  \"archivedBy\"?: \"...\",\n  \"archiveReason\"?: \"...\",\n  \"flavor\"?: \"...\"\n}\n```\n\n### Agent state (encrypted)\n```\n{\n  \"controlledByUser\"?: true | false | null,\n  \"requests\"?: {\n    \"<id>\": { \"tool\": \"...\", \"arguments\": ..., \"createdAt\": 123 }\n  },\n  \"completedRequests\"?: {\n    \"<id>\": {\n      \"tool\": \"...\",\n      \"arguments\": ...,\n      \"createdAt\": 123,\n      \"completedAt\": 123,\n      \"status\": \"canceled\" | \"denied\" | \"approved\",\n      \"reason\"?: \"...\",\n      \"mode\"?: \"default\" | \"acceptEdits\" | \"bypassPermissions\" | \"plan\" | \"read-only\" | \"safe-yolo\" | \"yolo\",\n      \"decision\"?: \"approved\" | \"approved_for_session\" | \"denied\" | \"abort\",\n      \"allowTools\"?: [\"...\"]\n    }\n  }\n}\n```\n\n### Machine metadata (encrypted)\n```\n{\n  \"host\": \"...\",\n  \"platform\": \"...\",\n  \"happyCliVersion\": \"...\",\n  \"homeDir\": \"...\",\n  \"happyHomeDir\": \"...\",\n  \"happyLibDir\": \"...\"\n}\n```\n\n### Daemon state (encrypted)\n```\n{\n  \"status\": \"running\" | \"shutting-down\" | string,\n  \"pid\"?: 123,\n  \"httpPort\"?: 123,\n  \"startedAt\"?: 123,\n  \"shutdownRequestedAt\"?: 123,\n  \"shutdownSource\"?: \"mobile-app\" | \"cli\" | \"os-signal\" | \"unknown\" | string\n}\n```\n+
+These are the client-side structures that get encrypted and sent over the wire. They are defined in `packages/happy-cli/src/api/types.ts`.
+
+### Session message content (encrypted)
+The payload stored in `SessionMessage.content` is always encrypted and wrapped as:
+```json
+{ "t": "encrypted", "c": "<base64 encrypted>" }
+```
+
+### Encrypted message payload (plaintext before encryption)
+Messages are encrypted as `MessageContent` and then base64 encoded:
+
+**User message**
+```json
+{
+  "role": "user",
+  "content": { "type": "text", "text": "..." },
+  "localKey": "...",
+  "meta": { }
+}
+```
+
+**Agent message**
+```json
+{
+  "role": "agent",
+  "content": { "type": "output | codex | acp | event", "data": "..." },
+  "meta": { }
+}
+```
+
+### Metadata (encrypted)
+```json
+{
+  "path": "...",
+  "host": "...",
+  "homeDir": "...",
+  "happyHomeDir": "...",
+  "happyLibDir": "...",
+  "happyToolsDir": "...",
+  "version": "...",
+  "name": "...",
+  "os": "...",
+  "summary": { "text": "...", "updatedAt": 123 },
+  "machineId": "...",
+  "claudeSessionId": "...",
+  "tools": ["..."],
+  "slashCommands": ["..."],
+  "startedFromDaemon": true,
+  "hostPid": 12345,
+  "startedBy": "daemon | terminal",
+  "lifecycleState": "running | archiveRequested | archived",
+  "lifecycleStateSince": 123,
+  "archivedBy": "...",
+  "archiveReason": "...",
+  "flavor": "..."
+}
+```
+
+### Agent state (encrypted)
+```json
+{
+  "controlledByUser": true,
+  "requests": {
+    "<id>": { "tool": "...", "arguments": {}, "createdAt": 123 }
+  },
+  "completedRequests": {
+    "<id>": {
+      "tool": "...",
+      "arguments": {},
+      "createdAt": 123,
+      "completedAt": 123,
+      "status": "canceled | denied | approved",
+      "reason": "...",
+      "mode": "default | acceptEdits | bypassPermissions | plan | read-only | safe-yolo | yolo",
+      "decision": "approved | approved_for_session | denied | abort",
+      "allowTools": ["..."]
+    }
+  }
+}
+```
+
+### Machine metadata (encrypted)
+```json
+{
+  "host": "...",
+  "platform": "...",
+  "happyCliVersion": "...",
+  "homeDir": "...",
+  "happyHomeDir": "...",
+  "happyLibDir": "..."
+}
+```
+
+### Daemon state (encrypted)
+```json
+{
+  "status": "running | shutting-down",
+  "pid": 123,
+  "httpPort": 123,
+  "startedAt": 123,
+  "shutdownRequestedAt": 123,
+  "shutdownSource": "mobile-app | cli | os-signal | unknown"
+}
+```
+
 ## Decryption flow (client side)
+
+```mermaid
+flowchart TD
+    Start([Receive encrypted field]) --> B64[Decode base64 to bytes]
+    B64 --> Check{Has dataKey?}
+
+    Check --> |No| Legacy[Use legacy variant]
+    Check --> |Yes| DataKey[Use dataKey variant]
+
+    subgraph "Legacy Path"
+        Legacy --> ExtractL[Extract nonce + ciphertext]
+        ExtractL --> DecryptL[secretbox.open with shared key]
+    end
+
+    subgraph "DataKey Path"
+        DataKey --> GetDEK[Decrypt dataEncryptionKey bundle]
+        GetDEK --> ExtractD[Extract version + nonce + ciphertext + tag]
+        ExtractD --> DecryptD[AES-GCM decrypt with DEK]
+    end
+
+    DecryptL --> Plain([Plaintext JSON])
+    DecryptD --> Plain
+```
+
 - Read base64 field from API/Socket.
 - Decode base64 to bytes.
 - Choose encryption variant (`legacy` or `dataKey`) based on local credentials.
@@ -244,6 +484,33 @@ These are the client-side structures that get encrypted and sent over the wire. 
 For `dataKey`, clients must first decrypt or derive the per-session/per-machine data key from the stored `dataEncryptionKey` bundle.
 
 ## Server-side encryption (service tokens)
+
+```mermaid
+graph LR
+    subgraph "Third-Party Tokens"
+        GH[GitHub OAuth]
+        OAI[OpenAI]
+        ANT[Anthropic]
+        GEM[Gemini]
+    end
+
+    subgraph "Server"
+        Secret[HANDY_MASTER_SECRET]
+        KeyTree[KeyTree]
+        Encrypt[Encrypt]
+    end
+
+    DB[(Postgres)]
+
+    Secret --> KeyTree --> Encrypt
+    GH & OAI & ANT & GEM --> Encrypt --> DB
+
+    style GH fill:#fff3e0
+    style OAI fill:#fff3e0
+    style ANT fill:#fff3e0
+    style GEM fill:#fff3e0
+```
+
 The server encrypts certain third-party tokens at rest:
 - GitHub OAuth tokens (`GithubUser.token`).
 - Vendor service tokens (`ServiceAccountToken.token`).
@@ -251,6 +518,26 @@ The server encrypts certain third-party tokens at rest:
 These are encrypted with a server-only KeyTree derived from `HANDY_MASTER_SECRET` and are not end-to-end encrypted.
 
 ## Encoding conventions
+
+```mermaid
+graph TB
+    subgraph "Encoding Rules"
+        E1["Encrypted bytes → base64 string"]
+        E2["Timestamps → plain number (epoch ms)"]
+        E3["IDs, tags, versions → plain string/number"]
+    end
+
+    subgraph "Examples"
+        Ex1["metadata: 'SGVsbG8gV29ybGQ='"]
+        Ex2["createdAt: 1704067200000"]
+        Ex3["id: 'abc-123', version: 5"]
+    end
+
+    E1 --> Ex1
+    E2 --> Ex2
+    E3 --> Ex3
+```
+
 - All encrypted bytes are base64 strings on the wire unless explicitly noted.
 - Timestamps remain plain numbers (epoch ms) and are not encrypted by the server.
 - Non-encrypted identifiers (ids, tags, versions) are always plain strings/numbers.
