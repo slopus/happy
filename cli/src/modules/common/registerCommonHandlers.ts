@@ -121,6 +121,7 @@ export interface SpawnSessionOptions {
     sessionId?: string;
     resumeSessionId?: string;
     sessionTitle?: string;
+    skipForkSession?: boolean;
     approvedNewDirectoryCreation?: boolean;
     agent?: 'claude' | 'codex' | 'gemini';
     token?: string;

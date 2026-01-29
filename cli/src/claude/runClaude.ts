@@ -191,13 +191,24 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Create realtime session
     const session = api.sessionSyncClient(response);
     const sessionTitle = process.env.HAPPY_SESSION_TITLE?.trim();
-    if (sessionTitle) {
+    const initialClaudeSessionId = process.env.HAPPY_CLAUDE_RESUME_SESSION_ID?.trim();
+    const skipForkSession = process.env.HAPPY_CLAUDE_SKIP_FORK_SESSION === '1';
+
+    // Set initial metadata (title and/or claudeSessionId) if available
+    // Only set claudeSessionId if skipForkSession is true (pre-forked session like duplicate)
+    // Otherwise, Claude will create a new session ID via --fork-session and onSessionFound will update it
+    if (sessionTitle || (initialClaudeSessionId && skipForkSession)) {
         session.updateMetadata((currentMetadata) => ({
             ...currentMetadata,
-            summary: {
-                text: sessionTitle,
-                updatedAt: Date.now()
-            }
+            ...(sessionTitle && {
+                summary: {
+                    text: sessionTitle,
+                    updatedAt: Date.now()
+                }
+            }),
+            ...(initialClaudeSessionId && skipForkSession && {
+                claudeSessionId: initialClaudeSessionId
+            })
         }));
     }
 

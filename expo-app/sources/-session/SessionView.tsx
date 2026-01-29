@@ -282,10 +282,18 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }
 
             // Step 2: Spawn a new Happy session that resumes the forked Claude session
+            // Generate new title with time suffix (e.g., "原标题_1420" for 14:20)
+            const originalTitle = getSessionName(session);
+            const now = new Date();
+            const timeSuffix = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+            const newSessionTitle = `${originalTitle}_${timeSuffix}`;
+
             const spawnResult = await machineSpawnNewSession({
                 machineId,
                 directory: sessionPath,
                 resumeSessionId: duplicateResult.newSessionId,
+                sessionTitle: newSessionTitle,
+                skipForkSession: true,
             });
 
             if (spawnResult.type === 'success' && spawnResult.sessionId) {
