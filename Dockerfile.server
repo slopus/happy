@@ -1,0 +1,51 @@
+# Stage 1: install dependencies with workspace context
+FROM node:20 AS deps
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y python3 ffmpeg make g++ build-essential && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /repo
+
+COPY package.json yarn.lock ./
+
+RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli
+
+COPY packages/happy-app/package.json packages/happy-app/
+COPY packages/happy-server/package.json packages/happy-server/
+COPY packages/happy-cli/package.json packages/happy-cli/
+
+# Workspace postinstall requirements
+COPY packages/happy-app/patches packages/happy-app/patches
+COPY packages/happy-server/prisma packages/happy-server/prisma
+COPY packages/happy-cli/scripts packages/happy-cli/scripts
+COPY packages/happy-cli/tools packages/happy-cli/tools
+
+RUN yarn install --frozen-lockfile --ignore-engines
+
+# Stage 2: build the server
+FROM deps AS builder
+
+COPY packages/happy-server ./packages/happy-server
+
+RUN yarn workspace happy-server build
+
+# Stage 3: runtime
+FROM node:20 AS runner
+
+WORKDIR /repo
+
+# Runtime dependencies
+RUN apt-get update && apt-get install -y python3 ffmpeg && rm -rf /var/lib/apt/lists/*
+
+# Set environment to production
+ENV NODE_ENV=production
+
+# Copy necessary files from the builder stage
+COPY --from=builder /repo/node_modules /repo/node_modules
+COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
+
+# Expose the port the app will run on
+EXPOSE 3000
+
+# Command to run the application
+CMD ["yarn", "--cwd", "packages/happy-server", "start"]

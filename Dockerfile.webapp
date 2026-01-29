@@ -1,41 +1,43 @@
-# Stage 1: Building the application
-FROM node:20-alpine AS builder
+# Stage 1: install dependencies with workspace context
+FROM node:20-alpine AS deps
 
-# Build argument for PostHog API key with default empty value
+WORKDIR /repo
+
+COPY package.json yarn.lock ./
+
+RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli
+
+COPY packages/happy-app/package.json packages/happy-app/
+COPY packages/happy-server/package.json packages/happy-server/
+COPY packages/happy-cli/package.json packages/happy-cli/
+
+# Workspace postinstall requirements
+COPY packages/happy-app/patches packages/happy-app/patches
+COPY packages/happy-server/prisma packages/happy-server/prisma
+COPY packages/happy-cli/scripts packages/happy-cli/scripts
+COPY packages/happy-cli/tools packages/happy-cli/tools
+
+RUN yarn install --frozen-lockfile --ignore-engines
+
+# Stage 2: build the web app
+FROM deps AS builder
+
 ARG POSTHOG_API_KEY=""
 ARG REVENUE_CAT_STRIPE=""
 
-WORKDIR /app
-
-# Copy package.json and yarn.lock
-COPY patches ./patches
-COPY package.json yarn.lock ./
-
-# Install dependencies
-RUN yarn install --frozen-lockfile --ignore-engines
-
-# Copy the rest of the application code
-COPY sources ./sources
-COPY public ./public
-COPY plugins ./plugins
-COPY * ./
-
-# Build the application for web in production mode
 ENV NODE_ENV=production
 ENV APP_ENV=production
 ENV EXPO_PUBLIC_POSTHOG_API_KEY=$POSTHOG_API_KEY
 ENV EXPO_PUBLIC_REVENUE_CAT_STRIPE=$REVENUE_CAT_STRIPE
-RUN yarn expo export --platform web --output-dir dist
 
-# Debug: List what's in dist to see if public files are there
-RUN ls -la dist/
-RUN ls -la public/
+COPY packages/happy-app ./packages/happy-app
 
-# Stage 2: Runtime with Nginx
+RUN yarn workspace happy-app expo export --platform web --output-dir dist
+
+# Stage 3: runtime with Nginx
 FROM nginx:alpine AS runner
 
-# Copy the built static files from builder stage to nginx html directory
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /repo/packages/happy-app/dist /usr/share/nginx/html
 
 # Remove default nginx configuration
 RUN rm /etc/nginx/conf.d/default.conf
@@ -88,4 +90,4 @@ RUN echo 'server { \
 # Expose the standard nginx port
 EXPOSE 80
 
-# Nginx starts automatically in the foreground with CMD ["nginx", "-g", "daemon off;"] 
+# Nginx starts automatically in the foreground with CMD ["nginx", "-g", "daemon off;"]
