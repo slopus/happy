@@ -999,7 +999,22 @@ export const it: TranslationStructure = {
         friendRequestGeneric: 'Nuova richiesta di amicizia',
         friendAccepted: ({ name }: { name: string }) => `Ora sei amico di ${name}`,
         friendAcceptedGeneric: 'Richiesta di amicizia accettata',
-    }
+    },
+
+    duplicate: {
+        // Duplicate/fork conversation feature
+        title: 'Duplica conversazione',
+        description: 'Seleziona un messaggio da cui ricominciare. Il messaggio selezionato e tutto ciò che segue verrà rimosso.',
+        notAvailable: 'La duplicazione non è disponibile per questa sessione',
+        loadFailed: 'Impossibile caricare la cronologia della conversazione',
+        confirmTitle: 'Conferma duplicazione',
+        confirmMessage: 'Verrà creata una nuova conversazione a partire da prima del messaggio selezionato. Continuare?',
+        failed: 'Impossibile duplicare la conversazione',
+        noMessages: 'Nessun messaggio da duplicare',
+        confirm: 'Duplica',
+        duplicating: 'Duplicazione...',
+        commandDescription: 'Duplica la conversazione da un punto specifico',
+    },
 } as const;
 
 export type TranslationsIt = typeof it;

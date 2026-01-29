@@ -170,6 +170,13 @@ export interface ClaudeSessionPreviewMessage {
     timestamp?: string;
 }
 
+export interface ClaudeUserMessageWithUuid {
+    uuid: string;
+    content: string;
+    timestamp?: string;
+    index: number;
+}
+
 // Exported session operation functions
 
 /**
@@ -594,7 +601,7 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
         const response = await apiSocket.request(`/v1/sessions/${sessionId}`, {
             method: 'DELETE'
         });
-        
+
         if (response.ok) {
             const result = await response.json();
             return { success: true };
@@ -609,6 +616,87 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
         return {
             success: false,
             message: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
+ * Get user messages with UUIDs from a Claude session
+ * Used for the duplicate/fork feature to let users select a point to fork from
+ */
+export async function machineGetClaudeSessionUserMessages(
+    machineId: string,
+    claudeSessionId: string,
+    options?: { limit?: number; timeoutMs?: number }
+): Promise<{ messages: ClaudeUserMessageWithUuid[]; projectId: string }> {
+    const timeoutMs = options?.timeoutMs ?? 15000;
+    const limit = options?.limit ?? 50;
+
+    const rpcPromise = apiSocket.machineRPC<any, { sessionId: string; limit: number }>(
+        machineId,
+        'claude-session-user-messages',
+        { sessionId: claudeSessionId, limit }
+    );
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+    });
+
+    const result = await Promise.race([rpcPromise, timeoutPromise]);
+
+    if (!result) {
+        throw new Error('RPC returned empty response');
+    }
+    if (result.error) {
+        throw new Error(result.error);
+    }
+    if (!Array.isArray(result.messages)) {
+        return { messages: [], projectId: result.projectId || '' };
+    }
+    return { messages: result.messages, projectId: result.projectId };
+}
+
+/**
+ * Duplicate (fork and truncate) a Claude session
+ * Creates a new session that is a copy of the original up to the specified point
+ */
+export async function machineDuplicateClaudeSession(
+    machineId: string,
+    claudeSessionId: string,
+    truncateBeforeUuid: string,
+    options?: { timeoutMs?: number }
+): Promise<{ success: boolean; newSessionId?: string; errorMessage?: string }> {
+    const timeoutMs = options?.timeoutMs ?? 90000; // Longer timeout for fork + truncate operation
+
+    try {
+        const rpcPromise = apiSocket.machineRPC<any, { sessionId: string; truncateBeforeUuid: string }>(
+            machineId,
+            'claude-duplicate-session',
+            { sessionId: claudeSessionId, truncateBeforeUuid }
+        );
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+        });
+
+        const result = await Promise.race([rpcPromise, timeoutPromise]);
+
+        if (!result) {
+            return { success: false, errorMessage: 'RPC returned empty response' };
+        }
+        if (result.error) {
+            return { success: false, errorMessage: result.error };
+        }
+        return {
+            success: result.success ?? false,
+            newSessionId: result.newSessionId,
+            errorMessage: result.errorMessage
+        };
+    } catch (error) {
+        // Catch RPC errors (method not found, timeout, etc.)
+        return {
+            success: false,
+            errorMessage: error instanceof Error ? error.message : 'Unknown RPC error'
         };
     }
 }

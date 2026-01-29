@@ -972,6 +972,21 @@ export const zhHant: TranslationStructure = {
         friendAcceptedGeneric: '好友請求已接受',
     },
 
+    duplicate: {
+        // Duplicate/fork conversation feature
+        title: '複製對話',
+        description: '選擇一則訊息重新開始。選定的訊息及其之後的所有內容將被刪除。',
+        notAvailable: '此工作階段無法使用複製功能',
+        loadFailed: '載入對話歷史失敗',
+        confirmTitle: '確認複製',
+        confirmMessage: '將建立一個從選定訊息之前開始的新對話。是否繼續？',
+        failed: '複製對話失敗',
+        noMessages: '沒有可複製的訊息',
+        confirm: '複製',
+        duplicating: '複製中...',
+        commandDescription: '從特定位置複製對話',
+    },
+
     profiles: {
         // Profile management feature
         title: '設定檔',

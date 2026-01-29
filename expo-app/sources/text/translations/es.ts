@@ -972,6 +972,21 @@ export const es: TranslationStructure = {
         friendAcceptedGeneric: 'Solicitud de amistad aceptada',
     },
 
+    duplicate: {
+        // Duplicate/fork conversation feature
+        title: 'Duplicar conversación',
+        description: 'Selecciona un mensaje para empezar de nuevo desde ahí. El mensaje seleccionado y todo lo posterior será eliminado.',
+        notAvailable: 'La duplicación no está disponible para esta sesión',
+        loadFailed: 'Error al cargar el historial de conversación',
+        confirmTitle: 'Confirmar duplicación',
+        confirmMessage: 'Se creará una nueva conversación comenzando antes del mensaje seleccionado. ¿Continuar?',
+        failed: 'Error al duplicar la conversación',
+        noMessages: 'No hay mensajes para duplicar',
+        confirm: 'Duplicar',
+        duplicating: 'Duplicando...',
+        commandDescription: 'Duplicar conversación desde un punto específico',
+    },
+
     profiles: {
         // Profile management feature
         title: 'Perfiles',

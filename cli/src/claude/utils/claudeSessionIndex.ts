@@ -391,3 +391,108 @@ export async function getClaudeSessionPreview(
         return [];
     }
 }
+
+/**
+ * User message from a Claude session with UUID for identification
+ */
+export interface ClaudeUserMessageWithUuid {
+    uuid: string;
+    content: string;
+    timestamp?: string;
+    index: number;
+}
+
+/**
+ * Find the project ID for a given session ID by scanning the projects directory
+ * Returns null if the session is not found
+ */
+export async function findClaudeProjectId(sessionId: string): Promise<string | null> {
+    const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+    const projectsDir = join(claudeConfigDir, 'projects');
+
+    let dirents: Dirent[];
+    try {
+        dirents = await readdir(projectsDir, { withFileTypes: true }) as Dirent[];
+    } catch {
+        return null;
+    }
+
+    // Search for the session file in each project directory
+    for (const dirent of dirents) {
+        if (!dirent.isDirectory()) continue;
+        const projectId = dirent.name;
+        const sessionPath = join(projectsDir, projectId, `${sessionId}.jsonl`);
+
+        try {
+            await stat(sessionPath);
+            // File exists, return this project ID
+            return projectId;
+        } catch {
+            // File doesn't exist in this project, continue searching
+            continue;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Get user messages from a Claude session with their UUIDs
+ * Used for the duplicate/fork feature to let users select a point to fork from
+ */
+export async function getClaudeSessionUserMessages(
+    projectId: string,
+    sessionId: string,
+    limit: number = 50
+): Promise<ClaudeUserMessageWithUuid[]> {
+    const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+    const jsonlPath = join(claudeConfigDir, 'projects', projectId, `${sessionId}.jsonl`);
+
+    try {
+        const fileStream = createReadStream(jsonlPath, { encoding: 'utf8' });
+        const rl = createInterface({
+            input: fileStream,
+            crlfDelay: Infinity
+        });
+
+        const allUserMessages: ClaudeUserMessageWithUuid[] = [];
+        const seenUuids = new Set<string>();
+        let messageIndex = 0;
+
+        for await (const line of rl) {
+            if (!line.trim()) continue;
+
+            try {
+                const entry = JSON.parse(line);
+
+                // Only extract user messages with their UUIDs
+                if (entry.type === 'user' && entry.message?.role === 'user' && entry.uuid) {
+                    // Skip duplicate UUIDs (Claude sometimes writes the same message twice with different formats)
+                    if (seenUuids.has(entry.uuid)) {
+                        continue;
+                    }
+                    seenUuids.add(entry.uuid);
+
+                    const text = extractTextContent(entry.message);
+                    if (text) {
+                        allUserMessages.push({
+                            uuid: entry.uuid,
+                            content: text,
+                            timestamp: entry.timestamp,
+                            index: messageIndex
+                        });
+                        messageIndex++;
+                    }
+                }
+            } catch {
+                // Skip malformed lines
+                continue;
+            }
+        }
+
+        // Return last N messages (most recent first for display)
+        return allUserMessages.slice(-limit);
+    } catch {
+        return [];
+    }
+}

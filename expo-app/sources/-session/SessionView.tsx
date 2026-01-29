@@ -4,6 +4,7 @@ import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
+import { DuplicateSheet } from '@/components/DuplicateSheet';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
@@ -12,7 +13,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort } from '@/sync/ops';
+import { sessionAbort, machineGetClaudeSessionUserMessages, machineDuplicateClaudeSession, machineSpawnNewSession, ClaudeUserMessageWithUuid } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
@@ -192,6 +193,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     } = useImagePicker({ maxImages: 4 });
     const [isUploadingImages, setIsUploadingImages] = React.useState(false);
 
+    // Duplicate sheet state
+    const [duplicateSheetVisible, setDuplicateSheetVisible] = React.useState(false);
+    const [duplicateMessages, setDuplicateMessages] = React.useState<ClaudeUserMessageWithUuid[] | null>(null);
+    const [duplicateLoading, setDuplicateLoading] = React.useState(false);
+    const [duplicateConfirming, setDuplicateConfirming] = React.useState(false);
+    const duplicateProjectIdRef = React.useRef<string | null>(null);
+
     // Ref for hidden file input (web only)
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -222,6 +230,86 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const updateModelMode = React.useCallback((mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => {
         storage.getState().updateSessionModelMode(sessionId, mode);
     }, [sessionId]);
+
+    // Handle opening the duplicate sheet - loads user messages from the Claude session
+    const handleOpenDuplicateSheet = React.useCallback(async () => {
+        const claudeSessionId = session.metadata?.claudeSessionId;
+        if (!machineId || !claudeSessionId) {
+            Modal.alert(t('common.error'), t('duplicate.notAvailable'));
+            return;
+        }
+
+        setDuplicateSheetVisible(true);
+        setDuplicateLoading(true);
+        setDuplicateMessages(null);
+
+        try {
+            const result = await machineGetClaudeSessionUserMessages(machineId, claudeSessionId);
+            setDuplicateMessages(result.messages);
+            duplicateProjectIdRef.current = result.projectId;
+        } catch (error) {
+            console.error('Failed to load duplicate messages:', error);
+            Modal.alert(t('common.error'), t('duplicate.loadFailed'));
+            setDuplicateSheetVisible(false);
+        } finally {
+            setDuplicateLoading(false);
+        }
+    }, [machineId, session.metadata?.claudeSessionId]);
+
+    // Handle selecting a message to duplicate from
+    const handleDuplicateSelect = React.useCallback(async (uuid: string) => {
+        const claudeSessionId = session.metadata?.claudeSessionId;
+        const sessionPath = session.metadata?.path;
+        if (!machineId || !claudeSessionId || !sessionPath) {
+            return;
+        }
+
+        // Start confirming state - keep sheet open with loading button
+        setDuplicateConfirming(true);
+
+        try {
+            // Step 1: Fork and truncate the Claude session
+            const duplicateResult = await machineDuplicateClaudeSession(
+                machineId,
+                claudeSessionId,
+                uuid
+            );
+
+            if (!duplicateResult.success || !duplicateResult.newSessionId) {
+                setDuplicateConfirming(false);
+                Modal.alert(t('common.error'), duplicateResult.errorMessage || t('duplicate.failed'));
+                return;
+            }
+
+            // Step 2: Spawn a new Happy session that resumes the forked Claude session
+            const spawnResult = await machineSpawnNewSession({
+                machineId,
+                directory: sessionPath,
+                resumeSessionId: duplicateResult.newSessionId,
+            });
+
+            if (spawnResult.type === 'success' && spawnResult.sessionId) {
+                // Close the sheet and navigate to the new Happy session
+                setDuplicateSheetVisible(false);
+                setDuplicateConfirming(false);
+                router.replace(`/session/${spawnResult.sessionId}`);
+            } else if (spawnResult.type === 'error') {
+                setDuplicateConfirming(false);
+                Modal.alert(t('common.error'), spawnResult.errorMessage || t('duplicate.failed'));
+            }
+        } catch (error) {
+            console.error('Failed to duplicate session:', error);
+            setDuplicateConfirming(false);
+            Modal.alert(t('common.error'), t('duplicate.failed'));
+        }
+    }, [machineId, session.metadata?.claudeSessionId, session.metadata?.path, router]);
+
+    // Handle closing the duplicate sheet (prevent closing while confirming)
+    const handleCloseDuplicateSheet = React.useCallback(() => {
+        if (!duplicateConfirming) {
+            setDuplicateSheetVisible(false);
+        }
+    }, [duplicateConfirming]);
 
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
@@ -388,7 +476,16 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }}
             onSend={async () => {
                 if (message.trim() || images.length > 0) {
-                    const messageToSend = message;
+                    const messageToSend = message.trim();
+
+                    // Handle /duplicate command locally
+                    if (messageToSend.toLowerCase() === '/duplicate') {
+                        setMessage('');
+                        clearDraft();
+                        handleOpenDuplicateSheet();
+                        return;
+                    }
+
                     const imagesToSend = images.length > 0 ? [...images] : undefined;
 
                     setMessage('');
@@ -543,6 +640,16 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     </Pressable>
                 )
             }
+
+            {/* Duplicate Sheet */}
+            <DuplicateSheet
+                visible={duplicateSheetVisible}
+                messages={duplicateMessages}
+                loading={duplicateLoading}
+                confirming={duplicateConfirming}
+                onClose={handleCloseDuplicateSheet}
+                onSelect={handleDuplicateSelect}
+            />
         </>
     )
 }

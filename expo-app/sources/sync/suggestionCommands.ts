@@ -55,14 +55,16 @@ export const IGNORED_COMMANDS = [
 // Default commands always available
 const DEFAULT_COMMANDS: CommandItem[] = [
     { command: 'compact', description: 'Compact the conversation history' },
-    { command: 'clear', description: 'Clear the conversation' }
+    { command: 'clear', description: 'Clear the conversation' },
+    { command: 'duplicate', description: 'Duplicate conversation from a specific point' }
 ];
 
 // Command descriptions for known tools/commands
 const COMMAND_DESCRIPTIONS: Record<string, string> = {
     // Default commands
     compact: 'Compact the conversation history',
-    
+    duplicate: 'Duplicate conversation from a specific point',
+
     // Common tool commands
     help: 'Show available commands',
     clear: 'Clear the conversation',

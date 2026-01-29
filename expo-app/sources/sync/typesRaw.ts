@@ -533,7 +533,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     };
                 }
 
-                // Handle regular user messages
+                // Handle regular user messages (string content)
                 if (raw.content.data.message && typeof raw.content.data.message.content === 'string') {
                     return {
                         id,
@@ -546,6 +546,31 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                             text: raw.content.data.message.content
                         }
                     };
+                }
+
+                // Handle user messages with array content containing text items
+                // (Claude sometimes converts string content to array format when forking sessions)
+                if (raw.content.data.message && Array.isArray(raw.content.data.message.content)) {
+                    const textParts: string[] = [];
+                    for (const item of raw.content.data.message.content) {
+                        if (item && typeof item === 'object' && item.type === 'text' && typeof item.text === 'string') {
+                            textParts.push(item.text);
+                        }
+                    }
+                    // If we found text content, return as user message
+                    if (textParts.length > 0 && !raw.content.data.isSidechain) {
+                        return {
+                            id,
+                            localId,
+                            createdAt,
+                            role: 'user',
+                            isSidechain: false,
+                            content: {
+                                type: 'text',
+                                text: textParts.join('\n')
+                            }
+                        };
+                    }
                 }
 
                 // Handle tool results

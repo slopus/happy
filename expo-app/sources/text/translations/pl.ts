@@ -995,6 +995,21 @@ export const pl: TranslationStructure = {
         friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
     },
 
+    duplicate: {
+        // Duplicate/fork conversation feature
+        title: 'Duplikuj rozmowę',
+        description: 'Wybierz wiadomość, od której chcesz zacząć od nowa. Wybrana wiadomość i wszystko po niej zostanie usunięte.',
+        notAvailable: 'Duplikowanie jest niedostępne dla tej sesji',
+        loadFailed: 'Nie udało się załadować historii rozmowy',
+        confirmTitle: 'Potwierdź duplikowanie',
+        confirmMessage: 'Zostanie utworzona nowa rozmowa zaczynająca się przed wybraną wiadomością. Kontynuować?',
+        failed: 'Nie udało się zduplikować rozmowy',
+        noMessages: 'Brak wiadomości do zduplikowania',
+        confirm: 'Duplikuj',
+        duplicating: 'Duplikowanie...',
+        commandDescription: 'Duplikuj rozmowę od określonego punktu',
+    },
+
     profiles: {
         // Profile management feature
         title: 'Profile',

@@ -963,6 +963,21 @@ export const pt: TranslationStructure = {
         noData: 'Nenhum dado de uso disponível',
     },
 
+    duplicate: {
+        // Duplicate/fork conversation feature
+        title: 'Duplicar conversa',
+        description: 'Selecione uma mensagem para recomeçar a partir dela. A mensagem selecionada e tudo após ela será removido.',
+        notAvailable: 'A duplicação não está disponível para esta sessão',
+        loadFailed: 'Falha ao carregar o histórico da conversa',
+        confirmTitle: 'Confirmar duplicação',
+        confirmMessage: 'Será criada uma nova conversa começando antes da mensagem selecionada. Continuar?',
+        failed: 'Falha ao duplicar a conversa',
+        noMessages: 'Não há mensagens para duplicar',
+        confirm: 'Duplicar',
+        duplicating: 'Duplicando...',
+        commandDescription: 'Duplicar conversa a partir de um ponto específico',
+    },
+
     profiles: {
         title: 'Perfis',
         subtitle: 'Gerencie seus perfis de configuração',

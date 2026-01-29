@@ -965,6 +965,21 @@ export const zhHans: TranslationStructure = {
         noData: '暂无使用数据',
     },
 
+    duplicate: {
+        // Duplicate/fork conversation feature
+        title: '复制对话',
+        description: '选择一条消息重新开始。选定的消息及其之后的所有内容将被删除。',
+        notAvailable: '此会话无法使用复制功能',
+        loadFailed: '加载对话历史失败',
+        confirmTitle: '确认复制',
+        confirmMessage: '将创建一个从选定消息之前开始的新对话。是否继续？',
+        failed: '复制对话失败',
+        noMessages: '没有可复制的消息',
+        confirm: '复制',
+        duplicating: '复制中...',
+        commandDescription: '从特定位置复制对话',
+    },
+
     profiles: {
         title: '配置文件',
         subtitle: '管理您的配置文件',

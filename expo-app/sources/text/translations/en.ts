@@ -989,6 +989,21 @@ export const en: TranslationStructure = {
         friendAcceptedGeneric: 'Friend request accepted',
     },
 
+    duplicate: {
+        // Duplicate/fork conversation feature
+        title: 'Duplicate Conversation',
+        description: 'Select a message to start over from. The selected message and everything after it will be removed.',
+        notAvailable: 'Duplicate is not available for this session',
+        loadFailed: 'Failed to load conversation history',
+        confirmTitle: 'Confirm Duplicate',
+        confirmMessage: 'This will create a new conversation starting from before the selected message. Continue?',
+        failed: 'Failed to duplicate conversation',
+        noMessages: 'No messages to duplicate',
+        confirm: 'Duplicate',
+        duplicating: 'Duplicating...',
+        commandDescription: 'Duplicate conversation from a specific point',
+    },
+
     profiles: {
         // Profile management feature
         title: 'Profiles',

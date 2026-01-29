@@ -994,6 +994,21 @@ export const ru: TranslationStructure = {
         friendAcceptedGeneric: 'Запрос в друзья принят',
     },
 
+    duplicate: {
+        // Duplicate/fork conversation feature
+        title: 'Дублировать разговор',
+        description: 'Выберите сообщение, с которого начать заново. Выбранное сообщение и всё после него будет удалено.',
+        notAvailable: 'Дублирование недоступно для этой сессии',
+        loadFailed: 'Не удалось загрузить историю разговора',
+        confirmTitle: 'Подтвердите дублирование',
+        confirmMessage: 'Будет создан новый разговор, начиная с момента перед выбранным сообщением. Продолжить?',
+        failed: 'Не удалось дублировать разговор',
+        noMessages: 'Нет сообщений для дублирования',
+        confirm: 'Дублировать',
+        duplicating: 'Дублирование...',
+        commandDescription: 'Дублировать разговор с определённой точки',
+    },
+
     profiles: {
         // Profile management feature
         title: 'Профили',

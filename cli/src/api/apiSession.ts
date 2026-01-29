@@ -197,17 +197,66 @@ export class ApiSessionClient extends EventEmitter {
     sendClaudeSessionMessage(body: RawJSONLines, localId?: string) {
         let content: MessageContent;
 
-        // Check if body is already a MessageContent (has role property)
-        if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {
-            content = {
-                role: 'user',
-                content: {
-                    type: 'text',
-                    text: body.message.content
-                },
-                meta: {
-                    sentFrom: 'cli'
+        // Check if body is a user message (not sidechain or meta)
+        if (body.type === 'user' && body.isSidechain !== true && body.isMeta !== true) {
+            // Handle string content directly
+            if (typeof body.message.content === 'string') {
+                content = {
+                    role: 'user',
+                    content: {
+                        type: 'text',
+                        text: body.message.content
+                    },
+                    meta: {
+                        sentFrom: 'cli'
+                    }
+                };
+            }
+            // Handle array content - extract text from text items (Claude sometimes converts string to array)
+            else if (Array.isArray(body.message.content)) {
+                const textParts: string[] = [];
+                for (const item of body.message.content) {
+                    if (item && typeof item === 'object' && item.type === 'text' && typeof item.text === 'string') {
+                        textParts.push(item.text);
+                    }
                 }
+                // Only treat as user message if we extracted some text (not just tool_results)
+                if (textParts.length > 0) {
+                    content = {
+                        role: 'user',
+                        content: {
+                            type: 'text',
+                            text: textParts.join('\n')
+                        },
+                        meta: {
+                            sentFrom: 'cli'
+                        }
+                    };
+                } else {
+                    // Fallback to agent message for tool results
+                    content = {
+                        role: 'agent',
+                        content: {
+                            type: 'output',
+                            data: body
+                        },
+                        meta: {
+                            sentFrom: 'cli'
+                        }
+                    };
+                }
+            } else {
+                // Unknown content type, wrap as agent message
+                content = {
+                    role: 'agent',
+                    content: {
+                        type: 'output',
+                        data: body
+                    },
+                    meta: {
+                        sentFrom: 'cli'
+                    }
+                };
             }
         } else {
             // Wrap Claude messages in the expected format

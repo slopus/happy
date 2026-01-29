@@ -963,6 +963,21 @@ export const ca: TranslationStructure = {
         noData: "No hi ha dades d'ús disponibles",
     },
 
+    duplicate: {
+        // Duplicate/fork conversation feature
+        title: 'Duplicar conversa',
+        description: 'Selecciona un missatge per començar de nou des d\'aquí. El missatge seleccionat i tot el posterior serà eliminat.',
+        notAvailable: 'La duplicació no està disponible per a aquesta sessió',
+        loadFailed: 'Error en carregar l\'historial de la conversa',
+        confirmTitle: 'Confirmar duplicació',
+        confirmMessage: 'Es crearà una nova conversa començant abans del missatge seleccionat. Continuar?',
+        failed: 'Error en duplicar la conversa',
+        noMessages: 'No hi ha missatges per duplicar',
+        confirm: 'Duplicar',
+        duplicating: 'Duplicant...',
+        commandDescription: 'Duplicar conversa des d\'un punt específic',
+    },
+
     profiles: {
         title: 'Perfils',
         subtitle: 'Gestiona els teus perfils de configuració',

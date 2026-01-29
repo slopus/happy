@@ -1002,5 +1002,20 @@ export const ja: TranslationStructure = {
         friendRequestGeneric: '新しい友達リクエスト',
         friendAccepted: ({ name }: { name: string }) => `${name}さんと友達になりました`,
         friendAcceptedGeneric: '友達リクエストが承認されました',
-    }
+    },
+
+    duplicate: {
+        // Duplicate/fork conversation feature
+        title: '会話を複製',
+        description: 'やり直したいメッセージを選択してください。選択したメッセージとそれ以降のすべてが削除されます。',
+        notAvailable: 'このセッションでは複製を使用できません',
+        loadFailed: '会話履歴の読み込みに失敗しました',
+        confirmTitle: '複製の確認',
+        confirmMessage: '選択したメッセージの前から新しい会話が作成されます。続行しますか？',
+        failed: '会話の複製に失敗しました',
+        noMessages: '複製するメッセージがありません',
+        confirm: '複製',
+        duplicating: '複製中...',
+        commandDescription: '特定の地点から会話を複製',
+    },
 } as const;

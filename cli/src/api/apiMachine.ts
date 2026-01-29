@@ -9,7 +9,8 @@ import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
 import { registerMoltbotHandlers, moltbotTunnelManager } from '../modules/moltbot';
-import { listClaudeSessionsFromIndex, getClaudeSessionPreview } from '@/claude/utils/claudeSessionIndex';
+import { listClaudeSessionsFromIndex, getClaudeSessionPreview, findClaudeProjectId, getClaudeSessionUserMessages } from '@/claude/utils/claudeSessionIndex';
+import { forkAndTruncateSession } from '@/claude/utils/claudeSessionFork';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -214,6 +215,46 @@ export class ApiMachineClient {
             const messageLimit = typeof limit === 'number' && limit > 0 ? Math.min(Math.floor(limit), 50) : 10;
             const messages = await getClaudeSessionPreview(projectId, sessionId, messageLimit);
             return { messages };
+        });
+
+        // Get user messages with UUIDs for the duplicate/fork feature
+        this.rpcHandlerManager.registerHandler('claude-session-user-messages', async (params: any) => {
+            const { sessionId, limit = 50 } = params || {};
+
+            if (!sessionId || typeof sessionId !== 'string') {
+                throw new Error('sessionId is required');
+            }
+
+            // Find the project ID for this session
+            const projectId = await findClaudeProjectId(sessionId);
+            if (!projectId) {
+                throw new Error('Session not found');
+            }
+
+            const messageLimit = typeof limit === 'number' && limit > 0 ? Math.min(Math.floor(limit), 100) : 50;
+            const messages = await getClaudeSessionUserMessages(projectId, sessionId, messageLimit);
+            return { messages, projectId };
+        });
+
+        // Fork and truncate a Claude session for the duplicate feature
+        this.rpcHandlerManager.registerHandler('claude-duplicate-session', async (params: any) => {
+            const { sessionId, truncateBeforeUuid } = params || {};
+
+            if (!sessionId || typeof sessionId !== 'string') {
+                throw new Error('sessionId is required');
+            }
+            if (!truncateBeforeUuid || typeof truncateBeforeUuid !== 'string') {
+                throw new Error('truncateBeforeUuid is required');
+            }
+
+            // Find the project ID for this session
+            const projectId = await findClaudeProjectId(sessionId);
+            if (!projectId) {
+                throw new Error('Session not found');
+            }
+
+            const result = await forkAndTruncateSession(projectId, sessionId, truncateBeforeUuid);
+            return result;
         });
     }
 
