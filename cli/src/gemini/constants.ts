@@ -24,6 +24,6 @@ export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-pro';
  * Used in system prompts to instruct agents to call change_title function
  */
 export const CHANGE_TITLE_INSTRUCTION = trimIdent(
-  `Call "functions.happy__change_title" to set a descriptive title. Update the title whenever the conversation's main focus shifts to a different topic or task. The title should reflect what is currently being worked on, not the original question.`
+  `On your first response, call "functions.happy__change_title" to set a descriptive title based on the user's message. Update the title whenever the conversation's main focus shifts to a different topic or task.`
 );
 
