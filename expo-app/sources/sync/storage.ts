@@ -21,7 +21,7 @@ import { isMutableTool } from "@/components/tools/knownTools";
 import { projectManager } from "./projectManager";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
-import type { MoltbotMachine } from "../moltbot/types";
+import type { OpenClawMachine } from "../openclaw/types";
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -78,7 +78,7 @@ interface StorageState {
     sessionMessages: Record<string, SessionMessages>;
     sessionGitStatus: Record<string, GitStatus | null>;
     machines: Record<string, Machine>;
-    moltbotMachines: Record<string, MoltbotMachine>;  // Moltbot machine configurations
+    openClawMachines: Record<string, OpenClawMachine>;  // OpenClaw machine configurations
     artifacts: Record<string, DecryptedArtifact>;  // New artifacts storage
     friends: Record<string, UserProfile>;  // All relationships (friends, pending, requested, etc.)
     users: Record<string, UserProfile | null>;  // Global user cache, null = 404/failed fetch
@@ -99,8 +99,8 @@ interface StorageState {
     todosLoaded: boolean;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
-    applyMoltbotMachines: (machines: MoltbotMachine[], replace?: boolean) => void;
-    removeMoltbotMachine: (machineId: string) => void;
+    applyOpenClawMachines: (machines: OpenClawMachine[], replace?: boolean) => void;
+    removeOpenClawMachine: (machineId: string) => void;
     applyLoaded: () => void;
     applyReady: () => void;
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
@@ -262,7 +262,7 @@ export const storage = create<StorageState>()((set, get) => {
         profile,
         sessions: {},
         machines: {},
-        moltbotMachines: {},  // Initialize Moltbot machines
+        openClawMachines: {},  // Initialize OpenClaw machines
         artifacts: {},  // Initialize artifacts
         friends: {},  // Initialize relationships cache
         users: {},  // Initialize global user cache
@@ -882,9 +882,9 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
-        // Moltbot machine methods
-        applyMoltbotMachines: (machines: MoltbotMachine[], replace: boolean = false) => set((state) => {
-            let mergedMachines: Record<string, MoltbotMachine>;
+        // OpenClaw machine methods
+        applyOpenClawMachines: (machines: OpenClawMachine[], replace: boolean = false) => set((state) => {
+            let mergedMachines: Record<string, OpenClawMachine>;
 
             if (replace) {
                 mergedMachines = {};
@@ -892,25 +892,25 @@ export const storage = create<StorageState>()((set, get) => {
                     mergedMachines[machine.id] = machine;
                 });
             } else {
-                mergedMachines = { ...state.moltbotMachines };
+                mergedMachines = { ...state.openClawMachines };
                 machines.forEach(machine => {
                     mergedMachines[machine.id] = machine;
                 });
             }
 
-            console.log(`🤖 Storage.applyMoltbotMachines: Total Moltbot machines after merge: ${Object.keys(mergedMachines).length}`);
+            console.log(`🤖 Storage.applyOpenClawMachines: Total OpenClaw machines after merge: ${Object.keys(mergedMachines).length}`);
 
             return {
                 ...state,
-                moltbotMachines: mergedMachines
+                openClawMachines: mergedMachines
             };
         }),
-        removeMoltbotMachine: (machineId: string) => set((state) => {
-            const { [machineId]: removed, ...remaining } = state.moltbotMachines;
-            console.log(`🤖 Storage.removeMoltbotMachine: Removed machine ${machineId}`);
+        removeOpenClawMachine: (machineId: string) => set((state) => {
+            const { [machineId]: removed, ...remaining } = state.openClawMachines;
+            console.log(`🤖 Storage.removeOpenClawMachine: Removed machine ${machineId}`);
             return {
                 ...state,
-                moltbotMachines: remaining
+                openClawMachines: remaining
             };
         }),
         // Artifact methods
@@ -1178,15 +1178,15 @@ export function useMachine(machineId: string): Machine | null {
     return storage(useShallow((state) => state.machines[machineId] ?? null));
 }
 
-export function useAllMoltbotMachines(): MoltbotMachine[] {
+export function useAllOpenClawMachines(): OpenClawMachine[] {
     return storage(useShallow((state) => {
         if (!state.isDataReady) return [];
-        return Object.values(state.moltbotMachines).sort((a, b) => b.updatedAt - a.updatedAt);
+        return Object.values(state.openClawMachines).sort((a, b) => b.updatedAt - a.updatedAt);
     }));
 }
 
-export function useMoltbotMachine(machineId: string): MoltbotMachine | null {
-    return storage(useShallow((state) => state.moltbotMachines[machineId] ?? null));
+export function useOpenClawMachine(machineId: string): OpenClawMachine | null {
+    return storage(useShallow((state) => state.openClawMachines[machineId] ?? null));
 }
 
 export function useSessionListViewData(): SessionListViewItem[] | null {

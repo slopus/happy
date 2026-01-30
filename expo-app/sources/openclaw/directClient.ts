@@ -1,16 +1,16 @@
 /**
- * Moltbot Direct Client
+ * OpenClaw Direct Client
  *
- * A client for connecting directly to Moltbot gateways via WebSocket,
+ * A client for connecting directly to OpenClaw gateways via WebSocket,
  * without going through Happy's relay infrastructure. This is used for
  * direct machine connections (type='direct').
  *
  * The direct client:
- * - Connects directly to the Moltbot gateway WebSocket
- * - Implements Moltbot protocol v3 authentication (Ed25519 signing)
+ * - Connects directly to the OpenClaw gateway WebSocket
+ * - Implements OpenClaw protocol v3 authentication (Ed25519 signing)
  * - Manages connection state (connecting, connected, disconnected, etc.)
- * - Sends messages to the Moltbot gateway
- * - Receives events from the Moltbot gateway
+ * - Sends messages to the OpenClaw gateway
+ * - Receives events from the OpenClaw gateway
  * - Handles pairing flow when required
  * - Supports reconnection
  */
@@ -20,12 +20,12 @@ import { Platform } from 'react-native';
 import { signDetached } from '@/encryption/libsodium';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import type {
-    MoltbotConnectionStatus,
-    MoltbotPairingData,
-    MoltbotFrame,
-    MoltbotRequestFrame,
-    MoltbotResponseFrame,
-    MoltbotEventFrame,
+    OpenClawConnectionStatus,
+    OpenClawPairingData,
+    OpenClawFrame,
+    OpenClawRequestFrame,
+    OpenClawResponseFrame,
+    OpenClawEventFrame,
 } from './types';
 
 const PROTOCOL_VERSION = 3;
@@ -35,7 +35,7 @@ const CONNECT_TIMEOUT_MS = 15000;
 // Event types
 
 export type DirectClientEventCallback = (event: string, payload: unknown) => void;
-export type DirectClientStatusCallback = (status: MoltbotConnectionStatus, error?: string) => void;
+export type DirectClientStatusCallback = (status: OpenClawConnectionStatus, error?: string) => void;
 
 // Direct client configuration
 
@@ -43,7 +43,7 @@ export interface DirectClientConfig {
     url: string;
     password?: string;
     token?: string;
-    pairingData?: MoltbotPairingData;
+    pairingData?: OpenClawPairingData;
     onEvent?: DirectClientEventCallback;
     onStatusChange?: DirectClientStatusCallback;
 }
@@ -52,7 +52,7 @@ export interface DirectClientConfig {
 
 export interface DirectConnectResult {
     ok: boolean;
-    status: MoltbotConnectionStatus;
+    status: OpenClawConnectionStatus;
     error?: string;
     mainSessionKey?: string;
     serverHost?: string;
@@ -75,17 +75,17 @@ interface PendingRequest {
 }
 
 /**
- * Moltbot Direct Client
+ * OpenClaw Direct Client
  *
- * Manages a direct WebSocket connection to a Moltbot gateway.
- * Implements the Moltbot protocol v3 with Ed25519 device authentication.
+ * Manages a direct WebSocket connection to an OpenClaw gateway.
+ * Implements the OpenClaw protocol v3 with Ed25519 device authentication.
  */
-export class MoltbotDirectClient {
+export class OpenClawDirectClient {
     private readonly config: DirectClientConfig;
-    private readonly pairingData: MoltbotPairingData | null;
+    private readonly pairingData: OpenClawPairingData | null;
 
     private ws: WebSocket | null = null;
-    private status: MoltbotConnectionStatus = 'disconnected';
+    private status: OpenClawConnectionStatus = 'disconnected';
     private mainSessionKey: string | null = null;
     private serverHost: string | null = null;
     private pairingRequestId: string | null = null;
@@ -113,7 +113,7 @@ export class MoltbotDirectClient {
     /**
      * Get the current connection status
      */
-    getStatus(): MoltbotConnectionStatus {
+    getStatus(): OpenClawConnectionStatus {
         return this.status;
     }
 
@@ -160,7 +160,7 @@ export class MoltbotDirectClient {
     }
 
     /**
-     * Connect to the Moltbot gateway
+     * Connect to the OpenClaw gateway
      */
     async connect(): Promise<DirectConnectResult> {
         if (this.status === 'connecting' || this.status === 'connected') {
@@ -185,11 +185,11 @@ export class MoltbotDirectClient {
             }, CONNECT_TIMEOUT_MS);
 
             try {
-                console.log(`[MoltbotDirect] Connecting to ${this.config.url}`);
+                console.log(`[OpenClawDirect] Connecting to ${this.config.url}`);
                 this.ws = new WebSocket(this.config.url);
 
                 this.ws.onopen = () => {
-                    console.log('[MoltbotDirect] WebSocket opened');
+                    console.log('[OpenClawDirect] WebSocket opened');
                     // Wait for challenge event before sending connect
                 };
 
@@ -198,12 +198,12 @@ export class MoltbotDirectClient {
                 };
 
                 this.ws.onerror = (event) => {
-                    console.log('[MoltbotDirect] WebSocket error:', event);
+                    console.log('[OpenClawDirect] WebSocket error:', event);
                     this.handleError('WebSocket error');
                 };
 
                 this.ws.onclose = (event) => {
-                    console.log(`[MoltbotDirect] WebSocket closed: ${event.code} ${event.reason}`);
+                    console.log(`[OpenClawDirect] WebSocket closed: ${event.code} ${event.reason}`);
                     this.handleClose();
                 };
             } catch (error) {
@@ -219,7 +219,7 @@ export class MoltbotDirectClient {
     }
 
     /**
-     * Send a request through the WebSocket to the Moltbot gateway
+     * Send a request through the WebSocket to the OpenClaw gateway
      */
     async send(method: string, params?: unknown, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<DirectSendResult> {
         if (this.status !== 'connected' || !this.ws) {
@@ -230,7 +230,7 @@ export class MoltbotDirectClient {
         }
 
         const id = randomUUID();
-        const frame: MoltbotRequestFrame = {
+        const frame: OpenClawRequestFrame = {
             type: 'req',
             id,
             method,
@@ -298,7 +298,7 @@ export class MoltbotDirectClient {
     }
 
     /**
-     * Reconnect to the Moltbot gateway
+     * Reconnect to the OpenClaw gateway
      * Closes the existing connection and establishes a new one
      */
     async reconnect(): Promise<DirectConnectResult> {
@@ -309,22 +309,22 @@ export class MoltbotDirectClient {
     // Private methods
 
     private handleMessage(data: string): void {
-        let frame: MoltbotFrame;
+        let frame: OpenClawFrame;
         try {
             frame = JSON.parse(data);
         } catch {
-            console.log(`[MoltbotDirect] Invalid JSON: ${data.slice(0, 100)}`);
+            console.log(`[OpenClawDirect] Invalid JSON: ${data.slice(0, 100)}`);
             return;
         }
 
         if (frame.type === 'res') {
-            this.handleResponse(frame as MoltbotResponseFrame);
+            this.handleResponse(frame as OpenClawResponseFrame);
         } else if (frame.type === 'event') {
-            this.handleEvent(frame as MoltbotEventFrame);
+            this.handleEvent(frame as OpenClawEventFrame);
         }
     }
 
-    private handleResponse(frame: MoltbotResponseFrame): void {
+    private handleResponse(frame: OpenClawResponseFrame): void {
         const pending = this.pending.get(frame.id);
         if (pending) {
             this.pending.delete(frame.id);
@@ -337,7 +337,7 @@ export class MoltbotDirectClient {
         }
     }
 
-    private handleEvent(frame: MoltbotEventFrame): void {
+    private handleEvent(frame: OpenClawEventFrame): void {
         let payload = frame.payload;
         if (!payload && frame.payloadJSON) {
             try {
@@ -418,7 +418,7 @@ export class MoltbotDirectClient {
 
             // Send connect request
             const id = randomUUID();
-            const frame: MoltbotRequestFrame = {
+            const frame: OpenClawRequestFrame = {
                 type: 'req',
                 id,
                 method: 'connect',
@@ -447,7 +447,7 @@ export class MoltbotDirectClient {
                     this.serverHost = result.server?.host ?? null;
                     this.deviceToken = result.auth?.deviceToken ?? null;
 
-                    console.log(`[MoltbotDirect] Connected, server: ${this.serverHost}`);
+                    console.log(`[OpenClawDirect] Connected, server: ${this.serverHost}`);
 
                     this.clearConnectTimeout();
                     this.updateStatus('connected');
@@ -512,7 +512,7 @@ export class MoltbotDirectClient {
         token: string | null;
         nonce: string | null;
     }): string {
-        // Moltbot protocol: v2 format required when nonce is present
+        // OpenClaw protocol: v2 format required when nonce is present
         // Format: v2|deviceId|clientId|clientMode|role|scopes|signedAtMs|token|nonce
         const version = params.nonce ? 'v2' : 'v1';
         const scopes = params.scopes.join(',');
@@ -624,7 +624,7 @@ export class MoltbotDirectClient {
         this.pending.clear();
     }
 
-    private updateStatus(status: MoltbotConnectionStatus, error?: string): void {
+    private updateStatus(status: OpenClawConnectionStatus, error?: string): void {
         if (this.status !== status) {
             this.status = status;
             if (this.statusCallback) {
@@ -640,7 +640,7 @@ export class MoltbotDirectClient {
  * Convenience function for creating a direct client with the given configuration.
  *
  * @param config - Direct client configuration
- * @returns A new MoltbotDirectClient instance
+ * @returns A new OpenClawDirectClient instance
  *
  * @example
  * ```typescript
@@ -669,6 +669,6 @@ export class MoltbotDirectClient {
  * await client.close();
  * ```
  */
-export function createDirectClient(config: DirectClientConfig): MoltbotDirectClient {
-    return new MoltbotDirectClient(config);
+export function createDirectClient(config: DirectClientConfig): OpenClawDirectClient {
+    return new OpenClawDirectClient(config);
 }

@@ -1,7 +1,7 @@
 /**
- * Moltbot New Session Page
+ * OpenClaw New Session Page
  *
- * Create a new Moltbot session on a specific machine.
+ * Create a new OpenClaw session on a specific machine.
  * Allows user to configure session parameters before starting.
  */
 
@@ -23,7 +23,7 @@ import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { useMoltbotConnection } from '@/moltbot/connection';
+import { useOpenClawConnection } from '@/openclaw/connection';
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -87,7 +87,7 @@ const HEADER_BUTTON_WIDTH = 40; // 24px icon + 16px padding
 const HEADER_PADDING = Platform.OS === 'ios' ? 16 : 32; // 8*2 or 16*2
 const HEADER_CENTER_PADDING = 24; // 12*2 for centerContainer
 
-export default function MoltbotNewSessionPage() {
+export default function OpenClawNewSessionPage() {
     const router = useRouter();
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
@@ -102,7 +102,7 @@ export default function MoltbotNewSessionPage() {
         status,
         isConnected,
         isConnecting,
-    } = useMoltbotConnection(machineId ?? '', {
+    } = useOpenClawConnection(machineId ?? '', {
         autoConnect: true,
     });
 
@@ -114,7 +114,7 @@ export default function MoltbotNewSessionPage() {
     const handleCreate = React.useCallback(() => {
         if (!canCreate) return;
 
-        // Moltbot creates sessions on-demand when first message is sent.
+        // OpenClaw creates sessions on-demand when first message is sent.
         // The session key determines the session type:
         // - 'direct': main DM session (shared across channels)
         // - 'global': global scope session
@@ -122,7 +122,7 @@ export default function MoltbotNewSessionPage() {
 
         // Navigate to the chat page - session will be created when first message is sent
         router.replace({
-            pathname: '/moltbot/chat',
+            pathname: '/openclaw/chat',
             params: {
                 machineId: machineId,
                 sessionKey: sessionKey,
@@ -176,7 +176,7 @@ export default function MoltbotNewSessionPage() {
                                 ellipsizeMode="tail"
                                 style={[Typography.default('semiBold'), { fontSize: 17, lineHeight: 24, color: theme.colors.header.tint, flexShrink: 1 }]}
                             >
-                                {t('moltbot.newSession')}
+                                {t('openclaw.newSession')}
                             </Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: -2 }}>
                                 <View style={{
@@ -205,10 +205,10 @@ export default function MoltbotNewSessionPage() {
                 ]}
             >
                 {/* Session Type */}
-                <ItemGroup title={t('moltbot.sessionType')}>
+                <ItemGroup title={t('openclaw.sessionType')}>
                     <Item
-                        title={t('moltbot.sessionTypeDirect')}
-                        subtitle={t('moltbot.sessionTypeDirectDescription')}
+                        title={t('openclaw.sessionTypeDirect')}
+                        subtitle={t('openclaw.sessionTypeDirectDescription')}
                         subtitleLines={2}
                         leftElement={
                             <View style={[styles.typeIcon, { backgroundColor: theme.colors.status.connected + '20' }]}>
@@ -224,8 +224,8 @@ export default function MoltbotNewSessionPage() {
                         showChevron={false}
                     />
                     <Item
-                        title={t('moltbot.sessionTypeGlobal')}
-                        subtitle={t('moltbot.sessionTypeGlobalDescription')}
+                        title={t('openclaw.sessionTypeGlobal')}
+                        subtitle={t('openclaw.sessionTypeGlobalDescription')}
                         subtitleLines={2}
                         leftElement={
                             <View style={[styles.typeIcon, { backgroundColor: theme.colors.surfacePressed }]}>
@@ -248,7 +248,7 @@ export default function MoltbotNewSessionPage() {
                     onPress={handleCreate}
                     disabled={!canCreate}
                 >
-                    <Text style={styles.submitButtonText}>{t('moltbot.createSession')}</Text>
+                    <Text style={styles.submitButtonText}>{t('openclaw.createSession')}</Text>
                 </Pressable>
             </ScrollView>
         </View>

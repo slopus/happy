@@ -1,35 +1,35 @@
 /**
- * Moltbot Storage
+ * OpenClaw Storage
  *
- * Storage and sync for Moltbot machines, integrating with the main
+ * Storage and sync for OpenClaw machines, integrating with the main
  * Zustand store and sync system.
  */
 
 import { getServerUrl } from '../sync/serverConfig';
 import {
-    MoltbotMetadataSchema,
-    MoltbotPairingDataSchema,
-    MoltbotDirectConfigSchema,
+    OpenClawMetadataSchema,
+    OpenClawPairingDataSchema,
+    OpenClawDirectConfigSchema,
 } from './types';
 import type {
-    MoltbotMachine,
-    MoltbotMetadata,
-    MoltbotPairingData,
-    MoltbotDirectConfig,
+    OpenClawMachine,
+    OpenClawMetadata,
+    OpenClawPairingData,
+    OpenClawDirectConfig,
 } from './types';
 
 // Re-export types for convenience
 export type {
-    MoltbotMachine,
-    MoltbotMetadata,
-    MoltbotPairingData,
-    MoltbotDirectConfig,
+    OpenClawMachine,
+    OpenClawMetadata,
+    OpenClawPairingData,
+    OpenClawDirectConfig,
 };
 
 /**
- * Raw Moltbot machine data from server API
+ * Raw OpenClaw machine data from server API
  */
-export interface RawMoltbotMachine {
+export interface RawOpenClawMachine {
     id: string;
     type: string;
     happyMachineId: string | null;
@@ -53,7 +53,7 @@ interface Credentials {
 /**
  * Encryption interface (subset of what we need from sync encryption)
  */
-interface MoltbotEncryption {
+interface OpenClawEncryption {
     decryptWithKey(encryptedData: string, key: Uint8Array): Promise<unknown>;
     encryptWithKey(data: unknown, key: Uint8Array): Promise<string>;
     decryptEncryptionKey(encryptedKey: string): Promise<Uint8Array | null>;
@@ -61,14 +61,14 @@ interface MoltbotEncryption {
 }
 
 /**
- * Fetch all Moltbot machines from server
+ * Fetch all OpenClaw machines from server
  */
-export async function fetchMoltbotMachines(
+export async function fetchOpenClawMachines(
     credentials: Credentials,
-    encryption: MoltbotEncryption
-): Promise<MoltbotMachine[]> {
+    encryption: OpenClawEncryption
+): Promise<OpenClawMachine[]> {
     const API_ENDPOINT = getServerUrl();
-    const response = await fetch(`${API_ENDPOINT}/v1/moltbot/machines`, {
+    const response = await fetch(`${API_ENDPOINT}/v1/openclaw/machines`, {
         headers: {
             'Authorization': `Bearer ${credentials.token}`,
             'Content-Type': 'application/json'
@@ -76,23 +76,23 @@ export async function fetchMoltbotMachines(
     });
 
     if (!response.ok) {
-        console.error(`Failed to fetch Moltbot machines: ${response.status}`);
+        console.error(`Failed to fetch OpenClaw machines: ${response.status}`);
         return [];
     }
 
-    const rawMachines = await response.json() as RawMoltbotMachine[];
-    console.log(`🤖 Moltbot: Fetched ${rawMachines.length} machines from server`);
+    const rawMachines = await response.json() as RawOpenClawMachine[];
+    console.log(`🤖 OpenClaw: Fetched ${rawMachines.length} machines from server`);
 
-    const decryptedMachines: MoltbotMachine[] = [];
+    const decryptedMachines: OpenClawMachine[] = [];
 
     for (const raw of rawMachines) {
         try {
-            const machine = await decryptMoltbotMachine(raw, encryption);
+            const machine = await decryptOpenClawMachine(raw, encryption);
             if (machine) {
                 decryptedMachines.push(machine);
             }
         } catch (error) {
-            console.error(`Failed to decrypt Moltbot machine ${raw.id}:`, error);
+            console.error(`Failed to decrypt OpenClaw machine ${raw.id}:`, error);
         }
     }
 
@@ -100,19 +100,19 @@ export async function fetchMoltbotMachines(
 }
 
 /**
- * Create a new Moltbot machine
+ * Create a new OpenClaw machine
  */
-export async function createMoltbotMachine(
+export async function createOpenClawMachine(
     credentials: Credentials,
-    encryption: MoltbotEncryption,
+    encryption: OpenClawEncryption,
     params: {
         type: 'happy' | 'direct';
         happyMachineId?: string;
-        directConfig?: MoltbotDirectConfig;
-        metadata: MoltbotMetadata;
-        pairingData?: MoltbotPairingData;
+        directConfig?: OpenClawDirectConfig;
+        metadata: OpenClawMetadata;
+        pairingData?: OpenClawPairingData;
     }
-): Promise<MoltbotMachine | null> {
+): Promise<OpenClawMachine | null> {
     const API_ENDPOINT = getServerUrl();
 
     // Generate a new data encryption key for this machine
@@ -136,7 +136,7 @@ export async function createMoltbotMachine(
         dataEncryptionKey: encryptedKey,
     };
 
-    const response = await fetch(`${API_ENDPOINT}/v1/moltbot/machines`, {
+    const response = await fetch(`${API_ENDPOINT}/v1/openclaw/machines`, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${credentials.token}`,
@@ -146,31 +146,31 @@ export async function createMoltbotMachine(
     });
 
     if (!response.ok) {
-        console.error(`Failed to create Moltbot machine: ${response.status}`);
+        console.error(`Failed to create OpenClaw machine: ${response.status}`);
         return null;
     }
 
     const data = await response.json();
-    const raw = data.machine as RawMoltbotMachine;
+    const raw = data.machine as RawOpenClawMachine;
 
-    return decryptMoltbotMachine(raw, encryption);
+    return decryptOpenClawMachine(raw, encryption);
 }
 
 /**
- * Update a Moltbot machine
+ * Update an OpenClaw machine
  */
-export async function updateMoltbotMachine(
+export async function updateOpenClawMachine(
     credentials: Credentials,
-    encryption: MoltbotEncryption,
+    encryption: OpenClawEncryption,
     machineId: string,
     dataKey: Uint8Array,
     currentMetadataVersion: number,
     updates: {
-        metadata?: MoltbotMetadata;
-        pairingData?: MoltbotPairingData;
-        directConfig?: MoltbotDirectConfig;
+        metadata?: OpenClawMetadata;
+        pairingData?: OpenClawPairingData;
+        directConfig?: OpenClawDirectConfig;
     }
-): Promise<MoltbotMachine | null> {
+): Promise<OpenClawMachine | null> {
     const API_ENDPOINT = getServerUrl();
 
     const body: Record<string, unknown> = {};
@@ -192,7 +192,7 @@ export async function updateMoltbotMachine(
             : null;
     }
 
-    const response = await fetch(`${API_ENDPOINT}/v1/moltbot/machines/${machineId}`, {
+    const response = await fetch(`${API_ENDPOINT}/v1/openclaw/machines/${machineId}`, {
         method: 'PUT',
         headers: {
             'Authorization': `Bearer ${credentials.token}`,
@@ -203,26 +203,26 @@ export async function updateMoltbotMachine(
 
     if (!response.ok) {
         const error = await response.json();
-        console.error(`Failed to update Moltbot machine: ${response.status}`, error);
+        console.error(`Failed to update OpenClaw machine: ${response.status}`, error);
         return null;
     }
 
     const data = await response.json();
-    const raw = data.machine as RawMoltbotMachine;
+    const raw = data.machine as RawOpenClawMachine;
 
-    return decryptMoltbotMachine(raw, encryption);
+    return decryptOpenClawMachine(raw, encryption);
 }
 
 /**
- * Delete a Moltbot machine
+ * Delete an OpenClaw machine
  */
-export async function deleteMoltbotMachine(
+export async function deleteOpenClawMachine(
     credentials: Credentials,
     machineId: string
 ): Promise<boolean> {
     const API_ENDPOINT = getServerUrl();
 
-    const response = await fetch(`${API_ENDPOINT}/v1/moltbot/machines/${machineId}`, {
+    const response = await fetch(`${API_ENDPOINT}/v1/openclaw/machines/${machineId}`, {
         method: 'DELETE',
         headers: {
             'Authorization': `Bearer ${credentials.token}`,
@@ -231,7 +231,7 @@ export async function deleteMoltbotMachine(
     });
 
     if (!response.ok) {
-        console.error(`Failed to delete Moltbot machine: ${response.status}`);
+        console.error(`Failed to delete OpenClaw machine: ${response.status}`);
         return false;
     }
 
@@ -239,79 +239,79 @@ export async function deleteMoltbotMachine(
 }
 
 /**
- * Decrypt a raw Moltbot machine from the server
+ * Decrypt a raw OpenClaw machine from the server
  */
-async function decryptMoltbotMachine(
-    raw: RawMoltbotMachine,
-    encryption: MoltbotEncryption
-): Promise<MoltbotMachine | null> {
+async function decryptOpenClawMachine(
+    raw: RawOpenClawMachine,
+    encryption: OpenClawEncryption
+): Promise<OpenClawMachine | null> {
     // Decrypt the data encryption key if present
     let dataKey: Uint8Array | null = null;
     if (raw.dataEncryptionKey) {
         dataKey = await encryption.decryptEncryptionKey(raw.dataEncryptionKey);
         if (!dataKey) {
-            console.error(`Failed to decrypt data encryption key for Moltbot machine ${raw.id}`);
+            console.error(`Failed to decrypt data encryption key for OpenClaw machine ${raw.id}`);
             return null;
         }
     }
 
     // If no data key, we can't decrypt the encrypted fields
     if (!dataKey) {
-        console.error(`No data encryption key for Moltbot machine ${raw.id}`);
+        console.error(`No data encryption key for OpenClaw machine ${raw.id}`);
         return null;
     }
 
     // Validate machine type
     if (raw.type !== 'happy' && raw.type !== 'direct') {
-        console.error(`Invalid machine type '${raw.type}' for Moltbot machine ${raw.id}`);
+        console.error(`Invalid machine type '${raw.type}' for OpenClaw machine ${raw.id}`);
         return null;
     }
 
     // Decrypt and validate metadata
-    let metadata: MoltbotMetadata | null = null;
+    let metadata: OpenClawMetadata | null = null;
     if (raw.metadata) {
         try {
             const decrypted = await encryption.decryptWithKey(raw.metadata, dataKey);
-            const parseResult = MoltbotMetadataSchema.safeParse(decrypted);
+            const parseResult = OpenClawMetadataSchema.safeParse(decrypted);
             if (parseResult.success) {
                 metadata = parseResult.data;
             } else {
-                console.error(`Invalid metadata schema for Moltbot machine ${raw.id}:`, parseResult.error);
+                console.error(`Invalid metadata schema for OpenClaw machine ${raw.id}:`, parseResult.error);
             }
         } catch (error) {
-            console.error(`Failed to decrypt metadata for Moltbot machine ${raw.id}:`, error);
+            console.error(`Failed to decrypt metadata for OpenClaw machine ${raw.id}:`, error);
         }
     }
 
     // Decrypt and validate directConfig (if type is 'direct')
-    let directConfig: MoltbotDirectConfig | null = null;
+    let directConfig: OpenClawDirectConfig | null = null;
     if (raw.type === 'direct' && raw.directConfig) {
         try {
             const decrypted = await encryption.decryptWithKey(raw.directConfig, dataKey);
-            const parseResult = MoltbotDirectConfigSchema.safeParse(decrypted);
+            const parseResult = OpenClawDirectConfigSchema.safeParse(decrypted);
             if (parseResult.success) {
                 directConfig = parseResult.data;
             } else {
-                console.error(`Invalid directConfig schema for Moltbot machine ${raw.id}:`, parseResult.error);
+                console.error(`Invalid directConfig schema for OpenClaw machine ${raw.id}:`, parseResult.error);
             }
         } catch (error) {
-            console.error(`Failed to decrypt directConfig for Moltbot machine ${raw.id}:`, error);
+            console.error(`Failed to decrypt directConfig for OpenClaw machine ${raw.id}:`, error);
         }
     }
 
     // Decrypt and validate pairingData
-    let pairingData: MoltbotPairingData | null = null;
+    let pairingData: OpenClawPairingData | null = null;
     if (raw.pairingData) {
         try {
             const decrypted = await encryption.decryptWithKey(raw.pairingData, dataKey);
-            const parseResult = MoltbotPairingDataSchema.safeParse(decrypted);
+            const parseResult = OpenClawPairingDataSchema.safeParse(decrypted);
             if (parseResult.success) {
                 pairingData = parseResult.data;
             } else {
-                console.error(`Invalid pairingData schema for Moltbot machine ${raw.id}:`, parseResult.error);
+                console.error(`Invalid pairingData schema for OpenClaw machine ${raw.id}:`, parseResult.error);
             }
         } catch (error) {
-            console.error(`Failed to decrypt pairingData for Moltbot machine ${raw.id}:`, error);
+            console.error(`Failed to decrypt pairingData for OpenClaw machine ${raw.id}:`, error);
         }
     }
 
@@ -331,9 +331,9 @@ async function decryptMoltbotMachine(
 }
 
 /**
- * Process a new-moltbot-machine update event
+ * Process a new-openclaw-machine update event
  */
-export async function processNewMoltbotMachineEvent(
+export async function processNewOpenClawMachineEvent(
     eventData: {
         machineId: string;
         machineType: 'happy' | 'direct';
@@ -347,9 +347,9 @@ export async function processNewMoltbotMachineEvent(
         createdAt: number;
         updatedAt: number;
     },
-    encryption: MoltbotEncryption
-): Promise<MoltbotMachine | null> {
-    const raw: RawMoltbotMachine = {
+    encryption: OpenClawEncryption
+): Promise<OpenClawMachine | null> {
+    const raw: RawOpenClawMachine = {
         id: eventData.machineId,
         type: eventData.machineType,
         happyMachineId: eventData.happyMachineId,
@@ -363,37 +363,37 @@ export async function processNewMoltbotMachineEvent(
         updatedAt: eventData.updatedAt,
     };
 
-    return decryptMoltbotMachine(raw, encryption);
+    return decryptOpenClawMachine(raw, encryption);
 }
 
 /**
- * Process an update-moltbot-machine event
+ * Process an update-openclaw-machine event
  */
-export async function processUpdateMoltbotMachineEvent(
+export async function processUpdateOpenClawMachineEvent(
     eventData: {
         machineId: string;
         metadata?: { value: string; version: number };
         pairingData?: string | null;
         directConfig?: string | null;
     },
-    currentMachine: MoltbotMachine,
-    encryption: MoltbotEncryption,
+    currentMachine: OpenClawMachine,
+    encryption: OpenClawEncryption,
     dataKey: Uint8Array
-): Promise<MoltbotMachine> {
+): Promise<OpenClawMachine> {
     const updated = { ...currentMachine };
 
     if (eventData.metadata) {
         try {
             const decrypted = await encryption.decryptWithKey(eventData.metadata.value, dataKey);
-            const parseResult = MoltbotMetadataSchema.safeParse(decrypted);
+            const parseResult = OpenClawMetadataSchema.safeParse(decrypted);
             if (parseResult.success) {
                 updated.metadata = parseResult.data;
                 updated.metadataVersion = eventData.metadata.version;
             } else {
-                console.error(`Invalid metadata schema in update for Moltbot machine ${eventData.machineId}:`, parseResult.error);
+                console.error(`Invalid metadata schema in update for OpenClaw machine ${eventData.machineId}:`, parseResult.error);
             }
         } catch (error) {
-            console.error(`Failed to decrypt metadata update for Moltbot machine ${eventData.machineId}:`, error);
+            console.error(`Failed to decrypt metadata update for OpenClaw machine ${eventData.machineId}:`, error);
         }
     }
 
@@ -403,14 +403,14 @@ export async function processUpdateMoltbotMachineEvent(
         } else {
             try {
                 const decrypted = await encryption.decryptWithKey(eventData.pairingData, dataKey);
-                const parseResult = MoltbotPairingDataSchema.safeParse(decrypted);
+                const parseResult = OpenClawPairingDataSchema.safeParse(decrypted);
                 if (parseResult.success) {
                     updated.pairingData = parseResult.data;
                 } else {
-                    console.error(`Invalid pairingData schema in update for Moltbot machine ${eventData.machineId}:`, parseResult.error);
+                    console.error(`Invalid pairingData schema in update for OpenClaw machine ${eventData.machineId}:`, parseResult.error);
                 }
             } catch (error) {
-                console.error(`Failed to decrypt pairingData update for Moltbot machine ${eventData.machineId}:`, error);
+                console.error(`Failed to decrypt pairingData update for OpenClaw machine ${eventData.machineId}:`, error);
             }
         }
     }
@@ -421,14 +421,14 @@ export async function processUpdateMoltbotMachineEvent(
         } else {
             try {
                 const decrypted = await encryption.decryptWithKey(eventData.directConfig, dataKey);
-                const parseResult = MoltbotDirectConfigSchema.safeParse(decrypted);
+                const parseResult = OpenClawDirectConfigSchema.safeParse(decrypted);
                 if (parseResult.success) {
                     updated.directConfig = parseResult.data;
                 } else {
-                    console.error(`Invalid directConfig schema in update for Moltbot machine ${eventData.machineId}:`, parseResult.error);
+                    console.error(`Invalid directConfig schema in update for OpenClaw machine ${eventData.machineId}:`, parseResult.error);
                 }
             } catch (error) {
-                console.error(`Failed to decrypt directConfig update for Moltbot machine ${eventData.machineId}:`, error);
+                console.error(`Failed to decrypt directConfig update for OpenClaw machine ${eventData.machineId}:`, error);
             }
         }
     }

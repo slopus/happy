@@ -1,9 +1,9 @@
 /**
- * Add Moltbot Machine Page
+ * Add OpenClaw Machine Page
  *
- * Allows users to add a new Moltbot machine, either:
+ * Allows users to add a new OpenClaw machine, either:
  * - Happy Machine: Connect through an existing Happy machine relay
- * - Direct: Connect directly to a Moltbot gateway URL
+ * - Direct: Connect directly to an OpenClaw gateway URL
  */
 
 import React from 'react';
@@ -100,7 +100,7 @@ const MachineItem = React.memo(({ machine, isSelected, onSelect }: MachineItemPr
     );
 });
 
-export default function AddMoltbotMachinePage() {
+export default function AddOpenClawMachinePage() {
     const router = useRouter();
     const { theme } = useUnistyles();
     const machines = useAllMachines();
@@ -139,17 +139,17 @@ export default function AddMoltbotMachinePage() {
             if (machineType === 'happy' && selectedMachineId) {
                 const selectedMachine = machines.find(m => m.id === selectedMachineId);
                 const machineName = selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || 'Machine';
-                name = `${machineName} Moltbot`;
+                name = `${machineName} OpenClaw`;
             } else if (machineType === 'direct') {
                 // Extract host from URL for name
                 try {
                     const url = new URL(gatewayUrl.trim());
-                    name = `${url.hostname} Moltbot`;
+                    name = `${url.hostname} OpenClaw`;
                 } catch {
-                    name = 'My Moltbot';
+                    name = 'My OpenClaw';
                 }
             } else {
-                name = 'My Moltbot';
+                name = 'My OpenClaw';
             }
         }
 
@@ -157,7 +157,7 @@ export default function AddMoltbotMachinePage() {
             // Generate Ed25519 keypair for device authentication
             const keypair = await generateSignKeypair();
             // Derive deviceId from public key SHA-256 hash (hex encoded)
-            // This matches the Moltbot gateway's expected device identity format
+            // This matches the OpenClaw gateway's expected device identity format
             const hashBuffer = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, keypair.publicKey);
             const deviceId = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
             const pairingData = {
@@ -166,7 +166,7 @@ export default function AddMoltbotMachinePage() {
                 privateKey: encodeBase64(keypair.privateKey, 'base64url'),
             };
 
-            await sync.createMoltbotMachine({
+            await sync.createOpenClawMachine({
                 type: machineType,
                 happyMachineId: machineType === 'happy' ? selectedMachineId! : undefined,
                 directConfig: machineType === 'direct' ? {
@@ -183,7 +183,7 @@ export default function AddMoltbotMachinePage() {
 
             router.back();
         } catch (error) {
-            console.error('Failed to create Moltbot machine:', error);
+            console.error('Failed to create OpenClaw machine:', error);
             Alert.alert(
                 t('common.error'),
                 error instanceof Error ? error.message : 'Failed to create machine'
@@ -197,13 +197,13 @@ export default function AddMoltbotMachinePage() {
         <View style={styles.container}>
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 {/* Machine Name */}
-                <ItemGroup title={`${t('moltbot.sessionName')} (${t('common.optional')})`}>
+                <ItemGroup title={`${t('openclaw.sessionName')} (${t('common.optional')})`}>
                     <View style={styles.inputWrapper}>
                         <TextInput
                             style={styles.input}
                             value={machineName}
                             onChangeText={setMachineName}
-                            placeholder="My Moltbot"
+                            placeholder="My OpenClaw"
                             placeholderTextColor={theme.colors.textSecondary}
                             autoCapitalize="words"
                             autoCorrect={false}
@@ -212,10 +212,10 @@ export default function AddMoltbotMachinePage() {
                 </ItemGroup>
 
                 {/* Connection Type */}
-                <ItemGroup title={t('moltbot.machineType')}>
+                <ItemGroup title={t('openclaw.machineType')}>
                     <Item
-                        title={t('moltbot.machineTypeHappy')}
-                        subtitle={t('moltbot.machineTypeHappyDescription')}
+                        title={t('openclaw.machineTypeHappy')}
+                        subtitle={t('openclaw.machineTypeHappyDescription')}
                         subtitleLines={2}
                         leftElement={
                             <View style={[styles.typeIcon, { backgroundColor: theme.colors.status.connected + '20' }]}>
@@ -229,8 +229,8 @@ export default function AddMoltbotMachinePage() {
                         showChevron={false}
                     />
                     <Item
-                        title={t('moltbot.machineTypeDirect')}
-                        subtitle={t('moltbot.machineTypeDirectDescription')}
+                        title={t('openclaw.machineTypeDirect')}
+                        subtitle={t('openclaw.machineTypeDirectDescription')}
                         subtitleLines={2}
                         leftElement={
                             <View style={[styles.typeIcon, { backgroundColor: theme.colors.surfacePressed }]}>
@@ -248,11 +248,11 @@ export default function AddMoltbotMachinePage() {
                 {/* Happy Machine Selection */}
                 {machineType === 'happy' && (
                     <>
-                        <ItemGroup title={t('moltbot.selectMachine')}>
+                        <ItemGroup title={t('openclaw.selectMachine')}>
                             {machines.length === 0 ? (
                                 <Item
                                     title={t('settings.machines')}
-                                    subtitle={t('moltbot.noSessionsDescription')}
+                                    subtitle={t('openclaw.noSessionsDescription')}
                                     disabled
                                     showChevron={false}
                                 />
@@ -268,7 +268,7 @@ export default function AddMoltbotMachinePage() {
                             )}
                         </ItemGroup>
 
-                        <ItemGroup title={`${t('moltbot.gatewayToken')} (${t('common.optional')})`}>
+                        <ItemGroup title={`${t('openclaw.gatewayToken')} (${t('common.optional')})`}>
                             <View style={styles.inputWrapper}>
                                 <TextInput
                                     style={styles.input}
@@ -288,7 +288,7 @@ export default function AddMoltbotMachinePage() {
                 {/* Direct Connection Config */}
                 {machineType === 'direct' && (
                     <>
-                        <ItemGroup title={t('moltbot.gatewayUrl')}>
+                        <ItemGroup title={t('openclaw.gatewayUrl')}>
                             <View style={styles.inputWrapper}>
                                 <TextInput
                                     style={styles.input}
@@ -303,7 +303,7 @@ export default function AddMoltbotMachinePage() {
                             </View>
                         </ItemGroup>
 
-                        <ItemGroup title={`${t('moltbot.gatewayToken')} (${t('common.optional')})`}>
+                        <ItemGroup title={`${t('openclaw.gatewayToken')} (${t('common.optional')})`}>
                             <View style={styles.inputWrapper}>
                                 <TextInput
                                     style={styles.input}
@@ -329,7 +329,7 @@ export default function AddMoltbotMachinePage() {
                     {isSubmitting ? (
                         <ActivityIndicator color="#FFFFFF" />
                     ) : (
-                        <Text style={styles.submitButtonText}>{t('moltbot.addMachine')}</Text>
+                        <Text style={styles.submitButtonText}>{t('openclaw.addMachine')}</Text>
                     )}
                 </Pressable>
             </ScrollView>

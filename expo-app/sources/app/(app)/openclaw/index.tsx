@@ -1,11 +1,11 @@
 import * as React from 'react';
 import { View, Pressable } from 'react-native';
-import { MoltbotView } from '@/components/MoltbotView';
+import { OpenClawView } from '@/components/OpenClawView';
 import { useUnistyles } from 'react-native-unistyles';
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
-export default React.memo(function MoltbotPage() {
+export default React.memo(function OpenClawPage() {
     const { theme } = useUnistyles();
     const router = useRouter();
 
@@ -15,7 +15,7 @@ export default React.memo(function MoltbotPage() {
                 options={{
                     headerRight: () => (
                         <Pressable
-                            onPress={() => router.push('/moltbot/add')}
+                            onPress={() => router.push('/openclaw/add')}
                             hitSlop={15}
                         >
                             <Ionicons
@@ -27,7 +27,7 @@ export default React.memo(function MoltbotPage() {
                     ),
                 }}
             />
-            <MoltbotView />
+            <OpenClawView />
         </View>
     );
 });

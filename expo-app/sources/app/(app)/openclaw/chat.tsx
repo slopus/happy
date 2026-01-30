@@ -1,7 +1,7 @@
 /**
- * Moltbot Chat Page
+ * OpenClaw Chat Page
  *
- * Chat view for a Moltbot session.
+ * Chat view for an OpenClaw session.
  * Handles message display, input, and real-time streaming.
  */
 
@@ -25,9 +25,9 @@ import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { MultiTextInput, KeyPressEvent } from '@/components/MultiTextInput';
-import { useMoltbotConnection } from '@/moltbot/connection';
-import { useMoltbotMachine } from '@/sync/storage';
-import type { MoltbotChatMessage, MoltbotChatEvent } from '@/moltbot/types';
+import { useOpenClawConnection } from '@/openclaw/connection';
+import { useOpenClawMachine } from '@/sync/storage';
+import type { OpenClawChatMessage, OpenClawChatEvent } from '@/openclaw/types';
 
 // Header button width constants
 const HEADER_BUTTON_WIDTH = 40; // 24px icon + 16px padding
@@ -37,7 +37,7 @@ const HEADER_CENTER_PADDING = 24;
 // Local message type with send status for UI tracking
 type MessageStatus = 'sending' | 'sent' | 'failed';
 
-interface LocalMessage extends MoltbotChatMessage {
+interface LocalMessage extends OpenClawChatMessage {
     localId: string;           // Unique ID for tracking
     status?: MessageStatus;    // Only for user messages
     errorMessage?: string;     // Error details for failed messages
@@ -261,7 +261,7 @@ const MessageItem = React.memo(({ message, onRetry }: MessageItemProps) => {
     );
 });
 
-export default function MoltbotChatPage() {
+export default function OpenClawChatPage() {
     const router = useRouter();
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
@@ -275,19 +275,19 @@ export default function MoltbotChatPage() {
     const headerTitleMaxWidth = screenWidth - (HEADER_BUTTON_WIDTH * 2) - HEADER_PADDING - HEADER_CENTER_PADDING;
 
     // Get machine data
-    const machine = useMoltbotMachine(machineId ?? '');
+    const machine = useOpenClawMachine(machineId ?? '');
 
     // Connection hook
     const {
         isConnected,
         isConnecting,
         send,
-    } = useMoltbotConnection(machineId ?? '', {
+    } = useOpenClawConnection(machineId ?? '', {
         autoConnect: true,
         onEvent: (event, payload) => {
             // Handle real-time chat events
             if (event === 'chat' && payload) {
-                handleChatEvent(payload as MoltbotChatEvent);
+                handleChatEvent(payload as OpenClawChatEvent);
             }
         },
     });
@@ -302,7 +302,7 @@ export default function MoltbotChatPage() {
     const flatListRef = React.useRef<FlatList<LocalMessage>>(null);
 
     // Handle incoming chat events
-    const handleChatEvent = React.useCallback((event: MoltbotChatEvent) => {
+    const handleChatEvent = React.useCallback((event: OpenClawChatEvent) => {
         if (event.sessionKey !== sessionKey) return;
 
         switch (event.state) {
@@ -356,7 +356,7 @@ export default function MoltbotChatPage() {
         try {
             const result = await send('chat.history', { sessionKey });
             if (result.ok && result.payload) {
-                const history = (result.payload as { messages?: MoltbotChatMessage[] }).messages ?? [];
+                const history = (result.payload as { messages?: OpenClawChatMessage[] }).messages ?? [];
                 // Convert to LocalMessage format
                 const localMessages: LocalMessage[] = history.map((msg) => ({
                     ...msg,
@@ -461,7 +461,7 @@ export default function MoltbotChatPage() {
     }, [inputText, isConnected, isStreaming, handleSend]);
 
     // Session name for header title (decode URL encoding)
-    const sessionName = sessionKey ? decodeURIComponent(sessionKey) : t('moltbot.sessions');
+    const sessionName = sessionKey ? decodeURIComponent(sessionKey) : t('openclaw.sessions');
     // Machine name for header subtitle
     const machineName = machine?.metadata?.name;
 
@@ -522,10 +522,10 @@ export default function MoltbotChatPage() {
                 <View style={styles.emptyContainer}>
                     <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.textSecondary} />
                     <Text style={[styles.emptyTitle, { marginTop: 16 }]}>
-                        {t('moltbot.noSessions')}
+                        {t('openclaw.noSessions')}
                     </Text>
                     <Text style={styles.emptyDescription}>
-                        {t('moltbot.noSessionsDescription')}
+                        {t('openclaw.noSessionsDescription')}
                     </Text>
                 </View>
             ) : (

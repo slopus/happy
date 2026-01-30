@@ -147,9 +147,9 @@ export const ApiKvBatchUpdateSchema = z.object({
     }))
 });
 
-// Moltbot machine update schemas
-export const ApiNewMoltbotMachineSchema = z.object({
-    t: z.literal('new-moltbot-machine'),
+// OpenClaw machine update schemas
+export const ApiNewOpenClawMachineSchema = z.object({
+    t: z.literal('new-openclaw-machine'),
     machineId: z.string(),
     machineType: z.enum(['happy', 'direct']),
     happyMachineId: z.string().nullable(),
@@ -163,8 +163,8 @@ export const ApiNewMoltbotMachineSchema = z.object({
     updatedAt: z.number()
 });
 
-export const ApiUpdateMoltbotMachineSchema = z.object({
-    t: z.literal('update-moltbot-machine'),
+export const ApiUpdateOpenClawMachineSchema = z.object({
+    t: z.literal('update-openclaw-machine'),
     machineId: z.string(),
     metadata: z.object({
         value: z.string(),
@@ -174,8 +174,8 @@ export const ApiUpdateMoltbotMachineSchema = z.object({
     directConfig: z.string().nullable().optional()
 });
 
-export const ApiDeleteMoltbotMachineSchema = z.object({
-    t: z.literal('delete-moltbot-machine'),
+export const ApiDeleteOpenClawMachineSchema = z.object({
+    t: z.literal('delete-openclaw-machine'),
     machineId: z.string()
 });
 
@@ -192,17 +192,17 @@ export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiRelationshipUpdatedSchema,
     ApiNewFeedPostSchema,
     ApiKvBatchUpdateSchema,
-    ApiNewMoltbotMachineSchema,
-    ApiUpdateMoltbotMachineSchema,
-    ApiDeleteMoltbotMachineSchema
+    ApiNewOpenClawMachineSchema,
+    ApiUpdateOpenClawMachineSchema,
+    ApiDeleteOpenClawMachineSchema
 ]);
 
 export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;
 export type ApiRelationshipUpdated = z.infer<typeof ApiRelationshipUpdatedSchema>;
 export type ApiKvBatchUpdate = z.infer<typeof ApiKvBatchUpdateSchema>;
-export type ApiNewMoltbotMachine = z.infer<typeof ApiNewMoltbotMachineSchema>;
-export type ApiUpdateMoltbotMachine = z.infer<typeof ApiUpdateMoltbotMachineSchema>;
-export type ApiDeleteMoltbotMachine = z.infer<typeof ApiDeleteMoltbotMachineSchema>;
+export type ApiNewOpenClawMachine = z.infer<typeof ApiNewOpenClawMachineSchema>;
+export type ApiUpdateOpenClawMachine = z.infer<typeof ApiUpdateOpenClawMachineSchema>;
+export type ApiDeleteOpenClawMachine = z.infer<typeof ApiDeleteOpenClawMachineSchema>;
 export type ApiUpdate = z.infer<typeof ApiUpdateSchema>;
 
 //

@@ -1,8 +1,8 @@
 /**
- * Moltbot Machine Detail Page
+ * OpenClaw Machine Detail Page
  *
- * Shows machine details and session list for a Moltbot machine.
- * Handles connection to the Moltbot gateway and displays sessions.
+ * Shows machine details and session list for an OpenClaw machine.
+ * Handles connection to the OpenClaw gateway and displays sessions.
  */
 
 import React from 'react';
@@ -16,13 +16,13 @@ import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { useMoltbotMachine, useMachine } from '@/sync/storage';
-import { useMoltbotConnection } from '@/moltbot/connection';
+import { useOpenClawMachine, useMachine } from '@/sync/storage';
+import { useOpenClawConnection } from '@/openclaw/connection';
 import { sync } from '@/sync/sync';
 import { Modal } from '@/modal/ModalManager';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
-import type { MoltbotSession } from '@/moltbot/types';
+import type { OpenClawSession } from '@/openclaw/types';
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -86,7 +86,7 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 interface SessionItemProps {
-    session: MoltbotSession;
+    session: OpenClawSession;
     onPress: () => void;
 }
 
@@ -154,7 +154,7 @@ const HEADER_TWO_BUTTONS_WIDTH = 88; // 40 + 40 + 8 gap
 const HEADER_PADDING = Platform.OS === 'ios' ? 16 : 32; // 8*2 or 16*2
 const HEADER_CENTER_PADDING = 24; // 12*2 for centerContainer
 
-export default function MoltbotMachineDetailPage() {
+export default function OpenClawMachineDetailPage() {
     const router = useRouter();
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
@@ -165,7 +165,7 @@ export default function MoltbotMachineDetailPage() {
     const headerTitleMaxWidth = screenWidth - (HEADER_TWO_BUTTONS_WIDTH * 2) - HEADER_PADDING - HEADER_CENTER_PADDING;
 
     // Get machine data
-    const machine = useMoltbotMachine(machineId ?? '');
+    const machine = useOpenClawMachine(machineId ?? '');
     const happyMachine = useMachine(machine?.happyMachineId ?? '');
 
     // Loading state for operations
@@ -183,16 +183,16 @@ export default function MoltbotMachineDetailPage() {
         connect,
         send,
         reconnect,
-    } = useMoltbotConnection(machineId ?? '', {
+    } = useOpenClawConnection(machineId ?? '', {
         autoConnect: true,
         onEvent: (event, payload) => {
             // Handle real-time events if needed
-            console.log('[Moltbot] Event:', event, payload);
+            console.log('[OpenClaw] Event:', event, payload);
         },
     });
 
     // Sessions state
-    const [sessions, setSessions] = React.useState<MoltbotSession[]>([]);
+    const [sessions, setSessions] = React.useState<OpenClawSession[]>([]);
     const [isLoadingSessions, setIsLoadingSessions] = React.useState(false);
     const [refreshing, setRefreshing] = React.useState(false);
 
@@ -204,7 +204,7 @@ export default function MoltbotMachineDetailPage() {
         try {
             const result = await send('sessions.list', {});
             if (result.ok && result.payload) {
-                const sessionList = (result.payload as { sessions?: MoltbotSession[] }).sessions ?? [];
+                const sessionList = (result.payload as { sessions?: OpenClawSession[] }).sessions ?? [];
                 setSessions(sessionList);
             }
         } catch (err) {
@@ -229,9 +229,9 @@ export default function MoltbotMachineDetailPage() {
     }, [fetchSessions]);
 
     // Handle session press
-    const handleSessionPress = React.useCallback((session: MoltbotSession) => {
+    const handleSessionPress = React.useCallback((session: OpenClawSession) => {
         router.push({
-            pathname: '/moltbot/chat',
+            pathname: '/openclaw/chat',
             params: {
                 machineId: machineId,
                 sessionKey: session.key,
@@ -242,7 +242,7 @@ export default function MoltbotMachineDetailPage() {
     // Handle new session
     const handleNewSession = React.useCallback(() => {
         router.push({
-            pathname: '/moltbot/new',
+            pathname: '/openclaw/new',
             params: { machineId: machineId },
         });
     }, [router, machineId]);
@@ -253,10 +253,10 @@ export default function MoltbotMachineDetailPage() {
 
         const currentName = machine.metadata?.name || '';
         const newName = await Modal.prompt(
-            t('moltbot.renameMachine'),
+            t('openclaw.renameMachine'),
             undefined,
             {
-                placeholder: t('moltbot.machineNamePlaceholder'),
+                placeholder: t('openclaw.machineNamePlaceholder'),
                 defaultValue: currentName,
                 confirmText: t('common.save'),
                 cancelText: t('common.cancel'),
@@ -266,7 +266,7 @@ export default function MoltbotMachineDetailPage() {
         if (newName && newName !== currentName) {
             setIsUpdating(true);
             try {
-                await sync.updateMoltbotMachine(machineId, { name: newName });
+                await sync.updateOpenClawMachine(machineId, { name: newName });
             } catch (err) {
                 console.error('Failed to update machine:', err);
                 Modal.alert(t('common.error'), err instanceof Error ? err.message : 'Failed to update machine');
@@ -282,10 +282,10 @@ export default function MoltbotMachineDetailPage() {
 
         const currentUrl = machine.directConfig?.url || '';
         const newUrl = await Modal.prompt(
-            t('moltbot.editGatewayUrl'),
+            t('openclaw.editGatewayUrl'),
             undefined,
             {
-                placeholder: t('moltbot.gatewayUrl'),
+                placeholder: t('openclaw.gatewayUrl'),
                 defaultValue: currentUrl,
                 confirmText: t('common.save'),
                 cancelText: t('common.cancel'),
@@ -295,7 +295,7 @@ export default function MoltbotMachineDetailPage() {
         if (newUrl && newUrl !== currentUrl) {
             setIsUpdating(true);
             try {
-                await sync.updateMoltbotMachine(machineId, {
+                await sync.updateOpenClawMachine(machineId, {
                     directConfig: {
                         url: newUrl,
                         password: machine.directConfig?.password,
@@ -316,10 +316,10 @@ export default function MoltbotMachineDetailPage() {
 
         const currentPassword = machine.directConfig?.password || '';
         const newPassword = await Modal.prompt(
-            t('moltbot.editGatewayPassword'),
+            t('openclaw.editGatewayPassword'),
             undefined,
             {
-                placeholder: t('moltbot.gatewayToken'),
+                placeholder: t('openclaw.gatewayToken'),
                 defaultValue: currentPassword,
                 confirmText: t('common.save'),
                 cancelText: t('common.cancel'),
@@ -330,7 +330,7 @@ export default function MoltbotMachineDetailPage() {
         if (newPassword !== null && newPassword !== currentPassword) {
             setIsUpdating(true);
             try {
-                await sync.updateMoltbotMachine(machineId, {
+                await sync.updateOpenClawMachine(machineId, {
                     directConfig: {
                         url: machine.directConfig?.url || '',
                         password: newPassword || undefined,
@@ -351,10 +351,10 @@ export default function MoltbotMachineDetailPage() {
 
         const currentToken = machine.metadata?.gatewayToken || '';
         const newToken = await Modal.prompt(
-            t('moltbot.editGatewayPassword'),
+            t('openclaw.editGatewayPassword'),
             undefined,
             {
-                placeholder: t('moltbot.gatewayToken'),
+                placeholder: t('openclaw.gatewayToken'),
                 defaultValue: currentToken,
                 confirmText: t('common.save'),
                 cancelText: t('common.cancel'),
@@ -365,7 +365,7 @@ export default function MoltbotMachineDetailPage() {
         if (newToken !== null && newToken !== currentToken) {
             setIsUpdating(true);
             try {
-                await sync.updateMoltbotMachine(machineId, {
+                await sync.updateOpenClawMachine(machineId, {
                     gatewayToken: newToken || undefined,
                 });
             } catch (err) {
@@ -382,8 +382,8 @@ export default function MoltbotMachineDetailPage() {
         if (!machineId) return;
 
         const confirmed = await Modal.confirm(
-            t('moltbot.deleteMachine'),
-            t('moltbot.deleteMachineConfirmMessage'),
+            t('openclaw.deleteMachine'),
+            t('openclaw.deleteMachineConfirmMessage'),
             {
                 confirmText: t('common.delete'),
                 cancelText: t('common.cancel'),
@@ -394,7 +394,7 @@ export default function MoltbotMachineDetailPage() {
         if (confirmed) {
             setIsUpdating(true);
             try {
-                await sync.deleteMoltbotMachine(machineId);
+                await sync.deleteOpenClawMachine(machineId);
                 router.back();
             } catch (err) {
                 console.error('Failed to delete machine:', err);
@@ -414,13 +414,13 @@ export default function MoltbotMachineDetailPage() {
             let destructiveIndex: number;
 
             if (isDirectType) {
-                options = [t('common.cancel'), t('moltbot.renameMachine'), t('moltbot.editGatewayUrl'), t('moltbot.editGatewayPassword'), t('moltbot.deleteMachine')];
+                options = [t('common.cancel'), t('openclaw.renameMachine'), t('openclaw.editGatewayUrl'), t('openclaw.editGatewayPassword'), t('openclaw.deleteMachine')];
                 destructiveIndex = 4;
             } else if (isHappyType) {
-                options = [t('common.cancel'), t('moltbot.renameMachine'), t('moltbot.editGatewayPassword'), t('moltbot.deleteMachine')];
+                options = [t('common.cancel'), t('openclaw.renameMachine'), t('openclaw.editGatewayPassword'), t('openclaw.deleteMachine')];
                 destructiveIndex = 3;
             } else {
-                options = [t('common.cancel'), t('moltbot.renameMachine'), t('moltbot.deleteMachine')];
+                options = [t('common.cancel'), t('openclaw.renameMachine'), t('openclaw.deleteMachine')];
                 destructiveIndex = 2;
             }
 
@@ -455,29 +455,29 @@ export default function MoltbotMachineDetailPage() {
     // Menu items for ActionMenuModal
     const menuItems: ActionMenuItem[] = React.useMemo(() => {
         const items: ActionMenuItem[] = [
-            { label: t('moltbot.renameMachine'), onPress: handleRenameMachine },
+            { label: t('openclaw.renameMachine'), onPress: handleRenameMachine },
         ];
         // Add direct config options for direct type machines
         if (machine?.type === 'direct') {
             items.push(
-                { label: t('moltbot.editGatewayUrl'), onPress: handleEditGatewayUrl },
-                { label: t('moltbot.editGatewayPassword'), onPress: handleEditGatewayPassword },
+                { label: t('openclaw.editGatewayUrl'), onPress: handleEditGatewayUrl },
+                { label: t('openclaw.editGatewayPassword'), onPress: handleEditGatewayPassword },
             );
         }
         // Add gateway token option for happy type machines
         if (machine?.type === 'happy') {
             items.push(
-                { label: t('moltbot.editGatewayPassword'), onPress: handleEditHappyGatewayToken },
+                { label: t('openclaw.editGatewayPassword'), onPress: handleEditHappyGatewayToken },
             );
         }
-        items.push({ label: t('moltbot.deleteMachine'), onPress: handleDeleteMachine, destructive: true });
+        items.push({ label: t('openclaw.deleteMachine'), onPress: handleDeleteMachine, destructive: true });
         return items;
     }, [machine?.type, handleRenameMachine, handleEditGatewayUrl, handleEditGatewayPassword, handleEditHappyGatewayToken, handleDeleteMachine]);
 
     // Get machine name
     const machineName = machine?.metadata?.name ||
         (machine?.type === 'happy' ? happyMachine?.metadata?.host : machine?.directConfig?.url) ||
-        t('moltbot.unknownMachine');
+        t('openclaw.unknownMachine');
 
     // Get status config for header subtitle
     const getStatusConfig = () => {
@@ -495,7 +495,7 @@ export default function MoltbotMachineDetailPage() {
             case 'pairing_required':
                 return {
                     color: theme.colors.radio.active,
-                    text: t('moltbot.pairingRequired'),
+                    text: t('openclaw.pairingRequired'),
                 };
             case 'error':
                 return {
@@ -518,7 +518,7 @@ export default function MoltbotMachineDetailPage() {
                 <Stack.Screen options={{ headerTitle: t('common.notFound') }} />
                 <View style={styles.emptyContainer}>
                     <Ionicons name="alert-circle" size={48} color={theme.colors.textSecondary} />
-                    <Text style={[styles.emptyTitle, { marginTop: 16 }]}>{t('moltbot.machineNotFound')}</Text>
+                    <Text style={[styles.emptyTitle, { marginTop: 16 }]}>{t('openclaw.machineNotFound')}</Text>
                 </View>
             </View>
         );
@@ -611,10 +611,10 @@ export default function MoltbotMachineDetailPage() {
                 {(status === 'disconnected' || status === 'error') && (
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyDescription}>
-                            {error || t('moltbot.notConnected')}
+                            {error || t('openclaw.notConnected')}
                         </Text>
                         <Pressable style={styles.connectButton} onPress={() => connect()}>
-                            <Text style={styles.connectButtonText}>{t('moltbot.connect')}</Text>
+                            <Text style={styles.connectButtonText}>{t('openclaw.connect')}</Text>
                         </Pressable>
                     </View>
                 )}
@@ -624,10 +624,10 @@ export default function MoltbotMachineDetailPage() {
                     <View style={styles.emptyContainer}>
                         <Ionicons name="key" size={48} color={theme.colors.radio.active} />
                         <Text style={[styles.emptyTitle, { marginTop: 16 }]}>
-                            {t('moltbot.pairingRequired')}
+                            {t('openclaw.pairingRequired')}
                         </Text>
                         <Text style={styles.emptyDescription}>
-                            {t('moltbot.pairingInstructions')}
+                            {t('openclaw.pairingInstructions')}
                         </Text>
                     </View>
                 )}
@@ -644,19 +644,19 @@ export default function MoltbotMachineDetailPage() {
                     <View style={styles.emptyContainer}>
                         <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.textSecondary} />
                         <Text style={[styles.emptyTitle, { marginTop: 16 }]}>
-                            {t('moltbot.noSessions')}
+                            {t('openclaw.noSessions')}
                         </Text>
                         <Text style={styles.emptyDescription}>
-                            {t('moltbot.noSessionsDescription')}
+                            {t('openclaw.noSessionsDescription')}
                         </Text>
                         <Pressable style={styles.connectButton} onPress={handleNewSession}>
-                            <Text style={styles.connectButtonText}>{t('moltbot.newSession')}</Text>
+                            <Text style={styles.connectButtonText}>{t('openclaw.newSession')}</Text>
                         </Pressable>
                     </View>
                 )}
 
                 {isConnected && sessions.length > 0 && (
-                    <ItemGroup title={t('moltbot.sessions')}>
+                    <ItemGroup title={t('openclaw.sessions')}>
                         {sessions.map((session) => (
                             <SessionItem
                                 key={session.key}

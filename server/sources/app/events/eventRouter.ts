@@ -153,7 +153,7 @@ export type UpdateEvent = {
         version: number; // -1 for deleted keys
     }>;
 } | {
-    type: 'new-moltbot-machine';
+    type: 'new-openclaw-machine';
     machineId: string;
     machineType: 'happy' | 'direct';
     happyMachineId: string | null;
@@ -166,7 +166,7 @@ export type UpdateEvent = {
     createdAt: number;
     updatedAt: number;
 } | {
-    type: 'update-moltbot-machine';
+    type: 'update-openclaw-machine';
     machineId: string;
     metadata?: {
         value: string;
@@ -175,7 +175,7 @@ export type UpdateEvent = {
     pairingData?: string | null;
     directConfig?: string | null;
 } | {
-    type: 'delete-moltbot-machine';
+    type: 'delete-openclaw-machine';
     machineId: string;
 };
 
@@ -657,7 +657,7 @@ export function buildKVBatchUpdateUpdate(
     };
 }
 
-export function buildNewMoltbotMachineUpdate(machine: {
+export function buildNewOpenClawMachineUpdate(machine: {
     id: string;
     type: string;
     happyMachineId: string | null;
@@ -674,7 +674,7 @@ export function buildNewMoltbotMachineUpdate(machine: {
         id: updateId,
         seq: updateSeq,
         body: {
-            t: 'new-moltbot-machine',
+            t: 'new-openclaw-machine',
             machineId: machine.id,
             machineType: machine.type as 'happy' | 'direct',
             happyMachineId: machine.happyMachineId,
@@ -691,7 +691,7 @@ export function buildNewMoltbotMachineUpdate(machine: {
     };
 }
 
-export function buildUpdateMoltbotMachineUpdate(
+export function buildUpdateOpenClawMachineUpdate(
     machineId: string,
     updateSeq: number,
     updateId: string,
@@ -705,7 +705,7 @@ export function buildUpdateMoltbotMachineUpdate(
         id: updateId,
         seq: updateSeq,
         body: {
-            t: 'update-moltbot-machine',
+            t: 'update-openclaw-machine',
             machineId,
             ...updates
         },
@@ -713,7 +713,7 @@ export function buildUpdateMoltbotMachineUpdate(
     };
 }
 
-export function buildDeleteMoltbotMachineUpdate(
+export function buildDeleteOpenClawMachineUpdate(
     machineId: string,
     updateSeq: number,
     updateId: string
@@ -722,7 +722,7 @@ export function buildDeleteMoltbotMachineUpdate(
         id: updateId,
         seq: updateSeq,
         body: {
-            t: 'delete-moltbot-machine',
+            t: 'delete-openclaw-machine',
             machineId
         },
         createdAt: Date.now()

@@ -362,30 +362,22 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
-                name="moltbot/index"
+                name="openclaw/index"
                 options={{
                     headerShown: true,
-                    headerTitle: t('tabs.moltbot'),
+                    headerTitle: t('tabs.openclaw'),
                     headerBackTitle: t('common.back'),
                 }}
             />
             <Stack.Screen
-                name="moltbot/add"
+                name="openclaw/add"
                 options={{
-                    headerTitle: t('moltbot.addMachine'),
+                    headerTitle: t('openclaw.addMachine'),
                     headerBackTitle: t('common.back'),
                 }}
             />
             <Stack.Screen
-                name="moltbot/machine/[id]"
-                options={{
-                    headerShown: true,
-                    headerTitle: '',
-                    headerBackTitle: t('common.back'),
-                }}
-            />
-            <Stack.Screen
-                name="moltbot/chat"
+                name="openclaw/machine/[id]"
                 options={{
                     headerShown: true,
                     headerTitle: '',
@@ -393,10 +385,18 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
-                name="moltbot/new"
+                name="openclaw/chat"
                 options={{
                     headerShown: true,
-                    headerTitle: t('moltbot.newSession'),
+                    headerTitle: '',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="openclaw/new"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('openclaw.newSession'),
                     headerBackTitle: t('common.back'),
                 }}
             />

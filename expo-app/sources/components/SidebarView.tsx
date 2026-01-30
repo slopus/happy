@@ -273,7 +273,7 @@ export const SidebarView = React.memo(() => {
                             )}
                         </Pressable>
                         <Pressable
-                            onPress={() => router.push('/(app)/moltbot')}
+                            onPress={() => router.push('/(app)/openclaw')}
                             hitSlop={15}
                         >
                             <Image

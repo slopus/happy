@@ -42,12 +42,12 @@ import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { initializeTodoSync } from '../-zen/model/ops';
 import {
-    createMoltbotMachine,
-    updateMoltbotMachine,
-    deleteMoltbotMachine,
-    processNewMoltbotMachineEvent,
-    processUpdateMoltbotMachineEvent,
-} from '../moltbot/storage';
+    createOpenClawMachine,
+    updateOpenClawMachine,
+    deleteOpenClawMachine,
+    processNewOpenClawMachineEvent,
+    processUpdateOpenClawMachineEvent,
+} from '../openclaw/storage';
 
 type PermissionMode = NonNullable<Session['permissionMode']>;
 
@@ -77,8 +77,8 @@ class Sync {
     private friendRequestsSync: InvalidateSync;
     private feedSync: InvalidateSync;
     private todosSync: InvalidateSync;
-    private moltbotMachinesSync: InvalidateSync;
-    private moltbotMachineDataKeys = new Map<string, Uint8Array>(); // Store Moltbot machine data encryption keys
+    private openClawMachinesSync: InvalidateSync;
+    private openClawMachineDataKeys = new Map<string, Uint8Array>(); // Store OpenClaw machine data encryption keys
     private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     revenueCatInitialized = false;
@@ -99,7 +99,7 @@ class Sync {
         this.friendRequestsSync = new InvalidateSync(this.fetchFriendRequests);
         this.feedSync = new InvalidateSync(this.fetchFeed);
         this.todosSync = new InvalidateSync(this.fetchTodos);
-        this.moltbotMachinesSync = new InvalidateSync(this.fetchMoltbotMachines);
+        this.openClawMachinesSync = new InvalidateSync(this.fetchOpenClawMachines);
 
         const registerPushToken = async () => {
             if (__DEV__) {
@@ -117,7 +117,7 @@ class Sync {
                 this.purchasesSync.invalidate();
                 this.profileSync.invalidate();
                 this.machinesSync.invalidate();
-                this.moltbotMachinesSync.invalidate();
+                this.openClawMachinesSync.invalidate();
                 this.pushTokenSync.invalidate();
                 this.sessionsSync.invalidate();
                 this.nativeUpdateSync.invalidate();
@@ -182,7 +182,7 @@ class Sync {
         this.profileSync.invalidate();
         this.purchasesSync.invalidate();
         this.machinesSync.invalidate();
-        this.moltbotMachinesSync.invalidate();
+        this.openClawMachinesSync.invalidate();
         this.pushTokenSync.invalidate();
         this.nativeUpdateSync.invalidate();
         this.friendsSync.invalidate();
@@ -1033,12 +1033,12 @@ class Sync {
         }
     }
 
-    private fetchMoltbotMachines = async () => {
+    private fetchOpenClawMachines = async () => {
         if (!this.credentials) return;
 
-        console.log('🤖 Sync: Fetching Moltbot machines...');
+        console.log('🤖 Sync: Fetching OpenClaw machines...');
         const API_ENDPOINT = getServerUrl();
-        const response = await fetch(`${API_ENDPOINT}/v1/moltbot/machines`, {
+        const response = await fetch(`${API_ENDPOINT}/v1/openclaw/machines`, {
             headers: {
                 'Authorization': `Bearer ${this.credentials.token}`,
                 'Content-Type': 'application/json'
@@ -1046,7 +1046,7 @@ class Sync {
         });
 
         if (!response.ok) {
-            console.error(`Failed to fetch Moltbot machines: ${response.status}`);
+            console.error(`Failed to fetch OpenClaw machines: ${response.status}`);
             return;
         }
 
@@ -1063,7 +1063,7 @@ class Sync {
             createdAt: number;
             updatedAt: number;
         }>;
-        console.log(`🤖 Sync: Fetched ${rawMachines.length} Moltbot machines from server`);
+        console.log(`🤖 Sync: Fetched ${rawMachines.length} OpenClaw machines from server`);
 
         // Decrypt and process machines
         const decryptedMachines: Array<{
@@ -1087,12 +1087,12 @@ class Sync {
                 if (raw.dataEncryptionKey) {
                     dataKey = await this.encryption.decryptEncryptionKey(raw.dataEncryptionKey);
                     if (dataKey) {
-                        this.moltbotMachineDataKeys.set(raw.id, dataKey);
+                        this.openClawMachineDataKeys.set(raw.id, dataKey);
                     }
                 }
 
                 if (!dataKey) {
-                    console.error(`No data encryption key for Moltbot machine ${raw.id}`);
+                    console.error(`No data encryption key for OpenClaw machine ${raw.id}`);
                     continue;
                 }
 
@@ -1135,18 +1135,18 @@ class Sync {
                     updatedAt: raw.updatedAt,
                 });
             } catch (error) {
-                console.error(`Failed to decrypt Moltbot machine ${raw.id}:`, error);
+                console.error(`Failed to decrypt OpenClaw machine ${raw.id}:`, error);
             }
         }
 
-        storage.getState().applyMoltbotMachines(decryptedMachines, true);
-        log.log(`🤖 fetchMoltbotMachines completed - processed ${decryptedMachines.length} machines`);
+        storage.getState().applyOpenClawMachines(decryptedMachines, true);
+        log.log(`🤖 fetchOpenClawMachines completed - processed ${decryptedMachines.length} machines`);
     }
 
     /**
-     * Create a new Moltbot machine
+     * Create a new OpenClaw machine
      */
-    public async createMoltbotMachine(params: {
+    public async createOpenClawMachine(params: {
         type: 'happy' | 'direct';
         happyMachineId?: string;
         directConfig?: { url: string; token?: string };
@@ -1180,7 +1180,7 @@ class Sync {
             },
         };
 
-        const machine = await createMoltbotMachine(
+        const machine = await createOpenClawMachine(
             this.credentials,
             encryptionAdapter,
             {
@@ -1193,18 +1193,18 @@ class Sync {
         );
 
         if (machine) {
-            storage.getState().applyMoltbotMachines([machine]);
-            log.log(`🤖 Created Moltbot machine ${machine.id}`);
+            storage.getState().applyOpenClawMachines([machine]);
+            log.log(`🤖 Created OpenClaw machine ${machine.id}`);
             return machine.id;
         }
 
-        throw new Error('Failed to create Moltbot machine');
+        throw new Error('Failed to create OpenClaw machine');
     }
 
     /**
-     * Update a Moltbot machine's metadata and/or direct config
+     * Update a OpenClaw machine's metadata and/or direct config
      */
-    public async updateMoltbotMachine(
+    public async updateOpenClawMachine(
         machineId: string,
         updates: {
             name?: string;
@@ -1217,13 +1217,13 @@ class Sync {
         }
 
         // Get current machine from storage
-        const currentMachine = storage.getState().moltbotMachines[machineId];
+        const currentMachine = storage.getState().openClawMachines[machineId];
         if (!currentMachine) {
             throw new Error('Machine not found');
         }
 
         // Get data encryption key
-        const dataKey = this.moltbotMachineDataKeys.get(machineId);
+        const dataKey = this.openClawMachineDataKeys.get(machineId);
         if (!dataKey) {
             throw new Error('Encryption key not found for machine');
         }
@@ -1263,7 +1263,7 @@ class Sync {
             password: updates.directConfig.password,
         } : undefined;
 
-        const updatedMachine = await updateMoltbotMachine(
+        const updatedMachine = await updateOpenClawMachine(
             this.credentials,
             encryptionAdapter,
             machineId,
@@ -1276,29 +1276,29 @@ class Sync {
         );
 
         if (updatedMachine) {
-            storage.getState().applyMoltbotMachines([updatedMachine]);
-            log.log(`🤖 Updated Moltbot machine ${machineId}`);
+            storage.getState().applyOpenClawMachines([updatedMachine]);
+            log.log(`🤖 Updated OpenClaw machine ${machineId}`);
         } else {
-            throw new Error('Failed to update Moltbot machine');
+            throw new Error('Failed to update OpenClaw machine');
         }
     }
 
     /**
-     * Delete a Moltbot machine
+     * Delete a OpenClaw machine
      */
-    public async deleteMoltbotMachine(machineId: string): Promise<void> {
+    public async deleteOpenClawMachine(machineId: string): Promise<void> {
         if (!this.credentials) {
             throw new Error('Not authenticated');
         }
 
-        const success = await deleteMoltbotMachine(this.credentials, machineId);
+        const success = await deleteOpenClawMachine(this.credentials, machineId);
 
         if (success) {
-            storage.getState().removeMoltbotMachine(machineId);
-            this.moltbotMachineDataKeys.delete(machineId);
-            log.log(`🤖 Deleted Moltbot machine ${machineId}`);
+            storage.getState().removeOpenClawMachine(machineId);
+            this.openClawMachineDataKeys.delete(machineId);
+            log.log(`🤖 Deleted OpenClaw machine ${machineId}`);
         } else {
-            throw new Error('Failed to delete Moltbot machine');
+            throw new Error('Failed to delete OpenClaw machine');
         }
     }
 
@@ -2266,9 +2266,9 @@ class Sync {
                     }
                 }
             }
-        } else if (updateData.body.t === 'new-moltbot-machine') {
-            log.log('🤖 Received new-moltbot-machine update');
-            const moltbotUpdate = updateData.body;
+        } else if (updateData.body.t === 'new-openclaw-machine') {
+            log.log('🤖 Received new-openclaw-machine update');
+            const openClawUpdate = updateData.body;
 
             try {
                 // Create encryption adapter for processing using openEncryption
@@ -2294,48 +2294,48 @@ class Sync {
                 };
 
                 // First decrypt the data encryption key
-                if (!moltbotUpdate.dataEncryptionKey) {
-                    console.error('No data encryption key for new Moltbot machine');
+                if (!openClawUpdate.dataEncryptionKey) {
+                    console.error('No data encryption key for new OpenClaw machine');
                     return;
                 }
 
-                const dataKey = await this.encryption.decryptEncryptionKey(moltbotUpdate.dataEncryptionKey);
+                const dataKey = await this.encryption.decryptEncryptionKey(openClawUpdate.dataEncryptionKey);
                 if (!dataKey) {
-                    console.error('Failed to decrypt data encryption key for new Moltbot machine');
+                    console.error('Failed to decrypt data encryption key for new OpenClaw machine');
                     return;
                 }
 
                 const encryptionAdapter = await createEncryptionAdapter(dataKey);
-                const machine = await processNewMoltbotMachineEvent(moltbotUpdate, encryptionAdapter);
+                const machine = await processNewOpenClawMachineEvent(openClawUpdate, encryptionAdapter);
                 if (machine) {
                     // Store the data encryption key
-                    this.moltbotMachineDataKeys.set(machine.id, dataKey);
+                    this.openClawMachineDataKeys.set(machine.id, dataKey);
 
-                    storage.getState().applyMoltbotMachines([machine]);
-                    log.log(`🤖 Added new Moltbot machine ${machine.id} to storage`);
+                    storage.getState().applyOpenClawMachines([machine]);
+                    log.log(`🤖 Added new OpenClaw machine ${machine.id} to storage`);
                 }
             } catch (error) {
-                console.error('Failed to process new Moltbot machine:', error);
+                console.error('Failed to process new OpenClaw machine:', error);
             }
-        } else if (updateData.body.t === 'update-moltbot-machine') {
-            log.log('🤖 Received update-moltbot-machine update');
-            const moltbotUpdate = updateData.body;
-            const machineId = moltbotUpdate.machineId;
+        } else if (updateData.body.t === 'update-openclaw-machine') {
+            log.log('🤖 Received update-openclaw-machine update');
+            const openClawUpdate = updateData.body;
+            const machineId = openClawUpdate.machineId;
 
             // Get existing machine
-            const existingMachine = storage.getState().moltbotMachines[machineId];
+            const existingMachine = storage.getState().openClawMachines[machineId];
             if (!existingMachine) {
-                console.error(`Moltbot machine ${machineId} not found in storage`);
+                console.error(`OpenClaw machine ${machineId} not found in storage`);
                 // Fetch all machines to sync
-                this.moltbotMachinesSync.invalidate();
+                this.openClawMachinesSync.invalidate();
                 return;
             }
 
             // Get the data encryption key from memory
-            const dataKey = this.moltbotMachineDataKeys.get(machineId);
+            const dataKey = this.openClawMachineDataKeys.get(machineId);
             if (!dataKey) {
-                console.error(`Encryption key not found for Moltbot machine ${machineId}, fetching machines`);
-                this.moltbotMachinesSync.invalidate();
+                console.error(`Encryption key not found for OpenClaw machine ${machineId}, fetching machines`);
+                this.openClawMachinesSync.invalidate();
                 return;
             }
 
@@ -2360,30 +2360,30 @@ class Sync {
                     },
                 };
 
-                const updatedMachine = await processUpdateMoltbotMachineEvent(
-                    moltbotUpdate,
+                const updatedMachine = await processUpdateOpenClawMachineEvent(
+                    openClawUpdate,
                     existingMachine,
                     encryptionAdapter,
                     dataKey
                 );
 
-                storage.getState().applyMoltbotMachines([updatedMachine]);
-                log.log(`🤖 Updated Moltbot machine ${machineId} in storage`);
+                storage.getState().applyOpenClawMachines([updatedMachine]);
+                log.log(`🤖 Updated OpenClaw machine ${machineId} in storage`);
             } catch (error) {
-                console.error(`Failed to process Moltbot machine update ${machineId}:`, error);
+                console.error(`Failed to process OpenClaw machine update ${machineId}:`, error);
             }
-        } else if (updateData.body.t === 'delete-moltbot-machine') {
-            log.log('🤖 Received delete-moltbot-machine update');
-            const moltbotUpdate = updateData.body;
-            const machineId = moltbotUpdate.machineId;
+        } else if (updateData.body.t === 'delete-openclaw-machine') {
+            log.log('🤖 Received delete-openclaw-machine update');
+            const openClawUpdate = updateData.body;
+            const machineId = openClawUpdate.machineId;
 
             // Remove from storage
-            storage.getState().removeMoltbotMachine(machineId);
+            storage.getState().removeOpenClawMachine(machineId);
 
             // Remove encryption key from memory
-            this.moltbotMachineDataKeys.delete(machineId);
+            this.openClawMachineDataKeys.delete(machineId);
 
-            log.log(`🤖 Deleted Moltbot machine ${machineId} from storage`);
+            log.log(`🤖 Deleted OpenClaw machine ${machineId} from storage`);
         }
     }
 

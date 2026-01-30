@@ -1,8 +1,8 @@
 /**
- * Moltbot View
+ * OpenClaw View
  *
- * Main view for Moltbot machines list and management.
- * This is the entry point for the Moltbot tab.
+ * Main view for OpenClaw machines list and management.
+ * This is the entry point for the OpenClaw tab.
  */
 
 import * as React from 'react';
@@ -15,8 +15,8 @@ import { t } from '@/text';
 import { layout } from '@/components/layout';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { useAllMoltbotMachines, useIsDataReady, useAllMachines } from '@/sync/storage';
-import type { MoltbotMachine } from '@/moltbot/types';
+import { useAllOpenClawMachines, useIsDataReady, useAllMachines } from '@/sync/storage';
+import type { OpenClawMachine } from '@/openclaw/types';
 import type { Machine } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
 
@@ -71,13 +71,13 @@ const styles = StyleSheet.create((theme) => ({
     },
 }));
 
-interface MoltbotMachineCardProps {
-    machine: MoltbotMachine;
+interface OpenClawMachineCardProps {
+    machine: OpenClawMachine;
     happyMachine?: Machine | null;
     onPress: () => void;
 }
 
-const MoltbotMachineCard = React.memo(({ machine, happyMachine, onPress }: MoltbotMachineCardProps) => {
+const OpenClawMachineCard = React.memo(({ machine, happyMachine, onPress }: OpenClawMachineCardProps) => {
     const { theme } = useUnistyles();
 
     // Determine machine name
@@ -85,7 +85,7 @@ const MoltbotMachineCard = React.memo(({ machine, happyMachine, onPress }: Moltb
 
     // Determine connection type and status
     const isOnline = machine.type === 'happy' ? happyMachine?.active : true; // Direct connections are assumed available
-    const typeLabel = machine.type === 'happy' ? t('moltbot.machineTypeHappy') : t('moltbot.machineTypeDirect');
+    const typeLabel = machine.type === 'happy' ? t('openclaw.machineTypeHappy') : t('openclaw.machineTypeDirect');
 
     const statusElement = (
         <View style={styles.statusContainer}>
@@ -122,11 +122,11 @@ const MoltbotMachineCard = React.memo(({ machine, happyMachine, onPress }: Moltb
     );
 });
 
-export const MoltbotView = React.memo(() => {
+export const OpenClawView = React.memo(() => {
     const router = useRouter();
     const { theme } = useUnistyles();
     const isDataReady = useIsDataReady();
-    const moltbotMachines = useAllMoltbotMachines();
+    const openClawMachines = useAllOpenClawMachines();
     const happyMachines = useAllMachines();
 
     // Create a map of Happy machines by ID for quick lookup
@@ -139,11 +139,11 @@ export const MoltbotView = React.memo(() => {
     }, [happyMachines]);
 
     const handleMachinePress = React.useCallback((machineId: string) => {
-        router.push(`/moltbot/machine/${machineId}`);
+        router.push(`/openclaw/machine/${machineId}`);
     }, [router]);
 
     const handleAddMachine = React.useCallback(() => {
-        router.push('/moltbot/add');
+        router.push('/openclaw/add');
     }, [router]);
 
     // Loading state
@@ -158,7 +158,7 @@ export const MoltbotView = React.memo(() => {
     }
 
     // Empty state
-    if (moltbotMachines.length === 0) {
+    if (openClawMachines.length === 0) {
         return (
             <View style={styles.container}>
                 <View style={styles.emptyContainer}>
@@ -168,10 +168,10 @@ export const MoltbotView = React.memo(() => {
                         style={[{ width: 64, height: 64 }, styles.emptyIcon]}
                         tintColor={theme.colors.textSecondary}
                     />
-                    <Text style={styles.emptyTitle}>{t('moltbot.emptyTitle')}</Text>
-                    <Text style={styles.emptyDescription}>{t('moltbot.emptyDescription')}</Text>
+                    <Text style={styles.emptyTitle}>{t('openclaw.emptyTitle')}</Text>
+                    <Text style={styles.emptyDescription}>{t('openclaw.emptyDescription')}</Text>
                     <Pressable style={styles.addButton} onPress={handleAddMachine}>
-                        <Text style={styles.addButtonText}>{t('moltbot.addMachine')}</Text>
+                        <Text style={styles.addButtonText}>{t('openclaw.addMachine')}</Text>
                     </Pressable>
                 </View>
             </View>
@@ -188,8 +188,8 @@ export const MoltbotView = React.memo(() => {
                 paddingBottom: 24,
             }}>
                 <ItemGroup>
-                    {moltbotMachines.map((machine) => (
-                        <MoltbotMachineCard
+                    {openClawMachines.map((machine) => (
+                        <OpenClawMachineCard
                             key={machine.id}
                             machine={machine}
                             happyMachine={machine.type === 'happy' && machine.happyMachineId ? happyMachinesMap.get(machine.happyMachineId) : null}

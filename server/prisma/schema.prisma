@@ -52,7 +52,7 @@ model Account {
   AccessKey           AccessKey[]
   UserFeedItem        UserFeedItem[]
   UserKVStore         UserKVStore[]
-  MoltbotMachine     MoltbotMachine[]
+  OpenClawMachine     OpenClawMachine[]
 }
 
 model TerminalAuthRequest {
@@ -364,10 +364,10 @@ model UserKVStore {
 }
 
 //
-// Moltbot Machines
+// OpenClaw Machines
 //
 
-model MoltbotMachine {
+model OpenClawMachine {
   id        String  @id @default(cuid())
   accountId String
   account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -386,7 +386,7 @@ model MoltbotMachine {
   // General metadata (encrypted)
   metadata String // Encrypted JSON: { name: string, ... }
 
-  // Moltbot pairing data (encrypted)
+  // OpenClaw pairing data (encrypted)
   pairingData String? // Encrypted JSON: { deviceId, publicKey, privateKey, deviceToken, ... }
 
   // Data encryption key for this machine's encrypted fields

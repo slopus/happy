@@ -359,8 +359,8 @@ export const SettingsView = React.memo(function SettingsView() {
                     onPress={() => router.push('/settings/profiles')}
                 />
                 <Item
-                    title={t('tabs.moltbot')}
-                    subtitle={t('settings.moltbotSubtitle')}
+                    title={t('tabs.openclaw')}
+                    subtitle={t('settings.openclawSubtitle')}
                     icon={
                         <Image
                             source={require('@/assets/images/brutalist/Brutalism 3.png')}
@@ -369,7 +369,7 @@ export const SettingsView = React.memo(function SettingsView() {
                             tintColor="#5AC8FA"
                         />
                     }
-                    onPress={() => router.push('/moltbot')}
+                    onPress={() => router.push('/openclaw')}
                 />
                 {experiments && (
                     <Item

@@ -1,7 +1,7 @@
 /**
- * Moltbot Types
+ * OpenClaw Types
  *
- * Types for Moltbot machine management and protocol communication.
+ * Types for OpenClaw machine management and protocol communication.
  */
 
 import { z } from 'zod';
@@ -9,43 +9,43 @@ import { z } from 'zod';
 // === Storage Types ===
 
 /**
- * Moltbot machine metadata (encrypted)
+ * OpenClaw machine metadata (encrypted)
  */
-export const MoltbotMetadataSchema = z.object({
+export const OpenClawMetadataSchema = z.object({
     name: z.string(),
     // Gateway auth token for type='happy' machines (stored encrypted in metadata)
     gatewayToken: z.string().optional(),
 });
 
-export type MoltbotMetadata = z.infer<typeof MoltbotMetadataSchema>;
+export type OpenClawMetadata = z.infer<typeof OpenClawMetadataSchema>;
 
 /**
- * Moltbot pairing data (encrypted)
+ * OpenClaw pairing data (encrypted)
  */
-export const MoltbotPairingDataSchema = z.object({
+export const OpenClawPairingDataSchema = z.object({
     deviceId: z.string(),
     publicKey: z.string(),   // Base64URL encoded Ed25519 public key
     privateKey: z.string(),  // Base64URL encoded Ed25519 private key
     deviceToken: z.string().optional(),  // Token issued after successful pairing
 });
 
-export type MoltbotPairingData = z.infer<typeof MoltbotPairingDataSchema>;
+export type OpenClawPairingData = z.infer<typeof OpenClawPairingDataSchema>;
 
 /**
- * Moltbot direct connection config (encrypted)
+ * OpenClaw direct connection config (encrypted)
  */
-export const MoltbotDirectConfigSchema = z.object({
+export const OpenClawDirectConfigSchema = z.object({
     url: z.string(),
     password: z.string().optional(),
     token: z.string().optional(),
 });
 
-export type MoltbotDirectConfig = z.infer<typeof MoltbotDirectConfigSchema>;
+export type OpenClawDirectConfig = z.infer<typeof OpenClawDirectConfigSchema>;
 
 /**
- * Moltbot machine stored in the app
+ * OpenClaw machine stored in the app
  */
-export interface MoltbotMachine {
+export interface OpenClawMachine {
     id: string;
     type: 'happy' | 'direct';
 
@@ -55,14 +55,14 @@ export interface MoltbotMachine {
     gatewayToken: string | null;
 
     // type='direct' - Direct connection config (decrypted)
-    directConfig: MoltbotDirectConfig | null;
+    directConfig: OpenClawDirectConfig | null;
 
     // General metadata (decrypted)
-    metadata: MoltbotMetadata | null;
+    metadata: OpenClawMetadata | null;
     metadataVersion: number;
 
     // Pairing data (decrypted)
-    pairingData: MoltbotPairingData | null;
+    pairingData: OpenClawPairingData | null;
 
     seq: number;
     createdAt: number;
@@ -72,9 +72,9 @@ export interface MoltbotMachine {
 // === Protocol Types ===
 
 /**
- * Moltbot connection status
+ * OpenClaw connection status
  */
-export type MoltbotConnectionStatus =
+export type OpenClawConnectionStatus =
     | 'disconnected'
     | 'connecting'
     | 'connected'
@@ -82,16 +82,16 @@ export type MoltbotConnectionStatus =
     | 'error';
 
 /**
- * Moltbot protocol frame types
+ * OpenClaw protocol frame types
  */
-export interface MoltbotRequestFrame {
+export interface OpenClawRequestFrame {
     type: 'req';
     id: string;
     method: string;
     params?: unknown;
 }
 
-export interface MoltbotResponseFrame {
+export interface OpenClawResponseFrame {
     type: 'res';
     id: string;
     ok: boolean;
@@ -99,7 +99,7 @@ export interface MoltbotResponseFrame {
     error?: { code: string; message: string };
 }
 
-export interface MoltbotEventFrame {
+export interface OpenClawEventFrame {
     type: 'event';
     event: string;
     payload?: unknown;
@@ -107,12 +107,12 @@ export interface MoltbotEventFrame {
     seq?: number;
 }
 
-export type MoltbotFrame = MoltbotRequestFrame | MoltbotResponseFrame | MoltbotEventFrame;
+export type OpenClawFrame = OpenClawRequestFrame | OpenClawResponseFrame | OpenClawEventFrame;
 
 /**
- * Moltbot session
+ * OpenClaw session
  */
-export interface MoltbotSession {
+export interface OpenClawSession {
     key: string;
     kind: 'direct' | 'group' | 'global' | 'unknown';
     label?: string;
@@ -138,9 +138,9 @@ export interface MoltbotSession {
 }
 
 /**
- * Moltbot chat message
+ * OpenClaw chat message
  */
-export interface MoltbotChatMessage {
+export interface OpenClawChatMessage {
     role: 'user' | 'assistant';
     content: Array<{ type: string; text?: string }> | string;
     timestamp?: number;
@@ -148,14 +148,14 @@ export interface MoltbotChatMessage {
 }
 
 /**
- * Moltbot chat event (streamed from gateway)
+ * OpenClaw chat event (streamed from gateway)
  */
-export interface MoltbotChatEvent {
+export interface OpenClawChatEvent {
     runId: string;
     sessionKey: string;
     seq: number;
     state: 'started' | 'thinking' | 'delta' | 'tool' | 'final' | 'error';
-    message?: MoltbotChatMessage;
+    message?: OpenClawChatMessage;
     delta?: string;
     errorMessage?: string;
 }

@@ -1,12 +1,12 @@
 /**
- * Moltbot Unified Connection Interface
+ * OpenClaw Unified Connection Interface
  *
  * Provides a unified connection abstraction that works with both tunnel and direct
  * connection modes. This allows the UI layer to work with a consistent API regardless
  * of the underlying connection mechanism.
  *
  * The unified interface:
- * - Accepts a MoltbotMachine and automatically chooses tunnel or direct based on machine type
+ * - Accepts an OpenClawMachine and automatically chooses tunnel or direct based on machine type
  * - Provides a common interface for connect/send/close operations
  * - Handles pairing data updates
  * - Manages connection lifecycle
@@ -14,7 +14,7 @@
 
 import * as React from 'react';
 import {
-    MoltbotTunnelClient,
+    OpenClawTunnelClient,
     createTunnelClient,
     type TunnelConnectResult,
     type TunnelSendResult,
@@ -22,7 +22,7 @@ import {
     type TunnelStatusCallback,
 } from './tunnelClient';
 import {
-    MoltbotDirectClient,
+    OpenClawDirectClient,
     createDirectClient,
     type DirectConnectResult,
     type DirectSendResult,
@@ -30,11 +30,11 @@ import {
     type DirectClientStatusCallback,
 } from './directClient';
 import type {
-    MoltbotMachine,
-    MoltbotConnectionStatus,
-    MoltbotPairingData,
+    OpenClawMachine,
+    OpenClawConnectionStatus,
+    OpenClawPairingData,
 } from './types';
-import { useMoltbotMachine, useMachine } from '@/sync/storage';
+import { useOpenClawMachine, useMachine } from '@/sync/storage';
 
 // === Common Types ===
 
@@ -43,7 +43,7 @@ import { useMoltbotMachine, useMachine } from '@/sync/storage';
  */
 export interface ConnectionResult {
     ok: boolean;
-    status: MoltbotConnectionStatus;
+    status: OpenClawConnectionStatus;
     error?: string;
     mainSessionKey?: string;
     serverHost?: string;
@@ -68,7 +68,7 @@ export type ConnectionEventCallback = (event: string, payload: unknown) => void;
 /**
  * Status change callback type for unified interface
  */
-export type ConnectionStatusCallback = (status: MoltbotConnectionStatus, error?: string) => void;
+export type ConnectionStatusCallback = (status: OpenClawConnectionStatus, error?: string) => void;
 
 /**
  * Options for creating a connection
@@ -87,12 +87,12 @@ export interface ConnectionOptions {
 /**
  * Common interface that both tunnel and direct clients satisfy
  */
-export interface MoltbotConnection {
+export interface OpenClawConnection {
     /** The type of connection */
     readonly connectionType: 'tunnel' | 'direct';
 
     /** Get current connection status */
-    getStatus(): MoltbotConnectionStatus;
+    getStatus(): OpenClawConnectionStatus;
 
     /** Get main session key (available after successful connection) */
     getMainSessionKey(): string | null;
@@ -106,16 +106,16 @@ export interface MoltbotConnection {
     /** Get device token (available after successful pairing) */
     getDeviceToken(): string | null;
 
-    /** Connect to the Moltbot gateway */
+    /** Connect to the OpenClaw gateway */
     connect(): Promise<ConnectionResult>;
 
-    /** Send a request to the Moltbot gateway */
+    /** Send a request to the OpenClaw gateway */
     send(method: string, params?: unknown, timeoutMs?: number): Promise<SendResult>;
 
     /** Close the connection */
     close(): Promise<boolean>;
 
-    /** Reconnect to the Moltbot gateway */
+    /** Reconnect to the OpenClaw gateway */
     reconnect(): Promise<ConnectionResult>;
 
     /** Set event callback */
@@ -128,19 +128,19 @@ export interface MoltbotConnection {
 // === Connection Wrappers ===
 
 /**
- * Wrapper around MoltbotTunnelClient that implements MoltbotConnection
+ * Wrapper around OpenClawTunnelClient that implements OpenClawConnection
  */
-class TunnelConnectionWrapper implements MoltbotConnection {
+class TunnelConnectionWrapper implements OpenClawConnection {
     readonly connectionType = 'tunnel' as const;
-    private readonly client: MoltbotTunnelClient;
+    private readonly client: OpenClawTunnelClient;
     private onDeviceToken?: (deviceToken: string) => void;
 
-    constructor(client: MoltbotTunnelClient, onDeviceToken?: (deviceToken: string) => void) {
+    constructor(client: OpenClawTunnelClient, onDeviceToken?: (deviceToken: string) => void) {
         this.client = client;
         this.onDeviceToken = onDeviceToken;
     }
 
-    getStatus(): MoltbotConnectionStatus {
+    getStatus(): OpenClawConnectionStatus {
         return this.client.getStatus();
     }
 
@@ -200,19 +200,19 @@ class TunnelConnectionWrapper implements MoltbotConnection {
 }
 
 /**
- * Wrapper around MoltbotDirectClient that implements MoltbotConnection
+ * Wrapper around OpenClawDirectClient that implements OpenClawConnection
  */
-class DirectConnectionWrapper implements MoltbotConnection {
+class DirectConnectionWrapper implements OpenClawConnection {
     readonly connectionType = 'direct' as const;
-    private readonly client: MoltbotDirectClient;
+    private readonly client: OpenClawDirectClient;
     private onDeviceToken?: (deviceToken: string) => void;
 
-    constructor(client: MoltbotDirectClient, onDeviceToken?: (deviceToken: string) => void) {
+    constructor(client: OpenClawDirectClient, onDeviceToken?: (deviceToken: string) => void) {
         this.client = client;
         this.onDeviceToken = onDeviceToken;
     }
 
-    getStatus(): MoltbotConnectionStatus {
+    getStatus(): OpenClawConnectionStatus {
         return this.client.getStatus();
     }
 
@@ -296,7 +296,7 @@ export interface TunnelConnectionConfig {
     /** Gateway password */
     password?: string;
     /** Pairing data for device authentication */
-    pairingData?: MoltbotPairingData;
+    pairingData?: OpenClawPairingData;
 }
 
 /**
@@ -310,24 +310,24 @@ export interface DirectConnectionConfig {
     /** Device token for authentication */
     token?: string;
     /** Pairing data for device authentication */
-    pairingData?: MoltbotPairingData;
+    pairingData?: OpenClawPairingData;
 }
 
 /**
- * Create a unified connection for a Moltbot machine
+ * Create a unified connection for an OpenClaw machine
  *
  * Automatically chooses tunnel or direct connection based on machine type:
  * - For type='happy': creates tunnel client using the linked Happy machine
  * - For type='direct': creates direct client using the directConfig
  *
- * @param machine - The Moltbot machine configuration
+ * @param machine - The OpenClaw machine configuration
  * @param options - Connection options (callbacks)
- * @returns A MoltbotConnection instance
+ * @returns An OpenClawConnection instance
  * @throws ConnectionConfigError if the machine configuration is invalid
  *
  * @example
  * ```typescript
- * const machine = useMoltbotMachine('machine-123');
+ * const machine = useOpenClawMachine('machine-123');
  * if (machine) {
  *     const connection = createConnection(machine, {
  *         onStatusChange: (status, error) => {
@@ -352,16 +352,16 @@ export interface DirectConnectionConfig {
  * ```
  */
 export function createConnection(
-    machine: MoltbotMachine,
+    machine: OpenClawMachine,
     options: ConnectionOptions = {}
-): MoltbotConnection {
+): OpenClawConnection {
     const { onEvent, onStatusChange, onDeviceToken } = options;
 
     if (machine.type === 'happy') {
         // Tunnel connection through Happy machine
         if (!machine.happyMachineId) {
             throw new ConnectionConfigError(
-                `Moltbot machine ${machine.id} is type='happy' but has no linked Happy machine`
+                `OpenClaw machine ${machine.id} is type='happy' but has no linked Happy machine`
             );
         }
 
@@ -369,7 +369,7 @@ export function createConnection(
         // We just need to tell it where to connect
         const client = createTunnelClient({
             machineId: machine.happyMachineId,
-            url: 'ws://localhost:18789', // Default Moltbot gateway port
+            url: 'ws://localhost:18789', // Default OpenClaw gateway port
             // Gateway auth token - read from metadata (encrypted/synced) or legacy gatewayToken field
             token: machine.metadata?.gatewayToken ?? machine.gatewayToken ?? undefined,
             pairingData: machine.pairingData ?? undefined,
@@ -382,7 +382,7 @@ export function createConnection(
         // Direct connection to gateway
         if (!machine.directConfig) {
             throw new ConnectionConfigError(
-                `Moltbot machine ${machine.id} is type='direct' but has no directConfig`
+                `OpenClaw machine ${machine.id} is type='direct' but has no directConfig`
             );
         }
 
@@ -398,7 +398,7 @@ export function createConnection(
         return new DirectConnectionWrapper(client, onDeviceToken);
     } else {
         throw new ConnectionConfigError(
-            `Unknown machine type '${(machine as any).type}' for Moltbot machine ${machine.id}`
+            `Unknown machine type '${(machine as any).type}' for OpenClaw machine ${machine.id}`
         );
     }
 }
@@ -407,12 +407,12 @@ export function createConnection(
  * Create a tunnel connection with explicit configuration
  *
  * Use this when you need more control over the tunnel configuration
- * or when creating a connection without a stored MoltbotMachine.
+ * or when creating a connection without a stored OpenClawMachine.
  */
 export function createTunnelConnection(
     config: TunnelConnectionConfig,
     options: ConnectionOptions = {}
-): MoltbotConnection {
+): OpenClawConnection {
     const { onEvent, onStatusChange, onDeviceToken } = options;
 
     const client = createTunnelClient({
@@ -432,12 +432,12 @@ export function createTunnelConnection(
  * Create a direct connection with explicit configuration
  *
  * Use this when you need more control over the direct configuration
- * or when creating a connection without a stored MoltbotMachine.
+ * or when creating a connection without a stored OpenClawMachine.
  */
 export function createDirectConnection(
     config: DirectConnectionConfig,
     options: ConnectionOptions = {}
-): MoltbotConnection {
+): OpenClawConnection {
     const { onEvent, onStatusChange, onDeviceToken } = options;
 
     const client = createDirectClient({
@@ -455,11 +455,11 @@ export function createDirectConnection(
 // === React Hook ===
 
 /**
- * Hook state for useMoltbotConnection
+ * Hook state for useOpenClawConnection
  */
-export interface UseMoltbotConnectionState {
+export interface UseOpenClawConnectionState {
     /** Current connection status */
-    status: MoltbotConnectionStatus;
+    status: OpenClawConnectionStatus;
     /** Whether a connection is currently active */
     isConnected: boolean;
     /** Whether a connection is in progress */
@@ -477,10 +477,10 @@ export interface UseMoltbotConnectionState {
 }
 
 /**
- * Hook actions for useMoltbotConnection
+ * Hook actions for useOpenClawConnection
  */
-export interface UseMoltbotConnectionActions {
-    /** Connect to the Moltbot gateway */
+export interface UseOpenClawConnectionActions {
+    /** Connect to the OpenClaw gateway */
     connect: () => Promise<ConnectionResult>;
     /** Send a request to the gateway */
     send: (method: string, params?: unknown, timeoutMs?: number) => Promise<SendResult>;
@@ -493,12 +493,12 @@ export interface UseMoltbotConnectionActions {
 /**
  * Hook return type
  */
-export type UseMoltbotConnectionReturn = UseMoltbotConnectionState & UseMoltbotConnectionActions;
+export type UseOpenClawConnectionReturn = UseOpenClawConnectionState & UseOpenClawConnectionActions;
 
 /**
- * Hook options for useMoltbotConnection
+ * Hook options for useOpenClawConnection
  */
-export interface UseMoltbotConnectionOptions {
+export interface UseOpenClawConnectionOptions {
     /** Auto-connect when the hook mounts */
     autoConnect?: boolean;
     /** Callback for gateway events */
@@ -514,18 +514,18 @@ export interface UseMoltbotConnectionOptions {
 }
 
 /**
- * React hook for easy Moltbot connection management
+ * React hook for easy OpenClaw connection management
  *
  * Provides a unified connection interface for React components, automatically
  * handling connection lifecycle and state management.
  *
- * @param machineId - The ID of the Moltbot machine to connect to
+ * @param machineId - The ID of the OpenClaw machine to connect to
  * @param options - Hook options
  * @returns Connection state and actions
  *
  * @example
  * ```typescript
- * function MoltbotSessionList({ machineId }: { machineId: string }) {
+ * function OpenClawSessionList({ machineId }: { machineId: string }) {
  *     const {
  *         status,
  *         isConnected,
@@ -534,7 +534,7 @@ export interface UseMoltbotConnectionOptions {
  *         connect,
  *         send,
  *         close,
- *     } = useMoltbotConnection(machineId, {
+ *     } = useOpenClawConnection(machineId, {
  *         autoConnect: true,
  *         onEvent: (event, payload) => {
  *             console.log('Gateway event:', event, payload);
@@ -571,10 +571,10 @@ export interface UseMoltbotConnectionOptions {
  * }
  * ```
  */
-export function useMoltbotConnection(
+export function useOpenClawConnection(
     machineId: string,
-    options: UseMoltbotConnectionOptions = {}
-): UseMoltbotConnectionReturn {
+    options: UseOpenClawConnectionOptions = {}
+): UseOpenClawConnectionReturn {
     const {
         autoConnect = false,
         onEvent,
@@ -584,22 +584,22 @@ export function useMoltbotConnection(
         maxRetryDelay = 30000,
     } = options;
 
-    // Get the Moltbot machine from storage
-    const machine = useMoltbotMachine(machineId);
+    // Get the OpenClaw machine from storage
+    const machine = useOpenClawMachine(machineId);
 
     // For type='happy', we also need the linked Happy machine to check if it's online
     const happyMachineId = machine?.type === 'happy' ? machine.happyMachineId : null;
     const happyMachine = useMachine(happyMachineId ?? '');
 
     // Connection state
-    const [status, setStatus] = React.useState<MoltbotConnectionStatus>('disconnected');
+    const [status, setStatus] = React.useState<OpenClawConnectionStatus>('disconnected');
     const [error, setError] = React.useState<string | null>(null);
     const [mainSessionKey, setMainSessionKey] = React.useState<string | null>(null);
     const [serverHost, setServerHost] = React.useState<string | null>(null);
     const [pairingRequestId, setPairingRequestId] = React.useState<string | null>(null);
 
     // Connection ref
-    const connectionRef = React.useRef<MoltbotConnection | null>(null);
+    const connectionRef = React.useRef<OpenClawConnection | null>(null);
     const mountedRef = React.useRef(true);
 
     // Auto-reconnect state (refs to avoid triggering effect re-runs)
@@ -607,7 +607,7 @@ export function useMoltbotConnection(
     const retryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Status change callback
-    const handleStatusChange = React.useCallback((newStatus: MoltbotConnectionStatus, newError?: string) => {
+    const handleStatusChange = React.useCallback((newStatus: OpenClawConnectionStatus, newError?: string) => {
         if (mountedRef.current) {
             setStatus(newStatus);
             setError(newError ?? null);
@@ -683,7 +683,7 @@ export function useMoltbotConnection(
 
         // Check retry limit
         if (retryCountRef.current >= maxRetries) {
-            console.log(`[MoltbotConnection] Max retries (${maxRetries}) reached, stopping auto-reconnect`);
+            console.log(`[OpenClawConnection] Max retries (${maxRetries}) reached, stopping auto-reconnect`);
             return;
         }
 
@@ -692,7 +692,7 @@ export function useMoltbotConnection(
             ? 0  // First attempt is immediate
             : Math.min(initialRetryDelay * Math.pow(2, retryCountRef.current - 1), maxRetryDelay);
 
-        console.log(`[MoltbotConnection] Auto-reconnect attempt ${retryCountRef.current + 1}/${maxRetries} in ${delay}ms`);
+        console.log(`[OpenClawConnection] Auto-reconnect attempt ${retryCountRef.current + 1}/${maxRetries} in ${delay}ms`);
 
         retryTimeoutRef.current = setTimeout(() => {
             retryTimeoutRef.current = null;
@@ -808,7 +808,7 @@ export function useMoltbotConnection(
 // === Exports ===
 
 export type {
-    MoltbotMachine,
-    MoltbotConnectionStatus,
-    MoltbotPairingData,
+    OpenClawMachine,
+    OpenClawConnectionStatus,
+    OpenClawPairingData,
 };

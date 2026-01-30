@@ -99,14 +99,14 @@ const styles = StyleSheet.create((theme) => ({
     },
 }));
 
-// Tab header configuration (zen excluded as that tab is disabled, moltbot moved to settings)
+// Tab header configuration (zen excluded as that tab is disabled, openclaw moved to settings)
 const TAB_TITLES = {
     sessions: 'tabs.sessions',
     inbox: 'tabs.inbox',
     settings: 'tabs.settings',
 } as const;
 
-// Active tabs (excludes zen which is disabled, moltbot moved to settings)
+// Active tabs (excludes zen which is disabled, openclaw moved to settings)
 type ActiveTabType = 'sessions' | 'inbox' | 'settings';
 
 // Header title component with connection status

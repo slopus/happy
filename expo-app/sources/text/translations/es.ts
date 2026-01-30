@@ -19,7 +19,7 @@ export const es: TranslationStructure = {
         // Tab navigation labels
         inbox: 'Bandeja',
         sessions: 'Terminales',
-        moltbot: 'Moltbot',
+        openclaw: 'OpenClaw',
         settings: 'Configuración',
     },
 
@@ -30,15 +30,15 @@ export const es: TranslationStructure = {
         updates: 'Actualizaciones',
     },
 
-    moltbot: {
-        emptyTitle: 'Sin máquinas Moltbot',
-        emptyDescription: 'Añade una puerta de enlace Moltbot para empezar a chatear con AI',
+    openclaw: {
+        emptyTitle: 'Sin máquinas OpenClaw',
+        emptyDescription: 'Añade una puerta de enlace OpenClaw para empezar a chatear con AI',
         addMachine: 'Añadir máquina',
         machineType: 'Tipo de máquina',
         machineTypeHappy: 'Máquina Happy',
         machineTypeHappyDescription: 'Conectar a través de una máquina Happy en tu ordenador',
         machineTypeDirect: 'Conexión directa',
-        machineTypeDirectDescription: 'Conectar directamente a una puerta de enlace Moltbot',
+        machineTypeDirectDescription: 'Conectar directamente a una puerta de enlace OpenClaw',
         gatewayUrl: 'URL de la puerta de enlace',
         gatewayToken: 'Gateway Token',
         selectMachine: 'Seleccionar máquina',
@@ -186,7 +186,7 @@ export const es: TranslationStructure = {
         usageSubtitle: 'Ver tu uso de API y costos',
         profiles: 'Perfiles',
         profilesSubtitle: 'Gestionar perfiles de variables de entorno para sesiones',
-        moltbotSubtitle: 'Conectar a pasarelas Moltbot',
+        openclawSubtitle: 'Conectar a pasarelas OpenClaw',
         history: 'History',
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',

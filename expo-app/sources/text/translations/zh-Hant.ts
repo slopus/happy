@@ -21,7 +21,7 @@ export const zhHant: TranslationStructure = {
         // Tab navigation labels
         inbox: '收件匣',
         sessions: '終端',
-        moltbot: 'Moltbot',
+        openclaw: 'OpenClaw',
         settings: '設定',
     },
 
@@ -32,15 +32,15 @@ export const zhHant: TranslationStructure = {
         updates: '更新',
     },
 
-    moltbot: {
-        emptyTitle: '沒有 Moltbot 機器',
-        emptyDescription: '新增 Moltbot 閘道以開始與 AI 聊天',
+    openclaw: {
+        emptyTitle: '沒有 OpenClaw 機器',
+        emptyDescription: '新增 OpenClaw 閘道以開始與 AI 聊天',
         addMachine: '新增機器',
         machineType: '機器類型',
         machineTypeHappy: 'Happy 機器',
         machineTypeHappyDescription: '透過電腦上的 Happy 機器連線',
         machineTypeDirect: '直接連線',
-        machineTypeDirectDescription: '直接連線到 Moltbot 閘道',
+        machineTypeDirectDescription: '直接連線到 OpenClaw 閘道',
         gatewayUrl: '閘道 URL',
         gatewayToken: 'Gateway Token',
         selectMachine: '選擇機器',
@@ -187,7 +187,7 @@ export const zhHant: TranslationStructure = {
         usageSubtitle: '查看 API 使用情況和費用',
         profiles: '設定檔',
         profilesSubtitle: '管理工作階段的環境變數設定檔',
-        moltbotSubtitle: '連接到 Moltbot 閘道',
+        openclawSubtitle: '連接到 OpenClaw 閘道',
         history: '歷史',
         sessionHistorySubtitle: '查看過去的 Happy 工作階段',
         claudeSessionsSubtitle: '瀏覽此裝置上的 Claude CLI 工作階段',

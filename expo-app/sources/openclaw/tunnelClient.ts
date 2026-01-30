@@ -1,15 +1,15 @@
 /**
- * Moltbot Tunnel Client
+ * OpenClaw Tunnel Client
  *
- * A client for connecting to Moltbot gateways through Happy's relay infrastructure.
+ * A client for connecting to OpenClaw gateways through Happy's relay infrastructure.
  * Uses RPC calls to the Happy CLI daemon, which manages the actual WebSocket
- * connection to the Moltbot gateway.
+ * connection to the OpenClaw gateway.
  *
  * The tunnel client:
- * - Connects to a Moltbot gateway via the daemon's relay
+ * - Connects to an OpenClaw gateway via the daemon's relay
  * - Manages connection state (connecting, connected, disconnected, etc.)
- * - Sends messages to the Moltbot gateway
- * - Receives events from the Moltbot gateway
+ * - Sends messages to the OpenClaw gateway
+ * - Receives events from the OpenClaw gateway
  * - Handles pairing flow when required
  * - Supports reconnection
  */
@@ -17,21 +17,21 @@
 import { randomUUID } from 'expo-crypto';
 import { apiSocket } from '@/sync/apiSocket';
 import type {
-    MoltbotConnectionStatus,
-    MoltbotPairingData,
+    OpenClawConnectionStatus,
+    OpenClawPairingData,
 } from './types';
 
 // RPC request/response types (matching CLI daemon types)
 
-interface MoltbotTunnelConfig {
+interface OpenClawTunnelConfig {
     url: string;
     token?: string;
     password?: string;
 }
 
-interface MoltbotConnectRequest {
+interface OpenClawConnectRequest {
     tunnelId: string;
-    config: MoltbotTunnelConfig;
+    config: OpenClawTunnelConfig;
     device?: {
         id: string;
         publicKey: string;
@@ -39,9 +39,9 @@ interface MoltbotConnectRequest {
     };
 }
 
-interface MoltbotConnectResponse {
+interface OpenClawConnectResponse {
     ok: boolean;
-    status: MoltbotConnectionStatus;
+    status: OpenClawConnectionStatus;
     error?: string;
     mainSessionKey?: string;
     serverHost?: string;
@@ -49,34 +49,34 @@ interface MoltbotConnectResponse {
     deviceToken?: string;
 }
 
-interface MoltbotSendRequest {
+interface OpenClawSendRequest {
     tunnelId: string;
     method: string;
     params?: unknown;
     timeoutMs?: number;
 }
 
-interface MoltbotSendResponse {
+interface OpenClawSendResponse {
     ok: boolean;
     payload?: unknown;
     error?: string;
 }
 
-interface MoltbotCloseRequest {
+interface OpenClawCloseRequest {
     tunnelId: string;
 }
 
-interface MoltbotCloseResponse {
+interface OpenClawCloseResponse {
     ok: boolean;
 }
 
-interface MoltbotStatusRequest {
+interface OpenClawStatusRequest {
     tunnelId: string;
 }
 
-interface MoltbotStatusResponse {
+interface OpenClawStatusResponse {
     ok: boolean;
-    status: MoltbotConnectionStatus;
+    status: OpenClawConnectionStatus;
     mainSessionKey?: string;
     serverHost?: string;
     error?: string;
@@ -85,7 +85,7 @@ interface MoltbotStatusResponse {
 // Event types
 
 export type TunnelEventCallback = (event: string, payload: unknown) => void;
-export type TunnelStatusCallback = (status: MoltbotConnectionStatus, error?: string) => void;
+export type TunnelStatusCallback = (status: OpenClawConnectionStatus, error?: string) => void;
 
 // Tunnel client configuration
 
@@ -94,7 +94,7 @@ export interface TunnelClientConfig {
     url: string;
     token?: string;
     password?: string;
-    pairingData?: MoltbotPairingData;
+    pairingData?: OpenClawPairingData;
     onEvent?: TunnelEventCallback;
     onStatusChange?: TunnelStatusCallback;
 }
@@ -103,7 +103,7 @@ export interface TunnelClientConfig {
 
 export interface TunnelConnectResult {
     ok: boolean;
-    status: MoltbotConnectionStatus;
+    status: OpenClawConnectionStatus;
     error?: string;
     mainSessionKey?: string;
     serverHost?: string;
@@ -118,19 +118,19 @@ export interface TunnelSendResult {
 }
 
 /**
- * Moltbot Tunnel Client
+ * OpenClaw Tunnel Client
  *
- * Manages a connection to a Moltbot gateway through the Happy CLI daemon.
+ * Manages a connection to an OpenClaw gateway through the Happy CLI daemon.
  * The daemon handles the actual WebSocket connection; this client communicates
  * with the daemon via encrypted RPC calls.
  */
-export class MoltbotTunnelClient {
+export class OpenClawTunnelClient {
     private readonly machineId: string;
     private readonly tunnelId: string;
-    private readonly config: MoltbotTunnelConfig;
-    private readonly pairingData: MoltbotPairingData | null;
+    private readonly config: OpenClawTunnelConfig;
+    private readonly pairingData: OpenClawPairingData | null;
 
-    private status: MoltbotConnectionStatus = 'disconnected';
+    private status: OpenClawConnectionStatus = 'disconnected';
     private mainSessionKey: string | null = null;
     private serverHost: string | null = null;
     private pairingRequestId: string | null = null;
@@ -156,7 +156,7 @@ export class MoltbotTunnelClient {
     /**
      * Get the current connection status
      */
-    getStatus(): MoltbotConnectionStatus {
+    getStatus(): OpenClawConnectionStatus {
         return this.status;
     }
 
@@ -210,7 +210,7 @@ export class MoltbotTunnelClient {
     }
 
     /**
-     * Connect to the Moltbot gateway through the daemon
+     * Connect to the OpenClaw gateway through the daemon
      */
     async connect(): Promise<TunnelConnectResult> {
         if (this.status === 'connecting' || this.status === 'connected') {
@@ -227,7 +227,7 @@ export class MoltbotTunnelClient {
         // Subscribe to tunnel events from the daemon
         this.subscribeToEvents();
 
-        const request: MoltbotConnectRequest = {
+        const request: OpenClawConnectRequest = {
             tunnelId: this.tunnelId,
             config: this.config,
         };
@@ -242,9 +242,9 @@ export class MoltbotTunnelClient {
         }
 
         try {
-            const response = await apiSocket.machineRPC<MoltbotConnectResponse, MoltbotConnectRequest>(
+            const response = await apiSocket.machineRPC<OpenClawConnectResponse, OpenClawConnectRequest>(
                 this.machineId,
-                'moltbot-connect',
+                'openclaw-connect',
                 request
             );
 
@@ -279,7 +279,7 @@ export class MoltbotTunnelClient {
     }
 
     /**
-     * Send a request through the tunnel to the Moltbot gateway
+     * Send a request through the tunnel to the OpenClaw gateway
      */
     async send(method: string, params?: unknown, timeoutMs?: number): Promise<TunnelSendResult> {
         if (this.status !== 'connected') {
@@ -289,7 +289,7 @@ export class MoltbotTunnelClient {
             };
         }
 
-        const request: MoltbotSendRequest = {
+        const request: OpenClawSendRequest = {
             tunnelId: this.tunnelId,
             method,
             params,
@@ -297,9 +297,9 @@ export class MoltbotTunnelClient {
         };
 
         try {
-            const response = await apiSocket.machineRPC<MoltbotSendResponse, MoltbotSendRequest>(
+            const response = await apiSocket.machineRPC<OpenClawSendResponse, OpenClawSendRequest>(
                 this.machineId,
-                'moltbot-send',
+                'openclaw-send',
                 request
             );
 
@@ -327,14 +327,14 @@ export class MoltbotTunnelClient {
         // Unsubscribe from events
         this.unsubscribeFromEvents();
 
-        const request: MoltbotCloseRequest = {
+        const request: OpenClawCloseRequest = {
             tunnelId: this.tunnelId,
         };
 
         try {
-            const response = await apiSocket.machineRPC<MoltbotCloseResponse, MoltbotCloseRequest>(
+            const response = await apiSocket.machineRPC<OpenClawCloseResponse, OpenClawCloseRequest>(
                 this.machineId,
-                'moltbot-close',
+                'openclaw-close',
                 request
             );
 
@@ -354,15 +354,15 @@ export class MoltbotTunnelClient {
     /**
      * Refresh the tunnel status from the daemon
      */
-    async refreshStatus(): Promise<MoltbotConnectionStatus> {
-        const request: MoltbotStatusRequest = {
+    async refreshStatus(): Promise<OpenClawConnectionStatus> {
+        const request: OpenClawStatusRequest = {
             tunnelId: this.tunnelId,
         };
 
         try {
-            const response = await apiSocket.machineRPC<MoltbotStatusResponse, MoltbotStatusRequest>(
+            const response = await apiSocket.machineRPC<OpenClawStatusResponse, OpenClawStatusRequest>(
                 this.machineId,
-                'moltbot-status',
+                'openclaw-status',
                 request
             );
 
@@ -381,7 +381,7 @@ export class MoltbotTunnelClient {
     }
 
     /**
-     * Reconnect to the Moltbot gateway
+     * Reconnect to the OpenClaw gateway
      * Closes the existing connection and establishes a new one
      */
     async reconnect(): Promise<TunnelConnectResult> {
@@ -391,12 +391,12 @@ export class MoltbotTunnelClient {
 
     /**
      * Subscribe to tunnel events from the daemon
-     * Events are forwarded from the Moltbot gateway through the daemon via RPC
+     * Events are forwarded from the OpenClaw gateway through the daemon via RPC
      */
     private subscribeToEvents(): void {
         // Register an RPC handler to receive events from the daemon
-        // The method name is: machineId:moltbot-tunnel-event
-        const rpcMethod = `${this.machineId}:moltbot-tunnel-event`;
+        // The method name is: machineId:openclaw-tunnel-event
+        const rpcMethod = `${this.machineId}:openclaw-tunnel-event`;
 
         this.eventUnsubscribe = apiSocket.registerRpcHandler(rpcMethod, (data: unknown) => {
             if (!data || typeof data !== 'object') {
@@ -411,7 +411,7 @@ export class MoltbotTunnelClient {
             };
 
             // Check if this is a tunnel event for our tunnel
-            if (eventData.type === 'moltbot-tunnel-event' && eventData.tunnelId === this.tunnelId) {
+            if (eventData.type === 'openclaw-tunnel-event' && eventData.tunnelId === this.tunnelId) {
                 this.handleTunnelEvent(eventData.event ?? '', eventData.payload);
             }
 
@@ -447,7 +447,7 @@ export class MoltbotTunnelClient {
     /**
      * Update the connection status and notify callback
      */
-    private updateStatus(status: MoltbotConnectionStatus, error?: string): void {
+    private updateStatus(status: OpenClawConnectionStatus, error?: string): void {
         if (this.status !== status) {
             this.status = status;
             if (this.statusCallback) {
@@ -463,7 +463,7 @@ export class MoltbotTunnelClient {
  * Convenience function for creating a tunnel client with the given configuration.
  *
  * @param config - Tunnel client configuration
- * @returns A new MoltbotTunnelClient instance
+ * @returns A new OpenClawTunnelClient instance
  *
  * @example
  * ```typescript
@@ -488,6 +488,6 @@ export class MoltbotTunnelClient {
  * await tunnel.close();
  * ```
  */
-export function createTunnelClient(config: TunnelClientConfig): MoltbotTunnelClient {
-    return new MoltbotTunnelClient(config);
+export function createTunnelClient(config: TunnelClientConfig): OpenClawTunnelClient {
+    return new OpenClawTunnelClient(config);
 }

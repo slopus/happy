@@ -22,7 +22,7 @@ export const ja: TranslationStructure = {
         // Tab navigation labels
         inbox: '受信トレイ',
         sessions: 'ターミナル',
-        moltbot: 'Moltbot',
+        openclaw: 'OpenClaw',
         settings: '設定',
     },
 
@@ -33,15 +33,15 @@ export const ja: TranslationStructure = {
         updates: '更新',
     },
 
-    moltbot: {
-        emptyTitle: 'Moltbot マシンがありません',
-        emptyDescription: 'Moltbot ゲートウェイを追加して AI とチャットを開始',
+    openclaw: {
+        emptyTitle: 'OpenClaw マシンがありません',
+        emptyDescription: 'OpenClaw ゲートウェイを追加して AI とチャットを開始',
         addMachine: 'マシンを追加',
         machineType: 'マシンタイプ',
         machineTypeHappy: 'Happy マシン',
         machineTypeHappyDescription: 'コンピューター上の Happy マシン経由で接続',
         machineTypeDirect: '直接接続',
-        machineTypeDirectDescription: 'Moltbot ゲートウェイに直接接続',
+        machineTypeDirectDescription: 'OpenClaw ゲートウェイに直接接続',
         gatewayUrl: 'ゲートウェイ URL',
         gatewayToken: 'Gateway Token',
         selectMachine: 'マシンを選択',
@@ -218,7 +218,7 @@ export const ja: TranslationStructure = {
         usageSubtitle: 'API使用量とコストを確認',
         profiles: 'プロファイル',
         profilesSubtitle: 'セッション用の環境変数プロファイルを管理',
-        moltbotSubtitle: 'Moltbotゲートウェイに接続',
+        openclawSubtitle: 'OpenClawゲートウェイに接続',
         history: 'History',
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',

@@ -30,7 +30,7 @@ export const ru: TranslationStructure = {
         // Tab navigation labels
         inbox: 'Входящие',
         sessions: 'Терминалы',
-        moltbot: 'Moltbot',
+        openclaw: 'OpenClaw',
         settings: 'Настройки',
     },
 
@@ -41,15 +41,15 @@ export const ru: TranslationStructure = {
         updates: 'Обновления',
     },
 
-    moltbot: {
-        emptyTitle: 'Нет машин Moltbot',
-        emptyDescription: 'Добавьте шлюз Moltbot, чтобы начать общаться с AI',
+    openclaw: {
+        emptyTitle: 'Нет машин OpenClaw',
+        emptyDescription: 'Добавьте шлюз OpenClaw, чтобы начать общаться с AI',
         addMachine: 'Добавить машину',
         machineType: 'Тип машины',
         machineTypeHappy: 'Happy машина',
         machineTypeHappyDescription: 'Подключение через Happy машину на вашем компьютере',
         machineTypeDirect: 'Прямое подключение',
-        machineTypeDirectDescription: 'Прямое подключение к шлюзу Moltbot',
+        machineTypeDirectDescription: 'Прямое подключение к шлюзу OpenClaw',
         gatewayUrl: 'URL шлюза',
         gatewayToken: 'Gateway Token',
         selectMachine: 'Выберите машину',
@@ -168,7 +168,7 @@ export const ru: TranslationStructure = {
         usageSubtitle: 'Просмотр использования API и затрат',
         profiles: 'Профили',
         profilesSubtitle: 'Управление профилями переменных окружения для сессий',
-        moltbotSubtitle: 'Подключение к шлюзам Moltbot',
+        openclawSubtitle: 'Подключение к шлюзам OpenClaw',
         history: 'History',
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',

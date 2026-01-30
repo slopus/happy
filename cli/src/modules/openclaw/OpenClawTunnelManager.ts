@@ -1,8 +1,8 @@
 /**
- * Moltbot Tunnel Manager
+ * OpenClaw Tunnel Manager
  *
- * Manages WebSocket connections to Moltbot gateways, allowing the mobile app
- * to communicate with Moltbot instances through the Happy daemon.
+ * Manages WebSocket connections to OpenClaw gateways, allowing the mobile app
+ * to communicate with OpenClaw instances through the Happy daemon.
  */
 
 import WebSocket from 'ws';
@@ -11,14 +11,14 @@ import { logger } from '@/ui/logger';
 import nacl from 'tweetnacl';
 import { encode as encodeBase64, decode as decodeBase64 } from '@stablelib/base64';
 import type {
-    MoltbotTunnelStatus,
-    MoltbotTunnelConfig,
-    MoltbotFrame,
-    MoltbotTunnelEventCallback,
-    MoltbotConnectRequest,
-    MoltbotConnectResponse,
-    MoltbotSendRequest,
-    MoltbotSendResponse,
+    OpenClawTunnelStatus,
+    OpenClawTunnelConfig,
+    OpenClawFrame,
+    OpenClawTunnelEventCallback,
+    OpenClawConnectRequest,
+    OpenClawConnectResponse,
+    OpenClawSendRequest,
+    OpenClawSendResponse,
 } from './types';
 
 const PROTOCOL_VERSION = 3;
@@ -31,8 +31,8 @@ interface PendingRequest {
 
 interface TunnelConnection {
     ws: WebSocket | null;
-    config: MoltbotTunnelConfig;
-    status: MoltbotTunnelStatus;
+    config: OpenClawTunnelConfig;
+    status: OpenClawTunnelStatus;
     pending: Map<string, PendingRequest>;
     mainSessionKey: string | null;
     serverHost: string | null;
@@ -48,23 +48,23 @@ interface TunnelConnection {
 }
 
 /**
- * Manages multiple Moltbot tunnel connections
+ * Manages multiple OpenClaw tunnel connections
  */
-export class MoltbotTunnelManager {
+export class OpenClawTunnelManager {
     private tunnels = new Map<string, TunnelConnection>();
-    private eventCallback: MoltbotTunnelEventCallback | null = null;
+    private eventCallback: OpenClawTunnelEventCallback | null = null;
 
     /**
      * Set the event callback for receiving tunnel events
      */
-    setEventCallback(callback: MoltbotTunnelEventCallback | null): void {
+    setEventCallback(callback: OpenClawTunnelEventCallback | null): void {
         this.eventCallback = callback;
     }
 
     /**
-     * Connect to a Moltbot gateway
+     * Connect to an OpenClaw gateway
      */
-    async connect(request: MoltbotConnectRequest): Promise<MoltbotConnectResponse> {
+    async connect(request: OpenClawConnectRequest): Promise<OpenClawConnectResponse> {
         const { tunnelId, config, device } = request;
 
         // Close existing tunnel if any
@@ -110,12 +110,12 @@ export class MoltbotTunnelManager {
         // Connect WebSocket
         return new Promise((resolve) => {
             try {
-                logger.debug(`[MoltbotTunnel] Connecting to ${config.url}`);
+                logger.debug(`[OpenClawTunnel] Connecting to ${config.url}`);
                 const ws = new WebSocket(config.url);
                 tunnel.ws = ws;
 
                 ws.on('open', () => {
-                    logger.debug(`[MoltbotTunnel] WebSocket opened for tunnel ${tunnelId}`);
+                    logger.debug(`[OpenClawTunnel] WebSocket opened for tunnel ${tunnelId}`);
                     // Wait for challenge event before sending connect
                 });
 
@@ -127,7 +127,7 @@ export class MoltbotTunnelManager {
                 });
 
                 ws.on('error', (error) => {
-                    logger.debug(`[MoltbotTunnel] WebSocket error for tunnel ${tunnelId}:`, error);
+                    logger.debug(`[OpenClawTunnel] WebSocket error for tunnel ${tunnelId}:`, error);
                     tunnel.status = 'error';
                     this.failAllPending(tunnel, new Error('WebSocket error'));
                     resolve({
@@ -139,10 +139,10 @@ export class MoltbotTunnelManager {
 
                 ws.on('close', (code, reason) => {
                     const reasonStr = reason?.toString() || '';
-                    logger.debug(`[MoltbotTunnel] WebSocket closed for tunnel ${tunnelId}: ${code} ${reasonStr}`);
+                    logger.debug(`[OpenClawTunnel] WebSocket closed for tunnel ${tunnelId}: ${code} ${reasonStr}`);
 
                     // Check if this is a pairing-related close
-                    // Moltbot gateway closes connection with code 1008 for auth failures
+                    // OpenClaw gateway closes connection with code 1008 for auth failures
                     const isPairingRequired = reasonStr.includes('unauthorized') || reasonStr.includes('NOT_PAIRED');
 
                     this.failAllPending(tunnel, new Error(reasonStr || 'Connection closed'));
@@ -198,7 +198,7 @@ export class MoltbotTunnelManager {
     /**
      * Send a request through a tunnel
      */
-    async send(request: MoltbotSendRequest): Promise<MoltbotSendResponse> {
+    async send(request: OpenClawSendRequest): Promise<OpenClawSendResponse> {
         const { tunnelId, method, params, timeoutMs = 15000 } = request;
 
         const tunnel = this.tunnels.get(tunnelId);
@@ -253,7 +253,7 @@ export class MoltbotTunnelManager {
     /**
      * Get status of a tunnel
      */
-    getStatus(tunnelId: string): { status: MoltbotTunnelStatus; mainSessionKey?: string; serverHost?: string } {
+    getStatus(tunnelId: string): { status: OpenClawTunnelStatus; mainSessionKey?: string; serverHost?: string } {
         const tunnel = this.tunnels.get(tunnelId);
         if (!tunnel) {
             return { status: 'disconnected' };
@@ -294,7 +294,7 @@ export class MoltbotTunnelManager {
         }
 
         this.tunnels.delete(tunnelId);
-        logger.debug(`[MoltbotTunnel] Closed tunnel ${tunnelId}`);
+        logger.debug(`[OpenClawTunnel] Closed tunnel ${tunnelId}`);
         return true;
     }
 
@@ -302,12 +302,12 @@ export class MoltbotTunnelManager {
         tunnelId: string,
         tunnel: TunnelConnection,
         data: string
-    ): Promise<MoltbotConnectResponse | null> {
-        let frame: MoltbotFrame;
+    ): Promise<OpenClawConnectResponse | null> {
+        let frame: OpenClawFrame;
         try {
             frame = JSON.parse(data);
         } catch {
-            logger.debug(`[MoltbotTunnel] Invalid JSON: ${data.slice(0, 100)}`);
+            logger.debug(`[OpenClawTunnel] Invalid JSON: ${data.slice(0, 100)}`);
             return null;
         }
 
@@ -338,7 +338,7 @@ export class MoltbotTunnelManager {
             if (frame.event === 'connect.challenge' && !tunnel.connectSent) {
                 const nonce = (payload as { nonce?: string } | undefined)?.nonce;
                 if (nonce) {
-                    logger.debug(`[MoltbotTunnel] Received challenge nonce for tunnel ${tunnelId}`);
+                    logger.debug(`[OpenClawTunnel] Received challenge nonce for tunnel ${tunnelId}`);
                     tunnel.connectNonce = nonce;
                 }
                 return this.sendConnect(tunnelId, tunnel);
@@ -353,7 +353,7 @@ export class MoltbotTunnelManager {
         return null;
     }
 
-    private async sendConnect(tunnelId: string, tunnel: TunnelConnection): Promise<MoltbotConnectResponse> {
+    private async sendConnect(tunnelId: string, tunnel: TunnelConnection): Promise<OpenClawConnectResponse> {
         if (!tunnel.ws || tunnel.connectSent) {
             return {
                 ok: false,
@@ -439,7 +439,7 @@ export class MoltbotTunnelManager {
                         tunnel.serverHost = result.server?.host ?? null;
                         tunnel.deviceToken = result.auth?.deviceToken ?? null;
 
-                        logger.debug(`[MoltbotTunnel] Connected tunnel ${tunnelId}, server: ${tunnel.serverHost}`);
+                        logger.debug(`[OpenClawTunnel] Connected tunnel ${tunnelId}, server: ${tunnel.serverHost}`);
 
                         resolve({
                             ok: true,
@@ -454,7 +454,7 @@ export class MoltbotTunnelManager {
                         const errorMsg = error.message;
 
                         // Check for pairing required
-                        // Moltbot gateway may return different error formats:
+                        // OpenClaw gateway may return different error formats:
                         // - "NOT_PAIRED: ..." with requestId
                         // - "unauthorized: gateway token missing"
                         if (errorMsg.includes('NOT_PAIRED') || errorMsg.includes('unauthorized')) {
@@ -511,7 +511,7 @@ export class MoltbotTunnelManager {
         token: string | null;
         nonce: string | null;
     }): string {
-        // Moltbot protocol: v2 format required when nonce is present
+        // OpenClaw protocol: v2 format required when nonce is present
         // Format: v2|deviceId|clientId|clientMode|role|scopes|signedAtMs|token|nonce
         const version = params.nonce ? 'v2' : 'v1';
         const scopes = params.scopes.join(',');
@@ -562,4 +562,4 @@ export class MoltbotTunnelManager {
 }
 
 // Singleton instance
-export const moltbotTunnelManager = new MoltbotTunnelManager();
+export const openClawTunnelManager = new OpenClawTunnelManager();

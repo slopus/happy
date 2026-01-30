@@ -3,20 +3,20 @@ import { Fastify } from "../types";
 import { z } from "zod";
 import { log } from "@/utils/log";
 import * as privacyKit from "privacy-kit";
-import { MoltbotMachine } from "@prisma/client";
+import { OpenClawMachine } from "@prisma/client";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import {
     eventRouter,
-    buildNewMoltbotMachineUpdate,
-    buildUpdateMoltbotMachineUpdate,
-    buildDeleteMoltbotMachineUpdate
+    buildNewOpenClawMachineUpdate,
+    buildUpdateOpenClawMachineUpdate,
+    buildDeleteOpenClawMachineUpdate
 } from "@/app/events/eventRouter";
 
 /**
- * Moltbot Machine Routes
+ * OpenClaw Machine Routes
  *
- * Provides CRUD operations for Moltbot machines. Moltbot machines can be of two types:
+ * Provides CRUD operations for OpenClaw machines. OpenClaw machines can be of two types:
  * - 'happy': Relay through a Happy device (requires happyMachineId)
  * - 'direct': Direct WebSocket connection (requires directConfig)
  *
@@ -27,9 +27,9 @@ import {
  */
 
 /**
- * Format Moltbot machine for API response
+ * Format OpenClaw machine for API response
  */
-function formatMoltbotMachine(m: MoltbotMachine) {
+function formatOpenClawMachine(m: OpenClawMachine) {
     return {
         id: m.id,
         type: m.type,
@@ -45,28 +45,28 @@ function formatMoltbotMachine(m: MoltbotMachine) {
     };
 }
 
-export function moltbotRoutes(app: Fastify) {
-    // GET /v1/moltbot/machines - List all Moltbot machines for the account
-    app.get('/v1/moltbot/machines', {
+export function openclawRoutes(app: Fastify) {
+    // GET /v1/openclaw/machines - List all OpenClaw machines for the account
+    app.get('/v1/openclaw/machines', {
         preHandler: app.authenticate,
     }, async (request, reply) => {
         const userId = request.userId;
 
         try {
-            const machines = await db.moltbotMachine.findMany({
+            const machines = await db.openClawMachine.findMany({
                 where: { accountId: userId },
                 orderBy: { updatedAt: 'desc' }
             });
 
-            return machines.map(formatMoltbotMachine);
+            return machines.map(formatOpenClawMachine);
         } catch (error) {
-            log({ module: 'moltbot', level: 'error' }, `Failed to list Moltbot machines: ${error}`);
+            log({ module: 'openclaw', level: 'error' }, `Failed to list OpenClaw machines: ${error}`);
             return reply.code(500).send({ error: 'Failed to list machines' });
         }
     });
 
-    // POST /v1/moltbot/machines - Create new Moltbot machine
-    app.post('/v1/moltbot/machines', {
+    // POST /v1/openclaw/machines - Create new OpenClaw machine
+    app.post('/v1/openclaw/machines', {
         preHandler: app.authenticate,
         schema: {
             body: z.object({
@@ -91,9 +91,9 @@ export function moltbotRoutes(app: Fastify) {
         }
 
         try {
-            log({ module: 'moltbot', userId }, 'Creating new Moltbot machine');
+            log({ module: 'openclaw', userId }, 'Creating new OpenClaw machine');
 
-            const machine = await db.moltbotMachine.create({
+            const machine = await db.openClawMachine.create({
                 data: {
                     accountId: userId,
                     type,
@@ -107,9 +107,9 @@ export function moltbotRoutes(app: Fastify) {
                 }
             });
 
-            // Emit new-moltbot-machine event
+            // Emit new-openclaw-machine event
             const updSeq = await allocateUserSeq(userId);
-            const newMachinePayload = buildNewMoltbotMachineUpdate(machine, updSeq, randomKeyNaked(12));
+            const newMachinePayload = buildNewOpenClawMachineUpdate(machine, updSeq, randomKeyNaked(12));
             eventRouter.emitUpdate({
                 userId,
                 payload: newMachinePayload,
@@ -117,16 +117,16 @@ export function moltbotRoutes(app: Fastify) {
             });
 
             return reply.send({
-                machine: formatMoltbotMachine(machine)
+                machine: formatOpenClawMachine(machine)
             });
         } catch (error) {
-            log({ module: 'moltbot', level: 'error' }, `Failed to create Moltbot machine: ${error}`);
+            log({ module: 'openclaw', level: 'error' }, `Failed to create OpenClaw machine: ${error}`);
             return reply.code(500).send({ error: 'Failed to create machine' });
         }
     });
 
-    // GET /v1/moltbot/machines/:id - Get single Moltbot machine by ID
-    app.get('/v1/moltbot/machines/:id', {
+    // GET /v1/openclaw/machines/:id - Get single OpenClaw machine by ID
+    app.get('/v1/openclaw/machines/:id', {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
@@ -138,7 +138,7 @@ export function moltbotRoutes(app: Fastify) {
         const { id } = request.params;
 
         try {
-            const machine = await db.moltbotMachine.findFirst({
+            const machine = await db.openClawMachine.findFirst({
                 where: {
                     id,
                     accountId: userId
@@ -146,20 +146,20 @@ export function moltbotRoutes(app: Fastify) {
             });
 
             if (!machine) {
-                return reply.code(404).send({ error: 'Moltbot machine not found' });
+                return reply.code(404).send({ error: 'OpenClaw machine not found' });
             }
 
             return {
-                machine: formatMoltbotMachine(machine)
+                machine: formatOpenClawMachine(machine)
             };
         } catch (error) {
-            log({ module: 'moltbot', level: 'error' }, `Failed to get Moltbot machine: ${error}`);
+            log({ module: 'openclaw', level: 'error' }, `Failed to get OpenClaw machine: ${error}`);
             return reply.code(500).send({ error: 'Failed to get machine' });
         }
     });
 
-    // PUT /v1/moltbot/machines/:id - Update Moltbot machine
-    app.put('/v1/moltbot/machines/:id', {
+    // PUT /v1/openclaw/machines/:id - Update OpenClaw machine
+    app.put('/v1/openclaw/machines/:id', {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
@@ -179,7 +179,7 @@ export function moltbotRoutes(app: Fastify) {
 
         try {
             // Get current machine for version check
-            const currentMachine = await db.moltbotMachine.findFirst({
+            const currentMachine = await db.openClawMachine.findFirst({
                 where: {
                     id,
                     accountId: userId
@@ -187,7 +187,7 @@ export function moltbotRoutes(app: Fastify) {
             });
 
             if (!currentMachine) {
-                return reply.code(404).send({ error: 'Moltbot machine not found' });
+                return reply.code(404).send({ error: 'OpenClaw machine not found' });
             }
 
             // Check metadata version mismatch (optimistic concurrency control)
@@ -232,12 +232,12 @@ export function moltbotRoutes(app: Fastify) {
             }
 
             // Update machine
-            const updatedMachine = await db.moltbotMachine.update({
+            const updatedMachine = await db.openClawMachine.update({
                 where: { id },
                 data: updateData
             });
 
-            // Emit update-moltbot-machine event
+            // Emit update-openclaw-machine event
             const updSeq = await allocateUserSeq(userId);
             const eventUpdates: {
                 metadata?: { value: string; version: number };
@@ -253,7 +253,7 @@ export function moltbotRoutes(app: Fastify) {
             if (directConfig !== undefined) {
                 eventUpdates.directConfig = directConfig;
             }
-            const updatePayload = buildUpdateMoltbotMachineUpdate(id, updSeq, randomKeyNaked(12), eventUpdates);
+            const updatePayload = buildUpdateOpenClawMachineUpdate(id, updSeq, randomKeyNaked(12), eventUpdates);
             eventRouter.emitUpdate({
                 userId,
                 payload: updatePayload,
@@ -262,16 +262,16 @@ export function moltbotRoutes(app: Fastify) {
 
             return reply.send({
                 success: true,
-                machine: formatMoltbotMachine(updatedMachine)
+                machine: formatOpenClawMachine(updatedMachine)
             });
         } catch (error) {
-            log({ module: 'moltbot', level: 'error' }, `Failed to update Moltbot machine: ${error}`);
+            log({ module: 'openclaw', level: 'error' }, `Failed to update OpenClaw machine: ${error}`);
             return reply.code(500).send({ error: 'Failed to update machine' });
         }
     });
 
-    // DELETE /v1/moltbot/machines/:id - Delete Moltbot machine
-    app.delete('/v1/moltbot/machines/:id', {
+    // DELETE /v1/openclaw/machines/:id - Delete OpenClaw machine
+    app.delete('/v1/openclaw/machines/:id', {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
@@ -284,7 +284,7 @@ export function moltbotRoutes(app: Fastify) {
 
         try {
             // Check if machine exists and belongs to user
-            const machine = await db.moltbotMachine.findFirst({
+            const machine = await db.openClawMachine.findFirst({
                 where: {
                     id,
                     accountId: userId
@@ -292,19 +292,19 @@ export function moltbotRoutes(app: Fastify) {
             });
 
             if (!machine) {
-                return reply.code(404).send({ error: 'Moltbot machine not found' });
+                return reply.code(404).send({ error: 'OpenClaw machine not found' });
             }
 
-            log({ module: 'moltbot', userId, machineId: id }, 'Deleting Moltbot machine');
+            log({ module: 'openclaw', userId, machineId: id }, 'Deleting OpenClaw machine');
 
             // Delete machine
-            await db.moltbotMachine.delete({
+            await db.openClawMachine.delete({
                 where: { id }
             });
 
-            // Emit delete-moltbot-machine event
+            // Emit delete-openclaw-machine event
             const updSeq = await allocateUserSeq(userId);
-            const deletePayload = buildDeleteMoltbotMachineUpdate(id, updSeq, randomKeyNaked(12));
+            const deletePayload = buildDeleteOpenClawMachineUpdate(id, updSeq, randomKeyNaked(12));
             eventRouter.emitUpdate({
                 userId,
                 payload: deletePayload,
@@ -313,7 +313,7 @@ export function moltbotRoutes(app: Fastify) {
 
             return reply.send({ success: true });
         } catch (error) {
-            log({ module: 'moltbot', level: 'error' }, `Failed to delete Moltbot machine: ${error}`);
+            log({ module: 'openclaw', level: 'error' }, `Failed to delete OpenClaw machine: ${error}`);
             return reply.code(500).send({ error: 'Failed to delete machine' });
         }
     });

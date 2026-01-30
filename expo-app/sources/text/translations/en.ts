@@ -34,7 +34,7 @@ export const en: TranslationStructure = {
         // Tab navigation labels
         inbox: 'Inbox',
         sessions: 'Terminals',
-        moltbot: 'Moltbot',
+        openclaw: 'OpenClaw',
         settings: 'Settings',
     },
 
@@ -45,16 +45,16 @@ export const en: TranslationStructure = {
         updates: 'Updates',
     },
 
-    moltbot: {
-        // Moltbot screen
-        emptyTitle: 'No Moltbot Machines',
-        emptyDescription: 'Add a Moltbot gateway to start chatting with Claude',
+    openclaw: {
+        // OpenClaw screen
+        emptyTitle: 'No OpenClaw Machines',
+        emptyDescription: 'Add an OpenClaw gateway to start chatting with Claude',
         addMachine: 'Add Machine',
         machineType: 'Machine Type',
         machineTypeHappy: 'Happy Machine',
         machineTypeHappyDescription: 'Connect through a Happy machine on your computer',
         machineTypeDirect: 'Direct Connection',
-        machineTypeDirectDescription: 'Connect directly to a Moltbot gateway',
+        machineTypeDirectDescription: 'Connect directly to an OpenClaw gateway',
         gatewayUrl: 'Gateway URL',
         gatewayToken: 'Gateway Token',
         selectMachine: 'Select Machine',
@@ -202,7 +202,7 @@ export const en: TranslationStructure = {
         usageSubtitle: 'View your API usage and costs',
         profiles: 'Profiles',
         profilesSubtitle: 'Manage environment variable profiles for sessions',
-        moltbotSubtitle: 'Connect to Moltbot gateways',
+        openclawSubtitle: 'Connect to OpenClaw gateways',
         history: 'History',
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',

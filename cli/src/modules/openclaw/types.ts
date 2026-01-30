@@ -1,34 +1,34 @@
 /**
- * Moltbot Tunnel Types
+ * OpenClaw Tunnel Types
  *
- * Types for the Moltbot tunnel that relays WebSocket messages between
- * the mobile app and a Moltbot gateway running on the local machine.
+ * Types for the OpenClaw tunnel that relays WebSocket messages between
+ * the mobile app and an OpenClaw gateway running on the local machine.
  */
 
 // Tunnel connection status
-export type MoltbotTunnelStatus =
+export type OpenClawTunnelStatus =
     | 'disconnected'
     | 'connecting'
     | 'connected'
     | 'pairing_required'
     | 'error';
 
-// Configuration for connecting to a Moltbot gateway
-export interface MoltbotTunnelConfig {
+// Configuration for connecting to an OpenClaw gateway
+export interface OpenClawTunnelConfig {
     url: string;              // WebSocket URL (e.g., "ws://localhost:18789")
     token?: string;           // Auth token (for authenticated access)
     password?: string;        // Auth password (alternative)
 }
 
-// Moltbot protocol frame types
-export interface MoltbotRequestFrame {
+// OpenClaw protocol frame types
+export interface OpenClawRequestFrame {
     type: 'req';
     id: string;
     method: string;
     params?: unknown;
 }
 
-export interface MoltbotResponseFrame {
+export interface OpenClawResponseFrame {
     type: 'res';
     id: string;
     ok: boolean;
@@ -36,7 +36,7 @@ export interface MoltbotResponseFrame {
     error?: { code: string; message: string };
 }
 
-export interface MoltbotEventFrame {
+export interface OpenClawEventFrame {
     type: 'event';
     event: string;
     payload?: unknown;
@@ -44,14 +44,14 @@ export interface MoltbotEventFrame {
     seq?: number;
 }
 
-export type MoltbotFrame = MoltbotRequestFrame | MoltbotResponseFrame | MoltbotEventFrame;
+export type OpenClawFrame = OpenClawRequestFrame | OpenClawResponseFrame | OpenClawEventFrame;
 
 // RPC request/response types for tunnel operations
 
-// moltbot-connect: Establish connection to a Moltbot gateway
-export interface MoltbotConnectRequest {
+// openclaw-connect: Establish connection to an OpenClaw gateway
+export interface OpenClawConnectRequest {
     tunnelId: string;         // Client-generated tunnel ID
-    config: MoltbotTunnelConfig;
+    config: OpenClawTunnelConfig;
     // Device identity for authentication
     device?: {
         id: string;
@@ -60,9 +60,9 @@ export interface MoltbotConnectRequest {
     };
 }
 
-export interface MoltbotConnectResponse {
+export interface OpenClawConnectResponse {
     ok: boolean;
-    status: MoltbotTunnelStatus;
+    status: OpenClawTunnelStatus;
     error?: string;
     // Returned on successful connection
     mainSessionKey?: string;
@@ -73,41 +73,41 @@ export interface MoltbotConnectResponse {
     deviceToken?: string;
 }
 
-// moltbot-send: Send a request through the tunnel
-export interface MoltbotSendRequest {
+// openclaw-send: Send a request through the tunnel
+export interface OpenClawSendRequest {
     tunnelId: string;
     method: string;
     params?: unknown;
     timeoutMs?: number;
 }
 
-export interface MoltbotSendResponse {
+export interface OpenClawSendResponse {
     ok: boolean;
     payload?: unknown;
     error?: string;
 }
 
-// moltbot-close: Close a tunnel connection
-export interface MoltbotCloseRequest {
+// openclaw-close: Close a tunnel connection
+export interface OpenClawCloseRequest {
     tunnelId: string;
 }
 
-export interface MoltbotCloseResponse {
+export interface OpenClawCloseResponse {
     ok: boolean;
 }
 
-// moltbot-status: Get status of a tunnel
-export interface MoltbotStatusRequest {
+// openclaw-status: Get status of a tunnel
+export interface OpenClawStatusRequest {
     tunnelId: string;
 }
 
-export interface MoltbotStatusResponse {
+export interface OpenClawStatusResponse {
     ok: boolean;
-    status: MoltbotTunnelStatus;
+    status: OpenClawTunnelStatus;
     mainSessionKey?: string;
     serverHost?: string;
     error?: string;
 }
 
 // Event callback for tunnel events (streaming responses, connection changes)
-export type MoltbotTunnelEventCallback = (tunnelId: string, event: string, payload: unknown) => void;
+export type OpenClawTunnelEventCallback = (tunnelId: string, event: string, payload: unknown) => void;
