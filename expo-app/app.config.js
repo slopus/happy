@@ -1,7 +1,7 @@
 const variant = process.env.APP_ENV || 'development';
 const name = {
     development: "Happy Code (dev)",
-    preview: "Happy Code (preview)",
+    preview: "Happy Code (pre)",
     production: "Happy Code"
 }[variant];
 const bundleId = {
@@ -78,14 +78,6 @@ export default {
         },
         plugins: [
             require("./plugins/withEinkCompatibility.js"),
-            [
-                "expo-build-properties",
-                {
-                    ios: {
-                        deploymentTarget: "16.0"
-                    }
-                }
-            ],
             [
                 "expo-router",
                 {
