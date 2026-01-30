@@ -345,6 +345,38 @@ export default function MoltbotMachineDetailPage() {
         }
     }, [machineId, machine]);
 
+    // Handle edit gateway token (for happy type machines)
+    const handleEditHappyGatewayToken = React.useCallback(async () => {
+        if (!machineId || !machine || machine.type !== 'happy') return;
+
+        const currentToken = machine.metadata?.gatewayToken || '';
+        const newToken = await Modal.prompt(
+            t('moltbot.editGatewayPassword'),
+            undefined,
+            {
+                placeholder: t('moltbot.gatewayToken'),
+                defaultValue: currentToken,
+                confirmText: t('common.save'),
+                cancelText: t('common.cancel'),
+                inputType: 'secure-text',
+            }
+        );
+
+        if (newToken !== null && newToken !== currentToken) {
+            setIsUpdating(true);
+            try {
+                await sync.updateMoltbotMachine(machineId, {
+                    gatewayToken: newToken || undefined,
+                });
+            } catch (err) {
+                console.error('Failed to update gateway token:', err);
+                Modal.alert(t('common.error'), err instanceof Error ? err.message : 'Failed to update gateway token');
+            } finally {
+                setIsUpdating(false);
+            }
+        }
+    }, [machineId, machine]);
+
     // Handle delete machine
     const handleDeleteMachine = React.useCallback(async () => {
         if (!machineId) return;
@@ -377,10 +409,20 @@ export default function MoltbotMachineDetailPage() {
         if (Platform.OS === 'ios') {
             // Build options based on machine type
             const isDirectType = machine?.type === 'direct';
-            const options = isDirectType
-                ? [t('common.cancel'), t('moltbot.renameMachine'), t('moltbot.editGatewayUrl'), t('moltbot.editGatewayPassword'), t('moltbot.deleteMachine')]
-                : [t('common.cancel'), t('moltbot.renameMachine'), t('moltbot.deleteMachine')];
-            const destructiveIndex = isDirectType ? 4 : 2;
+            const isHappyType = machine?.type === 'happy';
+            let options: string[];
+            let destructiveIndex: number;
+
+            if (isDirectType) {
+                options = [t('common.cancel'), t('moltbot.renameMachine'), t('moltbot.editGatewayUrl'), t('moltbot.editGatewayPassword'), t('moltbot.deleteMachine')];
+                destructiveIndex = 4;
+            } else if (isHappyType) {
+                options = [t('common.cancel'), t('moltbot.renameMachine'), t('moltbot.editGatewayPassword'), t('moltbot.deleteMachine')];
+                destructiveIndex = 3;
+            } else {
+                options = [t('common.cancel'), t('moltbot.renameMachine'), t('moltbot.deleteMachine')];
+                destructiveIndex = 2;
+            }
 
             ActionSheetIOS.showActionSheetWithOptions(
                 {
@@ -394,6 +436,10 @@ export default function MoltbotMachineDetailPage() {
                         else if (buttonIndex === 2) handleEditGatewayUrl();
                         else if (buttonIndex === 3) handleEditGatewayPassword();
                         else if (buttonIndex === 4) handleDeleteMachine();
+                    } else if (isHappyType) {
+                        if (buttonIndex === 1) handleRenameMachine();
+                        else if (buttonIndex === 2) handleEditHappyGatewayToken();
+                        else if (buttonIndex === 3) handleDeleteMachine();
                     } else {
                         if (buttonIndex === 1) handleRenameMachine();
                         else if (buttonIndex === 2) handleDeleteMachine();
@@ -404,7 +450,7 @@ export default function MoltbotMachineDetailPage() {
             // For Android and Web, use ActionMenuModal
             setMenuVisible(true);
         }
-    }, [machine?.type, handleRenameMachine, handleEditGatewayUrl, handleEditGatewayPassword, handleDeleteMachine]);
+    }, [machine?.type, handleRenameMachine, handleEditGatewayUrl, handleEditGatewayPassword, handleEditHappyGatewayToken, handleDeleteMachine]);
 
     // Menu items for ActionMenuModal
     const menuItems: ActionMenuItem[] = React.useMemo(() => {
@@ -418,9 +464,15 @@ export default function MoltbotMachineDetailPage() {
                 { label: t('moltbot.editGatewayPassword'), onPress: handleEditGatewayPassword },
             );
         }
+        // Add gateway token option for happy type machines
+        if (machine?.type === 'happy') {
+            items.push(
+                { label: t('moltbot.editGatewayPassword'), onPress: handleEditHappyGatewayToken },
+            );
+        }
         items.push({ label: t('moltbot.deleteMachine'), onPress: handleDeleteMachine, destructive: true });
         return items;
-    }, [machine?.type, handleRenameMachine, handleEditGatewayUrl, handleEditGatewayPassword, handleDeleteMachine]);
+    }, [machine?.type, handleRenameMachine, handleEditGatewayUrl, handleEditGatewayPassword, handleEditHappyGatewayToken, handleDeleteMachine]);
 
     // Get machine name
     const machineName = machine?.metadata?.name ||

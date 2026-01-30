@@ -1208,6 +1208,7 @@ class Sync {
         machineId: string,
         updates: {
             name?: string;
+            gatewayToken?: string;
             directConfig?: { url: string; password?: string };
         }
     ): Promise<void> {
@@ -1249,10 +1250,11 @@ class Sync {
             },
         };
 
-        // Build updated metadata if name is provided
-        const updatedMetadata = updates.name !== undefined ? {
+        // Build updated metadata if name or gatewayToken is provided
+        const updatedMetadata = (updates.name !== undefined || updates.gatewayToken !== undefined) ? {
             ...currentMachine.metadata,
             name: updates.name ?? currentMachine.metadata?.name ?? '',
+            gatewayToken: updates.gatewayToken !== undefined ? (updates.gatewayToken || undefined) : currentMachine.metadata?.gatewayToken,
         } : undefined;
 
         // Build updated directConfig if provided

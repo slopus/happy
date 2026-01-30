@@ -319,7 +319,7 @@ async function decryptMoltbotMachine(
         id: raw.id,
         type: raw.type,
         happyMachineId: raw.happyMachineId,
-        gatewayToken: null, // Gateway password is stored locally, not synced
+        gatewayToken: metadata?.gatewayToken ?? null,
         directConfig,
         metadata,
         metadataVersion: raw.metadataVersion,

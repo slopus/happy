@@ -37,7 +37,7 @@ export async function startApi() {
     app.register(import('@fastify/cors'), {
         origin: '*',
         allowedHeaders: '*',
-        methods: ['GET', 'POST', 'DELETE']
+        methods: ['GET', 'POST', 'PUT', 'DELETE']
     });
     app.register(import('@fastify/multipart'), {
         limits: {
