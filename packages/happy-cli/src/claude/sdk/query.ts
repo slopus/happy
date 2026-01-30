@@ -377,6 +377,9 @@ export function query(config: {
 
     config.options?.abort?.addEventListener('abort', cleanup)
     process.on('exit', cleanup)
+    // Also handle SIGTERM/SIGINT to prevent orphan processes when parent is killed
+    process.on('SIGTERM', cleanup)
+    process.on('SIGINT', cleanup)
 
     // Handle process exit
     const processExitPromise = new Promise<void>((resolve) => {
