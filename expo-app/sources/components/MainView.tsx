@@ -12,7 +12,6 @@ import { TabBar, TabType } from './TabBar';
 import { InboxView } from './InboxView';
 import { SettingsViewWrapper } from './SettingsViewWrapper';
 import { SessionsListWrapper } from './SessionsListWrapper';
-import { MoltbotView } from './MoltbotView';
 import { Header } from './navigation/Header';
 import { HeaderLogo } from './HeaderLogo';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
@@ -100,16 +99,15 @@ const styles = StyleSheet.create((theme) => ({
     },
 }));
 
-// Tab header configuration (zen excluded as that tab is disabled)
+// Tab header configuration (zen excluded as that tab is disabled, moltbot moved to settings)
 const TAB_TITLES = {
     sessions: 'tabs.sessions',
     inbox: 'tabs.inbox',
-    moltbot: 'tabs.moltbot',
     settings: 'tabs.settings',
 } as const;
 
-// Active tabs (excludes zen which is disabled)
-type ActiveTabType = 'sessions' | 'inbox' | 'moltbot' | 'settings';
+// Active tabs (excludes zen which is disabled, moltbot moved to settings)
+type ActiveTabType = 'sessions' | 'inbox' | 'settings';
 
 // Header title component with connection status
 const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
@@ -207,18 +205,6 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
         );
     }
 
-    if (activeTab === 'moltbot') {
-        return (
-            <Pressable
-                onPress={() => router.push('/moltbot/add')}
-                hitSlop={15}
-                style={styles.headerButton}
-            >
-                <Ionicons name="add-outline" size={28} color={theme.colors.header.tint} />
-            </Pressable>
-        );
-    }
-
     if (activeTab === 'settings') {
         if (!isCustomServer) {
             // Empty view to maintain header centering
@@ -263,8 +249,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
         switch (activeTab) {
             case 'inbox':
                 return <InboxView />;
-            case 'moltbot':
-                return <MoltbotView />;
             case 'settings':
                 return <SettingsViewWrapper />;
             case 'sessions':

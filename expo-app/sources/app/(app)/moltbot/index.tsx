@@ -21,7 +21,12 @@ const styles = StyleSheet.create((theme) => ({
     headerContent: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
         paddingHorizontal: 16,
+    },
+    headerLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     backButton: {
         marginRight: 16,
@@ -30,6 +35,9 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 17,
         color: theme.colors.header.tint,
         ...Typography.default('semiBold'),
+    },
+    addButton: {
+        padding: 4,
     },
 }));
 
@@ -40,24 +48,37 @@ export default React.memo(function MoltbotPage() {
     const router = useRouter();
     const headerHeight = useHeaderHeight();
 
-    // In phone mode, show header with back button
+    // In phone mode, show header with back button and add button
     if (!isTablet) {
         return (
             <View style={styles.container}>
                 <View style={[styles.header, { paddingTop: insets.top }]}>
                     <View style={[styles.headerContent, { height: headerHeight }]}>
+                        <View style={styles.headerLeft}>
+                            <Pressable
+                                onPress={() => router.back()}
+                                style={styles.backButton}
+                                hitSlop={15}
+                            >
+                                <Ionicons
+                                    name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                                    size={24}
+                                    color={theme.colors.header.tint}
+                                />
+                            </Pressable>
+                            <Text style={styles.headerTitle}>{t('tabs.moltbot')}</Text>
+                        </View>
                         <Pressable
-                            onPress={() => router.back()}
-                            style={styles.backButton}
+                            onPress={() => router.push('/moltbot/add')}
+                            style={styles.addButton}
                             hitSlop={15}
                         >
                             <Ionicons
-                                name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
-                                size={24}
+                                name="add-outline"
+                                size={28}
                                 color={theme.colors.header.tint}
                             />
                         </Pressable>
-                        <Text style={styles.headerTitle}>{t('tabs.moltbot')}</Text>
                     </View>
                 </View>
                 <MoltbotView />

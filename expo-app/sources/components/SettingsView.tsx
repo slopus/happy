@@ -358,6 +358,19 @@ export const SettingsView = React.memo(function SettingsView() {
                     icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
                     onPress={() => router.push('/settings/profiles')}
                 />
+                <Item
+                    title={t('tabs.moltbot')}
+                    subtitle={t('settings.moltbotSubtitle')}
+                    icon={
+                        <Image
+                            source={require('@/assets/images/brutalist/Brutalism 3.png')}
+                            style={{ width: 36, height: 36 }}
+                            contentFit="contain"
+                            tintColor="#5AC8FA"
+                        />
+                    }
+                    onPress={() => router.push('/moltbot')}
+                />
                 {experiments && (
                     <Item
                         title={t('settings.usage')}

@@ -186,6 +186,7 @@ export const es: TranslationStructure = {
         usageSubtitle: 'Ver tu uso de API y costos',
         profiles: 'Perfiles',
         profilesSubtitle: 'Gestionar perfiles de variables de entorno para sesiones',
+        moltbotSubtitle: 'Conectar a pasarelas Moltbot',
         history: 'History',
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',

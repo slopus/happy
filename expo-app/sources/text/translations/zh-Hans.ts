@@ -188,6 +188,7 @@ export const zhHans: TranslationStructure = {
         usageSubtitle: '查看 API 使用情况和费用',
         profiles: '配置文件',
         profilesSubtitle: '管理环境配置文件和变量',
+        moltbotSubtitle: '连接到 Moltbot 网关',
         history: '历史记录',
         sessionHistorySubtitle: '查看过去的 Happy 会话',
         claudeSessionsSubtitle: '浏览设备上的 Claude CLI 会话',

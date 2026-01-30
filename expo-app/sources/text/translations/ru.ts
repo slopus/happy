@@ -168,6 +168,7 @@ export const ru: TranslationStructure = {
         usageSubtitle: 'Просмотр использования API и затрат',
         profiles: 'Профили',
         profilesSubtitle: 'Управление профилями переменных окружения для сессий',
+        moltbotSubtitle: 'Подключение к шлюзам Moltbot',
         history: 'History',
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',

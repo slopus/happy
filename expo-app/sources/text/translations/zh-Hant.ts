@@ -187,6 +187,7 @@ export const zhHant: TranslationStructure = {
         usageSubtitle: '查看 API 使用情況和費用',
         profiles: '設定檔',
         profilesSubtitle: '管理工作階段的環境變數設定檔',
+        moltbotSubtitle: '連接到 Moltbot 閘道',
         history: '歷史',
         sessionHistorySubtitle: '查看過去的 Happy 工作階段',
         claudeSessionsSubtitle: '瀏覽此裝置上的 Claude CLI 工作階段',
