@@ -915,5 +915,13 @@ export const zhHant: TranslationStructure = {
             confirm: '刪除',
             cancel: '取消',
         },
+    },
+
+    presetMessages: {
+        // Preset messages feature (iOS only)
+        addTitle: '新增預設訊息',
+        editTitle: '編輯預設訊息',
+        messageLabel: '訊息',
+        messagePlaceholder: '輸入預設訊息...',
     }
 } as const;

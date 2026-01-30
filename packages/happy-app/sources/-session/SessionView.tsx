@@ -12,7 +12,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting, useSessionPresetMessages } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -176,6 +176,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
 
+    // Preset messages hooks (iOS only)
+    const presetMessages = useSessionPresetMessages(sessionId);
+
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
 
@@ -199,6 +202,24 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // Function to update model mode (for Gemini sessions)
     const updateModelMode = React.useCallback((mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => {
         storage.getState().updateSessionModelMode(sessionId, mode);
+    }, [sessionId]);
+
+    // Preset messages handlers
+    const handleAddPresetMessage = React.useCallback((text: string) => {
+        storage.getState().addPresetMessage(sessionId, text);
+    }, [sessionId]);
+
+    const handleUpdatePresetMessage = React.useCallback((id: string, text: string) => {
+        storage.getState().updatePresetMessage(sessionId, id, text);
+    }, [sessionId]);
+
+    const handleDeletePresetMessage = React.useCallback((id: string) => {
+        storage.getState().deletePresetMessage(sessionId, id);
+    }, [sessionId]);
+
+    const handleSendPresetMessage = React.useCallback((text: string) => {
+        sync.sendMessage(sessionId, text);
+        trackMessageSent();
     }, [sessionId]);
 
     // Memoize header-dependent styles to prevent re-renders
@@ -319,6 +340,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 contextSize: session.latestUsage.contextSize
             } : undefined}
             alwaysShowContextSize={alwaysShowContextSize}
+            // Preset messages props (iOS only)
+            presetMessages={presetMessages}
+            onAddPresetMessage={handleAddPresetMessage}
+            onUpdatePresetMessage={handleUpdatePresetMessage}
+            onDeletePresetMessage={handleDeletePresetMessage}
+            onSendPresetMessage={handleSendPresetMessage}
         />
     );
 

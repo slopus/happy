@@ -1,6 +1,6 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable } from 'react-native';
+import { View, Platform, useWindowDimensions, Text, ActivityIndicator, TouchableWithoutFeedback, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
@@ -23,6 +23,10 @@ import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile } from '@/sync/profileUtils';
+import { PresetMessageButton } from './PresetMessageButton';
+import { AddPresetButton } from './AddPresetButton';
+import { PresetMessageEditModal } from './PresetMessageEditModal';
+import type { PresetMessage } from '@/sync/persistence';
 
 interface AgentInputProps {
     value: string;
@@ -73,6 +77,12 @@ interface AgentInputProps {
     minHeight?: number;
     profileId?: string | null;
     onProfileClick?: () => void;
+    // Preset messages props (iOS only)
+    presetMessages?: PresetMessage[];
+    onAddPresetMessage?: (text: string) => void;
+    onUpdatePresetMessage?: (id: string, text: string) => void;
+    onDeletePresetMessage?: (id: string) => void;
+    onSendPresetMessage?: (text: string) => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -404,6 +414,46 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         // Don't close the settings overlay - let users see the change and potentially switch again
     }, [props.onPermissionModeChange]);
 
+    // Preset messages modal state
+    const [showPresetModal, setShowPresetModal] = React.useState(false);
+    const [editingPreset, setEditingPreset] = React.useState<{ id: string; text: string } | null>(null);
+    const [isNewPreset, setIsNewPreset] = React.useState(false);
+
+    // Preset messages handlers
+    const handleAddPreset = React.useCallback(() => {
+        hapticsLight();
+        setEditingPreset(null);
+        setIsNewPreset(true);
+        setShowPresetModal(true);
+    }, []);
+
+    const handleEditPreset = React.useCallback((preset: PresetMessage) => {
+        hapticsLight();
+        setEditingPreset({ id: preset.id, text: preset.text });
+        setIsNewPreset(false);
+        setShowPresetModal(true);
+    }, []);
+
+    const handleSendPreset = React.useCallback((text: string) => {
+        hapticsLight();
+        props.onSendPresetMessage?.(text);
+    }, [props.onSendPresetMessage]);
+
+    const handleSavePreset = React.useCallback((text: string) => {
+        if (isNewPreset) {
+            props.onAddPresetMessage?.(text);
+        } else if (editingPreset) {
+            props.onUpdatePresetMessage?.(editingPreset.id, text);
+        }
+        setShowPresetModal(false);
+        setEditingPreset(null);
+    }, [isNewPreset, editingPreset, props.onAddPresetMessage, props.onUpdatePresetMessage]);
+
+    const handleClosePresetModal = React.useCallback(() => {
+        setShowPresetModal(false);
+        setEditingPreset(null);
+    }, []);
+
     // Handle abort button press
     const handleAbortPress = React.useCallback(async () => {
         if (!props.onAbort) return;
@@ -492,6 +542,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
 
     return (
+        <>
         <View style={[
             styles.container,
             { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
@@ -1084,6 +1135,20 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                                 {/* Git Status Badge */}
                                 <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+
+                                {/* Preset Message Buttons */}
+                                {props.presetMessages && props.presetMessages.map((msg, index) => (
+                                    <PresetMessageButton
+                                        key={msg.id}
+                                        text={msg.text}
+                                        index={index}
+                                        onPress={() => handleSendPreset(msg.text)}
+                                        onLongPress={() => handleEditPreset(msg)}
+                                    />
+                                ))}
+                                {props.presetMessages && props.presetMessages.length < 3 && (
+                                    <AddPresetButton onPress={handleAddPreset} />
+                                )}
                                 </View>
 
                                 {/* Send/Voice button - aligned with first row */}
@@ -1157,13 +1222,23 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 </View>
             </View>
         </View>
+
+        {/* Preset Messages Edit Modal */}
+        <PresetMessageEditModal
+            visible={showPresetModal}
+            onClose={handleClosePresetModal}
+            onSave={handleSavePreset}
+            onDelete={isNewPreset ? undefined : () => props.onDeletePresetMessage?.(editingPreset!.id)}
+            initialText={editingPreset?.text || ''}
+            isNew={isNewPreset}
+        />
+        </>
     );
 }));
 
 // Git Status Button Component
 function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?: () => void }) {
     const hasMeaningfulGitStatus = useHasMeaningfulGitStatus(sessionId || '');
-    const styles = stylesheet;
     const { theme } = useUnistyles();
 
     if (!sessionId || !onPress) {

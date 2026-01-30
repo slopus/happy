@@ -916,5 +916,13 @@ export const ja: TranslationStructure = {
         friendRequestGeneric: '新しい友達リクエスト',
         friendAccepted: ({ name }: { name: string }) => `${name}さんと友達になりました`,
         friendAcceptedGeneric: '友達リクエストが承認されました',
+    },
+
+    presetMessages: {
+        // Preset messages feature (iOS only)
+        addTitle: 'プリセットメッセージを追加',
+        editTitle: 'プリセットメッセージを編集',
+        messageLabel: 'メッセージ',
+        messagePlaceholder: 'プリセットメッセージを入力...',
     }
 } as const;

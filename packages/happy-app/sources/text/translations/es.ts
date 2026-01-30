@@ -915,6 +915,14 @@ export const es: TranslationStructure = {
             confirm: 'Eliminar',
             cancel: 'Cancelar',
         },
+    },
+
+    presetMessages: {
+        // Preset messages feature (iOS only)
+        addTitle: 'Agregar Mensaje Preestablecido',
+        editTitle: 'Editar Mensaje Preestablecido',
+        messageLabel: 'Mensaje',
+        messagePlaceholder: 'Ingresa un mensaje preestablecido...',
     }
 } as const;
 

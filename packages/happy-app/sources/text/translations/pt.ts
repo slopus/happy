@@ -913,6 +913,14 @@ export const pt: TranslationStructure = {
         friendRequestGeneric: 'Novo pedido de amizade',
         friendAccepted: ({ name }: { name: string }) => `Agora você é amigo de ${name}`,
         friendAcceptedGeneric: 'Pedido de amizade aceito',
+    },
+
+    presetMessages: {
+        // Preset messages feature (iOS only)
+        addTitle: 'Adicionar Mensagem Predefinida',
+        editTitle: 'Editar Mensagem Predefinida',
+        messageLabel: 'Mensagem',
+        messagePlaceholder: 'Digite uma mensagem predefinida...',
     }
 } as const;
 
