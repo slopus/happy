@@ -1,7 +1,7 @@
 import * as React from "react";
-import { View, Text } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { Image } from "expo-image";
-import { Galeria } from "@nandorojo/galeria";
+import { ImageViewer } from "./ImageViewer";
 import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
@@ -76,6 +76,9 @@ function UserTextBlock(props: {
   sessionId: string;
   isNewestMessage?: boolean;
 }) {
+  const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
+  const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
+
   const handleOptionPress = React.useCallback(async (option: Option) => {
     if (!props.isNewestMessage) {
       const confirmed = await Modal.confirm(
@@ -89,26 +92,37 @@ function UserTextBlock(props: {
   }, [props.sessionId, props.isNewestMessage]);
 
   const images = props.message.images ?? [];
-  const imageUrls = images.map(img => img.url);
+  const imageViewingImages = images.map(img => ({ uri: img.url }));
+
+  const handleImagePress = React.useCallback((index: number) => {
+    setImageViewerIndex(index);
+    setImageViewerVisible(true);
+  }, []);
 
   return (
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
         {images.length > 0 && (
-          <Galeria urls={imageUrls} theme="dark">
+          <>
             <View style={styles.messageImages}>
               {images.map((img, index) => (
-                <Galeria.Image key={index} index={index}>
+                <Pressable key={index} onPress={() => handleImagePress(index)}>
                   <Image
                     source={{ uri: img.url }}
                     style={{ width: 120, height: 120, borderRadius: 8 }}
                     contentFit="cover"
                     placeholder={img.thumbhash ? { thumbhash: img.thumbhash } : undefined}
                   />
-                </Galeria.Image>
+                </Pressable>
               ))}
             </View>
-          </Galeria>
+            <ImageViewer
+              images={imageViewingImages}
+              initialIndex={imageViewerIndex}
+              visible={imageViewerVisible}
+              onClose={() => setImageViewerVisible(false)}
+            />
+          </>
         )}
         <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} />
       </View>

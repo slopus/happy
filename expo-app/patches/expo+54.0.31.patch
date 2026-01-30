@@ -1,0 +1,40 @@
+diff --git a/node_modules/expo/src/async-require/hmr.ts b/node_modules/expo/src/async-require/hmr.ts
+index 0000000..0000000 100644
+--- a/node_modules/expo/src/async-require/hmr.ts
++++ b/node_modules/expo/src/async-require/hmr.ts
+@@ -163,10 +163,31 @@
+ 
+     const fullBundleUrl = (() => {
+       const currentScript = document?.currentScript;
+-      const bundleUrl = new URL(
+-        currentScript && 'src' in currentScript ? currentScript.src : location.href,
+-        location.href
+-      );
++      const currentScriptSrc =
++        currentScript && 'src' in currentScript ? currentScript.src : null;
++      const fallbackScriptSrc = (() => {
++        if (currentScriptSrc) return currentScriptSrc;
++        const scripts = Array.from(document?.querySelectorAll('script[src]') ?? []);
++        const metroScript = scripts.find((script) => {
++          const src = (script as HTMLScriptElement).src || '';
++          return (
++            src.includes('/index.bundle') ||
++            src.includes('/_expo/static/js/') ||
++            src.includes('.bundle')
++          );
++        }) as HTMLScriptElement | undefined;
++        return metroScript?.src ?? null;
++      })();
++
++      const bundleUrl = new URL(fallbackScriptSrc ?? location.href, location.href);
++      const looksLikeBundle =
++        bundleUrl.pathname.includes('.bundle') ||
++        bundleUrl.pathname.startsWith('/_expo/static/js/') ||
++        bundleUrl.pathname.endsWith('.js');
++      if (!looksLikeBundle) {
++        bundleUrl.pathname = '/index.bundle';
++        bundleUrl.search = '';
++      }
+ 
+       if (!bundleUrl.searchParams.has('platform')) {
+         bundleUrl.searchParams.set('platform', process.env.EXPO_OS ?? 'web');
