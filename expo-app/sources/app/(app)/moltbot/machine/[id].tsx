@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl, Platform, ActionSheetIOS } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl, Platform, ActionSheetIOS, useWindowDimensions } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -148,11 +148,21 @@ const SessionItem = React.memo(({ session, onPress }: SessionItemProps) => {
     );
 });
 
+// Header button width constants
+const HEADER_BUTTON_WIDTH = 40; // 24px icon + 16px padding
+const HEADER_TWO_BUTTONS_WIDTH = 88; // 40 + 40 + 8 gap
+const HEADER_PADDING = Platform.OS === 'ios' ? 16 : 32; // 8*2 or 16*2
+const HEADER_CENTER_PADDING = 24; // 12*2 for centerContainer
+
 export default function MoltbotMachineDetailPage() {
     const router = useRouter();
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const { id: machineId } = useLocalSearchParams<{ id: string }>();
+    const { width: screenWidth } = useWindowDimensions();
+
+    // Left: back button (1), Right: add + menu buttons (2) - use larger side * 2 for symmetry
+    const headerTitleMaxWidth = screenWidth - (HEADER_TWO_BUTTONS_WIDTH * 2) - HEADER_PADDING - HEADER_CENTER_PADDING;
 
     // Get machine data
     const machine = useMoltbotMachine(machineId ?? '');
@@ -467,26 +477,23 @@ export default function MoltbotMachineDetailPage() {
             <Stack.Screen
                 options={{
                     headerLeft: () => (
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Pressable
-                                onPress={() => router.back()}
-                                style={{ paddingHorizontal: 8, paddingVertical: 4 }}
-                            >
-                                <Ionicons
-                                    name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
-                                    size={Platform.OS === 'ios' ? 28 : 24}
-                                    color={theme.colors.header.tint}
-                                />
-                            </Pressable>
-                            <View style={{ width: 44 }} />
-                        </View>
+                        <Pressable
+                            onPress={() => router.back()}
+                            style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                        >
+                            <Ionicons
+                                name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                                size={Platform.OS === 'ios' ? 28 : 24}
+                                color={theme.colors.header.tint}
+                            />
+                        </Pressable>
                     ),
                     headerTitle: () => (
-                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                        <View style={{ alignItems: 'center', justifyContent: 'center', maxWidth: headerTitleMaxWidth }}>
                             <Text
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
-                                style={[Typography.default('semiBold'), { fontSize: 17, lineHeight: 24, color: theme.colors.header.tint }]}
+                                style={[Typography.default('semiBold'), { fontSize: 17, lineHeight: 24, color: theme.colors.header.tint, flexShrink: 1 }]}
                             >
                                 {machineName}
                             </Text>

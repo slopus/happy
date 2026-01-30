@@ -364,7 +364,7 @@ export default function RootLayout() {
             <Stack.Screen
                 name="moltbot/index"
                 options={{
-                    headerShown: false,
+                    headerShown: true,
                     headerTitle: t('tabs.moltbot'),
                     headerBackTitle: t('common.back'),
                 }}

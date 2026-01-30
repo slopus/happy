@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -62,6 +62,11 @@ const styles = StyleSheet.create((theme) => ({
     },
 }));
 
+// Header button width constants
+const HEADER_BUTTON_WIDTH = 40; // 24px icon + 16px padding
+const HEADER_PADDING = Platform.OS === 'ios' ? 16 : 32; // 8*2 or 16*2
+const HEADER_CENTER_PADDING = 24; // 12*2 for centerContainer
+
 export default function MachineDetailScreen() {
     const { theme } = useUnistyles();
     const { id: machineId } = useLocalSearchParams<{ id: string }>();
@@ -76,6 +81,10 @@ export default function MachineDetailScreen() {
     const [isSpawning, setIsSpawning] = useState(false);
     const inputRef = useRef<MultiTextInputHandle>(null);
     const [showAllPaths, setShowAllPaths] = useState(false);
+    const { width: screenWidth } = useWindowDimensions();
+
+    // Left: back button (1), Right: edit button (1) - use larger side * 2 for symmetry
+    const headerTitleMaxWidth = screenWidth - (HEADER_BUTTON_WIDTH * 2) - HEADER_PADDING - HEADER_CENTER_PADDING;
     // Variant D only
 
     const machineSessions = useMemo(() => {
@@ -279,19 +288,31 @@ export default function MachineDetailScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
+                    headerLeft: () => (
+                        <Pressable
+                            onPress={() => router.back()}
+                            style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                        >
+                            <Ionicons
+                                name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                                size={Platform.OS === 'ios' ? 28 : 24}
+                                color={theme.colors.header.tint}
+                            />
+                        </Pressable>
+                    ),
                     headerTitle: () => (
-                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={{ alignItems: 'center', justifyContent: 'center', maxWidth: headerTitleMaxWidth }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', maxWidth: '100%' }}>
                                 <Ionicons
                                     name="desktop-outline"
                                     size={18}
                                     color={theme.colors.header.tint}
-                                    style={{ marginRight: 6 }}
+                                    style={{ marginRight: 6, flexShrink: 0 }}
                                 />
                                 <Text
                                     numberOfLines={1}
                                     ellipsizeMode="tail"
-                                    style={[Typography.default('semiBold'), { fontSize: 17, lineHeight: 24, color: theme.colors.header.tint }]}
+                                    style={[Typography.default('semiBold'), { fontSize: 17, lineHeight: 24, color: theme.colors.header.tint, flexShrink: 1 }]}
                                 >
                                     {machineName}
                                 </Text>
@@ -324,12 +345,11 @@ export default function MachineDetailScreen() {
                         >
                             <Octicons
                                 name="pencil"
-                                size={24}
+                                size={20}
                                 color={theme.colors.text}
                             />
                         </Pressable>
                     ),
-                    headerBackTitle: t('machine.back')
                 }}
             />
             <ItemList

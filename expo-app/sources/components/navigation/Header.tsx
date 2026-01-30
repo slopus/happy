@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, Platform, StatusBar, Pressable } from 'react-native';
+import { View, Text, Platform, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -215,23 +215,28 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         maxWidth: layout.headerMaxWidth,
     },
     leftContainer: {
-        flexGrow: 0,
-        flexShrink: 0,
-        alignItems: 'flex-start',
-    },
-    centerContainer: {
         flexGrow: 1,
         flexBasis: 0,
-        alignSelf: 'stretch',
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: Platform.OS === 'ios' ? 'center' : 'flex-start',
+        justifyContent: 'flex-start',
+    },
+    centerContainer: {
+        flexGrow: 0,
+        flexShrink: 1,
+        alignSelf: 'stretch',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
         paddingHorizontal: 12,
+        overflow: 'hidden',
     },
     rightContainer: {
-        flexGrow: 0,
-        flexShrink: 0,
-        alignItems: 'flex-end',
+        flexGrow: 1,
+        flexBasis: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
     },
     title: {
         fontSize: 17,

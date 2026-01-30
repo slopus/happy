@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
         height: 44,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: Platform.select({ ios: -8, default: -8 }),
+        marginRight: Platform.select({ web: -8, default: -4 }),
     },
     loadingContainer: {
         width: 24,

@@ -11,6 +11,8 @@ import {
     Text,
     ScrollView,
     Pressable,
+    Platform,
+    useWindowDimensions,
 } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -80,11 +82,20 @@ const styles = StyleSheet.create((theme) => ({
 
 type SessionKind = 'direct' | 'group' | 'global';
 
+// Header button width constants
+const HEADER_BUTTON_WIDTH = 40; // 24px icon + 16px padding
+const HEADER_PADDING = Platform.OS === 'ios' ? 16 : 32; // 8*2 or 16*2
+const HEADER_CENTER_PADDING = 24; // 12*2 for centerContainer
+
 export default function MoltbotNewSessionPage() {
     const router = useRouter();
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const { machineId } = useLocalSearchParams<{ machineId: string }>();
+    const { width: screenWidth } = useWindowDimensions();
+
+    // Left: back button (1), Right: placeholder (1) - use larger side * 2 for symmetry
+    const headerTitleMaxWidth = screenWidth - (HEADER_BUTTON_WIDTH * 2) - HEADER_PADDING - HEADER_CENTER_PADDING;
 
     // Connection hook
     const {
@@ -146,12 +157,24 @@ export default function MoltbotNewSessionPage() {
         <View style={styles.container}>
             <Stack.Screen
                 options={{
+                    headerLeft: () => (
+                        <Pressable
+                            onPress={() => router.back()}
+                            style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                        >
+                            <Ionicons
+                                name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                                size={Platform.OS === 'ios' ? 28 : 24}
+                                color={theme.colors.header.tint}
+                            />
+                        </Pressable>
+                    ),
                     headerTitle: () => (
-                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                        <View style={{ alignItems: 'center', justifyContent: 'center', maxWidth: headerTitleMaxWidth }}>
                             <Text
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
-                                style={[Typography.default('semiBold'), { fontSize: 17, lineHeight: 24, color: theme.colors.header.tint }]}
+                                style={[Typography.default('semiBold'), { fontSize: 17, lineHeight: 24, color: theme.colors.header.tint, flexShrink: 1 }]}
                             >
                                 {t('moltbot.newSession')}
                             </Text>

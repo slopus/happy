@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
-import { Text, View, ActivityIndicator } from "react-native";
+import { Text, View, ActivityIndicator, Platform, Pressable, useWindowDimensions } from "react-native";
 import { useMessage, useSession, useSessionMessages } from "@/sync/storage";
 import { sync } from '@/sync/sync';
 import { Deferred } from "@/components/Deferred";
@@ -10,6 +10,12 @@ import { ToolStatusIndicator } from '@/components/tools/ToolStatusIndicator';
 import { Message } from '@/sync/typesMessage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
+import { Ionicons } from '@expo/vector-icons';
+
+// Header button width constants
+const HEADER_BUTTON_WIDTH = 60;
+const HEADER_PADDING = Platform.OS === 'ios' ? 16 : 32;
+const HEADER_CENTER_PADDING = 24;
 
 const stylesheet = StyleSheet.create((theme) => ({
     loadingContainer: {
@@ -37,6 +43,10 @@ export default React.memo(() => {
     const message = useMessage(sessionId!, messageId!);
     const { theme } = useUnistyles();
     const styles = stylesheet;
+    const { width: screenWidth } = useWindowDimensions();
+
+    // Left: back button (1), Right: status indicator (1)
+    const headerTitleMaxWidth = screenWidth - (HEADER_BUTTON_WIDTH * 2) - HEADER_PADDING - HEADER_CENTER_PADDING;
     
     // Trigger session visibility when component mounts
     React.useEffect(() => {
@@ -83,7 +93,19 @@ export default React.memo(() => {
             {message && message.kind === 'tool-call' && message.tool && (
                 <Stack.Screen
                     options={{
-                        headerTitle: () => <ToolHeader tool={message.tool} />,
+                        headerLeft: () => (
+                            <Pressable
+                                onPress={() => router.back()}
+                                style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                            >
+                                <Ionicons
+                                    name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                                    size={Platform.OS === 'ios' ? 28 : 24}
+                                    color={theme.colors.header.tint}
+                                />
+                            </Pressable>
+                        ),
+                        headerTitle: () => <ToolHeader tool={message.tool} maxWidth={headerTitleMaxWidth} />,
                         headerRight: () => <ToolStatusIndicator tool={message.tool} />,
                         headerStyle: {
                             backgroundColor: theme.colors.header.background,

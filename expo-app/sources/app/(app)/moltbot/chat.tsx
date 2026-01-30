@@ -14,6 +14,7 @@ import {
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
+    useWindowDimensions,
 } from 'react-native';
 import { randomUUID } from 'expo-crypto';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -24,10 +25,14 @@ import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { MultiTextInput, KeyPressEvent } from '@/components/MultiTextInput';
-import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { useMoltbotConnection } from '@/moltbot/connection';
 import { useMoltbotMachine } from '@/sync/storage';
 import type { MoltbotChatMessage, MoltbotChatEvent } from '@/moltbot/types';
+
+// Header button width constants
+const HEADER_BUTTON_WIDTH = 40; // 24px icon + 16px padding
+const HEADER_PADDING = Platform.OS === 'ios' ? 16 : 32;
+const HEADER_CENTER_PADDING = 24;
 
 // Local message type with send status for UI tracking
 type MessageStatus = 'sending' | 'sent' | 'failed';
@@ -260,10 +265,14 @@ export default function MoltbotChatPage() {
     const router = useRouter();
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
+    const { width: screenWidth } = useWindowDimensions();
     const { machineId, sessionKey } = useLocalSearchParams<{
         machineId: string;
         sessionKey: string;
     }>();
+
+    // Left: back button (1), Right: loading indicator (1)
+    const headerTitleMaxWidth = screenWidth - (HEADER_BUTTON_WIDTH * 2) - HEADER_PADDING - HEADER_CENTER_PADDING;
 
     // Get machine data
     const machine = useMoltbotMachine(machineId ?? '');
@@ -466,16 +475,42 @@ export default function MoltbotChatPage() {
         >
             <Stack.Screen
                 options={{
-                    headerShown: false,
+                    headerLeft: () => (
+                        <Pressable
+                            onPress={() => router.back()}
+                            style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                        >
+                            <Ionicons
+                                name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                                size={Platform.OS === 'ios' ? 28 : 24}
+                                color={theme.colors.header.tint}
+                            />
+                        </Pressable>
+                    ),
+                    headerTitle: () => (
+                        <View style={{ alignItems: 'center', justifyContent: 'center', maxWidth: headerTitleMaxWidth }}>
+                            <Text
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                                style={[Typography.default('semiBold'), { fontSize: 17, lineHeight: 24, color: theme.colors.header.tint, flexShrink: 1 }]}
+                            >
+                                {sessionName}
+                            </Text>
+                            {machineName && (
+                                <Text
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                    style={[Typography.default(), { fontSize: 12, color: theme.colors.header.tint, opacity: 0.7, marginTop: -2 }]}
+                                >
+                                    {machineName}
+                                </Text>
+                            )}
+                        </View>
+                    ),
+                    headerRight: isConnecting ? () => (
+                        <ActivityIndicator size="small" color={theme.colors.header.tint} />
+                    ) : undefined,
                 }}
-            />
-
-            {/* Custom header */}
-            <ChatHeaderView
-                title={sessionName}
-                subtitle={machineName}
-                onBackPress={() => router.back()}
-                isConnecting={isConnecting}
             />
 
             {/* Messages list */}

@@ -7,9 +7,10 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 interface ToolHeaderProps {
     tool: ToolCall;
+    maxWidth?: number;
 }
 
-export function ToolHeader({ tool }: ToolHeaderProps) {
+export function ToolHeader({ tool, maxWidth }: ToolHeaderProps) {
     const { theme } = useUnistyles();
     const knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
 
@@ -44,7 +45,7 @@ export function ToolHeader({ tool }: ToolHeaderProps) {
     }
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, maxWidth ? { maxWidth } : undefined]}>
             <View style={styles.titleContainer}>
                 <View style={styles.titleRow}>
                     {icon}
