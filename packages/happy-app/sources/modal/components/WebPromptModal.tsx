@@ -34,6 +34,12 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
         onClose();
     };
 
+    const handleDestructive = () => {
+        // Return special marker to indicate destructive action
+        onConfirm('__DELETE__');
+        onClose();
+    };
+
     const getKeyboardType = (): KeyboardTypeOptions => {
         switch (config.inputType) {
             case 'email-address':
@@ -86,10 +92,13 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
             borderColor: theme.colors.divider,
             borderRadius: 8,
             paddingHorizontal: 10,
+            paddingVertical: 0,
             marginTop: 16,
             fontSize: 14,
+            lineHeight: 18,
             color: theme.colors.text,
-            backgroundColor: theme.colors.input.background
+            backgroundColor: theme.colors.input.background,
+            textAlignVertical: 'center',
         },
         buttonContainer: {
             borderTopWidth: 1,
@@ -148,22 +157,43 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
                 </View>
                 
                 <View style={styles.buttonContainer}>
-                    <Pressable
-                        style={({ pressed }) => [
-                            styles.button,
-                            pressed && styles.buttonPressed
-                        ]}
-                        onPress={handleCancel}
-                    >
-                        <Text style={[
-                            styles.buttonText,
-                            styles.cancelText,
-                            Typography.default()
-                        ]}>
-                            {config.cancelText || 'Cancel'}
-                        </Text>
-                    </Pressable>
-                    <View style={styles.buttonSeparator} />
+                    {config.destructiveText ? (
+                        <>
+                            <Pressable
+                                style={({ pressed }) => [
+                                    styles.button,
+                                    pressed && styles.buttonPressed
+                                ]}
+                                onPress={handleDestructive}
+                            >
+                                <Text style={[
+                                    styles.buttonText,
+                                    { color: theme.colors.textDestructive },
+                                    Typography.default()
+                                ]}>
+                                    {config.destructiveText}
+                                </Text>
+                            </Pressable>
+                            <View style={styles.buttonSeparator} />
+                        </>
+                    ) : (
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.button,
+                                pressed && styles.buttonPressed
+                            ]}
+                            onPress={handleCancel}
+                        >
+                            <Text style={[
+                                styles.buttonText,
+                                styles.cancelText,
+                                Typography.default()
+                            ]}>
+                                {config.cancelText || 'Cancel'}
+                            </Text>
+                        </Pressable>
+                    )}
+                    {config.destructiveText && <View style={styles.buttonSeparator} />}
                     <Pressable
                         style={({ pressed }) => [
                             styles.button,
@@ -178,6 +208,26 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
                             {config.confirmText || 'OK'}
                         </Text>
                     </Pressable>
+                    {config.destructiveText && (
+                        <>
+                            <View style={styles.buttonSeparator} />
+                            <Pressable
+                                style={({ pressed }) => [
+                                    styles.button,
+                                    pressed && styles.buttonPressed
+                                ]}
+                                onPress={handleCancel}
+                            >
+                                <Text style={[
+                                    styles.buttonText,
+                                    styles.cancelText,
+                                    Typography.default()
+                                ]}>
+                                    {config.cancelText || 'Cancel'}
+                                </Text>
+                            </Pressable>
+                        </>
+                    )}
                 </View>
             </View>
         </BaseModal>

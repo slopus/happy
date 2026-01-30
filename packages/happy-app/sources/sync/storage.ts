@@ -11,7 +11,7 @@ import { Purchases, customerInfoToPurchases } from "./purchases";
 import { TodoState } from "../-zen/model/ops";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadPresetMessages, savePresetMessages, type PresetMessage } from "./persistence";
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
@@ -71,6 +71,7 @@ interface StorageState {
     localSettings: LocalSettings;
     purchases: Purchases;
     profile: Profile;
+    presetMessages: Record<string, PresetMessage[]>;
     sessions: Record<string, Session>;
     sessionsData: SessionListItem[] | null;  // Legacy - to be removed
     sessionListViewData: SessionListViewItem[] | null;
@@ -145,6 +146,12 @@ interface StorageState {
     // Feed methods
     applyFeedItems: (items: FeedItem[]) => void;
     clearFeed: () => void;
+    // Preset messages methods
+    getSessionPresetMessages: (sessionId: string) => PresetMessage[];
+    addPresetMessage: (sessionId: string, text: string) => void;
+    updatePresetMessage: (sessionId: string, id: string, text: string) => void;
+    deletePresetMessage: (sessionId: string, id: string) => void;
+    reorderPresetMessages: (sessionId: string, messages: PresetMessage[]) => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -250,12 +257,14 @@ export const storage = create<StorageState>()((set, get) => {
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
     let sessionPermissionModes = loadSessionPermissionModes();
+    let presetMessages = loadPresetMessages();
     return {
         settings,
         settingsVersion: version,
         localSettings,
         purchases,
         profile,
+        presetMessages,
         sessions: {},
         machines: {},
         artifacts: {},  // Initialize artifacts
@@ -1066,6 +1075,80 @@ export const storage = create<StorageState>()((set, get) => {
             feedLoaded: false,  // Reset loading flag
             friendsLoaded: false  // Reset loading flag
         })),
+        // Preset messages methods
+        getSessionPresetMessages: (sessionId: string) => {
+            return get().presetMessages[sessionId] || [];
+        },
+        addPresetMessage: (sessionId: string, text: string) => set((state) => {
+            const sessionMessages = state.presetMessages[sessionId] || [];
+            // Limit to 3 preset messages
+            if (sessionMessages.length >= 3) {
+                return state;
+            }
+            const newMessage: PresetMessage = {
+                id: `preset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                text,
+                order: sessionMessages.length
+            };
+            const updatedMessages = [...sessionMessages, newMessage];
+            const updatedPresetMessages = {
+                ...state.presetMessages,
+                [sessionId]: updatedMessages
+            };
+            savePresetMessages(updatedPresetMessages);
+            return {
+                ...state,
+                presetMessages: updatedPresetMessages
+            };
+        }),
+        updatePresetMessage: (sessionId: string, id: string, text: string) => set((state) => {
+            const sessionMessages = state.presetMessages[sessionId] || [];
+            const updatedMessages = sessionMessages.map(msg =>
+                msg.id === id ? { ...msg, text } : msg
+            );
+            const updatedPresetMessages = {
+                ...state.presetMessages,
+                [sessionId]: updatedMessages
+            };
+            savePresetMessages(updatedPresetMessages);
+            return {
+                ...state,
+                presetMessages: updatedPresetMessages
+            };
+        }),
+        deletePresetMessage: (sessionId: string, id: string) => set((state) => {
+            const sessionMessages = state.presetMessages[sessionId] || [];
+            const filteredMessages = sessionMessages.filter(msg => msg.id !== id);
+            // Reorder remaining messages
+            const reorderedMessages = filteredMessages.map((msg, index) => ({
+                ...msg,
+                order: index
+            }));
+            const updatedPresetMessages = {
+                ...state.presetMessages,
+                [sessionId]: reorderedMessages
+            };
+            savePresetMessages(updatedPresetMessages);
+            return {
+                ...state,
+                presetMessages: updatedPresetMessages
+            };
+        }),
+        reorderPresetMessages: (sessionId: string, messages: PresetMessage[]) => set((state) => {
+            const reorderedMessages = messages.map((msg, index) => ({
+                ...msg,
+                order: index
+            }));
+            const updatedPresetMessages = {
+                ...state.presetMessages,
+                [sessionId]: reorderedMessages
+            };
+            savePresetMessages(updatedPresetMessages);
+            return {
+                ...state,
+                presetMessages: updatedPresetMessages
+            };
+        }),
     }
 });
 
@@ -1293,5 +1376,12 @@ export function useRequestedFriends() {
     return storage(useShallow((state) => {
         // Filter friends to get sent requests (where status is 'requested')
         return Object.values(state.friends).filter(friend => friend.status === 'requested');
+    }));
+}
+
+export function useSessionPresetMessages(sessionId: string | undefined): PresetMessage[] {
+    return storage(useShallow((state) => {
+        if (!sessionId) return [];
+        return state.presetMessages[sessionId] || [];
     }));
 }

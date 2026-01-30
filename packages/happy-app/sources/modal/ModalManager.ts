@@ -149,6 +149,7 @@ class ModalManagerClass implements IModal {
             defaultValue?: string;
             cancelText?: string;
             confirmText?: string;
+            destructiveText?: string;
             inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
         }
     ): Promise<string | null> {
@@ -190,6 +191,7 @@ class ModalManagerClass implements IModal {
                 defaultValue: options?.defaultValue,
                 cancelText: options?.cancelText,
                 confirmText: options?.confirmText,
+                destructiveText: options?.destructiveText,
                 inputType: options?.inputType
             } as Omit<ModalConfig, 'id'>);
 

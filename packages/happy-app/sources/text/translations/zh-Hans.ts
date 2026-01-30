@@ -915,5 +915,13 @@ export const zhHans: TranslationStructure = {
         friendRequestGeneric: '新的好友请求',
         friendAccepted: ({ name }: { name: string }) => `您现在与 ${name} 成为了好友`,
         friendAcceptedGeneric: '好友请求已接受',
+    },
+
+    presetMessages: {
+        // Preset messages feature (iOS only)
+        addTitle: '添加预设消息',
+        editTitle: '编辑预设消息',
+        messageLabel: '消息',
+        messagePlaceholder: '输入预设消息...',
     }
 } as const;

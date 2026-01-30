@@ -938,6 +938,14 @@ export const pl: TranslationStructure = {
             confirm: 'Usuń',
             cancel: 'Anuluj',
         },
+    },
+
+    presetMessages: {
+        // Preset messages feature (iOS only)
+        addTitle: 'Dodaj Wiadomość Predefiniowaną',
+        editTitle: 'Edytuj Wiadomość Predefiniowaną',
+        messageLabel: 'Wiadomość',
+        messagePlaceholder: 'Wprowadź wiadomość predefiniowaną...',
     }
 } as const;
 

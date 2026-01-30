@@ -937,6 +937,14 @@ export const ru: TranslationStructure = {
             confirm: 'Удалить',
             cancel: 'Отмена',
         },
+    },
+
+    presetMessages: {
+        // Preset messages feature (iOS only)
+        addTitle: 'Добавить Предустановленное Сообщение',
+        editTitle: 'Редактировать Предустановленное Сообщение',
+        messageLabel: 'Сообщение',
+        messagePlaceholder: 'Введите предустановленное сообщение...',
     }
 } as const;
 
