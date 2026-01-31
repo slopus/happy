@@ -3,6 +3,11 @@
  *
  * Chat view for an OpenClaw session.
  * Handles message display, input, and real-time streaming.
+ *
+ * Uses a single messages list approach:
+ * - User messages are added directly to the list with status tracking
+ * - Streaming AI responses are managed as a temporary message in the list
+ * - On completion, the entire list is replaced with server history (single atomic update)
  */
 
 import React from 'react';
@@ -15,6 +20,8 @@ import {
     KeyboardAvoidingView,
     Platform,
     useWindowDimensions,
+    Animated,
+    Easing,
 } from 'react-native';
 import { randomUUID } from 'expo-crypto';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -24,6 +31,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
+import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { MultiTextInput, KeyPressEvent } from '@/components/MultiTextInput';
 import { useOpenClawConnection } from '@/openclaw/connection';
 import { useOpenClawMachine } from '@/sync/storage';
@@ -34,12 +42,16 @@ const HEADER_BUTTON_WIDTH = 40; // 24px icon + 16px padding
 const HEADER_PADDING = Platform.OS === 'ios' ? 16 : 32;
 const HEADER_CENTER_PADDING = 24;
 
-// Local message type with send status for UI tracking
+// Special ID for streaming message
+const STREAMING_MESSAGE_ID = '__streaming__';
+
+// Local message type with status tracking
 type MessageStatus = 'sending' | 'sent' | 'failed';
 
 interface LocalMessage extends OpenClawChatMessage {
     localId: string;           // Unique ID for tracking
-    status?: MessageStatus;    // Only for user messages
+    status?: MessageStatus;    // For user messages: sending/sent/failed
+    isStreaming?: boolean;     // For AI messages: true if currently streaming
     errorMessage?: string;     // Error details for failed messages
 }
 
@@ -82,9 +94,6 @@ const styles = StyleSheet.create((theme) => ({
     userMessageText: {
         color: '#FFFFFF',
     },
-    assistantMessageText: {
-        color: theme.colors.text,
-    },
     inputContainer: {
         paddingHorizontal: 16,
         paddingVertical: 8,
@@ -120,20 +129,6 @@ const styles = StyleSheet.create((theme) => ({
     },
     sendButtonDisabled: {
         backgroundColor: theme.colors.surfacePressed,
-    },
-    streamingIndicator: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        alignSelf: 'flex-start',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        marginVertical: 4,
-    },
-    streamingText: {
-        marginLeft: 8,
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-        ...Typography.default(),
     },
     messageRow: {
         flexDirection: 'row',
@@ -173,7 +168,83 @@ const styles = StyleSheet.create((theme) => ({
         textAlign: 'center',
         ...Typography.default(),
     },
+    readingIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 4,
+        paddingVertical: 6,
+        gap: 4,
+    },
+    readingDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: theme.colors.textSecondary,
+    },
+    // Typing indicator for streaming messages - inside bubble at bottom right
+    typingIndicator: {
+        position: 'absolute',
+        right: 8,
+        bottom: 6,
+    },
 }));
+
+// Animated dot component for smooth animations (used in ReadingIndicator)
+const AnimatedDot = React.memo(({ delay }: { delay: number }) => {
+    const opacity = React.useRef(new Animated.Value(0.3)).current;
+
+    React.useEffect(() => {
+        const animation = Animated.loop(
+            Animated.sequence([
+                Animated.delay(delay),
+                Animated.timing(opacity, {
+                    toValue: 1,
+                    duration: 300,
+                    easing: Easing.ease,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(opacity, {
+                    toValue: 0.3,
+                    duration: 300,
+                    easing: Easing.ease,
+                    useNativeDriver: true,
+                }),
+                Animated.delay(600 - delay),
+            ])
+        );
+        animation.start();
+        return () => animation.stop();
+    }, [opacity, delay]);
+
+    return (
+        <Animated.View style={[styles.readingDot, { opacity }]} />
+    );
+});
+
+// Reading indicator with animated dots (used when waiting for first content)
+const ReadingIndicator = React.memo(() => {
+    return (
+        <View style={[styles.messageRow, styles.messageRowAssistant]}>
+            <View style={[styles.messageBubble, styles.assistantBubble]}>
+                <View style={styles.readingIndicator}>
+                    <AnimatedDot delay={0} />
+                    <AnimatedDot delay={200} />
+                    <AnimatedDot delay={400} />
+                </View>
+            </View>
+        </View>
+    );
+});
+
+// Typing indicator shown at the end of streaming messages
+const TypingIndicator = React.memo(() => {
+    const { theme } = useUnistyles();
+    return (
+        <View style={styles.typingIndicator}>
+            <ActivityIndicator size={14} color={theme.colors.textSecondary} />
+        </View>
+    );
+});
 
 interface MessageItemProps {
     message: LocalMessage;
@@ -185,6 +256,7 @@ const MessageItem = React.memo(({ message, onRetry }: MessageItemProps) => {
     const isUser = message.role === 'user';
     const isFailed = message.status === 'failed';
     const isSending = message.status === 'sending';
+    const isStreaming = message.isStreaming;
 
     // Extract text content from message
     const getTextContent = () => {
@@ -196,6 +268,18 @@ const MessageItem = React.memo(({ message, onRetry }: MessageItemProps) => {
             .map((block) => block.text)
             .join('\n');
     };
+
+    const textContent = getTextContent();
+
+    // For streaming messages with no content yet, show reading indicator
+    if (isStreaming && !textContent) {
+        return <ReadingIndicator />;
+    }
+
+    // Skip empty assistant messages (tool calls without text)
+    if (!isUser && !textContent) {
+        return null;
+    }
 
     // Render status indicator for user messages
     const renderStatusIndicator = () => {
@@ -231,31 +315,32 @@ const MessageItem = React.memo(({ message, onRetry }: MessageItemProps) => {
         return null;
     };
 
-    return (
-        <View
-            style={[
-                styles.messageRow,
-                isUser ? styles.messageRowUser : styles.messageRowAssistant,
-            ]}
-        >
-            {/* Status indicator before bubble for user messages */}
-            {isUser && renderStatusIndicator()}
-
-            <View
-                style={[
-                    styles.messageBubble,
-                    isUser ? styles.userBubble : styles.assistantBubble,
-                    isFailed && { opacity: 0.7 },
-                ]}
-            >
-                <Text
+    // User messages
+    if (isUser) {
+        return (
+            <View style={[styles.messageRow, styles.messageRowUser]}>
+                {renderStatusIndicator()}
+                <View
                     style={[
-                        styles.messageText,
-                        isUser ? styles.userMessageText : styles.assistantMessageText,
+                        styles.messageBubble,
+                        styles.userBubble,
+                        isFailed && { opacity: 0.7 },
                     ]}
                 >
-                    {getTextContent()}
-                </Text>
+                    <Text style={[styles.messageText, styles.userMessageText]}>
+                        {textContent}
+                    </Text>
+                </View>
+            </View>
+        );
+    }
+
+    // Assistant messages - with typing indicator inside the bubble at bottom right
+    return (
+        <View style={[styles.messageRow, styles.messageRowAssistant]}>
+            <View style={[styles.messageBubble, styles.assistantBubble]}>
+                <MarkdownView markdown={textContent} />
+                {isStreaming && <TypingIndicator />}
             </View>
         </View>
     );
@@ -277,6 +362,53 @@ export default function OpenClawChatPage() {
     // Get machine data
     const machine = useOpenClawMachine(machineId ?? '');
 
+    // Ref for handling chat events - must be before useOpenClawConnection
+    const handleChatEventRef = React.useRef<(event: OpenClawChatEvent) => void>(() => {});
+
+    // Stable callback for onEvent - uses ref to always call latest handler
+    const onEventCallback = React.useCallback((event: string, payload: unknown) => {
+        if (event === 'chat' && payload) {
+            // Direct chat events from gateway
+            const p = payload as Record<string, unknown>;
+            if (p.state && p.sessionKey) {
+                handleChatEventRef.current(payload as OpenClawChatEvent);
+            }
+        } else if (event === 'agent' && payload) {
+            // Agent events - convert to chat event format
+            const p = payload as Record<string, unknown>;
+
+            if (p.stream === 'assistant' && p.data && p.sessionKey) {
+                // Assistant stream contains cumulative text
+                const data = p.data as { delta?: string; text?: string };
+                handleChatEventRef.current({
+                    state: 'delta',
+                    sessionKey: p.sessionKey as string,
+                    runId: p.runId as string,
+                    message: {
+                        role: 'assistant',
+                        content: [{ type: 'text', text: data.text || '' }],
+                    },
+                } as OpenClawChatEvent);
+            } else if (p.stream === 'lifecycle' && p.data) {
+                // Lifecycle events: completed, error
+                const data = p.data as { state?: string; error?: string };
+                if (data.state === 'completed') {
+                    handleChatEventRef.current({
+                        state: 'final',
+                        sessionKey: p.sessionKey as string,
+                        runId: p.runId as string,
+                    } as OpenClawChatEvent);
+                } else if (data.state === 'error') {
+                    handleChatEventRef.current({
+                        state: 'error',
+                        sessionKey: p.sessionKey as string,
+                        errorMessage: data.error,
+                    } as OpenClawChatEvent);
+                }
+            }
+        }
+    }, []);
+
     // Connection hook
     const {
         isConnected,
@@ -284,132 +416,204 @@ export default function OpenClawChatPage() {
         send,
     } = useOpenClawConnection(machineId ?? '', {
         autoConnect: true,
-        onEvent: (event, payload) => {
-            // Handle real-time chat events
-            if (event === 'chat' && payload) {
-                handleChatEvent(payload as OpenClawChatEvent);
-            }
-        },
+        onEvent: onEventCallback,
     });
 
-    // Chat state
+    // Single source of truth: messages list
+    // Contains: history messages + pending user message + streaming AI message
     const [messages, setMessages] = React.useState<LocalMessage[]>([]);
     const [inputText, setInputText] = React.useState('');
     const [isLoading, setIsLoading] = React.useState(false);
-    const [isStreaming, setIsStreaming] = React.useState(false);
-    const [streamingText, setStreamingText] = React.useState('');
+
+    // Track current run for streaming (not used for rendering, only for event filtering)
+    const chatRunIdRef = React.useRef<string | null>(null);
 
     const flatListRef = React.useRef<FlatList<LocalMessage>>(null);
+    // Scroll state
+    const userNearBottomRef = React.useRef(true);
+    const shouldForceScrollRef = React.useRef(false);
+
+    // Extract text from message content
+    const extractText = (message: unknown): string | null => {
+        if (!message || typeof message !== 'object') return null;
+        const msg = message as { content?: unknown };
+        if (!msg.content) return null;
+
+        if (typeof msg.content === 'string') return msg.content;
+        if (Array.isArray(msg.content)) {
+            const textBlocks = msg.content
+                .filter((block): block is { type: 'text'; text: string } =>
+                    block && typeof block === 'object' && block.type === 'text' && typeof block.text === 'string'
+                )
+                .map((block) => block.text);
+            return textBlocks.length > 0 ? textBlocks.join('\n') : null;
+        }
+        return null;
+    };
+
+    // Fetch chat history and replace messages list
+    const fetchHistory = React.useCallback(async () => {
+        try {
+            const result = await send('chat.history', { sessionKey, limit: 50 });
+            if (!result || !result.ok) {
+                // Request failed, keep existing messages
+                return;
+            }
+            const history = (result.payload as { messages?: OpenClawChatMessage[] }).messages ?? [];
+            // Convert to LocalMessage format - use stable IDs based on index + role + timestamp
+            const localMessages: LocalMessage[] = history.map((msg, index) => ({
+                ...msg,
+                localId: `${msg.role}-${index}-${msg.timestamp ?? index}`,
+                status: msg.role === 'user' ? 'sent' : undefined,
+            }));
+            // Single atomic update - replaces entire list
+            setMessages(localMessages);
+            // Clear run ID
+            chatRunIdRef.current = null;
+        } catch (err) {
+            console.error('Failed to fetch chat history:', err);
+        }
+    }, [send, sessionKey]);
 
     // Handle incoming chat events
     const handleChatEvent = React.useCallback((event: OpenClawChatEvent) => {
         if (event.sessionKey !== sessionKey) return;
 
+        // Handle events from different runId (e.g., sub-agent) - refresh history on final
+        if (event.runId && chatRunIdRef.current && event.runId !== chatRunIdRef.current) {
+            if (event.state === 'final') {
+                fetchHistory();
+            }
+            return;
+        }
+
         switch (event.state) {
-            case 'started':
-                setIsStreaming(true);
-                setStreamingText('');
-                break;
-            case 'thinking':
-                setStreamingText('Thinking...');
-                break;
             case 'delta':
-                // Gateway sends delta text in message.content[0].text
-                if (event.message) {
-                    const content = event.message.content;
-                    if (Array.isArray(content) && content.length > 0 && content[0].text) {
-                        setStreamingText(content[0].text);
-                    }
-                } else if (event.delta) {
-                    // Fallback for legacy format
-                    setStreamingText((prev) => prev + event.delta);
+                const text = extractText(event.message);
+                if (typeof text === 'string') {
+                    setMessages((prev) => {
+                        const lastMsg = prev[prev.length - 1];
+                        // If last message is streaming, update it
+                        if (lastMsg?.isStreaming) {
+                            const currentText = typeof lastMsg.content === 'string'
+                                ? lastMsg.content
+                                : '';
+                            // Only update if new text is longer (cumulative)
+                            if (text.length >= currentText.length) {
+                                return [
+                                    ...prev.slice(0, -1),
+                                    { ...lastMsg, content: text },
+                                ];
+                            }
+                            return prev;
+                        }
+                        // Otherwise, create new streaming message
+                        return [
+                            ...prev,
+                            {
+                                role: 'assistant',
+                                content: text,
+                                localId: STREAMING_MESSAGE_ID,
+                                timestamp: Date.now(),
+                                isStreaming: true,
+                            },
+                        ];
+                    });
                 }
                 break;
+
             case 'final':
-                setIsStreaming(false);
-                if (event.message) {
-                    const finalMessage: LocalMessage = {
-                        ...event.message,
-                        localId: randomUUID(),
-                    };
-                    setMessages((prev) => [...prev, finalMessage]);
-                }
-                setStreamingText('');
+                // Fetch history - this will replace the entire list in one atomic update
+                fetchHistory();
                 break;
+
+            case 'aborted':
+                // Remove streaming message if exists
+                setMessages((prev) => prev.filter((msg) => !msg.isStreaming));
+                chatRunIdRef.current = null;
+                break;
+
             case 'error':
-                setIsStreaming(false);
-                setStreamingText('');
-                console.error('Chat error:', event.errorMessage);
+                // Remove streaming message and show error
+                setMessages((prev) => prev.filter((msg) => !msg.isStreaming));
+                chatRunIdRef.current = null;
+                console.error('[OpenClaw Chat] error:', event.errorMessage);
                 break;
         }
-    }, [sessionKey]);
+    }, [sessionKey, fetchHistory]);
+
+    // Keep ref updated with latest handleChatEvent
+    handleChatEventRef.current = handleChatEvent;
 
     // Fetch chat history when connected
     React.useEffect(() => {
         if (isConnected && sessionKey) {
-            fetchHistory();
+            setIsLoading(true);
+            userNearBottomRef.current = true;
+            fetchHistory().finally(() => setIsLoading(false));
         }
-    }, [isConnected, sessionKey]);
+    }, [isConnected, sessionKey, fetchHistory]);
 
-    const fetchHistory = async () => {
-        setIsLoading(true);
-        try {
-            const result = await send('chat.history', { sessionKey });
-            if (result.ok && result.payload) {
-                const history = (result.payload as { messages?: OpenClawChatMessage[] }).messages ?? [];
-                // Convert to LocalMessage format
-                const localMessages: LocalMessage[] = history.map((msg) => ({
-                    ...msg,
-                    localId: randomUUID(),
-                    status: msg.role === 'user' ? 'sent' : undefined,
-                }));
-                setMessages(localMessages);
-            }
-        } catch (err) {
-            console.error('Failed to fetch chat history:', err);
-        } finally {
-            setIsLoading(false);
+    // Scroll when messages change (if user is near bottom)
+    React.useEffect(() => {
+        if (messages.length > 0 && userNearBottomRef.current) {
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
         }
-    };
+    }, [messages]);
 
-    // Send a message (new or retry)
+    // Check if currently streaming
+    const isStreaming = messages.some((msg) => msg.isStreaming);
+
+    // Send a message
     const sendMessage = React.useCallback(async (localId: string, text: string) => {
-        // Mark message as sending
-        setMessages((prev) =>
-            prev.map((msg) =>
-                msg.localId === localId
-                    ? { ...msg, status: 'sending' as MessageStatus, errorMessage: undefined }
-                    : msg
-            )
-        );
+        const runId = randomUUID();
 
         // Send to gateway
         const result = await send('chat.send', {
             sessionKey,
             message: text,
-            idempotencyKey: randomUUID(),
+            idempotencyKey: runId,
         });
 
-        if (!result.ok) {
+        if (!result || !result.ok) {
             // Mark message as failed
             setMessages((prev) =>
                 prev.map((msg) =>
                     msg.localId === localId
-                        ? { ...msg, status: 'failed' as MessageStatus, errorMessage: result.error }
+                        ? { ...msg, status: 'failed' as MessageStatus, errorMessage: result?.error }
                         : msg
                 )
             );
         } else {
-            // Mark message as sent
-            setMessages((prev) =>
-                prev.map((msg) =>
+            // Mark message as sent, set up for streaming
+            chatRunIdRef.current = runId;
+            setMessages((prev) => {
+                const updated = prev.map((msg) =>
                     msg.localId === localId
                         ? { ...msg, status: 'sent' as MessageStatus }
                         : msg
-                )
-            );
+                );
+                // Add streaming placeholder
+                return [
+                    ...updated,
+                    {
+                        role: 'assistant' as const,
+                        content: '',
+                        localId: STREAMING_MESSAGE_ID,
+                        timestamp: Date.now(),
+                        isStreaming: true,
+                    },
+                ];
+            });
         }
     }, [sessionKey, send]);
+
+    // Handle scroll event - track if user is near bottom
+    const handleScroll = React.useCallback((event: { nativeEvent: { contentOffset: { y: number } } }) => {
+        const { contentOffset } = event.nativeEvent;
+        // In inverted list, near bottom means near offset 0
+        userNearBottomRef.current = contentOffset.y < 200;
+    }, []);
 
     // Handle new message send
     const handleSend = React.useCallback(async () => {
@@ -417,6 +621,9 @@ export default function OpenClawChatPage() {
         if (!text || !isConnected || isStreaming) {
             return;
         }
+
+        // Force scroll when sending a message
+        shouldForceScrollRef.current = true;
 
         // Create user message with sending status
         const localId = randomUUID();
@@ -427,8 +634,15 @@ export default function OpenClawChatPage() {
             localId,
             status: 'sending',
         };
+
+        // Add to messages list
         setMessages((prev) => [...prev, userMessage]);
         setInputText('');
+
+        // Scroll to show the new message
+        setTimeout(() => {
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+        }, 50);
 
         // Send the message
         await sendMessage(localId, text);
@@ -438,6 +652,15 @@ export default function OpenClawChatPage() {
     const handleRetry = React.useCallback((localId: string) => {
         const message = messages.find((msg) => msg.localId === localId);
         if (!message || message.status !== 'failed') return;
+
+        // Update status to sending
+        setMessages((prev) =>
+            prev.map((msg) =>
+                msg.localId === localId
+                    ? { ...msg, status: 'sending' as MessageStatus, errorMessage: undefined }
+                    : msg
+            )
+        );
 
         const text = typeof message.content === 'string'
             ? message.content
@@ -533,22 +756,26 @@ export default function OpenClawChatPage() {
                     ref={flatListRef}
                     style={styles.messageList}
                     contentContainerStyle={styles.messageListContent}
-                    data={messages}
+                    data={[...messages].reverse()}
                     keyExtractor={(item) => item.localId}
-                    renderItem={({ item }) => <MessageItem message={item} onRetry={handleRetry} />}
+                    renderItem={({ item }) => (
+                        <MessageItem
+                            message={item}
+                            onRetry={handleRetry}
+                        />
+                    )}
+                    inverted
+                    onScroll={handleScroll}
+                    scrollEventThrottle={100}
                     onContentSizeChange={() => {
-                        flatListRef.current?.scrollToEnd({ animated: false });
+                        if (shouldForceScrollRef.current || userNearBottomRef.current) {
+                            flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+                            shouldForceScrollRef.current = false;
+                        }
                     }}
-                    ListFooterComponent={
-                        isStreaming ? (
-                            <View style={styles.streamingIndicator}>
-                                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                                <Text style={styles.streamingText}>
-                                    {streamingText || 'Thinking...'}
-                                </Text>
-                            </View>
-                        ) : null
-                    }
+                    maintainVisibleContentPosition={{
+                        minIndexForVisible: 0,
+                    }}
                 />
             )}
 
