@@ -158,7 +158,7 @@ export default function AddOpenClawMachinePage() {
             const keypair = await generateSignKeypair();
             // Derive deviceId from public key SHA-256 hash (hex encoded)
             // This matches the OpenClaw gateway's expected device identity format
-            const hashBuffer = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, keypair.publicKey);
+            const hashBuffer = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, new Uint8Array(keypair.publicKey));
             const deviceId = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
             const pairingData = {
                 deviceId,

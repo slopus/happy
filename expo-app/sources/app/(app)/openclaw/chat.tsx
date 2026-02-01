@@ -527,12 +527,6 @@ export default function OpenClawChatPage() {
                 fetchHistory();
                 break;
 
-            case 'aborted':
-                // Remove streaming message if exists
-                setMessages((prev) => prev.filter((msg) => !msg.isStreaming));
-                chatRunIdRef.current = null;
-                break;
-
             case 'error':
                 // Remove streaming message and show error
                 setMessages((prev) => prev.filter((msg) => !msg.isStreaming));
