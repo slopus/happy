@@ -73,6 +73,12 @@ export class RpcHandlerManager {
             const result = await handler(decryptedParams);
             this.logger('[RPC] Handler returned', { method: request.method, hasResult: result !== undefined });
 
+            // Check if handler returned a pre-encrypted response (used for OpenClaw chat.history)
+            if (result && typeof result === 'object' && '__preEncrypted' in result && result.__preEncrypted === true) {
+                this.logger('[RPC] Handler returned pre-encrypted response', { method: request.method });
+                return (result as { __preEncrypted: true; data: string }).data;
+            }
+
             // Encrypt and return the response
             const encryptedResponse = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, result));
             this.logger('[RPC] Sending encrypted response', { method: request.method, responseLength: encryptedResponse.length });

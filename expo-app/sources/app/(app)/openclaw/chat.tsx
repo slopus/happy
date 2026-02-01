@@ -454,7 +454,7 @@ export default function OpenClawChatPage() {
     // Fetch chat history and replace messages list
     const fetchHistory = React.useCallback(async () => {
         try {
-            const result = await send('chat.history', { sessionKey, limit: 50 });
+            const result = await send('chat.history', { sessionKey, limit: 100 });
             if (!result || !result.ok) {
                 // Request failed, keep existing messages
                 return;

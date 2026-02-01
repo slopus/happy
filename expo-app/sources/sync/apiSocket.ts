@@ -169,7 +169,7 @@ class ApiSocket {
     }
 
     /**
-     * RPC call for machines - uses legacy/global encryption (for now)
+     * RPC call for machines
      */
     async machineRPC<R, A>(machineId: string, method: string, params: A): Promise<R> {
         const machineEncryption = this.encryption!.getMachineEncryption(machineId);
@@ -183,7 +183,20 @@ class ApiSocket {
         });
 
         if (result.ok) {
-            return await machineEncryption.decryptRaw(result.result) as R;
+            // Try standard decryption first
+            let decrypted = await machineEncryption.decryptRaw(result.result);
+
+            // If standard decryption fails, try legacy format
+            // (used for OpenClaw chat.history which uses legacy format for cross-platform compatibility)
+            if (decrypted === null) {
+                decrypted = machineEncryption.decryptRawLegacy(result.result);
+            }
+
+            if (decrypted === null) {
+                throw new Error('Failed to decrypt machine RPC response');
+            }
+
+            return decrypted as R;
         }
         throw new Error(result.error || 'RPC call failed');
     }

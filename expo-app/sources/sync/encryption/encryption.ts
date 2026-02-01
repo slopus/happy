@@ -28,6 +28,7 @@ export class Encryption {
 
     private readonly legacyEncryption: SecretBoxEncryption;
     private readonly contentKeyPair: sodium.KeyPair;
+    private readonly masterSecret: Uint8Array;
     readonly anonID: string;
     readonly contentDataKey: Uint8Array;
 
@@ -39,6 +40,7 @@ export class Encryption {
     private constructor(anonID: string, masterSecret: Uint8Array, contentKeyPair: sodium.KeyPair) {
         this.anonID = anonID;
         this.contentKeyPair = contentKeyPair;
+        this.masterSecret = masterSecret;
         this.legacyEncryption = new SecretBoxEncryption(masterSecret);
         this.cache = new EncryptionCache();
         this.contentDataKey = contentKeyPair.publicKey;
@@ -118,11 +120,17 @@ export class Encryption {
             // Create appropriate encryptor based on data key
             const encryptor = await this.openEncryption(dataKey);
 
+            // For legacy decryption (OpenClaw chat.history), use the appropriate key:
+            // - If dataKey exists, use dataKey (machine-specific key)
+            // - Otherwise, use masterSecret (legacy mode)
+            const legacyKey = dataKey ?? this.masterSecret;
+
             // Create and cache machine encryption
             const machineEnc = new MachineEncryption(
                 machineId,
                 encryptor,
-                this.cache
+                this.cache,
+                legacyKey
             );
             this.machineEncryptions.set(machineId, machineEnc);
         }

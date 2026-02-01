@@ -1,4 +1,5 @@
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
+import { decryptSecretBox } from '@/encryption/libsodium';
 import { MachineMetadata, MachineMetadataSchema } from '../storageTypes';
 import { EncryptionCache } from './encryptionCache';
 import { Decryptor, Encryptor } from './encryptor';
@@ -7,15 +8,18 @@ export class MachineEncryption {
     private machineId: string;
     private encryptor: Encryptor & Decryptor;
     private cache: EncryptionCache;
+    private legacyKey: Uint8Array;
 
     constructor(
         machineId: string,
         encryptor: Encryptor & Decryptor,
-        cache: EncryptionCache
+        cache: EncryptionCache,
+        legacyKey: Uint8Array
     ) {
         this.machineId = machineId;
         this.encryptor = encryptor;
         this.cache = cache;
+        this.legacyKey = legacyKey;
     }
 
     /**
@@ -116,6 +120,20 @@ export class MachineEncryption {
             return decrypted[0] || null;
         } catch (error) {
             console.error('Failed to decrypt raw data:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Decrypt raw data using legacy (secretbox) format
+     * Used for OpenClaw chat.history responses that use legacy format for cross-platform compatibility
+     */
+    decryptRawLegacy(encrypted: string): any | null {
+        try {
+            const encryptedData = decodeBase64(encrypted, 'base64');
+            return decryptSecretBox(encryptedData, this.legacyKey);
+        } catch (error) {
+            console.error('Failed to decrypt raw data with legacy format:', error);
             return null;
         }
     }

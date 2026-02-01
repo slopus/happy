@@ -96,7 +96,9 @@ export class ApiMachineClient {
         });
 
         registerCommonHandlers(this.rpcHandlerManager, process.cwd());
-        registerOpenClawHandlers(this.rpcHandlerManager);
+        registerOpenClawHandlers(this.rpcHandlerManager, {
+            key: this.machine.encryptionKey
+        });
 
         // Set up OpenClaw event forwarding
         openClawTunnelManager.setEventCallback((tunnelId, event, payload) => {

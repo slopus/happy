@@ -7,6 +7,7 @@
  */
 
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
+import { encodeBase64, encryptLegacy } from '@/api/encryption';
 import { openClawTunnelManager } from './OpenClawTunnelManager';
 import type {
     OpenClawConnectRequest,
@@ -20,9 +21,22 @@ import type {
 } from './types';
 
 /**
- * Register OpenClaw RPC handlers with the handler manager
+ * Encryption context for OpenClaw chat.history
+ * Uses legacy (secretbox) format for cross-platform compatibility
  */
-export function registerOpenClawHandlers(rpcManager: RpcHandlerManager): void {
+export interface OpenClawEncryptionContext {
+    key: Uint8Array;
+}
+
+/**
+ * Register OpenClaw RPC handlers with the handler manager
+ * @param rpcManager - The RPC handler manager
+ * @param encryptionContext - Encryption context for chat.history (uses legacy format)
+ */
+export function registerOpenClawHandlers(
+    rpcManager: RpcHandlerManager,
+    encryptionContext?: OpenClawEncryptionContext
+): void {
     // openclaw-connect: Establish connection to an OpenClaw gateway
     rpcManager.registerHandler<OpenClawConnectRequest, OpenClawConnectResponse>(
         'openclaw-connect',
@@ -39,7 +53,7 @@ export function registerOpenClawHandlers(rpcManager: RpcHandlerManager): void {
     );
 
     // openclaw-send: Send a request through the tunnel
-    rpcManager.registerHandler<OpenClawSendRequest, OpenClawSendResponse>(
+    rpcManager.registerHandler<OpenClawSendRequest, any>(
         'openclaw-send',
         async (params) => {
             if (!params.tunnelId || !params.method) {
@@ -48,7 +62,22 @@ export function registerOpenClawHandlers(rpcManager: RpcHandlerManager): void {
                     error: 'tunnelId and method are required',
                 };
             }
-            return openClawTunnelManager.send(params);
+
+            const result = await openClawTunnelManager.send(params);
+
+            // For chat.history, use legacy encryption to ensure cross-platform compatibility
+            // (Node.js AES-GCM format differs from React Native rn-encryption)
+            if (encryptionContext && params.method === 'chat.history' && result.ok && result.payload) {
+                const payload = result.payload as { messages?: unknown[] };
+                if (Array.isArray(payload.messages) && payload.messages.length > 0) {
+                    return {
+                        __preEncrypted: true,
+                        data: encodeBase64(encryptLegacy(result, encryptionContext.key))
+                    };
+                }
+            }
+
+            return result;
         }
     );
 
