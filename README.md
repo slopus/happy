@@ -33,6 +33,17 @@ Step 2: Install CLI on your computer
 npm install -g happy-coder
 ```
 
+**Or install from source:**
+
+```bash
+git clone https://github.com/slopus/happy.git
+cd happy
+yarn install
+cd packages/happy-cli
+yarn build
+npm link
+```
+
 <h3 align="center">
 Step 3: Start using `happy` instead of `claude` or `codex`
 </h3>
