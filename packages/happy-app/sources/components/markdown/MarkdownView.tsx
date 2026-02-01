@@ -504,10 +504,9 @@ const style = StyleSheet.create((theme) => ({
         borderColor: theme.colors.divider,
         borderRadius: 8,
         overflow: 'hidden',
-        alignSelf: 'flex-start',
     },
     tableScrollView: {
-        flexGrow: 0,
+        flexGrow: 1,
     },
     tableContent: {
         flexDirection: 'row',
@@ -521,11 +520,12 @@ const style = StyleSheet.create((theme) => ({
         borderRightWidth: 0,
     },
     tableCell: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.divider,
         alignItems: 'flex-start',
+        minWidth: 40,
     },
     tableCellFirst: {
         borderTopWidth: 0,
