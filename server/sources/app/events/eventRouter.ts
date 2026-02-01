@@ -188,6 +188,18 @@ export type EphemeralEvent = {
     activeAt: number;
     thinking?: boolean;
 } | {
+    type: 'message-syncing';
+    id: string;
+    count: number;
+} | {
+    type: 'message-synced';
+    id: string;
+    count: number;
+} | {
+    type: 'message-errored';
+    id: string;
+    error: string;
+} | {
     type: 'machine-activity';
     id: string;
     active: boolean;
@@ -522,6 +534,30 @@ export function buildMachineActivityEphemeral(machineId: string, active: boolean
         id: machineId,
         active,
         activeAt
+    };
+}
+
+export function buildMessageSyncingEphemeral(sessionId: string, count: number): EphemeralPayload {
+    return {
+        type: 'message-syncing',
+        id: sessionId,
+        count
+    };
+}
+
+export function buildMessageSyncedEphemeral(sessionId: string, count: number): EphemeralPayload {
+    return {
+        type: 'message-synced',
+        id: sessionId,
+        count
+    };
+}
+
+export function buildMessageErrorEphemeral(sessionId: string, error: string): EphemeralPayload {
+    return {
+        type: 'message-errored',
+        id: sessionId,
+        error
     };
 }
 

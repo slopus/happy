@@ -63,6 +63,7 @@ class Sync {
     private sessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
     private sessionReceivedMessages = new Map<string, Set<string>>();
+    private messageSyncTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
@@ -220,6 +221,15 @@ class Sync {
         if (session) {
             voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
         }
+    }
+
+    private invalidateMessagesSync = (sessionId: string) => {
+        let ex = this.messagesSync.get(sessionId);
+        if (!ex) {
+            ex = new InvalidateSync(() => this.fetchMessages(sessionId));
+            this.messagesSync.set(sessionId, ex);
+        }
+        ex.invalidate();
     }
 
 
@@ -2428,6 +2438,46 @@ class Sync {
         if (updateData.type === 'activity') {
             // console.log('adding activity update ' + updateData.id);
             this.activityAccumulator.addUpdate(updateData);
+        }
+
+        if (updateData.type === 'message-syncing') {
+            const sessionId = updateData.id;
+            const existing = this.messageSyncTimeouts.get(sessionId);
+            if (existing) {
+                clearTimeout(existing);
+            }
+            storage.getState().setSessionMessageSyncing(sessionId, true);
+            storage.getState().clearSessionMessages(sessionId);
+            this.sessionReceivedMessages.delete(sessionId);
+
+            const timeout = setTimeout(() => {
+                this.messageSyncTimeouts.delete(sessionId);
+                storage.getState().setSessionMessageSyncing(sessionId, false);
+                this.invalidateMessagesSync(sessionId);
+            }, 30000);
+            this.messageSyncTimeouts.set(sessionId, timeout);
+        }
+
+        if (updateData.type === 'message-synced') {
+            const sessionId = updateData.id;
+            const existing = this.messageSyncTimeouts.get(sessionId);
+            if (existing) {
+                clearTimeout(existing);
+                this.messageSyncTimeouts.delete(sessionId);
+            }
+            storage.getState().setSessionMessageSyncing(sessionId, false);
+            this.invalidateMessagesSync(sessionId);
+        }
+
+        if (updateData.type === 'message-errored') {
+            const sessionId = updateData.id;
+            const existing = this.messageSyncTimeouts.get(sessionId);
+            if (existing) {
+                clearTimeout(existing);
+                this.messageSyncTimeouts.delete(sessionId);
+            }
+            storage.getState().setSessionMessageSyncing(sessionId, false);
+            this.invalidateMessagesSync(sessionId);
         }
 
         // Handle machine activity updates

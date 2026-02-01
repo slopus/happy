@@ -61,6 +61,7 @@ export interface Session {
     agentStateVersion: number,
     thinking: boolean,
     thinkingAt: number,
+    messageSyncing?: boolean,
     presence: "online" | number, // "online" when active, timestamp when last seen
     todos?: Array<{
         content: string;

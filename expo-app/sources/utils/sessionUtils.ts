@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 
-export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
+export type SessionState = 'disconnected' | 'syncing' | 'thinking' | 'waiting' | 'permission_required';
 
 export interface SessionStatus {
     state: SessionState;
@@ -21,6 +21,7 @@ export interface SessionStatus {
 export function useSessionStatus(session: Session): SessionStatus {
     const isOnline = session.presence === "online";
     const hasPermissions = (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
+    const isSyncing = session.messageSyncing === true;
 
     const vibingMessage = React.useMemo(() => {
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
@@ -34,6 +35,18 @@ export function useSessionStatus(session: Session): SessionStatus {
             shouldShowStatus: true,
             statusColor: '#999',
             statusDotColor: '#999'
+        };
+    }
+
+    if (isSyncing) {
+        return {
+            state: 'syncing',
+            isConnected: true,
+            statusText: 'syncing',
+            shouldShowStatus: true,
+            statusColor: '#FF9500',
+            statusDotColor: '#FF9500',
+            isPulsing: true
         };
     }
 

@@ -103,7 +103,15 @@ export interface ServerToClientEvents {
   'rpc-registered': (data: { method: string }) => void
   'rpc-unregistered': (data: { method: string }) => void
   'rpc-error': (data: { type: string, error: string }) => void
-  ephemeral: (data: { type: 'activity', id: string, active: boolean, activeAt: number, thinking: boolean }) => void
+  ephemeral: (data:
+    | { type: 'activity', id: string, active: boolean, activeAt: number, thinking: boolean }
+    | { type: 'message-syncing', id: string, count: number }
+    | { type: 'message-synced', id: string, count: number }
+    | { type: 'message-errored', id: string, error: string }
+    | { type: 'machine-activity', id: string, active: boolean, activeAt: number }
+    | { type: 'usage', id: string, key: string, tokens: Record<string, number>, cost: Record<string, number>, timestamp: number }
+    | { type: 'machine-status', machineId: string, online: boolean, timestamp: number }
+  ) => void
   auth: (data: { success: boolean, user: string }) => void
   error: (data: { message: string }) => void
 }
@@ -114,6 +122,7 @@ export interface ServerToClientEvents {
  */
 export interface ClientToServerEvents {
   message: (data: { sid: string, message: any, localId?: string }) => void
+  'message-batch': (data: { sid: string, messages: { message: string, localId?: string | null }[], mode?: 'replace' | 'append' }, callback: (response: { result: 'success' | 'error', inserted?: number }) => void) => void
   'session-alive': (data: {
     sid: string;
     time: number;

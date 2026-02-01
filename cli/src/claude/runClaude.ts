@@ -223,6 +223,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const shouldBackfill = ['1', 'true', 'yes'].includes(String(process.env.HAPPY_CLAUDE_BACKFILL).toLowerCase());
     const backfillMaxMessages = Number(process.env.HAPPY_CLAUDE_BACKFILL_MAX_MESSAGES) || 200;
     const backfillMaxUserMessages = Number(process.env.HAPPY_CLAUDE_BACKFILL_MAX_USER_MESSAGES) || 20;
+    const backfillMaxBytes = Number(process.env.HAPPY_CLAUDE_BACKFILL_MAX_BYTES) || 3 * 1024 * 1024;
     const resumeSessionId = process.env.HAPPY_CLAUDE_RESUME_SESSION_ID || undefined;
     const backfilledSessions = new Set<string>();
     const backfillInFlight = new Set<string>();
@@ -247,9 +248,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             await backfillClaudeSessionHistory({
                 workingDirectory,
                 sessionId,
-                send: (message, localId) => session.sendClaudeSessionMessage(message, localId),
+                sendBatch: async (messages) => {
+                    await session.sendClaudeSessionMessageBatch(messages, 'replace');
+                },
                 maxMessages: backfillMaxMessages,
-                maxUserMessages: backfillMaxUserMessages
+                maxUserMessages: backfillMaxUserMessages,
+                maxBytes: backfillMaxBytes
             });
             backfilledSessions.add(sessionId);
         } finally {

@@ -105,6 +105,8 @@ interface StorageState {
     applyReady: () => void;
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
     applyMessagesLoaded: (sessionId: string) => void;
+    clearSessionMessages: (sessionId: string) => void;
+    setSessionMessageSyncing: (sessionId: string, syncing: boolean) => void;
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
@@ -322,11 +324,13 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedDraft = savedDrafts[session.id];
                 const existingPermissionMode = state.sessions[session.id]?.permissionMode;
                 const savedPermissionMode = savedPermissionModes[session.id];
+                const existingMessageSyncing = state.sessions[session.id]?.messageSyncing;
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default'
+                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default',
+                    messageSyncing: existingMessageSyncing ?? session.messageSyncing
                 };
             });
 
@@ -625,6 +629,34 @@ export const storage = create<StorageState>()((set, get) => {
             }
 
             return result;
+        }),
+        clearSessionMessages: (sessionId: string) => set((state) => {
+            const { [sessionId]: _, ...remainingSessionMessages } = state.sessionMessages;
+            return {
+                ...state,
+                sessionMessages: remainingSessionMessages
+            };
+        }),
+        setSessionMessageSyncing: (sessionId: string, syncing: boolean) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) {
+                return state;
+            }
+            const updatedSession: Session = {
+                ...session,
+                messageSyncing: syncing
+            };
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: updatedSession
+            };
+            const sessionListViewData = buildSessionListViewData(updatedSessions);
+
+            return {
+                ...state,
+                sessions: updatedSessions,
+                sessionListViewData
+            };
         }),
         applySettingsLocal: (settings: Partial<Settings>) => set((state) => {
             saveSettings(applySettings(state.settings, settings), state.settingsVersion ?? 0);

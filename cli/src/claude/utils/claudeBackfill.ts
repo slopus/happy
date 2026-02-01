@@ -75,12 +75,15 @@ async function readSessionLog(projectDir: string, sessionId: string): Promise<Ra
 export async function backfillClaudeSessionHistory(opts: {
     workingDirectory: string;
     sessionId: string;
-    send: (message: RawJSONLines, localId?: string) => void;
+    send?: (message: RawJSONLines, localId?: string) => void;
+    sendBatch?: (messages: { message: RawJSONLines; localId: string }[]) => void | Promise<void>;
     maxMessages?: number;
     maxUserMessages?: number;
+    maxBytes?: number;
 }) {
     const maxMessages = opts.maxMessages ?? 200;
     const maxUserMessages = opts.maxUserMessages ?? 20;
+    const maxBytes = opts.maxBytes ?? Number.POSITIVE_INFINITY;
 
     const projectDir = getProjectPath(opts.workingDirectory);
     let messages = await readSessionLog(projectDir, opts.sessionId);
@@ -103,6 +106,7 @@ export async function backfillClaudeSessionHistory(opts: {
     const selected: RawJSONLines[] = [];
     let totalCount = 0;
     let userCount = 0;
+    let totalBytes = 0;
 
     // Work backwards from the most recent message
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -110,7 +114,16 @@ export async function backfillClaudeSessionHistory(opts: {
         if (message.type === 'summary') {
             continue; // Skip summaries to avoid title churn
         }
+        const estimatedBytes = Buffer.byteLength(JSON.stringify(message), 'utf8');
+        if (totalBytes + estimatedBytes > maxBytes) {
+            if (selected.length === 0) {
+                selected.push(message);
+                totalBytes += estimatedBytes;
+            }
+            break;
+        }
         selected.push(message);
+        totalBytes += estimatedBytes;
 
         // Progress messages are included but don't count toward limits
         if (message.type === 'progress') {
@@ -135,10 +148,21 @@ export async function backfillClaudeSessionHistory(opts: {
     }
 
     selected.reverse();
-    logger.debug(`[BACKFILL] Backfilling ${selected.length} messages (users: ${userCount}, total: ${totalCount})`);
+    logger.debug(`[BACKFILL] Backfilling ${selected.length} messages (users: ${userCount}, total: ${totalCount}, bytes: ${totalBytes})`);
 
-    for (const message of selected) {
-        const localId = `claude-log:${opts.sessionId}:${messageKey(message)}`;
-        opts.send(message, localId);
+    const batch = selected.map((message) => ({
+        message,
+        localId: `claude-log:${opts.sessionId}:${messageKey(message)}`
+    }));
+
+    if (opts.sendBatch) {
+        await opts.sendBatch(batch);
+        return;
+    }
+
+    if (opts.send) {
+        for (const item of batch) {
+            opts.send(item.message, item.localId);
+        }
     }
 }

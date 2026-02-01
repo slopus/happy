@@ -190,18 +190,12 @@ export class ApiSessionClient extends EventEmitter {
         return this.socket.connected;
     }
 
-    /**
-     * Send message to session
-     * @param body - Message body (can be MessageContent or raw content for agent messages)
-     */
-    sendClaudeSessionMessage(body: RawJSONLines, localId?: string) {
-        let content: MessageContent;
-
+    private buildMessageContent(body: RawJSONLines): MessageContent {
         // Check if body is a user message (not sidechain or meta)
         if (body.type === 'user' && body.isSidechain !== true && body.isMeta !== true) {
             // Handle string content directly
             if (typeof body.message.content === 'string') {
-                content = {
+                return {
                     role: 'user',
                     content: {
                         type: 'text',
@@ -222,7 +216,7 @@ export class ApiSessionClient extends EventEmitter {
                 }
                 // Only treat as user message if we extracted some text (not just tool_results)
                 if (textParts.length > 0) {
-                    content = {
+                    return {
                         role: 'user',
                         content: {
                             type: 'text',
@@ -232,22 +226,9 @@ export class ApiSessionClient extends EventEmitter {
                             sentFrom: 'cli'
                         }
                     };
-                } else {
-                    // Fallback to agent message for tool results
-                    content = {
-                        role: 'agent',
-                        content: {
-                            type: 'output',
-                            data: body
-                        },
-                        meta: {
-                            sentFrom: 'cli'
-                        }
-                    };
                 }
-            } else {
-                // Unknown content type, wrap as agent message
-                content = {
+                // Fallback to agent message for tool results
+                return {
                     role: 'agent',
                     content: {
                         type: 'output',
@@ -258,35 +239,32 @@ export class ApiSessionClient extends EventEmitter {
                     }
                 };
             }
-        } else {
-            // Wrap Claude messages in the expected format
-            content = {
+            // Unknown content type, wrap as agent message
+            return {
                 role: 'agent',
                 content: {
                     type: 'output',
-                    data: body  // This wraps the entire Claude message
+                    data: body
                 },
                 meta: {
                     sentFrom: 'cli'
                 }
             };
         }
+        // Wrap Claude messages in the expected format
+        return {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: body  // This wraps the entire Claude message
+            },
+            meta: {
+                sentFrom: 'cli'
+            }
+        };
+    }
 
-        logger.debugLargeJson('[SOCKET] Sending message through socket:', content)
-
-        // Check if socket is connected before sending
-        if (!this.socket.connected) {
-            logger.debug('[API] Socket not connected, cannot send Claude session message. Message will be lost:', { type: body.type });
-            return;
-        }
-
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted,
-            localId: localId ?? undefined
-        });
-
+    private postSendProcessing(body: RawJSONLines) {
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
             try {
@@ -306,6 +284,61 @@ export class ApiSessionClient extends EventEmitter {
                 }
             }));
         }
+    }
+
+    /**
+     * Send message to session
+     * @param body - Message body (can be MessageContent or raw content for agent messages)
+     */
+    sendClaudeSessionMessage(body: RawJSONLines, localId?: string) {
+        const content = this.buildMessageContent(body);
+
+        logger.debugLargeJson('[SOCKET] Sending message through socket:', content)
+
+        // Check if socket is connected before sending
+        if (!this.socket.connected) {
+            logger.debug('[API] Socket not connected, cannot send Claude session message. Message will be lost:', { type: body.type });
+            return;
+        }
+
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+        this.socket.emit('message', {
+            sid: this.sessionId,
+            message: encrypted,
+            localId: localId ?? undefined
+        });
+
+        this.postSendProcessing(body);
+    }
+
+    async sendClaudeSessionMessageBatch(messages: { message: RawJSONLines, localId?: string }[], mode: 'replace' | 'append' = 'append') {
+        if (!this.socket.connected) {
+            logger.debug('[API] Socket not connected, cannot send Claude session message batch. Messages will be lost:', { count: messages.length });
+            return { result: 'error' as const };
+        }
+
+        const payload = messages.map((item) => {
+            const content = this.buildMessageContent(item.message);
+            const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+            return {
+                message: encrypted,
+                localId: item.localId ?? null
+            };
+        });
+
+        const response = await this.socket.emitWithAck('message-batch', {
+            sid: this.sessionId,
+            messages: payload,
+            mode
+        });
+
+        if (response?.result === 'success') {
+            for (const item of messages) {
+                this.postSendProcessing(item.message);
+            }
+        }
+
+        return response;
     }
 
     sendCodexMessage(body: any) {

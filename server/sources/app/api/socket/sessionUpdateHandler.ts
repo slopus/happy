@@ -1,6 +1,6 @@
 import { sessionAliveEventsCounter, websocketEventsCounter } from "@/app/monitoring/metrics2";
 import { activityCache } from "@/app/presence/sessionCache";
-import { buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessionUpdate, ClientConnection, eventRouter } from "@/app/events/eventRouter";
+import { buildMessageErrorEphemeral, buildMessageSyncingEphemeral, buildMessageSyncedEphemeral, buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessionUpdate, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
 import { allocateSessionSeq, allocateUserSeq } from "@/storage/seq";
 import { AsyncLock } from "@/utils/lock";
@@ -183,6 +183,125 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
     });
 
     const receiveMessageLock = new AsyncLock();
+    socket.on('message-batch', async (data: any, callback?: (response: any) => void) => {
+        await receiveMessageLock.inLock(async () => {
+            let batchSessionId: string | null = null;
+            let batchCount = 0;
+            try {
+                websocketEventsCounter.inc({ event_type: 'message-batch' });
+                const { sid, messages, mode } = data || {};
+                batchSessionId = typeof sid === 'string' ? sid : null;
+
+                if (!sid || !Array.isArray(messages)) {
+                    if (callback) {
+                        callback({ result: 'error' });
+                    }
+                    return;
+                }
+
+                // Only allow session-scoped connections to batch replace
+                if (connection.connectionType !== 'session-scoped') {
+                    if (callback) {
+                        callback({ result: 'error' });
+                    }
+                    return;
+                }
+
+                // Resolve session
+                const session = await db.session.findUnique({
+                    where: { id: sid, accountId: userId }
+                });
+                if (!session) {
+                    if (callback) {
+                        callback({ result: 'error' });
+                    }
+                    return;
+                }
+
+                const sanitized = messages
+                    .filter((item: any) => item && typeof item.message === 'string')
+                    .map((item: any) => ({
+                        message: item.message as string,
+                        localId: typeof item.localId === 'string' ? item.localId : null
+                    }));
+
+                const count = sanitized.length;
+                batchCount = count;
+                if (count === 0) {
+                    if (callback) {
+                        callback({ result: 'success', inserted: 0 });
+                    }
+                    return;
+                }
+
+                // Notify clients that syncing has started
+                eventRouter.emitEphemeral({
+                    userId,
+                    payload: buildMessageSyncingEphemeral(sid, count),
+                    recipientFilter: { type: 'all-interested-in-session', sessionId: sid }
+                });
+
+                const now = Date.now();
+                await db.$transaction(async (tx) => {
+                    if (mode === 'replace') {
+                        await tx.sessionMessage.deleteMany({
+                            where: { sessionId: sid }
+                        });
+                    }
+
+                    const updatedSession = await tx.session.update({
+                        where: { id: sid },
+                        select: { seq: true },
+                        data: { seq: { increment: count } }
+                    });
+
+                    const endSeq = updatedSession.seq;
+                    const startSeq = endSeq - count + 1;
+                    const baseTime = now - count;
+
+                    const rows = sanitized.map((item, index) => ({
+                        sessionId: sid,
+                        seq: startSeq + index,
+                        content: {
+                            t: 'encrypted',
+                            c: item.message
+                        } as PrismaJson.SessionMessageContent,
+                        localId: item.localId,
+                        createdAt: new Date(baseTime + index),
+                        updatedAt: new Date(baseTime + index)
+                    }));
+
+                    await tx.sessionMessage.createMany({
+                        data: rows,
+                        skipDuplicates: true
+                    });
+                });
+
+                // Notify clients that syncing has completed
+                eventRouter.emitEphemeral({
+                    userId,
+                    payload: buildMessageSyncedEphemeral(sid, count),
+                    recipientFilter: { type: 'all-interested-in-session', sessionId: sid }
+                });
+
+                if (callback) {
+                    callback({ result: 'success', inserted: count });
+                }
+            } catch (error) {
+                log({ module: 'websocket', level: 'error' }, `Error in message-batch handler: ${error}`);
+                if (batchSessionId) {
+                    eventRouter.emitEphemeral({
+                        userId,
+                        payload: buildMessageErrorEphemeral(batchSessionId, 'message batch failed'),
+                        recipientFilter: { type: 'all-interested-in-session', sessionId: batchSessionId }
+                    });
+                }
+                if (callback) {
+                    callback({ result: 'error' });
+                }
+            }
+        });
+    });
     socket.on('message', async (data: any) => {
         await receiveMessageLock.inLock(async () => {
             try {

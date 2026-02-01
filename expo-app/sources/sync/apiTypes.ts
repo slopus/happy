@@ -249,6 +249,24 @@ export const ApiEphemeralUsageUpdateSchema = z.object({
     }),
 });
 
+export const ApiEphemeralMessageSyncingSchema = z.object({
+    type: z.literal('message-syncing'),
+    id: z.string(), // session id
+    count: z.number(),
+});
+
+export const ApiEphemeralMessageSyncedSchema = z.object({
+    type: z.literal('message-synced'),
+    id: z.string(), // session id
+    count: z.number(),
+});
+
+export const ApiEphemeralMessageErrorSchema = z.object({
+    type: z.literal('message-errored'),
+    id: z.string(), // session id
+    error: z.string(),
+});
+
 export const ApiEphemeralMachineActivityUpdateSchema = z.object({
     type: z.literal('machine-activity'),
     id: z.string(), // machine id
@@ -259,10 +277,16 @@ export const ApiEphemeralMachineActivityUpdateSchema = z.object({
 export const ApiEphemeralUpdateSchema = z.union([
     ApiEphemeralActivityUpdateSchema,
     ApiEphemeralUsageUpdateSchema,
+    ApiEphemeralMessageSyncingSchema,
+    ApiEphemeralMessageSyncedSchema,
+    ApiEphemeralMessageErrorSchema,
     ApiEphemeralMachineActivityUpdateSchema,
 ]);
 
 export type ApiEphemeralActivityUpdate = z.infer<typeof ApiEphemeralActivityUpdateSchema>;
+export type ApiEphemeralMessageSyncingUpdate = z.infer<typeof ApiEphemeralMessageSyncingSchema>;
+export type ApiEphemeralMessageSyncedUpdate = z.infer<typeof ApiEphemeralMessageSyncedSchema>;
+export type ApiEphemeralMessageErrorUpdate = z.infer<typeof ApiEphemeralMessageErrorSchema>;
 export type ApiEphemeralUpdate = z.infer<typeof ApiEphemeralUpdateSchema>;
 
 // Machine metadata updates use Partial<MachineMetadata> from storageTypes
