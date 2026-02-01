@@ -1,6 +1,26 @@
 import type { MarkdownBlock } from "./parseMarkdown";
 import { parseMarkdownSpans } from "./parseMarkdownSpans";
 
+/**
+ * Trims empty strings that result from leading/trailing pipe characters,
+ * while preserving intentionally empty cells in the middle of the row.
+ *
+ * Example: "| A | | C |".split('|') = ['', ' A ', ' ', ' C ', '']
+ * After trim: ['A', '', 'C'] - preserves the empty middle cell
+ */
+function trimPipeArtifacts(cells: string[]): string[] {
+    let result = cells;
+    // Remove leading empty string from "|..."
+    if (result.length > 0 && result[0] === '') {
+        result = result.slice(1);
+    }
+    // Remove trailing empty string from "...|"
+    if (result.length > 0 && result[result.length - 1] === '') {
+        result = result.slice(0, -1);
+    }
+    return result;
+}
+
 function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock | null; nextIndex: number } {
     let index = startIndex;
     const tableLines: string[] = [];
@@ -23,31 +43,32 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
         return { table: null, nextIndex: startIndex };
     }
 
-    // Extract header cells from the first line, filtering out empty cells that may result from leading/trailing pipes
+    // Extract header cells from the first line, trimming only leading/trailing pipe artifacts
     const headerLine = tableLines[0].trim();
-    const headers = headerLine
-        .split('|')
-        .map(cell => cell.trim())
-        .filter(cell => cell.length > 0);
+    const headers = trimPipeArtifacts(
+        headerLine.split('|').map(cell => cell.trim())
+    );
 
     if (headers.length === 0) {
         return { table: null, nextIndex: startIndex };
     }
 
-    // Extract data rows from remaining lines (skipping the separator line), preserving valid cell content
+    // Extract data rows from remaining lines (skipping the separator line), preserving empty cells
     const rows: string[][] = [];
     for (let i = 2; i < tableLines.length; i++) {
         const rowLine = tableLines[i].trim();
         if (rowLine.startsWith('|')) {
-            const rowCells = rowLine
-                .split('|')
-                .map(cell => cell.trim())
-                .filter(cell => cell.length > 0);
+            let rowCells = trimPipeArtifacts(
+                rowLine.split('|').map(cell => cell.trim())
+            );
 
-            // Include rows that contain actual content, filtering out empty rows
-            if (rowCells.length > 0) {
-                rows.push(rowCells);
+            // Pad row to match header count (handles rows with fewer cells)
+            while (rowCells.length < headers.length) {
+                rowCells.push('');
             }
+
+            // Include rows (even if all cells are empty, as long as they have pipe structure)
+            rows.push(rowCells);
         }
     }
 
