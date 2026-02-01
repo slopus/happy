@@ -173,15 +173,23 @@ export class ApiSessionClient extends EventEmitter {
             logger.debug('[API] Socket error:', error);
         });
 
-        //
-        // Connect (after short delay to give a time to add handlers)
-        //
-
-        this.socket.connect();
+        // Note: Socket connection is deferred until onUserMessage() is called
+        // to ensure the callback is registered before any messages can arrive.
+        // This prevents race conditions in daemon setups where messages may
+        // arrive immediately upon connection.
     }
 
     onUserMessage(callback: (data: UserMessage) => void) {
         this.pendingMessageCallback = callback;
+
+        // Connect socket AFTER callback is registered to prevent race conditions.
+        // In daemon setups, messages may arrive immediately when socket connects.
+        if (!this.socket.connected) {
+            this.socket.connect();
+        }
+
+        // Drain any pending messages (shouldn't be any if we just connected,
+        // but handles edge cases where messages were queued before callback)
         while (this.pendingMessages.length > 0) {
             callback(this.pendingMessages.shift()!);
         }
