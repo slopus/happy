@@ -195,9 +195,11 @@ export default function OpenClawMachineDetailPage() {
     const [sessions, setSessions] = React.useState<OpenClawSession[]>([]);
     const [isLoadingSessions, setIsLoadingSessions] = React.useState(false);
     const [refreshing, setRefreshing] = React.useState(false);
+    // Initial loading: hide intermediate states until first data load completes
+    const [initialLoading, setInitialLoading] = React.useState(true);
 
     // Fetch sessions when connected
-    const fetchSessions = React.useCallback(async () => {
+    const fetchSessions = React.useCallback(async (isInitial = false) => {
         if (!isConnected) return;
 
         setIsLoadingSessions(true);
@@ -211,15 +213,25 @@ export default function OpenClawMachineDetailPage() {
             console.error('Failed to fetch sessions:', err);
         } finally {
             setIsLoadingSessions(false);
+            if (isInitial) {
+                setInitialLoading(false);
+            }
         }
     }, [isConnected, send]);
 
     // Fetch sessions when connected
     React.useEffect(() => {
         if (isConnected) {
-            fetchSessions();
+            fetchSessions(true);
         }
     }, [isConnected, fetchSessions]);
+
+    // Clear initial loading when connection fails or encounters error
+    React.useEffect(() => {
+        if (status === 'error' || status === 'pairing_required') {
+            setInitialLoading(false);
+        }
+    }, [status]);
 
     // Handle refresh
     const handleRefresh = React.useCallback(async () => {
@@ -607,8 +619,15 @@ export default function OpenClawMachineDetailPage() {
                     />
                 }
             >
+                {/* Initial loading state - show unified loading until first data load completes */}
+                {initialLoading && (
+                    <View style={styles.emptyContainer}>
+                        <ActivityIndicator size="large" color={theme.colors.textSecondary} />
+                    </View>
+                )}
+
                 {/* Error/Disconnected state with connect button */}
-                {(status === 'disconnected' || status === 'error') && (
+                {!initialLoading && (status === 'disconnected' || status === 'error') && (
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyDescription}>
                             {error || t('openclaw.notConnected')}
@@ -620,7 +639,7 @@ export default function OpenClawMachineDetailPage() {
                 )}
 
                 {/* Pairing required state */}
-                {isPairingRequired && (
+                {!initialLoading && isPairingRequired && (
                     <View style={styles.emptyContainer}>
                         <Ionicons name="key" size={48} color={theme.colors.radio.active} />
                         <Text style={[styles.emptyTitle, { marginTop: 16 }]}>
@@ -632,15 +651,15 @@ export default function OpenClawMachineDetailPage() {
                     </View>
                 )}
 
-                {/* Loading sessions */}
-                {isConnected && isLoadingSessions && sessions.length === 0 && (
+                {/* Loading sessions (only during refresh, not initial load) */}
+                {!initialLoading && isConnected && isLoadingSessions && sessions.length === 0 && (
                     <View style={styles.emptyContainer}>
                         <ActivityIndicator size="large" color={theme.colors.textSecondary} />
                     </View>
                 )}
 
-                {/* Sessions list */}
-                {isConnected && !isLoadingSessions && sessions.length === 0 && (
+                {/* Empty sessions list */}
+                {!initialLoading && isConnected && !isLoadingSessions && sessions.length === 0 && (
                     <View style={styles.emptyContainer}>
                         <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.textSecondary} />
                         <Text style={[styles.emptyTitle, { marginTop: 16 }]}>
@@ -655,7 +674,7 @@ export default function OpenClawMachineDetailPage() {
                     </View>
                 )}
 
-                {isConnected && sessions.length > 0 && (
+                {!initialLoading && isConnected && sessions.length > 0 && (
                     <ItemGroup title={t('openclaw.sessions')}>
                         {sessions.map((session) => (
                             <SessionItem

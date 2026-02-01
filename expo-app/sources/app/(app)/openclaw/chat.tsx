@@ -423,7 +423,8 @@ export default function OpenClawChatPage() {
     // Contains: history messages + pending user message + streaming AI message
     const [messages, setMessages] = React.useState<LocalMessage[]>([]);
     const [inputText, setInputText] = React.useState('');
-    const [isLoading, setIsLoading] = React.useState(false);
+    // Initial loading state: true until first history fetch completes
+    const [isLoading, setIsLoading] = React.useState(true);
 
     // Track current run for streaming (not used for rendering, only for event filtering)
     const chatRunIdRef = React.useRef<string | null>(null);
@@ -724,9 +725,7 @@ export default function OpenClawChatPage() {
                             )}
                         </View>
                     ),
-                    headerRight: isConnecting ? () => (
-                        <ActivityIndicator size="small" color={theme.colors.header.tint} />
-                    ) : undefined,
+                    headerRight: () => null,
                 }}
             />
 
