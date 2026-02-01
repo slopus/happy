@@ -45,6 +45,45 @@ export const SessionView = React.memo((props: { id: string }) => {
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
 
+    // Track if we've confirmed the session doesn't exist after data loads
+    const [sessionNotFound, setSessionNotFound] = React.useState(false);
+
+    // When session appears, reset the not found state
+    React.useEffect(() => {
+        if (session) {
+            setSessionNotFound(false);
+        }
+    }, [session]);
+
+    // When session doesn't exist, refresh sessions and check again
+    React.useEffect(() => {
+        if (!isDataReady || session || sessionNotFound) {
+            return;
+        }
+
+        let cancelled = false;
+
+        // Refresh sessions and then check if session exists
+        sync.refreshSessions()
+            .then(() => {
+                if (cancelled) return;
+                // After refresh, check if session exists in storage
+                if (!storage.getState().sessions[sessionId]) {
+                    setSessionNotFound(true);
+                }
+            })
+            .catch(() => {
+                // On error, mark as not found to avoid infinite loading
+                if (!cancelled) {
+                    setSessionNotFound(true);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isDataReady, session, sessionId, sessionNotFound]);
+
     // Compute header props based on session state
     const headerProps = useMemo(() => {
         if (!isDataReady) {
@@ -60,9 +99,10 @@ export const SessionView = React.memo((props: { id: string }) => {
         }
 
         if (!session) {
-            // Deleted state - show deleted message in header
+            // Show deleted message only if we've confirmed session doesn't exist
+            // Otherwise show empty header while waiting for data
             return {
-                title: t('errors.sessionDeleted'),
+                title: sessionNotFound ? t('errors.sessionDeleted') : '',
                 subtitle: undefined,
                 avatarId: undefined,
                 onAvatarPress: undefined,
@@ -82,7 +122,7 @@ export const SessionView = React.memo((props: { id: string }) => {
             flavor: session.metadata?.flavor || null,
             tintColor: isConnected ? '#000' : '#8E8E93'
         };
-    }, [session, isDataReady, sessionId, router]);
+    }, [session, isDataReady, sessionId, router, sessionNotFound]);
 
     return (
         <>
@@ -130,21 +170,26 @@ export const SessionView = React.memo((props: { id: string }) => {
             {/* Content based on state */}
             <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') ? safeArea.top + headerHeight + (!isTablet && realtimeStatus !== 'disconnected' ? 48 : 0) : 0 }}>
                 {!isDataReady ? (
-                    // Loading state
+                    // Loading state - initial data not ready
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                         <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                     </View>
-                ) : !session ? (
-                    // Deleted state
+                ) : !session && !sessionNotFound ? (
+                    // Loading state - waiting for session data to arrive
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    </View>
+                ) : !session && sessionNotFound ? (
+                    // Deleted state - confirmed session doesn't exist
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                         <Ionicons name="trash-outline" size={48} color={theme.colors.textSecondary} />
                         <Text style={{ color: theme.colors.text, fontSize: 20, marginTop: 16, fontWeight: '600' }}>{t('errors.sessionDeleted')}</Text>
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
                     </View>
-                ) : (
+                ) : session ? (
                     // Normal session view
                     <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
-                )}
+                ) : null}
             </View>
         </>
     );
