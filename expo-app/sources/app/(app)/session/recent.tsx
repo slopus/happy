@@ -12,7 +12,7 @@ import { layout } from '@/components/layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Ionicons } from '@expo/vector-icons';
 import { Modal } from '@/modal';
-import { machineSpawnNewSession } from '@/sync/ops';
+import { machineForkClaudeSession, machineSpawnNewSession } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 
@@ -210,13 +210,20 @@ export default function SessionHistory() {
         setResumingSessionId(session.id);
         try {
             const sessionTitle = session.metadata?.summary?.text || getSessionName(session);
+            const forkResult = await machineForkClaudeSession(machineId, claudeSessionId);
+            if (!forkResult.success || !forkResult.newSessionId) {
+                Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                return;
+            }
+
             const result = await machineSpawnNewSession({
                 machineId,
                 directory,
                 approvedNewDirectoryCreation: false,
                 agent: 'claude',
-                resumeSessionId: claudeSessionId,
-                sessionTitle
+                resumeSessionId: forkResult.newSessionId,
+                sessionTitle,
+                skipForkSession: true,
             });
             if (result.type === 'requestToApproveDirectoryCreation') {
                 Modal.alert(t('common.error'), t('claudeHistory.directoryNotFound'));

@@ -9,7 +9,7 @@ import { ItemList } from '@/components/ItemList';
 import { Text } from '@/components/StyledText';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { machineListClaudeSessions, machineSpawnNewSession, machineGetClaudeSessionPreview, ClaudeSessionIndexEntry, ClaudeSessionPreviewMessage } from '@/sync/ops';
+import { machineListClaudeSessions, machineSpawnNewSession, machineGetClaudeSessionPreview, machineForkClaudeSession, ClaudeSessionIndexEntry, ClaudeSessionPreviewMessage } from '@/sync/ops';
 import { SessionPreviewSheet } from '@/components/SessionPreviewSheet';
 import { Modal } from '@/modal';
 import { useUnistyles } from 'react-native-unistyles';
@@ -306,13 +306,19 @@ export default function ClaudeSessionHistory() {
         setResumingSessionId(entry.sessionId);
         try {
             const sessionTitle = entry.title?.trim();
+            const forkResult = await machineForkClaudeSession(selectedMachineId, entry.sessionId);
+            if (!forkResult.success || !forkResult.newSessionId) {
+                Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                return;
+            }
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
                 directory: entry.originalPath,
                 approvedNewDirectoryCreation: false,
                 agent: 'claude',
-                resumeSessionId: entry.sessionId,
-                sessionTitle: sessionTitle || undefined
+                resumeSessionId: forkResult.newSessionId,
+                sessionTitle: sessionTitle || undefined,
+                skipForkSession: true,
             });
 
             if (result.type === 'requestToApproveDirectoryCreation') {

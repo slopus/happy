@@ -703,6 +703,49 @@ export async function machineDuplicateClaudeSession(
     }
 }
 
+/**
+ * Fork a Claude session without truncation
+ * Creates a new session that is a full copy of the original
+ */
+export async function machineForkClaudeSession(
+    machineId: string,
+    claudeSessionId: string,
+    options?: { timeoutMs?: number }
+): Promise<{ success: boolean; newSessionId?: string; errorMessage?: string }> {
+    const timeoutMs = options?.timeoutMs ?? 90000;
+
+    try {
+        const rpcPromise = apiSocket.machineRPC<any, { sessionId: string }>(
+            machineId,
+            'claude-fork-session',
+            { sessionId: claudeSessionId }
+        );
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+        });
+
+        const result = await Promise.race([rpcPromise, timeoutPromise]);
+
+        if (!result) {
+            return { success: false, errorMessage: 'RPC returned empty response' };
+        }
+        if (result.error) {
+            return { success: false, errorMessage: result.error };
+        }
+        return {
+            success: result.success ?? false,
+            newSessionId: result.newSessionId,
+            errorMessage: result.errorMessage
+        };
+    } catch (error) {
+        return {
+            success: false,
+            errorMessage: error instanceof Error ? error.message : 'Unknown RPC error'
+        };
+    }
+}
+
 // Export types for external use
 export type {
     SessionBashRequest,

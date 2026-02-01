@@ -10,7 +10,7 @@ import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
 import { registerOpenClawHandlers, openClawTunnelManager } from '../modules/openclaw';
 import { listClaudeSessionsFromIndex, getClaudeSessionPreview, findClaudeProjectId, getClaudeSessionUserMessages } from '@/claude/utils/claudeSessionIndex';
-import { forkAndTruncateSession } from '@/claude/utils/claudeSessionFork';
+import { forkAndTruncateSession, forkSession } from '@/claude/utils/claudeSessionFork';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -256,6 +256,24 @@ export class ApiMachineClient {
             }
 
             const result = await forkAndTruncateSession(projectId, sessionId, truncateBeforeUuid);
+            return result;
+        });
+
+        // Fork a Claude session without truncation (used by resume flows)
+        this.rpcHandlerManager.registerHandler('claude-fork-session', async (params: any) => {
+            const { sessionId } = params || {};
+
+            if (!sessionId || typeof sessionId !== 'string') {
+                throw new Error('sessionId is required');
+            }
+
+            // Find the project ID for this session
+            const projectId = await findClaudeProjectId(sessionId);
+            if (!projectId) {
+                throw new Error('Session not found');
+            }
+
+            const result = await forkSession(projectId, sessionId);
             return result;
         });
     }

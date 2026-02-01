@@ -19,6 +19,17 @@ export interface ForkAndTruncateResult {
 }
 
 /**
+ * Fork a Claude session without truncation.
+ * This simply copies the original JSONL file and returns a new session ID.
+ */
+export async function forkSession(
+    projectId: string,
+    sessionId: string
+): Promise<ForkAndTruncateResult> {
+    return forkAndTruncateSession(projectId, sessionId);
+}
+
+/**
  * Fork a Claude session and truncate it at a specific point
  *
  * Steps:
@@ -30,7 +41,7 @@ export interface ForkAndTruncateResult {
 export async function forkAndTruncateSession(
     projectId: string,
     sessionId: string,
-    truncateBeforeUuid: string
+    truncateBeforeUuid?: string
 ): Promise<ForkAndTruncateResult> {
     const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
     const projectDir = join(claudeConfigDir, 'projects', projectId);
@@ -43,20 +54,22 @@ export async function forkAndTruncateSession(
         // Step 1: Copy the original file
         await copyFile(originalJsonlPath, newJsonlPath);
 
-        // Step 2: Truncate the new session file at the specified UUID
-        const truncateResult = await truncateSessionFile(newJsonlPath, truncateBeforeUuid);
+        if (truncateBeforeUuid) {
+            // Step 2: Truncate the new session file at the specified UUID
+            const truncateResult = await truncateSessionFile(newJsonlPath, truncateBeforeUuid);
 
-        if (!truncateResult.success) {
-            // Clean up the copied file on failure
-            try {
-                await unlinkAsync(newJsonlPath);
-            } catch {
-                // Ignore cleanup errors
+            if (!truncateResult.success) {
+                // Clean up the copied file on failure
+                try {
+                    await unlinkAsync(newJsonlPath);
+                } catch {
+                    // Ignore cleanup errors
+                }
+                return {
+                    success: false,
+                    errorMessage: truncateResult.errorMessage
+                };
             }
-            return {
-                success: false,
-                errorMessage: truncateResult.errorMessage
-            };
         }
 
         return {
