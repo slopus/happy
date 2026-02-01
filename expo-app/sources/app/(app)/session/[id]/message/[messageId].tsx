@@ -11,6 +11,7 @@ import { Message } from '@/sync/typesMessage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
+import { layout } from '@/components/layout';
 
 // Header button width constants
 const HEADER_BUTTON_WIDTH = 60;
@@ -46,7 +47,9 @@ export default React.memo(() => {
     const { width: screenWidth } = useWindowDimensions();
 
     // Left: back button (1), Right: status indicator (1)
-    const headerTitleMaxWidth = screenWidth - (HEADER_BUTTON_WIDTH * 2) - HEADER_PADDING - HEADER_CENTER_PADDING;
+    // Use the smaller of screenWidth and headerMaxWidth to account for max-width constraint
+    const effectiveHeaderWidth = Math.min(screenWidth, layout.headerMaxWidth);
+    const headerTitleMaxWidth = effectiveHeaderWidth - (HEADER_BUTTON_WIDTH * 2) - HEADER_PADDING - HEADER_CENTER_PADDING;
     
     // Trigger session visibility when component mounts
     React.useEffect(() => {
