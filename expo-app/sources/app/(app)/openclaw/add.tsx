@@ -38,10 +38,11 @@ const styles = StyleSheet.create((theme) => ({
     },
     inputWrapper: {
         backgroundColor: theme.colors.surface,
-        borderRadius: 10,
+        borderRadius: 16,
         overflow: 'hidden',
     },
     input: {
+        borderRadius: 16,
         paddingHorizontal: 16,
         paddingVertical: 12,
         fontSize: 17,
@@ -53,7 +54,7 @@ const styles = StyleSheet.create((theme) => ({
         marginHorizontal: 16,
         marginTop: 24,
         paddingVertical: 14,
-        borderRadius: 10,
+        borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
         height: 50,
