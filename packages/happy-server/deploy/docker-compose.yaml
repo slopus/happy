@@ -1,0 +1,154 @@
+# Happy Server - Docker Compose with Traefik
+#
+# Usage:
+#   1. Copy .env.example to .env and fill in your values
+#   2. Run: docker compose up -d
+#
+# For local development without Traefik, use: docker compose --profile local up -d
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-handy}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in .env}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+      - traefik
+    labels:
+      # MinIO API (for public file access)
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      - "traefik.http.routers.minio.rule=Host(`${S3_DOMAIN:-files.localhost}`)"
+      - "traefik.http.routers.minio.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.minio.tls=true"
+      - "traefik.http.routers.minio.tls.certresolver=${CERT_RESOLVER:-letsencrypt}"
+      - "traefik.http.routers.minio.service=minio"
+      - "traefik.http.services.minio.loadbalancer.server.port=9000"
+      # MinIO Console (optional, remove if not needed)
+      - "traefik.http.routers.minio-console.rule=Host(`${S3_CONSOLE_DOMAIN:-minio.localhost}`)"
+      - "traefik.http.routers.minio-console.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.minio-console.tls=true"
+      - "traefik.http.routers.minio-console.tls.certresolver=${CERT_RESOLVER:-letsencrypt}"
+      - "traefik.http.routers.minio-console.service=minio-console"
+      - "traefik.http.services.minio-console.loadbalancer.server.port=9001"
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET:-happy}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${S3_ACCESS_KEY} $${S3_SECRET_KEY};
+      mc mb -p local/$${S3_BUCKET} || true;
+      mc anonymous set download local/$${S3_BUCKET};
+      exit 0;
+      "
+    networks:
+      - internal
+
+  migrate:
+    image: ${SERVER_IMAGE:-happy-server:local}
+    build:
+      context: ../../..
+      dockerfile: Dockerfile.server
+    command: npx prisma migrate deploy --schema=/repo/packages/happy-server/prisma/schema.prisma
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-handy}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+
+  server:
+    image: ${SERVER_IMAGE:-happy-server:local}
+    build:
+      context: ../../..
+      dockerfile: Dockerfile.server
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-handy}
+      REDIS_URL: redis://redis:6379
+      HANDY_MASTER_SECRET: ${HANDY_MASTER_SECRET:?Set HANDY_MASTER_SECRET in .env}
+      S3_HOST: minio
+      S3_PORT: 9000
+      S3_USE_SSL: "false"
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET:-happy}
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL:?Set S3_PUBLIC_URL in .env}
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - internal
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      - "traefik.http.routers.happy-api.rule=Host(`${API_DOMAIN:?Set API_DOMAIN in .env}`)"
+      - "traefik.http.routers.happy-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.happy-api.tls=true"
+      - "traefik.http.routers.happy-api.tls.certresolver=${CERT_RESOLVER:-letsencrypt}"
+      - "traefik.http.services.happy-api.loadbalancer.server.port=3005"
+    restart: unless-stopped
+
+networks:
+  internal:
+    # Internal network - not exposed
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}
+
+volumes:
+  postgres_data:
+  minio_data:

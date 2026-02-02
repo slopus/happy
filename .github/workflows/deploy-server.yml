@@ -1,0 +1,164 @@
+name: Deploy Server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/happy-server/**'
+      - 'Dockerfile.server'
+      - '.github/workflows/deploy-server.yml'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/happy-server
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    environment: deployment
+
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.server
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Output image
+        id: image
+        run: echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_OUTPUT
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: deployment
+
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -e
+
+            # Configuration (set these secrets in GitHub)
+            CONTAINER_NAME="happy-server"
+            IMAGE_NAME="${{ needs.build-and-push.outputs.image }}"
+            NETWORK="${{ secrets.DOCKER_NETWORK }}"
+            API_DOMAIN="${{ secrets.API_DOMAIN }}"
+            S3_DOMAIN="${{ secrets.S3_DOMAIN }}"
+
+            echo "🚀 Starting deployment of Happy Server..."
+
+            # Login to GitHub Container Registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+            # Pull the latest image
+            echo "⬇️ Pulling latest image..."
+            docker pull "$IMAGE_NAME"
+
+            # Stop existing container if running
+            if docker ps --format "table {{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
+              echo "⏹️ Stopping existing container..."
+              docker stop "$CONTAINER_NAME"
+            fi
+
+            # Remove existing container if it exists
+            if docker ps -a --format "table {{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
+              echo "🗑️ Removing existing container..."
+              docker rm "$CONTAINER_NAME"
+            fi
+
+            # Database connection (postgres/redis hostnames are Docker service names)
+            DATABASE_URL="postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/handy"
+            REDIS_URL="redis://redis:6379"
+
+            # Run database migrations
+            echo "🔄 Running database migrations..."
+            docker run --rm \
+              --network "$NETWORK" \
+              -e DATABASE_URL="$DATABASE_URL" \
+              "$IMAGE_NAME" \
+              npx prisma migrate deploy --schema=/repo/packages/happy-server/prisma/schema.prisma
+
+            # Run the new container
+            echo "🔄 Starting new container..."
+            docker run -d \
+              --name "$CONTAINER_NAME" \
+              --restart unless-stopped \
+              --network "$NETWORK" \
+              -e DATABASE_URL="$DATABASE_URL" \
+              -e REDIS_URL="$REDIS_URL" \
+              -e HANDY_MASTER_SECRET="${{ secrets.HANDY_MASTER_SECRET }}" \
+              -e S3_HOST="minio" \
+              -e S3_PORT="9000" \
+              -e S3_USE_SSL="false" \
+              -e S3_ACCESS_KEY="${{ secrets.S3_ACCESS_KEY }}" \
+              -e S3_SECRET_KEY="${{ secrets.S3_SECRET_KEY }}" \
+              -e S3_BUCKET="happy" \
+              -e S3_PUBLIC_URL="https://$S3_DOMAIN/happy" \
+              -e NODE_ENV=production \
+              -l "traefik.enable=true" \
+              -l "traefik.http.routers.happy-api.rule=Host(\`$API_DOMAIN\`)" \
+              -l "traefik.http.routers.happy-api.tls=true" \
+              -l "traefik.http.routers.happy-api.tls.certresolver=letsencrypt" \
+              -l "traefik.http.services.happy-api.loadbalancer.server.port=3000" \
+              "$IMAGE_NAME"
+
+            # Wait for container to be ready
+            echo "⏳ Waiting for container to be ready..."
+            sleep 15
+
+            # Check if container is running
+            if docker ps --format "table {{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
+              echo "✅ Container is running!"
+
+              # Show recent logs
+              echo "📋 Recent logs:"
+              docker logs --tail 20 "$CONTAINER_NAME"
+            else
+              echo "❌ Container failed to start!"
+              docker logs "$CONTAINER_NAME"
+              exit 1
+            fi
+
+            # Clean up old images
+            echo "🧹 Cleaning up old images..."
+            docker image prune -af --filter "until=24h"
+
+            echo "🎉 Deployment completed successfully!"
+            echo "📍 API available at: https://$API_DOMAIN"
