@@ -233,20 +233,20 @@ class Sync {
     }
 
 
-    async sendMessage(sessionId: string, text: string, displayText?: string, images?: LocalImage[]): Promise<{ success: boolean; error?: string }> {
+    async sendMessage(sessionId: string, text: string, displayText?: string, images?: LocalImage[], existingLocalId?: string): Promise<{ success: boolean; error?: string; localId: string }> {
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);
         if (!encryption) { // Should never happen
             console.error(`Session ${sessionId} not found`);
-            return { success: false, error: 'Session encryption not found' };
+            return { success: false, error: 'Session encryption not found', localId: '' };
         }
 
         // Get session data from storage
         const session = storage.getState().sessions[sessionId];
         if (!session) {
             console.error(`Session ${sessionId} not found in storage`);
-            return { success: false, error: 'Session not found' };
+            return { success: false, error: 'Session not found', localId: '' };
         }
 
         // Read permission mode from session state
@@ -257,8 +257,8 @@ class Sync {
         const isGemini = flavor === 'gemini';
         const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
 
-        // Generate local ID
-        const localId = randomUUID();
+        // Use existing localId for retry, or generate new one
+        const localId = existingLocalId || randomUUID();
 
         // Determine sentFrom based on platform
         let sentFrom: string;
@@ -373,7 +373,7 @@ class Sync {
                     );
                     if (messageFound) {
                         log.log(`Message ${localId} found after retry ${i + 1}`);
-                        return { success: true };
+                        return { success: true, localId };
                     }
 
                     log.log(`Retry ${i + 1}/${MAX_RETRIES}: message ${localId} not found yet`);
@@ -381,7 +381,7 @@ class Sync {
 
                 // After all retries, assume success - server may still process it
                 log.log(`Message ${localId} not confirmed after ${MAX_RETRIES} retries, assuming success`);
-                return { success: true };
+                return { success: true, localId };
             }
 
             if (response.result === 'success') {
@@ -389,14 +389,14 @@ class Sync {
                 if (normalizedMessage) {
                     this.applyMessages(sessionId, [normalizedMessage]);
                 }
-                return { success: true };
+                return { success: true, localId };
             } else {
                 // Server returned error
-                return { success: false, error: response.error || 'Send failed' };
+                return { success: false, error: response.error || 'Send failed', localId };
             }
         } catch (error) {
             log.log(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error', localId };
         }
     }
 

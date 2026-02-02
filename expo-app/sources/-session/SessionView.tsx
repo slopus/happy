@@ -239,6 +239,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const [isUploadingImages, setIsUploadingImages] = React.useState(false);
     const [isSending, setIsSending] = React.useState(false);
 
+    // Track failed message for retry with same localId
+    const failedMessageRef = React.useRef<{ localId: string; content: string } | null>(null);
+
     // Duplicate sheet state
     const [duplicateSheetVisible, setDuplicateSheetVisible] = React.useState(false);
     const [duplicateMessages, setDuplicateMessages] = React.useState<ClaudeUserMessageWithUuid[] | null>(null);
@@ -541,6 +544,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     }
 
                     const imagesToSend = images.length > 0 ? [...images] : undefined;
+                    const contentForRetry = messageToSend + JSON.stringify(imagesToSend || []);
+
+                    // Check if this is a retry of the same content
+                    const existingLocalId = failedMessageRef.current?.content === contentForRetry
+                        ? failedMessageRef.current.localId
+                        : undefined;
 
                     // Set sending state
                     setIsSending(true);
@@ -549,16 +558,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     }
 
                     try {
-                        const result = await sync.sendMessage(sessionId, messageToSend, undefined, imagesToSend);
+                        const result = await sync.sendMessage(sessionId, messageToSend, undefined, imagesToSend, existingLocalId);
 
                         if (result.success) {
-                            // Clear input only after successful send
+                            // Clear failed message record and input on success
+                            failedMessageRef.current = null;
                             setMessage('');
                             clearDraft();
                             clearImages();
                             trackMessageSent();
+                        } else {
+                            // On failure, record localId and content for retry
+                            failedMessageRef.current = { localId: result.localId, content: contentForRetry };
                         }
-                        // On failure, keep the message in input for retry
                     } finally {
                         setIsSending(false);
                         setIsUploadingImages(false);
