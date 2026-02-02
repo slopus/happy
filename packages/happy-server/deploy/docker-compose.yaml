@@ -54,15 +54,18 @@ services:
     labels:
       # MinIO API (for public file access)
       - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
       - "traefik.http.routers.minio.rule=Host(`${S3_DOMAIN:-files.localhost}`)"
+      - "traefik.http.routers.minio.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
       - "traefik.http.routers.minio.tls=true"
-      - "traefik.http.routers.minio.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.minio.tls.certresolver=${CERT_RESOLVER:-letsencrypt}"
       - "traefik.http.routers.minio.service=minio"
       - "traefik.http.services.minio.loadbalancer.server.port=9000"
       # MinIO Console (optional, remove if not needed)
       - "traefik.http.routers.minio-console.rule=Host(`${S3_CONSOLE_DOMAIN:-minio.localhost}`)"
+      - "traefik.http.routers.minio-console.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
       - "traefik.http.routers.minio-console.tls=true"
-      - "traefik.http.routers.minio-console.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.minio-console.tls.certresolver=${CERT_RESOLVER:-letsencrypt}"
       - "traefik.http.routers.minio-console.service=minio-console"
       - "traefik.http.services.minio-console.loadbalancer.server.port=9001"
     restart: unless-stopped
@@ -87,6 +90,7 @@ services:
       - internal
 
   migrate:
+    image: ${SERVER_IMAGE:-happy-server:local}
     build:
       context: ../../..
       dockerfile: Dockerfile.server
@@ -100,6 +104,7 @@ services:
       - internal
 
   server:
+    image: ${SERVER_IMAGE:-happy-server:local}
     build:
       context: ../../..
       dockerfile: Dockerfile.server
@@ -129,10 +134,12 @@ services:
       - traefik
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
       - "traefik.http.routers.happy-api.rule=Host(`${API_DOMAIN:?Set API_DOMAIN in .env}`)"
+      - "traefik.http.routers.happy-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
       - "traefik.http.routers.happy-api.tls=true"
-      - "traefik.http.routers.happy-api.tls.certresolver=letsencrypt"
-      - "traefik.http.services.happy-api.loadbalancer.server.port=3000"
+      - "traefik.http.routers.happy-api.tls.certresolver=${CERT_RESOLVER:-letsencrypt}"
+      - "traefik.http.services.happy-api.loadbalancer.server.port=3005"
     restart: unless-stopped
 
 networks:
