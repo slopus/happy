@@ -10,6 +10,7 @@ import {
     trackReviewRetryScheduled
 } from '@/track';
 import { sync } from '@/sync/sync';
+import { config } from '@/config';
 import { storage as syncStorage } from '@/sync/storage';
 import { Platform } from 'react-native';
 
@@ -26,7 +27,7 @@ const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const lock = new AsyncLock();
 
 export function requestReview() {
-    if (Platform.OS === 'web') {
+    if (Platform.OS === 'web' || !config.enableGms) {
         return;
     }
 

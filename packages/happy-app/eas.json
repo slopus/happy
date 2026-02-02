@@ -44,6 +44,15 @@
       "channel": "production",
       "env": {
         "APP_ENV": "production"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production-with-gms": {
+      "extends": "production",
+      "env": {
+        "ENABLE_GMS": "1"
       }
     }
   },

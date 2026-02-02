@@ -88,7 +88,7 @@ class Sync {
         this.todosSync = new InvalidateSync(this.fetchTodos);
 
         const registerPushToken = async () => {
-            if (__DEV__) {
+            if (__DEV__ || !config.enableGms) {
                 return;
             }
             await this.registerPushToken();
@@ -103,8 +103,10 @@ class Sync {
                 this.purchasesSync.invalidate();
                 this.profileSync.invalidate();
                 this.machinesSync.invalidate();
-                this.pushTokenSync.invalidate();
-                this.sessionsSync.invalidate();
+                if (config.enableGms) {
+                    this.pushTokenSync.invalidate();
+                    this.purchasesSync.invalidate();
+                }
                 this.nativeUpdateSync.invalidate();
                 log.log('📱 App became active: Invalidating artifacts sync');
                 this.artifactsSync.invalidate();
@@ -165,9 +167,10 @@ class Sync {
         this.sessionsSync.invalidate();
         this.settingsSync.invalidate();
         this.profileSync.invalidate();
-        this.purchasesSync.invalidate();
-        this.machinesSync.invalidate();
-        this.pushTokenSync.invalidate();
+        if (config.enableGms) {
+            this.purchasesSync.invalidate();
+            this.pushTokenSync.invalidate();
+        }
         this.nativeUpdateSync.invalidate();
         this.friendsSync.invalidate();
         this.friendRequestsSync.invalidate();
@@ -225,7 +228,7 @@ class Sync {
 
         // Read permission mode from session state
         const permissionMode = session.permissionMode || 'default';
-        
+
         // Read model mode - for Gemini, default to gemini-2.5-pro if not set
         const flavor = session.metadata?.flavor;
         const isGemini = flavor === 'gemini';
@@ -431,15 +434,15 @@ class Sync {
 
     async assumeUsers(userIds: string[]): Promise<void> {
         if (!this.credentials || userIds.length === 0) return;
-        
+
         const state = storage.getState();
         // Filter out users we already have in cache (including null for 404s)
         const missingIds = userIds.filter(id => !(id in state.users));
-        
+
         if (missingIds.length === 0) return;
-        
+
         log.log(`👤 Fetching ${missingIds.length} missing users...`);
-        
+
         // Fetch missing users in parallel
         const results = await Promise.all(
             missingIds.map(async (id) => {
@@ -452,13 +455,13 @@ class Sync {
                 }
             })
         );
-        
+
         // Convert to Record<string, UserProfile | null>
         const usersMap: Record<string, UserProfile | null> = {};
         results.forEach(({ id, profile }) => {
             usersMap[id] = profile;
         });
-        
+
         storage.getState().applyUsers(usersMap);
         log.log(`👤 Applied ${results.length} users to cache (${results.filter(r => r.profile).length} found, ${results.filter(r => !r.profile).length} not found)`);
     }
@@ -591,7 +594,7 @@ class Sync {
 
                     // Decrypt header
                     const header = await artifactEncryption.decryptHeader(artifact.header);
-                    
+
                     decryptedArtifacts.push({
                         id: artifact.id,
                         title: header?.title || null,
@@ -674,7 +677,7 @@ class Sync {
     }
 
     public async createArtifact(
-        title: string | null, 
+        title: string | null,
         body: string | null,
         sessions?: string[],
         draft?: boolean
@@ -689,20 +692,20 @@ class Sync {
 
             // Generate data encryption key
             const dataEncryptionKey = ArtifactEncryption.generateDataEncryptionKey();
-            
+
             // Store the decrypted key in memory
             this.artifactDataKeys.set(artifactId, dataEncryptionKey);
-            
+
             // Encrypt the data encryption key with user's key
             const encryptedKey = await this.encryption.encryptEncryptionKey(dataEncryptionKey);
-            
+
             // Create artifact encryption instance
             const artifactEncryption = new ArtifactEncryption(dataEncryptionKey);
-            
+
             // Encrypt header and body
             const encryptedHeader = await artifactEncryption.encryptHeader({ title, sessions, draft });
             const encryptedBody = await artifactEncryption.encryptBody({ body });
-            
+
             // Create the request
             const request: ArtifactCreateRequest = {
                 id: artifactId,
@@ -710,10 +713,10 @@ class Sync {
                 body: encryptedBody,
                 dataEncryptionKey: encodeBase64(encryptedKey, 'base64'),
             };
-            
+
             // Send to server
             const artifact = await createArtifact(this.credentials, request);
-            
+
             // Add to local storage
             const decryptedArtifact: DecryptedArtifact = {
                 id: artifact.id,
@@ -728,9 +731,9 @@ class Sync {
                 updatedAt: artifact.updatedAt,
                 isDecrypted: true,
             };
-            
+
             storage.getState().addArtifact(decryptedArtifact);
-            
+
             return artifactId;
         } catch (error) {
             console.error('Failed to create artifact:', error);
@@ -739,8 +742,8 @@ class Sync {
     }
 
     public async updateArtifact(
-        artifactId: string, 
-        title: string | null, 
+        artifactId: string,
+        title: string | null,
         body: string | null,
         sessions?: string[],
         draft?: boolean
@@ -758,16 +761,16 @@ class Sync {
 
             // Get the data encryption key from memory or fetch it
             let dataEncryptionKey = this.artifactDataKeys.get(artifactId);
-            
+
             // Fetch full artifact if we don't have version info or encryption key
             let headerVersion = currentArtifact.headerVersion;
             let bodyVersion = currentArtifact.bodyVersion;
-            
+
             if (headerVersion === undefined || bodyVersion === undefined || !dataEncryptionKey) {
                 const fullArtifact = await fetchArtifact(this.credentials, artifactId);
                 headerVersion = fullArtifact.headerVersion;
                 bodyVersion = fullArtifact.bodyVersion;
-                
+
                 // Decrypt and store the data encryption key if we don't have it
                 if (!dataEncryptionKey) {
                     const decryptedKey = await this.encryption.decryptEncryptionKey(fullArtifact.dataEncryptionKey);
@@ -784,15 +787,15 @@ class Sync {
 
             // Prepare update request
             const updateRequest: ArtifactUpdateRequest = {};
-            
+
             // Check if header needs updating (title, sessions, or draft changed)
-            if (title !== currentArtifact.title || 
+            if (title !== currentArtifact.title ||
                 JSON.stringify(sessions) !== JSON.stringify(currentArtifact.sessions) ||
                 draft !== currentArtifact.draft) {
-                const encryptedHeader = await artifactEncryption.encryptHeader({ 
-                    title, 
-                    sessions, 
-                    draft 
+                const encryptedHeader = await artifactEncryption.encryptHeader({
+                    title,
+                    sessions,
+                    draft
                 });
                 updateRequest.header = encryptedHeader;
                 updateRequest.expectedHeaderVersion = headerVersion;
@@ -812,7 +815,7 @@ class Sync {
 
             // Send update to server
             const response = await updateArtifact(this.credentials, artifactId, updateRequest);
-            
+
             if (!response.success) {
                 // Handle version mismatch
                 if (response.error === 'version-mismatch') {
@@ -832,7 +835,7 @@ class Sync {
                 bodyVersion: response.bodyVersion !== undefined ? response.bodyVersion : bodyVersion,
                 updatedAt: Date.now(),
             };
-            
+
             storage.getState().updateArtifact(updatedArtifact);
         } catch (error) {
             console.error('Failed to update artifact:', error);
@@ -951,7 +954,7 @@ class Sync {
 
     private fetchFriends = async () => {
         if (!this.credentials) return;
-        
+
         try {
             log.log('👥 Fetching friends list...');
             const friendsList = await getFriendsList(this.credentials);
@@ -1058,37 +1061,37 @@ class Sync {
             const state = storage.getState();
             const existingItems = state.feedItems;
             const head = state.feedHead;
-            
+
             // Load feed items - if we have a head, load newer items
             let allItems: FeedItem[] = [];
             let hasMore = true;
             let cursor = head ? { after: head } : undefined;
             let loadedCount = 0;
             const maxItems = 500;
-            
+
             // Keep loading until we reach known items or hit max limit
             while (hasMore && loadedCount < maxItems) {
                 const response = await fetchFeed(this.credentials, {
                     limit: 100,
                     ...cursor
                 });
-                
+
                 // Check if we reached known items
-                const foundKnown = response.items.some(item => 
+                const foundKnown = response.items.some(item =>
                     existingItems.some(existing => existing.id === item.id)
                 );
-                
+
                 allItems.push(...response.items);
                 loadedCount += response.items.length;
                 hasMore = response.hasMore && !foundKnown;
-                
+
                 // Update cursor for next page
                 if (response.items.length > 0) {
                     const lastItem = response.items[response.items.length - 1];
                     cursor = { after: lastItem.cursor };
                 }
             }
-            
+
             // If this is initial load (no head), also load older items
             if (!head && allItems.length < 100) {
                 const response = await fetchFeed(this.credentials, {
@@ -1096,7 +1099,7 @@ class Sync {
                 });
                 allItems.push(...response.items);
             }
-            
+
             // Collect user IDs from friend-related feed items
             const userIds = new Set<string>();
             allItems.forEach(item => {
@@ -1104,28 +1107,28 @@ class Sync {
                     userIds.add(item.body.uid);
                 }
             });
-            
+
             // Fetch missing users
             if (userIds.size > 0) {
                 await this.assumeUsers(Array.from(userIds));
             }
-            
+
             // Filter out items where user is not found (404)
             const users = storage.getState().users;
             const compatibleItems = allItems.filter(item => {
                 // Keep text items
                 if (item.body.kind === 'text') return true;
-                
+
                 // For friend-related items, check if user exists and is not null (404)
                 if (item.body.kind === 'friend_request' || item.body.kind === 'friend_accepted') {
                     const userProfile = users[item.body.uid];
                     // Keep item only if user exists and is not null
                     return userProfile !== null && userProfile !== undefined;
                 }
-                
+
                 return true;
             });
-            
+
             // Apply only compatible items to storage
             storage.getState().applyFeedItems(compatibleItems);
             log.log(`📰 fetchFeed completed - loaded ${compatibleItems.length} compatible items (${allItems.length - compatibleItems.length} filtered)`);
@@ -1339,6 +1342,9 @@ class Sync {
     }
 
     private syncPurchases = async () => {
+        if (!config.enableGms) {
+            return;
+        }
         try {
             // Initialize RevenueCat if not already done
             if (!this.revenueCatInitialized) {
@@ -1547,19 +1553,19 @@ class Sync {
                     const rawContent = decrypted.content as { role?: string; content?: { type?: string; data?: { type?: string } } } | null;
                     const contentType = rawContent?.content?.type;
                     const dataType = rawContent?.content?.data?.type;
-                    
+
                     // Debug logging to trace lifecycle events
                     if (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started') {
                         console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}`);
                     }
-                    
-                    const isTaskComplete = 
-                        ((contentType === 'acp' || contentType === 'codex') && 
+
+                    const isTaskComplete =
+                        ((contentType === 'acp' || contentType === 'codex') &&
                             (dataType === 'task_complete' || dataType === 'turn_aborted'));
-                    
-                    const isTaskStarted = 
+
+                    const isTaskStarted =
                         ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started');
-                    
+
                     if (isTaskComplete || isTaskStarted) {
                         console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
                     }
@@ -1765,7 +1771,7 @@ class Sync {
         } else if (updateData.body.t === 'relationship-updated') {
             log.log('👥 Received relationship-updated update');
             const relationshipUpdate = updateData.body;
-            
+
             // Apply the relationship update to storage
             storage.getState().applyRelationshipUpdate({
                 fromUserId: relationshipUpdate.fromUserId,
@@ -1776,7 +1782,7 @@ class Sync {
                 toUser: relationshipUpdate.toUser,
                 timestamp: relationshipUpdate.timestamp
             });
-            
+
             // Invalidate friends data to refresh with latest changes
             this.friendsSync.invalidate();
             this.friendRequestsSync.invalidate();
@@ -1785,7 +1791,7 @@ class Sync {
             log.log('📦 Received new-artifact update');
             const artifactUpdate = updateData.body;
             const artifactId = artifactUpdate.artifactId;
-            
+
             try {
                 // Decrypt the data encryption key
                 const decryptedKey = await this.encryption.decryptEncryptionKey(artifactUpdate.dataEncryptionKey);
@@ -1793,23 +1799,23 @@ class Sync {
                     console.error(`Failed to decrypt key for new artifact ${artifactId}`);
                     return;
                 }
-                
+
                 // Store the decrypted key in memory
                 this.artifactDataKeys.set(artifactId, decryptedKey);
-                
+
                 // Create artifact encryption instance
                 const artifactEncryption = new ArtifactEncryption(decryptedKey);
-                
+
                 // Decrypt header
                 const header = await artifactEncryption.decryptHeader(artifactUpdate.header);
-                
+
                 // Decrypt body if provided
                 let decryptedBody: string | null | undefined = undefined;
                 if (artifactUpdate.body && artifactUpdate.bodyVersion !== undefined) {
                     const body = await artifactEncryption.decryptBody(artifactUpdate.body);
                     decryptedBody = body?.body || null;
                 }
-                
+
                 // Add to storage
                 const decryptedArtifact: DecryptedArtifact = {
                     id: artifactId,
@@ -1822,7 +1828,7 @@ class Sync {
                     updatedAt: artifactUpdate.updatedAt,
                     isDecrypted: !!header,
                 };
-                
+
                 storage.getState().addArtifact(decryptedArtifact);
                 log.log(`📦 Added new artifact ${artifactId} to storage`);
             } catch (error) {
@@ -1832,7 +1838,7 @@ class Sync {
             log.log('📦 Received update-artifact update');
             const artifactUpdate = updateData.body;
             const artifactId = artifactUpdate.artifactId;
-            
+
             // Get existing artifact
             const existingArtifact = storage.getState().artifacts[artifactId];
             if (!existingArtifact) {
@@ -1841,7 +1847,7 @@ class Sync {
                 this.artifactsSync.invalidate();
                 return;
             }
-            
+
             try {
                 // Get the data encryption key from memory
                 let dataEncryptionKey = this.artifactDataKeys.get(artifactId);
@@ -1850,17 +1856,17 @@ class Sync {
                     this.artifactsSync.invalidate();
                     return;
                 }
-                
+
                 // Create artifact encryption instance
                 const artifactEncryption = new ArtifactEncryption(dataEncryptionKey);
-                
-                // Update artifact with new data  
+
+                // Update artifact with new data
                 const updatedArtifact: DecryptedArtifact = {
                     ...existingArtifact,
                     seq: updateData.seq,
                     updatedAt: updateData.createdAt,
                 };
-                
+
                 // Decrypt and update header if provided
                 if (artifactUpdate.header) {
                     const header = await artifactEncryption.decryptHeader(artifactUpdate.header.value);
@@ -1869,14 +1875,14 @@ class Sync {
                     updatedArtifact.draft = header?.draft;
                     updatedArtifact.headerVersion = artifactUpdate.header.version;
                 }
-                
+
                 // Decrypt and update body if provided
                 if (artifactUpdate.body) {
                     const body = await artifactEncryption.decryptBody(artifactUpdate.body.value);
                     updatedArtifact.body = body?.body || null;
                     updatedArtifact.bodyVersion = artifactUpdate.body.version;
                 }
-                
+
                 storage.getState().updateArtifact(updatedArtifact);
                 log.log(`📦 Updated artifact ${artifactId} in storage`);
             } catch (error) {
@@ -1886,16 +1892,16 @@ class Sync {
             log.log('📦 Received delete-artifact update');
             const artifactUpdate = updateData.body;
             const artifactId = artifactUpdate.artifactId;
-            
+
             // Remove from storage
             storage.getState().deleteArtifact(artifactId);
-            
+
             // Remove encryption key from memory
             this.artifactDataKeys.delete(artifactId);
         } else if (updateData.body.t === 'new-feed-post') {
             log.log('📰 Received new-feed-post update');
             const feedUpdate = updateData.body;
-            
+
             // Convert to FeedItem with counter from cursor
             const feedItem: FeedItem = {
                 id: feedUpdate.id,
@@ -1905,11 +1911,11 @@ class Sync {
                 repeatKey: feedUpdate.repeatKey,
                 counter: parseInt(feedUpdate.cursor.substring(2), 10)
             };
-            
+
             // Check if we need to fetch user for friend-related items
             if (feedItem.body && (feedItem.body.kind === 'friend_request' || feedItem.body.kind === 'friend_accepted')) {
                 await this.assumeUsers([feedItem.body.uid]);
-                
+
                 // Check if user fetch failed (404) - don't store item if user not found
                 const users = storage.getState().users;
                 const userProfile = users[feedItem.body.uid];
@@ -1919,7 +1925,7 @@ class Sync {
                     return;
                 }
             }
-            
+
             // Apply to storage (will handle repeatKey replacement)
             storage.getState().applyFeedItems([feedItem]);
         } else if (updateData.body.t === 'kv-batch-update') {

@@ -9,13 +9,14 @@ export interface AppConfig {
     elevenLabsAgentIdDev?: string;
     elevenLabsAgentIdProd?: string;
     serverUrl?: string;
+    enableGms: boolean;
 }
 
 /**
  * Loads app configuration from various manifest sources.
  * Looks for the "app" field in expoConfig.extra across different manifests
  * and merges them into a single configuration object.
- * 
+ *
  * Priority (later overrides earlier):
  * 1. ExponentConstants native module manifest (fetches embedded manifest)
  * 2. Constants.expoConfig
@@ -96,6 +97,13 @@ export function loadAppConfig(): AppConfig {
         console.log('[loadAppConfig] Override serverUrl from EXPO_PUBLIC_SERVER_URL');
         config.serverUrl = process.env.EXPO_PUBLIC_SERVER_URL;
     }
+
+    // Check if GMS is enabled based on expo-notifications plugin
+    const plugins = Constants.expoConfig?.plugins;
+    const hasNotificationsPlugin = Array.isArray(plugins) && plugins.some(p =>
+        (Array.isArray(p) && p[0] === 'expo-notifications') || p === 'expo-notifications'
+    );
+    config.enableGms = hasNotificationsPlugin;
 
     return config as AppConfig;
 }

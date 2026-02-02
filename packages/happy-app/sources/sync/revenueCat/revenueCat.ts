@@ -1,15 +1,15 @@
-import Purchases, { 
+import Purchases, {
     CustomerInfo as NativeCustomerInfo,
     PurchasesOfferings,
     PurchasesStoreProduct,
     LOG_LEVEL
 } from 'react-native-purchases';
 import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
-import { 
-    RevenueCatInterface, 
-    CustomerInfo, 
-    Product, 
-    Offerings, 
+import {
+    RevenueCatInterface,
+    CustomerInfo,
+    Product,
+    Offerings,
     PurchaseResult,
     RevenueCatConfig,
     LogLevel,
@@ -28,6 +28,9 @@ const logLevelMap = {
 
 class RevenueCatNative implements RevenueCatInterface {
     configure(config: RevenueCatConfig): void {
+        if (!config.apiKey) {
+            return;
+        }
         Purchases.configure({
             apiKey: config.apiKey,
             appUserID: config.appUserID,
@@ -56,7 +59,7 @@ class RevenueCatNative implements RevenueCatInterface {
         if (nativeProducts.length === 0) {
             throw new Error(`Product ${product.identifier} not found`);
         }
-        
+
         const result = await Purchases.purchaseStoreProduct(nativeProducts[0]);
         return {
             customerInfo: this.transformCustomerInfo(result.customerInfo)
@@ -83,11 +86,11 @@ class RevenueCatNative implements RevenueCatInterface {
                 const nativeOfferings = await Purchases.getOfferings();
                 nativeOffering = nativeOfferings.all[options.offering.identifier];
             }
-            
+
             const nativeResult = await RevenueCatUI.presentPaywall(nativeOffering ? {
                 offering: nativeOffering
             } : undefined);
-            
+
             // Map native paywall result to our enum
             switch (nativeResult) {
                 case PAYWALL_RESULT.NOT_PRESENTED:
@@ -118,12 +121,12 @@ class RevenueCatNative implements RevenueCatInterface {
                 const nativeOfferings = await Purchases.getOfferings();
                 nativeOffering = nativeOfferings.all[options.offering.identifier];
             }
-            
+
             const nativeResult = await RevenueCatUI.presentPaywallIfNeeded({
                 offering: nativeOffering,
                 requiredEntitlementIdentifier: options?.requiredEntitlementIdentifier || 'pro'
             });
-            
+
             // Map native paywall result to our enum
             switch (nativeResult) {
                 case PAYWALL_RESULT.NOT_PRESENTED:

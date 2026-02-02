@@ -1,4 +1,5 @@
 const variant = process.env.APP_ENV || 'development';
+const enableGms = process.env.ENABLE_GMS === "1";
 const name = {
     development: "Happy (dev)",
     preview: "Happy (preview)",
@@ -55,7 +56,7 @@ export default {
             ],
             edgeToEdgeEnabled: true,
             package: bundleId,
-            googleServicesFile: "./google-services.json",
+            googleServicesFile: enableGms ? "./google-services.json" : undefined,
             intentFilters: variant === 'production' ? [
                 {
                     "action": "VIEW",
@@ -123,12 +124,14 @@ export default {
                     recordAudioAndroid: true
                 }
             ],
-            [
-                "expo-notifications",
-                {
-                    "enableBackgroundRemoteNotifications": true
-                }
-            ],
+            ...(enableGms ? [
+                [
+                    "expo-notifications",
+                    {
+                        "enableBackgroundRemoteNotifications": true
+                    }
+                ]
+            ] : []),
             [
                 'expo-splash-screen',
                 {
