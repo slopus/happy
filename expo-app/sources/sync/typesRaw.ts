@@ -11,7 +11,7 @@ const usageDataSchema = z.object({
     cache_creation_input_tokens: z.number().optional(),
     cache_read_input_tokens: z.number().optional(),
     output_tokens: z.number(),
-    service_tier: z.string().optional(),
+    service_tier: z.string().nullish(),
 });
 
 export type UsageData = z.infer<typeof usageDataSchema>;
@@ -197,7 +197,7 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
         z.object({ type: z.literal('system') }),
         z.object({ type: z.literal('result') }),
         z.object({ type: z.literal('summary'), summary: z.string() }),
-        z.object({ type: z.literal('assistant'), message: z.object({ role: z.literal('assistant'), model: z.string(), content: z.array(rawAgentContentSchema), usage: usageDataSchema.optional() }), parent_tool_use_id: z.string().nullable().optional() }),
+        z.object({ type: z.literal('assistant'), message: z.object({ role: z.literal('assistant'), model: z.string().optional(), content: z.array(rawAgentContentSchema).optional(), usage: usageDataSchema.optional() }).passthrough(), parent_tool_use_id: z.string().nullable().optional() }),
         z.object({ type: z.literal('user'), message: z.object({ role: z.literal('user'), content: z.union([z.string(), z.array(rawAgentContentSchema)]) }), parent_tool_use_id: z.string().nullable().optional(), toolUseResult: z.any().nullable().optional() }),
         z.object({ type: z.literal('progress') }).passthrough(),  // Progress events (hook_progress, mcp_progress, etc.)
     ]), z.object({
@@ -474,7 +474,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     return null;
                 }
                 let content: NormalizedAgentContent[] = [];
-                for (let c of raw.content.data.message.content) {
+                // content may be undefined for API error messages
+                for (let c of raw.content.data.message.content ?? []) {
                     if (c.type === 'text') {
                         content.push({
                             ...c,  // WOLOG: Preserve all fields including unknown ones
