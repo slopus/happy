@@ -111,10 +111,10 @@ docker compose up -d
 | `S3_ACCESS_KEY` | MinIO access key |
 | `S3_SECRET_KEY` | MinIO secret key |
 
-### Connecting Clients
+### Connecting Clients to Your Server
 
-- **CLI:** `export HAPPY_SERVER_URL=https://happy-api.example.com`
-- **Mobile:** Tap server icon on login screen
+- **CLI:** `HAPPY_SERVER_URL=https://happy-api.example.com happy`
+- **Mobile:** Tap server icon on login screen to change server
 
 ## 📱 Building the Mobile App
 
