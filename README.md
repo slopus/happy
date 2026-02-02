@@ -86,6 +86,72 @@ On your computer, run `happy` instead of `claude` or `happy codex` instead of `c
 
 We're engineers scattered across Bay Area coffee shops and hacker houses, constantly checking how our AI coding agents are progressing on our pet projects during lunch breaks. Happy Coder was born from the frustration of not being able to peek at our AI coding tools building our side hustles while we're away from our keyboards. We believe the best tools come from scratching your own itch and sharing with the community.
 
+## 🖥️ Self-Hosting the Server
+
+You don't need to self-host - our free cloud server is just as secure since all data is end-to-end encrypted before reaching any server. But if you prefer running your own infrastructure:
+
+```bash
+git clone https://github.com/slopus/happy.git
+cd happy/packages/happy-server/deploy
+cp .env.example .env   # Edit with your values
+docker compose up -d
+```
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `API_DOMAIN` | API domain (e.g., `happy-api.example.com`) |
+| `S3_DOMAIN` | Files domain (e.g., `happy-files.example.com`) |
+| `S3_PUBLIC_URL` | Public file URL (e.g., `https://happy-files.example.com/happy`) |
+| `HANDY_MASTER_SECRET` | Token signing secret (`openssl rand -hex 32`) |
+| `POSTGRES_PASSWORD` | PostgreSQL password |
+| `S3_ACCESS_KEY` | MinIO access key |
+| `S3_SECRET_KEY` | MinIO secret key |
+
+### Connecting Clients
+
+- **CLI:** `export HAPPY_SERVER_URL=https://happy-api.example.com`
+- **Mobile:** Tap server icon on login screen
+
+## 📱 Building the Mobile App
+
+**Prerequisites:**
+- For iOS: Xcode, Apple Developer account
+- For Android: Android Studio with SDK
+
+**Build and install:**
+
+```bash
+cd packages/happy-app
+yarn install
+yarn prebuild
+
+# iOS
+yarn ios:dev                # Simulator
+yarn ios:connected-device   # Physical device via USB
+
+# Android
+yarn android:dev            # Emulator or connected device
+```
+
+**Android Wireless Debugging:**
+
+```bash
+# On your phone: Settings > Developer options > Wireless debugging > Pair device
+adb pair <IP>:<PAIRING_PORT> <PAIRING_CODE>
+adb connect <IP>:<CONNECTION_PORT>
+yarn android:dev
+```
+
+**Build Variants:**
+
+| Command | App Name | Use Case |
+|---------|----------|----------|
+| `yarn ios:dev` / `yarn android:dev` | Happy (dev) | Local development |
+| `yarn ios:preview` / `yarn android:preview` | Happy (preview) | Beta testing |
+| `yarn ios:production` / `yarn android:production` | Happy | Production |
+
 ## 📚 Documentation & Contributing
 
 - **[Documentation Website](https://happy.engineering/docs/)** - Learn how to use Happy Coder effectively
