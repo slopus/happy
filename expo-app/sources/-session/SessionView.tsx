@@ -237,6 +237,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         canAddMore,
     } = useImagePicker({ maxImages: 4 });
     const [isUploadingImages, setIsUploadingImages] = React.useState(false);
+    const [isSending, setIsSending] = React.useState(false);
 
     // Duplicate sheet state
     const [duplicateSheetVisible, setDuplicateSheetVisible] = React.useState(false);
@@ -541,22 +542,30 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
                     const imagesToSend = images.length > 0 ? [...images] : undefined;
 
-                    setMessage('');
-                    clearDraft();
-
+                    // Set sending state
+                    setIsSending(true);
                     if (imagesToSend) {
                         setIsUploadingImages(true);
                     }
-                    clearImages();
 
                     try {
-                        await sync.sendMessage(sessionId, messageToSend, undefined, imagesToSend);
-                        trackMessageSent();
+                        const result = await sync.sendMessage(sessionId, messageToSend, undefined, imagesToSend);
+
+                        if (result.success) {
+                            // Clear input only after successful send
+                            setMessage('');
+                            clearDraft();
+                            clearImages();
+                            trackMessageSent();
+                        }
+                        // On failure, keep the message in input for retry
                     } finally {
+                        setIsSending(false);
                         setIsUploadingImages(false);
                     }
                 }
             }}
+            isSending={isSending}
             onMicPress={micButtonState.onMicPress}
             isMicActive={micButtonState.isMicActive}
             onAbort={() => sessionAbort(sessionId)}

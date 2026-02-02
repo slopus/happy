@@ -233,20 +233,20 @@ class Sync {
     }
 
 
-    async sendMessage(sessionId: string, text: string, displayText?: string, images?: LocalImage[]) {
+    async sendMessage(sessionId: string, text: string, displayText?: string, images?: LocalImage[]): Promise<{ success: boolean; error?: string }> {
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);
         if (!encryption) { // Should never happen
             console.error(`Session ${sessionId} not found`);
-            return;
+            return { success: false, error: 'Session encryption not found' };
         }
 
         // Get session data from storage
         const session = storage.getState().sessions[sessionId];
         if (!session) {
             console.error(`Session ${sessionId} not found in storage`);
-            return;
+            return { success: false, error: 'Session not found' };
         }
 
         // Read permission mode from session state
@@ -325,26 +325,79 @@ class Sync {
         };
         const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
-        // Add to messages - normalize the raw record
+        // Prepare normalized message for later use
         const createdAt = Date.now();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
-        if (normalizedMessage) {
-            this.applyMessages(sessionId, [normalizedMessage]);
-        }
 
         const ready = await this.waitForAgentReady(sessionId);
         if (!ready) {
             log.log(`Session ${sessionId} not ready after timeout, sending anyway`);
         }
 
-        // Send message with optional permission mode and source identifier
-        apiSocket.send('message', {
-            sid: sessionId,
-            message: encryptedRawRecord,
-            localId,
-            sentFrom,
-            permissionMode: permissionMode || 'default'
-        });
+        // Send message with ack and retry fallback
+        const RETRY_INTERVAL_MS = 5000;
+        const MAX_RETRIES = 3;
+
+        type SendResponse = { result: 'success'; messageId: string; seq: number } | { result: 'error'; error: string } | { result: 'timeout' };
+
+        try {
+            const sendPromise = apiSocket.emitWithAck<{ result: string; messageId?: string; seq?: number; error?: string }>('message', {
+                sid: sessionId,
+                message: encryptedRawRecord,
+                localId,
+                sentFrom,
+                permissionMode: permissionMode || 'default'
+            });
+
+            const timeoutPromise = new Promise<{ result: 'timeout' }>((resolve) => {
+                setTimeout(() => resolve({ result: 'timeout' }), RETRY_INTERVAL_MS);
+            });
+
+            const response = await Promise.race([sendPromise, timeoutPromise]) as SendResponse;
+
+            if (response.result === 'timeout') {
+                // Timeout: retry by polling message list
+                log.log(`Message send timed out for session ${sessionId}, starting retry polling...`);
+
+                for (let i = 0; i < MAX_RETRIES; i++) {
+                    // Refresh message list to check if message was sent
+                    this.invalidateMessagesSync(sessionId);
+
+                    // Wait for sync to complete and check if message exists
+                    await new Promise(resolve => setTimeout(resolve, RETRY_INTERVAL_MS));
+
+                    // Check if message is now in the list (by localId)
+                    const sessionMessages = storage.getState().sessionMessages[sessionId];
+                    const messageFound = sessionMessages?.messages.some(
+                        (msg) => 'localId' in msg && msg.localId === localId
+                    );
+                    if (messageFound) {
+                        log.log(`Message ${localId} found after retry ${i + 1}`);
+                        return { success: true };
+                    }
+
+                    log.log(`Retry ${i + 1}/${MAX_RETRIES}: message ${localId} not found yet`);
+                }
+
+                // After all retries, assume success - server may still process it
+                log.log(`Message ${localId} not confirmed after ${MAX_RETRIES} retries, assuming success`);
+                return { success: true };
+            }
+
+            if (response.result === 'success') {
+                // Server confirmed, add message to local list
+                if (normalizedMessage) {
+                    this.applyMessages(sessionId, [normalizedMessage]);
+                }
+                return { success: true };
+            } else {
+                // Server returned error
+                return { success: false, error: response.error || 'Send failed' };
+            }
+        } catch (error) {
+            log.log(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
     }
 
     async changePermissionMode(sessionId: string, mode: PermissionMode): Promise<boolean> {

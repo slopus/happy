@@ -302,7 +302,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             }
         });
     });
-    socket.on('message', async (data: any) => {
+    socket.on('message', async (data: any, callback?: (response: any) => void) => {
         await receiveMessageLock.inLock(async () => {
             try {
                 websocketEventsCounter.inc({ event_type: 'message' });
@@ -315,6 +315,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                     where: { id: sid, accountId: userId }
                 });
                 if (!session) {
+                    if (callback) {
+                        callback({ result: 'error', error: 'Session not found' });
+                    }
                     return;
                 }
                 let useLocalId = typeof localId === 'string' ? localId : null;
@@ -335,7 +338,11 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                         where: { sessionId: sid, localId: useLocalId }
                     });
                     if (existing) {
-                        return { msg: existing, update: null };
+                        // Message already exists, return success with existing message info
+                        if (callback) {
+                            callback({ result: 'success', messageId: existing.id, seq: existing.seq });
+                        }
+                        return;
                     }
                 }
 
@@ -357,8 +364,16 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                     recipientFilter: { type: 'all-interested-in-session', sessionId: sid },
                     skipSenderConnection: connection
                 });
+
+                // Return success response
+                if (callback) {
+                    callback({ result: 'success', messageId: msg.id, seq: msg.seq });
+                }
             } catch (error) {
                 log({ module: 'websocket', level: 'error' }, `Error in message handler: ${error}`);
+                if (callback) {
+                    callback({ result: 'error', error: error instanceof Error ? error.message : 'Unknown error' });
+                }
             }
         });
     });
