@@ -57,6 +57,7 @@ export class PermissionHandler {
     }
 
     handleModeChange(mode: PermissionMode) {
+        logger.debug(`[PermissionHandler] handleModeChange: ${this.permissionMode} -> ${mode}`);
         this.permissionMode = mode;
     }
 
@@ -141,11 +142,15 @@ export class PermissionHandler {
         // Handle special cases
         //
 
+        logger.debug(`[PermissionHandler] handleToolCall: tool=${toolName}, permissionMode=${this.permissionMode}`);
+
         if (this.permissionMode === 'bypassPermissions') {
+            logger.debug(`[PermissionHandler] Bypassing permissions for tool=${toolName} (YOLO mode)`);
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
         if (this.permissionMode === 'acceptEdits' && descriptor.edit) {
+            logger.debug(`[PermissionHandler] Auto-approving edit tool=${toolName} (acceptEdits mode)`);
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
@@ -342,6 +347,7 @@ export class PermissionHandler {
         this.allowedTools.clear();
         this.allowedBashLiterals.clear();
         this.allowedBashPrefixes.clear();
+        this.permissionMode = 'default'; // Reset to default so new session starts fresh
 
         // Cancel all pending requests
         for (const [, pending] of this.pendingRequests.entries()) {
