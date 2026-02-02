@@ -1,4 +1,4 @@
-name: Deploy Server to korroni.cloud
+name: Deploy Server
 
 on:
   push:
@@ -57,7 +57,7 @@ jobs:
 
       - name: Output image
         id: image
-        run: echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
+        run: echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_OUTPUT
 
   deploy:
     needs: build-and-push
@@ -65,7 +65,7 @@ jobs:
     environment: deployment
 
     steps:
-      - name: Deploy to korroni.cloud
+      - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -75,12 +75,12 @@ jobs:
           script: |
             set -e
 
-            # Configuration
+            # Configuration (set these secrets in GitHub)
             CONTAINER_NAME="happy-server"
             IMAGE_NAME="${{ needs.build-and-push.outputs.image }}"
-            NETWORK="${{ secrets.DOCKER_NETWORK || 'traefik' }}"
-            API_DOMAIN="happy-api.korroni.cloud"
-            S3_DOMAIN="happy-files.korroni.cloud"
+            NETWORK="${{ secrets.DOCKER_NETWORK }}"
+            API_DOMAIN="${{ secrets.API_DOMAIN }}"
+            S3_DOMAIN="${{ secrets.S3_DOMAIN }}"
 
             echo "🚀 Starting deployment of Happy Server..."
 
