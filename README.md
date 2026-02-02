@@ -88,7 +88,9 @@ We're engineers scattered across Bay Area coffee shops and hacker houses, consta
 
 ## 🖥️ Self-Hosting the Server
 
-You don't need to self-host - our free cloud server is just as secure since all data is end-to-end encrypted before reaching any server. But if you prefer running your own infrastructure:
+**You don't need to self-host!** Our free cloud Happy Server at `happy-api.slopus.com` is just as secure as running your own. Since all data is end-to-end encrypted before it reaches our servers, we literally cannot read your messages even if we wanted to. The encryption happens on your device, and only you have the keys.
+
+That said, Happy Server is open source and self-hostable if you prefer running your own infrastructure. The security model is identical whether you use our servers or your own.
 
 ```bash
 git clone https://github.com/slopus/happy.git
