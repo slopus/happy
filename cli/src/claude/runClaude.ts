@@ -1,5 +1,6 @@
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { copyFile, mkdir, stat } from 'node:fs/promises';
 
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
@@ -23,11 +24,13 @@ import { backfillClaudeSessionHistory } from '@/claude/utils/claudeBackfill';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/utils/generateHookSettings';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { projectPath } from '../projectPath';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
+import { findClaudeProjectId } from '@/claude/utils/claudeSessionIndex';
+import { getProjectPath } from '@/claude/utils/path';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -228,6 +231,46 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const backfilledSessions = new Set<string>();
     const backfillInFlight = new Set<string>();
 
+    const ensureResumeSessionFileAvailable = async (sessionId: string) => {
+        const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(os.homedir(), '.claude');
+        const resolvedProjectDir = getProjectPath(workingDirectory);
+        const rawProjectId = workingDirectory.replace(/[\\\/\.: _]/g, '-');
+        const rawProjectDir = join(claudeConfigDir, 'projects', rawProjectId);
+        const targetDirs = new Set([resolvedProjectDir, rawProjectDir]);
+
+        const sourceProjectId = await findClaudeProjectId(sessionId);
+        if (!sourceProjectId) {
+            logger.debug(`[START] Resume session file not found in any Claude project: ${sessionId}`);
+            return;
+        }
+
+        const sourcePath = join(claudeConfigDir, 'projects', sourceProjectId, `${sessionId}.jsonl`);
+        logger.debug(`[START] Resume session file source: ${sourcePath}`);
+
+        for (const targetDir of targetDirs) {
+            const targetPath = join(targetDir, `${sessionId}.jsonl`);
+            if (targetPath === sourcePath) {
+                logger.debug(`[START] Resume session file already present (source): ${targetPath}`);
+                continue;
+            }
+            try {
+                await stat(targetPath);
+                logger.debug(`[START] Resume session file already present: ${targetPath}`);
+                continue;
+            } catch {
+                // File missing; we'll copy it below.
+            }
+
+            try {
+                await mkdir(targetDir, { recursive: true });
+                await copyFile(sourcePath, targetPath);
+                logger.debug(`[START] Copied resume session file into project dir: ${targetPath}`);
+            } catch (error) {
+                logger.debug('[START] Resume session copy error details', { targetPath, error });
+            }
+        }
+    };
+
     const runBackfill = async (sessionId: string) => {
         if (!shouldBackfill) return;
         if (backfilledSessions.has(sessionId)) return;
@@ -263,6 +306,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // If we already know the resume session ID, backfill immediately (don't wait for hook)
     if (resumeSessionId) {
+        await ensureResumeSessionFileAvailable(resumeSessionId);
         runBackfill(resumeSessionId).catch((error) => {
             logger.debug('[START] Backfill failed:', error);
         });
