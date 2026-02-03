@@ -492,9 +492,11 @@ export const ru: TranslationStructure = {
             default: 'По умолчанию',
             acceptEdits: 'Принимать правки',
             plan: 'Режим планирования',
-            bypassPermissions: 'YOLO режим',
+            bypassPermissions: 'Privileged',
+            yolo: 'YOLO',
             badgeAcceptAllEdits: 'Принимать все правки',
-            badgeBypassAllPermissions: 'Обход всех разрешений',
+            badgeBypassAllPermissions: 'Privileged',
+            badgeYolo: 'YOLO',
             badgePlanMode: 'Режим планирования',
         },
         agent: {

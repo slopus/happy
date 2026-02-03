@@ -53,7 +53,7 @@ const modeConfig = {
     },
 };
 
-const modeOrder: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+const modeOrder: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'];
 
 export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
     mode,

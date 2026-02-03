@@ -483,9 +483,11 @@ export const zhHant: TranslationStructure = {
             default: '預設',
             acceptEdits: '接受編輯',
             plan: '計畫模式',
-            bypassPermissions: 'Yolo 模式',
+            bypassPermissions: '特權模式',
+            yolo: 'YOLO',
             badgeAcceptAllEdits: '接受所有編輯',
-            badgeBypassAllPermissions: '繞過所有權限',
+            badgeBypassAllPermissions: '特權模式',
+            badgeYolo: 'YOLO',
             badgePlanMode: '計畫模式',
         },
         agent: {

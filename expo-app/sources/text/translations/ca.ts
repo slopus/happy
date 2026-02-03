@@ -482,9 +482,11 @@ export const ca: TranslationStructure = {
             default: 'Per defecte',
             acceptEdits: 'Accepta edicions',
             plan: 'Mode de planificació',
-            bypassPermissions: 'Mode Yolo',
+            bypassPermissions: 'Privileged',
+            yolo: 'YOLO',
             badgeAcceptAllEdits: 'Accepta totes les edicions',
-            badgeBypassAllPermissions: 'Omet tots els permisos',
+            badgeBypassAllPermissions: 'Privileged',
+            badgeYolo: 'YOLO',
             badgePlanMode: 'Mode de planificació',
         },
         agent: {

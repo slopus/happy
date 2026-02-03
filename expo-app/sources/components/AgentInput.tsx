@@ -566,7 +566,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
                 const modeOrder: PermissionMode[] = isCodex
                     ? ['default', 'read-only', 'safe-yolo', 'yolo']
-                    : ['default', 'acceptEdits', 'plan', 'bypassPermissions']; // Claude and Gemini share same modes
+                    : ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo']; // Claude and Gemini share same modes
                 const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
                 const nextIndex = (currentIndex + 1) % modeOrder.length;
                 props.onPermissionModeChange(modeOrder[nextIndex]);
@@ -627,7 +627,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     </Text>
                                     {((isCodex || isGemini)
                                         ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
-                                        : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
+                                        : (['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'] as const)
                                     ).map((mode) => {
                                         const modeConfig = isCodex ? {
                                             'default': { label: t('agentInput.codexPermissionMode.default') },
@@ -644,6 +644,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             acceptEdits: { label: t('agentInput.permissionMode.acceptEdits') },
                                             plan: { label: t('agentInput.permissionMode.plan') },
                                             bypassPermissions: { label: t('agentInput.permissionMode.bypassPermissions') },
+                                            yolo: { label: t('agentInput.permissionMode.yolo') },
                                         };
                                         const config = modeConfig[mode as keyof typeof modeConfig];
                                         if (!config) return null;
@@ -930,7 +931,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         props.permissionMode === 'default' ? t('agentInput.permissionMode.default') :
                                             props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
                                                 props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
-                                                    props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
+                                                    props.permissionMode === 'yolo' ? t('agentInput.permissionMode.badgeYolo') :
+                                                        props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
                                     )}
                                 </Text>
                             )}

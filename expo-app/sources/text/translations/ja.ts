@@ -514,9 +514,11 @@ export const ja: TranslationStructure = {
             default: 'デフォルト',
             acceptEdits: '編集を許可',
             plan: 'プランモード',
-            bypassPermissions: 'Yoloモード',
+            bypassPermissions: 'Privileged',
+            yolo: 'YOLO',
             badgeAcceptAllEdits: 'すべての編集を許可',
-            badgeBypassAllPermissions: 'すべての権限をバイパス',
+            badgeBypassAllPermissions: 'Privileged',
+            badgeYolo: 'YOLO',
             badgePlanMode: 'プランモード',
         },
         agent: {

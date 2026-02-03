@@ -141,7 +141,13 @@ export class PermissionHandler {
         // Handle special cases
         //
 
-        if (this.permissionMode === 'bypassPermissions') {
+        // YOLO mode: auto-approve everything (including AskUserQuestion)
+        if (this.permissionMode === 'yolo') {
+            return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
+        }
+
+        // Privileged mode (bypassPermissions): auto-approve everything EXCEPT AskUserQuestion
+        if (this.permissionMode === 'bypassPermissions' && toolName !== 'AskUserQuestion') {
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 

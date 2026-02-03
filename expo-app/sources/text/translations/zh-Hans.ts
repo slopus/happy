@@ -484,9 +484,11 @@ export const zhHans: TranslationStructure = {
             default: '默认',
             acceptEdits: '接受编辑',
             plan: '计划模式',
-            bypassPermissions: 'Yolo 模式',
+            bypassPermissions: '特权模式',
+            yolo: 'YOLO',
             badgeAcceptAllEdits: '接受所有编辑',
-            badgeBypassAllPermissions: '绕过所有权限',
+            badgeBypassAllPermissions: '特权模式',
+            badgeYolo: 'YOLO',
             badgePlanMode: '计划模式',
         },
         agent: {
