@@ -279,6 +279,7 @@ export const es: TranslationStructure = {
         unknownError: 'Error desconocido',
         connectionTimeout: 'Se agotó el tiempo de conexión',
         authenticationFailed: 'Falló la autenticación',
+        notAuthenticated: 'No autenticado',
         permissionDenied: 'Permiso denegado',
         fileNotFound: 'Archivo no encontrado',
         invalidFormat: 'Formato inválido',

@@ -295,6 +295,7 @@ export const en: TranslationStructure = {
         unknownError: 'An unknown error occurred',
         connectionTimeout: 'Connection timed out',
         authenticationFailed: 'Authentication failed',
+        notAuthenticated: 'Not authenticated',
         permissionDenied: 'Permission denied',
         fileNotFound: 'File not found',
         invalidFormat: 'Invalid format',

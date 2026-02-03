@@ -280,6 +280,7 @@ export const zhHant: TranslationStructure = {
         unknownError: '發生未知錯誤',
         connectionTimeout: '連線逾時',
         authenticationFailed: '驗證失敗',
+        notAuthenticated: '未登入',
         permissionDenied: '權限被拒絕',
         fileNotFound: '檔案未找到',
         invalidFormat: '格式無效',

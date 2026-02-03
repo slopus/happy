@@ -261,6 +261,7 @@ export const ru: TranslationStructure = {
         unknownError: 'Произошла неизвестная ошибка',
         connectionTimeout: 'Время соединения истекло',
         authenticationFailed: 'Ошибка авторизации',
+        notAuthenticated: 'Не авторизован',
         permissionDenied: 'Доступ запрещен',
         fileNotFound: 'Файл не найден',
         invalidFormat: 'Неверный формат',

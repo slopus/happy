@@ -311,6 +311,7 @@ export const ja: TranslationStructure = {
         unknownError: '不明なエラーが発生しました',
         connectionTimeout: '接続がタイムアウトしました',
         authenticationFailed: '認証に失敗しました',
+        notAuthenticated: '認証されていません',
         permissionDenied: '権限がありません',
         fileNotFound: 'ファイルが見つかりません',
         invalidFormat: 'フォーマットが無効です',

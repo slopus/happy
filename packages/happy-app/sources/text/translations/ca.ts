@@ -279,6 +279,7 @@ export const ca: TranslationStructure = {
         unknownError: 'Error desconegut',
         connectionTimeout: 'S\'ha esgotat el temps de connexió',
         authenticationFailed: 'L\'autenticació ha fallat',
+        notAuthenticated: 'No autenticat',
         permissionDenied: 'Permís denegat',
         fileNotFound: 'Fitxer no trobat',
         invalidFormat: 'Format no vàlid',

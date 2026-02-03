@@ -279,6 +279,7 @@ export const en = {
         unknownError: 'An unknown error occurred',
         connectionTimeout: 'Connection timed out',
         authenticationFailed: 'Authentication failed',
+        notAuthenticated: 'Not authenticated',
         permissionDenied: 'Permission denied',
         fileNotFound: 'File not found',
         invalidFormat: 'Invalid format',

@@ -308,6 +308,7 @@ export const it: TranslationStructure = {
         unknownError: 'Si è verificato un errore sconosciuto',
         connectionTimeout: 'Connessione scaduta',
         authenticationFailed: 'Autenticazione non riuscita',
+        notAuthenticated: 'Non autenticato',
         permissionDenied: 'Permesso negato',
         fileNotFound: 'File non trovato',
         invalidFormat: 'Formato non valido',

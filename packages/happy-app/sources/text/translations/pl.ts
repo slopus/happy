@@ -290,6 +290,7 @@ export const pl: TranslationStructure = {
         unknownError: 'Wystąpił nieznany błąd',
         connectionTimeout: 'Przekroczono czas oczekiwania na połączenie',
         authenticationFailed: 'Uwierzytelnienie nie powiodło się',
+        notAuthenticated: 'Nie zalogowano',
         permissionDenied: 'Brak uprawnień',
         fileNotFound: 'Plik nie został znaleziony',
         invalidFormat: 'Nieprawidłowy format',

@@ -279,6 +279,7 @@ export const pt: TranslationStructure = {
         unknownError: 'Ocorreu um erro desconhecido',
         connectionTimeout: 'Tempo limite da conexão esgotado',
         authenticationFailed: 'Falha na autenticação',
+        notAuthenticated: 'Não autenticado',
         permissionDenied: 'Permissão negada',
         fileNotFound: 'Arquivo não encontrado',
         invalidFormat: 'Formato inválido',

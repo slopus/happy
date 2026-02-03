@@ -281,6 +281,7 @@ export const zhHans: TranslationStructure = {
         unknownError: '发生未知错误',
         connectionTimeout: '连接超时',
         authenticationFailed: '认证失败',
+        notAuthenticated: '未登录',
         permissionDenied: '权限被拒绝',
         fileNotFound: '文件未找到',
         invalidFormat: '格式无效',
