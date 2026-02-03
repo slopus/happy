@@ -70,7 +70,7 @@ const styles = StyleSheet.create((theme) => ({
         marginTop: 16,
     },
     connectButtonText: {
-        color: '#FFFFFF',
+        color: theme.colors.button.primary.tint,
         fontSize: 16,
         ...Typography.default('semiBold'),
     },
@@ -88,9 +88,10 @@ const styles = StyleSheet.create((theme) => ({
 interface SessionItemProps {
     session: OpenClawSession;
     onPress: () => void;
+    showDivider?: boolean;
 }
 
-const SessionItem = React.memo(({ session, onPress }: SessionItemProps) => {
+const SessionItem = React.memo(({ session, onPress, showDivider = true }: SessionItemProps) => {
     const { theme } = useUnistyles();
 
     // Get session display name
@@ -144,6 +145,7 @@ const SessionItem = React.memo(({ session, onPress }: SessionItemProps) => {
             leftElement={iconElement}
             onPress={onPress}
             showChevron={true}
+            showDivider={showDivider}
         />
     );
 });
@@ -676,11 +678,12 @@ export default function OpenClawMachineDetailPage() {
 
                 {!initialLoading && isConnected && sessions.length > 0 && (
                     <ItemGroup title={t('openclaw.sessions')}>
-                        {sessions.map((session) => (
+                        {sessions.map((session, index) => (
                             <SessionItem
                                 key={session.key}
                                 session={session}
                                 onPress={() => handleSessionPress(session)}
+                                showDivider={index < sessions.length - 1}
                             />
                         ))}
                     </ItemGroup>

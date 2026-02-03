@@ -92,7 +92,7 @@ const styles = StyleSheet.create((theme) => ({
         ...Typography.default(),
     },
     userMessageText: {
-        color: '#FFFFFF',
+        color: theme.colors.button.primary.tint,
     },
     inputContainer: {
         paddingHorizontal: 16,
@@ -764,7 +764,7 @@ export default function OpenClawChatPage() {
                         <Ionicons
                             name="arrow-up"
                             size={18}
-                            color={canSend ? '#FFFFFF' : theme.colors.textSecondary}
+                            color={canSend ? theme.colors.button.primary.tint : theme.colors.textSecondary}
                         />
                     </Pressable>
                 </View>

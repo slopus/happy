@@ -358,6 +358,14 @@ export const SettingsView = React.memo(function SettingsView() {
                     icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
                     onPress={() => router.push('/settings/profiles')}
                 />
+                {experiments && (
+                    <Item
+                        title={t('settings.usage')}
+                        subtitle={t('settings.usageSubtitle')}
+                        icon={<Ionicons name="analytics-outline" size={29} color="#007AFF" />}
+                        onPress={() => router.push('/settings/usage')}
+                    />
+                )}
                 <Item
                     title={t('tabs.openclaw')}
                     subtitle={t('settings.openclawSubtitle')}
@@ -371,14 +379,6 @@ export const SettingsView = React.memo(function SettingsView() {
                     }
                     onPress={() => router.push('/openclaw')}
                 />
-                {experiments && (
-                    <Item
-                        title={t('settings.usage')}
-                        subtitle={t('settings.usageSubtitle')}
-                        icon={<Ionicons name="analytics-outline" size={29} color="#007AFF" />}
-                        onPress={() => router.push('/settings/usage')}
-                    />
-                )}
             </ItemGroup>
 
             {/* Developer */}

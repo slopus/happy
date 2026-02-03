@@ -74,7 +74,7 @@ const styles = StyleSheet.create((theme) => ({
         opacity: 0.5,
     },
     submitButtonText: {
-        color: '#FFFFFF',
+        color: theme.colors.button.primary.tint,
         fontSize: 17,
         ...Typography.default('semiBold'),
     },

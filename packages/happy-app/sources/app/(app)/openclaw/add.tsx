@@ -63,7 +63,7 @@ const styles = StyleSheet.create((theme) => ({
         opacity: 0.5,
     },
     submitButtonText: {
-        color: '#FFFFFF',
+        color: theme.colors.button.primary.tint,
         fontSize: 17,
         ...Typography.default('semiBold'),
     },
@@ -80,9 +80,10 @@ interface MachineItemProps {
     machine: Machine;
     isSelected: boolean;
     onSelect: () => void;
+    showDivider?: boolean;
 }
 
-const MachineItem = React.memo(({ machine, isSelected, onSelect }: MachineItemProps) => {
+const MachineItem = React.memo(({ machine, isSelected, onSelect, showDivider = true }: MachineItemProps) => {
     const { theme } = useUnistyles();
 
     return (
@@ -97,6 +98,7 @@ const MachineItem = React.memo(({ machine, isSelected, onSelect }: MachineItemPr
             )}
             onPress={onSelect}
             showChevron={false}
+            showDivider={showDivider}
         />
     );
 });
@@ -258,12 +260,13 @@ export default function AddOpenClawMachinePage() {
                                     showChevron={false}
                                 />
                             ) : (
-                                machines.map((machine) => (
+                                machines.map((machine, index) => (
                                     <MachineItem
                                         key={machine.id}
                                         machine={machine}
                                         isSelected={selectedMachineId === machine.id}
                                         onSelect={() => setSelectedMachineId(machine.id)}
+                                        showDivider={index < machines.length - 1}
                                     />
                                 ))
                             )}
@@ -328,7 +331,7 @@ export default function AddOpenClawMachinePage() {
                     disabled={!canSubmit || isSubmitting}
                 >
                     {isSubmitting ? (
-                        <ActivityIndicator color="#FFFFFF" />
+                        <ActivityIndicator color={theme.colors.button.primary.tint} />
                     ) : (
                         <Text style={styles.submitButtonText}>{t('openclaw.addMachine')}</Text>
                     )}

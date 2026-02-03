@@ -56,7 +56,7 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 8,
     },
     addButtonText: {
-        color: '#FFFFFF',
+        color: theme.colors.button.primary.tint,
         fontSize: 16,
         ...Typography.default('semiBold'),
     },
@@ -75,9 +75,10 @@ interface OpenClawMachineCardProps {
     machine: OpenClawMachine;
     happyMachine?: Machine | null;
     onPress: () => void;
+    showDivider?: boolean;
 }
 
-const OpenClawMachineCard = React.memo(({ machine, happyMachine, onPress }: OpenClawMachineCardProps) => {
+const OpenClawMachineCard = React.memo(({ machine, happyMachine, onPress, showDivider = true }: OpenClawMachineCardProps) => {
     const { theme } = useUnistyles();
 
     // Determine machine name
@@ -118,6 +119,7 @@ const OpenClawMachineCard = React.memo(({ machine, happyMachine, onPress }: Open
             rightElement={statusElement}
             onPress={onPress}
             showChevron={true}
+            showDivider={showDivider}
         />
     );
 });
@@ -188,12 +190,13 @@ export const OpenClawView = React.memo(() => {
                 paddingBottom: 24,
             }}>
                 <ItemGroup>
-                    {openClawMachines.map((machine) => (
+                    {openClawMachines.map((machine, index) => (
                         <OpenClawMachineCard
                             key={machine.id}
                             machine={machine}
                             happyMachine={machine.type === 'happy' && machine.happyMachineId ? happyMachinesMap.get(machine.happyMachineId) : null}
                             onPress={() => handleMachinePress(machine.id)}
+                            showDivider={index < openClawMachines.length - 1}
                         />
                     ))}
                 </ItemGroup>
