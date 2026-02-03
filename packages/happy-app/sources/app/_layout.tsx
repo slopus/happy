@@ -1,4 +1,5 @@
 import 'react-native-quick-base64';
+import '@/encryption/ed25519.setup';
 import '../theme.css';
 import * as React from 'react';
 import * as SplashScreen from 'expo-splash-screen';
