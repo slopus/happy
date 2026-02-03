@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -11,6 +12,7 @@ import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { getServerUrl, setServerUrl, validateServerUrl, getServerInfo } from '@/sync/serverConfig';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useAuth } from '@/auth/AuthContext';
 
 const stylesheet = StyleSheet.create((theme) => ({
     keyboardAvoidingView: {
@@ -78,7 +80,8 @@ const stylesheet = StyleSheet.create((theme) => ({
 export default function ServerConfigScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
-    const router = useRouter();
+    const navigation = useNavigation();
+    const { logout } = useAuth();
     const serverInfo = getServerInfo();
     const [inputUrl, setInputUrl] = useState(serverInfo.isCustom ? getServerUrl() : '');
     const [error, setError] = useState<string | null>(null);
@@ -142,6 +145,13 @@ export default function ServerConfigScreen() {
 
         if (confirmed) {
             setServerUrl(inputUrl);
+            await logout();
+            navigation.dispatch(
+                CommonActions.reset({
+                    index: 0,
+                    routes: [{ name: 'index' }],
+                })
+            );
         }
     };
 
@@ -155,6 +165,13 @@ export default function ServerConfigScreen() {
         if (confirmed) {
             setServerUrl(null);
             setInputUrl('');
+            await logout();
+            navigation.dispatch(
+                CommonActions.reset({
+                    index: 0,
+                    routes: [{ name: 'index' }],
+                })
+            );
         }
     };
 
