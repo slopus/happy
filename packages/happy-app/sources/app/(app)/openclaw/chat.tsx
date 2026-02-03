@@ -17,12 +17,12 @@ import {
     FlatList,
     Pressable,
     ActivityIndicator,
-    KeyboardAvoidingView,
     Platform,
     useWindowDimensions,
     Animated,
     Easing,
 } from 'react-native';
+import { AgentContentView } from '@/components/AgentContentView';
 import { randomUUID } from 'expo-crypto';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -685,12 +685,95 @@ export default function OpenClawChatPage() {
 
     const canSend = inputText.trim().length > 0 && isConnected && !isStreaming;
 
+    // Content: message list (only when we have messages)
+    const content = messages.length > 0 ? (
+        <FlatList
+            ref={flatListRef}
+            style={styles.messageList}
+            contentContainerStyle={styles.messageListContent}
+            data={[...messages].reverse()}
+            keyExtractor={(item) => item.localId}
+            renderItem={({ item }) => (
+                <MessageItem
+                    message={item}
+                    onRetry={handleRetry}
+                />
+            )}
+            inverted
+            onScroll={handleScroll}
+            scrollEventThrottle={100}
+            onContentSizeChange={() => {
+                if (shouldForceScrollRef.current || userNearBottomRef.current) {
+                    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+                    shouldForceScrollRef.current = false;
+                }
+            }}
+            maintainVisibleContentPosition={{
+                minIndexForVisible: 0,
+            }}
+        />
+    ) : null;
+
+    // Placeholder: loading or empty state
+    const placeholder = isLoading ? (
+        <View style={styles.emptyContainer}>
+            <ActivityIndicator size="large" color={theme.colors.textSecondary} />
+        </View>
+    ) : messages.length === 0 ? (
+        <View style={styles.emptyContainer}>
+            <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.textSecondary} />
+            <Text style={[styles.emptyTitle, { marginTop: 16 }]}>
+                {t('openclaw.noSessions')}
+            </Text>
+            <Text style={styles.emptyDescription}>
+                {t('openclaw.noSessionsDescription')}
+            </Text>
+        </View>
+    ) : null;
+
+    // Input area
+    const input = (
+        <View style={[styles.inputContainer, { paddingBottom: safeArea.bottom + 16 }]}>
+            <View style={styles.inputInner}>
+                <View style={[
+                    styles.inputPanel,
+                    !(isConnected && !isStreaming) && { opacity: 0.5 },
+                ]}>
+                    <View style={styles.inputWrapper}>
+                        <MultiTextInput
+                            value={inputText}
+                            onChangeText={setInputText}
+                            placeholder={t('session.inputPlaceholder')}
+                            maxHeight={150}
+                            lineHeight={24}
+                            paddingTop={4}
+                            paddingBottom={4}
+                            onKeyPress={handleKeyPress}
+                        />
+                    </View>
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.sendButton,
+                            canSend ? styles.sendButtonActive : styles.sendButtonDisabled,
+                            pressed && canSend && { opacity: 0.7 },
+                        ]}
+                        onPress={handleSend}
+                        disabled={!canSend}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                        <Ionicons
+                            name="arrow-up"
+                            size={18}
+                            color={canSend ? '#FFFFFF' : theme.colors.textSecondary}
+                        />
+                    </Pressable>
+                </View>
+            </View>
+        </View>
+    );
+
     return (
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={100}
-        >
+        <View style={styles.container}>
             <Stack.Screen
                 options={{
                     headerLeft: () => (
@@ -728,88 +811,11 @@ export default function OpenClawChatPage() {
                     headerRight: () => null,
                 }}
             />
-
-            {/* Messages list */}
-            {isLoading ? (
-                <View style={styles.emptyContainer}>
-                    <ActivityIndicator size="large" color={theme.colors.textSecondary} />
-                </View>
-            ) : messages.length === 0 ? (
-                <View style={styles.emptyContainer}>
-                    <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.textSecondary} />
-                    <Text style={[styles.emptyTitle, { marginTop: 16 }]}>
-                        {t('openclaw.noSessions')}
-                    </Text>
-                    <Text style={styles.emptyDescription}>
-                        {t('openclaw.noSessionsDescription')}
-                    </Text>
-                </View>
-            ) : (
-                <FlatList
-                    ref={flatListRef}
-                    style={styles.messageList}
-                    contentContainerStyle={styles.messageListContent}
-                    data={[...messages].reverse()}
-                    keyExtractor={(item) => item.localId}
-                    renderItem={({ item }) => (
-                        <MessageItem
-                            message={item}
-                            onRetry={handleRetry}
-                        />
-                    )}
-                    inverted
-                    onScroll={handleScroll}
-                    scrollEventThrottle={100}
-                    onContentSizeChange={() => {
-                        if (shouldForceScrollRef.current || userNearBottomRef.current) {
-                            flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
-                            shouldForceScrollRef.current = false;
-                        }
-                    }}
-                    maintainVisibleContentPosition={{
-                        minIndexForVisible: 0,
-                    }}
-                />
-            )}
-
-            {/* Input area */}
-            <View style={[styles.inputContainer, { paddingBottom: safeArea.bottom + 16 }]}>
-                <View style={styles.inputInner}>
-                    <View style={[
-                        styles.inputPanel,
-                        !(isConnected && !isStreaming) && { opacity: 0.5 },
-                    ]}>
-                        <View style={styles.inputWrapper}>
-                            <MultiTextInput
-                                value={inputText}
-                                onChangeText={setInputText}
-                                placeholder={t('session.inputPlaceholder')}
-                                maxHeight={150}
-                                lineHeight={24}
-                                paddingTop={4}
-                                paddingBottom={4}
-                                onKeyPress={handleKeyPress}
-                            />
-                        </View>
-                        <Pressable
-                            style={({ pressed }) => [
-                                styles.sendButton,
-                                canSend ? styles.sendButtonActive : styles.sendButtonDisabled,
-                                pressed && canSend && { opacity: 0.7 },
-                            ]}
-                            onPress={handleSend}
-                            disabled={!canSend}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                            <Ionicons
-                                name="arrow-up"
-                                size={18}
-                                color={canSend ? '#FFFFFF' : theme.colors.textSecondary}
-                            />
-                        </Pressable>
-                    </View>
-                </View>
-            </View>
-        </KeyboardAvoidingView>
+            <AgentContentView
+                content={content}
+                input={input}
+                placeholder={placeholder}
+            />
+        </View>
     );
 }
