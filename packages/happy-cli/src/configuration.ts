@@ -27,6 +27,12 @@ class Configuration {
   public readonly isExperimentalEnabled: boolean
   public readonly disableCaffeinate: boolean
 
+  // Proxy configuration
+  // If set, socket.io connections will use this proxy
+  // Falls back to standard env vars: HTTPS_PROXY, HTTP_PROXY, ALL_PROXY
+  public readonly proxyUrl: string | undefined
+  public readonly noProxy: string | undefined
+
   constructor() {
     // Server configuration - priority: parameter > environment > default
     this.serverUrl = process.env.HAPPY_SERVER_URL || 'https://api.cluster-fluster.com'
@@ -53,6 +59,10 @@ class Configuration {
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
     this.disableCaffeinate = ['true', '1', 'yes'].includes(process.env.HAPPY_DISABLE_CAFFEINATE?.toLowerCase() || '');
+
+    // Proxy configuration - explicit Happy config takes priority over standard env vars
+    this.proxyUrl = process.env.HAPPY_PROXY_URL;
+    this.noProxy = process.env.HAPPY_NO_PROXY || process.env.NO_PROXY || process.env.no_proxy;
 
     this.currentCliVersion = packageJson.version
 

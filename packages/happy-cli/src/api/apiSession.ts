@@ -11,6 +11,7 @@ import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
+import { getSocketProxyOptions } from '@/utils/proxyAgent';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -79,6 +80,16 @@ export class ApiSessionClient extends EventEmitter {
         // Create socket
         //
 
+        // Get proxy options based on environment/configuration
+        const proxyOptions = getSocketProxyOptions(configuration.serverUrl, {
+            url: configuration.proxyUrl,
+            noProxy: configuration.noProxy
+        });
+
+        if (proxyOptions.agent) {
+            logger.debug('[API] Using proxy agent for socket connection');
+        }
+
         this.socket = io(configuration.serverUrl, {
             auth: {
                 token: this.token,
@@ -92,7 +103,8 @@ export class ApiSessionClient extends EventEmitter {
             reconnectionDelayMax: 5000,
             transports: ['websocket'],
             withCredentials: true,
-            autoConnect: false
+            autoConnect: false,
+            ...proxyOptions
         });
 
         //
