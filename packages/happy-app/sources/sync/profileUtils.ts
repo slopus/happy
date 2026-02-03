@@ -143,7 +143,7 @@ export Z_AI_HAIKU_MODEL="GLM-4.5-Air"`,
         case 'openai':
             return {
                 setupGuideUrl: 'https://platform.openai.com/docs/api-reference',
-                description: 'OpenAI GPT-5 Codex API for code generation and completion',
+                description: 'OpenAI GPT-5.2 Codex API for code generation and completion',
                 environmentVariables: [
                     {
                         name: 'OPENAI_BASE_URL',
@@ -159,13 +159,13 @@ export Z_AI_HAIKU_MODEL="GLM-4.5-Air"`,
                     },
                     {
                         name: 'OPENAI_MODEL',
-                        expectedValue: 'gpt-5-codex-high',
+                        expectedValue: 'gpt-5.2-codex-high',
                         description: 'Default model for code tasks',
                         isSecret: false,
                     },
                     {
                         name: 'OPENAI_SMALL_FAST_MODEL',
-                        expectedValue: 'gpt-5-codex-low',
+                        expectedValue: 'gpt-5.2-codex-low',
                         description: 'Fast model for quick responses',
                         isSecret: false,
                     },
@@ -173,8 +173,8 @@ export Z_AI_HAIKU_MODEL="GLM-4.5-Air"`,
                 shellConfigExample: `# Add to ~/.zshrc or ~/.bashrc:
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 export OPENAI_API_KEY="sk-YOUR_OPENAI_API_KEY"
-export OPENAI_MODEL="gpt-5-codex-high"
-export OPENAI_SMALL_FAST_MODEL="gpt-5-codex-low"`,
+export OPENAI_MODEL="gpt-5.2-codex-high"
+export OPENAI_SMALL_FAST_MODEL="gpt-5.2-codex-low"`,
             };
         case 'azure-openai':
             return {
@@ -306,15 +306,15 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
         case 'openai':
             return {
                 id: 'openai',
-                name: 'OpenAI (GPT-5)',
+                name: 'OpenAI (GPT-5.2)',
                 openaiConfig: {},
                 environmentVariables: [
                     { name: 'OPENAI_BASE_URL', value: 'https://api.openai.com/v1' },
-                    { name: 'OPENAI_MODEL', value: 'gpt-5-codex-high' },
+                    { name: 'OPENAI_MODEL', value: 'gpt-5.2-codex-high' },
                     { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
-                    { name: 'OPENAI_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
+                    { name: 'OPENAI_SMALL_FAST_MODEL', value: 'gpt-5.2-codex-low' },
                     { name: 'API_TIMEOUT_MS', value: '600000' },
-                    { name: 'CODEX_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
+                    { name: 'CODEX_SMALL_FAST_MODEL', value: 'gpt-5.2-codex-low' },
                 ],
                 compatibility: { claude: false, codex: true, gemini: false },
                 isBuiltIn: true,
@@ -366,7 +366,7 @@ export const DEFAULT_PROFILES = [
     },
     {
         id: 'openai',
-        name: 'OpenAI (GPT-5)',
+        name: 'OpenAI (GPT-5.2)',
         isBuiltIn: true,
     },
     {

@@ -109,7 +109,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     contentContainer: {
         width: '100%',
         alignSelf: 'center',
-        paddingTop: rt.insets.top,
+        paddingTop: Platform.OS === 'web' ? rt.insets.top : 0,
         paddingBottom: 16,
     },
     wizardContainer: {
@@ -152,7 +152,7 @@ const styles = StyleSheet.create((theme, rt) => ({
         width: 20,
         height: 20,
         borderRadius: 10,
-        backgroundColor: theme.colors.button.primary.background,
+        backgroundColor: '#000000',
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 10,
@@ -534,34 +534,28 @@ function NewSessionWizard() {
         }
     }, [selectedMachineId, dismissedCLIWarnings, setDismissedCLIWarnings]);
 
-    // Helper to check if profile is available (compatible + CLI detected)
-    const isProfileAvailable = React.useCallback((profile: AIBackendProfile): { available: boolean; reason?: string } => {
-        // Check profile compatibility with selected agent type
-        if (!validateProfileForAgent(profile, agentType)) {
-            // Build list of agents this profile supports (excluding current)
-            // Uses Object.entries to iterate over compatibility flags - scales automatically with new agents
-            const supportedAgents = (Object.entries(profile.compatibility) as [string, boolean][])
-                .filter(([agent, supported]) => supported && agent !== agentType)
-                .map(([agent]) => agent.charAt(0).toUpperCase() + agent.slice(1)); // 'claude' -> 'Claude'
-            const required = supportedAgents.join(' or ') || 'another agent';
-            return {
-                available: false,
-                reason: `requires-agent:${required}`,
-            };
-        }
-
-        // Check if required CLI is detected on machine (only if detection completed)
-        // Determine required CLI: if profile supports exactly one CLI, that CLI is required
-        // Uses Object.entries to iterate - scales automatically when new agents are added
+    // Helper to check if profile is available (CLI detected)
+    // Note: Profile-agent compatibility no longer disables selection - selecting a profile will auto-switch agent
+    const isProfileAvailable = React.useCallback((profile: AIBackendProfile): { available: boolean; reason?: string; willSwitchAgent?: string } => {
+        // Determine which CLI(s) this profile supports
         const supportedCLIs = (Object.entries(profile.compatibility) as [string, boolean][])
             .filter(([, supported]) => supported)
             .map(([agent]) => agent);
         const requiredCLI = supportedCLIs.length === 1 ? supportedCLIs[0] as 'claude' | 'codex' | 'gemini' : null;
 
+        // Only disable if required CLI is not detected on machine
         if (requiredCLI && cliAvailability[requiredCLI] === false) {
             return {
                 available: false,
                 reason: `cli-not-detected:${requiredCLI}`,
+            };
+        }
+
+        // Check if selecting this profile will switch agent (for informational purposes)
+        if (!validateProfileForAgent(profile, agentType) && requiredCLI) {
+            return {
+                available: true,
+                willSwitchAgent: requiredCLI,
             };
         }
 
@@ -841,16 +835,11 @@ function NewSessionWizard() {
             parts.push('Codex CLI');
         }
 
-        // Add availability warning if unavailable
-        if (!availability.available && availability.reason) {
-            if (availability.reason.startsWith('requires-agent:')) {
-                const required = availability.reason.split(':')[1];
-                parts.push(`⚠️ This profile uses ${required} CLI only`);
-            } else if (availability.reason.startsWith('cli-not-detected:')) {
-                const cli = availability.reason.split(':')[1];
-                const cliName = cli === 'claude' ? 'Claude' : 'Codex';
-                parts.push(`⚠️ ${cliName} CLI not detected (this profile needs it)`);
-            }
+        // Add warning only if CLI not detected
+        if (!availability.available && availability.reason?.startsWith('cli-not-detected:')) {
+            const cli = availability.reason.split(':')[1];
+            const cliName = cli === 'claude' ? 'Claude' : cli === 'codex' ? 'Codex' : 'Gemini';
+            parts.push(`⚠️ ${cliName} CLI not detected`);
         }
 
         // Get model name - check both anthropicConfig and environmentVariables
@@ -1521,22 +1510,16 @@ function NewSessionWizard() {
                                         onPress={() => availability.available && selectProfile(profile.id)}
                                         disabled={!availability.available}
                                     >
-                                        <View style={[styles.profileIcon, { backgroundColor: theme.colors.button.secondary.tint }]}>
-                                            <Text style={{ fontSize: 16, color: theme.colors.button.primary.tint, ...Typography.default() }}>
-                                                {profile.compatibility.claude && profile.compatibility.codex ? '✳꩜' :
-                                                 profile.compatibility.claude ? '✳' : '꩜'}
-                                            </Text>
+                                        <View style={styles.profileIcon}>
+                                            <Ionicons name="person" size={12} color="#FFFFFF" />
                                         </View>
-                                        <View style={{ flex: 1 }}>
+                                        <View style={{ flex: 1, marginRight: 12 }}>
                                             <Text style={styles.profileListName}>{profile.name}</Text>
-                                            <Text style={styles.profileListDetails}>
+                                            <Text style={styles.profileListDetails} numberOfLines={2}>
                                                 {getProfileSubtitle(profile)}
                                             </Text>
                                         </View>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                            {selectedProfileId === profile.id && (
-                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
-                                            )}
                                             <Pressable
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                                 onPress={(e) => {
@@ -1588,31 +1571,23 @@ function NewSessionWizard() {
                                         disabled={!availability.available}
                                     >
                                         <View style={styles.profileIcon}>
-                                            <Text style={{ fontSize: 16, color: theme.colors.button.primary.tint, ...Typography.default() }}>
-                                                {profile.compatibility.claude && profile.compatibility.codex ? '✳꩜' :
-                                                 profile.compatibility.claude ? '✳' : '꩜'}
-                                            </Text>
+                                            <Ionicons name="star" size={12} color="#FFFFFF" />
                                         </View>
-                                        <View style={{ flex: 1 }}>
+                                        <View style={{ flex: 1, marginRight: 12 }}>
                                             <Text style={styles.profileListName}>{profile.name}</Text>
-                                            <Text style={styles.profileListDetails}>
+                                            <Text style={styles.profileListDetails} numberOfLines={2}>
                                                 {getProfileSubtitle(profile)}
                                             </Text>
                                         </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                            {selectedProfileId === profile.id && (
-                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
-                                            )}
-                                            <Pressable
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                onPress={(e) => {
-                                                    e.stopPropagation();
-                                                    handleEditProfile(profile);
-                                                }}
-                                            >
-                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                            </Pressable>
-                                        </View>
+                                        <Pressable
+                                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                            onPress={(e) => {
+                                                e.stopPropagation();
+                                                handleEditProfile(profile);
+                                            }}
+                                        >
+                                            <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                        </Pressable>
                                     </Pressable>
                                 );
                             })}
@@ -1854,6 +1829,7 @@ function NewSessionWizard() {
                                         { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
                                         { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
                                         { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
+                                        { value: 'yolo' as PermissionMode, label: 'YOLO', description: 'No confirmations at all', icon: 'warning-outline' },
                                     ]
                                 ).map((option, index, array) => (
                                     <Item
@@ -1864,23 +1840,18 @@ function NewSessionWizard() {
                                             <Ionicons
                                                 name={option.icon as any}
                                                 size={24}
-                                                color={permissionMode === option.value ? theme.colors.button.primary.tint : theme.colors.textSecondary}
+                                                color={permissionMode === option.value ? theme.colors.button.primary.background : theme.colors.textSecondary}
                                             />
                                         }
-                                        rightElement={permissionMode === option.value ? (
-                                            <Ionicons
-                                                name="checkmark-circle"
-                                                size={20}
-                                                color={theme.colors.button.primary.tint}
-                                            />
-                                        ) : null}
+                                        rightElement={null}
                                         onPress={() => setPermissionMode(option.value)}
                                         showChevron={false}
                                         selected={permissionMode === option.value}
+                                        hideSelectedCheckmark={true}
                                         showDivider={index < array.length - 1}
                                         style={permissionMode === option.value ? {
                                             borderWidth: 2,
-                                            borderColor: theme.colors.button.primary.tint,
+                                            borderColor: theme.colors.button.primary.background,
                                             borderRadius: Platform.select({ ios: 10, default: 16 }),
                                         } : undefined}
                                     />

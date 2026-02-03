@@ -64,6 +64,17 @@ export function ProfileEditForm({
         return 'claude'; // Default to Claude if both or neither
     });
 
+    // Reset permission mode when agent type changes if current mode is invalid
+    React.useEffect(() => {
+        const claudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'];
+        const codexModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+        const validModes = agentType === 'codex' ? codexModes : claudeModes;
+
+        if (!validModes.includes(defaultPermissionMode)) {
+            setDefaultPermissionMode('default');
+        }
+    }, [agentType, defaultPermissionMode]);
+
     const handleSave = () => {
         if (!name.trim()) {
             // Profile name validation - prevent saving empty profiles
@@ -140,7 +151,7 @@ export function ProfileEditForm({
                             borderColor: theme.colors.button.primary.background,
                         }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                                <Ionicons name="information-circle" size={20} color={theme.colors.button.primary.tint} style={{ marginRight: 8 }} />
+                                <Ionicons name="information-circle" size={20} color={theme.colors.button.primary.background} style={{ marginRight: 8 }} />
                                 <Text style={{
                                     fontSize: 15,
                                     fontWeight: '600',
@@ -230,12 +241,18 @@ export function ProfileEditForm({
                         Default Permission Mode
                     </Text>
                     <ItemGroup title="">
-                        {[
+                        {(agentType === 'codex' ? [
+                            { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
+                            { value: 'read-only' as PermissionMode, label: 'Read Only', description: 'No file modifications', icon: 'eye-outline' },
+                            { value: 'safe-yolo' as PermissionMode, label: 'Safe YOLO', description: 'Auto-approve safe operations', icon: 'shield-checkmark-outline' },
+                            { value: 'yolo' as PermissionMode, label: 'YOLO', description: 'No confirmations at all', icon: 'warning-outline' },
+                        ] : [
                             { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
                             { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
                             { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
                             { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
-                        ].map((option, index, array) => (
+                            { value: 'yolo' as PermissionMode, label: 'YOLO', description: 'No confirmations at all', icon: 'warning-outline' },
+                        ]).map((option, index, array) => (
                             <Item
                                 key={option.value}
                                 title={option.label}
@@ -244,24 +261,19 @@ export function ProfileEditForm({
                                     <Ionicons
                                         name={option.icon as any}
                                         size={24}
-                                        color={defaultPermissionMode === option.value ? theme.colors.button.primary.tint : theme.colors.textSecondary}
+                                        color={defaultPermissionMode === option.value ? theme.colors.button.primary.background : theme.colors.textSecondary}
                                     />
                                 }
-                                rightElement={defaultPermissionMode === option.value ? (
-                                    <Ionicons
-                                        name="checkmark-circle"
-                                        size={20}
-                                        color={theme.colors.button.primary.tint}
-                                    />
-                                ) : null}
+                                rightElement={null}
                                 onPress={() => setDefaultPermissionMode(option.value)}
                                 showChevron={false}
                                 selected={defaultPermissionMode === option.value}
+                                hideSelectedCheckmark={true}
                                 showDivider={index < array.length - 1}
                                 style={defaultPermissionMode === option.value ? {
                                     borderWidth: 2,
-                                    borderColor: theme.colors.button.primary.tint,
-                                    borderRadius: 8,
+                                    borderColor: theme.colors.button.primary.background,
+                                    borderRadius: Platform.select({ ios: 10, default: 16 }),
                                 } : undefined}
                             />
                         ))}
@@ -503,6 +515,8 @@ export function ProfileEditForm({
                                 borderRadius: 8,
                                 padding: 12,
                                 alignItems: 'center',
+                                borderWidth: 1,
+                                borderColor: theme.colors.textSecondary,
                             }}
                             onPress={onCancel}
                         >

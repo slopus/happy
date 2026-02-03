@@ -106,20 +106,25 @@ export function EnvironmentVariableCard({
             marginBottom: theme.margins.md
         }}>
             {/* Header row with variable name and action buttons */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <Text style={{
-                    fontSize: 12,
-                    fontWeight: '600',
-                    color: theme.colors.text,
-                    ...Typography.default('semiBold')
-                }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 8 }}>
+                <Text
+                    style={{
+                        flex: 1,
+                        fontSize: 12,
+                        fontWeight: '600',
+                        color: theme.colors.text,
+                        ...Typography.default('semiBold')
+                    }}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                >
                     {variable.name}
                     {isSecret && (
                         <Ionicons name="lock-closed" size={theme.iconSize.small} color={theme.colors.textDestructive} style={{ marginLeft: 4 }} />
                     )}
                 </Text>
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.margins.md }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.margins.md, flexShrink: 0 }}>
                     <Pressable
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         onPress={onDelete}

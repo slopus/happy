@@ -30,6 +30,7 @@ export interface ItemProps {
     disabled?: boolean;
     loading?: boolean;
     selected?: boolean;
+    hideSelectedCheckmark?: boolean; // Hide checkmark when selected, only show border
     destructive?: boolean;
     style?: StyleProp<ViewStyle>;
     titleStyle?: StyleProp<TextStyle>;
@@ -135,6 +136,7 @@ export const Item = React.memo<ItemProps>((props) => {
         disabled,
         loading,
         selected,
+        hideSelectedCheckmark,
         destructive,
         style,
         titleStyle,
@@ -262,7 +264,7 @@ export const Item = React.memo<ItemProps>((props) => {
                         />
                     )}
                     {rightElement}
-                    {selected && (
+                    {selected && !hideSelectedCheckmark && (
                         <Ionicons
                             name="checkmark"
                             size={chevronSize}

@@ -154,7 +154,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     selectedItemStyle: {
         borderWidth: 2,
-        borderColor: theme.colors.button.primary.tint,
+        borderColor: theme.colors.button.primary.background,
         borderRadius: ITEM_BORDER_RADIUS,
     },
     compactItemStyle: {
@@ -168,7 +168,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     showMoreTitle: {
         textAlign: 'center',
-        color: theme.colors.button.primary.tint,
+        color: theme.colors.button.primary.background,
     },
 }));
 
@@ -430,18 +430,12 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 rightElement={
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_SPACING_GAP }}>
                         {renderStatus(status)}
-                        {isSelected && (
-                            <Ionicons
-                                name="checkmark-circle"
-                                size={20}
-                                color={theme.colors.button.primary.tint}
-                            />
-                        )}
                     </View>
                 }
                 onPress={() => handleSelectItem(item)}
                 showChevron={false}
                 selected={isSelected}
+                hideSelectedCheckmark={true}
                 showDivider={showDividerOverride !== undefined ? showDividerOverride : !isLast}
                 style={[
                     styles.itemBackground,
@@ -602,13 +596,6 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                         rightElement={
                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_SPACING_GAP }}>
                                                 {renderStatus(status)}
-                                                {isSelected && (
-                                                    <Ionicons
-                                                        name="checkmark-circle"
-                                                        size={20}
-                                                        color={theme.colors.button.primary.tint}
-                                                    />
-                                                )}
                                                 {onToggleFavorite && canRemove && (
                                                     <Pressable
                                                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -625,6 +612,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                         onPress={() => handleSelectItem(item)}
                                         showChevron={false}
                                         selected={isSelected}
+                                        hideSelectedCheckmark={true}
                                         showDivider={!isLast}
                                         style={[
                                             styles.itemBackground,

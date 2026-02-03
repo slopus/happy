@@ -9,14 +9,17 @@ import { t } from '@/text';
 import { ProfileEditForm } from '@/components/ProfileEditForm';
 import { AIBackendProfile } from '@/sync/settings';
 import { layout } from '@/components/layout';
-import { callbacks } from '../index';
+import { useSettingMutable } from '@/sync/storage';
+import { DEFAULT_PROFILES } from '@/sync/profileUtils';
+import { randomUUID } from 'expo-crypto';
 
-export default function ProfileEditScreen() {
+export default function SettingsProfileEditScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
-    const params = useLocalSearchParams<{ profileData?: string; machineId?: string }>();
+    const params = useLocalSearchParams<{ profileData?: string }>();
     const screenWidth = useWindowDimensions().width;
     const headerHeight = useHeaderHeight();
+    const [profiles, setProfiles] = useSettingMutable('profiles');
 
     // Deserialize profile from URL params
     const profile: AIBackendProfile = React.useMemo(() => {
@@ -29,11 +32,11 @@ export default function ProfileEditScreen() {
         }
         // Return empty profile for new profile creation
         return {
-            id: '',
+            id: randomUUID(),
             name: '',
             anthropicConfig: {},
             environmentVariables: [],
-            compatibility: { claude: true, codex: true },
+            compatibility: { claude: true, codex: true, gemini: true },
             isBuiltIn: false,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -42,8 +45,56 @@ export default function ProfileEditScreen() {
     }, [params.profileData]);
 
     const handleSave = (savedProfile: AIBackendProfile) => {
-        // Call the callback to notify wizard of saved profile
-        callbacks.onProfileSaved(savedProfile);
+        // Profile validation - ensure name is not empty
+        if (!savedProfile.name || savedProfile.name.trim() === '') {
+            return;
+        }
+
+        // Check if this is a built-in profile being edited
+        const isBuiltIn = DEFAULT_PROFILES.some(bp => bp.id === savedProfile.id);
+
+        // For built-in profiles, create a new custom profile instead of modifying the built-in
+        if (isBuiltIn) {
+            const newProfile: AIBackendProfile = {
+                ...savedProfile,
+                id: randomUUID(), // Generate new UUID for custom profile
+                isBuiltIn: false,
+            };
+
+            // Check for duplicate names (excluding the new profile)
+            const isDuplicate = profiles.some(p =>
+                p.name.trim() === newProfile.name.trim()
+            );
+            if (isDuplicate) {
+                return;
+            }
+
+            setProfiles([...profiles, newProfile]);
+        } else {
+            // Handle custom profile updates
+            // Check for duplicate names (excluding current profile if editing)
+            const isDuplicate = profiles.some(p =>
+                p.id !== savedProfile.id && p.name.trim() === savedProfile.name.trim()
+            );
+            if (isDuplicate) {
+                return;
+            }
+
+            const existingIndex = profiles.findIndex(p => p.id === savedProfile.id);
+            let updatedProfiles: AIBackendProfile[];
+
+            if (existingIndex >= 0) {
+                // Update existing profile
+                updatedProfiles = [...profiles];
+                updatedProfiles[existingIndex] = savedProfile;
+            } else {
+                // Add new profile
+                updatedProfiles = [...profiles, savedProfile];
+            }
+
+            setProfiles(updatedProfiles);
+        }
+
         router.back();
     };
 
@@ -55,7 +106,7 @@ export default function ProfileEditScreen() {
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + headerHeight : 0}
-            style={profileEditScreenStyles.container}
+            style={styles.container}
         >
             <Stack.Screen
                 options={{
@@ -71,7 +122,7 @@ export default function ProfileEditScreen() {
                 ]}>
                     <ProfileEditForm
                         profile={profile}
-                        machineId={params.machineId || null}
+                        machineId={null}
                         onSave={handleSave}
                         onCancel={handleCancel}
                     />
@@ -81,7 +132,7 @@ export default function ProfileEditScreen() {
     );
 }
 
-const profileEditScreenStyles = StyleSheet.create((theme, rt) => ({
+const styles = StyleSheet.create((theme, rt) => ({
     container: {
         flex: 1,
         backgroundColor: theme.colors.surface,
