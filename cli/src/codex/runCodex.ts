@@ -411,13 +411,17 @@ export async function runCodex(opts: {
         }
     }
     permissionHandler = new CodexPermissionHandler(session);
+    // Track whether any message was sent to Happy during this turn
+    let messageSentThisTurn = false;
     const reasoningProcessor = new ReasoningProcessor((message) => {
         // Callback to send messages directly from the processor
         session.sendCodexMessage(message);
+        messageSentThisTurn = true;
     });
     const diffProcessor = new DiffProcessor((message) => {
         // Callback to send messages directly from the processor
         session.sendCodexMessage(message);
+        messageSentThisTurn = true;
     });
     client.setPermissionHandler(permissionHandler);
     client.setHandler((msg) => {
@@ -441,11 +445,29 @@ export async function runCodex(opts: {
             );
         } else if (msg.type === 'task_started') {
             messageBuffer.addMessage('Starting task...', 'status');
+            // Reset the flag at the start of a new task
+            messageSentThisTurn = false;
         } else if (msg.type === 'task_complete') {
             messageBuffer.addMessage('Task completed', 'status');
+            // If no message was sent to Happy during this turn, send a status message
+            if (!messageSentThisTurn) {
+                session.sendCodexMessage({
+                    type: 'message',
+                    message: '[Codex completed without response]',
+                    id: randomUUID()
+                });
+            }
             sendReady();
         } else if (msg.type === 'turn_aborted') {
             messageBuffer.addMessage('Turn aborted', 'status');
+            // If no message was sent to Happy during this turn, send a status message
+            if (!messageSentThisTurn) {
+                session.sendCodexMessage({
+                    type: 'message',
+                    message: '[Codex turn aborted]',
+                    id: randomUUID()
+                });
+            }
             sendReady();
         }
 
@@ -483,6 +505,7 @@ export async function runCodex(opts: {
                 message: msg.message,
                 id: randomUUID()
             });
+            messageSentThisTurn = true;
         }
         if (msg.type === 'exec_command_begin' || msg.type === 'exec_approval_request') {
             let { call_id, type, ...inputs } = msg;
@@ -493,6 +516,7 @@ export async function runCodex(opts: {
                 input: inputs,
                 id: randomUUID()
             });
+            messageSentThisTurn = true;
         }
         if (msg.type === 'exec_command_end') {
             let { call_id, type, ...output } = msg;
@@ -502,12 +526,14 @@ export async function runCodex(opts: {
                 output: output,
                 id: randomUUID()
             });
+            messageSentThisTurn = true;
         }
         if (msg.type === 'token_count') {
             session.sendCodexMessage({
                 ...msg,
                 id: randomUUID()
             });
+            // token_count doesn't count as a real message
         }
         if (msg.type === 'patch_apply_begin') {
             // Handle the start of a patch operation
@@ -529,6 +555,7 @@ export async function runCodex(opts: {
                 },
                 id: randomUUID()
             });
+            messageSentThisTurn = true;
         }
         if (msg.type === 'patch_apply_end') {
             // Handle the end of a patch operation
@@ -554,6 +581,7 @@ export async function runCodex(opts: {
                 },
                 id: randomUUID()
             });
+            messageSentThisTurn = true;
         }
         if (msg.type === 'turn_diff') {
             // Handle turn_diff messages and track unified_diff changes
@@ -724,10 +752,22 @@ export async function runCodex(opts: {
                         (startConfig.config as any).experimental_resume = resumeFile;
                     }
 
-                    await client.startSession(
+                    const startResponse = await client.startSession(
                         startConfig,
                         { signal: abortController.signal }
                     );
+
+                    // Check for error response and send to Happy
+                    if (startResponse.isError) {
+                        const errorText = startResponse.content?.[0]?.text || 'Unknown Codex error';
+                        session.sendCodexMessage({
+                            type: 'message',
+                            message: `[Codex Error] ${errorText}`,
+                            id: randomUUID()
+                        });
+                        messageSentThisTurn = true;
+                    }
+
                     wasCreated = true;
                     first = false;
                 } else {
@@ -745,6 +785,17 @@ export async function runCodex(opts: {
                         { signal: abortController.signal }
                     );
                     logger.debug('[Codex] continueSession response:', response);
+
+                    // Check for error response and send to Happy
+                    if (response.isError) {
+                        const errorText = response.content?.[0]?.text || 'Unknown Codex error';
+                        session.sendCodexMessage({
+                            type: 'message',
+                            message: `[Codex Error] ${errorText}`,
+                            id: randomUUID()
+                        });
+                        messageSentThisTurn = true;
+                    }
                 }
             } catch (error) {
                 logger.warn('Error in codex session:', error);
