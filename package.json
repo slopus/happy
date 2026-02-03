@@ -17,5 +17,11 @@
             "**/react-native-incall-manager/**"
         ]
     },
+    "scripts": {
+        "postinstall": "patch-package"
+    },
+    "devDependencies": {
+        "patch-package": "^8.0.0"
+    },
     "packageManager": "yarn@1.22.22"
 }
