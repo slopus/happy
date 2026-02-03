@@ -7,7 +7,7 @@
       "@/*": [
         "./sources/*"
       ],
-      "hello-world": [ "../hello-world" ]
+      "hello-world": [ "../../hello-world" ]
     },
     "jsx": "react-jsx",
     "esModuleInterop": true,

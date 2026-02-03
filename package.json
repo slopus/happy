@@ -3,9 +3,9 @@
     "private": true,
     "workspaces": {
         "packages": [
-            "expo-app",
-            "cli",
-            "server"
+            "packages/happy-app",
+            "packages/happy-cli",
+            "packages/happy-server"
         ],
         "nohoist": [
             "**/zod",
