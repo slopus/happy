@@ -6,20 +6,21 @@
  * Supports drag-to-resize functionality.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
     View,
     Modal,
     TouchableWithoutFeedback,
     Animated,
     Platform,
-    ScrollView,
+    FlatList,
     ActivityIndicator,
     Pressable,
     PanResponder,
     useWindowDimensions,
     ViewStyle,
     TextStyle,
+    ListRenderItemInfo,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native-unistyles';
@@ -66,7 +67,6 @@ export function SessionPreviewSheet({
     const currentHeightRef = useRef(windowHeight * DEFAULT_HEIGHT_RATIO);
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(300)).current;
-    const scrollViewRef = useRef<ScrollView>(null);
     const dragStartY = useRef(0);
     const dragStartHeight = useRef(0);
     // Cache entry for display during close animation
@@ -144,16 +144,6 @@ export function SessionPreviewSheet({
             });
         }
     }, [visible, onClosed]);
-
-    // Scroll to bottom when messages are loaded or sheet becomes visible with cached messages
-    useEffect(() => {
-        if (visible && messages && messages.length > 0 && !loading) {
-            // Small delay to ensure layout is complete
-            setTimeout(() => {
-                scrollViewRef.current?.scrollToEnd({ animated: false });
-            }, 50);
-        }
-    }, [visible, messages, loading]);
 
     const handleClose = () => {
         onClose();
@@ -233,59 +223,57 @@ export function SessionPreviewSheet({
                         </Pressable>
                     </View>
 
-                    {/* Content */}
-                    <ScrollView
-                        ref={scrollViewRef}
-                        style={styles.content as ViewStyle}
-                        contentContainerStyle={styles.contentContainer as ViewStyle}
-                        showsVerticalScrollIndicator={false}
-                    >
-                        {loading ? (
-                            <View style={styles.loadingContainer as ViewStyle}>
-                                <ActivityIndicator size="small" color="#8E8E93" />
-                                <Text style={styles.loadingText as TextStyle}>{t('common.loading')}</Text>
-                            </View>
-                        ) : messages && messages.length > 0 ? (
-                            <>
-                                {/* Top hint for hidden messages */}
-                                {hasOlderMessages && (
-                                    <Text style={styles.olderMessagesHint as TextStyle}>
-                                        {t('sessionPreview.olderMessagesHint')}
-                                    </Text>
-                                )}
-                                {messages.map((msg, index) => (
+                    {/* Content - using inverted FlatList to avoid scroll flash */}
+                    {loading ? (
+                        <View style={[styles.content as ViewStyle, styles.loadingContainer as ViewStyle]}>
+                            <ActivityIndicator size="small" color="#8E8E93" />
+                            <Text style={styles.loadingText as TextStyle}>{t('common.loading')}</Text>
+                        </View>
+                    ) : (
+                        <FlatList
+                            data={messages ? [...messages].reverse() : []}
+                            inverted={true}
+                            style={styles.content as ViewStyle}
+                            contentContainerStyle={styles.contentContainer as ViewStyle}
+                            showsVerticalScrollIndicator={false}
+                            keyExtractor={(_, index) => index.toString()}
+                            renderItem={({ item: msg }: ListRenderItemInfo<ClaudeSessionPreviewMessage>) => (
+                                <View
+                                    style={[
+                                        styles.message as ViewStyle,
+                                        msg.role === 'user' ? styles.userMessage as ViewStyle : styles.assistantMessage as ViewStyle,
+                                    ]}
+                                >
                                     <View
-                                        key={index}
                                         style={[
-                                            styles.message as ViewStyle,
-                                            msg.role === 'user' ? styles.userMessage as ViewStyle : styles.assistantMessage as ViewStyle,
+                                            styles.messageBubble as ViewStyle,
+                                            msg.role === 'user' ? styles.userBubble as ViewStyle : styles.assistantBubble as ViewStyle,
                                         ]}
                                     >
-                                        <View
+                                        <Text
                                             style={[
-                                                styles.messageBubble as ViewStyle,
-                                                msg.role === 'user' ? styles.userBubble as ViewStyle : styles.assistantBubble as ViewStyle,
+                                                styles.messageText as TextStyle,
+                                                msg.role === 'user' ? styles.userText as TextStyle : styles.assistantText as TextStyle,
                                             ]}
+                                            numberOfLines={6}
                                         >
-                                            <Text
-                                                style={[
-                                                    styles.messageText as TextStyle,
-                                                    msg.role === 'user' ? styles.userText as TextStyle : styles.assistantText as TextStyle,
-                                                ]}
-                                                numberOfLines={6}
-                                            >
-                                                {msg.content}
-                                            </Text>
-                                        </View>
+                                            {msg.content}
+                                        </Text>
                                     </View>
-                                ))}
-                            </>
-                        ) : (
-                            <View style={styles.emptyContainer as ViewStyle}>
-                                <Text style={styles.emptyText as TextStyle}>{t('sessionPreview.noMessages')}</Text>
-                            </View>
-                        )}
-                    </ScrollView>
+                                </View>
+                            )}
+                            ListEmptyComponent={
+                                <View style={styles.emptyContainer as ViewStyle}>
+                                    <Text style={styles.emptyText as TextStyle}>{t('sessionPreview.noMessages')}</Text>
+                                </View>
+                            }
+                            ListFooterComponent={hasOlderMessages ? (
+                                <Text style={styles.olderMessagesHint as TextStyle}>
+                                    {t('sessionPreview.olderMessagesHint')}
+                                </Text>
+                            ) : null}
+                        />
+                    )}
 
                     {/* Footer */}
                     <View style={styles.footer as ViewStyle}>
@@ -383,6 +371,7 @@ const styles = StyleSheet.create((theme) => ({
     contentContainer: {
         padding: 16,
         gap: 12,
+        flexGrow: 1,
     },
     loadingContainer: {
         alignItems: 'center',
@@ -408,7 +397,7 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
         color: theme.colors.textSecondary,
         paddingVertical: 8,
-        marginBottom: 4,
+        marginTop: 4,
     },
     message: {
         maxWidth: '85%',
