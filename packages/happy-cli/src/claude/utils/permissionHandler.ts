@@ -146,8 +146,10 @@ export class PermissionHandler {
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
-        // Privileged mode (bypassPermissions): auto-approve everything EXCEPT AskUserQuestion
-        if (this.permissionMode === 'bypassPermissions' && toolName !== 'AskUserQuestion') {
+        // Privileged mode (bypassPermissions): auto-approve everything EXCEPT user interaction tools
+        // These tools require explicit user approval even in privileged mode
+        const requiresUserApproval = ['AskUserQuestion', 'ExitPlanMode', 'exit_plan_mode'];
+        if (this.permissionMode === 'bypassPermissions' && !requiresUserApproval.includes(toolName)) {
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
