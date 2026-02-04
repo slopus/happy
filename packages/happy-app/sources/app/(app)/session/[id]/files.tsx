@@ -33,29 +33,39 @@ export default function FilesScreen() {
     const { theme } = useUnistyles();
     
     // Load git status files
-    const loadGitStatusFiles = React.useCallback(async () => {
+    const loadGitStatusFiles = React.useCallback(async (silent: boolean = false) => {
         try {
-            setIsLoading(true);
+            // Only show loading indicator on initial load (when no data exists)
+            if (!silent && !gitStatusFiles) {
+                setIsLoading(true);
+            }
             const result = await getGitStatusFiles(sessionId);
             setGitStatusFiles(result);
         } catch (error) {
             console.error('Failed to load git status files:', error);
-            setGitStatusFiles(null);
+            // Only clear data on initial load failure
+            if (!gitStatusFiles) {
+                setGitStatusFiles(null);
+            }
         } finally {
             setIsLoading(false);
         }
-    }, [sessionId]);
+    }, [sessionId, gitStatusFiles]);
 
     // Load on mount
     React.useEffect(() => {
-        loadGitStatusFiles();
-    }, [loadGitStatusFiles]);
+        loadGitStatusFiles(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId]);
 
-    // Refresh when screen is focused
+    // Refresh silently when screen is focused (after returning from file view)
     useFocusEffect(
         React.useCallback(() => {
-            loadGitStatusFiles();
-        }, [loadGitStatusFiles])
+            // Silent refresh - don't show loading indicator if we already have data
+            if (gitStatusFiles) {
+                loadGitStatusFiles(true);
+            }
+        }, [gitStatusFiles, loadGitStatusFiles])
     );
 
     // Handle search and file loading
