@@ -113,7 +113,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     inputWrapper: {
         flex: 1,
-        backgroundColor: theme.colors.input.background,
+        backgroundColor: theme.colors.surface,
         borderRadius: INPUT_BORDER_RADIUS,
         borderWidth: 0.5,
         borderColor: theme.colors.divider,
@@ -162,7 +162,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         minHeight: 0, // Override Item's default minHeight (44-56px) for compact mode
     },
     itemBackground: {
-        backgroundColor: theme.colors.input.background,
+        backgroundColor: theme.colors.surface,
         borderRadius: ITEM_BORDER_RADIUS,
         marginBottom: ITEM_SPACING_GAP,
     },
