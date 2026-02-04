@@ -387,7 +387,6 @@ export const zhHans: TranslationStructure = {
 
     session: {
         inputPlaceholder: '输入消息...',
-        selectImageSource: '选择图片来源',
         takePhoto: '拍照',
         chooseFromLibrary: '从相册选择',
         pasteFromClipboard: '从剪贴板粘贴',

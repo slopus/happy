@@ -6,6 +6,8 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { DuplicateSheet } from '@/components/DuplicateSheet';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import type { ActionMenuItem } from '@/components/ActionMenu';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
@@ -278,6 +280,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // Ref for hidden file input (web only)
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+    // Image picker sheet state
+    const [imagePickerSheetVisible, setImagePickerSheetVisible] = React.useState(false);
+
     // Check if the current session flavor supports images
     const supportsImages = React.useMemo(() => {
         const flavor = session?.metadata?.flavor;
@@ -442,13 +447,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             fileInputRef.current?.click();
         } else {
             // Native: show action sheet with camera and gallery options
-            Modal.alert(t('session.selectImageSource'), undefined, [
-                { text: t('session.takePhoto'), onPress: pickFromCamera },
-                { text: t('session.chooseFromLibrary'), onPress: pickFromGallery },
-                { text: t('common.cancel'), style: 'cancel' },
-            ]);
+            setImagePickerSheetVisible(true);
         }
-    }, [pickFromCamera, pickFromGallery]);
+    }, []);
+
+    // Image picker sheet menu items
+    const imagePickerMenuItems: ActionMenuItem[] = React.useMemo(() => [
+        { label: t('session.takePhoto'), onPress: pickFromCamera },
+        { label: t('session.chooseFromLibrary'), onPress: pickFromGallery },
+    ], [pickFromCamera, pickFromGallery]);
 
     // Handle file input change (web only)
     const handleFileInputChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -750,6 +757,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 confirming={duplicateConfirming}
                 onClose={handleCloseDuplicateSheet}
                 onSelect={handleDuplicateSelect}
+            />
+
+            {/* Image Picker Sheet */}
+            <ActionMenuModal
+                visible={imagePickerSheetVisible}
+                items={imagePickerMenuItems}
+                onClose={() => setImagePickerSheetVisible(false)}
             />
         </>
     )

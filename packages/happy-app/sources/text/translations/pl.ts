@@ -396,7 +396,6 @@ export const pl: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Wpisz wiadomość...',
-        selectImageSource: 'Wybierz źródło obrazu',
         takePhoto: 'Zrób zdjęcie',
         chooseFromLibrary: 'Wybierz z galerii',
         pasteFromClipboard: 'Wklej ze schowka',

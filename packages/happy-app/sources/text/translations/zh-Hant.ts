@@ -386,7 +386,6 @@ export const zhHant: TranslationStructure = {
 
     session: {
         inputPlaceholder: '輸入訊息...',
-        selectImageSource: '選擇圖片來源',
         takePhoto: '拍照',
         chooseFromLibrary: '從圖庫選擇',
         pasteFromClipboard: '從剪貼簿貼上',

@@ -386,7 +386,6 @@ export const en = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
-        selectImageSource: 'Select Image Source',
         takePhoto: 'Take Photo',
         chooseFromLibrary: 'Choose from Library',
         pasteFromClipboard: 'Paste from Clipboard',
