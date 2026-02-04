@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
 import { useRoute } from '@react-navigation/native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Text } from '@/components/StyledText';
 import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
 import { Typography } from '@/constants/Typography';
@@ -12,6 +12,8 @@ import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { FileIcon } from '@/components/FileIcon';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { storeTempText } from '@/sync/persistence';
 
 interface FileContent {
     content: string;
@@ -70,6 +72,7 @@ const DiffDisplay: React.FC<{ diffContent: string }> = ({ diffContent }) => {
 
 export default function FileScreen() {
     const route = useRoute();
+    const router = useRouter();
     const { theme } = useUnistyles();
     const { id: sessionId } = useLocalSearchParams<{ id: string }>();
     const searchParams = useLocalSearchParams();
@@ -283,6 +286,41 @@ export default function FileScreen() {
     const fileName = filePath.split('/').pop() || filePath;
     const language = getFileLanguage(filePath);
 
+    // Handle long press to open text selection screen
+    const handleLongPress = React.useCallback((content: string) => {
+        if (Platform.OS === 'web') return;
+        try {
+            const textId = storeTempText(content);
+            router.push(`/text-selection?textId=${textId}`);
+        } catch (error) {
+            console.error('Error storing text for selection:', error);
+            Modal.alert(t('common.error'), 'Failed to open text selection');
+        }
+    }, [router]);
+
+    // Get current display content for long press
+    const currentContent = React.useMemo(() => {
+        if (displayMode === 'diff' && diffContent) {
+            return diffContent;
+        } else if (displayMode === 'file' && fileContent?.content) {
+            return fileContent.content;
+        }
+        return '';
+    }, [displayMode, diffContent, fileContent]);
+
+    // Long press gesture for text selection
+    const longPressGesture = React.useMemo(() =>
+        Gesture.LongPress()
+            .minDuration(500)
+            .onStart(() => {
+                if (currentContent) {
+                    handleLongPress(currentContent);
+                }
+            })
+            .runOnJS(true),
+        [currentContent, handleLongPress]
+    );
+
     if (isLoading) {
         return (
             <View style={{ 
@@ -449,38 +487,65 @@ export default function FileScreen() {
             )}
             
             {/* Content display */}
-            <ScrollView 
+            <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={{ padding: 16 }}
                 showsVerticalScrollIndicator={true}
             >
-                {displayMode === 'diff' && diffContent ? (
-                    <DiffDisplay diffContent={diffContent} />
-                ) : displayMode === 'file' && fileContent?.content ? (
-                    <SimpleSyntaxHighlighter 
-                        code={fileContent.content}
-                        language={language}
-                        selectable={true}
-                    />
-                ) : displayMode === 'file' && fileContent && !fileContent.content ? (
-                    <Text style={{
-                        fontSize: 16,
-                        color: theme.colors.textSecondary,
-                        fontStyle: 'italic',
-                        ...Typography.default()
-                    }}>
-                        {t('files.fileEmpty')}
-                    </Text>
-                ) : !diffContent && !fileContent?.content ? (
-                    <Text style={{
-                        fontSize: 16,
-                        color: theme.colors.textSecondary,
-                        fontStyle: 'italic',
-                        ...Typography.default()
-                    }}>
-                        {t('files.noChanges')}
-                    </Text>
-                ) : null}
+                {Platform.OS !== 'web' && currentContent ? (
+                    <GestureDetector gesture={longPressGesture}>
+                        <View>
+                            {displayMode === 'diff' && diffContent ? (
+                                <DiffDisplay diffContent={diffContent} />
+                            ) : displayMode === 'file' && fileContent?.content ? (
+                                <SimpleSyntaxHighlighter
+                                    code={fileContent.content}
+                                    language={language}
+                                    selectable={false}
+                                />
+                            ) : displayMode === 'file' && fileContent && !fileContent.content ? (
+                                <Text style={{
+                                    fontSize: 16,
+                                    color: theme.colors.textSecondary,
+                                    fontStyle: 'italic',
+                                    ...Typography.default()
+                                }}>
+                                    {t('files.fileEmpty')}
+                                </Text>
+                            ) : null}
+                        </View>
+                    </GestureDetector>
+                ) : (
+                    <>
+                        {displayMode === 'diff' && diffContent ? (
+                            <DiffDisplay diffContent={diffContent} />
+                        ) : displayMode === 'file' && fileContent?.content ? (
+                            <SimpleSyntaxHighlighter
+                                code={fileContent.content}
+                                language={language}
+                                selectable={true}
+                            />
+                        ) : displayMode === 'file' && fileContent && !fileContent.content ? (
+                            <Text style={{
+                                fontSize: 16,
+                                color: theme.colors.textSecondary,
+                                fontStyle: 'italic',
+                                ...Typography.default()
+                            }}>
+                                {t('files.fileEmpty')}
+                            </Text>
+                        ) : !diffContent && !fileContent?.content ? (
+                            <Text style={{
+                                fontSize: 16,
+                                color: theme.colors.textSecondary,
+                                fontStyle: 'italic',
+                                ...Typography.default()
+                            }}>
+                                {t('files.noChanges')}
+                            </Text>
+                        ) : null}
+                    </>
+                )}
             </ScrollView>
         </View>
     );
