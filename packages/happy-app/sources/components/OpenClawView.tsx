@@ -103,7 +103,7 @@ const OpenClawMachineCard = React.memo(({ machine, happyMachine, onPress, showDi
 
     const iconElement = (
         <Image
-            source={require('@/assets/images/brutalist/Brutalism 3.png')}
+            source={require('@/assets/images/brutalist/Brutalism 117.png')}
             contentFit="contain"
             style={{ width: 32, height: 32 }}
             tintColor={theme.colors.text}
@@ -165,7 +165,7 @@ export const OpenClawView = React.memo(() => {
             <View style={styles.container}>
                 <View style={styles.emptyContainer}>
                     <Image
-                        source={require('@/assets/images/brutalist/Brutalism 3.png')}
+                        source={require('@/assets/images/brutalist/Brutalism 117.png')}
                         contentFit="contain"
                         style={[{ width: 64, height: 64 }, styles.emptyIcon]}
                         tintColor={theme.colors.textSecondary}

@@ -277,7 +277,7 @@ export const SidebarView = React.memo(() => {
                             hitSlop={15}
                         >
                             <Image
-                                source={require('@/assets/images/brutalist/Brutalism 3.png')}
+                                source={require('@/assets/images/brutalist/Brutalism 117.png')}
                                 contentFit="contain"
                                 style={[{ width: 32, height: 32 }]}
                                 tintColor={theme.colors.header.tint}
