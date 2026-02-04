@@ -764,6 +764,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 visible={imagePickerSheetVisible}
                 items={imagePickerMenuItems}
                 onClose={() => setImagePickerSheetVisible(false)}
+                deferItemPress
             />
         </>
     )

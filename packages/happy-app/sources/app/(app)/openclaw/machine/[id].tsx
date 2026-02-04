@@ -695,6 +695,7 @@ export default function OpenClawMachineDetailPage() {
                 visible={menuVisible}
                 items={menuItems}
                 onClose={() => setMenuVisible(false)}
+                deferItemPress
             />
         </View>
     );

@@ -75,11 +75,10 @@ export function ActionMenu({ items, onClose }: ActionMenuProps) {
     const safeArea = useSafeAreaInsets();
 
     const handleItemPress = (item: ActionMenuItem) => {
+        // Call item.onPress first (may be wrapped to defer execution)
+        item.onPress();
+        // Then close the menu
         onClose();
-        // Delay the action to allow the modal to close first
-        setTimeout(() => {
-            item.onPress();
-        }, 100);
     };
 
     return (

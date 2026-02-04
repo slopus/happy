@@ -26,6 +26,8 @@ interface ActionMenuModalProps {
     visible: boolean;
     items: ActionMenuItem[];
     onClose: () => void;
+    /** If true, item.onPress will be called after modal is fully closed (for camera/gallery pickers) */
+    deferItemPress?: boolean;
 }
 
 const ANIMATION_DURATION = 250;
@@ -47,11 +49,13 @@ const styles = StyleSheet.create({
     },
 });
 
-export function ActionMenuModal({ visible, items, onClose }: ActionMenuModalProps) {
+export function ActionMenuModal({ visible, items, onClose, deferItemPress }: ActionMenuModalProps) {
     // Track actual modal visibility (delayed hide for animation)
     const [modalVisible, setModalVisible] = useState(false);
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(100)).current;
+    // Store pending action to execute after modal closes
+    const pendingActionRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
         if (visible) {
@@ -89,6 +93,14 @@ export function ActionMenuModal({ visible, items, onClose }: ActionMenuModalProp
                 }),
             ]).start(() => {
                 setModalVisible(false);
+                // Execute pending action after modal is fully closed
+                if (pendingActionRef.current) {
+                    // Add small delay to ensure modal is truly dismissed on iOS
+                    setTimeout(() => {
+                        pendingActionRef.current?.();
+                        pendingActionRef.current = null;
+                    }, 50);
+                }
             });
         }
     }, [visible]);
@@ -96,6 +108,18 @@ export function ActionMenuModal({ visible, items, onClose }: ActionMenuModalProp
     const handleClose = () => {
         onClose();
     };
+
+    // Wrapped items that defer onPress if needed
+    const wrappedItems = React.useMemo(() => {
+        if (!deferItemPress) return items;
+        return items.map(item => ({
+            ...item,
+            onPress: () => {
+                // Store the action to execute after modal closes
+                pendingActionRef.current = item.onPress;
+            },
+        }));
+    }, [items, deferItemPress]);
 
     if (!modalVisible) {
         return null;
@@ -132,7 +156,7 @@ export function ActionMenuModal({ visible, items, onClose }: ActionMenuModalProp
                         },
                     ]}
                 >
-                    <ActionMenu items={items} onClose={handleClose} />
+                    <ActionMenu items={wrappedItems} onClose={handleClose} />
                 </Animated.View>
             </View>
         </Modal>
