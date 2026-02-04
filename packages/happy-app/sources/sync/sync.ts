@@ -334,67 +334,144 @@ class Sync {
             log.log(`Session ${sessionId} not ready after timeout, sending anyway`);
         }
 
-        // Send message with ack and retry fallback
-        const RETRY_INTERVAL_MS = 5000;
-        const MAX_RETRIES = 5;
+        // Send message with three parallel mechanisms:
+        // 1. Server direct response (emitWithAck)
+        // 2. WebSocket push monitoring (storage.subscribe)
+        // 3. Polling fallback (invalidateMessagesSync every 5s)
+        // Plus a total timeout of 30s
 
-        type SendResponse = { result: 'success'; messageId: string; seq: number } | { result: 'error'; error: string } | { result: 'timeout' };
+        const POLLING_INTERVAL_MS = 5000;
+        const TOTAL_TIMEOUT_MS = 30000;
+
+        // Cancellation flag and cleanup
+        let cancelled = false;
+        let unsubscribe: (() => void) | null = null;
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+        const cleanup = () => {
+            cancelled = true;
+            if (unsubscribe) {
+                unsubscribe();
+                unsubscribe = null;
+            }
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+        };
+
+        // Helper to check if message exists in storage
+        const messageExists = (): boolean => {
+            const sessionMessages = storage.getState().sessionMessages[sessionId];
+            return sessionMessages?.messages.some(
+                (msg) => 'localId' in msg && msg.localId === localId
+            ) ?? false;
+        };
+
+        type RaceResult =
+            | { type: 'send'; success: true }
+            | { type: 'send'; success: false; error: string }
+            | { type: 'arrived' }
+            | { type: 'polling' }
+            | { type: 'timeout' };
 
         try {
-            const sendPromise = apiSocket.emitWithAck<{ result: string; messageId?: string; seq?: number; error?: string }>('message', {
+            // Mechanism 1: Server direct response
+            const sendPromise: Promise<RaceResult> = apiSocket.emitWithAck<{ result: string; messageId?: string; seq?: number; error?: string }>('message', {
                 sid: sessionId,
                 message: encryptedRawRecord,
                 localId,
                 sentFrom,
                 permissionMode: permissionMode || 'default'
+            }).then(res => {
+                if (res.result === 'success') {
+                    return { type: 'send' as const, success: true as const };
+                } else {
+                    return { type: 'send' as const, success: false as const, error: res.error || 'Send failed' };
+                }
+            }).catch(err => {
+                return { type: 'send' as const, success: false as const, error: err instanceof Error ? err.message : 'Send failed' };
             });
 
-            const timeoutPromise = new Promise<{ result: 'timeout' }>((resolve) => {
-                setTimeout(() => resolve({ result: 'timeout' }), RETRY_INTERVAL_MS);
+            // Mechanism 2: WebSocket push monitoring
+            const messageArrivedPromise: Promise<RaceResult> = new Promise((resolve) => {
+                // Check if message already exists
+                if (messageExists()) {
+                    resolve({ type: 'arrived' });
+                    return;
+                }
+                // Subscribe to storage changes
+                const unsub = storage.subscribe(() => {
+                    if (messageExists()) {
+                        unsub(); // Stop listening immediately
+                        resolve({ type: 'arrived' });
+                    }
+                });
+                unsubscribe = unsub;
             });
 
-            const response = await Promise.race([sendPromise, timeoutPromise]) as SendResponse;
+            // Mechanism 3: Polling fallback
+            const pollingPromise: Promise<RaceResult> = (async () => {
+                while (!cancelled) {
+                    await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL_MS));
+                    if (cancelled) break;
 
-            if (response.result === 'timeout') {
-                // Timeout: retry by polling message list
-                log.log(`Message send timed out for session ${sessionId}, starting retry polling...`);
-
-                for (let i = 0; i < MAX_RETRIES; i++) {
-                    // Refresh message list to check if message was sent
+                    // Trigger refresh
                     this.invalidateMessagesSync(sessionId);
 
-                    // Wait for sync to complete and check if message exists
-                    await new Promise(resolve => setTimeout(resolve, RETRY_INTERVAL_MS));
+                    // Wait a bit for sync to complete
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    if (cancelled) break;
 
-                    // Check if message is now in the list (by localId)
-                    const sessionMessages = storage.getState().sessionMessages[sessionId];
-                    const messageFound = sessionMessages?.messages.some(
-                        (msg) => 'localId' in msg && msg.localId === localId
-                    );
-                    if (messageFound) {
-                        log.log(`Message ${localId} found after retry ${i + 1}`);
-                        return { success: true, localId };
+                    if (messageExists()) {
+                        log.log(`Message ${localId} found via polling`);
+                        return { type: 'polling' as const };
                     }
-
-                    log.log(`Retry ${i + 1}/${MAX_RETRIES}: message ${localId} not found yet`);
+                    log.log(`Polling: message ${localId} not found yet`);
                 }
+                // If cancelled, return a result that won't be used (race already completed)
+                return { type: 'timeout' as const };
+            })();
 
-                // After all retries, return failure so user can retry (server will deduplicate by localId)
-                log.log(`Message ${localId} not confirmed after ${MAX_RETRIES} retries, returning failure for retry`);
-                return { success: false, error: 'Message send timed out', localId };
-            }
+            // Total timeout
+            const timeoutPromise: Promise<RaceResult> = new Promise((resolve) => {
+                timeoutId = setTimeout(() => resolve({ type: 'timeout' }), TOTAL_TIMEOUT_MS);
+            });
 
-            if (response.result === 'success') {
-                // Server confirmed, add message to local list
-                if (normalizedMessage) {
-                    this.applyMessages(sessionId, [normalizedMessage]);
+            // Race all mechanisms
+            const result = await Promise.race([
+                sendPromise,
+                messageArrivedPromise,
+                pollingPromise,
+                timeoutPromise
+            ]);
+
+            // Cleanup all mechanisms
+            cleanup();
+
+            log.log(`Message send completed via: ${result.type}`);
+
+            // Handle result
+            if (result.type === 'send') {
+                if (result.success) {
+                    // Server confirmed, add message to local list
+                    if (normalizedMessage) {
+                        this.applyMessages(sessionId, [normalizedMessage]);
+                    }
+                    return { success: true, localId };
+                } else {
+                    return { success: false, error: result.error, localId };
                 }
+            } else if (result.type === 'arrived' || result.type === 'polling') {
+                // Message confirmed in list (either via WebSocket or polling)
                 return { success: true, localId };
             } else {
-                // Server returned error
-                return { success: false, error: response.error || 'Send failed', localId };
+                // Timeout
+                log.log(`Message ${localId} not confirmed after ${TOTAL_TIMEOUT_MS}ms, returning failure for retry`);
+                return { success: false, error: 'Message send timed out', localId };
             }
         } catch (error) {
+            cleanup();
             log.log(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
             return { success: false, error: error instanceof Error ? error.message : 'Unknown error', localId };
         }
