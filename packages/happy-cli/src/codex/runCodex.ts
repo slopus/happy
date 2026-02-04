@@ -405,6 +405,12 @@ export async function runCodex(opts: {
         session.sendCodexMessage(message);
     });
     client.setPermissionHandler(permissionHandler);
+    client.setPermissionDecisionHandler((decision) => {
+        if (decision === 'abort') {
+            logger.debug('[Codex] Permission decision=abort; aborting current turn');
+            void handleAbort();
+        }
+    });
     client.setHandler((msg) => {
         logger.debug(`[Codex] MCP message: ${JSON.stringify(msg)}`);
 
@@ -471,6 +477,14 @@ export async function runCodex(opts: {
         }
         if (msg.type === 'exec_command_begin' || msg.type === 'exec_approval_request') {
             let { call_id, type, ...inputs } = msg;
+            if (msg.type === 'exec_approval_request') {
+                client.trackExecApprovalRequest({
+                    callId: call_id,
+                    command: Array.isArray((inputs as any).command) ? (inputs as any).command : undefined,
+                    cwd: typeof (inputs as any).cwd === 'string' ? (inputs as any).cwd : undefined,
+                    reason: (inputs as any).reason ?? null
+                });
+            }
             session.sendCodexMessage({
                 type: 'tool-call',
                 name: 'CodexBash',
