@@ -7,11 +7,17 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { logger } from '@/ui/logger';
 import type { CodexSessionConfig, CodexToolResponse } from './types';
 import { z } from 'zod';
-import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { execSync } from 'child_process';
+import { randomUUID } from 'node:crypto';
 
 const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days, which is the half of the maximum possible timeout (~28 days for int32 value in NodeJS)
+
+// Use a loose schema to preserve non-standard fields (e.g., codex_* params)
+const ElicitRequestSchemaLoose = z.object({
+    method: z.literal('elicitation/create'),
+    params: z.unknown().optional()
+}).passthrough();
 
 /**
  * Get the correct MCP subcommand based on installed codex version
@@ -55,6 +61,13 @@ export class CodexMcpClient {
     private conversationId: string | null = null;
     private handler: ((event: any) => void) | null = null;
     private permissionHandler: CodexPermissionHandler | null = null;
+    private onPermissionDecision: ((decision: 'approved' | 'approved_for_session' | 'denied' | 'abort') => void) | null = null;
+    private pendingExecApprovals: Array<{
+        callId: string;
+        command?: string[];
+        cwd?: string;
+        reason?: string | null;
+    }> = [];
 
     constructor() {
         this.client = new Client(
@@ -83,6 +96,35 @@ export class CodexMcpClient {
      */
     setPermissionHandler(handler: CodexPermissionHandler): void {
         this.permissionHandler = handler;
+    }
+
+    /**
+     * Optional hook to react to permission decisions (e.g., abort current turn).
+     */
+    setPermissionDecisionHandler(handler: ((decision: 'approved' | 'approved_for_session' | 'denied' | 'abort') => void) | null): void {
+        this.onPermissionDecision = handler;
+    }
+
+    /**
+     * Track exec approval requests so we can correlate MCP elicitation prompts
+     * with the actual tool call id and command details.
+     */
+    trackExecApprovalRequest(request: {
+        callId: string;
+        command?: string[];
+        cwd?: string;
+        reason?: string | null;
+    }): void {
+        if (!request.callId) return;
+        if (this.pendingExecApprovals.some((entry) => entry.callId === request.callId)) {
+            return;
+        }
+        this.pendingExecApprovals.push(request);
+        // Prevent unbounded growth if something goes wrong
+        if (this.pendingExecApprovals.length > 50) {
+            this.pendingExecApprovals.shift();
+        }
+        logger.debug('[CodexMCP] Tracked exec approval request', { callId: request.callId });
     }
 
     async connect(): Promise<void> {
@@ -126,49 +168,116 @@ export class CodexMcpClient {
     private registerPermissionHandlers(): void {
         // Register handler for exec command approval requests
         this.client.setRequestHandler(
-            ElicitRequestSchema,
+            ElicitRequestSchemaLoose,
             async (request) => {
                 console.log('[CodexMCP] Received elicitation request:', request.params);
 
-                // Load params
-                const params = request.params as unknown as {
-                    message: string,
-                    codex_elicitation: string,
-                    codex_mcp_tool_call_id: string,
-                    codex_event_id: string,
-                    codex_call_id: string,
-                    codex_command: string[],
-                    codex_cwd: string
-                }
+                const rawParams = request.params && typeof request.params === 'object'
+                    ? (request.params as Record<string, unknown>)
+                    : {};
+                const params = rawParams as {
+                    message?: string;
+                    requestedSchema?: unknown;
+                    codex_elicitation?: string;
+                    codex_mcp_tool_call_id?: string;
+                    codex_event_id?: string;
+                    codex_call_id?: string;
+                    codex_command?: string[];
+                    codex_cwd?: string;
+                };
                 const toolName = 'CodexBash';
+                const codexKeys = [
+                    'codex_elicitation',
+                    'codex_mcp_tool_call_id',
+                    'codex_event_id',
+                    'codex_call_id',
+                    'codex_command',
+                    'codex_cwd'
+                ];
+                const isCodexExecApproval = codexKeys.some((key) => key in rawParams);
+
+                let toolCallId: string | undefined;
+                let toolInput: Record<string, unknown> = {};
+
+                if (isCodexExecApproval) {
+                    toolCallId = params.codex_call_id || params.codex_mcp_tool_call_id || params.codex_event_id;
+                    toolInput = {
+                        command: Array.isArray(params.codex_command) ? params.codex_command : undefined,
+                        cwd: typeof params.codex_cwd === 'string' ? params.codex_cwd : undefined
+                    };
+                } else {
+                    const pending = this.pendingExecApprovals.shift();
+                    if (pending) {
+                        toolCallId = pending.callId;
+                        toolInput = {
+                            command: pending.command,
+                            cwd: pending.cwd,
+                            reason: pending.reason ?? undefined
+                        };
+                    } else {
+                        toolCallId = randomUUID();
+                        toolInput = {
+                            message: params.message,
+                            requestedSchema: params.requestedSchema
+                        };
+                        logger.debug('[CodexMCP] No pending exec approval to match elicitation; using fallback id');
+                    }
+                }
+
+                if (!toolCallId) {
+                    toolCallId = randomUUID();
+                }
 
                 // If no permission handler set, deny by default
                 if (!this.permissionHandler) {
                     logger.debug('[CodexMCP] No permission handler set, denying by default');
-                    return {
-                        decision: 'denied' as const,
-                    };
+                    if (isCodexExecApproval) {
+                        return { action: 'decline' as const, decision: 'denied' as const };
+                    }
+                    return { action: 'decline' as const };
                 }
 
                 try {
                     // Request permission through the handler
                     const result = await this.permissionHandler.handleToolCall(
-                        params.codex_call_id,
+                        toolCallId,
                         toolName,
-                        {
-                            command: params.codex_command,
-                            cwd: params.codex_cwd
-                        }
+                        toolInput
                     );
 
                     logger.debug('[CodexMCP] Permission result:', result);
-                    return {
-                        decision: result.decision
+                    if (this.onPermissionDecision) {
+                        this.onPermissionDecision(result.decision);
                     }
+                    const action =
+                        result.decision === 'approved' || result.decision === 'approved_for_session'
+                            ? 'accept'
+                            : result.decision === 'abort'
+                                ? 'cancel'
+                                : 'decline';
+
+                    if (isCodexExecApproval) {
+                        // Codex MCP currently expects a legacy `decision` field, but MCP validation
+                        // now enforces the standard `action`. Return both.
+                        return action === 'accept'
+                            ? { action, decision: result.decision, content: {} }
+                            : { action, decision: result.decision };
+                    }
+
+                    return action === 'accept'
+                        ? { action, content: {} }
+                        : { action };
                 } catch (error) {
                     logger.debug('[CodexMCP] Error handling permission request:', error);
+                    if (isCodexExecApproval) {
+                        return {
+                            action: 'decline' as const,
+                            decision: 'denied' as const,
+                            reason: error instanceof Error ? error.message : 'Permission request failed'
+                        };
+                    }
                     return {
-                        decision: 'denied' as const,
+                        action: 'decline' as const,
                         reason: error instanceof Error ? error.message : 'Permission request failed'
                     };
                 }
