@@ -19,6 +19,38 @@ const ElicitRequestSchemaLoose = z.object({
     params: z.unknown().optional()
 }).passthrough();
 
+type ElicitParams = {
+    message?: string;
+    requestedSchema?: unknown;
+    codex_elicitation?: string;
+    codex_mcp_tool_call_id?: string;
+    codex_event_id?: string;
+    codex_call_id?: string;
+    codex_command?: string[];
+    codex_cwd?: string;
+};
+
+function hasEmptySchema(schema: unknown): boolean {
+    if (!schema || typeof schema !== 'object') return false;
+    const maybe = schema as { type?: string; properties?: Record<string, unknown> };
+    if (maybe.type && maybe.type !== 'object') return false;
+    if (!('properties' in maybe)) return true;
+    if (!maybe.properties) return true;
+    return Object.keys(maybe.properties).length === 0;
+}
+
+function isLikelyExecApprovalElicitation(params: Pick<ElicitParams, 'message' | 'requestedSchema'>): boolean {
+    if (!params.message) return false;
+    const msg = params.message;
+    const lower = msg.toLowerCase();
+    if (lower.includes('allow codex to run')) return true;
+    if (lower.includes('codex to run')) return true;
+    const hasBackticks = msg.includes('`');
+    const looksLikeCommand = /\/bin\/zsh|\bpython\b|\bpython3\b|\bnode\b|\bbash\b|\bsh\b/.test(msg);
+    if (hasBackticks && looksLikeCommand) return true;
+    return hasEmptySchema(params.requestedSchema);
+}
+
 /**
  * Get the correct MCP subcommand based on installed codex version
  * Versions >= 0.43.0-alpha.5 use 'mcp-server', older versions use 'mcp'
@@ -175,16 +207,7 @@ export class CodexMcpClient {
                 const rawParams = request.params && typeof request.params === 'object'
                     ? (request.params as Record<string, unknown>)
                     : {};
-                const params = rawParams as {
-                    message?: string;
-                    requestedSchema?: unknown;
-                    codex_elicitation?: string;
-                    codex_mcp_tool_call_id?: string;
-                    codex_event_id?: string;
-                    codex_call_id?: string;
-                    codex_command?: string[];
-                    codex_cwd?: string;
-                };
+                const params = rawParams as ElicitParams;
                 const toolName = 'CodexBash';
                 const codexKeys = [
                     'codex_elicitation',
@@ -206,7 +229,13 @@ export class CodexMcpClient {
                         cwd: typeof params.codex_cwd === 'string' ? params.codex_cwd : undefined
                     };
                 } else {
-                    const pending = this.pendingExecApprovals.shift();
+                    const shouldConsumePending =
+                        this.pendingExecApprovals.length > 0 &&
+                        isLikelyExecApprovalElicitation({
+                            message: params.message,
+                            requestedSchema: params.requestedSchema
+                        });
+                    const pending = shouldConsumePending ? this.pendingExecApprovals.shift() : undefined;
                     if (pending) {
                         toolCallId = pending.callId;
                         toolInput = {
@@ -220,6 +249,12 @@ export class CodexMcpClient {
                             message: params.message,
                             requestedSchema: params.requestedSchema
                         };
+                        if (this.pendingExecApprovals.length > 0) {
+                            logger.debug('[CodexMCP] Pending exec approvals left intact for non-exec elicitation', {
+                                pendingCount: this.pendingExecApprovals.length,
+                                message: params.message
+                            });
+                        }
                         logger.debug('[CodexMCP] No pending exec approval to match elicitation; using fallback id');
                     }
                 }
