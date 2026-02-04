@@ -27,8 +27,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     logger.debug('[claudeRemoteLauncher] Starting remote launcher');
 
     // Check if we have a TTY for UI rendering
-    const hasTTY = process.stdout.isTTY && process.stdin.isTTY;
-    logger.debug(`[claudeRemoteLauncher] TTY available: ${hasTTY}`);
+    // Daemon-spawned sessions skip Ink entirely — no human is watching the terminal
+    const hasTTY = process.stdout.isTTY && process.stdin.isTTY && session.startedBy !== 'daemon';
+    logger.debug(`[claudeRemoteLauncher] TTY available: ${hasTTY}, startedBy: ${session.startedBy}`);
 
     // Configure terminal
     let messageBuffer = new MessageBuffer();
