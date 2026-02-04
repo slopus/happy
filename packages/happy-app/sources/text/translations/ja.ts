@@ -870,8 +870,8 @@ export const ja: TranslationStructure = {
         unknownEvent: '不明なイベント',
         usageLimitUntil: ({ time }: { time: string }) => `${time}まで使用制限中`,
         unknownTime: '不明な時間',
-        confirmOldOption: '古いオプションを送信しますか？',
-        confirmOldOptionMessage: 'これは以前のメッセージのオプションです。送信してもよろしいですか？',
+        confirmOverwriteInput: 'Overwrite current input?',
+        confirmOverwriteInputMessage: 'The input box already has content. Do you want to replace it?',
     },
 
     codex: {

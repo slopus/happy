@@ -10,10 +10,8 @@ import { Metadata } from "@/sync/storageTypes";
 import { layout } from "./layout";
 import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
-import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
 import { useSetting } from "@/sync/storage";
-import { Modal } from '@/modal';
 
 export const MessageView = (props: {
   message: Message;
@@ -21,6 +19,7 @@ export const MessageView = (props: {
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
   isNewestMessage?: boolean;
+  onFillInput?: (text: string, allOptions?: string[]) => void;
 }) => {
   return (
     <View style={styles.messageContainer} renderToHardwareTextureAndroid={true}>
@@ -31,6 +30,7 @@ export const MessageView = (props: {
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
           isNewestMessage={props.isNewestMessage}
+          onFillInput={props.onFillInput}
         />
       </View>
     </View>
@@ -44,13 +44,14 @@ function RenderBlock(props: {
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
   isNewestMessage?: boolean;
+  onFillInput?: (text: string, allOptions?: string[]) => void;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
-      return <UserTextBlock message={props.message} sessionId={props.sessionId} isNewestMessage={props.isNewestMessage} />;
+      return <UserTextBlock message={props.message} sessionId={props.sessionId} onFillInput={props.onFillInput} />;
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} isNewestMessage={props.isNewestMessage} />;
+      return <AgentTextBlock message={props.message} sessionId={props.sessionId} onFillInput={props.onFillInput} />;
 
     case 'tool-call':
       return <ToolCallBlock
@@ -74,22 +75,14 @@ function RenderBlock(props: {
 function UserTextBlock(props: {
   message: UserTextMessage;
   sessionId: string;
-  isNewestMessage?: boolean;
+  onFillInput?: (text: string, allOptions?: string[]) => void;
 }) {
   const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
   const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
 
-  const handleOptionPress = React.useCallback(async (option: Option) => {
-    if (!props.isNewestMessage) {
-      const confirmed = await Modal.confirm(
-        t('message.confirmOldOption'),
-        t('message.confirmOldOptionMessage'),
-        { confirmText: t('common.yes'), cancelText: t('common.cancel') }
-      );
-      if (!confirmed) return;
-    }
-    sync.sendMessage(props.sessionId, option.title);
-  }, [props.sessionId, props.isNewestMessage]);
+  const handleOptionPress = React.useCallback((option: Option, allOptions: string[]) => {
+    props.onFillInput?.(option.title, allOptions);
+  }, [props.onFillInput]);
 
   const images = props.message.images ?? [];
   const imageViewingImages = images.map(img => ({ uri: img.url }));
@@ -133,20 +126,12 @@ function UserTextBlock(props: {
 function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
-  isNewestMessage?: boolean;
+  onFillInput?: (text: string, allOptions?: string[]) => void;
 }) {
   const experiments = useSetting('experiments');
-  const handleOptionPress = React.useCallback(async (option: Option) => {
-    if (!props.isNewestMessage) {
-      const confirmed = await Modal.confirm(
-        t('message.confirmOldOption'),
-        t('message.confirmOldOptionMessage'),
-        { confirmText: t('common.yes'), cancelText: t('common.cancel') }
-      );
-      if (!confirmed) return;
-    }
-    sync.sendMessage(props.sessionId, option.title);
-  }, [props.sessionId, props.isNewestMessage]);
+  const handleOptionPress = React.useCallback((option: Option, allOptions: string[]) => {
+    props.onFillInput?.(option.title, allOptions);
+  }, [props.onFillInput]);
 
   // Hide thinking messages unless experiments is enabled
   if (props.message.isThinking && !experiments) {

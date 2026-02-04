@@ -838,8 +838,8 @@ export const ca: TranslationStructure = {
         unknownEvent: 'Esdeveniment desconegut',
         usageLimitUntil: ({ time }: { time: string }) => `Límit d'ús assolit fins a ${time}`,
         unknownTime: 'temps desconegut',
-        confirmOldOption: 'Enviar opció antiga?',
-        confirmOldOptionMessage: 'Aquesta és una opció d\'un missatge anterior. Estàs segur que vols enviar-la?',
+        confirmOverwriteInput: 'Overwrite current input?',
+        confirmOverwriteInputMessage: 'The input box already has content. Do you want to replace it?',
     },
 
     codex: {

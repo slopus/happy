@@ -1,5 +1,6 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { AgentInput } from '@/components/AgentInput';
+import { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
@@ -225,6 +226,31 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
+
+    // Ref for the input component (used for web auto-focus)
+    const inputRef = React.useRef<MultiTextInputHandle>(null);
+
+    // Handler for filling the input from option selection
+    const handleFillInput = React.useCallback(async (text: string, allOptions?: string[]) => {
+        const currentMessage = message.trim();
+        if (currentMessage) {
+            // Skip confirmation if current input is one of the available options
+            const isCurrentInputAnOption = allOptions?.includes(currentMessage);
+            if (!isCurrentInputAnOption) {
+                const confirmed = await Modal.confirm(
+                    t('message.confirmOverwriteInput'),
+                    t('message.confirmOverwriteInputMessage'),
+                    { confirmText: t('common.yes'), cancelText: t('common.cancel') }
+                );
+                if (!confirmed) return;
+            }
+        }
+        setMessage(text);
+        // Auto-focus input on web platform
+        if (Platform.OS === 'web') {
+            inputRef.current?.focus();
+        }
+    }, [message]);
 
     // Image picker hook for handling image attachments
     const {
@@ -499,7 +525,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         <>
             <Deferred>
                 {messages.length > 0 && (
-                    <ChatList session={session} />
+                    <ChatList session={session} onFillInput={handleFillInput} />
                 )}
             </Deferred>
         </>
@@ -516,6 +542,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     const input = (
         <AgentInput
+            ref={inputRef}
             placeholder={t('session.inputPlaceholder')}
             value={message}
             onChangeText={setMessage}

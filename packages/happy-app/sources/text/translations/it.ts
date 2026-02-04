@@ -867,8 +867,8 @@ export const it: TranslationStructure = {
         unknownEvent: 'Evento sconosciuto',
         usageLimitUntil: ({ time }: { time: string }) => `Limite di utilizzo raggiunto fino a ${time}`,
         unknownTime: 'ora sconosciuta',
-        confirmOldOption: 'Inviare opzione precedente?',
-        confirmOldOptionMessage: 'Questa è un\'opzione da un messaggio precedente. Sei sicuro di volerla inviare?',
+        confirmOverwriteInput: 'Overwrite current input?',
+        confirmOverwriteInputMessage: 'The input box already has content. Do you want to replace it?',
     },
 
     codex: {

@@ -20,9 +20,9 @@ export type Option = {
     title: string;
 };
 
-export const MarkdownView = React.memo((props: { 
+export const MarkdownView = React.memo((props: {
     markdown: string;
-    onOptionPress?: (option: Option) => void;
+    onOptionPress?: (option: Option, allOptions: string[]) => void;
 }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
     
@@ -181,25 +181,25 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
     );
 }
 
-function RenderOptionsBlock(props: { 
-    items: string[], 
-    first: boolean, 
-    last: boolean, 
+function RenderOptionsBlock(props: {
+    items: string[],
+    first: boolean,
+    last: boolean,
     selectable: boolean,
-    onOptionPress?: (option: Option) => void 
+    onOptionPress?: (option: Option, allOptions: string[]) => void
 }) {
     return (
         <View style={[style.optionsContainer, props.first && style.first, props.last && style.last]}>
             {props.items.map((item, index) => {
                 if (props.onOptionPress) {
                     return (
-                        <Pressable 
-                            key={index} 
+                        <Pressable
+                            key={index}
                             style={({ pressed }) => [
                                 style.optionItem,
                                 pressed && style.optionItemPressed
                             ]}
-                            onPress={() => props.onOptionPress?.({ title: item })}
+                            onPress={() => props.onOptionPress?.({ title: item }, props.items)}
                         >
                             <Text selectable={props.selectable} style={style.optionText}>{item}</Text>
                         </Pressable>

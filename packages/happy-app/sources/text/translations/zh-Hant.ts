@@ -839,8 +839,8 @@ export const zhHant: TranslationStructure = {
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         unknownTime: '未知時間',
-        confirmOldOption: '發送舊選項？',
-        confirmOldOptionMessage: '這是歷史訊息中的選項，確定要發送嗎？',
+        confirmOverwriteInput: '覆蓋當前輸入？',
+        confirmOverwriteInputMessage: '輸入框已有內容，是否替換？',
     },
 
     codex: {

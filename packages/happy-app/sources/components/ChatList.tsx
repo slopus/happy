@@ -9,13 +9,14 @@ import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
 
-export const ChatList = React.memo((props: { session: Session }) => {
+export const ChatList = React.memo((props: { session: Session; onFillInput?: (text: string, allOptions?: string[]) => void }) => {
     const { messages } = useSessionMessages(props.session.id);
     return (
         <ChatListInternal
             metadata={props.session.metadata}
             sessionId={props.session.id}
             messages={messages}
+            onFillInput={props.onFillInput}
         />
     )
 });
@@ -37,6 +38,7 @@ const ChatListInternal = React.memo((props: {
     metadata: Metadata | null,
     sessionId: string,
     messages: Message[],
+    onFillInput?: (text: string, allOptions?: string[]) => void,
 }) => {
     const keyExtractor = useCallback((item: any) => item.id, []);
     const renderItem = useCallback(({ item, index }: { item: any, index: number }) => (
@@ -45,8 +47,9 @@ const ChatListInternal = React.memo((props: {
             metadata={props.metadata}
             sessionId={props.sessionId}
             isNewestMessage={index === 0}
+            onFillInput={props.onFillInput}
         />
-    ), [props.metadata, props.sessionId]);
+    ), [props.metadata, props.sessionId, props.onFillInput]);
     return (
         <FlatList
             data={props.messages}
