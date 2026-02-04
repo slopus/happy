@@ -336,7 +336,7 @@ class Sync {
 
         // Send message with ack and retry fallback
         const RETRY_INTERVAL_MS = 5000;
-        const MAX_RETRIES = 3;
+        const MAX_RETRIES = 5;
 
         type SendResponse = { result: 'success'; messageId: string; seq: number } | { result: 'error'; error: string } | { result: 'timeout' };
 
@@ -379,9 +379,9 @@ class Sync {
                     log.log(`Retry ${i + 1}/${MAX_RETRIES}: message ${localId} not found yet`);
                 }
 
-                // After all retries, assume success - server may still process it
-                log.log(`Message ${localId} not confirmed after ${MAX_RETRIES} retries, assuming success`);
-                return { success: true, localId };
+                // After all retries, return failure so user can retry (server will deduplicate by localId)
+                log.log(`Message ${localId} not confirmed after ${MAX_RETRIES} retries, returning failure for retry`);
+                return { success: false, error: 'Message send timed out', localId };
             }
 
             if (response.result === 'success') {
