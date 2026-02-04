@@ -407,7 +407,7 @@ export async function runGemini(opts: {
   //
 
   const messageBuffer = new MessageBuffer();
-  const hasTTY = process.stdout.isTTY && process.stdin.isTTY;
+  const hasTTY = process.stdout.isTTY && process.stdin.isTTY && opts.startedBy !== 'daemon';
   let inkInstance: ReturnType<typeof render> | null = null;
 
   // Track current model for UI display
