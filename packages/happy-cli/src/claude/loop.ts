@@ -40,6 +40,8 @@ interface LoopOptions {
     hookSettingsPath: string
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
+    /** Whether this session was started by the daemon or directly from a terminal */
+    startedBy?: 'daemon' | 'terminal'
 }
 
 export async function loop(opts: LoopOptions): Promise<number> {
@@ -59,7 +61,8 @@ export async function loop(opts: LoopOptions): Promise<number> {
         allowedTools: opts.allowedTools,
         onModeChange: opts.onModeChange,
         hookSettingsPath: opts.hookSettingsPath,
-        jsRuntime: opts.jsRuntime
+        jsRuntime: opts.jsRuntime,
+        startedBy: opts.startedBy
     });
 
     opts.onSessionReady?.(session)
