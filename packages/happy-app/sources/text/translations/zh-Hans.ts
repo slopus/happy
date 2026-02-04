@@ -839,6 +839,8 @@ export const zhHans: TranslationStructure = {
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         unknownTime: '未知时间',
+        confirmOldOption: '发送旧选项？',
+        confirmOldOptionMessage: '该选项来自较早的消息，确定要发送吗？',
         confirmOverwriteInput: '覆盖当前输入？',
         confirmOverwriteInputMessage: '输入框已有内容，是否替换？',
     },

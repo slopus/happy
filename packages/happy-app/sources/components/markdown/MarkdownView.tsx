@@ -1,7 +1,7 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import { Link } from 'expo-router';
 import * as React from 'react';
-import { Pressable, ScrollView, View, Platform } from 'react-native';
+import { Pressable, ScrollView, View, Platform, ActivityIndicator } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '../StyledText';
@@ -12,6 +12,7 @@ import { useLocalSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
 
@@ -20,12 +21,19 @@ export type Option = {
     title: string;
 };
 
+// Loading state for options - tracks which option is loading (by index)
+export type OptionsLoadingState = {
+    loadingIndex: number | null;
+};
+
 export const MarkdownView = React.memo((props: {
     markdown: string;
     onOptionPress?: (option: Option, allOptions: string[]) => void;
+    onOptionLongPress?: (option: Option, allOptions: string[]) => void;
+    optionsLoadingState?: OptionsLoadingState;
 }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
-    
+
     // Backwards compatibility: The original version just returned the view, wrapping the list of blocks.
     // It made each of the individual text elements selectable. When we enable the markdownCopyV2 feature,
     // we disable the selectable property on individual text segments on mobile only. Instead, the long press
@@ -44,46 +52,48 @@ export const MarkdownView = React.memo((props: {
             Modal.alert('Error', 'Failed to open text selection. Please try again.');
         }
     }, [props.markdown, router]);
+
+    // Separate blocks into groups: options blocks need to be outside the parent GestureDetector
+    // to prevent long press conflicts with the markdownCopyV2 feature
+    const renderBlockContent = (block: typeof blocks[number], index: number) => {
+        if (block.type === 'text') {
+            return <RenderTextBlock spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+        } else if (block.type === 'header') {
+            return <RenderHeaderBlock level={block.level} spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+        } else if (block.type === 'horizontal-rule') {
+            return <View style={style.horizontalRule} key={index} />;
+        } else if (block.type === 'list') {
+            return <RenderListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+        } else if (block.type === 'numbered-list') {
+            return <RenderNumberedListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+        } else if (block.type === 'code-block') {
+            return <RenderCodeBlock content={block.content} language={block.language} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+        } else if (block.type === 'mermaid') {
+            return <MermaidRenderer content={block.content} key={index} />;
+        } else if (block.type === 'options') {
+            return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} onOptionLongPress={props.onOptionLongPress} optionsLoadingState={props.optionsLoadingState} />;
+        } else if (block.type === 'table') {
+            return <RenderTableBlock headers={block.headers} rows={block.rows} key={index} first={index === 0} last={index === blocks.length - 1} />;
+        } else {
+            return null;
+        }
+    };
+
     const renderContent = () => {
         return (
             <View style={{ width: '100%' }}>
-                {blocks.map((block, index) => {
-                    if (block.type === 'text') {
-                        return <RenderTextBlock spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
-                    } else if (block.type === 'header') {
-                        return <RenderHeaderBlock level={block.level} spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
-                    } else if (block.type === 'horizontal-rule') {
-                        return <View style={style.horizontalRule} key={index} />;
-                    } else if (block.type === 'list') {
-                        return <RenderListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
-                    } else if (block.type === 'numbered-list') {
-                        return <RenderNumberedListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
-                    } else if (block.type === 'code-block') {
-                        return <RenderCodeBlock content={block.content} language={block.language} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
-                    } else if (block.type === 'mermaid') {
-                        return <MermaidRenderer content={block.content} key={index} />;
-                    } else if (block.type === 'options') {
-                        return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} />;
-                    } else if (block.type === 'table') {
-                        return <RenderTableBlock headers={block.headers} rows={block.rows} key={index} first={index === 0} last={index === blocks.length - 1} />;
-                    } else {
-                        return null;
-                    }
-                })}
+                {blocks.map((block, index) => renderBlockContent(block, index))}
             </View>
         );
+    };
+
+    // For web or when markdownCopyV2 is disabled, render everything normally
+    if (!markdownCopyV2 || Platform.OS === 'web') {
+        return renderContent();
     }
 
-    if (!markdownCopyV2) {
-        return renderContent();
-    }
-    
-    if (Platform.OS === 'web') {
-        return renderContent();
-    }
-    
-    // Use GestureDetector with LongPress gesture - it doesn't block pan gestures
-    // so horizontal scrolling in code blocks and tables still works
+    // For mobile with markdownCopyV2 enabled, we need to render options blocks OUTSIDE
+    // the parent GestureDetector to prevent long press conflicts
     const longPressGesture = Gesture.LongPress()
         .minDuration(500)
         .onStart(() => {
@@ -91,12 +101,43 @@ export const MarkdownView = React.memo((props: {
         })
         .runOnJS(true);
 
+    // Group consecutive non-options blocks together, render options separately
+    const elements: React.ReactNode[] = [];
+    let currentNonOptionsGroup: { block: typeof blocks[number], index: number }[] = [];
+
+    const flushNonOptionsGroup = () => {
+        if (currentNonOptionsGroup.length > 0) {
+            const groupKey = `group-${currentNonOptionsGroup[0].index}`;
+            elements.push(
+                <GestureDetector gesture={longPressGesture} key={groupKey}>
+                    <View style={{ width: '100%' }}>
+                        {currentNonOptionsGroup.map(({ block, index }) => renderBlockContent(block, index))}
+                    </View>
+                </GestureDetector>
+            );
+            currentNonOptionsGroup = [];
+        }
+    };
+
+    blocks.forEach((block, index) => {
+        if (block.type === 'options') {
+            // Flush any accumulated non-options blocks first
+            flushNonOptionsGroup();
+            // Render options block directly without parent GestureDetector
+            elements.push(renderBlockContent(block, index));
+        } else {
+            // Accumulate non-options blocks
+            currentNonOptionsGroup.push({ block, index });
+        }
+    });
+
+    // Flush remaining non-options blocks
+    flushNonOptionsGroup();
+
     return (
-        <GestureDetector gesture={longPressGesture}>
-            <View style={{ width: '100%' }}>
-                {renderContent()}
-            </View>
-        </GestureDetector>
+        <View style={{ width: '100%' }}>
+            {elements}
+        </View>
     );
 });
 
@@ -181,28 +222,100 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
     );
 }
 
+// Individual option item component to use hooks properly
+const OptionItem = React.memo((props: {
+    item: string,
+    index: number,
+    isThisLoading: boolean,
+    isDisabled: boolean,
+    onPress: () => void,
+    onLongPress: () => void,
+}) => {
+    // Use GestureDetector to handle long press, which takes priority over parent GestureDetector
+    const longPressGesture = Gesture.LongPress()
+        .minDuration(500)
+        .onStart(() => {
+            if (!props.isDisabled) {
+                props.onLongPress();
+            }
+        })
+        .runOnJS(true);
+
+    const tapGesture = Gesture.Tap()
+        .onEnd(() => {
+            if (!props.isDisabled) {
+                props.onPress();
+            }
+        })
+        .runOnJS(true);
+
+    // Race between tap and long press - first one to complete wins
+    const composedGesture = Gesture.Race(tapGesture, longPressGesture);
+
+    return (
+        <GestureDetector gesture={composedGesture}>
+            <View
+                style={[
+                    style.optionItem,
+                    props.isDisabled && style.optionItemDisabled
+                ]}
+            >
+                <Text
+                    selectable={false}
+                    style={[
+                        style.optionText,
+                        props.isDisabled && style.optionTextDisabled
+                    ]}
+                >
+                    {props.item}
+                </Text>
+                {props.isThisLoading && (
+                    <View style={style.optionLoadingOverlay}>
+                        <ActivityIndicator size="small" />
+                    </View>
+                )}
+            </View>
+        </GestureDetector>
+    );
+});
+
 function RenderOptionsBlock(props: {
     items: string[],
     first: boolean,
     last: boolean,
     selectable: boolean,
-    onOptionPress?: (option: Option, allOptions: string[]) => void
+    onOptionPress?: (option: Option, allOptions: string[]) => void,
+    onOptionLongPress?: (option: Option, allOptions: string[]) => void,
+    optionsLoadingState?: OptionsLoadingState
 }) {
+    const isLoading = props.optionsLoadingState?.loadingIndex !== null && props.optionsLoadingState?.loadingIndex !== undefined;
+
+    const handleLongPress = React.useCallback((item: string) => {
+        // Only trigger long press on mobile
+        if (Platform.OS !== 'web') {
+            // Haptic feedback
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            props.onOptionLongPress?.({ title: item }, props.items);
+        }
+    }, [props.onOptionLongPress, props.items]);
+
     return (
         <View style={[style.optionsContainer, props.first && style.first, props.last && style.last]}>
             {props.items.map((item, index) => {
+                const isThisLoading = props.optionsLoadingState?.loadingIndex === index;
+                const isDisabled = isLoading && !isThisLoading;
+
                 if (props.onOptionPress) {
                     return (
-                        <Pressable
+                        <OptionItem
                             key={index}
-                            style={({ pressed }) => [
-                                style.optionItem,
-                                pressed && style.optionItemPressed
-                            ]}
+                            item={item}
+                            index={index}
+                            isThisLoading={isThisLoading}
+                            isDisabled={isDisabled}
                             onPress={() => props.onOptionPress?.({ title: item }, props.items)}
-                        >
-                            <Text selectable={props.selectable} style={style.optionText}>{item}</Text>
-                        </Pressable>
+                            onLongPress={() => handleLongPress(item)}
+                        />
                     );
                 } else {
                     return (
@@ -483,15 +596,29 @@ const style = StyleSheet.create((theme) => ({
         borderWidth: 1,
         borderColor: theme.colors.divider,
     },
-    optionItemPressed: {
-        opacity: 0.7,
-        backgroundColor: theme.colors.surfaceHigh,
+    optionItemDisabled: {
+        opacity: 0.5,
     },
     optionText: {
         ...Typography.default(),
         fontSize: 16,
         lineHeight: 24,
         color: theme.colors.text,
+    },
+    optionTextDisabled: {
+        opacity: 0.6,
+    },
+    optionLoadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: theme.colors.surfaceHighest,
+        opacity: 0.8,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 
     //

@@ -835,6 +835,8 @@ export const ru: TranslationStructure = {
         unknownEvent: 'Неизвестное событие',
         usageLimitUntil: ({ time }: { time: string }) => `Лимит использования достигнут до ${time}`,
         unknownTime: 'неизвестное время',
+        confirmOldOption: 'Send old option?',
+        confirmOldOptionMessage: 'This option is from an earlier message. Are you sure you want to send it?',
         confirmOverwriteInput: 'Overwrite current input?',
         confirmOverwriteInputMessage: 'The input box already has content. Do you want to replace it?',
     },

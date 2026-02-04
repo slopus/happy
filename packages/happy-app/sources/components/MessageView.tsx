@@ -3,7 +3,7 @@ import { View, Text, Pressable } from "react-native";
 import { Image } from "expo-image";
 import { ImageViewer } from "./ImageViewer";
 import { StyleSheet } from 'react-native-unistyles';
-import { MarkdownView } from "./markdown/MarkdownView";
+import { MarkdownView, OptionsLoadingState } from "./markdown/MarkdownView";
 import { t } from '@/text';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
@@ -12,6 +12,8 @@ import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
 import { Option } from './markdown/MarkdownView';
 import { useSetting } from "@/sync/storage";
+import { Modal } from "@/modal";
+import { sync } from "@/sync/sync";
 
 export const MessageView = (props: {
   message: Message;
@@ -48,10 +50,10 @@ function RenderBlock(props: {
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
-      return <UserTextBlock message={props.message} sessionId={props.sessionId} onFillInput={props.onFillInput} />;
+      return <UserTextBlock message={props.message} sessionId={props.sessionId} isNewestMessage={props.isNewestMessage} onFillInput={props.onFillInput} />;
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} onFillInput={props.onFillInput} />;
+      return <AgentTextBlock message={props.message} sessionId={props.sessionId} isNewestMessage={props.isNewestMessage} onFillInput={props.onFillInput} />;
 
     case 'tool-call':
       return <ToolCallBlock
@@ -75,12 +77,37 @@ function RenderBlock(props: {
 function UserTextBlock(props: {
   message: UserTextMessage;
   sessionId: string;
+  isNewestMessage?: boolean;
   onFillInput?: (text: string, allOptions?: string[]) => void;
 }) {
   const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
   const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
+  const [optionsLoadingState, setOptionsLoadingState] = React.useState<OptionsLoadingState>({ loadingIndex: null });
 
-  const handleOptionPress = React.useCallback((option: Option, allOptions: string[]) => {
+  // Click to send
+  const handleOptionPress = React.useCallback(async (option: Option, allOptions: string[]) => {
+    // If not newest message, show confirmation
+    if (!props.isNewestMessage) {
+      const confirmed = await Modal.confirm(
+        t('message.confirmOldOption'),
+        t('message.confirmOldOptionMessage')
+      );
+      if (!confirmed) return;
+    }
+
+    // Find the index of this option for loading state
+    const index = allOptions.indexOf(option.title);
+    setOptionsLoadingState({ loadingIndex: index });
+
+    try {
+      await sync.sendMessage(props.sessionId, option.title);
+    } finally {
+      setOptionsLoadingState({ loadingIndex: null });
+    }
+  }, [props.sessionId, props.isNewestMessage]);
+
+  // Long press to fill input (mobile only, handled in MarkdownView)
+  const handleOptionLongPress = React.useCallback((option: Option, allOptions: string[]) => {
     props.onFillInput?.(option.title, allOptions);
   }, [props.onFillInput]);
 
@@ -117,7 +144,12 @@ function UserTextBlock(props: {
             />
           </>
         )}
-        <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} />
+        <MarkdownView
+          markdown={props.message.displayText || props.message.text}
+          onOptionPress={handleOptionPress}
+          onOptionLongPress={handleOptionLongPress}
+          optionsLoadingState={optionsLoadingState}
+        />
       </View>
     </View>
   );
@@ -126,10 +158,36 @@ function UserTextBlock(props: {
 function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
+  isNewestMessage?: boolean;
   onFillInput?: (text: string, allOptions?: string[]) => void;
 }) {
   const experiments = useSetting('experiments');
-  const handleOptionPress = React.useCallback((option: Option, allOptions: string[]) => {
+  const [optionsLoadingState, setOptionsLoadingState] = React.useState<OptionsLoadingState>({ loadingIndex: null });
+
+  // Click to send
+  const handleOptionPress = React.useCallback(async (option: Option, allOptions: string[]) => {
+    // If not newest message, show confirmation
+    if (!props.isNewestMessage) {
+      const confirmed = await Modal.confirm(
+        t('message.confirmOldOption'),
+        t('message.confirmOldOptionMessage')
+      );
+      if (!confirmed) return;
+    }
+
+    // Find the index of this option for loading state
+    const index = allOptions.indexOf(option.title);
+    setOptionsLoadingState({ loadingIndex: index });
+
+    try {
+      await sync.sendMessage(props.sessionId, option.title);
+    } finally {
+      setOptionsLoadingState({ loadingIndex: null });
+    }
+  }, [props.sessionId, props.isNewestMessage]);
+
+  // Long press to fill input (mobile only, handled in MarkdownView)
+  const handleOptionLongPress = React.useCallback((option: Option, allOptions: string[]) => {
     props.onFillInput?.(option.title, allOptions);
   }, [props.onFillInput]);
 
@@ -140,7 +198,12 @@ function AgentTextBlock(props: {
 
   return (
     <View style={styles.agentMessageContainer}>
-      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
+      <MarkdownView
+        markdown={props.message.text}
+        onOptionPress={handleOptionPress}
+        onOptionLongPress={handleOptionLongPress}
+        optionsLoadingState={optionsLoadingState}
+      />
     </View>
   );
 }
