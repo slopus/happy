@@ -52,11 +52,15 @@ export const IGNORED_COMMANDS = [
     "login"
 ];
 
-// Default commands always available
+// Default commands always available for all session types
 const DEFAULT_COMMANDS: CommandItem[] = [
     { command: 'compact', description: 'Compact the conversation history' },
     { command: 'clear', description: 'Clear the conversation' },
-    { command: 'duplicate', description: 'Duplicate conversation from a specific point' }
+];
+
+// Commands only available for Claude sessions (require claudeSessionId)
+const CLAUDE_ONLY_COMMANDS: CommandItem[] = [
+    { command: 'duplicate', description: 'Duplicate conversation from a specific point' },
 ];
 
 // Command descriptions for known tools/commands
@@ -88,6 +92,11 @@ function getCommandsFromSession(sessionId: string): CommandItem[] {
     }
 
     const commands: CommandItem[] = [...DEFAULT_COMMANDS];
+
+    // Add Claude-only commands if session has a claudeSessionId
+    if (session.metadata.claudeSessionId) {
+        commands.push(...CLAUDE_ONLY_COMMANDS);
+    }
     
     // Add commands from metadata.slashCommands (filter with ignore list)
     if (session.metadata.slashCommands) {
