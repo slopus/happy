@@ -7,6 +7,38 @@ import { AsyncLock } from "@/utils/lock";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { Socket } from "socket.io";
+import { delay } from "@/utils/delay";
+
+/**
+ * Check if there's an active CLI (session-scoped) connection for a session.
+ */
+function hasCliConnection(userId: string, sessionId: string): boolean {
+    const connections = eventRouter.getConnections(userId);
+    if (!connections) return false;
+    return Array.from(connections).some(
+        conn => conn.connectionType === 'session-scoped' && conn.sessionId === sessionId
+    );
+}
+
+/**
+ * Wait for CLI connection with polling.
+ * Returns true if CLI is connected, false if still disconnected after timeout.
+ */
+async function waitForCliConnection(userId: string, sessionId: string, maxWaitMs: number = 8000, intervalMs: number = 2000): Promise<boolean> {
+    if (hasCliConnection(userId, sessionId)) {
+        return true;
+    }
+
+    const maxAttempts = Math.ceil(maxWaitMs / intervalMs);
+    for (let i = 0; i < maxAttempts; i++) {
+        await delay(intervalMs);
+        if (hasCliConnection(userId, sessionId)) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 export function sessionUpdateHandler(userId: string, socket: Socket, connection: ClientConnection) {
     socket.on('update-metadata', async (data: any, callback: (response: any) => void) => {
@@ -320,6 +352,20 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                     }
                     return;
                 }
+
+                // If message is from App (user-scoped), check if CLI is connected to receive it
+                // This prevents "message lost" scenario when CLI process has died
+                if (connection.connectionType === 'user-scoped') {
+                    const cliConnected = await waitForCliConnection(userId, sid);
+                    if (!cliConnected) {
+                        log({ module: 'websocket' }, `No CLI connection for session ${sid} after waiting, returning error`);
+                        if (callback) {
+                            callback({ result: 'error', error: 'Session is offline' });
+                        }
+                        return;
+                    }
+                }
+
                 let useLocalId = typeof localId === 'string' ? localId : null;
 
                 // Create encrypted message
