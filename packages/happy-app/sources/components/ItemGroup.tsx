@@ -116,21 +116,32 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
 
                 {/* Content Container */}
                 <View style={[styles.contentContainer, containerStyle]}>
-                    {React.Children.map(children, (child, index) => {
-                        if (React.isValidElement<ItemChildProps>(child)) {
-                            // Don't add props to React.Fragment
-                            if (child.type === React.Fragment) {
-                                return child;
+                    {(() => {
+                        const childArray = React.Children.toArray(children);
+                        // Find the last valid item index (excluding Fragments)
+                        let lastItemIndex = -1;
+                        for (let i = childArray.length - 1; i >= 0; i--) {
+                            const c = childArray[i];
+                            if (React.isValidElement(c) && c.type !== React.Fragment) {
+                                lastItemIndex = i;
+                                break;
                             }
-                            const isLast = index === React.Children.count(children) - 1;
-                            const childProps = child.props as ItemChildProps;
-                            return React.cloneElement(child, {
-                                ...childProps,
-                                showDivider: !isLast && childProps.showDivider !== false
-                            });
                         }
-                        return child;
-                    })}
+                        return childArray.map((child, index) => {
+                            if (React.isValidElement<ItemChildProps>(child)) {
+                                if (child.type === React.Fragment) {
+                                    return child;
+                                }
+                                const isLast = index === lastItemIndex;
+                                const childProps = child.props as ItemChildProps;
+                                return React.cloneElement(child, {
+                                    ...childProps,
+                                    showDivider: !isLast && childProps.showDivider !== false
+                                });
+                            }
+                            return child;
+                        });
+                    })()}
                 </View>
 
                 {/* Footer */}
