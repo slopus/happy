@@ -11,7 +11,8 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionKill, sessionDelete, machineForkClaudeSession, machineSpawnNewSession } from '@/sync/ops';
+import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
@@ -140,6 +141,68 @@ function SessionInfoContent({ session }: { session: Session }) {
         );
     }, [performDelete]);
 
+    const [forkingSession, setForkingSession] = React.useState(false);
+    const handleForkSession = useCallback(async () => {
+        if (forkingSession) return;
+        const claudeSessionId = session.metadata?.claudeSessionId;
+        const machineId = session.metadata?.machineId;
+        const directory = session.metadata?.path;
+        if (!claudeSessionId || !directory || !machineId) return;
+
+        const isOnline = session.active;
+        const confirmTitle = isOnline ? t('sessionHistory.copyConfirmTitle') : t('sessionHistory.resumeConfirmTitle');
+        const confirmMessage = isOnline ? t('sessionHistory.copyConfirmMessage') : t('sessionHistory.resumeConfirmMessage');
+        const confirmed = await Modal.confirm(confirmTitle, confirmMessage, {
+            confirmText: t('common.continue'),
+            cancelText: t('common.cancel'),
+        });
+        if (!confirmed) return;
+
+        setForkingSession(true);
+        try {
+            const originalTitle = session.metadata?.summary?.text || getSessionName(session);
+            let sessionTitle = originalTitle;
+            if (isOnline) {
+                const now = new Date();
+                const timeSuffix = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+                sessionTitle = `${originalTitle}_${timeSuffix}`;
+            }
+            const forkResult = await machineForkClaudeSession(machineId, claudeSessionId);
+            if (!forkResult.success || !forkResult.newSessionId) {
+                Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                return;
+            }
+            const result = await machineSpawnNewSession({
+                machineId,
+                directory,
+                approvedNewDirectoryCreation: false,
+                agent: 'claude',
+                resumeSessionId: forkResult.newSessionId,
+                sessionTitle,
+                skipForkSession: true,
+            });
+            if (result.type === 'requestToApproveDirectoryCreation') {
+                Modal.alert(t('common.error'), t('claudeHistory.directoryNotFound'));
+                return;
+            }
+            if (result.type === 'error') {
+                Modal.alert(t('common.error'), result.errorMessage || t('claudeHistory.resumeFailed'));
+                return;
+            }
+            if (result.type === 'success') {
+                await sync.refreshSessions();
+                router.push(`/session/${result.sessionId}`, {
+                    dangerouslySingular() { return 'session'; },
+                });
+            }
+        } catch (error) {
+            console.error('Failed to fork session', error);
+            Modal.alert(t('common.error'), t('claudeHistory.resumeFailed'));
+        } finally {
+            setForkingSession(false);
+        }
+    }, [session, forkingSession, router]);
+
     const formatDate = useCallback((timestamp: number) => {
         return new Date(timestamp).toLocaleString();
     }, []);
@@ -255,6 +318,15 @@ function SessionInfoContent({ session }: { session: Session }) {
                             subtitle={t('sessionInfo.viewMachineSubtitle')}
                             icon={<Ionicons name="server-outline" size={29} color="#007AFF" />}
                             onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
+                        />
+                    )}
+                    {session.metadata?.claudeSessionId && session.metadata?.machineId && session.metadata?.path && (
+                        <Item
+                            title={session.active ? t('sessionInfo.copySession') : t('sessionInfo.resumeSession')}
+                            subtitle={session.active ? t('sessionInfo.copySessionSubtitle') : t('sessionInfo.resumeSessionSubtitle')}
+                            icon={<Ionicons name={session.active ? "copy-outline" : "play-circle-outline"} size={29} color="#34C759" />}
+                            onPress={handleForkSession}
+                            disabled={forkingSession}
                         />
                     )}
                     {sessionStatus.isConnected && (

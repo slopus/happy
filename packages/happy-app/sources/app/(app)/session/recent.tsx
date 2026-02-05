@@ -4,7 +4,8 @@ import { Text } from '@/components/StyledText';
 import { useAllSessions } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { Avatar } from '@/components/Avatar';
-import { getSessionName, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
+import { getSessionName, getSessionSubtitle, getSessionAvatarId, useSessionStatus } from '@/utils/sessionUtils';
+import { StatusDot } from '@/components/StatusDot';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
@@ -15,6 +16,8 @@ import { Modal } from '@/modal';
 import { machineForkClaudeSession, machineSpawnNewSession } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
+
+type ForkMode = 'resume' | 'copy';
 
 interface SessionHistoryItem {
     type: 'session' | 'date-header';
@@ -108,6 +111,23 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    statusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 4,
+    },
+    statusDotContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: 16,
+        marginRight: 4,
+    },
+    statusText: {
+        fontSize: 12,
+        fontWeight: '500',
+        lineHeight: 16,
+        ...Typography.default(),
+    },
 }));
 
 function formatDateHeader(date: Date): string {
@@ -175,7 +195,6 @@ function groupSessionsByDate(sessions: Session[]): SessionHistoryItem[] {
 }
 
 export default function SessionHistory() {
-    const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const allSessions = useAllSessions();
     const navigateToSession = useNavigateToSession();
@@ -185,7 +204,7 @@ export default function SessionHistory() {
         return groupSessionsByDate(allSessions);
     }, [allSessions]);
     
-    const handleResume = React.useCallback(async (session: Session) => {
+    const handleForkSession = React.useCallback(async (session: Session, mode: 'resume' | 'copy') => {
         if (resumingSessionId) return;
         const claudeSessionId = session.metadata?.claudeSessionId;
         const machineId = session.metadata?.machineId;
@@ -200,16 +219,24 @@ export default function SessionHistory() {
             return;
         }
 
+        const confirmTitle = mode === 'copy' ? t('sessionHistory.copyConfirmTitle') : t('sessionHistory.resumeConfirmTitle');
+        const confirmMessage = mode === 'copy' ? t('sessionHistory.copyConfirmMessage') : t('sessionHistory.resumeConfirmMessage');
         const confirmed = await Modal.confirm(
-            t('sessionHistory.resumeConfirmTitle'),
-            t('sessionHistory.resumeConfirmMessage'),
+            confirmTitle,
+            confirmMessage,
             { confirmText: t('common.continue'), cancelText: t('common.cancel') }
         );
         if (!confirmed) return;
 
         setResumingSessionId(session.id);
         try {
-            const sessionTitle = session.metadata?.summary?.text || getSessionName(session);
+            const originalTitle = session.metadata?.summary?.text || getSessionName(session);
+            let sessionTitle = originalTitle;
+            if (mode === 'copy') {
+                const now = new Date();
+                const timeSuffix = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+                sessionTitle = `${originalTitle}_${timeSuffix}`;
+            }
             const forkResult = await machineForkClaudeSession(machineId, claudeSessionId);
             if (!forkResult.success || !forkResult.newSessionId) {
                 Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
@@ -238,7 +265,7 @@ export default function SessionHistory() {
                 navigateToSession(result.sessionId);
             }
         } catch (error) {
-            console.error('Failed to resume session', error);
+            console.error('Failed to fork session', error);
             Modal.alert(t('common.error'), t('claudeHistory.resumeFailed'));
         } finally {
             setResumingSessionId(null);
@@ -255,66 +282,31 @@ export default function SessionHistory() {
                 </View>
             );
         }
-        
+
         if (item.type === 'session' && item.session) {
-            const session = item.session;
-            const sessionName = getSessionName(session);
-            const sessionSubtitle = getSessionSubtitle(session);
-            const avatarId = getSessionAvatarId(session);
-            const canResume = Boolean(session.metadata?.claudeSessionId);
-            const isResuming = resumingSessionId === session.id;
-            
             // Determine card styling based on position within date group
             const prevItem = index > 0 ? groupedItems[index - 1] : null;
             const nextItem = index < groupedItems.length - 1 ? groupedItems[index + 1] : null;
-            
+
             const isFirst = prevItem?.type === 'date-header';
             const isLast = nextItem?.type === 'date-header' || nextItem == null;
             const isSingle = isFirst && isLast;
-            
+
             return (
-                <Pressable
-                    style={[
-                        styles.sessionCard,
-                        isSingle ? styles.sessionCardSingle : 
-                        isFirst ? styles.sessionCardFirst :
-                        isLast ? styles.sessionCardLast : {}
-                    ]}
-                    onPress={() => navigateToSession(session.id)}
-                >
-                    <Avatar id={avatarId} size={48} />
-                    <View style={styles.sessionContent}>
-                        <Text style={styles.sessionTitle} numberOfLines={1}>
-                            {sessionName}
-                        </Text>
-                        <Text style={styles.sessionSubtitle} numberOfLines={1}>
-                            {sessionSubtitle}
-                        </Text>
-                    </View>
-                    <View style={styles.rightSection}>
-                        {canResume && !isResuming && (
-                            <Pressable
-                                style={styles.playButton}
-                                onPress={(event) => {
-                                    event.stopPropagation?.();
-                                    handleResume(session);
-                                }}
-                            >
-                                <Ionicons name="play-circle-outline" size={29} color={theme.colors.groupped.chevron} />
-                            </Pressable>
-                        )}
-                        {isResuming && (
-                            <View style={styles.playButton}>
-                                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                            </View>
-                        )}
-                    </View>
-                </Pressable>
+                <SessionHistoryItemCard
+                    session={item.session}
+                    isFirst={isFirst}
+                    isLast={isLast}
+                    isSingle={isSingle}
+                    isResuming={resumingSessionId === item.session.id}
+                    onPress={() => navigateToSession(item.session!.id)}
+                    onFork={handleForkSession}
+                />
             );
         }
-        
+
         return null;
-    }, [groupedItems, navigateToSession, handleResume, resumingSessionId, theme.colors.groupped.chevron, theme.colors.textSecondary]);
+    }, [groupedItems, navigateToSession, handleForkSession, resumingSessionId]);
     
     const keyExtractor = React.useCallback((item: SessionHistoryItem, index: number) => {
         if (item.type === 'date-header') {
@@ -364,3 +356,73 @@ export default function SessionHistory() {
         </View>
     );
 }
+
+const SessionHistoryItemCard = React.memo(({ session, isFirst, isLast, isSingle, isResuming, onPress, onFork }: {
+    session: Session;
+    isFirst?: boolean;
+    isLast?: boolean;
+    isSingle?: boolean;
+    isResuming: boolean;
+    onPress: () => void;
+    onFork: (session: Session, mode: ForkMode) => void;
+}) => {
+    const { theme } = useUnistyles();
+    const sessionStatus = useSessionStatus(session);
+    const sessionName = getSessionName(session);
+    const sessionSubtitle = getSessionSubtitle(session);
+    const avatarId = getSessionAvatarId(session);
+    const canFork = Boolean(session.metadata?.claudeSessionId);
+    const isOnline = session.active;
+
+    return (
+        <Pressable
+            style={[
+                styles.sessionCard,
+                isSingle ? styles.sessionCardSingle :
+                isFirst ? styles.sessionCardFirst :
+                isLast ? styles.sessionCardLast : {}
+            ]}
+            onPress={onPress}
+        >
+            <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+            <View style={styles.sessionContent}>
+                <Text style={styles.sessionTitle} numberOfLines={1}>
+                    {sessionName}
+                </Text>
+                <Text style={styles.sessionSubtitle} numberOfLines={1}>
+                    {sessionSubtitle}
+                </Text>
+                <View style={styles.statusRow}>
+                    <View style={styles.statusDotContainer}>
+                        <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                    </View>
+                    <Text style={[styles.statusText, { color: sessionStatus.statusColor }]}>
+                        {sessionStatus.statusText}
+                    </Text>
+                </View>
+            </View>
+            <View style={styles.rightSection}>
+                {canFork && !isResuming && (
+                    <Pressable
+                        style={styles.playButton}
+                        onPress={(event) => {
+                            event.stopPropagation?.();
+                            onFork(session, isOnline ? 'copy' : 'resume');
+                        }}
+                    >
+                        <Ionicons
+                            name={isOnline ? "copy-outline" : "play-circle-outline"}
+                            size={isOnline ? 22 : 29}
+                            color={theme.colors.groupped.chevron}
+                        />
+                    </Pressable>
+                )}
+                {isResuming && (
+                    <View style={styles.playButton}>
+                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    </View>
+                )}
+            </View>
+        </Pressable>
+    );
+});

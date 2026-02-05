@@ -397,6 +397,8 @@ export const ja: TranslationStructure = {
         viewAll: 'すべてのセッションを表示',
         resumeConfirmTitle: 'このセッションを再開しますか？',
         resumeConfirmMessage: '接続済みのデバイス上のClaudeセッションを再開します。',
+        copyConfirmTitle: 'このセッションをコピーしますか？',
+        copyConfirmMessage: '接続済みのデバイス上にClaudeセッションのコピーを作成します。',
     },
 
     claudeHistory: {
@@ -472,6 +474,10 @@ export const ja: TranslationStructure = {
         viewMachineSubtitle: 'マシンの詳細とセッションを表示',
         killSessionSubtitle: 'セッションを即座に終了',
         archiveSessionSubtitle: 'このセッションをアーカイブして停止',
+        resumeSession: 'セッションを再開',
+        resumeSessionSubtitle: '接続済みのデバイス上でこのセッションを再開',
+        copySession: 'セッションをコピー',
+        copySessionSubtitle: '接続済みのデバイス上にこのセッションのコピーを作成',
         metadata: 'メタデータ',
         host: 'ホスト',
         path: 'パス',

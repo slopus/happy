@@ -366,6 +366,8 @@ export const zhHant: TranslationStructure = {
         viewAll: '查看所有工作階段',
         resumeConfirmTitle: '繼續工作階段',
         resumeConfirmMessage: '是否要繼續此工作階段？',
+        copyConfirmTitle: '複製此工作階段？',
+        copyConfirmMessage: '這將在你已連接的裝置上建立此 Claude 工作階段的副本。',
     },
 
     claudeHistory: {
@@ -441,6 +443,10 @@ export const zhHant: TranslationStructure = {
         viewMachineSubtitle: '查看裝置詳情和工作階段',
         killSessionSubtitle: '立即終止工作階段',
         archiveSessionSubtitle: '封存此工作階段並停止它',
+        resumeSession: '恢復工作階段',
+        resumeSessionSubtitle: '在已連接的裝置上恢復此工作階段',
+        copySession: '複製工作階段',
+        copySessionSubtitle: '在已連接的裝置上建立此工作階段的副本',
         metadata: '中繼資料',
         host: '主機',
         path: '路徑',

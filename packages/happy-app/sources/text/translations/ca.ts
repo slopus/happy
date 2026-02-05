@@ -365,6 +365,8 @@ export const ca: TranslationStructure = {
         viewAll: 'Veure totes les sessions',
         resumeConfirmTitle: 'Reprendre aquesta sessió?',
         resumeConfirmMessage: 'Això reprendrà la sessió de Claude al teu dispositiu connectat.',
+        copyConfirmTitle: 'Copiar aquesta sessió?',
+        copyConfirmMessage: 'Això crearà una còpia de la sessió de Claude al teu dispositiu connectat.',
     },
 
     claudeHistory: {
@@ -440,6 +442,10 @@ export const ca: TranslationStructure = {
         viewMachineSubtitle: 'Veure detalls de la màquina i sessions',
         killSessionSubtitle: 'Finalitzar immediatament la sessió',
         archiveSessionSubtitle: 'Arxiva aquesta sessió i atura-la',
+        resumeSession: 'Reprendre sessió',
+        resumeSessionSubtitle: 'Reprendre aquesta sessió al teu dispositiu connectat',
+        copySession: 'Copiar sessió',
+        copySessionSubtitle: 'Crear una còpia d\'aquesta sessió al teu dispositiu connectat',
         metadata: 'Metadades',
         host: 'Host',
         path: 'Camí',

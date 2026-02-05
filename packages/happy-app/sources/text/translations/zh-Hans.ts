@@ -367,6 +367,8 @@ export const zhHans: TranslationStructure = {
         viewAll: '查看所有会话',
         resumeConfirmTitle: '确认恢复该会话？',
         resumeConfirmMessage: '这将恢复你已连接设备上的 Claude 会话。',
+        copyConfirmTitle: '确认复制该会话？',
+        copyConfirmMessage: '这将在你已连接的设备上创建该 Claude 会话的副本。',
     },
 
     claudeHistory: {
@@ -442,6 +444,10 @@ export const zhHans: TranslationStructure = {
         viewMachineSubtitle: '查看设备详情和会话',
         killSessionSubtitle: '立即终止会话',
         archiveSessionSubtitle: '归档此会话并停止它',
+        resumeSession: '恢复会话',
+        resumeSessionSubtitle: '在已连接的设备上恢复此会话',
+        copySession: '复制会话',
+        copySessionSubtitle: '在已连接的设备上创建此会话的副本',
         metadata: '元数据',
         host: '主机',
         path: '路径',

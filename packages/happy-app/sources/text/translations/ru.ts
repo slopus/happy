@@ -347,6 +347,8 @@ export const ru: TranslationStructure = {
         viewAll: 'Посмотреть все сессии',
         resumeConfirmTitle: 'Возобновить этот сеанс?',
         resumeConfirmMessage: 'Это возобновит сеанс Claude на вашем подключённом устройстве.',
+        copyConfirmTitle: 'Скопировать этот сеанс?',
+        copyConfirmMessage: 'Это создаст копию сеанса Claude на вашем подключённом устройстве.',
     },
 
     claudeHistory: {
@@ -411,6 +413,10 @@ export const ru: TranslationStructure = {
         viewMachineSubtitle: 'Посмотреть детали машины и сессии',
         killSessionSubtitle: 'Немедленно завершить сессию',
         archiveSessionSubtitle: 'Архивировать эту сессию и остановить её',
+        resumeSession: 'Возобновить сессию',
+        resumeSessionSubtitle: 'Возобновить эту сессию на подключённом устройстве',
+        copySession: 'Скопировать сессию',
+        copySessionSubtitle: 'Создать копию этой сессии на подключённом устройстве',
         metadata: 'Метаданные',
         host: 'Хост',
         path: 'Путь',

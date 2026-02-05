@@ -365,6 +365,8 @@ export const pt: TranslationStructure = {
         viewAll: 'Ver todas as sessões',
         resumeConfirmTitle: 'Retomar esta sessão?',
         resumeConfirmMessage: 'Isto retomará a sessão do Claude no seu dispositivo conectado.',
+        copyConfirmTitle: 'Copiar esta sessão?',
+        copyConfirmMessage: 'Isto criará uma cópia da sessão do Claude no seu dispositivo conectado.',
     },
 
     claudeHistory: {
@@ -440,6 +442,10 @@ export const pt: TranslationStructure = {
         viewMachineSubtitle: 'Ver detalhes da máquina e sessões',
         killSessionSubtitle: 'Encerrar imediatamente a sessão',
         archiveSessionSubtitle: 'Arquivar esta sessão e pará-la',
+        resumeSession: 'Retomar sessão',
+        resumeSessionSubtitle: 'Retomar esta sessão no seu dispositivo conectado',
+        copySession: 'Copiar sessão',
+        copySessionSubtitle: 'Criar uma cópia desta sessão no seu dispositivo conectado',
         metadata: 'Metadados',
         host: 'Host',
         path: 'Caminho',
