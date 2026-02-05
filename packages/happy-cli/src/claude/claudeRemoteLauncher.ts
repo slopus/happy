@@ -6,7 +6,7 @@ import React from "react";
 import { claudeRemote, type InterruptState } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
-import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
+import { SDKAssistantMessage, SDKMessage, SDKResultMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
@@ -163,6 +163,26 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
         // Write to message log
         formatClaudeMessageForInk(message, messageBuffer);
+
+        // Handle result messages with errors - send as session event
+        if (message.type === 'result') {
+            const resultMsg = message as SDKResultMessage;
+            if (resultMsg.subtype === 'error_during_execution') {
+                // Extract errors from the result message
+                const errors = (resultMsg as any).errors as string[] | undefined;
+                if (errors && errors.length > 0) {
+                    // Send each error as a session event message
+                    const errorText = errors.join('\n');
+                    session.client.sendSessionEvent({ type: 'message', message: `Error: ${errorText}` });
+                    logger.debug('[remote]: sent error_during_execution as session event', { errorCount: errors.length });
+                } else {
+                    // No specific errors, send generic message
+                    session.client.sendSessionEvent({ type: 'message', message: 'An error occurred during execution' });
+                }
+            }
+            // Result messages don't need further processing (not part of conversation log)
+            return;
+        }
 
         // Write to permission handler for tool id resolving
         permissionHandler.onMessage(message);

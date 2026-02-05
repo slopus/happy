@@ -125,9 +125,13 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                 }
             } catch (e) {
                 logger.debug('[local]: launch error', e);
-                // If Claude exited with non-zero exit code, propagate it
+                // If Claude exited with non-zero exit code, check if we already have an exit reason
                 if (e instanceof ExitCodeError) {
-                    exitReason = { type: 'exit', code: e.exitCode };
+                    // Don't override exitReason if it's already set (e.g., by doAbort or doSwitch)
+                    // This happens when the process was intentionally terminated
+                    if (!exitReason) {
+                        exitReason = { type: 'exit', code: e.exitCode };
+                    }
                     break;
                 }
                 if (!exitReason) {
