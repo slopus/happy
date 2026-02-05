@@ -319,14 +319,29 @@ export const storage = create<StorageState>()((set, get) => {
                 // Use centralized resolver for consistent state management
                 const presence = resolveSessionOnlineState(session);
 
+                // Get existing session for version comparison
+                const existing = state.sessions[session.id];
+
+                // Only update metadata/agentState if new version is higher or equal
+                // This prevents out-of-order updates from overwriting newer data
+                const useExistingMetadata = existing &&
+                    existing.metadataVersion > session.metadataVersion;
+                const useExistingAgentState = existing &&
+                    existing.agentStateVersion > session.agentStateVersion;
+
                 // Preserve existing draft and permission mode if they exist, or load from saved data
-                const existingDraft = state.sessions[session.id]?.draft;
+                const existingDraft = existing?.draft;
                 const savedDraft = savedDrafts[session.id];
-                const existingPermissionMode = state.sessions[session.id]?.permissionMode;
+                const existingPermissionMode = existing?.permissionMode;
                 const savedPermissionMode = savedPermissionModes[session.id];
-                const existingMessageSyncing = state.sessions[session.id]?.messageSyncing;
+                const existingMessageSyncing = existing?.messageSyncing;
                 mergedSessions[session.id] = {
                     ...session,
+                    // Use existing metadata/agentState if their versions are higher
+                    metadata: useExistingMetadata ? existing.metadata : session.metadata,
+                    metadataVersion: useExistingMetadata ? existing.metadataVersion : session.metadataVersion,
+                    agentState: useExistingAgentState ? existing.agentState : session.agentState,
+                    agentStateVersion: useExistingAgentState ? existing.agentStateVersion : session.agentStateVersion,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
                     permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default',
