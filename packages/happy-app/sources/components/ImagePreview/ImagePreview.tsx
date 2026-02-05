@@ -3,6 +3,7 @@ import { View, ScrollView, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { StyleSheet } from 'react-native-unistyles';
 import { ImagePreviewProps } from './types';
+import { ImageViewer } from '../ImageViewer';
 
 const THUMBNAIL_SIZE = 64;
 
@@ -12,39 +13,62 @@ export const ImagePreview = React.memo(function ImagePreview({
     maxImages = 4,
     disabled = false,
 }: ImagePreviewProps) {
+    const [viewerVisible, setViewerVisible] = React.useState(false);
+    const [viewerIndex, setViewerIndex] = React.useState(0);
+
+    const viewerImages = React.useMemo(
+        () => images.slice(0, maxImages).map((img) => ({ uri: img.uri })),
+        [images, maxImages],
+    );
+
+    const handleImagePress = React.useCallback((index: number) => {
+        setViewerIndex(index);
+        setViewerVisible(true);
+    }, []);
+
     if (images.length === 0) {
         return null;
     }
 
     return (
-        <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.container}
-            contentContainerStyle={styles.content}
-        >
-            {images.slice(0, maxImages).map((image, index) => (
-                <View key={`${image.uri}-${index}`} style={styles.imageWrapper}>
-                    <Image
-                        source={{ uri: image.uri }}
-                        style={{ width: THUMBNAIL_SIZE, height: THUMBNAIL_SIZE, borderRadius: 8 }}
-                        contentFit="cover"
-                    />
-                    {!disabled && (
-                        <Pressable
-                            style={styles.removeButton}
-                            onPress={() => onRemove(index)}
-                            hitSlop={8}
-                        >
-                            <View style={styles.removeIcon}>
-                                <View style={styles.removeLine1} />
-                                <View style={styles.removeLine2} />
-                            </View>
+        <>
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.container}
+                contentContainerStyle={styles.content}
+            >
+                {images.slice(0, maxImages).map((image, index) => (
+                    <View key={`${image.uri}-${index}`} style={styles.imageWrapper}>
+                        <Pressable onPress={() => handleImagePress(index)}>
+                            <Image
+                                source={{ uri: image.uri }}
+                                style={{ width: THUMBNAIL_SIZE, height: THUMBNAIL_SIZE, borderRadius: 8 }}
+                                contentFit="cover"
+                            />
                         </Pressable>
-                    )}
-                </View>
-            ))}
-        </ScrollView>
+                        {!disabled && (
+                            <Pressable
+                                style={styles.removeButton}
+                                onPress={() => onRemove(index)}
+                                hitSlop={8}
+                            >
+                                <View style={styles.removeIcon}>
+                                    <View style={styles.removeLine1} />
+                                    <View style={styles.removeLine2} />
+                                </View>
+                            </Pressable>
+                        )}
+                    </View>
+                ))}
+            </ScrollView>
+            <ImageViewer
+                images={viewerImages}
+                initialIndex={viewerIndex}
+                visible={viewerVisible}
+                onClose={() => setViewerVisible(false)}
+            />
+        </>
     );
 });
 
