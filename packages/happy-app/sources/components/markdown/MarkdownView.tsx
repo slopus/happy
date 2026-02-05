@@ -345,8 +345,8 @@ function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
 // Each column is rendered as a vertical container with all its cells (header + data).
 // This ensures that cells in the same column have the same width, determined by the widest content.
 function RenderTableBlock(props: {
-    headers: string[],
-    rows: string[][],
+    headers: MarkdownSpan[][],
+    rows: MarkdownSpan[][][],
     first: boolean,
     last: boolean
 }) {
@@ -364,7 +364,7 @@ function RenderTableBlock(props: {
             >
                 <View style={style.tableContent}>
                     {/* Render each column as a vertical container */}
-                    {props.headers.map((header, colIndex) => (
+                    {props.headers.map((headerSpans, colIndex) => (
                         <View
                             key={`column-${colIndex}`}
                             style={[
@@ -374,7 +374,9 @@ function RenderTableBlock(props: {
                         >
                             {/* Header cell for this column */}
                             <View style={[style.tableCell, style.tableHeaderCell, style.tableCellFirst]}>
-                                <Text style={style.tableHeaderText}>{header}</Text>
+                                <Text style={style.tableHeaderText}>
+                                    <RenderSpans spans={headerSpans} baseStyle={style.tableHeaderText} />
+                                </Text>
                             </View>
                             {/* Data cells for this column */}
                             {props.rows.map((row, rowIndex) => (
@@ -385,7 +387,9 @@ function RenderTableBlock(props: {
                                         isLastRow(rowIndex) && style.tableCellLast
                                     ]}
                                 >
-                                    <Text style={style.tableCellText}>{row[colIndex] ?? ''}</Text>
+                                    <Text style={style.tableCellText}>
+                                        <RenderSpans spans={row[colIndex] ?? []} baseStyle={style.tableCellText} />
+                                    </Text>
                                 </View>
                             ))}
                         </View>

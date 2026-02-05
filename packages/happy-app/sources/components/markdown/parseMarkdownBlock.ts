@@ -25,17 +25,20 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
 
     // Extract header cells from the first line, filtering out empty cells that may result from leading/trailing pipes
     const headerLine = tableLines[0].trim();
-    const headers = headerLine
+    const headerStrings = headerLine
         .split('|')
         .map(cell => cell.trim())
         .filter(cell => cell.length > 0);
 
-    if (headers.length === 0) {
+    if (headerStrings.length === 0) {
         return { table: null, nextIndex: startIndex };
     }
 
+    // Parse inline markdown for headers
+    const headers = headerStrings.map(h => parseMarkdownSpans(h, false));
+
     // Extract data rows from remaining lines (skipping the separator line), preserving valid cell content
-    const rows: string[][] = [];
+    const rows: ReturnType<typeof parseMarkdownSpans>[][] = [];
     for (let i = 2; i < tableLines.length; i++) {
         const rowLine = tableLines[i].trim();
         if (rowLine.startsWith('|')) {
@@ -46,7 +49,8 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
 
             // Include rows that contain actual content, filtering out empty rows
             if (rowCells.length > 0) {
-                rows.push(rowCells);
+                // Parse inline markdown for each cell
+                rows.push(rowCells.map(cell => parseMarkdownSpans(cell, false)));
             }
         }
     }
