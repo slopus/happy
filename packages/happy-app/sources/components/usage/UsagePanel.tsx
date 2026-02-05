@@ -176,33 +176,16 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
         '30days': t('usage.last30Days')
     };
     
-    if (loading) {
-        return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#007AFF" />
-            </View>
-        );
-    }
-    
-    if (error) {
-        return (
-            <View style={styles.errorContainer}>
-                <Ionicons name="alert-circle-outline" size={48} color={theme.colors.status.error} />
-                <Text style={styles.errorText}>{error}</Text>
-            </View>
-        );
-    }
-    
     // Get top models by usage
     const topModels = Object.entries(totals.tokensByModel)
         .sort(([, a], [, b]) => b - a)
         .slice(0, 5);
-    
+
     const maxModelTokens = Math.max(...Object.values(totals.tokensByModel), 1);
-    
+
     return (
         <ScrollView style={styles.container}>
-            {/* Period Selector */}
+            {/* Period Selector - always visible */}
             <View style={styles.periodSelector}>
                 {(['today', '7days', '30days'] as TimePeriod[]).map((p) => (
                     <Pressable
@@ -216,6 +199,17 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
                     </Pressable>
                 ))}
             </View>
+
+            {loading ? (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#007AFF" />
+                </View>
+            ) : error ? (
+                <View style={styles.errorContainer}>
+                    <Ionicons name="alert-circle-outline" size={48} color={theme.colors.status.error} />
+                    <Text style={styles.errorText}>{error}</Text>
+                </View>
+            ) : (<>
             
             {/* Summary Stats */}
             <View style={styles.statsContainer}>
@@ -278,6 +272,7 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
                     </View>
                 </ItemGroup>
             )}
+            </>)}
         </ScrollView>
     );
 };

@@ -19,7 +19,8 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'flex-end',
         paddingHorizontal: 8,
-        paddingBottom: 40, // Space for labels
+        paddingTop: 20, // Space for value labels above bars
+        paddingBottom: 40, // Space for date labels below bars
     },
     barWrapper: {
         flex: 1,
@@ -123,7 +124,7 @@ export const UsageChart: React.FC<UsageChartProps> = ({
                 showsHorizontalScrollIndicator={false}
                 bounces={false}
             >
-                <View style={[styles.chartContainer, { height }]}>
+                <View style={[styles.chartContainer, { height: height + 60 }]}>
                     {displayData.map((point, index) => {
                         const value = getValueForDataPoint(point);
                         const barHeight = (value / maxValue) * height;
