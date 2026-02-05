@@ -141,7 +141,10 @@ export class PermissionHandler {
         // Handle special cases
         //
 
-        if (this.permissionMode === 'bypassPermissions') {
+        // AskUserQuestion should always wait for user interaction - it's a question, not a permission
+        const isInteractiveQuestion = toolName === 'AskUserQuestion';
+
+        if (this.permissionMode === 'bypassPermissions' && !isInteractiveQuestion) {
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
