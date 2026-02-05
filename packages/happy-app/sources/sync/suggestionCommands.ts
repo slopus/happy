@@ -9,6 +9,7 @@ import { storage } from './storage';
 export interface CommandItem {
     command: string;        // The command without slash (e.g., "compact")
     description?: string;   // Optional description of what the command does
+    source?: 'builtin' | 'sdk' | 'app';  // Command source (builtin = default, sdk = from Claude, app = navigation)
 }
 
 interface SearchOptions {
@@ -27,7 +28,7 @@ export const IGNORED_COMMANDS = [
     "cost",
     "doctor",
     "exit",
-    "help",
+    // "help" - removed because we provide it as app command
     "ide",
     "init",
     "install-github-app",
@@ -52,10 +53,23 @@ export const IGNORED_COMMANDS = [
     "login"
 ];
 
+// Command name constants for type safety and reusability
+export const APP_COMMAND_NAMES = ['home', 'sessions', 'profiles', 'settings', 'help'] as const;
+export const BUILTIN_COMMAND_NAMES = ['compact', 'clear'] as const;
+
 // Default commands always available
 const DEFAULT_COMMANDS: CommandItem[] = [
-    { command: 'compact', description: 'Compact the conversation history' },
-    { command: 'clear', description: 'Clear the conversation' }
+    { command: 'compact', description: 'Compact the conversation history', source: 'builtin' },
+    { command: 'clear', description: 'Clear the conversation', source: 'builtin' }
+];
+
+// App navigation commands (available in web app and Telegram)
+const APP_COMMANDS: CommandItem[] = [
+    { command: 'home', description: 'Navigate to home screen', source: 'app' },
+    { command: 'sessions', description: 'View all active sessions', source: 'app' },
+    { command: 'profiles', description: 'Manage your profiles', source: 'app' },
+    { command: 'settings', description: 'Open settings', source: 'app' },
+    { command: 'help', description: 'Show help and documentation', source: 'app' }
 ];
 
 // Command descriptions for known tools/commands
@@ -78,7 +92,7 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
 };
 
 // Get commands from session metadata
-function getCommandsFromSession(sessionId: string): CommandItem[] {
+function getCommandsFromSession(sessionId: string, options?: { includeAppCommands?: boolean }): CommandItem[] {
     const state = storage.getState();
     const session = state.sessions[sessionId];
     if (!session || !session.metadata) {
@@ -86,23 +100,30 @@ function getCommandsFromSession(sessionId: string): CommandItem[] {
     }
 
     const commands: CommandItem[] = [...DEFAULT_COMMANDS];
-    
+
+    // Add app navigation commands if requested (for web app / Telegram)
+    if (options?.includeAppCommands) {
+        commands.push(...APP_COMMANDS);
+    }
+
     // Add commands from metadata.slashCommands (filter with ignore list)
     if (session.metadata.slashCommands) {
         for (const cmd of session.metadata.slashCommands) {
             // Skip if in ignore list
             if (IGNORED_COMMANDS.includes(cmd)) continue;
-            
-            // Check if it's already in default commands
-            if (!commands.find(c => c.command === cmd)) {
+
+            // Check if command already exists (in any existing commands)
+            const existingCommand = commands.find(c => c.command === cmd);
+            if (!existingCommand) {
                 commands.push({
                     command: cmd,
-                    description: COMMAND_DESCRIPTIONS[cmd]  // Optional description
+                    description: COMMAND_DESCRIPTIONS[cmd],  // Optional description
+                    source: 'sdk'
                 });
             }
         }
     }
-    
+
     return commands;
 }
 
@@ -110,18 +131,18 @@ function getCommandsFromSession(sessionId: string): CommandItem[] {
 export async function searchCommands(
     sessionId: string,
     query: string,
-    options: SearchOptions = {}
+    options: SearchOptions & { includeAppCommands?: boolean } = {}
 ): Promise<CommandItem[]> {
-    const { limit = 10, threshold = 0.3 } = options;
-    
+    const { limit = 10, threshold = 0.3, includeAppCommands = false } = options;
+
     // Get commands from session metadata (no caching)
-    const commands = getCommandsFromSession(sessionId);
-    
+    const commands = getCommandsFromSession(sessionId, { includeAppCommands });
+
     // If query is empty, return all commands
     if (!query || query.trim().length === 0) {
         return commands.slice(0, limit);
     }
-    
+
     // Setup Fuse for fuzzy search
     const fuseOptions = {
         keys: [
@@ -135,14 +156,14 @@ export async function searchCommands(
         ignoreLocation: true,
         useExtendedSearch: true
     };
-    
+
     const fuse = new Fuse(commands, fuseOptions);
     const results = fuse.search(query, { limit });
-    
+
     return results.map(result => result.item);
 }
 
 // Get all available commands for a session
-export function getAllCommands(sessionId: string): CommandItem[] {
-    return getCommandsFromSession(sessionId);
+export function getAllCommands(sessionId: string, options?: { includeAppCommands?: boolean }): CommandItem[] {
+    return getCommandsFromSession(sessionId, options);
 }
