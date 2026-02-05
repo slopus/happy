@@ -1,6 +1,7 @@
 import * as React from "react";
 import { View } from "react-native";
 import { Image } from "expo-image";
+import { useUnistyles } from "react-native-unistyles";
 
 interface AvatarBrutalistProps {
     id: string;
@@ -441,13 +442,22 @@ const brutalismImages = [
 
 const allImages = [...abstractImages, ...bauhausImages, ...brutalismImages];
 
-const colorPairs = [
-    { tint: '#FFA617', background: '#0056B3' }, // Orange → Deep blue
-    { tint: '#59C9DF', background: '#DC2626' }, // Cyan → Bold red
-    { tint: '#C678FF', background: '#16A34A' }, // Purple → Forest green
-    { tint: '#FF79D7', background: '#047857' }, // Pink → Teal green
-    { tint: '#FFD800', background: '#4C1D95' }, // Yellow → Deep purple
-    { tint: '#84E600', background: '#C026D3' }  // Lime → Magenta
+const colorPairsDark = [
+  { tint: '#22D3EE', background: '#022C22' }, // Cyan → Deep green
+  { tint: '#A3E635', background: '#581C87' }, // Lime → Deep purple
+  { tint: '#FB7185', background: '#1F2937' }, // Coral → Dark slate
+  { tint: '#FDE047', background: '#312E81' }, // Yellow → Indigo
+  { tint: '#38BDF8', background: '#020617' }, // Sky blue → Black
+  { tint: '#C084FC', background: '#3B0764' }, // Purple → Deep violet
+];
+
+const colorPairsLight = [
+  { tint: '#22D3EE', background: '#064E3B' }, // Cyan → Green (lighter)
+  { tint: '#A3E635', background: '#6B21A8' }, // Lime → Purple (lighter)
+  { tint: '#FB7185', background: '#334155' }, // Coral → Slate (lighter)
+  { tint: '#FDE047', background: '#4338CA' }, // Yellow → Blue-violet (lighter)
+  { tint: '#38BDF8', background: '#020617' }, // Sky blue → Black (anchor)
+  { tint: '#C084FC', background: '#581C87' }, // Purple → Violet (lighter)
 ];
 
 function hashCode(str: string): number {
@@ -462,7 +472,9 @@ function hashCode(str: string): number {
 
 export const AvatarBrutalist = React.memo((props: AvatarBrutalistProps) => {
     const { id, size = 32, square = false, monochrome = false } = props;
+    const { theme } = useUnistyles();
 
+    const colorPairs = theme.dark ? colorPairsDark : colorPairsLight;
     const imageIndex = hashCode(id) % allImages.length;
     const colorIndex = hashCode(id + 'color') % colorPairs.length;
 
