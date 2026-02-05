@@ -28,7 +28,10 @@ export function startSocket(app: Fastify) {
         allowUpgrades: true,
         upgradeTimeout: 10000,
         connectTimeout: 20000,
-        serveClient: false // Don't serve the client files
+        serveClient: false, // Don't serve the client files
+        // Allow large messages for file transfers (images, etc.)
+        // Default is 1e6 (1MB), but base64-encoded images can be larger
+        maxHttpBufferSize: 10e6 // 10MB
     });
 
     let rpcListeners = new Map<string, Map<string, Socket>>();
