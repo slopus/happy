@@ -42,4 +42,20 @@ config.transformer.getTransformOptions = async () => ({
   },
 });
 
+// Fix URL-encoded asset paths in tunnel mode
+// When using ngrok tunnel, asset paths like /assets/./sources/... get encoded as
+// /assets/.%2Fsources/... which Metro can't resolve. This middleware decodes the URL.
+config.server = {
+  ...config.server,
+  enhanceMiddleware: (middleware) => {
+    return (req, res, next) => {
+      // Decode URL-encoded path components (e.g., %2F -> /)
+      if (req.url && req.url.includes('%')) {
+        req.url = decodeURIComponent(req.url);
+      }
+      return middleware(req, res, next);
+    };
+  },
+};
+
 module.exports = config;
