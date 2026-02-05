@@ -110,6 +110,7 @@ export const zhHans: TranslationStructure = {
         delete: '删除',
         optional: '可选的',
         notFound: '未找到',
+        grantPermission: '授予权限',
     },
 
     profile: {
@@ -321,6 +322,7 @@ export const zhHans: TranslationStructure = {
         failedToRemoveFriend: '删除好友失败',
         searchFailed: '搜索失败。请重试。',
         failedToSendRequest: '发送好友请求失败',
+        noCameraDevice: '没有可用的摄像头',
     },
 
     newSession: {
@@ -775,6 +777,7 @@ export const zhHans: TranslationStructure = {
         failedToLinkDevice: '链接设备失败',
         cameraPermissionsRequiredToScanQr: '扫描二维码需要相机权限'
     },
+
 
     navigation: {
         // Navigation titles and screen headers

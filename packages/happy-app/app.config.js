@@ -90,7 +90,12 @@ export default {
             "expo-mail-composer",
             "expo-secure-store",
             "expo-web-browser",
-            "react-native-vision-camera",
+            [
+                "react-native-vision-camera",
+                {
+                    "enableCodeScanner": true
+                }
+            ],
             "@more-tech/react-native-libsodium",
             "react-native-audio-api",
             "@livekit/react-native-expo-plugin",

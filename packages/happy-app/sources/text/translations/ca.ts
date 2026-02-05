@@ -108,6 +108,7 @@ export const ca: TranslationStructure = {
         delete: 'Elimina',
         optional: 'Opcional',
         notFound: 'No trobat',
+        grantPermission: 'Concedir permís',
     },
 
     profile: {
@@ -319,6 +320,7 @@ export const ca: TranslationStructure = {
         failedToRemoveFriend: 'No s\'ha pogut eliminar l\'amic',
         searchFailed: 'La cerca ha fallat. Si us plau, torna-ho a provar.',
         failedToSendRequest: 'No s\'ha pogut enviar la sol·licitud d\'amistat',
+        noCameraDevice: 'No hi ha cap càmera disponible',
     },
 
     newSession: {
@@ -773,6 +775,7 @@ export const ca: TranslationStructure = {
         failedToLinkDevice: 'Ha fallat enllaçar el dispositiu',
         cameraPermissionsRequiredToScanQr: 'Es requereixen permisos de càmera per escanejar codis QR'
     },
+
 
     navigation: {
         // Navigation titles and screen headers

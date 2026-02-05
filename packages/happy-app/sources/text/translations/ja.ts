@@ -111,6 +111,7 @@ export const ja: TranslationStructure = {
         optional: '任意',
         saveAs: '名前を付けて保存',
         notFound: '見つかりません',
+        grantPermission: '権限を許可',
     },
 
     profile: {
@@ -351,6 +352,7 @@ export const ja: TranslationStructure = {
         failedToRemoveFriend: '友達の削除に失敗しました',
         searchFailed: '検索に失敗しました。再試行してください。',
         failedToSendRequest: '友達リクエストの送信に失敗しました',
+        noCameraDevice: 'カメラデバイスがありません',
     },
 
     newSession: {
@@ -805,6 +807,7 @@ export const ja: TranslationStructure = {
         failedToLinkDevice: 'デバイスのリンクに失敗しました',
         cameraPermissionsRequiredToScanQr: 'QRコードのスキャンにはカメラの権限が必要です'
     },
+
 
     navigation: {
         // Navigation titles and screen headers

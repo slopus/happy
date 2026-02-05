@@ -109,6 +109,7 @@ export const en = {
         delete: 'Delete',
         optional: 'optional',
         notFound: 'Not Found',
+        grantPermission: 'Grant Permission',
     },
 
     profile: {
@@ -319,6 +320,7 @@ export const en = {
         failedToRemoveFriend: 'Failed to remove friend',
         searchFailed: 'Search failed. Please try again.',
         failedToSendRequest: 'Failed to send friend request',
+        noCameraDevice: 'No camera device available',
     },
 
     newSession: {

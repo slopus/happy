@@ -108,6 +108,7 @@ export const pt: TranslationStructure = {
         delete: 'Excluir',
         optional: 'Opcional',
         notFound: 'Não encontrado',
+        grantPermission: 'Conceder permissão',
     },
 
     profile: {
@@ -319,6 +320,7 @@ export const pt: TranslationStructure = {
         failedToRemoveFriend: 'Falha ao remover amigo',
         searchFailed: 'A busca falhou. Por favor, tente novamente.',
         failedToSendRequest: 'Falha ao enviar solicitação de amizade',
+        noCameraDevice: 'Nenhuma câmera disponível',
     },
 
     newSession: {
@@ -773,6 +775,7 @@ export const pt: TranslationStructure = {
         failedToLinkDevice: 'Falha ao vincular dispositivo',
         cameraPermissionsRequiredToScanQr: 'Permissões de câmera são necessárias para escanear códigos QR'
     },
+
 
     navigation: {
         // Navigation titles and screen headers

@@ -400,6 +400,14 @@ export default function RootLayout() {
                     headerBackTitle: t('common.back'),
                 }}
             />
+            <Stack.Screen
+                name="scanner"
+                options={{
+                    headerShown: false,
+                    presentation: 'fullScreenModal',
+                    animation: 'fade_from_bottom',
+                }}
+            />
         </Stack>
     );
 }

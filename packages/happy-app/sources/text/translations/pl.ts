@@ -119,6 +119,7 @@ export const pl: TranslationStructure = {
         delete: 'Usuń',
         optional: 'opcjonalnie',
         notFound: 'Nie znaleziono',
+        grantPermission: 'Udziel pozwolenia',
     },
 
     profile: {
@@ -330,6 +331,7 @@ export const pl: TranslationStructure = {
         failedToRemoveFriend: 'Nie udało się usunąć przyjaciela',
         searchFailed: 'Wyszukiwanie nie powiodło się. Spróbuj ponownie.',
         failedToSendRequest: 'Nie udało się wysłać zaproszenia do znajomych',
+        noCameraDevice: 'Brak dostępnej kamery',
     },
 
     newSession: {
@@ -783,6 +785,7 @@ export const pl: TranslationStructure = {
         failedToLinkDevice: 'Nie udało się połączyć urządzenia',
         cameraPermissionsRequiredToScanQr: 'Uprawnienia do kamery są wymagane do skanowania kodów QR'
     },
+
 
     navigation: {
         // Navigation titles and screen headers

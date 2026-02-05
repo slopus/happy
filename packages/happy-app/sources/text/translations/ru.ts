@@ -119,6 +119,7 @@ export const ru: TranslationStructure = {
         delete: 'Удалить',
         optional: 'необязательно',
         notFound: 'Не найдено',
+        grantPermission: 'Предоставить разрешение',
     },
 
     connect: {
@@ -301,6 +302,7 @@ export const ru: TranslationStructure = {
         failedToRemoveFriend: 'Не удалось удалить друга',
         searchFailed: 'Поиск не удался. Пожалуйста, попробуйте снова.',
         failedToSendRequest: 'Не удалось отправить запрос в друзья',
+        noCameraDevice: 'Камера недоступна',
     },
 
     newSession: {
@@ -771,6 +773,7 @@ export const ru: TranslationStructure = {
         failedToLinkDevice: 'Не удалось связать устройство',
         cameraPermissionsRequiredToScanQr: 'Для сканирования QR-кодов требуется доступ к камере'
     },
+
 
     navigation: {
         // Navigation titles and screen headers

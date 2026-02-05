@@ -110,6 +110,7 @@ export const zhHant: TranslationStructure = {
         delete: '刪除',
         optional: '選填',
         notFound: '未找到',
+        grantPermission: '授予權限',
     },
 
     profile: {
@@ -320,6 +321,7 @@ export const zhHant: TranslationStructure = {
         failedToRemoveFriend: '刪除好友失敗',
         searchFailed: '搜尋失敗。請重試。',
         failedToSendRequest: '傳送好友請求失敗',
+        noCameraDevice: '沒有可用的攝影機',
     },
 
     newSession: {
@@ -774,6 +776,7 @@ export const zhHant: TranslationStructure = {
         failedToLinkDevice: '連結裝置失敗',
         cameraPermissionsRequiredToScanQr: '掃描 QR Code 需要相機權限'
     },
+
 
     navigation: {
         // Navigation titles and screen headers
