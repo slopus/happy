@@ -73,9 +73,11 @@ export async function startHappyServer(client: ApiSessionClient) {
     });
 
     const transport = new StreamableHTTPServerTransport({
-        // NOTE: Returning session id here will result in claude
-        // sdk spawn to fail with `Invalid Request: Server already initialized`
-        sessionIdGenerator: undefined
+        // Use stateful mode with session ID generator.
+        // In stateless mode (sessionIdGenerator: undefined), the MCP SDK requires
+        // a fresh transport instance per request, which doesn't work with our HTTP server design.
+        // Using stateful mode allows the transport to be reused across requests.
+        sessionIdGenerator: () => randomUUID()
     });
     await mcp.connect(transport);
 
@@ -83,11 +85,25 @@ export async function startHappyServer(client: ApiSessionClient) {
     // Create the HTTP server
     //
 
+    // Capture console.error from Hono to our logger
+    const originalConsoleError = console.error;
+    console.error = (...args: any[]) => {
+        logger.debug("[happyMCP] console.error:", ...args);
+        originalConsoleError.apply(console, args);
+    };
+
+    // Set transport error handler
+    transport.onerror = (error: Error) => {
+        logger.debug("[happyMCP] Transport error:", error);
+    };
+
     const server = createServer(async (req, res) => {
+        logger.debug("[happyMCP] Received request:", req.method, req.url);
         try {
             await transport.handleRequest(req, res);
+            logger.debug("[happyMCP] Request handled successfully");
         } catch (error) {
-            logger.debug("Error handling request:", error);
+            logger.debug("[happyMCP] Error handling request:", error);
             if (!res.headersSent) {
                 res.writeHead(500).end();
             }
