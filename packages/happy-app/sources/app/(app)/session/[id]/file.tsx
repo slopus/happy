@@ -6,7 +6,7 @@ import { Text } from '@/components/StyledText';
 import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
 import { Typography } from '@/constants/Typography';
 import { sessionReadFile, sessionBash } from '@/sync/ops';
-import { storage } from '@/sync/storage';
+import { storage, useSetting } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -25,14 +25,14 @@ interface FileContent {
 const DiffDisplay: React.FC<{ diffContent: string }> = ({ diffContent }) => {
     const { theme } = useUnistyles();
     const lines = diffContent.split('\n');
-    
+
     return (
         <View>
             {lines.map((line, index) => {
                 const baseStyle = { ...Typography.mono(), fontSize: 14, lineHeight: 20 };
                 let lineStyle: any = baseStyle;
                 let backgroundColor = 'transparent';
-                
+
                 if (line.startsWith('+') && !line.startsWith('+++')) {
                     lineStyle = { ...baseStyle, color: theme.colors.diff.addedText };
                     backgroundColor = theme.colors.diff.addedBg;
@@ -47,15 +47,15 @@ const DiffDisplay: React.FC<{ diffContent: string }> = ({ diffContent }) => {
                 } else {
                     lineStyle = { ...baseStyle, color: theme.colors.diff.contextText };
                 }
-                
+
                 return (
-                    <View 
-                        key={index} 
-                        style={{ 
-                            backgroundColor, 
-                            paddingHorizontal: 8, 
+                    <View
+                        key={index}
+                        style={{
+                            backgroundColor,
+                            paddingHorizontal: 8,
                             paddingVertical: 1,
-                            borderLeftWidth: line.startsWith('+') && !line.startsWith('+++') ? 3 : 
+                            borderLeftWidth: line.startsWith('+') && !line.startsWith('+++') ? 3 :
                                            line.startsWith('-') && !line.startsWith('---') ? 3 : 0,
                             borderLeftColor: line.startsWith('+') && !line.startsWith('+++') ? theme.colors.diff.addedBorder : theme.colors.diff.removedBorder
                         }}
@@ -92,6 +92,7 @@ export default function FileScreen() {
     const [displayMode, setDisplayMode] = React.useState<'file' | 'diff'>('diff');
     const [isLoading, setIsLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
+    const wordWrap = useSetting('wrapLinesInDiffs');
 
     // Determine file language from extension
     const getFileLanguage = React.useCallback((path: string): string | null => {
@@ -464,7 +465,7 @@ export default function FileScreen() {
                             {t('files.diff')}
                         </Text>
                     </Pressable>
-                    
+
                     <Pressable
                         onPress={() => setDisplayMode('file')}
                         style={{
@@ -489,19 +490,47 @@ export default function FileScreen() {
             {/* Content display */}
             <ScrollView
                 style={{ flex: 1 }}
-                contentContainerStyle={{ padding: 16 }}
+                contentContainerStyle={wordWrap ? { padding: 16 } : { paddingVertical: 16 }}
                 showsVerticalScrollIndicator={true}
             >
-                {Platform.OS !== 'web' && currentContent ? (
-                    <GestureDetector gesture={longPressGesture}>
-                        <View>
+                <ScrollView
+                    horizontal={!wordWrap}
+                    scrollEnabled={!wordWrap}
+                    showsHorizontalScrollIndicator={!wordWrap}
+                    contentContainerStyle={wordWrap ? undefined : { paddingHorizontal: 16 }}
+                >
+                    {Platform.OS !== 'web' && currentContent ? (
+                        <GestureDetector gesture={longPressGesture}>
+                            <View>
+                                {displayMode === 'diff' && diffContent ? (
+                                    <DiffDisplay diffContent={diffContent} />
+                                ) : displayMode === 'file' && fileContent?.content ? (
+                                    <SimpleSyntaxHighlighter
+                                        code={fileContent.content}
+                                        language={language}
+                                        selectable={false}
+                                    />
+                                ) : displayMode === 'file' && fileContent && !fileContent.content ? (
+                                    <Text style={{
+                                        fontSize: 16,
+                                        color: theme.colors.textSecondary,
+                                        fontStyle: 'italic',
+                                        ...Typography.default()
+                                    }}>
+                                        {t('files.fileEmpty')}
+                                    </Text>
+                                ) : null}
+                            </View>
+                        </GestureDetector>
+                    ) : (
+                        <>
                             {displayMode === 'diff' && diffContent ? (
                                 <DiffDisplay diffContent={diffContent} />
                             ) : displayMode === 'file' && fileContent?.content ? (
                                 <SimpleSyntaxHighlighter
                                     code={fileContent.content}
                                     language={language}
-                                    selectable={false}
+                                    selectable={true}
                                 />
                             ) : displayMode === 'file' && fileContent && !fileContent.content ? (
                                 <Text style={{
@@ -512,40 +541,19 @@ export default function FileScreen() {
                                 }}>
                                     {t('files.fileEmpty')}
                                 </Text>
+                            ) : !diffContent && !fileContent?.content ? (
+                                <Text style={{
+                                    fontSize: 16,
+                                    color: theme.colors.textSecondary,
+                                    fontStyle: 'italic',
+                                    ...Typography.default()
+                                }}>
+                                    {t('files.noChanges')}
+                                </Text>
                             ) : null}
-                        </View>
-                    </GestureDetector>
-                ) : (
-                    <>
-                        {displayMode === 'diff' && diffContent ? (
-                            <DiffDisplay diffContent={diffContent} />
-                        ) : displayMode === 'file' && fileContent?.content ? (
-                            <SimpleSyntaxHighlighter
-                                code={fileContent.content}
-                                language={language}
-                                selectable={true}
-                            />
-                        ) : displayMode === 'file' && fileContent && !fileContent.content ? (
-                            <Text style={{
-                                fontSize: 16,
-                                color: theme.colors.textSecondary,
-                                fontStyle: 'italic',
-                                ...Typography.default()
-                            }}>
-                                {t('files.fileEmpty')}
-                            </Text>
-                        ) : !diffContent && !fileContent?.content ? (
-                            <Text style={{
-                                fontSize: 16,
-                                color: theme.colors.textSecondary,
-                                fontStyle: 'italic',
-                                ...Typography.default()
-                            }}>
-                                {t('files.noChanges')}
-                            </Text>
-                        ) : null}
-                    </>
-                )}
+                        </>
+                    )}
+                </ScrollView>
             </ScrollView>
         </View>
     );

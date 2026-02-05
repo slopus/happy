@@ -293,30 +293,61 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
     }
   };
 
+  // Split tokens into lines for proper line-by-line rendering
+  const lines: Array<Array<{ text: string; type: string; nestLevel?: number }>> = [];
+  let currentLine: Array<{ text: string; type: string; nestLevel?: number }> = [];
+
+  tokens.forEach(token => {
+    if (token.text === '\n') {
+      lines.push(currentLine);
+      currentLine = [];
+    } else if (token.text.includes('\n')) {
+      const parts = token.text.split('\n');
+      parts.forEach((part, i) => {
+        if (part) {
+          currentLine.push({ ...token, text: part });
+        }
+        if (i < parts.length - 1) {
+          lines.push(currentLine);
+          currentLine = [];
+        }
+      });
+    } else {
+      currentLine.push(token);
+    }
+  });
+  if (currentLine.length > 0) {
+    lines.push(currentLine);
+  }
+
   return (
     <View>
-      <Text 
-        selectable={selectable}
-        style={{ 
-          fontFamily: Typography.mono().fontFamily,
-          fontSize: 14,
-          lineHeight: 20,
-        }}
-      >
-        {tokens.map((token, index) => (
-          <Text
-            key={index}
-            selectable={selectable}
-            style={{
-              color: getColorForType(token.type, token.nestLevel),
-              fontFamily: Typography.mono().fontFamily,
-              fontWeight: ['keyword', 'controlFlow', 'type', 'function'].includes(token.type) ? '600' : '400',
-            }}
-          >
-            {token.text}
-          </Text>
-        ))}
-      </Text>
+      {lines.map((lineTokens, lineIndex) => (
+        <Text
+          key={lineIndex}
+          selectable={selectable}
+          style={{
+            fontFamily: Typography.mono().fontFamily,
+            fontSize: 14,
+            lineHeight: 20,
+          }}
+        >
+          {lineTokens.map((token, index) => (
+            <Text
+              key={index}
+              selectable={selectable}
+              style={{
+                color: getColorForType(token.type, token.nestLevel),
+                fontFamily: Typography.mono().fontFamily,
+                fontWeight: ['keyword', 'controlFlow', 'type', 'function'].includes(token.type) ? '600' : '400',
+              }}
+            >
+              {token.text}
+            </Text>
+          ))}
+          {lineTokens.length === 0 && ' '}
+        </Text>
+      ))}
     </View>
   );
 }; 
