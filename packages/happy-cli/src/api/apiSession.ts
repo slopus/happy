@@ -277,13 +277,32 @@ export class ApiSessionClient extends EventEmitter {
 
         // Update metadata with summary if this is a summary message
         if (body.type === 'summary' && 'summary' in body && 'leafUuid' in body) {
-            this.updateMetadata((metadata) => ({
-                ...metadata,
-                summary: {
-                    text: body.summary,
-                    updatedAt: Date.now()
+            this.updateMetadata((metadata) => {
+                const newSummary = body.summary as string;
+                const currentSummary = metadata.summary?.text;
+
+                // Check if new summary is just the directory name
+                const dirName = metadata.path?.split(/[\\/]/).filter(Boolean).pop();
+                const isNewSummaryDirName = dirName && newSummary === dirName;
+
+                // If new summary is directory name and we already have a better title, keep the current one
+                if (isNewSummaryDirName && currentSummary && currentSummary !== dirName) {
+                    logger.debug('[SOCKET] Skipping summary update: new summary is directory name but current title is better', {
+                        newSummary,
+                        currentSummary,
+                        dirName
+                    });
+                    return metadata;
                 }
-            }));
+
+                return {
+                    ...metadata,
+                    summary: {
+                        text: newSummary,
+                        updatedAt: Date.now()
+                    }
+                };
+            });
         }
     }
 
