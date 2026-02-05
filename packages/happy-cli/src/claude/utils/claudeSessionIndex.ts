@@ -102,6 +102,21 @@ function extractGitBranch(entry: any): string | null {
     return null;
 }
 
+/**
+ * Quickly count user messages in a JSONL file by scanning for "type":"user" patterns
+ * This is much faster than parsing every line as JSON
+ */
+async function countMessagesInJsonl(jsonlPath: string): Promise<number> {
+    try {
+        const content = await readFile(jsonlPath, 'utf8');
+        // Count lines that contain "type":"user" - these are user messages
+        const matches = content.match(/"type"\s*:\s*"user"/g);
+        return matches ? matches.length : 0;
+    } catch {
+        return 0;
+    }
+}
+
 function extractSessionsFromIndex(data: any): ParsedSession[] {
     if (!data) return [];
 
@@ -236,20 +251,29 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
                 // Get metadata from index if available, otherwise use file stats
                 const indexed = indexedMap.get(sessionId);
                 let updatedAt: number | undefined = indexed?.updatedAt;
+                let messageCount: number | undefined = indexed?.messageCount;
+
+                const filePath = join(projectDir, entry.name);
+
                 if (updatedAt === undefined) {
                     try {
-                        const stats = await stat(join(projectDir, entry.name));
+                        const stats = await stat(filePath);
                         updatedAt = stats.mtime.getTime();
                     } catch {
                         // ignore stat errors
                     }
                 }
 
+                // If messageCount is not in index, count from JSONL file
+                if (messageCount === undefined) {
+                    messageCount = await countMessagesInJsonl(filePath);
+                }
+
                 sessions.push({
                     sessionId,
                     updatedAt,
                     title: indexed?.title ?? null,
-                    messageCount: indexed?.messageCount,
+                    messageCount,
                     gitBranch: indexed?.gitBranch ?? null
                 });
             }
@@ -339,8 +363,6 @@ export async function getClaudeSessionPreview(
 ): Promise<ClaudeSessionPreviewMessage[]> {
     const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
     const jsonlPath = join(claudeConfigDir, 'projects', projectId, `${sessionId}.jsonl`);
-
-    const messages: ClaudeSessionPreviewMessage[] = [];
 
     try {
         // Read the file line by line
