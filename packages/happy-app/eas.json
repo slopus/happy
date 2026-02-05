@@ -11,7 +11,7 @@
       "channel": "development",
       "env": {
         "APP_ENV": "development",
-        "ABI_FILTERS": "arm64-v8a,x86_64"
+        "ABI_FILTERS": "arm64-v8a"
       },
       "ios": {
         "image": "macos-sequoia-15.6-xcode-16.4"
@@ -24,7 +24,7 @@
       "channel": "development",
       "env": {
         "APP_ENV": "development",
-        "ABI_FILTERS": "arm64-v8a,x86_64"
+        "ABI_FILTERS": "arm64-v8a"
       },
       "ios": {
         "image": "macos-sequoia-15.6-xcode-16.4"

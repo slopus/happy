@@ -26,6 +26,25 @@
     },
     {
       "client_info": {
+        "mobilesdk_app_id": "1:588365092545:android:633b7d8502746fd6fbe640",
+        "android_client_info": {
+          "package_name": "com.hitosea.happy.dev"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBOcQRqTX5fZATx1OrrLH6Uvs-BFq4ydY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:588365092545:android:3e07ef583b66a8ccfbe640",
         "android_client_info": {
           "package_name": "com.hitosea.happy.preview"

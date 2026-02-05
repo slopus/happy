@@ -1,4 +1,7 @@
 const variant = process.env.APP_ENV || 'development';
+const abiFilters = process.env.ABI_FILTERS
+    ? process.env.ABI_FILTERS.split(',').map(s => s.trim())
+    : undefined;
 const name = {
     development: "Happy Code (dev)",
     preview: "Happy Code (pre)",
@@ -78,6 +81,14 @@ export default {
         },
         plugins: [
             require("./plugins/withEinkCompatibility.js"),
+            [
+                "expo-build-properties",
+                {
+                    android: {
+                        ...(abiFilters && { buildArchs: abiFilters })
+                    }
+                }
+            ],
             [
                 "expo-router",
                 {
