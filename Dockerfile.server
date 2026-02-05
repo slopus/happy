@@ -12,7 +12,6 @@ COPY packages/happy-server/package.json ./
 COPY packages/happy-server/prisma ./prisma
 COPY yarn.lock ./
 
-# Install production dependencies only
 RUN yarn install --production --frozen-lockfile --ignore-engines
 
 # Stage 2: runtime
@@ -41,4 +40,4 @@ COPY packages/happy-server/prisma ./prisma
 EXPOSE 3000
 
 # Command to run the application
-CMD ["yarn", "tsx", "./sources/main.ts"]
+CMD ["yarn", "start"]
