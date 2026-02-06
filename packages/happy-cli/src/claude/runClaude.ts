@@ -188,20 +188,67 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Variable to track current session instance (updated via onSessionReady callback)
     // Used by hook server to notify Session when Claude changes session ID
     let currentSession: Session | null = null;
+    const STARTUP_HOOK_DEBOUNCE_MS = 500;
+    let pendingStartupHook: { sessionId: string, timer: NodeJS.Timeout } | null = null;
+
+    const clearPendingStartupHook = () => {
+        if (!pendingStartupHook) {
+            return;
+        }
+        clearTimeout(pendingStartupHook.timer);
+        pendingStartupHook = null;
+    };
+
+    const applySessionHook = (sessionId: string) => {
+        if (!currentSession) {
+            return;
+        }
+        const previousSessionId = currentSession.sessionId;
+        if (previousSessionId !== sessionId) {
+            logger.debug(`[START] Claude session ID changed: ${previousSessionId} -> ${sessionId}`);
+            currentSession.onSessionFound(sessionId);
+        }
+    };
 
     // Start Hook server for receiving Claude session notifications
     const hookServer = await startHookServer({
         onSessionHook: (sessionId, data) => {
             logger.debug(`[START] Session hook received: ${sessionId}`, data);
-            
-            // Update session ID in the Session instance
-            if (currentSession) {
-                const previousSessionId = currentSession.sessionId;
-                if (previousSessionId !== sessionId) {
-                    logger.debug(`[START] Claude session ID changed: ${previousSessionId} -> ${sessionId}`);
-                    currentSession.onSessionFound(sessionId);
-                }
+
+            const hookSource = typeof data.source === 'string' ? data.source : undefined;
+            const currentSessionId = currentSession?.sessionId ?? null;
+
+            // When resuming, Claude may emit a transient "startup" session immediately
+            // before the real "resume" session. Debounce startup to avoid tracking
+            // transcript files that never get created.
+            if (hookSource === 'startup' && currentSessionId && currentSessionId !== sessionId) {
+                clearPendingStartupHook();
+                logger.debug(
+                    `[START] Deferring startup session hook for ${sessionId} by ${STARTUP_HOOK_DEBOUNCE_MS}ms`
+                );
+                pendingStartupHook = {
+                    sessionId,
+                    timer: setTimeout(() => {
+                        if (!pendingStartupHook || pendingStartupHook.sessionId !== sessionId) {
+                            return;
+                        }
+                        pendingStartupHook = null;
+                        logger.debug(`[START] Applying deferred startup session hook: ${sessionId}`);
+                        applySessionHook(sessionId);
+                    }, STARTUP_HOOK_DEBOUNCE_MS)
+                };
+                return;
             }
+
+            if (hookSource === 'resume' && pendingStartupHook) {
+                logger.debug(
+                    `[START] Dropping deferred startup session hook ${pendingStartupHook.sessionId} after resume ${sessionId}`
+                );
+                clearPendingStartupHook();
+            }
+
+            // Update session ID in the Session instance
+            applySessionHook(sessionId);
         }
     });
     logger.debug(`[START] Hook server started on port ${hookServer.port}`);
@@ -398,6 +445,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // Stop Happy MCP server
             happyServer.stop();
 
+            clearPendingStartupHook();
+
             // Stop Hook server and cleanup settings file
             hookServer.stop();
             cleanupHookSettingsFile(hookSettingsPath);
@@ -482,6 +531,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Stop Happy MCP server
     happyServer.stop();
     logger.debug('Stopped Happy MCP server');
+
+    clearPendingStartupHook();
 
     // Stop Hook server and cleanup settings file
     hookServer.stop();
