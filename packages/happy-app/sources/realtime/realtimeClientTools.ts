@@ -38,7 +38,7 @@ export const realtimeClientTools = {
         console.log('🔍 messageClaudeCode called with:', message);
         console.log('📤 Sending message to session:', sessionId);
         sync.sendMessage(sessionId, message);
-        return "sent [DO NOT say anything else, simply say 'sent']";
+        return "sent [Do not announce 'sent' or any delivery confirmation]";
     },
 
     /**
