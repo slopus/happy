@@ -4,7 +4,7 @@ import { sync } from '@/sync/sync';
 import { sessionAllow, sessionDeny, sessionDelete, machineSpawnNewSession } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { trackPermissionResponse } from '@/track';
-import { getCurrentRealtimeSessionId } from './RealtimeSession';
+import { getCurrentRealtimeSessionId, setCurrentRealtimeSessionId } from './RealtimeSession';
 import { getSessionName, getSessionSubtitle, isSessionOnline } from '@/utils/sessionUtils';
 
 /**
@@ -141,6 +141,7 @@ export const realtimeClientTools = {
             }
 
             try {
+                setCurrentRealtimeSessionId(sessionId);
                 router.navigate(`/session/${sessionId}`);
                 return `Switched to session "${getSessionName(session)}". [DO NOT say anything else, simply confirm the switch]`;
             } catch (error) {
@@ -168,6 +169,7 @@ export const realtimeClientTools = {
                 });
 
                 if (result.type === 'success') {
+                    setCurrentRealtimeSessionId(result.sessionId);
                     router.navigate(`/session/${result.sessionId}`);
                     return `Created new session and navigated to it. [DO NOT say anything else, simply confirm creation]`;
                 } else if (result.type === 'requestToApproveDirectoryCreation') {

@@ -126,3 +126,7 @@ export function getVoiceSession(): VoiceSession | null {
 export function getCurrentRealtimeSessionId(): string | null {
     return currentSessionId;
 }
+
+export function setCurrentRealtimeSessionId(sessionId: string) {
+    currentSessionId = sessionId;
+}
