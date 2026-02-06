@@ -34,8 +34,8 @@ COPY packages/happy-app ./packages/happy-app
 
 RUN yarn workspace happy-app expo export --platform web --output-dir dist
 
-# Stage 3: runtime with Nginx
-FROM nginx:alpine AS runner
+# Stage 3: runtime with Nginx (non-root)
+FROM nginxinc/nginx-unprivileged:alpine AS runner
 
 COPY --from=builder /repo/packages/happy-app/dist /usr/share/nginx/html
 
@@ -44,7 +44,7 @@ RUN rm /etc/nginx/conf.d/default.conf
 
 # Create custom nginx configuration directly in the Dockerfile
 RUN echo 'server { \
-    listen 80; \
+    listen 8080; \
     \
     location /_expo/ { \
         root   /usr/share/nginx/html; \
@@ -87,7 +87,5 @@ RUN echo 'server { \
     } \
 }' > /etc/nginx/conf.d/default.conf
 
-# Expose the standard nginx port
-EXPOSE 80
-
-# Nginx starts automatically in the foreground with CMD ["nginx", "-g", "daemon off;"]
+# nginx-unprivileged listens on 8080 by default
+EXPOSE 8080

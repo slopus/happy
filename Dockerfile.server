@@ -41,8 +41,11 @@ RUN apt-get update && apt-get install -y python3 ffmpeg && rm -rf /var/lib/apt/l
 ENV NODE_ENV=production
 
 # Copy necessary files from the builder stage
-COPY --from=builder /repo/node_modules /repo/node_modules
-COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
+COPY --from=builder --chown=node:node /repo/node_modules /repo/node_modules
+COPY --from=builder --chown=node:node /repo/packages/happy-server /repo/packages/happy-server
+
+# Run as non-root user
+USER node
 
 # Expose the port the app will run on
 EXPOSE 3000
