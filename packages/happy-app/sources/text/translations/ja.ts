@@ -815,6 +815,7 @@ export const ja: TranslationStructure = {
         codeCopied: 'コードをコピーしました',
         copyFailed: 'コピーに失敗しました',
         mermaidRenderFailed: 'Mermaidダイアグラムのレンダリングに失敗しました',
+        mermaidCopied: 'Mermaidソースコードをコピーしました',
     },
 
     artifacts: {

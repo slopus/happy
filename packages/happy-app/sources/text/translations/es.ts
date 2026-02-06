@@ -783,6 +783,7 @@ export const es: TranslationStructure = {
         codeCopied: 'Código copiado',
         copyFailed: 'Error al copiar',
         mermaidRenderFailed: 'Error al renderizar el diagrama mermaid',
+        mermaidCopied: 'Código fuente de Mermaid copiado',
     },
 
     artifacts: {
