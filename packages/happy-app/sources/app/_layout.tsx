@@ -62,6 +62,12 @@ function shouldHideForegroundNotification(notification: Notifications.Notificati
     return !!notificationSessionId && notificationSessionId === currentSessionId;
 }
 
+// Mute all notification sounds while a voice conversation is active
+// to avoid audio interference. Notifications still display normally.
+function shouldMuteNotificationSound(): boolean {
+    return currentAppState === 'active' && storage.getState().realtimeStatus === 'connected';
+}
+
 function getSessionIdFromPath(pathname: string | null | undefined): string | null {
     if (!pathname) {
         return null;
@@ -74,9 +80,10 @@ function getSessionIdFromPath(pathname: string | null | undefined): string | nul
 Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
         const shouldHide = shouldHideForegroundNotification(notification);
+        const shouldMute = shouldMuteNotificationSound();
         return {
             shouldShowAlert: !shouldHide,
-            shouldPlaySound: !shouldHide,
+            shouldPlaySound: !shouldHide && !shouldMute,
             shouldSetBadge: !shouldHide,
             shouldShowBanner: !shouldHide,
             shouldShowList: !shouldHide,
