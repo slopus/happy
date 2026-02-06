@@ -785,6 +785,7 @@ export const zhHans: TranslationStructure = {
         codeCopied: '代码已复制',
         copyFailed: '复制失败',
         mermaidRenderFailed: '渲染 mermaid 图表失败',
+        mermaidCopied: 'Mermaid 源码已复制',
     },
 
     artifacts: {

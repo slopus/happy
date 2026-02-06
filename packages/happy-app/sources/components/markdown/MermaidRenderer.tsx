@@ -1,9 +1,11 @@
 import * as React from 'react';
-import { View, Platform, Text } from 'react-native';
+import { View, Platform, Text, Pressable } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import * as Clipboard from 'expo-clipboard';
+import { Modal } from '@/modal';
 
 // Style for Web platform
 const webStyle: any = {
@@ -20,6 +22,26 @@ export const MermaidRenderer = React.memo((props: {
     const { theme } = useUnistyles();
     const [dimensions, setDimensions] = React.useState({ width: 0, height: 200 });
     const [svgContent, setSvgContent] = React.useState<string | null>(null);
+    const [isHovered, setIsHovered] = React.useState(false);
+
+    const copyMermaidSource = React.useCallback(async () => {
+        try {
+            await Clipboard.setStringAsync(props.content);
+            Modal.alert(t('common.success'), t('markdown.mermaidCopied'), [{ text: t('common.ok'), style: 'cancel' }]);
+        } catch (error) {
+            console.error('Failed to copy mermaid source:', error);
+            Modal.alert(t('common.error'), t('markdown.copyFailed'), [{ text: t('common.ok'), style: 'cancel' }]);
+        }
+    }, [props.content]);
+
+    // Reusable copy button component
+    const renderCopyButton = (visible: boolean) => (
+        <View style={[style.copyButtonWrapper, visible && style.copyButtonWrapperVisible]}>
+            <Pressable style={style.copyButton} onPress={copyMermaidSource}>
+                <Text style={style.copyButtonText}>{t('common.copy')}</Text>
+            </Pressable>
+        </View>
+    );
 
     const onLayout = React.useCallback((event: any) => {
         const { width } = event.nativeEvent.layout;
@@ -93,12 +115,19 @@ export const MermaidRenderer = React.memo((props: {
         }
 
         return (
-            <View style={style.container}>
+            <View
+                style={style.container}
+                // @ts-ignore - Web only events
+                onMouseEnter={() => setIsHovered(true)}
+                // @ts-ignore - Web only events
+                onMouseLeave={() => setIsHovered(false)}
+            >
                 {/* @ts-ignore - Web only */}
                 <div
                     style={webStyle}
                     dangerouslySetInnerHTML={{ __html: svgContent }}
                 />
+                {renderCopyButton(isHovered)}
             </View>
         );
     }
@@ -164,6 +193,7 @@ export const MermaidRenderer = React.memo((props: {
                         }
                     }}
                 />
+                {renderCopyButton(true)}
             </View>
         </View>
     );
@@ -173,11 +203,13 @@ const style = StyleSheet.create((theme) => ({
     container: {
         marginVertical: 8,
         width: '100%',
+        position: 'relative',
     },
     innerContainer: {
         width: '100%',
         backgroundColor: theme.colors.surfaceHighest,
         borderRadius: 8,
+        position: 'relative',
     },
     loadingContainer: {
         justifyContent: 'center',
@@ -214,5 +246,33 @@ const style = StyleSheet.create((theme) => ({
         color: theme.colors.text,
         fontSize: 14,
         lineHeight: 20,
+    },
+    copyButtonWrapper: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        opacity: 0,
+        zIndex: 10,
+        elevation: 10,
+        pointerEvents: 'none',
+    },
+    copyButtonWrapperVisible: {
+        opacity: 1,
+        pointerEvents: 'auto',
+    },
+    copyButton: {
+        backgroundColor: theme.colors.surfaceHighest,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        cursor: 'pointer',
+    },
+    copyButtonText: {
+        ...Typography.default(),
+        color: theme.colors.text,
+        fontSize: 12,
+        lineHeight: 16,
     },
 }));
