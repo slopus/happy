@@ -1,5 +1,7 @@
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
@@ -178,12 +180,15 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         logger.debug('[START] Failed to report to daemon (may not be running):', error);
     }
 
+    // Create realtime session FIRST (before SDK metadata extraction)
+    const session = api.sessionSyncClient(response);
+
     // Extract SDK metadata in background and update session when ready
     extractSDKMetadataAsync(async (sdkMetadata) => {
         logger.debug('[start] SDK metadata extracted, updating session:', sdkMetadata);
         try {
             // Update session metadata with tools and slash commands
-            api.sessionSyncClient(response).updateMetadata((currentMetadata) => ({
+            session.updateMetadata((currentMetadata) => ({
                 ...currentMetadata,
                 tools: sdkMetadata.tools,
                 slashCommands: sdkMetadata.slashCommands
@@ -193,9 +198,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug('[start] Failed to update session metadata:', error);
         }
     });
-
-    // Create realtime session
-    const session = api.sessionSyncClient(response);
 
     // Start Happy MCP server
     const happyServer = await startHappyServer(session);
@@ -406,6 +408,14 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 session.sendSessionDeath();
                 await session.flush();
                 await session.close();
+            }
+
+            // Clean up session upload temp files
+            const sid = currentSession?.sessionId;
+            if (sid) {
+                const safeId = sid.replace(/[^a-zA-Z0-9-]/g, '');
+                const uploadDir = join(os.tmpdir(), 'happy', 'uploads', safeId);
+                await rm(uploadDir, { recursive: true, force: true }).catch(() => {});
             }
 
             // Stop caffeinate

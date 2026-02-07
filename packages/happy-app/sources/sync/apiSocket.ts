@@ -109,6 +109,16 @@ class ApiSocket {
     }
 
     /**
+     * Per-method RPC timeout. Long-running operations (bash, ripgrep, directory trees)
+     * get 5 minutes; everything else gets 30 seconds.
+     */
+    private getRpcTimeout(method: string): number {
+        const LONG_TIMEOUT = 300_000;  // 5 minutes
+        const longRunningMethods = ['bash', 'ripgrep', 'difftastic', 'getDirectoryTree'];
+        return longRunningMethods.includes(method) ? LONG_TIMEOUT : 30_000;
+    }
+
+    /**
      * RPC call for sessions - uses session-specific encryption
      */
     async sessionRPC<R, A>(sessionId: string, method: string, params: A): Promise<R> {
@@ -116,16 +126,24 @@ class ApiSocket {
         if (!sessionEncryption) {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
-        
-        const result = await this.socket!.emitWithAck('rpc-call', {
-            method: `${sessionId}:${method}`,
-            params: await sessionEncryption.encryptRaw(params)
-        });
-        
-        if (result.ok) {
-            return await sessionEncryption.decryptRaw(result.result) as R;
+
+        let result: { ok: boolean; result?: string; error?: string };
+        try {
+            result = await this.socket!.timeout(this.getRpcTimeout(method)).emitWithAck('rpc-call', {
+                method: `${sessionId}:${method}`,
+                params: await sessionEncryption.encryptRaw(params)
+            });
+        } catch (e) {
+            if (e instanceof Error && e.message === 'operation has timed out') {
+                throw new Error(`RPC call '${method}' timed out`);
+            }
+            throw new Error(`RPC call '${method}' failed: ${e instanceof Error ? e.message : String(e)}`);
         }
-        throw new Error('RPC call failed');
+
+        if (result.ok) {
+            return await sessionEncryption.decryptRaw(result.result!) as R;
+        }
+        throw new Error(result.error || `RPC call '${method}' failed`);
     }
 
     /**
@@ -137,15 +155,23 @@ class ApiSocket {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const result = await this.socket!.emitWithAck('rpc-call', {
-            method: `${machineId}:${method}`,
-            params: await machineEncryption.encryptRaw(params)
-        });
+        let result: { ok: boolean; result?: string; error?: string };
+        try {
+            result = await this.socket!.timeout(this.getRpcTimeout(method)).emitWithAck('rpc-call', {
+                method: `${machineId}:${method}`,
+                params: await machineEncryption.encryptRaw(params)
+            });
+        } catch (e) {
+            if (e instanceof Error && e.message === 'operation has timed out') {
+                throw new Error(`RPC call '${method}' timed out`);
+            }
+            throw new Error(`RPC call '${method}' failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
 
         if (result.ok) {
-            return await machineEncryption.decryptRaw(result.result) as R;
+            return await machineEncryption.decryptRaw(result.result!) as R;
         }
-        throw new Error('RPC call failed');
+        throw new Error(result.error || `RPC call '${method}' failed`);
     }
 
     send(event: string, data: any) {
