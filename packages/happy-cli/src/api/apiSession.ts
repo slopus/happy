@@ -39,6 +39,69 @@ export type ACPMessageData =
 
 export type ACPProvider = 'gemini' | 'codex' | 'claude' | 'opencode';
 
+/** Helper to safely access the message.content array from a RawJSONLines body. */
+interface MessageWithContent {
+    content?: unknown[];
+    [key: string]: unknown;
+}
+
+interface ContentBlock {
+    type: string;
+    content?: ContentBlock[];
+    source?: { data?: string; [key: string]: unknown };
+    [key: string]: unknown;
+}
+
+/**
+ * Strip large image base64 data from tool result messages before sending.
+ * Claude Code tool results can contain full image data (200KB+) which,
+ * after encryption + base64 encoding, becomes too large for socket.io transport.
+ * The app only needs to know the tool completed, not the actual image data.
+ */
+function stripLargeImageContent(body: RawJSONLines): RawJSONLines {
+    if (body.type !== 'user' && body.type !== 'assistant') {
+        return body;
+    }
+    const msg = body.message as MessageWithContent | undefined;
+    const content = msg?.content;
+    if (!Array.isArray(content)) {
+        return body;
+    }
+
+    let modified = false;
+    const strippedContent = content.map((block: ContentBlock) => {
+        // Handle tool_result blocks containing image content
+        if (block.type === 'tool_result' && Array.isArray(block.content)) {
+            const strippedInner = block.content.map((inner: ContentBlock) => {
+                if (inner.type === 'image' && inner.source?.data) {
+                    modified = true;
+                    return { type: 'text', text: '[image]' };
+                }
+                return inner;
+            });
+            return modified ? { ...block, content: strippedInner } : block;
+        }
+        // Handle direct image blocks
+        if (block.type === 'image' && block.source?.data) {
+            modified = true;
+            return { type: 'text', text: '[image]' };
+        }
+        return block;
+    });
+
+    if (!modified) {
+        return body;
+    }
+
+    return {
+        ...body,
+        message: {
+            ...msg,
+            content: strippedContent
+        }
+    } as RawJSONLines;
+}
+
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string;
     readonly sessionId: string;
@@ -73,7 +136,7 @@ export class ApiSessionClient extends EventEmitter {
             encryptionVariant: this.encryptionVariant,
             logger: (msg, data) => logger.debug(msg, data)
         });
-        registerCommonHandlers(this.rpcHandlerManager, this.metadata.path);
+        registerCommonHandlers(this.rpcHandlerManager, this.metadata.path, this.sessionId);
 
         //
         // Create socket
@@ -192,6 +255,9 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
+        // Strip large image base64 from tool results to prevent oversized messages
+        body = stripLargeImageContent(body);
+
         let content: MessageContent;
 
         // Check if body is already a MessageContent (has role property)

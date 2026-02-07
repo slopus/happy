@@ -39,6 +39,7 @@ interface MultiTextInputProps {
     onKeyPress?: OnKeyPressCallback;
     onSelectionChange?: (selection: { start: number; end: number }) => void;
     onStateChange?: (state: TextInputState) => void;
+    onImagePaste?: (blob: Blob) => void;
 }
 
 export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
@@ -49,7 +50,8 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         maxHeight = 120,
         onKeyPress,
         onSelectionChange,
-        onStateChange
+        onStateChange,
+        onImagePaste
     } = props;
     
     const { theme } = useUnistyles();
@@ -140,6 +142,25 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         }
     }, [value, onSelectionChange, onStateChange]);
 
+    // Intercept clipboard paste to detect images
+    const handlePaste = React.useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        if (!onImagePaste) return;
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        for (const item of Array.from(items)) {
+            if (item.type.startsWith('image/')) {
+                e.preventDefault();
+                const blob = item.getAsFile();
+                if (blob) {
+                    onImagePaste(blob);
+                }
+                return;
+            }
+        }
+        // If no image found, let default text paste proceed
+    }, [onImagePaste]);
+
     // Imperative handle for direct control
     React.useImperativeHandle(ref, () => ({
         setTextAndSelection: (text: string, selection: { start: number; end: number }) => {
@@ -196,6 +217,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                 onChange={handleChange}
                 onSelect={handleSelect}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 maxRows={maxRows}
                 autoCapitalize="sentences"
                 autoCorrect="on"

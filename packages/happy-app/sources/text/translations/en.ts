@@ -316,6 +316,12 @@ export const en: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
+        sentImage: 'Sent an image',
+        sentImages: ({ count }: { count: number }) => `Sent ${count} images`,
+        imageLabel: ({ index }: { index: number }) => `Image ${index}`,
+        imageUploadFailed: ({ failed, total }: { failed: number; total: number }) => `${failed} of ${total} images failed to upload`,
+        imageAttached: 'Image attached',
+        couldNotAttachFile: 'Could not attach this file',
     },
 
     commandPalette: {

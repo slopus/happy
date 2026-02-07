@@ -18,6 +18,21 @@ const ICON_TODO = (size: number = 24, color: string = '#000') => <Ionicons name=
 const ICON_REASONING = (size: number = 24, color: string = '#000') => <Octicons name="light-bulb" size={size} color={color} />;
 const ICON_QUESTION = (size: number = 24, color: string = '#000') => <Ionicons name="help-circle-outline" size={size} color={color} />;
 
+/**
+ * Extract a short display name from a file path.
+ * For project-relative paths (already resolved by resolvePath), returns as-is.
+ * For absolute paths (temp dirs, uploads, etc.), returns the basename.
+ */
+function extractDisplayName(path: string): string {
+    // Already a short relative path — keep it
+    if (!path.startsWith('/') && !path.startsWith('\\')) {
+        return path;
+    }
+    // Absolute path: show only the filename
+    const basename = path.split('/').pop() || path;
+    return basename;
+}
+
 export const knownTools = {
     'Task': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
@@ -178,12 +193,12 @@ export const knownTools = {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.file_path === 'string') {
                 const path = resolvePath(opts.tool.input.file_path, opts.metadata);
-                return path;
+                return extractDisplayName(path);
             }
             // Gemini uses 'locations' array with 'path' field
             if (opts.tool.input.locations && Array.isArray(opts.tool.input.locations) && opts.tool.input.locations[0]?.path) {
                 const path = resolvePath(opts.tool.input.locations[0].path, opts.metadata);
-                return path;
+                return extractDisplayName(path);
             }
             return t('tools.names.readFile');
         },
@@ -205,7 +220,21 @@ export const knownTools = {
                 startLine: z.number().describe('The line number to start reading from'),
                 totalLines: z.number().describe('The total number of lines in the file')
             }).passthrough().optional()
-        }).partial().passthrough()
+        }).partial().passthrough(),
+        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            const filePath = typeof opts.tool.input.file_path === 'string'
+                ? opts.tool.input.file_path
+                : opts.tool.input.locations?.[0]?.path;
+            if (typeof filePath === 'string') {
+                const resolved = resolvePath(filePath, opts.metadata);
+                const displayName = extractDisplayName(resolved);
+                // Only show subtitle if the title was shortened
+                if (displayName !== resolved) {
+                    return resolved;
+                }
+            }
+            return null;
+        }
     },
     // Gemini uses lowercase 'read'
     'read': {
@@ -213,11 +242,11 @@ export const knownTools = {
             // Gemini uses 'locations' array with 'path' field
             if (opts.tool.input.locations && Array.isArray(opts.tool.input.locations) && opts.tool.input.locations[0]?.path) {
                 const path = resolvePath(opts.tool.input.locations[0].path, opts.metadata);
-                return path;
+                return extractDisplayName(path);
             }
             if (typeof opts.tool.input.file_path === 'string') {
                 const path = resolvePath(opts.tool.input.file_path, opts.metadata);
-                return path;
+                return extractDisplayName(path);
             }
             return t('tools.names.readFile');
         },
@@ -227,7 +256,19 @@ export const knownTools = {
             items: z.array(z.any()).optional(),
             locations: z.array(z.object({ path: z.string() }).passthrough()).optional(),
             file_path: z.string().optional()
-        }).partial().passthrough()
+        }).partial().passthrough(),
+        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            const filePath = opts.tool.input.locations?.[0]?.path
+                ?? (typeof opts.tool.input.file_path === 'string' ? opts.tool.input.file_path : undefined);
+            if (typeof filePath === 'string') {
+                const resolved = resolvePath(filePath, opts.metadata);
+                const displayName = extractDisplayName(resolved);
+                if (displayName !== resolved) {
+                    return resolved;
+                }
+            }
+            return null;
+        }
     },
     'Edit': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
