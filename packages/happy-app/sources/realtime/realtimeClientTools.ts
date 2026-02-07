@@ -4,7 +4,7 @@ import { sync } from '@/sync/sync';
 import { sessionAllow, sessionDeny, sessionDelete, machineSpawnNewSession } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { trackPermissionResponse } from '@/track';
-import { getCurrentRealtimeSessionId, setCurrentRealtimeSessionId } from './RealtimeSession';
+import { getCurrentRealtimeSessionId, setCurrentRealtimeSessionId, stopRealtimeSession } from './RealtimeSession';
 import { getSessionName, getSessionSubtitle, isSessionOnline } from '@/utils/sessionUtils';
 
 /**
@@ -303,6 +303,33 @@ Report this information to the user in a natural, conversational way.`;
         } catch (error) {
             console.error('❌ Failed to delete session:', error);
             return "error (failed to delete session)";
+        }
+    },
+
+    /**
+     * Navigate to home screen (leave current conversation)
+     */
+    navigateHome: async (_parameters: unknown) => {
+        try {
+            try { router.dismissAll(); } catch (_) { /* stack may already be at root */ }
+            router.replace('/');
+            return "Navigated to home screen. [DO NOT say anything else, simply confirm]";
+        } catch (error) {
+            console.error('❌ Failed to navigate home:', error);
+            return "error (failed to navigate home)";
+        }
+    },
+
+    /**
+     * End the voice conversation (disconnect voice assistant)
+     */
+    endVoiceConversation: async (_parameters: unknown) => {
+        try {
+            await stopRealtimeSession();
+            return "Voice conversation ended. [DO NOT say anything else]";
+        } catch (error) {
+            console.error('❌ Failed to end voice conversation:', error);
+            return "error (failed to end voice conversation)";
         }
     },
 };
