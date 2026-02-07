@@ -303,6 +303,12 @@ export const zhHans: TranslationStructure = {
 
     session: {
         inputPlaceholder: '输入消息...',
+        sentImage: '已发送图片',
+        sentImages: ({ count }: { count: number }) => `已发送 ${count} 张图片`,
+        imageLabel: ({ index }: { index: number }) => `图片 ${index}`,
+        imageUploadFailed: ({ failed, total }: { failed: number; total: number }) => `${total} 张图片中有 ${failed} 张上传失败`,
+        imageAttached: '图片已附加',
+        couldNotAttachFile: '无法附加此文件',
     },
 
     commandPalette: {
