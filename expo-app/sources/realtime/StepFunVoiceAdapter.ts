@@ -46,9 +46,13 @@ class StepFunVoiceSession implements VoiceSession {
             const initialPrompt = voiceHooks.onVoiceStarted(config.sessionId);
             const instructions = this.buildInstructions(config.initialContext, initialPrompt);
 
-            // Initialize audio player
+            // Initialize audio player with callback to pause/resume recording
             this.player = new StepFunAudioPlayer((isPlaying) => {
                 storage.getState().setRealtimeMode(isPlaying ? 'speaking' : 'idle');
+                // Resume recording when playback stops
+                if (!isPlaying) {
+                    this.recorder?.resume();
+                }
             });
             await this.player.initialize();
 
@@ -66,8 +70,10 @@ class StepFunVoiceSession implements VoiceSession {
                 },
 
                 onSpeechStarted: () => {
-                    console.log('[StepFunVoiceSession] User speech started');
-                    this.player?.stop(); // Barge-in: stop AI when user speaks
+                    console.log('[StepFunVoiceSession] User speech started - interrupting');
+                    this.player?.stop(); // Barge-in: stop AI audio when user speaks
+                    this.client?.interrupt(); // Cancel response and clear audio buffer
+                    storage.getState().setRealtimeMode('idle', true); // Immediate mode change
                 },
 
                 onSpeechStopped: () => {
@@ -75,6 +81,8 @@ class StepFunVoiceSession implements VoiceSession {
                 },
 
                 onAudioDelta: (base64Audio: string) => {
+                    // Pause recording immediately when receiving audio to prevent echo
+                    this.recorder?.pause();
                     this.player?.addAudioChunk(base64Audio);
                 },
 
@@ -90,6 +98,21 @@ class StepFunVoiceSession implements VoiceSession {
                     console.log('[StepFunVoiceSession] Text:', text);
                 },
 
+                // Transcription callbacks
+                onUserTranscript: (transcript: string) => {
+                    console.log('[StepFunVoiceSession] User transcript:', transcript);
+                    if (this.sessionId && transcript.trim()) {
+                        storage.getState().addVoiceMessage(this.sessionId, 'user', transcript);
+                    }
+                },
+
+                onAssistantTranscriptDone: (transcript: string) => {
+                    console.log('[StepFunVoiceSession] Assistant transcript:', transcript);
+                    if (this.sessionId && transcript.trim()) {
+                        storage.getState().addVoiceMessage(this.sessionId, 'assistant', transcript);
+                    }
+                },
+
                 onFunctionCall: async (callId: string, name: string, args: string): Promise<string> => {
                     console.log('[StepFunVoiceSession] Function call:', name);
                     return await executeStepFunTool(name, args);
@@ -97,7 +120,8 @@ class StepFunVoiceSession implements VoiceSession {
 
                 onError: (error: Error) => {
                     console.error('[StepFunVoiceSession] Error:', error);
-                    storage.getState().setRealtimeStatus('error');
+                    // Don't set error status for non-critical errors, just log them
+                    // Critical errors will trigger disconnect which handles cleanup
                 },
 
                 onDisconnected: () => {
@@ -129,6 +153,20 @@ class StepFunVoiceSession implements VoiceSession {
     }
 
     private buildInstructions(initialContext?: string, initialPrompt?: string): string {
+        // Check for custom system prompt in settings
+        const customSystemPrompt = storage.getState().settings.voiceAssistantSystemPrompt;
+
+        if (customSystemPrompt) {
+            // Use custom system prompt with context appended
+            return `${customSystemPrompt}
+
+Current session context:
+${initialContext || ''}
+
+${initialPrompt || ''}`;
+        }
+
+        // Default system prompt
         return `You are a helpful voice assistant integrated with Claude Code, an AI coding assistant. Your role is to help users interact with their coding sessions through voice.
 
 You can:

@@ -3,7 +3,7 @@ import { View, Text } from "react-native";
 import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
-import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
+import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage, VoiceUserMessage, VoiceAssistantMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
 import { layout } from "./layout";
 import { ToolView } from "./tools/ToolView";
@@ -11,6 +11,7 @@ import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
 import { useSetting } from "@/sync/storage";
+import { Ionicons } from '@expo/vector-icons';
 
 export const MessageView = (props: {
   message: Message;
@@ -57,6 +58,12 @@ function RenderBlock(props: {
     case 'agent-event':
       return <AgentEventBlock event={props.message.event} metadata={props.metadata} />;
 
+    case 'voice-user':
+      return <VoiceUserBlock message={props.message} />;
+
+    case 'voice-assistant':
+      return <VoiceAssistantBlock message={props.message} />;
+
 
     default:
       // Exhaustive check - TypeScript will error if we miss a case
@@ -81,6 +88,34 @@ function UserTextBlock(props: {
           <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
       </View>
+    </View>
+  );
+}
+
+function VoiceUserBlock(props: {
+  message: VoiceUserMessage;
+}) {
+  return (
+    <View style={styles.userMessageContainer}>
+      <View style={styles.voiceUserBubble}>
+        <View style={styles.voiceIndicator}>
+          <Ionicons name="mic" size={14} color="#6366F1" />
+        </View>
+        <Text style={styles.voiceUserText}>{props.message.text}</Text>
+      </View>
+    </View>
+  );
+}
+
+function VoiceAssistantBlock(props: {
+  message: VoiceAssistantMessage;
+}) {
+  return (
+    <View style={styles.voiceAssistantContainer}>
+      <View style={styles.voiceIndicator}>
+        <Ionicons name="volume-high" size={14} color="#10B981" />
+      </View>
+      <Text style={styles.voiceAssistantText}>{props.message.text}</Text>
     </View>
   );
 }
@@ -218,5 +253,52 @@ const styles = StyleSheet.create((theme) => ({
   debugText: {
     color: theme.colors.agentEventText,
     fontSize: 12,
+  },
+  // Voice message styles
+  voiceUserBubble: {
+    backgroundColor: 'rgba(99, 102, 241, 0.1)', // Indigo with transparency
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginBottom: 12,
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  voiceUserText: {
+    color: theme.colors.text,
+    fontSize: 15,
+    flex: 1,
+  },
+  voiceAssistantContainer: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(16, 185, 129, 0.1)', // Emerald with transparency
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    maxWidth: '85%',
+  },
+  voiceAssistantText: {
+    color: theme.colors.text,
+    fontSize: 15,
+    flex: 1,
+  },
+  voiceIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 }));

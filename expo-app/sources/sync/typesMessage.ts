@@ -60,4 +60,21 @@ export type ToolCallMessage = {
     meta?: MessageMeta;
 }
 
-export type Message = UserTextMessage | AgentTextMessage | ToolCallMessage | ModeSwitchMessage;
+// Voice transcript messages - displayed locally only, not sent to Claude
+export type VoiceUserMessage = {
+    kind: 'voice-user';
+    id: string;
+    createdAt: number;
+    text: string;
+    meta?: MessageMeta;
+}
+
+export type VoiceAssistantMessage = {
+    kind: 'voice-assistant';
+    id: string;
+    createdAt: number;
+    text: string;
+    meta?: MessageMeta;
+}
+
+export type Message = UserTextMessage | AgentTextMessage | ToolCallMessage | ModeSwitchMessage | VoiceUserMessage | VoiceAssistantMessage;

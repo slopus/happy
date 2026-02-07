@@ -573,7 +573,20 @@ export const ru: TranslationStructure = {
             title: 'Языки',
             footer: ({ count }: { count: number }) => `Доступно ${count} ${plural({ count, one: 'язык', few: 'языка', many: 'языков' })}`,
             autoDetect: 'Автоопределение',
-        }
+        },
+        // System prompt settings
+        systemPromptTitle: 'Системный промпт',
+        systemPromptDescription: 'Настройте инструкции для голосового помощника',
+        systemPrompt: 'Пользовательский промпт',
+        systemPromptSubtitle: 'Определите поведение голосового помощника',
+        systemPromptDefault: 'По умолчанию',
+        systemPromptEdit: {
+            description: 'Введите пользовательский системный промпт, чтобы изменить поведение голосового помощника. Оставьте пустым для использования промпта по умолчанию.',
+            placeholder: 'Введите ваш системный промпт...',
+            reset: 'Очистить',
+            useDefault: 'По умолчанию',
+            hint: 'Системный промпт определяет личность и возможности голосового помощника. Он будет объединён с контекстом сессии при запуске голосовой сессии.',
+        },
     },
 
     settingsAccount: {

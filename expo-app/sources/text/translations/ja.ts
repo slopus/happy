@@ -595,7 +595,20 @@ export const ja: TranslationStructure = {
             title: '言語',
             footer: ({ count }: { count: number }) => `${count}言語が利用可能`,
             autoDetect: '自動検出',
-        }
+        },
+        // System prompt settings
+        systemPromptTitle: 'システムプロンプト',
+        systemPromptDescription: '音声アシスタントへの指示をカスタマイズ',
+        systemPrompt: 'カスタムプロンプト',
+        systemPromptSubtitle: '音声アシスタントの動作を定義',
+        systemPromptDefault: 'デフォルト',
+        systemPromptEdit: {
+            description: 'カスタムシステムプロンプトを入力して、音声アシスタントの動作を変更します。デフォルトのプロンプトを使用する場合は空のままにしてください。',
+            placeholder: 'カスタムシステムプロンプトを入力...',
+            reset: 'クリア',
+            useDefault: 'デフォルトを使用',
+            hint: 'システムプロンプトは音声アシスタントの性格と機能を定義します。音声セッション開始時にセッションコンテキストと組み合わされます。',
+        },
     },
 
     settingsAccount: {

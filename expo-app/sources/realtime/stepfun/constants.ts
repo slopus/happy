@@ -14,8 +14,9 @@ export const STEPFUN_CONSTANTS = {
         FRAME_SIZE: 4096,        // Buffer size (~170ms at 24kHz)
     },
 
-    // Default model - step-1-flash for realtime voice
-    DEFAULT_MODEL: 'step-1-flash',
+    // Default model - step-1o-audio for realtime voice
+    // Available: step-1o-audio, step-audio-2, step-audio-2-mini
+    DEFAULT_MODEL: 'step-1o-audio',
 
     // Available voices
     VOICES: {
@@ -36,10 +37,11 @@ export const STEPFUN_CONSTANTS = {
     },
 
     // VAD (Voice Activity Detection) settings
+    // Lower threshold = more sensitive to speech
     VAD: {
-        THRESHOLD: 0.5,
-        PREFIX_PADDING_MS: 300,
-        SILENCE_DURATION_MS: 500,
+        PREFIX_PADDING_MS: 200,           // Time before speech detection triggers
+        SILENCE_DURATION_MS: 400,         // Longer silence duration to avoid cutting off speech
+        ENERGY_AWAKENESS_THRESHOLD: 100,  // Very low threshold for maximum sensitivity
     },
 
     // Session limits

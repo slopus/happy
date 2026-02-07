@@ -562,7 +562,20 @@ export const en = {
             title: 'Languages',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'language', plural: 'languages' })} available`,
             autoDetect: 'Auto-detect',
-        }
+        },
+        // System prompt settings
+        systemPromptTitle: 'System Prompt',
+        systemPromptDescription: 'Customize the instructions given to the voice assistant.',
+        systemPrompt: 'Custom Prompt',
+        systemPromptSubtitle: 'Define how the voice assistant behaves',
+        systemPromptDefault: 'Default',
+        systemPromptEdit: {
+            description: 'Enter a custom system prompt to change how the voice assistant behaves. Leave empty to use the default prompt.',
+            placeholder: 'Enter your custom system prompt...',
+            reset: 'Clear',
+            useDefault: 'Use Default',
+            hint: 'The system prompt defines the voice assistant\'s personality and capabilities. It will be combined with session context when starting a voice session.',
+        },
     },
 
     settingsAccount: {

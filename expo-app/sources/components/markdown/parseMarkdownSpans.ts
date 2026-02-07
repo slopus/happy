@@ -55,19 +55,15 @@ export function parseMarkdownSpans(markdown: string, header: boolean) {
         }
 
         if (match[1]) {
-            // Bold
-            if (header) {
-                spans.push({ styles: [], text: match[2], url: null });
-            } else {
-                spans.push({ styles: ['bold'], text: match[2], url: null });
-            }
+            // Bold - also check for URLs within bold text
+            const boldStyles: MarkdownSpan['styles'] = header ? [] : ['bold'];
+            const boldSpans = splitTextWithUrls(match[2], boldStyles);
+            spans.push(...boldSpans);
         } else if (match[3]) {
-            // Italic
-            if (header) {
-                spans.push({ styles: [], text: match[4], url: null });
-            } else {
-                spans.push({ styles: ['italic'], text: match[4], url: null });
-            }
+            // Italic - also check for URLs within italic text
+            const italicStyles: MarkdownSpan['styles'] = header ? [] : ['italic'];
+            const italicSpans = splitTextWithUrls(match[4], italicStyles);
+            spans.push(...italicSpans);
         } else if (match[5]) {
             // Link - handle incomplete links (no URL part)
             if (match[7]) {

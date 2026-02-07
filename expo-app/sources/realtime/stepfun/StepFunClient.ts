@@ -31,6 +31,10 @@ export interface StepFunClientCallbacks {
     onFunctionCall: (callId: string, name: string, args: string) => Promise<string>;
     onError: (error: Error) => void;
     onDisconnected: () => void;
+    // Transcription callbacks
+    onUserTranscript?: (transcript: string) => void;
+    onAssistantTranscriptDelta?: (delta: string) => void;
+    onAssistantTranscriptDone?: (transcript: string) => void;
 }
 
 export class StepFunClient {
@@ -63,9 +67,14 @@ export class StepFunClient {
             console.log('[StepFunClient] Connecting to:', url);
 
             // Create WebSocket with authorization header
-            // Note: Browser WebSocket doesn't support custom headers directly
-            // We need to pass the token in the URL or use a different approach
-            this.ws = new WebSocket(url, ['realtime', `bearer.${this.config.apiKey}`]);
+            // React Native WebSocket supports custom headers via 3rd parameter
+            // Browser WebSocket doesn't support this - will need relay server for web
+            // @ts-expect-error React Native WebSocket accepts headers as 3rd param
+            this.ws = new WebSocket(url, undefined, {
+                headers: {
+                    'Authorization': `Bearer ${this.config.apiKey}`,
+                },
+            });
 
             this.ws.onopen = () => {
                 console.log('[StepFunClient] WebSocket connected');
@@ -131,11 +140,14 @@ export class StepFunClient {
                 voice: this.config.voice || STEPFUN_CONSTANTS.DEFAULT_VOICE,
                 input_audio_format: 'pcm16',
                 output_audio_format: 'pcm16',
+                input_audio_transcription: {
+                    model: 'whisper-1', // Enable input audio transcription
+                },
                 turn_detection: {
                     type: 'server_vad',
-                    threshold: STEPFUN_CONSTANTS.VAD.THRESHOLD,
                     prefix_padding_ms: STEPFUN_CONSTANTS.VAD.PREFIX_PADDING_MS,
                     silence_duration_ms: STEPFUN_CONSTANTS.VAD.SILENCE_DURATION_MS,
+                    energy_awakeness_threshold: STEPFUN_CONSTANTS.VAD.ENERGY_AWAKENESS_THRESHOLD,
                 },
                 tools: this.config.tools || [],
                 tool_choice: 'auto',
@@ -147,7 +159,12 @@ export class StepFunClient {
     }
 
     private handleMessage(event: StepFunServerEvent): void {
-        console.log('[StepFunClient] Received:', event.type);
+        // Log all events for debugging
+        if (event.type !== 'response.audio.delta') {
+            console.log('[StepFunClient] Received:', event.type, JSON.stringify(event).slice(0, 200));
+        } else {
+            console.log('[StepFunClient] Received: response.audio.delta (audio data)');
+        }
 
         switch (event.type) {
             case 'session.created':
@@ -198,8 +215,32 @@ export class StepFunClient {
                 break;
 
             case 'error':
+                // Ignore "no ongoing response to cancel" error - this is expected when interrupting
+                if (event.error.message === 'no ongoing response to cancel') {
+                    console.log('[StepFunClient] No response to cancel (expected during interruption)');
+                    break;
+                }
                 console.error('[StepFunClient] Server error:', event.error);
                 this.callbacks.onError(new Error(event.error.message));
+                break;
+
+            // Transcription events
+            case 'conversation.item.input_audio_transcription.completed':
+                console.log('[StepFunClient] User transcript:', event.transcript);
+                this.callbacks.onUserTranscript?.(event.transcript);
+                break;
+
+            case 'conversation.item.input_audio_transcription.failed':
+                console.warn('[StepFunClient] Transcription failed:', event.error);
+                break;
+
+            case 'response.audio_transcript.delta':
+                this.callbacks.onAssistantTranscriptDelta?.(event.delta);
+                break;
+
+            case 'response.audio_transcript.done':
+                console.log('[StepFunClient] Assistant transcript:', event.transcript);
+                this.callbacks.onAssistantTranscriptDone?.(event.transcript);
                 break;
 
             default:
@@ -244,15 +285,35 @@ export class StepFunClient {
         }
     }
 
+    private generateEventId(): string {
+        return `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+
     send(event: StepFunClientEvent): void {
         if (this.ws && this.isConnected && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify(event));
+            // Add event_id to all events
+            const eventWithId = {
+                event_id: this.generateEventId(),
+                ...event,
+            };
+            const json = JSON.stringify(eventWithId);
+            // Log non-audio events fully, audio events partially
+            if (event.type !== 'input_audio_buffer.append') {
+                console.log('[StepFunClient] Sending:', json.slice(0, 300));
+            }
+            this.ws.send(json);
         } else {
             console.warn('[StepFunClient] Cannot send - not connected');
         }
     }
 
+    private audioChunkCount: number = 0;
+
     sendAudio(base64Audio: string): void {
+        this.audioChunkCount++;
+        if (this.audioChunkCount <= 3) {
+            console.log(`[StepFunClient] Sending audio chunk #${this.audioChunkCount}, base64 prefix: ${base64Audio.slice(0, 30)}...`);
+        }
         this.send({
             type: 'input_audio_buffer.append',
             audio: base64Audio,
@@ -280,15 +341,16 @@ export class StepFunClient {
     }
 
     sendContextualUpdate(update: string): void {
-        // Send as system message for context (silent update)
+        // Send as user message for context (StepFun doesn't support system role in conversation items)
+        // This is a silent context update, not triggering a response
         this.send({
             type: 'conversation.item.create',
             item: {
                 type: 'message',
-                role: 'system',
+                role: 'user',
                 content: [{
                     type: 'input_text',
-                    text: update,
+                    text: `[Context Update]: ${update}`,
                 }],
             },
         });
@@ -298,6 +360,22 @@ export class StepFunClient {
         this.send({
             type: 'response.cancel',
         });
+    }
+
+    clearInputAudioBuffer(): void {
+        this.send({
+            type: 'input_audio_buffer.clear',
+        });
+    }
+
+    /**
+     * Interrupt the current response - stops response generation
+     * Note: Don't clear audio buffer as it can cause server errors
+     */
+    interrupt(): void {
+        console.log('[StepFunClient] Interrupting response');
+        this.cancelResponse();
+        // Don't call clearInputAudioBuffer() - causes server errors with StepFun
     }
 
     disconnect(): void {

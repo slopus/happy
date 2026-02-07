@@ -565,7 +565,20 @@ export const zhHans: TranslationStructure = {
             title: '语言',
             footer: ({ count }: { count: number }) => `${count} 种可用语言`,
             autoDetect: '自动检测',
-        }
+        },
+        // System prompt settings
+        systemPromptTitle: '系统提示词',
+        systemPromptDescription: '自定义给语音助手的指令',
+        systemPrompt: '自定义提示词',
+        systemPromptSubtitle: '定义语音助手的行为方式',
+        systemPromptDefault: '默认',
+        systemPromptEdit: {
+            description: '输入自定义系统提示词来改变语音助手的行为。留空则使用默认提示词。',
+            placeholder: '输入您的自定义系统提示词...',
+            reset: '清除',
+            useDefault: '使用默认',
+            hint: '系统提示词定义了语音助手的个性和能力。启动语音会话时，它将与会话上下文结合使用。',
+        },
     },
 
     settingsAccount: {

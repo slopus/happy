@@ -563,7 +563,20 @@ export const ca: TranslationStructure = {
             title: 'Idiomes',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomes' })} disponibles`,
             autoDetect: 'Detecta automàticament',
-        }
+        },
+        // System prompt settings
+        systemPromptTitle: 'Prompt del sistema',
+        systemPromptDescription: 'Personalitza les instruccions donades a l\'assistent de veu',
+        systemPrompt: 'Prompt personalitzat',
+        systemPromptSubtitle: 'Defineix com es comporta l\'assistent de veu',
+        systemPromptDefault: 'Predeterminat',
+        systemPromptEdit: {
+            description: 'Introdueix un prompt de sistema personalitzat per canviar com es comporta l\'assistent de veu. Deixa buit per utilitzar el prompt predeterminat.',
+            placeholder: 'Introdueix el teu prompt de sistema personalitzat...',
+            reset: 'Esborra',
+            useDefault: 'Utilitza predeterminat',
+            hint: 'El prompt del sistema defineix la personalitat i les capacitats de l\'assistent de veu. Es combinarà amb el context de la sessió en iniciar una sessió de veu.',
+        },
     },
 
     settingsAccount: {

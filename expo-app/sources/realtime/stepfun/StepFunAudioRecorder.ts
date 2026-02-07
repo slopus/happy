@@ -1,9 +1,10 @@
 /**
  * StepFun Audio Recorder for Native (iOS/Android)
- * Uses Web Audio API polyfill for real-time audio capture
+ * Uses react-native-audio-api for real-time audio capture
  * Outputs base64 encoded PCM16 audio chunks
  */
 
+import { AudioRecorder } from 'react-native-audio-api';
 import { fromByteArray } from 'react-native-quick-base64';
 import { STEPFUN_CONSTANTS } from './constants';
 
@@ -13,12 +14,10 @@ export interface AudioRecorderCallbacks {
 }
 
 export class StepFunAudioRecorder {
-    private audioContext: AudioContext | null = null;
+    private recorder: AudioRecorder | null = null;
     private isRecording: boolean = false;
+    private isPaused: boolean = false;
     private callbacks: AudioRecorderCallbacks;
-    private mediaStream: MediaStream | null = null;
-    private processorNode: ScriptProcessorNode | null = null;
-    private sourceNode: MediaStreamAudioSourceNode | null = null;
 
     constructor(callbacks: AudioRecorderCallbacks) {
         this.callbacks = callbacks;
@@ -33,64 +32,77 @@ export class StepFunAudioRecorder {
         try {
             console.log('[StepFunAudioRecorder] Starting recording...');
 
-            // Create audio context with target sample rate
-            // Use global AudioContext which may be polyfilled in React Native
-            const AudioContextClass = (globalThis as any).AudioContext || (globalThis as any).webkitAudioContext;
-            if (!AudioContextClass) {
-                throw new Error('AudioContext not available');
-            }
-
-            this.audioContext = new AudioContextClass({
+            // Create audio recorder with target sample rate
+            this.recorder = new AudioRecorder({
                 sampleRate: STEPFUN_CONSTANTS.AUDIO.SAMPLE_RATE,
-            }) as AudioContext;
-
-            // Get microphone stream
-            if (!navigator.mediaDevices?.getUserMedia) {
-                throw new Error('getUserMedia not available');
-            }
-
-            this.mediaStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    sampleRate: STEPFUN_CONSTANTS.AUDIO.SAMPLE_RATE,
-                    channelCount: STEPFUN_CONSTANTS.AUDIO.CHANNELS,
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                },
+                bufferLengthInSamples: STEPFUN_CONSTANTS.AUDIO.FRAME_SIZE,
             });
 
-            // Create source from microphone
-            this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
+            // Register audio data callback
+            let chunkCount = 0;
+            this.recorder.onAudioReady((event) => {
+                if (!this.isRecording || this.isPaused) return;
 
-            // Create script processor for real-time audio processing
-            // Buffer size of 4096 gives ~170ms chunks at 24kHz
-            this.processorNode = this.audioContext.createScriptProcessor(
-                STEPFUN_CONSTANTS.AUDIO.FRAME_SIZE,
-                STEPFUN_CONSTANTS.AUDIO.CHANNELS,
-                STEPFUN_CONSTANTS.AUDIO.CHANNELS
-            );
+                try {
+                    // Get audio data from buffer
+                    const float32Data = event.buffer.getChannelData(0);
 
-            this.processorNode.onaudioprocess = (event: AudioProcessingEvent) => {
-                if (!this.isRecording) return;
+                    // Calculate audio level (RMS)
+                    let sum = 0;
+                    let max = 0;
+                    for (let i = 0; i < float32Data.length; i++) {
+                        const abs = Math.abs(float32Data[i]);
+                        sum += float32Data[i] * float32Data[i];
+                        if (abs > max) max = abs;
+                    }
+                    const rms = Math.sqrt(sum / float32Data.length);
 
-                const inputBuffer = event.inputBuffer.getChannelData(0);
-                const pcm16Data = this.floatToPCM16(inputBuffer);
-                const base64Audio = fromByteArray(pcm16Data);
+                    const pcm16Data = this.floatToPCM16(float32Data);
+                    const base64Audio = fromByteArray(pcm16Data);
 
-                this.callbacks.onAudioData(base64Audio);
-            };
+                    chunkCount++;
+                    if (chunkCount <= 3) {
+                        // Log first few bytes of PCM data and base64 prefix
+                        const pcmPreview = Array.from(pcm16Data.slice(0, 10)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                        console.log(`[StepFunAudioRecorder] Chunk #${chunkCount}: rms=${rms.toFixed(4)}, max=${max.toFixed(4)}, pcmBytes=${pcm16Data.length}, base64Len=${base64Audio.length}`);
+                        console.log(`[StepFunAudioRecorder] PCM preview: ${pcmPreview}`);
+                        console.log(`[StepFunAudioRecorder] Base64 prefix: ${base64Audio.slice(0, 50)}`);
+                    }
 
-            // Connect the audio pipeline
-            this.sourceNode.connect(this.processorNode);
-            this.processorNode.connect(this.audioContext.destination);
+                    this.callbacks.onAudioData(base64Audio);
+                } catch (error) {
+                    console.error('[StepFunAudioRecorder] Error processing audio:', error);
+                }
+            });
 
+            // Start recording
+            this.recorder.start();
             this.isRecording = true;
+            this.isPaused = false;
             console.log('[StepFunAudioRecorder] Recording started');
         } catch (error) {
             console.error('[StepFunAudioRecorder] Failed to start recording:', error);
             this.callbacks.onError(error as Error);
             this.cleanup();
         }
+    }
+
+    /**
+     * Pause sending audio data (recorder keeps running to avoid restart latency)
+     */
+    pause(): void {
+        if (this.isPaused) return;
+        console.log('[StepFunAudioRecorder] Pausing audio capture');
+        this.isPaused = true;
+    }
+
+    /**
+     * Resume sending audio data
+     */
+    resume(): void {
+        if (!this.isPaused) return;
+        console.log('[StepFunAudioRecorder] Resuming audio capture');
+        this.isPaused = false;
     }
 
     stop(): void {
@@ -105,25 +117,14 @@ export class StepFunAudioRecorder {
     }
 
     private cleanup(): void {
-        if (this.processorNode) {
-            this.processorNode.disconnect();
-            this.processorNode.onaudioprocess = null;
-            this.processorNode = null;
-        }
-
-        if (this.sourceNode) {
-            this.sourceNode.disconnect();
-            this.sourceNode = null;
-        }
-
-        if (this.mediaStream) {
-            this.mediaStream.getTracks().forEach(track => track.stop());
-            this.mediaStream = null;
-        }
-
-        if (this.audioContext) {
-            this.audioContext.close();
-            this.audioContext = null;
+        if (this.recorder) {
+            try {
+                this.recorder.stop();
+                this.recorder.disconnect();
+            } catch {
+                // Ignore cleanup errors
+            }
+            this.recorder = null;
         }
     }
 

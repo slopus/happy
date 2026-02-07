@@ -1,19 +1,24 @@
 /**
  * StepFun Audio Player for Native (iOS/Android)
- * Uses Web Audio API for real-time audio playback
+ * Uses react-native-audio-api for real-time audio playback
  * Receives base64 encoded PCM16 audio and plays it
  */
 
+import {
+    AudioContext as RNAudioContext,
+    AudioBuffer as RNAudioBuffer,
+    AudioBufferSourceNode as RNAudioBufferSourceNode
+} from 'react-native-audio-api';
 import { toByteArray } from 'react-native-quick-base64';
 import { STEPFUN_CONSTANTS } from './constants';
 
 export class StepFunAudioPlayer {
-    private audioContext: AudioContext | null = null;
-    private audioQueue: AudioBuffer[] = [];
+    private audioContext: RNAudioContext | null = null;
+    private audioQueue: RNAudioBuffer[] = [];
     private isPlaying: boolean = false;
     private nextPlayTime: number = 0;
     private onPlaybackStateChange?: (isPlaying: boolean) => void;
-    private currentSource: AudioBufferSourceNode | null = null;
+    private currentSource: RNAudioBufferSourceNode | null = null;
 
     constructor(onPlaybackStateChange?: (isPlaying: boolean) => void) {
         this.onPlaybackStateChange = onPlaybackStateChange;
@@ -22,15 +27,9 @@ export class StepFunAudioPlayer {
     async initialize(): Promise<void> {
         console.log('[StepFunAudioPlayer] Initializing...');
 
-        // Use global AudioContext which may be polyfilled in React Native
-        const AudioContextClass = (globalThis as any).AudioContext || (globalThis as any).webkitAudioContext;
-        if (!AudioContextClass) {
-            throw new Error('AudioContext not available');
-        }
-
-        this.audioContext = new AudioContextClass({
+        this.audioContext = new RNAudioContext({
             sampleRate: STEPFUN_CONSTANTS.AUDIO.SAMPLE_RATE,
-        }) as AudioContext;
+        });
         this.nextPlayTime = this.audioContext.currentTime;
         console.log('[StepFunAudioPlayer] Initialized');
     }
@@ -48,7 +47,7 @@ export class StepFunAudioPlayer {
             // Decode base64 to Uint8Array
             const pcm16Data = toByteArray(base64Audio);
 
-            // Convert PCM16 to Float32 for Web Audio API
+            // Convert PCM16 to Float32 for audio API
             const float32Data = this.pcm16ToFloat(pcm16Data);
 
             // Create audio buffer
@@ -93,7 +92,7 @@ export class StepFunAudioPlayer {
         source.start(startTime);
         this.nextPlayTime = startTime + audioBuffer.duration;
 
-        source.onended = () => {
+        source.onEnded = () => {
             this.currentSource = null;
             this.playNextChunk();
         };

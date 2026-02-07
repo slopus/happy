@@ -7,16 +7,18 @@
 
 export interface StepFunTool {
     type: 'function';
-    name: string;
-    description: string;
-    parameters: {
-        type: 'object';
-        properties: Record<string, {
-            type: string;
-            description?: string;
-            enum?: string[];
-        }>;
-        required?: string[];
+    function: {
+        name: string;
+        description: string;
+        parameters: {
+            type: 'object';
+            properties: Record<string, {
+                type: string;
+                description?: string;
+                enum?: string[];
+            }>;
+            required?: string[];
+        };
     };
 }
 
@@ -54,9 +56,9 @@ export interface SessionUpdateEvent {
         };
         turn_detection?: {
             type: 'server_vad';
-            threshold?: number;
             prefix_padding_ms?: number;
             silence_duration_ms?: number;
+            energy_awakeness_threshold?: number; // Range 0-5000, default 2500
         } | null;
         tools?: StepFunTool[];
         tool_choice?: 'auto' | 'none' | 'required' | { type: 'function'; name: string };
@@ -82,7 +84,7 @@ export interface ConversationItemCreateEvent {
     type: 'conversation.item.create';
     item: {
         type: 'message' | 'function_call_output';
-        role?: 'user' | 'assistant' | 'system';
+        role?: 'user' | 'assistant';  // StepFun only supports user/assistant, not system
         content?: Array<{
             type: 'input_text' | 'input_audio' | 'text';
             text?: string;
@@ -213,6 +215,44 @@ export interface ErrorEvent {
     };
 }
 
+// ===== Transcription Events =====
+
+export interface ConversationItemInputAudioTranscriptionCompletedEvent {
+    type: 'conversation.item.input_audio_transcription.completed';
+    item_id: string;
+    content_index: number;
+    transcript: string;
+}
+
+export interface ConversationItemInputAudioTranscriptionFailedEvent {
+    type: 'conversation.item.input_audio_transcription.failed';
+    item_id: string;
+    content_index: number;
+    error: {
+        type: string;
+        code: string;
+        message: string;
+    };
+}
+
+export interface ResponseAudioTranscriptDeltaEvent {
+    type: 'response.audio_transcript.delta';
+    response_id: string;
+    item_id: string;
+    output_index: number;
+    content_index: number;
+    delta: string;
+}
+
+export interface ResponseAudioTranscriptDoneEvent {
+    type: 'response.audio_transcript.done';
+    response_id: string;
+    item_id: string;
+    output_index: number;
+    content_index: number;
+    transcript: string;
+}
+
 // ===== Union Types =====
 
 export type StepFunClientEvent =
@@ -238,4 +278,8 @@ export type StepFunServerEvent =
     | ResponseTextDoneEvent
     | ResponseFunctionCallArgumentsDeltaEvent
     | ResponseFunctionCallArgumentsDoneEvent
+    | ConversationItemInputAudioTranscriptionCompletedEvent
+    | ConversationItemInputAudioTranscriptionFailedEvent
+    | ResponseAudioTranscriptDeltaEvent
+    | ResponseAudioTranscriptDoneEvent
     | ErrorEvent;

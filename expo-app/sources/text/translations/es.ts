@@ -563,7 +563,20 @@ export const es: TranslationStructure = {
             title: 'Idiomas',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomas' })} disponibles`,
             autoDetect: 'Detectar automáticamente',
-        }
+        },
+        // System prompt settings
+        systemPromptTitle: 'Prompt del sistema',
+        systemPromptDescription: 'Personaliza las instrucciones dadas al asistente de voz',
+        systemPrompt: 'Prompt personalizado',
+        systemPromptSubtitle: 'Define cómo se comporta el asistente de voz',
+        systemPromptDefault: 'Predeterminado',
+        systemPromptEdit: {
+            description: 'Ingresa un prompt de sistema personalizado para cambiar cómo se comporta el asistente de voz. Deja vacío para usar el prompt predeterminado.',
+            placeholder: 'Ingresa tu prompt de sistema personalizado...',
+            reset: 'Limpiar',
+            useDefault: 'Usar predeterminado',
+            hint: 'El prompt del sistema define la personalidad y capacidades del asistente de voz. Se combinará con el contexto de la sesión al iniciar una sesión de voz.',
+        },
     },
 
     settingsAccount: {

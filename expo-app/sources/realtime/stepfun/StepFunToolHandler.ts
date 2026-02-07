@@ -14,33 +14,37 @@ export function getStepFunToolDefinitions(): StepFunTool[] {
     return [
         {
             type: 'function',
-            name: 'messageClaudeCode',
-            description: 'Send a message to Claude Code. Use this to forward user instructions or questions to Claude Code. The message will be sent to the active coding session.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    message: {
-                        type: 'string',
-                        description: 'The message to send to Claude Code',
+            function: {
+                name: 'messageClaudeCode',
+                description: 'Send a message to Claude Code. Use this to forward user instructions or questions to Claude Code. The message will be sent to the active coding session.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        message: {
+                            type: 'string',
+                            description: 'The message to send to Claude Code',
+                        },
                     },
+                    required: ['message'],
                 },
-                required: ['message'],
             },
         },
         {
             type: 'function',
-            name: 'processPermissionRequest',
-            description: 'Process a permission request from Claude Code. Use this when Claude Code asks for permission to perform an action like running a command or editing a file. You should ask the user for confirmation before calling this.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    decision: {
-                        type: 'string',
-                        description: 'The decision to allow or deny the permission request',
-                        enum: ['allow', 'deny'],
+            function: {
+                name: 'processPermissionRequest',
+                description: 'Process a permission request from Claude Code. Use this when Claude Code asks for permission to perform an action like running a command or editing a file. You should ask the user for confirmation before calling this.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        decision: {
+                            type: 'string',
+                            description: 'The decision to allow or deny the permission request',
+                            enum: ['allow', 'deny'],
+                        },
                     },
+                    required: ['decision'],
                 },
-                required: ['decision'],
             },
         },
     ];

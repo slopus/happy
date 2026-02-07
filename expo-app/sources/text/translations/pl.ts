@@ -573,7 +573,20 @@ export const pl: TranslationStructure = {
             title: 'Języki',
             footer: ({ count }: { count: number }) => `Dostępnych ${count} ${plural({ count, one: 'język', few: 'języki', many: 'języków' })}`,
             autoDetect: 'Automatyczne wykrywanie',
-        }
+        },
+        // System prompt settings
+        systemPromptTitle: 'Prompt systemowy',
+        systemPromptDescription: 'Dostosuj instrukcje dla asystenta głosowego',
+        systemPrompt: 'Własny prompt',
+        systemPromptSubtitle: 'Określ zachowanie asystenta głosowego',
+        systemPromptDefault: 'Domyślny',
+        systemPromptEdit: {
+            description: 'Wprowadź własny prompt systemowy, aby zmienić zachowanie asystenta głosowego. Pozostaw puste, aby użyć domyślnego promptu.',
+            placeholder: 'Wprowadź własny prompt systemowy...',
+            reset: 'Wyczyść',
+            useDefault: 'Użyj domyślnego',
+            hint: 'Prompt systemowy definiuje osobowość i możliwości asystenta głosowego. Zostanie połączony z kontekstem sesji podczas uruchamiania sesji głosowej.',
+        },
     },
 
     settingsAccount: {

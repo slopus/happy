@@ -145,6 +145,8 @@ interface StorageState {
     // Feed methods
     applyFeedItems: (items: FeedItem[]) => void;
     clearFeed: () => void;
+    // Voice transcript methods
+    addVoiceMessage: (sessionId: string, type: 'user' | 'assistant', text: string) => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -1066,6 +1068,40 @@ export const storage = create<StorageState>()((set, get) => {
             feedLoaded: false,  // Reset loading flag
             friendsLoaded: false  // Reset loading flag
         })),
+        // Voice transcript method - adds voice messages to session for local display only
+        addVoiceMessage: (sessionId: string, type: 'user' | 'assistant', text: string) => set((state) => {
+            const existingSession = state.sessionMessages[sessionId];
+            if (!existingSession) {
+                return state;
+            }
+
+            const messageId = `voice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const now = Date.now();
+
+            const voiceMessage: Message = type === 'user'
+                ? { kind: 'voice-user', id: messageId, createdAt: now, text }
+                : { kind: 'voice-assistant', id: messageId, createdAt: now, text };
+
+            const mergedMessagesMap = {
+                ...existingSession.messagesMap,
+                [messageId]: voiceMessage
+            };
+
+            const messagesArray = Object.values(mergedMessagesMap)
+                .sort((a, b) => b.createdAt - a.createdAt);
+
+            return {
+                ...state,
+                sessionMessages: {
+                    ...state.sessionMessages,
+                    [sessionId]: {
+                        ...existingSession,
+                        messages: messagesArray,
+                        messagesMap: mergedMessagesMap
+                    }
+                }
+            };
+        }),
     }
 });
 

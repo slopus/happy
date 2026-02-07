@@ -328,6 +328,7 @@ const style = StyleSheet.create((theme) => ({
         ...Typography.default(),
         color: theme.colors.textLink,
         fontWeight: '400',
+        textDecorationLine: 'underline',
     },
 
     // Headers

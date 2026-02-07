@@ -32,6 +32,38 @@ export const LinkPreviewModal = React.memo((props: LinkPreviewModalProps) => {
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const [currentUrl, setCurrentUrl] = React.useState(url);
+    const [htmlContent, setHtmlContent] = React.useState<string | null>(null);
+
+    // Check if URL might have Content-Disposition: attachment (e.g., object storage)
+    // and fetch HTML content directly to bypass download behavior
+    React.useEffect(() => {
+        const fetchHtmlIfNeeded = async () => {
+            // Check if it's an HTML file from known object storage domains
+            const isObjectStorage = url.includes('.volces.com/') ||
+                                    url.includes('.aliyuncs.com/') ||
+                                    url.includes('.myqcloud.com/') ||
+                                    url.includes('.amazonaws.com/');
+            const isHtmlFile = url.toLowerCase().endsWith('.html') || url.toLowerCase().endsWith('.htm');
+
+            if (isObjectStorage && isHtmlFile) {
+                try {
+                    const response = await fetch(url);
+                    const contentDisposition = response.headers.get('Content-Disposition');
+
+                    // If server forces download, fetch content and render directly
+                    if (contentDisposition?.includes('attachment')) {
+                        const html = await response.text();
+                        setHtmlContent(html);
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch HTML content:', err);
+                    // Fall back to normal WebView loading
+                }
+            }
+        };
+
+        fetchHtmlIfNeeded();
+    }, [url]);
 
     // Animation for loading overlay
     const loadingOpacity = useSharedValue(1);
@@ -153,7 +185,7 @@ export const LinkPreviewModal = React.memo((props: LinkPreviewModalProps) => {
                 ) : (
                     <WebView
                         ref={webViewRef}
-                        source={{ uri: url }}
+                        source={htmlContent ? { html: htmlContent, baseUrl: url } : { uri: url }}
                         style={styles.webView}
                         onLoadEnd={handleLoadEnd}
                         onError={handleLoadError}
