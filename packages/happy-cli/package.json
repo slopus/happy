@@ -115,6 +115,7 @@
     "tar": "^7.5.2",
     "tmp": "^0.2.5",
     "tweetnacl": "^1.0.3",
+    "node-pty": "^1.1.0",
     "zod": "3.25.76"
   },
   "devDependencies": {

@@ -1,10 +1,10 @@
-import { spawn } from "node:child_process";
 import { resolve, join } from "node:path";
-import { createInterface } from "node:readline";
-import { mkdirSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { mkdirSync, existsSync, unlinkSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { createServer, type Server } from "node:net";
+import { createInterface } from "node:readline";
 import { logger } from "@/ui/logger";
-import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { claudeFindLastSession } from "./utils/claudeFindLastSession";
 import { getProjectPath } from "./utils/path";
 import { projectPath } from "@/projectPath";
@@ -26,6 +26,32 @@ export class ExitCodeError extends Error {
 
 // Get Claude CLI path from project root
 export const claudeCliPath = resolve(join(projectPath(), 'scripts', 'claude_local_launcher.cjs'))
+
+/**
+ * Unix socket server for IPC with the launcher process (thinking-state messages).
+ * node-pty's spawn() only creates the PTY (fd 0/1/2) and has no stdio option
+ * for extra pipes, so we use a Unix socket instead.
+ */
+function createIpcSocket(socketPath: string, onMessage: (msg: any) => void): Promise<Server> {
+    return new Promise((resolve, reject) => {
+        const server = createServer((conn) => {
+            const rl = createInterface({ input: conn, crlfDelay: Infinity });
+            rl.on('line', (line) => {
+                try {
+                    onMessage(JSON.parse(line));
+                } catch {
+                    logger.debug(`[ClaudeLocal] Non-JSON line on IPC socket: ${line}`);
+                }
+            });
+            rl.on('error', (err) => {
+                logger.debug(`[ClaudeLocal] IPC socket read error: ${err.message}`);
+            });
+        });
+
+        server.on('error', reject);
+        server.listen(socketPath, () => resolve(server));
+    });
+}
 
 export async function claudeLocal(opts: {
     abort: AbortSignal,
@@ -165,6 +191,8 @@ export async function claudeLocal(opts: {
     // Thinking state
     let thinking = false;
     let stopThinkingTimeout: NodeJS.Timeout | null = null;
+    const activeFetches = new Map<number, { hostname: string, path: string, startTime: number }>();
+
     const updateThinking = (newThinking: boolean) => {
         if (thinking !== newThinking) {
             thinking = newThinking;
@@ -175,11 +203,58 @@ export async function claudeLocal(opts: {
         }
     };
 
-    // Spawn the process
+    const handleThinkingMessage = (message: any) => {
+        switch (message.type) {
+            case 'fetch-start':
+                activeFetches.set(message.id, {
+                    hostname: message.hostname,
+                    path: message.path,
+                    startTime: message.timestamp
+                });
+                if (stopThinkingTimeout) {
+                    clearTimeout(stopThinkingTimeout);
+                    stopThinkingTimeout = null;
+                }
+                updateThinking(true);
+                break;
+
+            case 'fetch-end':
+                activeFetches.delete(message.id);
+                if (activeFetches.size === 0 && thinking && !stopThinkingTimeout) {
+                    stopThinkingTimeout = setTimeout(() => {
+                        if (activeFetches.size === 0) {
+                            updateThinking(false);
+                        }
+                        stopThinkingTimeout = null;
+                    }, 500);
+                }
+                break;
+
+            default:
+                logger.debug(`[ClaudeLocal] Unknown thinking message type: ${message.type}`);
+        }
+    };
+
+    const socketPath = join(tmpdir(), `.happy-ipc-${process.pid}-${Date.now().toString(36)}.sock`);
+    let ipcServer: Server | null = null;
+
     try {
-        // Start the interactive process
-        process.stdin.pause();
-        await new Promise<void>((r, reject) => {
+        ipcServer = await createIpcSocket(socketPath, handleThinkingMessage);
+    } catch (err) {
+        logger.debug(`[ClaudeLocal] Failed to create IPC socket: ${(err as Error).message}`);
+    }
+
+    // Spawn the process via PTY proxy
+    try {
+        let pty: typeof import('node-pty');
+        try {
+            const nodePty = await import('node-pty');
+            pty = nodePty.default || nodePty;
+        } catch (err) {
+            throw new Error(`Failed to load node-pty native addon: ${(err as Error).message}. Try running: npm rebuild node-pty`);
+        }
+
+        await new Promise<void>((resolve, reject) => {
             const args: string[] = []
 
             // Session/resume args depend on whether we're in offline mode or hook mode
@@ -195,12 +270,10 @@ export async function claudeLocal(opts: {
                 }
             } else {
                 // Normal mode with hook: Add --resume if we found a session to resume
-                // (Flags have been extracted, so we re-add --resume with the session ID we found)
                 if (startFrom) {
                     args.push('--resume', startFrom);
                 }
             }
-            // If hasResumeFlag && !startFrom: --resume is in claudeArgs, let Claude handle it
 
             args.push('--append-system-prompt', systemPrompt);
 
@@ -228,109 +301,106 @@ export async function claudeLocal(opts: {
             }
 
             // Prepare environment variables
-            // Note: Local mode uses global Claude installation with --session-id flag
-            // Launcher only intercepts fetch for thinking state tracking
-            const env = {
-                ...process.env,
-                ...opts.claudeEnvVars
+            const env: Record<string, string> = {
+                ...process.env as Record<string, string>,
+                ...opts.claudeEnvVars,
+            };
+
+            if (ipcServer) {
+                env.HAPPY_IPC_SOCKET = socketPath;
             }
 
-            logger.debug(`[ClaudeLocal] Spawning launcher: ${claudeCliPath}`);
+            logger.debug(`[ClaudeLocal] Spawning via PTY: node ${claudeCliPath}`);
             logger.debug(`[ClaudeLocal] Args: ${JSON.stringify(args)}`);
 
-            const child = spawn('node', [claudeCliPath, ...args], {
-                stdio: ['inherit', 'inherit', 'inherit', 'pipe'],
-                signal: opts.abort,
+            // Track PTY process so the abort handler (registered before spawn) can kill it
+            let ptyProcess: ReturnType<typeof pty.spawn> | null = null;
+
+            const abortHandler = () => {
+                logger.debug('[ClaudeLocal] Abort signal triggered - terminating PTY process');
+                try {
+                    ptyProcess?.kill();
+                } catch {
+                    // Already dead
+                }
+            };
+            opts.abort.addEventListener('abort', abortHandler, { once: true });
+
+            ptyProcess = pty.spawn('node', [claudeCliPath, ...args], {
+                name: process.env.TERM || 'xterm-256color',
+                cols: process.stdout.columns || 80,
+                rows: process.stdout.rows || 24,
                 cwd: opts.path,
                 env,
             });
 
-            // Listen to the custom fd (fd 3) for thinking state tracking
-            if (child.stdio[3]) {
-                const rl = createInterface({
-                    input: child.stdio[3] as any,
-                    crlfDelay: Infinity
-                });
+            logger.debug(`[ClaudeLocal] PTY child spawned with PID: ${ptyProcess.pid}`);
 
-                // Track active fetches for thinking state
-                const activeFetches = new Map<number, { hostname: string, path: string, startTime: number }>();
-
-                rl.on('line', (line) => {
-                    try {
-                        const message = JSON.parse(line);
-
-                        switch (message.type) {
-                            case 'fetch-start':
-                                activeFetches.set(message.id, {
-                                    hostname: message.hostname,
-                                    path: message.path,
-                                    startTime: message.timestamp
-                                });
-
-                                // Clear any pending stop timeout
-                                if (stopThinkingTimeout) {
-                                    clearTimeout(stopThinkingTimeout);
-                                    stopThinkingTimeout = null;
-                                }
-
-                                // Start thinking
-                                updateThinking(true);
-                                break;
-
-                            case 'fetch-end':
-                                activeFetches.delete(message.id);
-
-                                // Stop thinking when no active fetches
-                                if (activeFetches.size === 0 && thinking && !stopThinkingTimeout) {
-                                    stopThinkingTimeout = setTimeout(() => {
-                                        if (activeFetches.size === 0) {
-                                            updateThinking(false);
-                                        }
-                                        stopThinkingTimeout = null;
-                                    }, 500); // Small delay to avoid flickering
-                                }
-                                break;
-
-                            default:
-                                logger.debug(`[ClaudeLocal] Unknown message type: ${message.type}`);
-                        }
-                    } catch (e) {
-                        // Not JSON, ignore (could be other output)
-                        logger.debug(`[ClaudeLocal] Non-JSON line from fd3: ${line}`);
-                    }
-                });
-
-                rl.on('error', (err) => {
-                    console.error('Error reading from fd 3:', err);
-                });
-
-                // Cleanup on child exit
-                child.on('exit', () => {
-                    if (stopThinkingTimeout) {
-                        clearTimeout(stopThinkingTimeout);
-                    }
-                    updateThinking(false);
-                });
-            }
-            child.on('error', (error) => {
-                // Ignore
+            // Proxy PTY output → parent stdout
+            ptyProcess.onData((data: string) => {
+                process.stdout.write(data);
             });
-            child.on('exit', (code, signal) => {
-                if (signal === 'SIGTERM' && opts.abort.aborted) {
-                    // Normal termination due to abort signal
-                    r();
-                } else if (signal) {
-                    reject(new Error(`Process terminated with signal: ${signal}`));
-                } else if (code !== 0 && code !== null) {
-                    // Non-zero exit code - propagate it
-                    reject(new ExitCodeError(code));
+
+            // Proxy parent stdin → PTY
+            if (process.stdin.isTTY) {
+                process.stdin.setRawMode(true);
+            }
+            process.stdin.resume();
+
+            const stdinHandler = (data: Buffer) => {
+                ptyProcess!.write(data.toString());
+            };
+            process.stdin.on('data', stdinHandler);
+
+            // Forward terminal resize
+            const resizeHandler = () => {
+                try {
+                    ptyProcess!.resize(
+                        process.stdout.columns || 80,
+                        process.stdout.rows || 24
+                    );
+                } catch {
+                    // PTY already closed
+                }
+            };
+            process.stdout.on('resize', resizeHandler);
+
+            // Handle PTY exit
+            ptyProcess.onExit(({ exitCode, signal }) => {
+                // Clean up stdin proxy
+                process.stdin.removeListener('data', stdinHandler);
+                if (process.stdin.isTTY) {
+                    process.stdin.setRawMode(false);
+                }
+                process.stdin.pause();
+
+                // Clean up resize handler
+                process.stdout.removeListener('resize', resizeHandler);
+
+                // Clean up abort handler
+                opts.abort.removeEventListener('abort', abortHandler);
+
+                logger.debug(`[ClaudeLocal] PTY exited code=${exitCode} signal=${signal}`);
+
+                if (signal && opts.abort.aborted) {
+                    // Normal termination due to abort
+                    resolve();
+                } else if (exitCode !== 0 && exitCode !== null && exitCode !== undefined) {
+                    reject(new ExitCodeError(exitCode));
                 } else {
-                    r();
+                    resolve();
                 }
             });
         });
     } finally {
-        process.stdin.resume();
+        if (ipcServer) {
+            ipcServer.close();
+            try {
+                unlinkSync(socketPath);
+            } catch {
+                // Socket file already removed
+            }
+        }
         if (stopThinkingTimeout) {
             clearTimeout(stopThinkingTimeout);
             stopThinkingTimeout = null;
@@ -339,7 +409,5 @@ export async function claudeLocal(opts: {
     }
 
     // Return the effective session ID (what was actually used)
-    // - In offline mode: Our generated or resumed session ID
-    // - In hook mode: The session ID from startFrom (if resuming) or null (new session - hook will report ID)
     return effectiveSessionId;
 }

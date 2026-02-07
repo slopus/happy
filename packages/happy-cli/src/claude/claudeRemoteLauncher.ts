@@ -1,4 +1,6 @@
 import { render } from "ink";
+import { openSync } from "node:fs";
+import { ReadStream } from "node:tty";
 import { Session } from "./session";
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
@@ -33,8 +35,15 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     // Configure terminal
     let messageBuffer = new MessageBuffer();
     let inkInstance: any = null;
+    let inkStdin: ReadStream | null = null;
+    let inkStdinFd: number | null = null;
 
     if (hasTTY) {
+        // Ink gets its own /dev/tty fd so it doesn't touch process.stdin
+        inkStdinFd = openSync('/dev/tty', 'r');
+        inkStdin = new ReadStream(inkStdinFd);
+        process.stdin.pause();
+
         console.clear();
         inkInstance = render(React.createElement(RemoteModeDisplay, {
             messageBuffer,
@@ -53,17 +62,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 doSwitch();
             }
         }), {
+            stdin: inkStdin,
             exitOnCtrlC: false,
             patchConsole: false
         });
-    }
-
-    if (hasTTY) {
-        process.stdin.resume();
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(true);
-        }
-        process.stdin.setEncoding("utf8");
     }
 
     // Handle abort
@@ -441,15 +443,16 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         // Clean up permission handler
         permissionHandler.reset();
 
-        // Reset Terminal
-        process.stdin.off('data', abort);
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(false);
-        }
         if (inkInstance) {
             inkInstance.unmount();
         }
         messageBuffer.clear();
+
+        if (inkStdin) {
+            inkStdin.destroy();
+            inkStdin = null;
+            inkStdinFd = null;
+        }
 
         // Resolve abort future
         if (abortFuture) { // Just in case of error
