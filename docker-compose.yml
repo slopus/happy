@@ -1,38 +1,47 @@
 services:
   happy-app:
     build:
-      context: expo-app
-      dockerfile: Dockerfile                                                                                        
-    ports:                                                                                                           
-      - "3030:80"                                                                                                    
+      context: .
+      dockerfile: Dockerfile.webapp
+    ports:
+      - "3030:80"
     restart: unless-stopped
-      
+    environment:
+      # ElevenLabs
+      - EXPO_PUBLIC_ELEVENLABS_AGENT_ID_DEV=${ELEVENLABS_AGENT_ID_DEV}
+      - EXPO_PUBLIC_ELEVENLABS_AGENT_ID_PROD=${ELEVENLABS_AGENT_ID_PROD}
+
   happy-server:
     build:
-      context: server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.server
     ports:
       - "3031:3031"
     restart: unless-stopped
     environment:
+      # Server
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/happy-server
-      - REDIS_URL=redis://redis:6379
-      - HANDY_MASTER_SECRET=F1BAB6E2-B514-4865-9353-CB49FFA7C272
       - PORT=3031
+      - HANDY_MASTER_SECRET=${HANDY_MASTER_SECRET}
+      # Database
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Redis
+      - REDIS_URL=redis://redis:6379
+      # S3 / MinIO
       - S3_HOST=minio
       - S3_PORT=9000
       - S3_USE_SSL=false
-      - S3_ACCESS_KEY=minioadmin
-      - S3_SECRET_KEY=minioadmin
-      - S3_BUCKET=happy-server
-      - S3_PUBLIC_URL=https://3032--main--dootask--kuaifan.coder.hitosea.com/happy-server
-      - GITHUB_APP_ID=2732564
-      - GITHUB_CLIENT_ID=Iv23liGtK7rVWwDHcjky
-      - GITHUB_CLIENT_SECRET=5291ca645288f28f5d3627fc4cb2d0a72f6b272a
-      - GITHUB_REDIRECT_URL=https://happy.hitosea.com/v1/connect/github/callback
-      - GITHUB_WEBHOOK_SECRET=2ad3e6b748f3a02faa28e29dd42333272292f62500182051e9fe15d3fc4807d1
-      - GITHUB_PRIVATE_KEY=-----BEGIN RSA PRIVATE KEY-----\nMIIEpQIBAAKCAQEA2F+DjX+HHeTRlYBHXQN17xwKGC9ccfNGA7tOBNFu0VRHjB3T\nDJeVOyDmdocRpiOz4V3jcP1Gle1ecuyipzZSeNMGHwzRtPJiAwHmPV6yRMa6P2kp\nS3Wj5kGnf4ZIyophQpSwReGOMOHgVdWp2g5nPad2dppP7TwcU05vUU38nGSKjVuy\nn315IvjPuKNCMh3c6Aq1yvCTiR5ubEj5MEEeOYP+kb/49MFg3ywBgxkkaa44g9X8\nhn89jnFpCzkJl1F20Y9IzQOtYAL6NsKHu6NAs2+rTE5rhcnr6Ei5+jE0im0X2ihY\nydtCG45XxRygDjqvkt2o1MEojrouvkhbggpC0QIDAQABAoIBAGmaZGiBH38VmLzw\nuOPKtpqXAs4+/02WQEu99Rwg44dDLRBT1hfFO856BkE/NvvxXO/XlRQmaXbvPTO2\nDsSxnJrf05L//LHlwrRZDvhQ6YzruScNulvb9LyCuq9g6NIBq+qFC2tv5Kgy9fyu\npZGJihXrT8QfGHde6Sw3kdkKyQnCmqIjv1fGN25hgcndtnMnSK+AtCnfJXGSdBS+\nNDq6oVcOEgt9Z2uFSk2jnvMhxkOAhvgv+3ikHR91Foaz12QRhNvqCP8fNSvjgN82\ngLVVHUONNXBVfUGlXd4Nlh8QlbNvW15mWFXrhXvubDPvsgl5U8j4qwLfoGVCLiyz\nQMdfCikCgYEA7rj8cd6Zptgt2iTA+jDB/GBbNrTbph1k7mfmE5Hf5wn+kYrafn8t\nZrZNjQn4l0SrJgctYUdNfVfXBlUvfPtRFXeoeNu7W4Xk9LyGIl0nqEF/9xZGyXN+\nd2UkDZOn8sZeyvYQjHHYuO+Up+cy0hsrqIBWm/L1jBt9qlg3UYitPosCgYEA6Ahw\nl7ktloybKTil4mLLr/FFyfJHlD1y/fNeW/NzOQ+booKF3HqRCIbIXFAD74eHXcc2\nLNNXrF43/ZzOrLx01v29/LRwMNpR6PaZbebxpHHqo0eAhXEdgL8Lu66YEsDMR/Jf\nnaIbgvMOIHkmaD9imyqxygZBE40ZXs6lF4bqK5MCgYEAsTXtYHJISYys7QTfpFpR\nhpHY5FF5xGSJqljCeMCPH6lRqqUS8VhjUZ3/D7XZLiGxkzc8vrv5kBSG8JKIABVn\n6bG8BIvJF3XbsrnIMPZKHCMTZU7KGX184hDYpKN5x0Tu1We4fSl+IjrndYSxOzsk\nO5+Zq4a+NNWrgaqe1g3J3WUCgYEAjkKmbY+ecMBSXUqbAhrakUvXIwLFehDW0PaG\ncs/nZCO6oz9tPQl0pIqmi1qPnys0Bn4eLAuDpG273GVonaWJ6Up3Ull6s6kXMUMI\nPMasfstNNcCf/rCkiwwW8IISQOUuGipzDx2Vyoqkrao5rw61sTbS/G8rNQZ8eJEv\nzSXtqrsCgYEA0ZN09DfVj+4fTvknHk5lyFJyXcORd6J0eZhot5/eYCEDlCM4AUYS\nzaZcpPpz9fSpHQqC03UapNNvlSl1IKClEv4azZ75+hQXzEneTbSc+R3BdY1fUvPF\nfl4RqSUs2yzYhViKLaabHpBZRH+Xx3uf+xH5PNt0D1gax7NjdwAqd8c=\n-----END RSA PRIVATE KEY-----
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_PUBLIC_URL=${S3_PUBLIC_URL}
+      # GitHub App
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GITHUB_REDIRECT_URL=${GITHUB_REDIRECT_URL}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+      - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY}
     depends_on:
       - minio
       - postgres
@@ -42,8 +51,8 @@ services:
     image: minio/minio
     command: server /data
     environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_ROOT_USER=${S3_ACCESS_KEY}
+      - MINIO_ROOT_PASSWORD=${S3_SECRET_KEY}
     ports:
       - "3032:9000"
     volumes:
@@ -52,9 +61,9 @@ services:
   postgres:
     image: postgres:15
     environment:
-      - POSTGRES_DB=happy-server
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
