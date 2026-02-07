@@ -151,7 +151,7 @@ export type RawToolUseContent = z.infer<typeof rawToolUseContentSchema>;
 const rawToolResultContentSchema = z.object({
     type: z.literal('tool_result'),
     tool_use_id: z.string(),
-    content: z.union([z.array(z.object({ type: z.literal('text'), text: z.string() })), z.string()]),
+    content: z.union([z.array(z.object({ type: z.enum(['text', 'image']) }).passthrough()), z.string()]),
     is_error: z.boolean().optional(),
     permissions: z.object({
         date: z.number(),
@@ -712,6 +712,22 @@ function normalizeSessionEnvelope(
     return null;
 }
 
+/**
+ * Extract displayable text from tool result content blocks.
+ * Handles text, image, and unknown block types gracefully.
+ */
+function extractToolResultText(contentBlocks: Array<Record<string, unknown>>): string {
+    const parts: string[] = [];
+    for (const block of contentBlocks) {
+        if (block.type === 'text' && typeof block.text === 'string') {
+            parts.push(block.text);
+        } else if (block.type === 'image') {
+            parts.push('[image]');
+        }
+    }
+    return parts.join('\n') || '[tool result]';
+}
+
 export function normalizeRawMessage(id: string, localId: string | null, createdAt: number, raw: RawRecord): NormalizedMessage | null {
     // Zod transform handles normalization during validation
     let parsed = rawRecordSchema.safeParse(raw);
@@ -854,7 +870,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                             content.push({
                                 ...c,  // WOLOG: Preserve all fields including unknown ones
                                 type: 'tool-result',
-                                content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content[0].text),
+                                content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : extractToolResultText(c.content)),
                                 is_error: c.is_error || false,
                                 uuid: raw.content.data.uuid,
                                 parentUUID: raw.content.data.parentUuid ?? null,

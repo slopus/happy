@@ -1048,6 +1048,38 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     }
 
     //
+    // Phase 6: Force-complete stale running tools
+    // If the agent sent a text response AFTER a tool_use, the tool must have completed
+    // (the API requires tool_result before the assistant can produce text).
+    // The SDK may handle tool execution internally without emitting tool_result events
+    // to the stream, leaving tool states stuck at 'running'.
+    //
+
+    let latestAgentTextTime = 0;
+    for (const msg of state.messages.values()) {
+        if (msg.role === 'agent' && msg.text && !msg.tool && msg.createdAt > latestAgentTextTime) {
+            latestAgentTextTime = msg.createdAt;
+        }
+    }
+    if (latestAgentTextTime > 0) {
+        for (const [id, msg] of state.messages) {
+            if (msg.tool && msg.tool.state === 'running' && msg.createdAt < latestAgentTextTime) {
+                // Skip tools with pending permissions — they're waiting for user input, not stale
+                if (msg.tool.permission?.status === 'pending') {
+                    continue;
+                }
+                // Skip sidechain tools — they may still be running in nested conversations
+                if (msg.tool.name === 'Task') {
+                    continue;
+                }
+                msg.tool.state = 'completed';
+                msg.tool.completedAt = latestAgentTextTime;
+                changed.add(id);
+            }
+        }
+    }
+
+    //
     // Collect changed messages (only root-level messages)
     //
 
