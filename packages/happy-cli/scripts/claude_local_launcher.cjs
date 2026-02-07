@@ -3,12 +3,34 @@ const fs = require('fs');
 // Disable autoupdater (never works really)
 process.env.DISABLE_AUTOUPDATER = '1';
 
-// Helper to write JSON messages to fd 3
-function writeMessage(message) {
+let ipcSocket = null;
+
+if (process.env.HAPPY_IPC_SOCKET) {
     try {
-        fs.writeSync(3, JSON.stringify(message) + '\n');
+        const net = require('net');
+        ipcSocket = net.createConnection(process.env.HAPPY_IPC_SOCKET);
+        ipcSocket.on('error', () => {
+            ipcSocket = null;
+        });
     } catch (err) {
-        // fd 3 not available, ignore
+        // fall back to fd 3
+    }
+}
+
+function writeMessage(message) {
+    const line = JSON.stringify(message) + '\n';
+    if (ipcSocket) {
+        try {
+            ipcSocket.write(line);
+        } catch (err) {
+            // ignore
+        }
+    } else {
+        try {
+            fs.writeSync(3, line);
+        } catch (err) {
+            // fd 3 not available, ignore
+        }
     }
 }
 
