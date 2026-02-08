@@ -14,6 +14,8 @@
             "**/react-dom",
             "**/react-native",
             "**/react-native/**",
+            "**/expo-dev-client",
+            "**/expo-dev-client/**",
             "**/react-native-edge-to-edge/**",
             "**/react-native-incall-manager/**"
         ]
