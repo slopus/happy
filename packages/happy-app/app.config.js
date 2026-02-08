@@ -176,7 +176,10 @@ export default {
                 revenueCatGoogleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE,
                 revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE,
                 elevenLabsAgentIdDev: process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID_DEV,
-                elevenLabsAgentIdProd: process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID_PROD
+                elevenLabsAgentIdProd: process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID_PROD,
+                voiceProvider: process.env.EXPO_PUBLIC_VOICE_PROVIDER,
+                voiceBaseUrl: process.env.EXPO_PUBLIC_VOICE_BASE_URL,
+                voicePublicKey: process.env.EXPO_PUBLIC_VOICE_PUBLIC_KEY
             }
         },
         owner: "hitosea"

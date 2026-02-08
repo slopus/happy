@@ -9,6 +9,9 @@ export interface AppConfig {
     elevenLabsAgentIdDev?: string;
     elevenLabsAgentIdProd?: string;
     serverUrl?: string;
+    voiceProvider?: 'elevenlabs' | 'livekit';
+    voiceBaseUrl?: string;
+    voicePublicKey?: string;
 }
 
 /**
@@ -95,6 +98,18 @@ export function loadAppConfig(): AppConfig {
     if (process.env.EXPO_PUBLIC_SERVER_URL && config.serverUrl !== process.env.EXPO_PUBLIC_SERVER_URL) {
         console.log('[loadAppConfig] Override serverUrl from EXPO_PUBLIC_SERVER_URL');
         config.serverUrl = process.env.EXPO_PUBLIC_SERVER_URL;
+    }
+    if (process.env.EXPO_PUBLIC_VOICE_PROVIDER && config.voiceProvider !== process.env.EXPO_PUBLIC_VOICE_PROVIDER) {
+        console.log('[loadAppConfig] Override voiceProvider from EXPO_PUBLIC_VOICE_PROVIDER');
+        config.voiceProvider = process.env.EXPO_PUBLIC_VOICE_PROVIDER as 'elevenlabs' | 'livekit';
+    }
+    if (process.env.EXPO_PUBLIC_VOICE_BASE_URL && config.voiceBaseUrl !== process.env.EXPO_PUBLIC_VOICE_BASE_URL) {
+        console.log('[loadAppConfig] Override voiceBaseUrl from EXPO_PUBLIC_VOICE_BASE_URL');
+        config.voiceBaseUrl = process.env.EXPO_PUBLIC_VOICE_BASE_URL;
+    }
+    if (process.env.EXPO_PUBLIC_VOICE_PUBLIC_KEY && config.voicePublicKey !== process.env.EXPO_PUBLIC_VOICE_PUBLIC_KEY) {
+        console.log('[loadAppConfig] Override voicePublicKey from EXPO_PUBLIC_VOICE_PUBLIC_KEY');
+        config.voicePublicKey = process.env.EXPO_PUBLIC_VOICE_PUBLIC_KEY;
     }
 
     return config as AppConfig;

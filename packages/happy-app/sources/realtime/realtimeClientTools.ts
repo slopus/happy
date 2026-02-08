@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import { router } from 'expo-router';
 import { sync } from '@/sync/sync';
 import { sessionAllow, sessionDeny, sessionDelete, machineSpawnNewSession } from '@/sync/ops';
@@ -6,21 +5,53 @@ import { storage } from '@/sync/storage';
 import { trackPermissionResponse } from '@/track';
 import { getCurrentRealtimeSessionId, setCurrentRealtimeSessionId, stopRealtimeSession } from './RealtimeSession';
 import { getSessionName, getSessionSubtitle, isSessionOnline } from '@/utils/sessionUtils';
+import {
+    changeSessionSettingsParametersSchema,
+    deleteSessionParametersSchema,
+    getLatestAssistantReplyParametersSchema,
+    manageSessionParametersSchema,
+    messageClaudeCodeParametersSchema,
+    processPermissionRequestParametersSchema,
+} from './voiceToolContracts';
+
+function getLatestAssistantReplyFromCurrentSession(maxChars: number): string | null {
+    const sessionId = getCurrentRealtimeSessionId();
+    if (!sessionId) {
+        return null;
+    }
+
+    const sessionMessages = storage.getState().sessionMessages[sessionId];
+    const messages = sessionMessages?.messages ?? [];
+    // messages are sorted descending (newest first), so iterate from index 0
+    for (let i = 0; i < messages.length; i++) {
+        const message = messages[i];
+        if (message.kind !== 'agent-text') {
+            continue;
+        }
+        const text = message.text?.trim();
+        if (!text) {
+            continue;
+        }
+        if (text.length <= maxChars) {
+            return text;
+        }
+        return `${text.slice(0, maxChars)}...`;
+    }
+
+    return null;
+}
 
 /**
  * Static client tools for the realtime voice interface.
- * These tools allow the voice assistant to interact with Claude Code.
+ * These tools allow the voice assistant to interact with the active coding agent.
  */
 export const realtimeClientTools = {
     /**
-     * Send a message to Claude Code
+     * Send a message to the active coding agent
      */
     messageClaudeCode: async (parameters: unknown) => {
         // Parse and validate the message parameter using Zod
-        const messageSchema = z.object({
-            message: z.string().min(1, 'Message cannot be empty')
-        });
-        const parsedMessage = messageSchema.safeParse(parameters);
+        const parsedMessage = messageClaudeCodeParametersSchema.safeParse(parameters);
 
         if (!parsedMessage.success) {
             console.error('❌ Invalid message parameter:', parsedMessage.error);
@@ -38,17 +69,14 @@ export const realtimeClientTools = {
         console.log('🔍 messageClaudeCode called with:', message);
         console.log('📤 Sending message to session:', sessionId);
         sync.sendMessage(sessionId, message);
-        return "sent [Do not announce 'sent' or any delivery confirmation]";
+        return "sent";
     },
 
     /**
-     * Process a permission request from Claude Code
+     * Process a permission request from the coding agent
      */
     processPermissionRequest: async (parameters: unknown) => {
-        const messageSchema = z.object({
-            decision: z.enum(['allow', 'deny'])
-        });
-        const parsedMessage = messageSchema.safeParse(parameters);
+        const parsedMessage = processPermissionRequestParametersSchema.safeParse(parameters);
 
         if (!parsedMessage.success) {
             console.error('❌ Invalid decision parameter:', parsedMessage.error);
@@ -84,7 +112,7 @@ export const realtimeClientTools = {
                 await sessionDeny(sessionId, requestId);
                 trackPermissionResponse(false);
             }
-            return "done [DO NOT say anything else, simply say 'done']";
+            return "done";
         } catch (error) {
             console.error('❌ Failed to process permission:', error);
             return `error (failed to ${decision} permission)`;
@@ -95,13 +123,7 @@ export const realtimeClientTools = {
      * Manage sessions: list, switch, or create
      */
     manageSession: async (parameters: unknown) => {
-        const schema = z.object({
-            action: z.enum(['list', 'switch', 'create']),
-            sessionId: z.string().optional(),
-            directory: z.string().optional(),
-            includeOffline: z.boolean().optional(),
-        });
-        const parsed = schema.safeParse(parameters);
+        const parsed = manageSessionParametersSchema.safeParse(parameters);
 
         if (!parsed.success) {
             console.error('❌ Invalid manageSession parameters:', parsed.error);
@@ -127,7 +149,7 @@ export const realtimeClientTools = {
             }).join('\n');
 
             const label = includeOffline ? '' : ' online';
-            return `Found ${sorted.length}${label} sessions:\n${list}\n\nTell the user the session names. To switch, call manageSession with action "switch" and the sessionId.`;
+            return `Found ${sorted.length}${label} sessions:\n${list}`;
         }
 
         if (action === 'switch') {
@@ -143,7 +165,7 @@ export const realtimeClientTools = {
             try {
                 setCurrentRealtimeSessionId(sessionId);
                 router.navigate(`/session/${sessionId}`);
-                return `Switched to session "${getSessionName(session)}". [DO NOT say anything else, simply confirm the switch]`;
+                return `Switched to session "${getSessionName(session)}".`;
             } catch (error) {
                 console.error('❌ Failed to switch session:', error);
                 return "error (failed to navigate to session)";
@@ -171,7 +193,7 @@ export const realtimeClientTools = {
                 if (result.type === 'success') {
                     setCurrentRealtimeSessionId(result.sessionId);
                     router.navigate(`/session/${result.sessionId}`);
-                    return `Created new session and navigated to it. [DO NOT say anything else, simply confirm creation]`;
+                    return "Created new session.";
                 } else if (result.type === 'requestToApproveDirectoryCreation') {
                     return `The directory "${result.directory}" does not exist. Ask the user if they want to create it.`;
                 } else {
@@ -190,11 +212,7 @@ export const realtimeClientTools = {
      * Change session settings (permission mode or model)
      */
     changeSessionSettings: async (parameters: unknown) => {
-        const schema = z.object({
-            setting: z.enum(['permissionMode', 'modelMode']),
-            value: z.string(),
-        });
-        const parsed = schema.safeParse(parameters);
+        const parsed = changeSessionSettingsParametersSchema.safeParse(parameters);
 
         if (!parsed.success) {
             console.error('❌ Invalid changeSessionSettings parameters:', parsed.error);
@@ -215,7 +233,7 @@ export const realtimeClientTools = {
                     return `error (invalid permission mode. Valid modes: ${validModes.join(', ')})`;
                 }
                 storage.getState().updateSessionPermissionMode(sessionId, value as typeof validModes[number]);
-                return `Permission mode changed to "${value}". [DO NOT say anything else, simply confirm]`;
+                return `Permission mode changed to "${value}".`;
             }
 
             if (setting === 'modelMode') {
@@ -224,7 +242,7 @@ export const realtimeClientTools = {
                     return `error (invalid model. Valid models: ${validModels.join(', ')})`;
                 }
                 storage.getState().updateSessionModelMode(sessionId, value as typeof validModels[number]);
-                return `Model changed to "${value}". [DO NOT say anything else, simply confirm]`;
+                return `Model changed to "${value}".`;
             }
         } catch (error) {
             console.error('❌ Failed to change setting:', error);
@@ -257,27 +275,39 @@ export const realtimeClientTools = {
         const model = session.modelMode || 'default';
         const pendingRequests = session.agentState?.requests ? Object.keys(session.agentState.requests).length : 0;
 
-        return `Session status:
-- Name: ${name}
-- Path: ${path}
-- Status: ${online}
-- AI thinking: ${thinking}
-- Permission mode: ${permissionMode}
-- Model: ${model}
-- Pending permission requests: ${pendingRequests}
+        return `Session status:\n- Name: ${name}\n- Path: ${path}\n- Status: ${online}\n- AI thinking: ${thinking}\n- Permission mode: ${permissionMode}\n- Model: ${model}\n- Pending permission requests: ${pendingRequests}`;
+    },
 
-Report this information to the user in a natural, conversational way.`;
+    /**
+     * Get the latest assistant text reply from current session
+     */
+    getLatestAssistantReply: async (parameters: unknown) => {
+        const parsed = getLatestAssistantReplyParametersSchema.safeParse(parameters ?? {});
+
+        if (!parsed.success) {
+            console.error('❌ Invalid getLatestAssistantReply parameters:', parsed.error);
+            return 'error (invalid parameters)';
+        }
+
+        const sessionId = getCurrentRealtimeSessionId();
+        if (!sessionId) {
+            return "error (no active session)";
+        }
+
+        const maxChars = parsed.data.maxChars ?? 800;
+        const latestReply = getLatestAssistantReplyFromCurrentSession(maxChars);
+        if (!latestReply) {
+            return 'No recent assistant reply found in the current session.';
+        }
+
+        return `Latest assistant reply:\n${latestReply}`;
     },
 
     /**
      * Delete a session
      */
     deleteSessionTool: async (parameters: unknown) => {
-        const schema = z.object({
-            sessionId: z.string(),
-            confirmed: z.boolean(),
-        });
-        const parsed = schema.safeParse(parameters);
+        const parsed = deleteSessionParametersSchema.safeParse(parameters);
 
         if (!parsed.success) {
             console.error('❌ Invalid deleteSession parameters:', parsed.error);
@@ -296,7 +326,7 @@ Report this information to the user in a natural, conversational way.`;
             const result = await sessionDelete(targetId);
             if (result.success) {
                 storage.getState().deleteSession(targetId);
-                return `Session deleted. [DO NOT say anything else, simply confirm]`;
+                return "Session deleted.";
             } else {
                 return `error (${result.message || 'failed to delete session'})`;
             }
@@ -313,7 +343,7 @@ Report this information to the user in a natural, conversational way.`;
         try {
             try { router.dismissAll(); } catch (_) { /* stack may already be at root */ }
             router.replace('/');
-            return "Navigated to home screen. [DO NOT say anything else, simply confirm]";
+            return "Navigated to home screen.";
         } catch (error) {
             console.error('❌ Failed to navigate home:', error);
             return "error (failed to navigate home)";
@@ -326,7 +356,7 @@ Report this information to the user in a natural, conversational way.`;
     endVoiceConversation: async (_parameters: unknown) => {
         try {
             await stopRealtimeSession();
-            return "Voice conversation ended. [DO NOT say anything else]";
+            return "Voice conversation ended.";
         } catch (error) {
             console.error('❌ Failed to end voice conversation:', error);
             return "error (failed to end voice conversation)";

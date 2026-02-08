@@ -12,6 +12,7 @@ import { sessionUpdateHandler } from "./socket/sessionUpdateHandler";
 import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
+import { cleanupUserRpcSocket, getOrCreateUserRpcListeners } from "./socket/rpcRegistry";
 
 export function startSocket(app: Fastify) {
     const io = new Server(app.server, {
@@ -32,7 +33,6 @@ export function startSocket(app: Fastify) {
         serveClient: false // Don't serve the client files
     });
 
-    let rpcListeners = new Map<string, Map<string, Socket>>();
     io.on("connection", async (socket) => {
         log({ module: 'websocket' }, `New connection attempt from socket: ${socket.id}`);
         const token = socket.handshake.auth.token as string;
@@ -130,14 +130,12 @@ export function startSocket(app: Fastify) {
                     recipientFilter: { type: 'user-scoped-only' }
                 });
             }
+
+            cleanupUserRpcSocket(userId, socket);
         });
 
         // Handlers
-        let userRpcListeners = rpcListeners.get(userId);
-        if (!userRpcListeners) {
-            userRpcListeners = new Map<string, Socket>();
-            rpcListeners.set(userId, userRpcListeners);
-        }
+        const userRpcListeners = getOrCreateUserRpcListeners(userId);
         rpcHandler(userId, socket, userRpcListeners);
         usageHandler(userId, socket);
         sessionUpdateHandler(userId, socket, connection);

@@ -10,6 +10,10 @@ services:
       # ElevenLabs
       - EXPO_PUBLIC_ELEVENLABS_AGENT_ID_DEV=${ELEVENLABS_AGENT_ID_DEV}
       - EXPO_PUBLIC_ELEVENLABS_AGENT_ID_PROD=${ELEVENLABS_AGENT_ID_PROD}
+      # Voice Gateway
+      - EXPO_PUBLIC_VOICE_PROVIDER=${EXPO_PUBLIC_VOICE_PROVIDER:-livekit}
+      - EXPO_PUBLIC_VOICE_BASE_URL=${EXPO_PUBLIC_VOICE_BASE_URL:-http://localhost:3040}
+      - EXPO_PUBLIC_VOICE_PUBLIC_KEY=${VOICE_PUBLIC_KEY:-dev-voice-public-key}
 
   happy-server:
     build:
@@ -42,10 +46,56 @@ services:
       - GITHUB_REDIRECT_URL=${GITHUB_REDIRECT_URL}
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
       - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY}
+      # Voice tool bridge
+      - VOICE_TOOL_BRIDGE_KEY=${VOICE_TOOL_BRIDGE_KEY:-dev-voice-bridge-key}
     depends_on:
       - minio
       - postgres
       - redis
+      
+  happy-voice:
+    build:
+      context: ./packages/happy-voice
+      dockerfile: Dockerfile
+    command: ["yarn", "start:all"]
+    ports:
+      - "3040:3040"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=3040
+      - VOICE_PUBLIC_KEY=${VOICE_PUBLIC_KEY:-dev-voice-public-key}
+      - LIVEKIT_URL=${LIVEKIT_URL:-http://localhost:7880}
+      - LIVEKIT_WS_URL=${LIVEKIT_WS_URL:-ws://localhost:7880}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-devkey}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-devsecret}
+      - LIVEKIT_AGENT_NAME=${LIVEKIT_AGENT_NAME:-happy-voice-agent}
+      - LIVEKIT_ROOM_TTL_SECONDS=${LIVEKIT_ROOM_TTL_SECONDS:-3600}
+      - LIVEKIT_TOKEN_TTL_SECONDS=${LIVEKIT_TOKEN_TTL_SECONDS:-600}
+      - AGENT_STT=${AGENT_STT:-assemblyai/universal-streaming:en}
+      - AGENT_LLM=${AGENT_LLM:-openai/gpt-4.1-mini}
+      - AGENT_TTS=${AGENT_TTS:-cartesia/sonic-3:9626c31c-bec5-4cca-baa8-f8ba9e84c8bc}
+      - AGENT_WELCOME_MESSAGE=${AGENT_WELCOME_MESSAGE:-Say hello and ask what the user wants to build.}
+      - AGENT_READY_PLAYOUT_MODE=${AGENT_READY_PLAYOUT_MODE:-best_effort}
+      - AGENT_READY_SUMMARY_MODEL=${AGENT_READY_SUMMARY_MODEL:-}
+      - AGENT_READY_SUMMARY_TIMEOUT_MS=${AGENT_READY_SUMMARY_TIMEOUT_MS:-7000}
+      - AGENT_READY_SUMMARY_INPUT_MAX_CHARS=${AGENT_READY_SUMMARY_INPUT_MAX_CHARS:-2200}
+      - AGENT_MIN_ENDPOINTING_DELAY_MS=${AGENT_MIN_ENDPOINTING_DELAY_MS:-1600}
+      - AGENT_MAX_ENDPOINTING_DELAY_MS=${AGENT_MAX_ENDPOINTING_DELAY_MS:-7000}
+      - AGENT_LOG_LLM_IO=${AGENT_LOG_LLM_IO:-true}
+      - PROMPT_VOICE_MAIN_FILE=${PROMPT_VOICE_MAIN_FILE:-prompts/voice-main.system.txt}
+      - PROMPT_VOICE_TOOL_FOLLOWUP_FILE=${PROMPT_VOICE_TOOL_FOLLOWUP_FILE:-prompts/voice-tool-followup.system.txt}
+      - PROMPT_VOICE_READY_SUMMARY_FILE=${PROMPT_VOICE_READY_SUMMARY_FILE:-prompts/voice-ready-summary.system.txt}
+      - PROMPT_RECENT_VOICE_MESSAGES=${PROMPT_RECENT_VOICE_MESSAGES:-12}
+      - PROMPT_RECENT_APP_CONTEXT_MESSAGES=${PROMPT_RECENT_APP_CONTEXT_MESSAGES:-12}
+      - PROMPT_RECENT_MAX_CHARS=${PROMPT_RECENT_MAX_CHARS:-6000}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
+      - CARTESIA_API_KEY=${CARTESIA_API_KEY}
+      - TOOL_BRIDGE_BASE_URL=${TOOL_BRIDGE_BASE_URL:-http://happy-server:3031}
+      - TOOL_BRIDGE_API_KEY=${VOICE_TOOL_BRIDGE_KEY:-dev-voice-bridge-key}
+      - LOG_LEVEL=${HAPPY_VOICE_WORKER_LOG_LEVEL:-info}
 
   minio:
     image: minio/minio
@@ -54,7 +104,7 @@ services:
       - MINIO_ROOT_USER=${S3_ACCESS_KEY}
       - MINIO_ROOT_PASSWORD=${S3_SECRET_KEY}
     ports:
-      - "3032:9000"
+      - "3050:9000"
     volumes:
       - minio_data:/data
 

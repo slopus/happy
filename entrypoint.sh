@@ -5,6 +5,9 @@ set -e
 find /usr/share/nginx/html -name '*.js' -exec sed -i \
   -e "s|__RT_ELEVENLABS_AGENT_ID_DEV__|${EXPO_PUBLIC_ELEVENLABS_AGENT_ID_DEV:-}|g" \
   -e "s|__RT_ELEVENLABS_AGENT_ID_PROD__|${EXPO_PUBLIC_ELEVENLABS_AGENT_ID_PROD:-}|g" \
+  -e "s|__RT_VOICE_PROVIDER__|${EXPO_PUBLIC_VOICE_PROVIDER:-elevenlabs}|g" \
+  -e "s|__RT_VOICE_BASE_URL__|${EXPO_PUBLIC_VOICE_BASE_URL:-}|g" \
+  -e "s|__RT_VOICE_PUBLIC_KEY__|${EXPO_PUBLIC_VOICE_PUBLIC_KEY:-}|g" \
   {} +
 
 exec nginx -g 'daemon off;'

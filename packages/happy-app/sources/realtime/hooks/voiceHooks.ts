@@ -1,4 +1,4 @@
-import { getCurrentRealtimeSessionId, getVoiceSession, isVoiceSessionStarted } from '../RealtimeSession';
+import { getVoiceSession, isVoiceSessionStarted, setCurrentRealtimeSessionId } from '../RealtimeSession';
 import {
     formatNewMessages,
     formatNewSingleMessage,
@@ -12,6 +12,7 @@ import {
 import { storage } from '@/sync/storage';
 import { Message } from '@/sync/typesMessage';
 import { VOICE_CONFIG } from '../voiceConfig';
+import { config } from '@/config';
 
 /**
  * Centralized voice assistant hooks for multi-session context updates.
@@ -96,12 +97,20 @@ export const voiceHooks = {
         if (VOICE_CONFIG.DISABLE_SESSION_FOCUS) return;
         if (lastFocusSession === sessionId) return;
         lastFocusSession = sessionId;
+        setCurrentRealtimeSessionId(sessionId);
+        if (config.voiceProvider !== 'elevenlabs') {
+            // Non-ElevenLabs providers should treat focus as a hard context switch.
+            // Force re-sending a full snapshot so downstream can replace old session context.
+            shownSessions.delete(sessionId);
+            reportSession(sessionId);
+            return;
+        }
         reportSession(sessionId);
         reportContextualUpdate(formatSessionFocus(sessionId, metadata));
     },
 
     /**
-     * Called when Claude requests permission for a tool use
+     * Called when the agent requests permission for a tool use
      */
     onPermissionRequested(sessionId: string, requestId: string, toolName: string, toolArgs: any) {
         if (VOICE_CONFIG.DISABLE_PERMISSION_REQUESTS) return;
@@ -111,7 +120,7 @@ export const voiceHooks = {
     },
 
     /**
-     * Called when agent sends a message/response
+     * Called when the agent sends a message/response
      */
     onMessages(sessionId: string, messages: Message[]) {
         if (VOICE_CONFIG.DISABLE_MESSAGES) return;
@@ -140,7 +149,7 @@ export const voiceHooks = {
     },
 
     /**
-     * Called when Claude Code finishes processing (ready event)
+     * Called when the agent finishes processing (ready event)
      */
     onReady(sessionId: string) {
         if (VOICE_CONFIG.DISABLE_READY_EVENTS) return;

@@ -26,15 +26,25 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         return;
     }
 
-    const experimentsEnabled = storage.getState().settings.experiments;
-    const agentId = __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;
-    
-    if (!agentId) {
-        console.error('Agent ID not configured');
-        return;
-    }
-    
     try {
+        if (config.voiceProvider === 'livekit') {
+            currentSessionId = sessionId;
+            voiceSessionStarted = true;
+            await voiceSession.startSession({
+                sessionId,
+                initialContext,
+            });
+            return;
+        }
+
+        const experimentsEnabled = storage.getState().settings.experiments;
+        const agentId = __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;
+
+        if (!agentId) {
+            console.error('Agent ID not configured');
+            return;
+        }
+
         // Simple path: No experiments = no auth needed
         if (!experimentsEnabled) {
             currentSessionId = sessionId;

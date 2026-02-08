@@ -1,0 +1,720 @@
+import { fileURLToPath } from 'node:url';
+import {
+    type JobContext,
+    type JobProcess,
+    ServerOptions,
+    cli,
+    defineAgent,
+    inference,
+    llm,
+    voice,
+} from '@livekit/agents';
+import * as silero from '@livekit/agents-plugin-silero';
+import { BackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
+import { RoomEvent } from '@livekit/rtc-node';
+import { z } from 'zod';
+import { env } from '../runtime/env';
+import { logError, logInfo, logWarn } from '../runtime/log';
+import { withLLMLogging } from '../runtime/loggingLlm';
+import { PromptedLLM } from '../runtime/promptedLlm';
+import { loadAndRenderPromptFile } from '../runtime/prompts';
+import { extractRecentAppContext, extractRecentTextUpdates, extractRecentVoiceMessages } from '../runtime/contextWindow';
+import { toolBridgeClient } from '../runtime/toolBridge';
+import type { LiveKitContextPayload } from '../types/voice';
+import {
+    type BridgedVoiceToolName,
+    bridgedVoiceToolDescriptions,
+    changeSessionSettingsParametersSchema,
+    endVoiceConversationParametersSchema,
+    deleteSessionParametersSchema,
+    getLatestAssistantReplyParametersSchema,
+    manageSessionParametersSchema,
+    messageClaudeCodeParametersSchema,
+    navigateHomeParametersSchema,
+    processPermissionRequestParametersSchema,
+} from './voiceToolContracts';
+
+interface DispatchMetadata {
+    gatewaySessionId: string;
+    userId: string;
+    appSessionId: string;
+    initialContextPayload?: LiveKitContextPayload;
+    language?: string;
+}
+
+interface GatewayRoomMessage {
+    kind?: 'text' | 'context';
+    message?: string;
+    payload?: LiveKitContextPayload;
+}
+
+interface LatestAssistantReplySnapshot {
+    text: string;
+}
+
+const liveKitContextPayloadSchema = z.object({
+    version: z.literal(1),
+    format: z.literal('happy-app-context-v1'),
+    contentType: z.literal('text/plain'),
+    text: z.string().min(1),
+    createdAt: z.string().min(1),
+});
+
+const READY_EVENT_PREFIX_REGEX = /done working in session:/i;
+const READY_SUMMARY_OUTPUT_MAX_CHARS = 120;
+const READY_FALLBACK_SPEECH = 'OK';
+const SESSION_ID_LINE_REGEX = /^# Session ID:\s*(.+)$/m;
+
+let cachedReadySummaryLlm: llm.LLM | null = null;
+let cachedReadySummaryModel: string | null = null;
+let cachedReadySummaryLogEnabled: boolean | null = null;
+let cachedMainSessionBaseLlm: llm.LLM | null = null;
+let cachedMainSessionBaseModel: string | null = null;
+let cachedMainSessionBaseLogEnabled: boolean | null = null;
+
+function isReadyEventMessage(message: string): boolean {
+    return READY_EVENT_PREFIX_REGEX.test(message);
+}
+
+function extractLatestAssistantReply(contextMessage: string): LatestAssistantReplySnapshot | null {
+    const regex = /(?:Claude Code|Happy|Assistant|Agent|AI)\s*:\s*[\r\n]*<text>([\s\S]*?)<\/text>/gi;
+    let match: RegExpExecArray | null = null;
+    let latestRaw: string | null = null;
+
+    while (true) {
+        match = regex.exec(contextMessage);
+        if (!match) {
+            break;
+        }
+        latestRaw = match[1]?.trim() || null;
+    }
+
+    if (!latestRaw) {
+        return null;
+    }
+
+    return {
+        // For ElevenLabs parity we keep the original text (incl. tags/options) and only truncate.
+        text: truncateSpeechText(latestRaw, env.AGENT_READY_SUMMARY_INPUT_MAX_CHARS),
+    };
+}
+
+function extractSessionIdFromSnapshot(contextMessage: string): string | null {
+    const match = SESSION_ID_LINE_REGEX.exec(contextMessage);
+    const value = match?.[1]?.trim();
+    return value || null;
+}
+
+function resetVoiceConversationHistory(chatCtx: llm.ChatContext): void {
+    // Keep only the base system prompt (if any). Drop prior user/assistant/tool turns.
+    const baseSystem = chatCtx.items.find(
+        (item) => item.type === 'message' && item.role === 'system',
+    );
+    chatCtx.items = baseSystem ? [baseSystem] : [];
+}
+
+async function resetActiveAgentChatContext(session: voice.AgentSession): Promise<void> {
+    // LiveKit v1 recommends updating chat context through agent.updateChatCtx().
+    await session.currentAgent.updateChatCtx(llm.ChatContext.empty());
+}
+
+function normalizeSpeechText(text: string): string {
+    return text
+        .replace(/```[\s\S]*?```/g, ' ')
+        .replace(/`[^`]*`/g, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/[*_#>~-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function truncateSpeechText(text: string, maxChars: number): string {
+    if (text.length <= maxChars) {
+        return text;
+    }
+    return `${text.slice(0, maxChars)}...`;
+}
+
+function getReadySummaryModel(): string {
+    const customModel = env.AGENT_READY_SUMMARY_MODEL?.trim();
+    return customModel || env.AGENT_LLM;
+}
+
+function isLlmIoLoggingEnabled(): boolean {
+    const rawValue = env.AGENT_LOG_LLM_IO.trim().toLowerCase();
+    return rawValue !== 'false' && rawValue !== '0' && rawValue !== 'off';
+}
+
+function getMainSessionLlm(): llm.LLM {
+    const model = env.AGENT_LLM;
+    const llmIoLoggingEnabled = isLlmIoLoggingEnabled();
+    if (
+        !cachedMainSessionBaseLlm
+        || cachedMainSessionBaseModel !== model
+        || cachedMainSessionBaseLogEnabled !== llmIoLoggingEnabled
+    ) {
+        const baseLlm = inference.LLM.fromModelString(model);
+        cachedMainSessionBaseLlm = llmIoLoggingEnabled
+            ? withLLMLogging(baseLlm, 'voice-main')
+            : baseLlm;
+        cachedMainSessionBaseModel = model;
+        cachedMainSessionBaseLogEnabled = llmIoLoggingEnabled;
+        logInfo('Initialized main session base LLM', {
+            model,
+            llmIoLoggingEnabled,
+        });
+    }
+    return cachedMainSessionBaseLlm;
+}
+
+function getReadySummaryLlm(): llm.LLM {
+    const model = getReadySummaryModel();
+    const llmIoLoggingEnabled = isLlmIoLoggingEnabled();
+    if (
+        !cachedReadySummaryLlm
+        || cachedReadySummaryModel !== model
+        || cachedReadySummaryLogEnabled !== llmIoLoggingEnabled
+    ) {
+        const baseLlm = inference.LLM.fromModelString(model);
+        cachedReadySummaryLlm = llmIoLoggingEnabled
+            ? withLLMLogging(baseLlm, 'ready-summary')
+            : baseLlm;
+        cachedReadySummaryModel = model;
+        cachedReadySummaryLogEnabled = llmIoLoggingEnabled;
+        logInfo('Initialized ready summary LLM', {
+            model,
+            llmIoLoggingEnabled,
+        });
+    }
+    return cachedReadySummaryLlm;
+}
+
+async function summarizeReadyReply(params: {
+    latestAssistantReply: LatestAssistantReplySnapshot;
+    recentVoiceMessages: string;
+    recentAppContext: string;
+    languagePreference?: string;
+    appSessionId?: string;
+}): Promise<string> {
+    const chatCtx = llm.ChatContext.empty();
+
+    const systemPrompt = loadAndRenderPromptFile(env.PROMPT_VOICE_READY_SUMMARY_FILE, {
+        language_preference: params.languagePreference || '',
+        app_session_id: params.appSessionId || '',
+        recent_voice_messages: params.recentVoiceMessages,
+        recent_app_context: params.recentAppContext,
+        latest_assistant_text: params.latestAssistantReply.text,
+    });
+
+    chatCtx.addMessage({
+        role: 'system',
+        content: systemPrompt,
+    });
+
+    chatCtx.addMessage({
+        role: 'user',
+        content: '请输出最终语音播报文本。',
+    });
+
+    const summaryStream = getReadySummaryLlm().chat({
+        chatCtx,
+        connOptions: {
+            maxRetry: 1,
+            timeoutMs: env.AGENT_READY_SUMMARY_TIMEOUT_MS,
+            retryIntervalMs: 200,
+        },
+        extraKwargs: {
+            temperature: 0.2,
+        },
+    });
+
+    let summary = '';
+    for await (const chunk of summaryStream) {
+        if (chunk.delta?.content) {
+            summary += chunk.delta.content;
+        }
+    }
+
+    const normalizedSummary = truncateSpeechText(
+        normalizeSpeechText(summary),
+        READY_SUMMARY_OUTPUT_MAX_CHARS,
+    );
+
+    if (!normalizedSummary) {
+        throw new Error('Ready summary LLM returned empty output');
+    }
+    return normalizedSummary;
+}
+
+async function buildReadySpeech(params: {
+    latestAssistantReply: LatestAssistantReplySnapshot | null;
+    sessionChatCtx: llm.ChatContext;
+    languagePreference?: string;
+    appSessionId?: string;
+}): Promise<string> {
+    if (!params.latestAssistantReply) {
+        return READY_FALLBACK_SPEECH;
+    }
+
+    try {
+        const recentVoiceMessages = extractRecentVoiceMessages({
+            chatCtx: params.sessionChatCtx,
+            maxMessages: env.PROMPT_RECENT_VOICE_MESSAGES,
+            maxChars: env.PROMPT_RECENT_MAX_CHARS,
+        });
+        const recentAppContext = extractRecentAppContext({
+            chatCtx: params.sessionChatCtx,
+            maxMessages: env.PROMPT_RECENT_APP_CONTEXT_MESSAGES,
+            maxChars: env.PROMPT_RECENT_MAX_CHARS,
+        });
+        const speech = await summarizeReadyReply({
+            latestAssistantReply: params.latestAssistantReply,
+            recentVoiceMessages,
+            recentAppContext,
+            languagePreference: params.languagePreference,
+            appSessionId: params.appSessionId,
+        });
+        logInfo('Ready speech generated', {
+            preview: speech.slice(0, 120),
+        });
+        return speech;
+    } catch (error) {
+        logWarn('Ready summary generation failed; using fallback message', {
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return READY_FALLBACK_SPEECH;
+    }
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+    let timeoutHandle: NodeJS.Timeout | undefined;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise<T>((_, reject) => {
+                timeoutHandle = setTimeout(() => {
+                    reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+                }, timeoutMs);
+            }),
+        ]);
+    } finally {
+        if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+        }
+    }
+}
+
+function parseMetadata(ctx: JobContext): DispatchMetadata {
+    if (!ctx.job.metadata) {
+        return {
+            gatewaySessionId: 'unknown',
+            userId: 'unknown',
+            appSessionId: 'unknown',
+        };
+    }
+
+    try {
+        return JSON.parse(ctx.job.metadata) as DispatchMetadata;
+    } catch (error) {
+        logError('Failed to parse job metadata', error);
+        return {
+            gatewaySessionId: 'unknown',
+            userId: 'unknown',
+            appSessionId: 'unknown',
+        };
+    }
+}
+
+function buildInstructions(metadata: DispatchMetadata) {
+    // The real per-call system prompts are injected by PromptedLLM.
+    // Keep this short to avoid large static instructions being carried around in the chat context.
+    const languageLine = metadata.language ? `Language preference: ${metadata.language}.` : '';
+    return `You are Happy Code's voice assistant. ${languageLine}`.trim();
+}
+
+class HappyVoiceAgent extends voice.Agent {
+    constructor(params: {
+        metadata: DispatchMetadata;
+        getCurrentAppSessionId: () => string;
+    }) {
+        const { metadata, getCurrentAppSessionId } = params;
+        const buildToolPayload = (
+            functionName: BridgedVoiceToolName,
+            parameters: Record<string, unknown>,
+        ) => ({
+            gatewaySessionId: metadata.gatewaySessionId,
+            userId: metadata.userId,
+            appSessionId: getCurrentAppSessionId(),
+            functionName,
+            parameters,
+        });
+
+        super({
+            instructions: buildInstructions(metadata),
+            tools: {
+                messageClaudeCode: llm.tool({
+                    description: bridgedVoiceToolDescriptions.messageClaudeCode,
+                    parameters: messageClaudeCodeParametersSchema,
+                    execute: async (parameters) => {
+                        return toolBridgeClient.execute(buildToolPayload('messageClaudeCode', parameters));
+                    },
+                }),
+                processPermissionRequest: llm.tool({
+                    description: bridgedVoiceToolDescriptions.processPermissionRequest,
+                    parameters: processPermissionRequestParametersSchema,
+                    execute: async (parameters) => {
+                        return toolBridgeClient.execute(buildToolPayload('processPermissionRequest', parameters));
+                    },
+                }),
+                manageSession: llm.tool({
+                    description: bridgedVoiceToolDescriptions.manageSession,
+                    parameters: manageSessionParametersSchema,
+                    execute: async (parameters) => {
+                        return toolBridgeClient.execute(buildToolPayload('manageSession', parameters));
+                    },
+                }),
+                changeSessionSettings: llm.tool({
+                    description: bridgedVoiceToolDescriptions.changeSessionSettings,
+                    parameters: changeSessionSettingsParametersSchema,
+                    execute: async (parameters) => {
+                        return toolBridgeClient.execute(buildToolPayload('changeSessionSettings', parameters));
+                    },
+                }),
+                getSessionStatus: llm.tool({
+                    description: bridgedVoiceToolDescriptions.getSessionStatus,
+                    execute: async (_parameters: Record<string, never>) => {
+                        return toolBridgeClient.execute(buildToolPayload('getSessionStatus', {}));
+                    },
+                }),
+                getLatestAssistantReply: llm.tool({
+                    description: bridgedVoiceToolDescriptions.getLatestAssistantReply,
+                    parameters: getLatestAssistantReplyParametersSchema,
+                    execute: async (parameters) => {
+                        return toolBridgeClient.execute(buildToolPayload('getLatestAssistantReply', parameters));
+                    },
+                }),
+                deleteSessionTool: llm.tool({
+                    description: bridgedVoiceToolDescriptions.deleteSessionTool,
+                    parameters: deleteSessionParametersSchema,
+                    execute: async (parameters) => {
+                        return toolBridgeClient.execute(buildToolPayload('deleteSessionTool', parameters));
+                    },
+                }),
+                navigateHome: llm.tool({
+                    description: bridgedVoiceToolDescriptions.navigateHome,
+                    parameters: navigateHomeParametersSchema,
+                    execute: async (parameters) => {
+                        return toolBridgeClient.execute(buildToolPayload('navigateHome', parameters));
+                    },
+                }),
+                endVoiceConversation: llm.tool({
+                    description: bridgedVoiceToolDescriptions.endVoiceConversation,
+                    parameters: endVoiceConversationParametersSchema,
+                    execute: async (parameters) => {
+                        return toolBridgeClient.execute(buildToolPayload('endVoiceConversation', parameters));
+                    },
+                }),
+            },
+        });
+    }
+}
+
+const agent = defineAgent({
+    prewarm: async (proc: JobProcess) => {
+        proc.userData.vad = await silero.VAD.load();
+    },
+    entry: async (ctx: JobContext) => {
+        const metadata = parseMetadata(ctx);
+        let currentAppSessionId = metadata.appSessionId;
+        const vad = ctx.proc.userData.vad as any;
+        const targetRoomName = ctx.job.room?.name;
+        let latestAssistantReply: LatestAssistantReplySnapshot | null = null;
+        const appContextUpdates: string[] = [];
+
+        const pushAppContextUpdate = (raw: string | undefined): { replaced: boolean; sessionId: string | null } => {
+            const value = typeof raw === 'string' ? raw.trim() : '';
+            if (!value) {
+                return { replaced: false, sessionId: null };
+            }
+            const sessionId = extractSessionIdFromSnapshot(value);
+            if (sessionId) {
+                appContextUpdates.splice(0, appContextUpdates.length);
+            }
+            appContextUpdates.push(value);
+            const maxKeep = Math.max(env.PROMPT_RECENT_APP_CONTEXT_MESSAGES * 4, 24);
+            if (appContextUpdates.length > maxKeep) {
+                appContextUpdates.splice(0, appContextUpdates.length - maxKeep);
+            }
+            return { replaced: !!sessionId, sessionId };
+        };
+        logInfo('Worker job entry', {
+            gatewaySessionId: metadata.gatewaySessionId,
+            userId: metadata.userId,
+            appSessionId: metadata.appSessionId,
+            roomName: targetRoomName,
+        });
+
+        logInfo('Connecting worker to room', {
+            targetRoomName,
+            livekitUrl: env.LIVEKIT_URL,
+        });
+        try {
+            await withTimeout(ctx.connect(), 15000, 'ctx.connect');
+            logInfo('Worker connected to room', {
+                roomName: ctx.room.name || targetRoomName,
+            });
+        } catch (error) {
+            logError('Failed to connect worker to room', {
+                targetRoomName,
+                livekitUrl: env.LIVEKIT_URL,
+                error: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined,
+                raw: error,
+            });
+            throw error;
+        }
+
+        const mainSessionLlm = new PromptedLLM(getMainSessionLlm(), {
+            mainPromptFile: env.PROMPT_VOICE_MAIN_FILE,
+            toolFollowupPromptFile: env.PROMPT_VOICE_TOOL_FOLLOWUP_FILE,
+            languagePreference: metadata.language,
+            getAppSessionId: () => currentAppSessionId,
+            maxRecentVoiceMessages: env.PROMPT_RECENT_VOICE_MESSAGES,
+            maxRecentAppContextMessages: env.PROMPT_RECENT_APP_CONTEXT_MESSAGES,
+            maxRecentChars: env.PROMPT_RECENT_MAX_CHARS,
+            getRecentAppContext: () =>
+                extractRecentTextUpdates({
+                    updates: appContextUpdates,
+                    maxMessages: env.PROMPT_RECENT_APP_CONTEXT_MESSAGES,
+                    maxChars: env.PROMPT_RECENT_MAX_CHARS,
+                }),
+        });
+
+        const session = new voice.AgentSession({
+            vad: vad as any,
+            stt: env.AGENT_STT,
+            llm: mainSessionLlm,
+            tts: env.AGENT_TTS,
+            turnDetection: 'vad',
+            voiceOptions: {
+                minEndpointingDelay: env.AGENT_MIN_ENDPOINTING_DELAY_MS,
+                maxEndpointingDelay: env.AGENT_MAX_ENDPOINTING_DELAY_MS,
+            },
+        });
+        logInfo('Agent endpointing config', {
+            minEndpointingDelayMs: env.AGENT_MIN_ENDPOINTING_DELAY_MS,
+            maxEndpointingDelayMs: env.AGENT_MAX_ENDPOINTING_DELAY_MS,
+        });
+        session.on(voice.AgentSessionEventTypes.AgentStateChanged, (event) => {
+            logInfo('Agent state changed', {
+                oldState: event.oldState,
+                newState: event.newState,
+            });
+        });
+        session.on(voice.AgentSessionEventTypes.UserStateChanged, (event) => {
+            logInfo('User state changed', {
+                oldState: event.oldState,
+                newState: event.newState,
+            });
+        });
+        session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (event) => {
+            if (!event.transcript) return;
+            logInfo('User input transcribed', {
+                isFinal: event.isFinal,
+                language: event.language,
+                transcript: event.transcript.slice(0, 160),
+            });
+        });
+        session.on(voice.AgentSessionEventTypes.Error, (event) => {
+            const sourceName = event.source && typeof event.source === 'object'
+                ? (event.source as { label?: string }).label || (event.source as { constructor?: { name?: string } }).constructor?.name
+                : 'unknown';
+            const error = event.error instanceof Error ? event.error.message : String(event.error);
+            logError('Agent session error', {
+                source: sourceName,
+                error,
+            });
+        });
+        session.on(voice.AgentSessionEventTypes.SpeechCreated, (event) => {
+            logInfo('Speech created', {
+                source: event.source,
+                userInitiated: event.userInitiated,
+            });
+        });
+
+        if (metadata.initialContextPayload) {
+            const parsedInitialContext = liveKitContextPayloadSchema.safeParse(metadata.initialContextPayload);
+            if (!parsedInitialContext.success) {
+                logWarn('Ignored invalid initial context payload', {
+                    issues: parsedInitialContext.error.issues,
+                });
+            } else {
+                const initialContextText = parsedInitialContext.data.text.trim();
+                if (initialContextText) {
+                    const updateResult = pushAppContextUpdate(initialContextText);
+                    const seeded = extractLatestAssistantReply(initialContextText);
+                    if (updateResult.replaced) {
+                        latestAssistantReply = seeded;
+                    } else if (seeded) {
+                        latestAssistantReply = seeded;
+                        logInfo('Seeded latest assistant reply from initial context', {
+                            preview: seeded.text.slice(0, 120),
+                        });
+                    }
+                    session.history.addMessage({
+                        role: 'system',
+                        content: initialContextText,
+                    });
+                }
+            }
+        }
+
+        logInfo('Starting agent session');
+        await session.start({
+            room: ctx.room,
+            agent: new HappyVoiceAgent({
+                metadata,
+                getCurrentAppSessionId: () => currentAppSessionId,
+            }),
+            inputOptions: {
+                noiseCancellation: BackgroundVoiceCancellation(),
+            },
+        });
+        logInfo('Agent session started');
+        if (!ctx.room.isConnected) {
+            logWarn('Room is not connected after session.start', {
+                roomName: targetRoomName,
+            });
+        }
+
+        ctx.room.on(RoomEvent.DataReceived, (payload: Uint8Array, _participant, _kind, topic) => {
+            void (async () => {
+                try {
+                    const text = new TextDecoder().decode(payload);
+                    const data = JSON.parse(text) as GatewayRoomMessage;
+
+                    if (topic === 'happy.voice.context' || data.kind === 'context') {
+                        const parsedPayload = liveKitContextPayloadSchema.safeParse(data.payload);
+                        if (!parsedPayload.success) {
+                            logWarn('Dropped context update with invalid payload', {
+                                topic,
+                                issues: parsedPayload.error.issues,
+                            });
+                            return;
+                        }
+
+                        const contextText = parsedPayload.data.text.trim();
+                        if (!contextText) {
+                            return;
+                        }
+
+                        const updateResult = pushAppContextUpdate(contextText);
+                        const extracted = extractLatestAssistantReply(contextText);
+                        if (updateResult.replaced) {
+                            if (updateResult.sessionId) {
+                                currentAppSessionId = updateResult.sessionId;
+                            }
+                            resetVoiceConversationHistory(session.history);
+                            try {
+                                await resetActiveAgentChatContext(session);
+                            } catch (error) {
+                                logWarn('Failed to reset active agent chat context', {
+                                    error: error instanceof Error ? error.message : String(error),
+                                    sessionId: updateResult.sessionId,
+                                });
+                            }
+                            latestAssistantReply = extracted;
+                            logInfo('Replaced app context window from session snapshot', {
+                                sessionId: updateResult.sessionId,
+                            });
+                        } else if (extracted) {
+                            latestAssistantReply = extracted;
+                            logInfo('Updated latest assistant reply from context', {
+                                preview: extracted.text.slice(0, 120),
+                            });
+                        }
+                        session.history.addMessage({
+                            role: 'system',
+                            content: contextText,
+                        });
+                        return;
+                    }
+
+                    if (topic === 'happy.voice.text' || data.kind === 'text') {
+                        if (!data.message) {
+                            return;
+                        }
+                        const isReadyEvent = isReadyEventMessage(data.message);
+                        const allowInterruptions = isReadyEvent
+                            ? env.AGENT_READY_PLAYOUT_MODE === 'best_effort'
+                            : true;
+                        if (isReadyEvent) {
+                            logInfo('Ready event playout policy applied', {
+                                mode: env.AGENT_READY_PLAYOUT_MODE,
+                                allowInterruptions,
+                                hasLatestAssistantReply: !!latestAssistantReply,
+                            });
+                            const readySpeech = await buildReadySpeech({
+                                latestAssistantReply,
+                                sessionChatCtx: session.history,
+                                languagePreference: metadata.language,
+                                appSessionId: currentAppSessionId,
+                            });
+                            const readyHandle = session.say(readySpeech, {
+                                allowInterruptions,
+                                addToChatCtx: false,
+                            });
+                            await readyHandle.waitForPlayout();
+                            return;
+                        }
+                        const handle = session.generateReply({
+                            userInput: data.message,
+                            allowInterruptions,
+                        });
+                        await handle.waitForPlayout();
+                    }
+                } catch (error) {
+                    logError('Failed to process room data message', error);
+                }
+            })();
+        });
+
+        // Use TTS directly for the welcome sentence so first audio does not depend on LLM generation.
+        const handle = session.say(env.AGENT_WELCOME_MESSAGE, {
+            allowInterruptions: true,
+            addToChatCtx: false,
+        });
+        await handle.waitForPlayout();
+        logInfo('Welcome speech played');
+    },
+});
+
+export async function startWorker() {
+    logInfo('Starting LiveKit worker');
+    const workerWsUrl = env.LIVEKIT_WS_URL || env.LIVEKIT_URL;
+    logInfo('LiveKit worker transport', {
+        wsURL: workerWsUrl,
+        agentName: env.LIVEKIT_AGENT_NAME,
+        llmIoLoggingEnabled: isLlmIoLoggingEnabled(),
+    });
+    // `cli.runApp` expects a subcommand (`start|dev|connect`).
+    // Our launcher uses argv[2] for service mode (`worker|api|all`), so normalize argv here.
+    const originalArgv = process.argv.slice();
+    process.argv = [
+        originalArgv[0] || 'node',
+        originalArgv[1] || 'agent.ts',
+        'start',
+    ];
+
+    cli.runApp(new ServerOptions({
+        agent: fileURLToPath(import.meta.url),
+        agentName: env.LIVEKIT_AGENT_NAME,
+        wsURL: workerWsUrl,
+        apiKey: env.LIVEKIT_API_KEY,
+        apiSecret: env.LIVEKIT_API_SECRET,
+    }));
+
+    process.argv = originalArgv;
+}
+
+export default agent;
