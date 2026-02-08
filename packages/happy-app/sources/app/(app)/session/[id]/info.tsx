@@ -327,6 +327,8 @@ function SessionInfoContent({ session }: { session: Session }) {
                             icon={<Ionicons name={session.active ? "copy-outline" : "play-circle-outline"} size={29} color="#34C759" />}
                             onPress={handleForkSession}
                             disabled={forkingSession}
+                            loading={forkingSession}
+                            showChevron={!forkingSession}
                         />
                     )}
                     {sessionStatus.isConnected && (

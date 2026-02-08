@@ -260,7 +260,7 @@ export const Item = React.memo<ItemProps>((props) => {
                         <ActivityIndicator 
                             size="small" 
                             color={theme.colors.textSecondary}
-                            style={{ marginRight: showAccessory ? 6 : 0 }}
+                            style={{ marginLeft: 4, minWidth: 24, marginRight: showAccessory ? 6 : 0 }}
                         />
                     )}
                     {rightElement}

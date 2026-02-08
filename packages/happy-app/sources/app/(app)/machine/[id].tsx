@@ -396,12 +396,19 @@ export default function MachineDetailScreen() {
                                             spawnButtonDisabled ? styles.inlineSendInactive : styles.inlineSendActive
                                         ]}
                                     >
-                                        <Ionicons
-                                            name="play"
-                                            size={16}
-                                            color={spawnButtonDisabled ? theme.colors.textSecondary : theme.colors.button.primary.tint}
-                                            style={{ marginLeft: 1 }}
-                                        />
+                                        {isSpawning ? (
+                                            <ActivityIndicator
+                                                size="small"
+                                                color={theme.colors.textSecondary}
+                                            />
+                                        ) : (
+                                            <Ionicons
+                                                name="play"
+                                                size={16}
+                                                color={spawnButtonDisabled ? theme.colors.textSecondary : theme.colors.button.primary.tint}
+                                                style={{ marginLeft: 1 }}
+                                            />
+                                        )}
                                     </Pressable>
                                 </View>
                             </View>
