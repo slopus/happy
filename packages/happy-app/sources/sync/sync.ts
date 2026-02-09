@@ -84,6 +84,9 @@ class Sync {
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     revenueCatInitialized = false;
 
+    // Track which session the user is currently viewing
+    private viewingSessionId: string | null = null;
+
     // Generic locking mechanism
     private recalculationLockCount = 0;
     private lastRecalculationTime = 0;
@@ -215,6 +218,11 @@ class Sync {
 
         // Also invalidate git status sync for this session
         gitStatusSync.getSync(sessionId).invalidate();
+
+        // Track which session user is viewing
+        if (userInitiated) {
+            this.viewingSessionId = sessionId;
+        }
 
         // Notify voice assistant about session visibility
         const session = storage.getState().sessions[sessionId];
@@ -2133,9 +2141,15 @@ class Sync {
                     ? await sessionEncryption.decryptMetadata(updateData.body.metadata.version, updateData.body.metadata.value)
                     : session.metadata;
 
+                // If user is viewing this session, strip taskCompleted before applying to avoid flash
+                const shouldStripTaskCompleted = agentState?.taskCompleted && this.viewingSessionId === updateData.body.id;
+                const effectiveAgentState = shouldStripTaskCompleted
+                    ? { ...agentState, taskCompleted: null }
+                    : agentState;
+
                 this.applySessions([{
                     ...session,
-                    agentState,
+                    agentState: effectiveAgentState,
                     agentStateVersion: updateData.body.agentState
                         ? updateData.body.agentState.version
                         : session.agentStateVersion,
@@ -2146,6 +2160,14 @@ class Sync {
                     updatedAt: updateData.createdAt,
                     seq: updateData.seq
                 }]);
+
+                // Clear taskCompleted on server if we stripped it locally
+                if (shouldStripTaskCompleted) {
+                    const freshSession = storage.getState().sessions[updateData.body.id];
+                    if (freshSession) {
+                        this.clearTaskCompleted(updateData.body.id, freshSession);
+                    }
+                }
 
                 // Invalidate git status when agent state changes (files may have been modified)
                 if (updateData.body.agentState) {
