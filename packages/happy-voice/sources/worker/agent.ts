@@ -41,6 +41,7 @@ interface DispatchMetadata {
     appSessionId: string;
     initialContextPayload?: LiveKitContextPayload;
     language?: string;
+    toolBridgeBaseUrl?: string;
 }
 
 interface GatewayRoomMessage {
@@ -489,6 +490,9 @@ const agent = defineAgent({
     },
     entry: async (ctx: JobContext) => {
         const metadata = parseMetadata(ctx);
+        if (metadata.toolBridgeBaseUrl) {
+            toolBridgeClient.setSessionBaseUrl(metadata.toolBridgeBaseUrl);
+        }
         let currentAppSessionId = metadata.appSessionId;
         const vad = ctx.proc.userData.vad as any;
         const targetRoomName = ctx.job.room?.name;

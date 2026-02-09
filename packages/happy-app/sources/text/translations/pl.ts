@@ -663,7 +663,30 @@ export const pl: TranslationStructure = {
     },
 
     settingsVoice: {
-        // Voice settings screen
+        providerTitle: 'Dostawca głosu',
+        providerDescription: 'Wybierz usługę głosową. Zmiany zaczną obowiązywać od następnej sesji głosowej.',
+        providerElevenLabsSubtitle: 'Usługa głosowa AI w chmurze',
+        providerHappyVoiceSubtitle: 'Własna brama głosowa',
+
+        elevenLabsTitle: 'ElevenLabs',
+        elevenLabsDescription: 'Skonfiguruj agenta ElevenLabs. Pozostaw puste, aby użyć domyślnego.',
+        agentId: 'ID agenta',
+        agentIdPlaceholder: 'Wprowadź ID agenta ElevenLabs',
+
+        happyVoiceTitle: 'Happy Voice',
+        happyVoiceDescription: 'Skonfiguruj własną bramę głosową Happy Voice.',
+        gatewayUrl: 'URL bramy',
+        gatewayUrlPlaceholder: 'https://voice.example.com',
+        publicKey: 'Klucz publiczny',
+        publicKeyPlaceholder: 'Wprowadź klucz publiczny bramy głosowej',
+
+        notConfigured: 'Nie ustawiono',
+        usingCustomConfig: 'Niestandardowy',
+        usingDefaultConfig: 'Domyślny',
+        saved: 'Zapisano',
+        resetToDefault: 'Przywróć domyślne',
+        invalidUrl: 'Nieprawidłowy format URL',
+
         languageTitle: 'Język',
         languageDescription: 'Wybierz preferowany język dla interakcji z asystentem głosowym. To ustawienie synchronizuje się na wszystkich Twoich urządzeniach.',
         preferredLanguage: 'Preferowany język',

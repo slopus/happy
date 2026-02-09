@@ -685,7 +685,30 @@ export const ja: TranslationStructure = {
     },
 
     settingsVoice: {
-        // Voice settings screen
+        providerTitle: '音声プロバイダー',
+        providerDescription: '使用する音声サービスを選択します。変更は次の音声セッションから有効になります。',
+        providerElevenLabsSubtitle: 'クラウドホスト型音声AIサービス',
+        providerHappyVoiceSubtitle: 'セルフホスト型音声ゲートウェイ',
+
+        elevenLabsTitle: 'ElevenLabs',
+        elevenLabsDescription: 'ElevenLabsエージェントを設定します。空欄の場合はデフォルトが使用されます。',
+        agentId: 'エージェントID',
+        agentIdPlaceholder: 'ElevenLabs エージェントIDを入力',
+
+        happyVoiceTitle: 'Happy Voice',
+        happyVoiceDescription: 'セルフホスト型Happy Voice音声ゲートウェイを設定します。',
+        gatewayUrl: 'ゲートウェイURL',
+        gatewayUrlPlaceholder: 'https://voice.example.com',
+        publicKey: '公開鍵',
+        publicKeyPlaceholder: '音声ゲートウェイの公開鍵を入力',
+
+        notConfigured: '未設定',
+        usingCustomConfig: 'カスタム',
+        usingDefaultConfig: 'デフォルト',
+        saved: '保存済み',
+        resetToDefault: 'デフォルトに戻す',
+        invalidUrl: 'URL形式が無効です',
+
         languageTitle: '言語',
         languageDescription: '音声アシスタントの操作に使用する言語を選択します。この設定はすべてのデバイスで同期されます。',
         preferredLanguage: '優先言語',

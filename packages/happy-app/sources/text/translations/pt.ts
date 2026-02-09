@@ -653,7 +653,30 @@ export const pt: TranslationStructure = {
     },
 
     settingsVoice: {
-        // Voice settings screen
+        providerTitle: 'Provedor de voz',
+        providerDescription: 'Escolha qual serviço de voz usar. As alterações entram em vigor na próxima sessão de voz.',
+        providerElevenLabsSubtitle: 'Serviço de voz IA na nuvem',
+        providerHappyVoiceSubtitle: 'Gateway de voz auto-hospedado',
+
+        elevenLabsTitle: 'ElevenLabs',
+        elevenLabsDescription: 'Configure seu agente ElevenLabs. Deixe vazio para usar o padrão.',
+        agentId: 'ID do agente',
+        agentIdPlaceholder: 'Digite o ID do agente ElevenLabs',
+
+        happyVoiceTitle: 'Happy Voice',
+        happyVoiceDescription: 'Configure seu gateway de voz Happy Voice auto-hospedado.',
+        gatewayUrl: 'URL do gateway',
+        gatewayUrlPlaceholder: 'https://voice.example.com',
+        publicKey: 'Chave pública',
+        publicKeyPlaceholder: 'Digite a chave pública do gateway de voz',
+
+        notConfigured: 'Não configurado',
+        usingCustomConfig: 'Personalizado',
+        usingDefaultConfig: 'Padrão',
+        saved: 'Salvo',
+        resetToDefault: 'Redefinir para padrão',
+        invalidUrl: 'Formato de URL inválido',
+
         languageTitle: 'Idioma',
         languageDescription: 'Escolha seu idioma preferido para interações com o assistente de voz. Esta configuração sincroniza em todos os seus dispositivos.',
         preferredLanguage: 'Idioma preferido',

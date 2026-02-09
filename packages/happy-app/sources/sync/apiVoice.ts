@@ -1,6 +1,6 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { getServerUrl } from './serverConfig';
-import { config } from '@/config';
+import { getElevenLabsAgentId } from './voiceConfig';
 import { storage } from './storage';
 
 export interface VoiceTokenResponse {
@@ -17,10 +17,7 @@ export async function fetchVoiceToken(
     const userId = storage.getState().profile.id;
     console.log(`[Voice] User ID: ${userId}`);
 
-    // Get agent ID from config
-    const agentId = __DEV__
-        ? config.elevenLabsAgentIdDev
-        : config.elevenLabsAgentIdProd;
+    const agentId = getElevenLabsAgentId();
 
     if (!agentId) {
         throw new Error('Agent ID not configured');

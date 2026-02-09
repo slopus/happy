@@ -654,7 +654,35 @@ export const en = {
     },
 
     settingsVoice: {
-        // Voice settings screen
+        // Provider selection
+        providerTitle: 'Voice Provider',
+        providerDescription: 'Choose which voice service to use. Changes take effect on the next voice session.',
+        providerElevenLabsSubtitle: 'Cloud-hosted voice AI service',
+        providerHappyVoiceSubtitle: 'Self-hosted voice gateway',
+
+        // ElevenLabs configuration
+        elevenLabsTitle: 'ElevenLabs',
+        elevenLabsDescription: 'Configure your ElevenLabs agent. Leave empty to use the default.',
+        agentId: 'Agent ID',
+        agentIdPlaceholder: 'Enter ElevenLabs Agent ID',
+
+        // Happy Voice (LiveKit) configuration
+        happyVoiceTitle: 'Happy Voice',
+        happyVoiceDescription: 'Configure your self-hosted Happy Voice gateway.',
+        gatewayUrl: 'Gateway URL',
+        gatewayUrlPlaceholder: 'https://voice.example.com',
+        publicKey: 'Public Key',
+        publicKeyPlaceholder: 'Enter voice gateway public key',
+
+        // Common
+        notConfigured: 'Not set',
+        usingCustomConfig: 'Custom',
+        usingDefaultConfig: 'Default',
+        saved: 'Saved',
+        resetToDefault: 'Reset to Default',
+        invalidUrl: 'Invalid URL format',
+
+        // Language settings
         languageTitle: 'Language',
         languageDescription: 'Choose your preferred language for voice assistant interactions. This setting syncs across all your devices.',
         preferredLanguage: 'Preferred Language',

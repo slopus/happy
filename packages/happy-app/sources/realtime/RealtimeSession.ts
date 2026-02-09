@@ -5,7 +5,7 @@ import { sync } from '@/sync/sync';
 import { Modal } from '@/modal';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { t } from '@/text';
-import { config } from '@/config';
+import { getElevenLabsAgentId, getVoiceProvider } from '@/sync/voiceConfig';
 import { requestMicrophonePermission, showMicrophonePermissionDeniedAlert } from '@/utils/microphonePermissions';
 
 let voiceSession: VoiceSession | null = null;
@@ -27,7 +27,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
     }
 
     try {
-        if (config.voiceProvider === 'livekit') {
+        if (getVoiceProvider() === 'livekit') {
             currentSessionId = sessionId;
             voiceSessionStarted = true;
             await voiceSession.startSession({
@@ -38,7 +38,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         }
 
         const experimentsEnabled = storage.getState().settings.experiments;
-        const agentId = __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;
+        const agentId = getElevenLabsAgentId();
 
         if (!agentId) {
             console.error('Agent ID not configured');

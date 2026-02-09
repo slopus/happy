@@ -653,7 +653,30 @@ export const ca: TranslationStructure = {
     },
 
     settingsVoice: {
-        // Voice settings screen
+        providerTitle: 'Proveïdor de veu',
+        providerDescription: 'Tria quin servei de veu fer servir. Els canvis s\'apliquen a la propera sessió de veu.',
+        providerElevenLabsSubtitle: 'Servei de veu IA al núvol',
+        providerHappyVoiceSubtitle: 'Passarel·la de veu autoallotjada',
+
+        elevenLabsTitle: 'ElevenLabs',
+        elevenLabsDescription: 'Configura el teu agent d\'ElevenLabs. Deixa buit per usar el predeterminat.',
+        agentId: 'ID de l\'agent',
+        agentIdPlaceholder: 'Introdueix l\'ID de l\'agent ElevenLabs',
+
+        happyVoiceTitle: 'Happy Voice',
+        happyVoiceDescription: 'Configura la teva passarel·la de veu Happy Voice autoallotjada.',
+        gatewayUrl: 'URL de la passarel·la',
+        gatewayUrlPlaceholder: 'https://voice.example.com',
+        publicKey: 'Clau pública',
+        publicKeyPlaceholder: 'Introdueix la clau pública de la passarel·la de veu',
+
+        notConfigured: 'No configurat',
+        usingCustomConfig: 'Personalitzat',
+        usingDefaultConfig: 'Predeterminat',
+        saved: 'Desat',
+        resetToDefault: 'Restablir predeterminat',
+        invalidUrl: 'Format d\'URL no vàlid',
+
         languageTitle: 'Idioma',
         languageDescription: 'Tria el teu idioma preferit per a les interaccions amb l\'assistent de veu. Aquesta configuració es sincronitza a tots els teus dispositius.',
         preferredLanguage: 'Idioma preferit',

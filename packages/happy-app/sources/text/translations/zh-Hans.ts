@@ -655,7 +655,30 @@ export const zhHans: TranslationStructure = {
     },
 
     settingsVoice: {
-        // Voice settings screen
+        providerTitle: '语音供应商',
+        providerDescription: '选择使用哪个语音服务。更改将在下次语音会话时生效。',
+        providerElevenLabsSubtitle: '云端语音 AI 服务',
+        providerHappyVoiceSubtitle: '自托管语音网关',
+
+        elevenLabsTitle: 'ElevenLabs',
+        elevenLabsDescription: '配置 ElevenLabs 代理。留空则使用默认值。',
+        agentId: 'Agent ID',
+        agentIdPlaceholder: '输入 ElevenLabs Agent ID',
+
+        happyVoiceTitle: 'Happy Voice',
+        happyVoiceDescription: '配置自托管的 Happy Voice 语音网关。',
+        gatewayUrl: '网关地址',
+        gatewayUrlPlaceholder: 'https://voice.example.com',
+        publicKey: '公钥',
+        publicKeyPlaceholder: '输入语音网关公钥',
+
+        notConfigured: '未设置',
+        usingCustomConfig: '自定义',
+        usingDefaultConfig: '默认',
+        saved: '已保存',
+        resetToDefault: '恢复默认',
+        invalidUrl: 'URL 格式无效',
+
         languageTitle: '语言',
         languageDescription: '选择您希望语音助手交互使用的语言。此设置将在您的所有设备间同步。',
         preferredLanguage: '首选语言',

@@ -663,7 +663,30 @@ export const ru: TranslationStructure = {
     },
 
     settingsVoice: {
-        // Voice settings screen
+        providerTitle: 'Голосовой провайдер',
+        providerDescription: 'Выберите голосовой сервис. Изменения вступят в силу при следующей голосовой сессии.',
+        providerElevenLabsSubtitle: 'Облачный голосовой ИИ-сервис',
+        providerHappyVoiceSubtitle: 'Собственный голосовой шлюз',
+
+        elevenLabsTitle: 'ElevenLabs',
+        elevenLabsDescription: 'Настройте агента ElevenLabs. Оставьте пустым для использования значения по умолчанию.',
+        agentId: 'ID агента',
+        agentIdPlaceholder: 'Введите ID агента ElevenLabs',
+
+        happyVoiceTitle: 'Happy Voice',
+        happyVoiceDescription: 'Настройте собственный голосовой шлюз Happy Voice.',
+        gatewayUrl: 'URL шлюза',
+        gatewayUrlPlaceholder: 'https://voice.example.com',
+        publicKey: 'Публичный ключ',
+        publicKeyPlaceholder: 'Введите публичный ключ голосового шлюза',
+
+        notConfigured: 'Не задано',
+        usingCustomConfig: 'Пользовательский',
+        usingDefaultConfig: 'По умолчанию',
+        saved: 'Сохранено',
+        resetToDefault: 'Сбросить по умолчанию',
+        invalidUrl: 'Неверный формат URL',
+
         languageTitle: 'Язык',
         languageDescription: 'Выберите предпочтительный язык для взаимодействия с голосовым помощником. Эта настройка синхронизируется на всех ваших устройствах.',
         preferredLanguage: 'Предпочтительный язык',

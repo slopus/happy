@@ -21,6 +21,7 @@ export interface VoiceStartRequest {
     sessionId: string;
     initialContextPayload?: LiveKitContextPayload;
     language?: string;
+    toolBridgeBaseUrl?: string;
 }
 
 export interface VoiceStartResponse {

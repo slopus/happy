@@ -124,6 +124,33 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="settings/voice"
+                options={{
+                    headerTitle: t('settings.voiceAssistant'),
+                }}
+            />
+            <Stack.Screen
+                name="settings/voice/elevenlabs"
+                options={{
+                    headerTitle: t('settingsVoice.elevenLabsTitle'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="settings/voice/livekit"
+                options={{
+                    headerTitle: t('settingsVoice.happyVoiceTitle'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="settings/voice/language"
+                options={{
+                    headerTitle: t('settingsVoice.preferredLanguage'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="terminal/connect"
                 options={{
                     headerTitle: t('navigation.connectTerminal'),

@@ -9,8 +9,15 @@ interface ToolCallPayload {
 }
 
 class ToolBridgeClient {
+    private sessionBaseUrl: string | undefined;
+
+    setSessionBaseUrl(url: string | undefined): void {
+        this.sessionBaseUrl = url;
+    }
+
     async execute(payload: ToolCallPayload): Promise<string> {
-        if (!env.TOOL_BRIDGE_BASE_URL) {
+        const baseUrl = this.sessionBaseUrl || env.TOOL_BRIDGE_BASE_URL;
+        if (!baseUrl) {
             return `error (tool bridge not configured for ${payload.functionName})`;
         }
 
@@ -18,7 +25,7 @@ class ToolBridgeClient {
         const timeout = setTimeout(() => controller.abort(), env.TOOL_BRIDGE_TIMEOUT_MS);
 
         try {
-            const response = await fetch(`${env.TOOL_BRIDGE_BASE_URL}/v1/voice/tool-call`, {
+            const response = await fetch(`${baseUrl}/v1/voice/tool-call`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

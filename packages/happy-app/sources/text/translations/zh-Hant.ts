@@ -654,7 +654,30 @@ export const zhHant: TranslationStructure = {
     },
 
     settingsVoice: {
-        // Voice settings screen
+        providerTitle: '語音供應商',
+        providerDescription: '選擇使用哪個語音服務。變更將在下次語音工作階段時生效。',
+        providerElevenLabsSubtitle: '雲端語音 AI 服務',
+        providerHappyVoiceSubtitle: '自架語音閘道器',
+
+        elevenLabsTitle: 'ElevenLabs',
+        elevenLabsDescription: '設定 ElevenLabs 代理。留空則使用預設值。',
+        agentId: 'Agent ID',
+        agentIdPlaceholder: '輸入 ElevenLabs Agent ID',
+
+        happyVoiceTitle: 'Happy Voice',
+        happyVoiceDescription: '設定自架的 Happy Voice 語音閘道器。',
+        gatewayUrl: '閘道器網址',
+        gatewayUrlPlaceholder: 'https://voice.example.com',
+        publicKey: '公鑰',
+        publicKeyPlaceholder: '輸入語音閘道器公鑰',
+
+        notConfigured: '未設定',
+        usingCustomConfig: '自訂',
+        usingDefaultConfig: '預設',
+        saved: '已儲存',
+        resetToDefault: '恢復預設',
+        invalidUrl: 'URL 格式無效',
+
         languageTitle: '語言',
         languageDescription: '選擇您希望語音助理互動使用的語言。此設定將在您的所有裝置間同步。',
         preferredLanguage: '偏好語言',

@@ -1,4 +1,5 @@
-import { config } from '@/config';
+import { getLiveKitGatewayUrl, getLiveKitPublicKey } from './voiceConfig';
+import { getServerUrl } from './serverConfig';
 import { storage } from './storage';
 import type { LiveKitContextPayload } from '@/realtime/LiveKitContextSerializer';
 
@@ -13,7 +14,7 @@ export interface LiveKitVoiceStartResponse {
 }
 
 function getVoiceGatewayUrl() {
-    const baseUrl = config.voiceBaseUrl;
+    const baseUrl = getLiveKitGatewayUrl();
     if (!baseUrl) {
         throw new Error('voiceBaseUrl is not configured');
     }
@@ -21,7 +22,7 @@ function getVoiceGatewayUrl() {
 }
 
 function getVoiceGatewayHeaders() {
-    const voicePublicKey = config.voicePublicKey;
+    const voicePublicKey = getLiveKitPublicKey();
     if (!voicePublicKey) {
         throw new Error('voicePublicKey is not configured');
     }
@@ -50,6 +51,7 @@ export async function startLiveKitVoiceSession(
             sessionId,
             initialContextPayload,
             language,
+            toolBridgeBaseUrl: getServerUrl(),
         }),
     });
 
