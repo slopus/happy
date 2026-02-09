@@ -47,7 +47,7 @@ export const changeSessionSettingsParametersSchema = z.object({
 });
 
 export const getLatestAssistantReplyParametersSchema = z.object({
-    maxChars: z.number().int().positive().max(2000).optional(),
+    maxChars: z.number().int().min(1).max(2000).optional(),
 });
 
 export const deleteSessionParametersSchema = z.object({
