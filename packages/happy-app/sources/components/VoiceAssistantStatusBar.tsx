@@ -67,7 +67,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
     const statusInfo = getStatusInfo();
 
     const handlePress = async () => {
-        if (realtimeStatus === 'connected' || realtimeStatus === 'connecting') {
+        if (realtimeStatus === 'connected' || realtimeStatus === 'connecting' || realtimeStatus === 'error') {
             try {
                 await stopRealtimeSession();
             } catch (error) {
