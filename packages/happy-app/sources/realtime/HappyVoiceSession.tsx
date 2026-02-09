@@ -1,45 +1,24 @@
 import React, { useEffect, useRef } from 'react';
-import { Room, RoomEvent, type RemoteTrack } from 'livekit-client';
+import { registerGlobals } from '@livekit/react-native';
+import { Room, RoomEvent } from 'livekit-client';
 import { registerVoiceSession } from './RealtimeSession';
 import { storage } from '@/sync/storage';
 import { getCurrentLanguage } from '@/text';
 import {
-    sendLiveKitVoiceContext,
-    sendLiveKitVoiceText,
-    startLiveKitVoiceSession,
-    stopLiveKitVoiceSession,
-} from '@/sync/apiLiveKitVoice';
+    sendHappyVoiceContext,
+    sendHappyVoiceText,
+    startHappyVoiceSession,
+    stopHappyVoiceSession,
+} from '@/sync/apiHappyVoice';
 import type { VoiceSession, VoiceSessionConfig } from './types';
-import { serializeLiveKitContext } from './LiveKitContextSerializer';
+import { serializeHappyVoiceContext } from './HappyVoiceContextSerializer';
+
+registerGlobals();
 
 let roomInstance: Room | null = null;
 let activeGatewaySessionId: string | null = null;
 
-function attachRemoteAudioTrack(track: RemoteTrack) {
-    if (track.kind !== 'audio') {
-        return;
-    }
-
-    const element = track.attach();
-    if (element instanceof HTMLAudioElement) {
-        element.autoplay = true;
-        element.style.display = 'none';
-        document.body.appendChild(element);
-    }
-}
-
-function detachRemoteAudioTrack(track: RemoteTrack) {
-    if (track.kind !== 'audio') {
-        return;
-    }
-
-    const elements = track.detach();
-    for (const element of elements) {
-        element.remove();
-    }
-}
-
-class LiveKitVoiceSessionImpl implements VoiceSession {
+class HappyVoiceSessionImpl implements VoiceSession {
     async startSession(config: VoiceSessionConfig): Promise<void> {
         try {
             storage.getState().setRealtimeStatus('connecting');
@@ -52,9 +31,9 @@ class LiveKitVoiceSessionImpl implements VoiceSession {
 
             const language = getCurrentLanguage();
             const initialContextPayload = config.initialContext
-                ? serializeLiveKitContext(config.initialContext)
+                ? serializeHappyVoiceContext(config.initialContext)
                 : undefined;
-            const start = await startLiveKitVoiceSession(
+            const start = await startHappyVoiceSession(
                 config.sessionId,
                 initialContextPayload,
                 language,
@@ -77,27 +56,16 @@ class LiveKitVoiceSessionImpl implements VoiceSession {
                 );
                 storage.getState().setRealtimeMode(remoteSpeaking ? 'speaking' : 'idle');
             });
-            room.on(RoomEvent.TrackSubscribed, (track) => {
-                attachRemoteAudioTrack(track as RemoteTrack);
-            });
-            room.on(RoomEvent.TrackUnsubscribed, (track) => {
-                detachRemoteAudioTrack(track as RemoteTrack);
-            });
 
             await room.connect(start.roomUrl, start.participantToken);
             await room.localParticipant.setMicrophoneEnabled(true);
-            try {
-                await room.startAudio();
-            } catch (error) {
-                console.warn('[LiveKitVoice] Failed to start remote audio playback:', error);
-            }
 
             roomInstance = room;
             activeGatewaySessionId = start.gatewaySessionId;
             storage.getState().setRealtimeStatus('connected');
             storage.getState().setRealtimeMode('idle', true);
         } catch (error) {
-            console.error('[LiveKitVoice] Failed to start session:', error);
+            console.error('[HappyVoice] Failed to start session:', error);
             storage.getState().setRealtimeStatus('error');
         }
     }
@@ -112,12 +80,12 @@ class LiveKitVoiceSessionImpl implements VoiceSession {
                 roomInstance = null;
             }
         } catch (error) {
-            console.warn('[LiveKitVoice] Room disconnect failed:', error);
+            console.warn('[HappyVoice] Room disconnect failed:', error);
         }
 
         if (gatewaySessionId) {
-            stopLiveKitVoiceSession(gatewaySessionId).catch((error) => {
-                console.warn('[LiveKitVoice] Failed to stop gateway session:', error);
+            stopHappyVoiceSession(gatewaySessionId).catch((error) => {
+                console.warn('[HappyVoice] Failed to stop gateway session:', error);
             });
         }
 
@@ -129,35 +97,35 @@ class LiveKitVoiceSessionImpl implements VoiceSession {
     sendTextMessage(message: string): void {
         const gatewaySessionId = activeGatewaySessionId;
         if (!gatewaySessionId) {
-            console.warn('[LiveKitVoice] No active gateway session for text');
+            console.warn('[HappyVoice] No active gateway session for text');
             return;
         }
 
-        sendLiveKitVoiceText(gatewaySessionId, message).catch((error) => {
-            console.warn('[LiveKitVoice] Failed to send text update:', error);
+        sendHappyVoiceText(gatewaySessionId, message).catch((error) => {
+            console.warn('[HappyVoice] Failed to send text update:', error);
         });
     }
 
     sendContextualUpdate(update: string): void {
         const gatewaySessionId = activeGatewaySessionId;
         if (!gatewaySessionId) {
-            console.warn('[LiveKitVoice] No active gateway session for context');
+            console.warn('[HappyVoice] No active gateway session for context');
             return;
         }
 
-        const payload = serializeLiveKitContext(update);
-        sendLiveKitVoiceContext(gatewaySessionId, payload).catch((error) => {
-            console.warn('[LiveKitVoice] Failed to send context update:', error);
+        const payload = serializeHappyVoiceContext(update);
+        sendHappyVoiceContext(gatewaySessionId, payload).catch((error) => {
+            console.warn('[HappyVoice] Failed to send context update:', error);
         });
     }
 }
 
-export const LiveKitVoiceSession: React.FC = () => {
+export const HappyVoiceSession: React.FC = () => {
     const hasRegistered = useRef(false);
 
     useEffect(() => {
         if (!hasRegistered.current) {
-            registerVoiceSession(new LiveKitVoiceSessionImpl());
+            registerVoiceSession(new HappyVoiceSessionImpl());
             hasRegistered.current = true;
         }
     }, []);

@@ -12,10 +12,10 @@ import {
     setVoiceProvider,
     getElevenLabsAgentId,
     hasCustomElevenLabsAgentId,
-    getLiveKitGatewayUrl,
-    hasCustomLiveKitGatewayUrl,
-    getLiveKitPublicKey,
-    hasCustomLiveKitPublicKey,
+    getHappyVoiceGatewayUrl,
+    hasCustomHappyVoiceGatewayUrl,
+    getHappyVoicePublicKey,
+    hasCustomHappyVoicePublicKey,
 } from '@/sync/voiceConfig';
 
 function truncate(s: string, maxLen: number): string {
@@ -30,19 +30,19 @@ export default function VoiceSettingsScreen() {
     // Local state that refreshes when returning from sub-pages
     const [provider, setProvider] = useState(() => getVoiceProvider());
     const [agentId, setAgentId] = useState(() => getElevenLabsAgentId());
-    const [gatewayUrl, setGatewayUrl] = useState(() => getLiveKitGatewayUrl());
-    const [publicKey, setPublicKey] = useState(() => getLiveKitPublicKey());
+    const [gatewayUrl, setGatewayUrl] = useState(() => getHappyVoiceGatewayUrl());
+    const [publicKey, setPublicKey] = useState(() => getHappyVoicePublicKey());
 
     useFocusEffect(
         useCallback(() => {
             setProvider(getVoiceProvider());
             setAgentId(getElevenLabsAgentId());
-            setGatewayUrl(getLiveKitGatewayUrl());
-            setPublicKey(getLiveKitPublicKey());
+            setGatewayUrl(getHappyVoiceGatewayUrl());
+            setPublicKey(getHappyVoicePublicKey());
         }, []),
     );
 
-    const handleProviderChange = (value: 'elevenlabs' | 'livekit') => {
+    const handleProviderChange = (value: 'elevenlabs' | 'happy-voice') => {
         setVoiceProvider(value);
         setProvider(value);
     };
@@ -71,11 +71,11 @@ export default function VoiceSettingsScreen() {
                     subtitle={t('settingsVoice.providerHappyVoiceSubtitle')}
                     icon={<Ionicons name="server-outline" size={29} color="#34C759" />}
                     rightElement={
-                        provider === 'livekit'
+                        provider === 'happy-voice'
                             ? <Ionicons name="checkmark-circle" size={24} color="#007AFF" />
                             : null
                     }
-                    onPress={() => handleProviderChange('livekit')}
+                    onPress={() => handleProviderChange('happy-voice')}
                     showChevron={false}
                 />
             </ItemGroup>
@@ -96,8 +96,8 @@ export default function VoiceSettingsScreen() {
                 </ItemGroup>
             )}
 
-            {/* Happy Voice (LiveKit) Configuration */}
-            {provider === 'livekit' && (
+            {/* Happy Voice Configuration */}
+            {provider === 'happy-voice' && (
                 <ItemGroup
                     title={t('settingsVoice.happyVoiceTitle')}
                     footer={t('settingsVoice.happyVoiceDescription')}
@@ -106,15 +106,15 @@ export default function VoiceSettingsScreen() {
                         title={t('settingsVoice.gatewayUrl')}
                         icon={<Ionicons name="link-outline" size={29} color="#5856D6" />}
                         detail={gatewayUrl ? truncate(gatewayUrl, 25) : t('settingsVoice.notConfigured')}
-                        subtitle={hasCustomLiveKitGatewayUrl() ? t('settingsVoice.usingCustomConfig') : t('settingsVoice.usingDefaultConfig')}
-                        onPress={() => router.push('/settings/voice/livekit')}
+                        subtitle={hasCustomHappyVoiceGatewayUrl() ? t('settingsVoice.usingCustomConfig') : t('settingsVoice.usingDefaultConfig')}
+                        onPress={() => router.push('/settings/voice/happy-voice')}
                     />
                     <Item
                         title={t('settingsVoice.publicKey')}
                         icon={<Ionicons name="shield-outline" size={29} color="#FF2D55" />}
                         detail={publicKey ? '********' : t('settingsVoice.notConfigured')}
-                        subtitle={hasCustomLiveKitPublicKey() ? t('settingsVoice.usingCustomConfig') : t('settingsVoice.usingDefaultConfig')}
-                        onPress={() => router.push('/settings/voice/livekit')}
+                        subtitle={hasCustomHappyVoicePublicKey() ? t('settingsVoice.usingCustomConfig') : t('settingsVoice.usingDefaultConfig')}
+                        onPress={() => router.push('/settings/voice/happy-voice')}
                     />
                 </ItemGroup>
             )}

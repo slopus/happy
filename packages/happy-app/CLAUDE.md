@@ -83,7 +83,7 @@ This generates `sources/changelog/changelog.json` which is used by the app.
 - **Expo Router v6** for file-based routing
 - **Socket.io** for real-time WebSocket communication
 - **libsodium** (via `@more-tech/react-native-libsodium`) for end-to-end encryption
-- **LiveKit** for real-time voice communication
+- **Happy Voice** (LiveKit-based) for real-time voice communication
 
 ### Project Structure
 ```
@@ -101,7 +101,7 @@ sources/
 2. **Data Synchronization**: WebSocket-based real-time sync with automatic reconnection and state management
 3. **Encryption**: End-to-end encryption using libsodium for all sensitive data
 4. **State Management**: React Context for auth state, custom reducer for sync state
-5. **Real-time Voice**: LiveKit integration for voice communication sessions
+5. **Real-time Voice**: Happy Voice (LiveKit-based) integration for voice communication sessions
 6. **Platform-Specific Code**: Separate implementations for web vs native when needed
 
 ### Development Guidelines

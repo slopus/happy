@@ -137,7 +137,7 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
-                name="settings/voice/livekit"
+                name="settings/voice/happy-voice"
                 options={{
                     headerTitle: t('settingsVoice.happyVoiceTitle'),
                     headerBackTitle: t('common.back'),

@@ -7,11 +7,11 @@ const voiceConfigStorage = new MMKV({ id: 'voice-config' });
 const KEYS = {
     provider: 'voice-provider',
     elevenLabsAgentId: 'voice-elevenlabs-agent-id',
-    liveKitGatewayUrl: 'voice-livekit-gateway-url',
-    liveKitPublicKey: 'voice-livekit-public-key',
+    happyVoiceGatewayUrl: 'voice-happy-voice-gateway-url',
+    happyVoicePublicKey: 'voice-happy-voice-public-key',
 } as const;
 
-type VoiceProvider = 'elevenlabs' | 'livekit';
+type VoiceProvider = 'elevenlabs' | 'happy-voice';
 
 // Keep a reference to the app config for fallback defaults
 let configRef: AppConfig | undefined;
@@ -20,8 +20,10 @@ let configRef: AppConfig | undefined;
 
 export function getVoiceProvider(): VoiceProvider {
     const stored = voiceConfigStorage.getString(KEYS.provider);
-    if (stored === 'elevenlabs' || stored === 'livekit') return stored;
-    return configRef?.voiceProvider || 'elevenlabs';
+    if (stored === 'elevenlabs' || stored === 'happy-voice') return stored;
+    const fallback = configRef?.voiceProvider;
+    if (fallback === 'elevenlabs' || fallback === 'happy-voice') return fallback;
+    return 'elevenlabs';
 }
 
 export function setVoiceProvider(value: VoiceProvider | null): void {
@@ -57,42 +59,42 @@ export function hasCustomElevenLabsAgentId(): boolean {
     return voiceConfigStorage.contains(KEYS.elevenLabsAgentId);
 }
 
-// ── LiveKit / Happy Voice ───────────────────────────────────────────
+// ── Happy Voice ─────────────────────────────────────────────────────
 
-export function getLiveKitGatewayUrl(): string | undefined {
-    const stored = voiceConfigStorage.getString(KEYS.liveKitGatewayUrl);
+export function getHappyVoiceGatewayUrl(): string | undefined {
+    const stored = voiceConfigStorage.getString(KEYS.happyVoiceGatewayUrl);
     if (stored) return stored;
     return configRef?.voiceBaseUrl;
 }
 
-export function setLiveKitGatewayUrl(value: string | null): void {
+export function setHappyVoiceGatewayUrl(value: string | null): void {
     if (value && value.trim()) {
-        voiceConfigStorage.set(KEYS.liveKitGatewayUrl, value.trim());
+        voiceConfigStorage.set(KEYS.happyVoiceGatewayUrl, value.trim());
     } else {
-        voiceConfigStorage.delete(KEYS.liveKitGatewayUrl);
+        voiceConfigStorage.delete(KEYS.happyVoiceGatewayUrl);
     }
 }
 
-export function hasCustomLiveKitGatewayUrl(): boolean {
-    return voiceConfigStorage.contains(KEYS.liveKitGatewayUrl);
+export function hasCustomHappyVoiceGatewayUrl(): boolean {
+    return voiceConfigStorage.contains(KEYS.happyVoiceGatewayUrl);
 }
 
-export function getLiveKitPublicKey(): string | undefined {
-    const stored = voiceConfigStorage.getString(KEYS.liveKitPublicKey);
+export function getHappyVoicePublicKey(): string | undefined {
+    const stored = voiceConfigStorage.getString(KEYS.happyVoicePublicKey);
     if (stored) return stored;
     return configRef?.voicePublicKey;
 }
 
-export function setLiveKitPublicKey(value: string | null): void {
+export function setHappyVoicePublicKey(value: string | null): void {
     if (value && value.trim()) {
-        voiceConfigStorage.set(KEYS.liveKitPublicKey, value.trim());
+        voiceConfigStorage.set(KEYS.happyVoicePublicKey, value.trim());
     } else {
-        voiceConfigStorage.delete(KEYS.liveKitPublicKey);
+        voiceConfigStorage.delete(KEYS.happyVoicePublicKey);
     }
 }
 
-export function hasCustomLiveKitPublicKey(): boolean {
-    return voiceConfigStorage.contains(KEYS.liveKitPublicKey);
+export function hasCustomHappyVoicePublicKey(): boolean {
+    return voiceConfigStorage.contains(KEYS.happyVoicePublicKey);
 }
 
 // ── Utilities ───────────────────────────────────────────────────────
@@ -100,15 +102,15 @@ export function hasCustomLiveKitPublicKey(): boolean {
 export function isUsingCustomVoiceConfig(): boolean {
     return isUsingCustomVoiceProvider()
         || hasCustomElevenLabsAgentId()
-        || hasCustomLiveKitGatewayUrl()
-        || hasCustomLiveKitPublicKey();
+        || hasCustomHappyVoiceGatewayUrl()
+        || hasCustomHappyVoicePublicKey();
 }
 
 export function resetVoiceConfig(): void {
     voiceConfigStorage.delete(KEYS.provider);
     voiceConfigStorage.delete(KEYS.elevenLabsAgentId);
-    voiceConfigStorage.delete(KEYS.liveKitGatewayUrl);
-    voiceConfigStorage.delete(KEYS.liveKitPublicKey);
+    voiceConfigStorage.delete(KEYS.happyVoiceGatewayUrl);
+    voiceConfigStorage.delete(KEYS.happyVoicePublicKey);
     notifyProviderChange();
 }
 
@@ -157,7 +159,7 @@ export function initVoiceConfig(config: AppConfig): void {
 
     // Sync MMKV overrides into the config object
     const provider = voiceConfigStorage.getString(KEYS.provider);
-    if (provider === 'elevenlabs' || provider === 'livekit') {
+    if (provider === 'elevenlabs' || provider === 'happy-voice') {
         config.voiceProvider = provider;
     }
 
@@ -166,12 +168,12 @@ export function initVoiceConfig(config: AppConfig): void {
         config.elevenLabsAgentId = agentId;
     }
 
-    const gatewayUrl = voiceConfigStorage.getString(KEYS.liveKitGatewayUrl);
+    const gatewayUrl = voiceConfigStorage.getString(KEYS.happyVoiceGatewayUrl);
     if (gatewayUrl) {
         config.voiceBaseUrl = gatewayUrl;
     }
 
-    const publicKey = voiceConfigStorage.getString(KEYS.liveKitPublicKey);
+    const publicKey = voiceConfigStorage.getString(KEYS.happyVoicePublicKey);
     if (publicKey) {
         config.voicePublicKey = publicKey;
     }

@@ -1,9 +1,9 @@
-import { getLiveKitGatewayUrl, getLiveKitPublicKey } from './voiceConfig';
+import { getHappyVoiceGatewayUrl, getHappyVoicePublicKey } from './voiceConfig';
 import { getServerUrl } from './serverConfig';
 import { storage } from './storage';
-import type { LiveKitContextPayload } from '@/realtime/LiveKitContextSerializer';
+import type { HappyVoiceContextPayload } from '@/realtime/HappyVoiceContextSerializer';
 
-export interface LiveKitVoiceStartResponse {
+export interface HappyVoiceStartResponse {
     allowed: boolean;
     gatewaySessionId: string;
     roomName: string;
@@ -14,7 +14,7 @@ export interface LiveKitVoiceStartResponse {
 }
 
 function getVoiceGatewayUrl() {
-    const baseUrl = getLiveKitGatewayUrl();
+    const baseUrl = getHappyVoiceGatewayUrl();
     if (!baseUrl) {
         throw new Error('voiceBaseUrl is not configured');
     }
@@ -22,7 +22,7 @@ function getVoiceGatewayUrl() {
 }
 
 function getVoiceGatewayHeaders() {
-    const voicePublicKey = getLiveKitPublicKey();
+    const voicePublicKey = getHappyVoicePublicKey();
     if (!voicePublicKey) {
         throw new Error('voicePublicKey is not configured');
     }
@@ -33,11 +33,11 @@ function getVoiceGatewayHeaders() {
     };
 }
 
-export async function startLiveKitVoiceSession(
+export async function startHappyVoiceSession(
     sessionId: string,
-    initialContextPayload?: LiveKitContextPayload,
+    initialContextPayload?: HappyVoiceContextPayload,
     language?: string,
-): Promise<LiveKitVoiceStartResponse> {
+): Promise<HappyVoiceStartResponse> {
     const userId = storage.getState().profile.id;
     if (!userId) {
         throw new Error('profile.id is missing');
@@ -63,7 +63,7 @@ export async function startLiveKitVoiceSession(
     return await response.json();
 }
 
-export async function stopLiveKitVoiceSession(gatewaySessionId: string): Promise<void> {
+export async function stopHappyVoiceSession(gatewaySessionId: string): Promise<void> {
     const response = await fetch(`${getVoiceGatewayUrl()}/v1/voice/session/stop`, {
         method: 'POST',
         headers: getVoiceGatewayHeaders(),
@@ -76,7 +76,7 @@ export async function stopLiveKitVoiceSession(gatewaySessionId: string): Promise
     }
 }
 
-export async function sendLiveKitVoiceText(gatewaySessionId: string, message: string): Promise<void> {
+export async function sendHappyVoiceText(gatewaySessionId: string, message: string): Promise<void> {
     const response = await fetch(`${getVoiceGatewayUrl()}/v1/voice/session/text`, {
         method: 'POST',
         headers: getVoiceGatewayHeaders(),
@@ -89,9 +89,9 @@ export async function sendLiveKitVoiceText(gatewaySessionId: string, message: st
     }
 }
 
-export async function sendLiveKitVoiceContext(
+export async function sendHappyVoiceContext(
     gatewaySessionId: string,
-    payload: LiveKitContextPayload,
+    payload: HappyVoiceContextPayload,
 ): Promise<void> {
     const response = await fetch(`${getVoiceGatewayUrl()}/v1/voice/session/context`, {
         method: 'POST',

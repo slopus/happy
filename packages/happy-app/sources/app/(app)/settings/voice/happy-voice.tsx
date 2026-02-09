@@ -9,12 +9,12 @@ import { RoundButton } from '@/components/RoundButton';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import {
-    getLiveKitGatewayUrl,
-    setLiveKitGatewayUrl,
-    getLiveKitPublicKey,
-    setLiveKitPublicKey,
-    hasCustomLiveKitGatewayUrl,
-    hasCustomLiveKitPublicKey,
+    getHappyVoiceGatewayUrl,
+    setHappyVoiceGatewayUrl,
+    getHappyVoicePublicKey,
+    setHappyVoicePublicKey,
+    hasCustomHappyVoiceGatewayUrl,
+    hasCustomHappyVoicePublicKey,
     validateUrl,
 } from '@/sync/voiceConfig';
 import { StyleSheet } from 'react-native-unistyles';
@@ -67,14 +67,14 @@ const stylesheet = StyleSheet.create((theme) => ({
     spacer: { height: 16 },
 }));
 
-export default function LiveKitConfigScreen() {
+export default function HappyVoiceConfigScreen() {
     const router = useRouter();
     const styles = stylesheet;
-    const isCustomUrl = hasCustomLiveKitGatewayUrl();
-    const isCustomKey = hasCustomLiveKitPublicKey();
+    const isCustomUrl = hasCustomHappyVoiceGatewayUrl();
+    const isCustomKey = hasCustomHappyVoicePublicKey();
 
-    const [urlInput, setUrlInput] = useState(isCustomUrl ? (getLiveKitGatewayUrl() ?? '') : '');
-    const [keyInput, setKeyInput] = useState(isCustomKey ? (getLiveKitPublicKey() ?? '') : '');
+    const [urlInput, setUrlInput] = useState(isCustomUrl ? (getHappyVoiceGatewayUrl() ?? '') : '');
+    const [keyInput, setKeyInput] = useState(isCustomKey ? (getHappyVoicePublicKey() ?? '') : '');
     const [urlError, setUrlError] = useState<string | null>(null);
 
     const handleSave = () => {
@@ -87,14 +87,14 @@ export default function LiveKitConfigScreen() {
             }
         }
 
-        setLiveKitGatewayUrl(urlInput.trim() || null);
-        setLiveKitPublicKey(keyInput.trim() || null);
+        setHappyVoiceGatewayUrl(urlInput.trim() || null);
+        setHappyVoicePublicKey(keyInput.trim() || null);
         router.back();
     };
 
     const handleReset = () => {
-        setLiveKitGatewayUrl(null);
-        setLiveKitPublicKey(null);
+        setHappyVoiceGatewayUrl(null);
+        setHappyVoicePublicKey(null);
         setUrlInput('');
         setKeyInput('');
         setUrlError(null);

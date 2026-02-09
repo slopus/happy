@@ -27,7 +27,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
     }
 
     try {
-        if (getVoiceProvider() === 'livekit') {
+        if (getVoiceProvider() === 'happy-voice') {
             currentSessionId = sessionId;
             voiceSessionStarted = true;
             await voiceSession.startSession({

@@ -1,7 +1,7 @@
 # happy-voice
 
-Standalone LiveKit voice gateway for Happy.  
-This service keeps LiveKit + Agent complexity outside `happy-app`, so app integration can stay thin.
+Standalone Happy Voice gateway (built on LiveKit).
+This service keeps voice agent complexity outside `happy-app`, so app integration can stay thin.
 
 ## What This Service Provides
 
@@ -15,9 +15,9 @@ This service keeps LiveKit + Agent complexity outside `happy-app`, so app integr
 
 ## Tech Stack
 
-- LiveKit Agents (Node.js, official quickstart pattern)
+- LiveKit Agents SDK (Node.js, official quickstart pattern)
 - Fastify + Zod for the gateway API
-- LiveKit Server SDK for token issuance and agent dispatch
+- LiveKit Server SDK for token issuance and room management
 
 ## Local Setup
 

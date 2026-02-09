@@ -21,7 +21,7 @@ import { PromptedLLM } from '../runtime/promptedLlm';
 import { loadAndRenderPromptFile } from '../runtime/prompts';
 import { extractRecentAppContext, extractRecentTextUpdates, extractRecentVoiceMessages } from '../runtime/contextWindow';
 import { toolBridgeClient } from '../runtime/toolBridge';
-import type { LiveKitContextPayload } from '../types/voice';
+import type { HappyVoiceContextPayload } from '../types/voice';
 import {
     type BridgedVoiceToolName,
     bridgedVoiceToolDescriptions,
@@ -39,7 +39,7 @@ interface DispatchMetadata {
     gatewaySessionId: string;
     userId: string;
     appSessionId: string;
-    initialContextPayload?: LiveKitContextPayload;
+    initialContextPayload?: HappyVoiceContextPayload;
     language?: string;
     toolBridgeBaseUrl?: string;
 }
@@ -47,14 +47,14 @@ interface DispatchMetadata {
 interface GatewayRoomMessage {
     kind?: 'text' | 'context';
     message?: string;
-    payload?: LiveKitContextPayload;
+    payload?: HappyVoiceContextPayload;
 }
 
 interface LatestAssistantReplySnapshot {
     text: string;
 }
 
-const liveKitContextPayloadSchema = z.object({
+const happyVoiceContextPayloadSchema = z.object({
     version: z.literal(1),
     format: z.literal('happy-app-context-v1'),
     contentType: z.literal('text/plain'),
@@ -116,7 +116,7 @@ function resetVoiceConversationHistory(chatCtx: llm.ChatContext): void {
 }
 
 async function resetActiveAgentChatContext(session: voice.AgentSession): Promise<void> {
-    // LiveKit v1 recommends updating chat context through agent.updateChatCtx().
+    // LiveKit Agents v1 recommends updating chat context through agent.updateChatCtx().
     await session.currentAgent.updateChatCtx(llm.ChatContext.empty());
 }
 
@@ -524,7 +524,7 @@ const agent = defineAgent({
 
         logInfo('Connecting worker to room', {
             targetRoomName,
-            livekitUrl: env.LIVEKIT_URL,
+            voiceUrl: env.LIVEKIT_URL,
         });
         try {
             await withTimeout(ctx.connect(), 15000, 'ctx.connect');
@@ -534,7 +534,7 @@ const agent = defineAgent({
         } catch (error) {
             logError('Failed to connect worker to room', {
                 targetRoomName,
-                livekitUrl: env.LIVEKIT_URL,
+                voiceUrl: env.LIVEKIT_URL,
                 error: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined,
                 raw: error,
@@ -612,7 +612,7 @@ const agent = defineAgent({
         });
 
         if (metadata.initialContextPayload) {
-            const parsedInitialContext = liveKitContextPayloadSchema.safeParse(metadata.initialContextPayload);
+            const parsedInitialContext = happyVoiceContextPayloadSchema.safeParse(metadata.initialContextPayload);
             if (!parsedInitialContext.success) {
                 logWarn('Ignored invalid initial context payload', {
                     issues: parsedInitialContext.error.issues,
@@ -663,7 +663,7 @@ const agent = defineAgent({
                     const data = JSON.parse(text) as GatewayRoomMessage;
 
                     if (topic === 'happy.voice.context' || data.kind === 'context') {
-                        const parsedPayload = liveKitContextPayloadSchema.safeParse(data.payload);
+                        const parsedPayload = happyVoiceContextPayloadSchema.safeParse(data.payload);
                         if (!parsedPayload.success) {
                             logWarn('Dropped context update with invalid payload', {
                                 topic,
@@ -759,9 +759,9 @@ const agent = defineAgent({
 });
 
 export async function startWorker() {
-    logInfo('Starting LiveKit worker');
+    logInfo('Starting Happy Voice worker');
     const workerWsUrl = env.LIVEKIT_WS_URL || env.LIVEKIT_URL;
-    logInfo('LiveKit worker transport', {
+    logInfo('Happy Voice worker transport', {
         wsURL: workerWsUrl,
         agentName: env.LIVEKIT_AGENT_NAME,
         llmIoLoggingEnabled: isLlmIoLoggingEnabled(),

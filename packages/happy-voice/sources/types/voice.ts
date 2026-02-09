@@ -8,7 +8,7 @@ export interface VoiceSessionRecord {
     participantIdentity: string;
     dispatchId?: string;
     state: VoiceSessionState;
-    initialContextPayload?: LiveKitContextPayload;
+    initialContextPayload?: HappyVoiceContextPayload;
     language?: string;
     createdAt: string;
     updatedAt: string;
@@ -19,7 +19,7 @@ export interface VoiceSessionRecord {
 export interface VoiceStartRequest {
     userId: string;
     sessionId: string;
-    initialContextPayload?: LiveKitContextPayload;
+    initialContextPayload?: HappyVoiceContextPayload;
     language?: string;
     toolBridgeBaseUrl?: string;
 }
@@ -34,7 +34,7 @@ export interface VoiceStartResponse {
     expiresAt: string;
 }
 
-export interface LiveKitContextPayload {
+export interface HappyVoiceContextPayload {
     version: 1;
     format: 'happy-app-context-v1';
     contentType: 'text/plain';

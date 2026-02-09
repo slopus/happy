@@ -63,7 +63,7 @@ export function formatNewSingleMessage(sessionId: string, message: Message): str
     if (!formatted) {
         return null;
     }
-    if (config.voiceProvider !== 'elevenlabs') {
+    if (config.voiceProvider === 'happy-voice') {
         return formatted;
     }
     return 'New message in session: ' + sessionId + '\n\n' + formatted;
@@ -74,7 +74,7 @@ export function formatNewMessages(sessionId: string, messages: Message[]): strin
     if (formatted.length === 0) {
         return null;
     }
-    if (config.voiceProvider !== 'elevenlabs') {
+    if (config.voiceProvider === 'happy-voice') {
         return formatted.join('\n\n');
     }
     return 'New messages in session: ' + sessionId + '\n\n' + formatted.join('\n\n');
@@ -86,8 +86,8 @@ export function formatHistory(sessionId: string, messages: Message[]): string {
         ? messages.slice(0, VOICE_CONFIG.MAX_HISTORY_MESSAGES)
         : messages;
 
-    if (config.voiceProvider !== 'elevenlabs') {
-        // Stored message order is newest->oldest; non-ElevenLabs providers use oldest->newest.
+    if (config.voiceProvider === 'happy-voice') {
+        // Stored message order is newest->oldest; Happy Voice providers use oldest->newest.
         messagesToFormat = [...messagesToFormat].reverse();
     }
     let formatted = messagesToFormat.map(formatMessage).filter(Boolean);

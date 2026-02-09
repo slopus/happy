@@ -8,7 +8,7 @@ export interface AppConfig {
     revenueCatStripeKey?: string;
     elevenLabsAgentId?: string;
     serverUrl?: string;
-    voiceProvider?: 'elevenlabs' | 'livekit';
+    voiceProvider?: 'elevenlabs' | 'happy-voice';
     voiceBaseUrl?: string;
     voicePublicKey?: string;
 }
@@ -96,7 +96,7 @@ export function loadAppConfig(): AppConfig {
     }
     if (process.env.EXPO_PUBLIC_VOICE_PROVIDER && config.voiceProvider !== process.env.EXPO_PUBLIC_VOICE_PROVIDER) {
         console.log('[loadAppConfig] Override voiceProvider from EXPO_PUBLIC_VOICE_PROVIDER');
-        config.voiceProvider = process.env.EXPO_PUBLIC_VOICE_PROVIDER as 'elevenlabs' | 'livekit';
+        config.voiceProvider = process.env.EXPO_PUBLIC_VOICE_PROVIDER as 'elevenlabs' | 'happy-voice';
     }
     if (process.env.EXPO_PUBLIC_VOICE_BASE_URL && config.voiceBaseUrl !== process.env.EXPO_PUBLIC_VOICE_BASE_URL) {
         console.log('[loadAppConfig] Override voiceBaseUrl from EXPO_PUBLIC_VOICE_BASE_URL');

@@ -98,8 +98,8 @@ export const voiceHooks = {
         if (lastFocusSession === sessionId) return;
         lastFocusSession = sessionId;
         setCurrentRealtimeSessionId(sessionId);
-        if (config.voiceProvider !== 'elevenlabs') {
-            // Non-ElevenLabs providers should treat focus as a hard context switch.
+        if (config.voiceProvider === 'happy-voice') {
+            // Happy Voice providers should treat focus as a hard context switch.
             // Force re-sending a full snapshot so downstream can replace old session context.
             shownSessions.delete(sessionId);
             reportSession(sessionId);

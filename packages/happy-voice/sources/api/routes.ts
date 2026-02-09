@@ -15,7 +15,7 @@ import {
 } from '../runtime/livekit';
 import { sessionStore } from '../runtime/sessionStore';
 import type {
-    LiveKitContextPayload,
+    HappyVoiceContextPayload,
     VoiceSessionRecord,
     VoiceStartRequest,
     VoiceStartResponse,
@@ -316,7 +316,7 @@ export function registerRoutes(
                 gatewaySessionId,
                 appSessionId: record.appSessionId,
                 userId: record.userId,
-                payload: payload as LiveKitContextPayload,
+                payload: payload as HappyVoiceContextPayload,
                 createdAt: new Date().toISOString(),
             });
             logInfo('Context update forwarded to room', {

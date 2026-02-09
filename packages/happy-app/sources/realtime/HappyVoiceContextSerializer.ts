@@ -1,4 +1,4 @@
-export interface LiveKitContextPayload {
+export interface HappyVoiceContextPayload {
     version: 1;
     format: 'happy-app-context-v1';
     contentType: 'text/plain';
@@ -7,10 +7,10 @@ export interface LiveKitContextPayload {
 }
 
 /**
- * Provider-specific serializer for LiveKit gateway context updates.
+ * Provider-specific serializer for Happy Voice gateway context updates.
  * We intentionally send structured JSON instead of raw text.
  */
-export function serializeLiveKitContext(update: string): LiveKitContextPayload {
+export function serializeHappyVoiceContext(update: string): HappyVoiceContextPayload {
     return {
         version: 1,
         format: 'happy-app-context-v1',

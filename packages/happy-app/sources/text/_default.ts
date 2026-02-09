@@ -666,7 +666,7 @@ export const en = {
         agentId: 'Agent ID',
         agentIdPlaceholder: 'Enter ElevenLabs Agent ID',
 
-        // Happy Voice (LiveKit) configuration
+        // Happy Voice configuration
         happyVoiceTitle: 'Happy Voice',
         happyVoiceDescription: 'Configure your self-hosted Happy Voice gateway.',
         gatewayUrl: 'Gateway URL',
