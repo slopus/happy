@@ -7,3 +7,4 @@ expo-env.d.ts
 
 android/
 ios/
+build-*
