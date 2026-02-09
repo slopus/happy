@@ -1,4 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Platform } from 'react-native';
+import { reloadAppAsync } from 'expo';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
 import { syncCreate } from '@/sync/sync';
 import { clearPersistence } from '@/sync/persistence';
@@ -39,9 +41,12 @@ export function AuthProvider({ children, initialCredentials }: { children: React
         clearPersistence();
         await TokenStorage.removeCredentials();
 
-        // Update React state to ensure UI consistency
-        setCredentials(null);
-        setIsAuthenticated(false);
+        // Reload the entire JS bundle to reset all in-memory state (singletons, Zustand, socket, etc.)
+        if (Platform.OS === 'web') {
+            window.location.href = '/';
+        } else {
+            await reloadAppAsync('Logout');
+        }
     };
 
     return (
