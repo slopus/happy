@@ -457,7 +457,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                                 mode: completed.mode || undefined,
                                 allowedTools: completed.allowedTools || undefined,
                                 decision: completed.decision || undefined,
-                                reason: completed.reason || undefined
+                                reason: completed.reason || undefined,
+                                answers: completed.answers || undefined
                             };
                             hasChanged = true;
                         } else {
@@ -468,6 +469,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             message.tool.permission.decision = completed.decision || undefined;
                             if (completed.reason) {
                                 message.tool.permission.reason = completed.reason;
+                            }
+                            if (completed.answers) {
+                                message.tool.permission.answers = completed.answers;
                             }
                             hasChanged = true;
                         }

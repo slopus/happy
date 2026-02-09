@@ -4,7 +4,6 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ToolViewProps } from './_all';
 import { ToolSectionView } from '../ToolSectionView';
 import { sessionAllow } from '@/sync/ops';
-import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -224,8 +223,8 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
         // captured the values above. TODO: Revisit this logic.
         setIsSubmitted(true);
 
-        // Format answers as readable text
-        const responseLines: string[] = [];
+        // Build answers as Record<string, string> keyed by question header
+        const answers: Record<string, string> = {};
         questions.forEach((q, qIndex) => {
             const selected = selections.get(qIndex);
             if (selected && selected.size > 0) {
@@ -233,19 +232,15 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
                     .map(optIndex => q.options[optIndex]?.label)
                     .filter(Boolean)
                     .join(', ');
-                responseLines.push(`${q.header}: ${selectedLabels}`);
+                answers[q.header] = selectedLabels;
             }
         });
 
-        const responseText = responseLines.join('\n');
-
         try {
-            // 1. Approve the permission (like PermissionFooter.handleApprove does)
+            // Approve the permission with answers embedded — no separate sendMessage needed
             if (tool.permission?.id) {
-                await sessionAllow(sessionId, tool.permission.id);
+                await sessionAllow(sessionId, tool.permission.id, undefined, undefined, undefined, answers);
             }
-            // 2. Send the answer as a message
-            await sync.sendMessage(sessionId, responseText);
         } catch (error) {
             console.error('Failed to submit answer:', error);
         } finally {
@@ -255,17 +250,21 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
 
     // Show submitted state
     if (isSubmitted || tool.state === 'completed') {
+        // Persisted answers from permission (survives re-mount)
+        const persistedAnswers = tool.permission?.answers;
+
         return (
             <ToolSectionView>
                 <View style={styles.submittedContainer}>
                     {questions.map((q, qIndex) => {
+                        // Prefer local state, fall back to persisted answers
                         const selected = selections.get(qIndex);
-                        const selectedLabels = selected
+                        const selectedLabels = selected && selected.size > 0
                             ? Array.from(selected)
                                 .map(optIndex => q.options[optIndex]?.label)
                                 .filter(Boolean)
                                 .join(', ')
-                            : '-';
+                            : persistedAnswers?.[q.header] || '-';
                         return (
                             <View key={qIndex} style={styles.submittedItem}>
                                 <Text style={styles.submittedHeader}>{q.header}:</Text>
