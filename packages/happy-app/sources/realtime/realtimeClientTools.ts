@@ -4,7 +4,7 @@ import { sessionAllow, sessionDeny, sessionDelete, machineSpawnNewSession } from
 import { storage } from '@/sync/storage';
 import { trackPermissionResponse } from '@/track';
 import { getCurrentRealtimeSessionId, setCurrentRealtimeSessionId, stopRealtimeSession } from './RealtimeSession';
-import { getSessionName, getSessionSubtitle, isSessionOnline } from '@/utils/sessionUtils';
+import { getSessionName, getSessionSubtitle, isSessionOnline, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import {
     changeSessionSettingsParametersSchema,
     deleteSessionParametersSchema,
@@ -135,21 +135,69 @@ export const realtimeClientTools = {
         if (action === 'list') {
             const allSessions = Object.values(storage.getState().sessions);
             const sessions = includeOffline ? allSessions : allSessions.filter(s => isSessionOnline(s));
-            const sorted = sessions.sort((a, b) => b.updatedAt - a.updatedAt);
 
-            if (sorted.length === 0) {
+            if (sessions.length === 0) {
                 return includeOffline ? "No sessions found." : "No online sessions found. Try again with includeOffline: true to see all sessions.";
             }
 
-            const list = sorted.map((s, i) => {
-                const name = getSessionName(s);
-                const path = getSessionSubtitle(s);
-                const active = s.id === getCurrentRealtimeSessionId() ? ' (current)' : '';
-                return `${i + 1}. "${name}" - ${path}${active} (id: ${s.id})`;
-            }).join('\n');
+            // Group sessions by project path, then by machine — matching home screen order
+            const projectGroups = new Map<string, {
+                displayPath: string;
+                machines: Map<string, { machineName: string; sessions: typeof sessions }>;
+            }>();
+
+            const machines = storage.getState().machines;
+
+            sessions.forEach(s => {
+                const projectPath = s.metadata?.path || '';
+                const machineId = s.metadata?.machineId || 'unknown';
+                const machine = machineId !== 'unknown' ? machines[machineId] : null;
+                const machineName = machine?.metadata?.displayName ||
+                    machine?.metadata?.host ||
+                    (machineId !== 'unknown' ? machineId : '<unknown>');
+
+                let projectGroup = projectGroups.get(projectPath);
+                if (!projectGroup) {
+                    const displayPath = formatPathRelativeToHome(projectPath, s.metadata?.homeDir);
+                    projectGroup = { displayPath, machines: new Map() };
+                    projectGroups.set(projectPath, projectGroup);
+                }
+
+                let machineGroup = projectGroup.machines.get(machineId);
+                if (!machineGroup) {
+                    machineGroup = { machineName, sessions: [] };
+                    projectGroup.machines.set(machineId, machineGroup);
+                }
+
+                machineGroup.sessions.push(s);
+            });
+
+            // Sort: projects by displayPath, machines by name, sessions by createdAt desc
+            const sortedProjects = Array.from(projectGroups.entries())
+                .sort(([, a], [, b]) => a.displayPath.localeCompare(b.displayPath));
+
+            const lines: string[] = [];
+            let index = 1;
+
+            for (const [, projectGroup] of sortedProjects) {
+                const sortedMachines = Array.from(projectGroup.machines.entries())
+                    .sort(([, a], [, b]) => a.machineName.localeCompare(b.machineName));
+
+                for (const [, machineGroup] of sortedMachines) {
+                    machineGroup.sessions.sort((a, b) => b.createdAt - a.createdAt);
+
+                    lines.push(`[${projectGroup.displayPath}] (${machineGroup.machineName})`);
+                    for (const s of machineGroup.sessions) {
+                        const name = getSessionName(s);
+                        const active = s.id === getCurrentRealtimeSessionId() ? ' (current)' : '';
+                        lines.push(`  ${index}. "${name}"${active} (id: ${s.id})`);
+                        index++;
+                    }
+                }
+            }
 
             const label = includeOffline ? '' : ' online';
-            return `Found ${sorted.length}${label} sessions:\n${list}`;
+            return `Found ${sessions.length}${label} sessions:\n${lines.join('\n')}`;
         }
 
         if (action === 'switch') {
