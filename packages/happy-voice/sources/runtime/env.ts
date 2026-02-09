@@ -28,6 +28,10 @@ const envSchema = z.object({
     AGENT_READY_SUMMARY_INPUT_MAX_CHARS: z.coerce.number().int().positive().default(2200),
     AGENT_MIN_ENDPOINTING_DELAY_MS: z.coerce.number().int().positive().default(1600),
     AGENT_MAX_ENDPOINTING_DELAY_MS: z.coerce.number().int().positive().default(7000),
+    AGENT_VAD_ACTIVATION_THRESHOLD: z.coerce.number().min(0).max(1).default(0.5),
+    AGENT_VAD_MIN_SPEECH_DURATION_MS: z.coerce.number().int().nonnegative().default(50),
+    AGENT_VAD_MIN_SILENCE_DURATION_MS: z.coerce.number().int().nonnegative().default(550),
+    AGENT_VAD_PREFIX_PADDING_DURATION_MS: z.coerce.number().int().nonnegative().default(500),
     AGENT_LOG_LLM_IO: z.string().default('true'),
 
     // Prompt templates (support docker volume overrides)

@@ -127,6 +127,11 @@ docker run --rm \
 - 语句分割灵敏度可配置：
   - `AGENT_MIN_ENDPOINTING_DELAY_MS`：结束用户语句前的最小静默时间（增大此值可减少短暂停顿被误判为语句结束）。
   - `AGENT_MAX_ENDPOINTING_DELAY_MS`：端点延迟上限。
+- VAD（语音活动检测）灵敏度可配置（Silero VAD）：
+  - `AGENT_VAD_ACTIVATION_THRESHOLD`：语音检测概率阈值，0.0-1.0，默认 `0.5`。调高可减少误触发（如背景噪声被识别为语音），调低可捕捉更轻柔的语音。
+  - `AGENT_VAD_MIN_SPEECH_DURATION_MS`：最小语音时长（毫秒），低于此时长的音频不会触发语音事件，默认 `50`。
+  - `AGENT_VAD_MIN_SILENCE_DURATION_MS`：语音段结束前需要的最小静默时长（毫秒），默认 `550`。
+  - `AGENT_VAD_PREFIX_PADDING_DURATION_MS`：语音段前添加的填充时长（毫秒），默认 `500`。增大可避免语音开头被截断。
 - LLM I/O 调试：
   - `AGENT_LOG_LLM_IO=true`（默认）在 Worker 日志中打印完整的 LLM 请求/响应。
   - 设置 `AGENT_LOG_LLM_IO=false` 禁用。

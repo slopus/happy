@@ -520,7 +520,12 @@ class HappyVoiceAgent extends voice.Agent {
 
 const agent = defineAgent({
     prewarm: async (proc: JobProcess) => {
-        proc.userData.vad = await silero.VAD.load();
+        proc.userData.vad = await silero.VAD.load({
+            activationThreshold: env.AGENT_VAD_ACTIVATION_THRESHOLD,
+            minSpeechDuration: env.AGENT_VAD_MIN_SPEECH_DURATION_MS,
+            minSilenceDuration: env.AGENT_VAD_MIN_SILENCE_DURATION_MS,
+            prefixPaddingDuration: env.AGENT_VAD_PREFIX_PADDING_DURATION_MS,
+        });
     },
     entry: async (ctx: JobContext) => {
         const metadata = parseMetadata(ctx);
