@@ -191,9 +191,7 @@ function SessionInfoContent({ session }: { session: Session }) {
             }
             if (result.type === 'success') {
                 await sync.refreshSessions();
-                router.push(`/session/${result.sessionId}`, {
-                    dangerouslySingular() { return 'session'; },
-                });
+                router.push(`/session/${result.sessionId}`);
             }
         } catch (error) {
             console.error('Failed to fork session', error);
