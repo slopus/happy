@@ -237,11 +237,19 @@ class Sync {
     }
 
     private clearTaskCompleted = async (sessionId: string, session: Session) => {
+        const updatedState = { ...session.agentState, taskCompleted: null };
+
+        // Update local state first so the blue dot disappears immediately
+        this.applySessions([{
+            ...session,
+            agentState: updatedState,
+        }]);
+
+        // Then sync to server
         try {
             const sessionEncryption = this.encryption.getSessionEncryption(sessionId);
             if (!sessionEncryption) return;
 
-            const updatedState = { ...session.agentState, taskCompleted: null };
             const encrypted = await sessionEncryption.encryptAgentState(updatedState);
 
             const result = await apiSocket.emitWithAck<{
@@ -255,16 +263,15 @@ class Sync {
             });
 
             if (result.result === 'success') {
-                // Update local state immediately
-                this.applySessions([{
-                    ...session,
-                    agentState: updatedState,
-                    agentStateVersion: result.version!
-                }]);
+                // Sync version number so future update-state calls use correct expectedVersion
+                const freshSession = storage.getState().sessions[sessionId];
+                if (freshSession) {
+                    this.applySessions([{ ...freshSession, agentStateVersion: result.version! }]);
+                }
             }
             // version-mismatch: the server update-session event will arrive and overwrite local state
         } catch (e) {
-            console.error('Failed to clear taskCompleted:', e);
+            console.error('Failed to clear taskCompleted on server:', e);
         }
     }
 
