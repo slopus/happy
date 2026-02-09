@@ -2444,6 +2444,14 @@
   dependencies:
     ws "^8.16.0"
 
+"@livekit/agents-plugin-elevenlabs@1.0.43":
+  version "1.0.43"
+  resolved "https://registry.yarnpkg.com/@livekit/agents-plugin-elevenlabs/-/agents-plugin-elevenlabs-1.0.43.tgz#96534b0996e50717b9ed100786e5dce26a948cf3"
+  integrity sha512-u/RqaTdM4QBT6hHnISYwc7tkpFGfJdIUPTzBlZjdU4vgaKIiLz9JzFZGKfgf5iarmJr1YA6zjn3blIbr6sG35Q==
+  dependencies:
+    "@livekit/mutex" "^1.1.1"
+    ws "^8.16.0"
+
 "@livekit/agents-plugin-livekit@^1.0.42":
   version "1.0.42"
   resolved "https://registry.yarnpkg.com/@livekit/agents-plugin-livekit/-/agents-plugin-livekit-1.0.42.tgz#3412b2bebb78865fe885e7b10b99fce5933fb1c1"

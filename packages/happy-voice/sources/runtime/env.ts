@@ -18,7 +18,7 @@ const envSchema = z.object({
     LIVEKIT_ROOM_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
     LIVEKIT_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(600),
 
-    AGENT_STT: z.string().default('assemblyai/universal-streaming:en'),
+    AGENT_STT: z.string().default('openai/gpt-4o-mini-transcribe:zh'),
     AGENT_LLM: z.string().default('openai/gpt-4.1-mini'),
     AGENT_TTS: z.string().default('cartesia/sonic-3:9626c31c-bec5-4cca-baa8-f8ba9e84c8bc'),
     AGENT_WELCOME_MESSAGE: z.string().default('Say hello and ask what the user wants to build.'),

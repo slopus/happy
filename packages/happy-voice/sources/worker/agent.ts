@@ -9,6 +9,7 @@ import {
     voice,
 } from '@livekit/agents';
 import * as cartesiaTts from '@livekit/agents-plugin-cartesia';
+import * as elevenlabsTts from '@livekit/agents-plugin-elevenlabs';
 import * as openaiPlugin from '@livekit/agents-plugin-openai';
 import * as silero from '@livekit/agents-plugin-silero';
 import { BackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
@@ -163,6 +164,25 @@ function parseTTSModelString(modelString: string): { model: string; voice?: stri
     return { model: name };
 }
 
+/** Parse STT model string: "openai/gpt-4o-mini-transcribe:zh" → { model, language } */
+function parseSTTModelString(modelString: string): { model: string; language?: string } {
+    const name = stripProviderPrefix(modelString);
+    const idx = name.indexOf(':');
+    if (idx !== -1) {
+        return { model: name.slice(0, idx), language: name.slice(idx + 1) };
+    }
+    return { model: name };
+}
+
+/** Create an STT instance: "openai/..." uses direct OpenAI plugin, otherwise LiveKit Inference string. */
+function createStt(modelString: string): openaiPlugin.STT | string {
+    if (modelString.startsWith('openai/')) {
+        const { model, language } = parseSTTModelString(modelString);
+        return new openaiPlugin.STT({ model, language: language || 'zh' });
+    }
+    return modelString;
+}
+
 /** Returns true for OpenAI reasoning models that need reasoning_effort to produce output. */
 function isReasoningModel(model: string): boolean {
     return /^gpt-5/.test(model) || /^o[1-9]/.test(model);
@@ -196,7 +216,8 @@ class ReasoningLLM extends llm.LLM {
     }
 }
 
-function createDirectLlm(modelString: string): llm.LLM {
+/** Create an LLM instance: "openai/..." uses direct OpenAI plugin; other prefixes also use OpenAI plugin (model passed as-is). */
+function createLlm(modelString: string): llm.LLM {
     const model = stripProviderPrefix(modelString);
     const base = new openaiPlugin.LLM({ model });
     if (isReasoningModel(model)) {
@@ -205,10 +226,23 @@ function createDirectLlm(modelString: string): llm.LLM {
     return base;
 }
 
-function createDirectTts(modelString: string): cartesiaTts.TTS {
-    const { model, voice } = parseTTSModelString(modelString);
-    return new cartesiaTts.TTS({ model, voice, language: 'zh' });
+/** Create a TTS instance: "cartesia/...", "openai/...", "elevenlabs/..." uses direct plugin, otherwise LiveKit Inference string. */
+function createTts(modelString: string): cartesiaTts.TTS | openaiPlugin.TTS | elevenlabsTts.TTS | string {
+    if (modelString.startsWith('cartesia/')) {
+        const { model, voice } = parseTTSModelString(modelString);
+        return new cartesiaTts.TTS({ model, voice, language: 'zh' });
+    }
+    if (modelString.startsWith('openai/')) {
+        const { model, voice } = parseTTSModelString(modelString);
+        return new openaiPlugin.TTS({ model, voice: (voice || 'alloy') as any });
+    }
+    if (modelString.startsWith('elevenlabs/')) {
+        const { model, voice } = parseTTSModelString(modelString);
+        return new elevenlabsTts.TTS({ model, voiceId: voice });
+    }
+    return modelString;
 }
+
 
 function getMainSessionLlm(): llm.LLM {
     const model = env.AGENT_LLM;
@@ -218,7 +252,7 @@ function getMainSessionLlm(): llm.LLM {
         || cachedMainSessionBaseModel !== model
         || cachedMainSessionBaseLogEnabled !== llmIoLoggingEnabled
     ) {
-        const baseLlm = createDirectLlm(model);
+        const baseLlm = createLlm(model);
         cachedMainSessionBaseLlm = llmIoLoggingEnabled
             ? withLLMLogging(baseLlm, 'voice-main')
             : baseLlm;
@@ -240,7 +274,7 @@ function getReadySummaryLlm(): llm.LLM {
         || cachedReadySummaryModel !== model
         || cachedReadySummaryLogEnabled !== llmIoLoggingEnabled
     ) {
-        const baseLlm = createDirectLlm(model);
+        const baseLlm = createLlm(model);
         cachedReadySummaryLlm = llmIoLoggingEnabled
             ? withLLMLogging(baseLlm, 'ready-summary')
             : baseLlm;
@@ -558,10 +592,11 @@ const agent = defineAgent({
                 }),
         });
 
-        const ttsInstance = createDirectTts(env.AGENT_TTS);
+        const ttsInstance = createTts(env.AGENT_TTS);
+        const sttInstance = createStt(env.AGENT_STT);
         const session = new voice.AgentSession({
             vad: vad as any,
-            stt: env.AGENT_STT,
+            stt: sttInstance,
             llm: mainSessionLlm,
             tts: ttsInstance,
             turnDetection: 'vad',

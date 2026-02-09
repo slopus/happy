@@ -17,6 +17,7 @@
         "@fastify/cors": "^10.0.1",
         "@livekit/agents": "^1.0.42",
         "@livekit/agents-plugin-cartesia": "1.0.42",
+        "@livekit/agents-plugin-elevenlabs": "1.0.43",
         "@livekit/agents-plugin-livekit": "^1.0.42",
         "@livekit/agents-plugin-openai": "1.0.42",
         "@livekit/agents-plugin-silero": "^1.0.42",
