@@ -470,7 +470,11 @@ export const pt: TranslationStructure = {
         deleteSessionWarning: 'Esta ação não pode ser desfeita. Todas as mensagens e dados associados a esta sessão serão excluídos permanentemente.',
         failedToDeleteSession: 'Falha ao excluir sessão',
         sessionDeleted: 'Sessão excluída com sucesso',
-        
+        renameSession: 'Renomear Sessão',
+        renameSessionHint: 'A IA pode atualizar automaticamente o título quando o tema da conversa mudar.',
+        renameSessionSuccess: 'Sessão renomeada com sucesso',
+        failedToRenameSession: 'Falha ao renomear sessão',
+
     },
 
     components: {

@@ -471,6 +471,10 @@ export const zhHant: TranslationStructure = {
         deleteSessionWarning: '此操作無法復原。與此工作階段相關的所有訊息和資料將被永久刪除。',
         failedToDeleteSession: '刪除工作階段失敗',
         sessionDeleted: '工作階段刪除成功',
+        renameSession: '重新命名工作階段',
+        renameSessionHint: '當聊天話題發生變化時，AI 可能會自動更新工作階段名稱。',
+        renameSessionSuccess: '工作階段重新命名成功',
+        failedToRenameSession: '重新命名工作階段失敗',
 
     },
 

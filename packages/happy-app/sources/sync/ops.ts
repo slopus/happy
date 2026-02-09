@@ -5,7 +5,7 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
-import type { MachineMetadata } from './storageTypes';
+import type { MachineMetadata, Metadata } from './storageTypes';
 
 // Strict type definitions for all operations
 
@@ -400,6 +400,66 @@ export async function machineUpdateMetadata(
     }
 
     throw new Error('Unexpected error in machineUpdateMetadata');
+}
+
+/**
+ * Update session summary (title) by updating session metadata
+ */
+export async function sessionUpdateSummary(
+    sessionId: string,
+    currentMetadata: Metadata,
+    newSummaryText: string,
+    expectedVersion: number,
+    maxRetries: number = 3
+): Promise<{ version: number }> {
+    let currentVersion = expectedVersion;
+
+    const sessionEncryption = sync.encryption.getSessionEncryption(sessionId);
+    if (!sessionEncryption) {
+        throw new Error(`Session encryption not found for ${sessionId}`);
+    }
+
+    let metadataToSend: Metadata = {
+        ...currentMetadata,
+        summary: {
+            text: newSummaryText,
+            updatedAt: Date.now()
+        }
+    };
+
+    for (let retryCount = 0; retryCount < maxRetries; retryCount++) {
+        const encryptedMetadata = await sessionEncryption.encryptRaw(metadataToSend);
+
+        const result = await apiSocket.emitWithAck<{
+            result: 'success' | 'version-mismatch' | 'error';
+            version?: number;
+            metadata?: string;
+            message?: string;
+        }>('update-metadata', {
+            sid: sessionId,
+            metadata: encryptedMetadata,
+            expectedVersion: currentVersion
+        });
+
+        if (result.result === 'success') {
+            return { version: result.version! };
+        } else if (result.result === 'version-mismatch') {
+            currentVersion = result.version!;
+            // Decrypt latest metadata and re-apply our summary change
+            const latestMetadata = await sessionEncryption.decryptRaw(result.metadata!) as Metadata;
+            metadataToSend = {
+                ...latestMetadata,
+                summary: {
+                    text: newSummaryText,
+                    updatedAt: Date.now()
+                }
+            };
+        } else {
+            throw new Error(result.message || 'Failed to update session metadata');
+        }
+    }
+
+    throw new Error(`Failed to update after ${maxRetries} retries due to version conflicts`);
 }
 
 /**

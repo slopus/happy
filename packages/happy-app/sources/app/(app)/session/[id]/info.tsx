@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Text, Animated } from 'react-native';
+import { View, Text, Animated, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -11,7 +11,7 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete, machineForkClaudeSession, machineSpawnNewSession } from '@/sync/ops';
+import { sessionKill, sessionDelete, machineForkClaudeSession, machineSpawnNewSession, sessionUpdateSummary } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -207,6 +207,39 @@ function SessionInfoContent({ session }: { session: Session }) {
         return new Date(timestamp).toLocaleString();
     }, []);
 
+    const handleRenameSession = useCallback(async () => {
+        if (!session.metadata) return;
+
+        const newName = await Modal.prompt(
+            t('sessionInfo.renameSession'),
+            t('sessionInfo.renameSessionHint'),
+            {
+                defaultValue: session.metadata.summary?.text || '',
+                placeholder: getSessionName(session),
+                cancelText: t('common.cancel'),
+                confirmText: t('common.rename')
+            }
+        );
+
+        if (newName !== null) {
+            const trimmed = newName.trim();
+            if (!trimmed) return;
+            try {
+                await sessionUpdateSummary(
+                    session.id,
+                    session.metadata,
+                    trimmed,
+                    session.metadataVersion
+                );
+            } catch (error) {
+                Modal.alert(
+                    t('common.error'),
+                    error instanceof Error ? error.message : t('sessionInfo.failedToRenameSession')
+                );
+            }
+        }
+    }, [session]);
+
     const handleCopyUpdateCommand = useCallback(async () => {
         const updateCommand = 'npm install -g happy-code-cli@latest';
         try {
@@ -224,16 +257,17 @@ function SessionInfoContent({ session }: { session: Session }) {
                 <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
                     <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: theme.colors.surface, marginBottom: 8, borderRadius: 12, marginHorizontal: 16, marginTop: 16 }}>
                         <Avatar id={getSessionAvatarId(session)} size={80} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
-                        <Text style={{
-                            fontSize: 20,
-                            fontWeight: '600',
-                            marginTop: 12,
-                            textAlign: 'center',
-                            color: theme.colors.text,
-                            ...Typography.default('semiBold')
-                        }}>
-                            {sessionName}
-                        </Text>
+                        <Pressable onPress={handleRenameSession} style={{ marginTop: 12, paddingHorizontal: 16 }}>
+                            <Text style={{
+                                fontSize: 20,
+                                fontWeight: '600',
+                                textAlign: 'center',
+                                color: theme.colors.text,
+                                ...Typography.default('semiBold')
+                            }}>
+                                {sessionName}
+                            </Text>
+                        </Pressable>
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                             <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} size={10} />
                             <Text style={{

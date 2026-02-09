@@ -472,7 +472,11 @@ export const zhHans: TranslationStructure = {
         deleteSessionWarning: '此操作无法撤销。与此会话相关的所有消息和数据将被永久删除。',
         failedToDeleteSession: '删除会话失败',
         sessionDeleted: '会话删除成功',
-        
+        renameSession: '重命名会话',
+        renameSessionHint: '当聊天话题发生变化时，AI 可能会自动更新会话名称。',
+        renameSessionSuccess: '会话重命名成功',
+        failedToRenameSession: '重命名会话失败',
+
     },
 
     components: {
