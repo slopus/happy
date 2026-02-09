@@ -32,6 +32,9 @@ export default function FilesScreen() {
     const gitStatus = projectGitStatus || sessionGitStatus;
     const { theme } = useUnistyles();
     
+    // Track whether initial data has been fully loaded (git status + file list if clean)
+    const initialLoadDone = React.useRef(false);
+
     // Load git status files
     const loadGitStatusFiles = React.useCallback(async (silent: boolean = false) => {
         try {
@@ -41,19 +44,26 @@ export default function FilesScreen() {
             }
             const result = await getGitStatusFiles(sessionId);
             setGitStatusFiles(result);
+            // For repos with changes, initial load is done after git status
+            if (result && (result.totalStaged > 0 || result.totalUnstaged > 0)) {
+                initialLoadDone.current = true;
+                setIsLoading(false);
+            }
+            // For clean repos, keep isLoading=true until file list loads (handled in search effect)
         } catch (error) {
             console.error('Failed to load git status files:', error);
             // Only clear data on initial load failure
             if (!gitStatusFiles) {
                 setGitStatusFiles(null);
             }
-        } finally {
+            initialLoadDone.current = true;
             setIsLoading(false);
         }
     }, [sessionId, gitStatusFiles]);
 
     // Load on mount
     React.useEffect(() => {
+        initialLoadDone.current = false;
         loadGitStatusFiles(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId]);
@@ -72,9 +82,11 @@ export default function FilesScreen() {
     React.useEffect(() => {
         const loadFiles = async () => {
             if (!sessionId) return;
-            
+
             try {
-                setIsSearching(true);
+                if (initialLoadDone.current) {
+                    setIsSearching(true);
+                }
                 const results = await searchFiles(sessionId, searchQuery, { limit: 100 });
                 setSearchResults(results);
             } catch (error) {
@@ -82,20 +94,24 @@ export default function FilesScreen() {
                 setSearchResults([]);
             } finally {
                 setIsSearching(false);
+                if (!initialLoadDone.current) {
+                    initialLoadDone.current = true;
+                    setIsLoading(false);
+                }
             }
         };
 
         // Load files when searching or when repo is clean
-        const shouldShowAllFiles = searchQuery || 
-            (gitStatusFiles?.totalStaged === 0 && gitStatusFiles?.totalUnstaged === 0);
-        
-        if (shouldShowAllFiles && !isLoading) {
+        const isCleanRepo = gitStatusFiles?.totalStaged === 0 && gitStatusFiles?.totalUnstaged === 0;
+        const shouldShowAllFiles = searchQuery || isCleanRepo;
+
+        if (shouldShowAllFiles && gitStatusFiles) {
             loadFiles();
         } else if (!searchQuery) {
             setSearchResults([]);
             setIsSearching(false);
         }
-    }, [searchQuery, gitStatusFiles, sessionId, isLoading]);
+    }, [searchQuery, gitStatusFiles, sessionId]);
 
     const handleFilePress = React.useCallback((file: GitFileStatus | FileItem) => {
         // Navigate to file viewer with the file path (base64 encoded for special characters)
@@ -271,10 +287,11 @@ export default function FilesScreen() {
                     </View>
                 ) : searchQuery || (gitStatusFiles.totalStaged === 0 && gitStatusFiles.totalUnstaged === 0) ? (
                     // Show search results or all files when clean repo
-                    isSearching ? (
-                        <View style={{ 
-                            flex: 1, 
-                            justifyContent: 'center', 
+                    // Only show searching indicator on first load (no existing results)
+                    isSearching && searchResults.length === 0 ? (
+                        <View style={{
+                            flex: 1,
+                            justifyContent: 'center',
                             alignItems: 'center',
                             paddingTop: 40
                         }}>
@@ -289,7 +306,7 @@ export default function FilesScreen() {
                                 {t('files.searching')}
                             </Text>
                         </View>
-                    ) : searchResults.length === 0 ? (
+                    ) : !isSearching && searchResults.length === 0 ? (
                         <View style={{ 
                             flex: 1, 
                             justifyContent: 'center', 
