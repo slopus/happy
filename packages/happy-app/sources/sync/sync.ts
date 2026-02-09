@@ -205,7 +205,7 @@ class Sync {
     }
 
 
-    onSessionVisible = (sessionId: string) => {
+    onSessionVisible = (sessionId: string, userInitiated: boolean = false) => {
         let ex = this.messagesSync.get(sessionId);
         if (!ex) {
             ex = new InvalidateSync(() => this.fetchMessages(sessionId));
@@ -220,6 +220,43 @@ class Sync {
         const session = storage.getState().sessions[sessionId];
         if (session) {
             voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
+
+            // Clear task completed indicator when user opens the session
+            if (userInitiated && session.agentState?.taskCompleted) {
+                this.clearTaskCompleted(sessionId, session);
+            }
+        }
+    }
+
+    private clearTaskCompleted = async (sessionId: string, session: Session) => {
+        try {
+            const sessionEncryption = this.encryption.getSessionEncryption(sessionId);
+            if (!sessionEncryption) return;
+
+            const updatedState = { ...session.agentState, taskCompleted: null };
+            const encrypted = await sessionEncryption.encryptAgentState(updatedState);
+
+            const result = await apiSocket.emitWithAck<{
+                result: 'success' | 'version-mismatch' | 'error';
+                version?: number;
+                agentState?: string;
+            }>('update-state', {
+                sid: sessionId,
+                agentState: encrypted,
+                expectedVersion: session.agentStateVersion
+            });
+
+            if (result.result === 'success') {
+                // Update local state immediately
+                this.applySessions([{
+                    ...session,
+                    agentState: updatedState,
+                    agentStateVersion: result.version!
+                }]);
+            }
+            // version-mismatch: the server update-session event will arrive and overwrite local state
+        } catch (e) {
+            console.error('Failed to clear taskCompleted:', e);
         }
     }
 

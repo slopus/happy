@@ -221,6 +221,11 @@ export async function runCodex(opts: {
         } catch (pushError) {
             logger.debug('[Codex] Failed to send ready push', pushError);
         }
+        // Mark task as completed in agent state for unread indicator
+        session.updateAgentState((state) => ({
+            ...state,
+            taskCompleted: Date.now()
+        }));
     };
 
     // Debug helper: log active handles/requests if DEBUG is enabled

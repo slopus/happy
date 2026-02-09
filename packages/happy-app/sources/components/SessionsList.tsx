@@ -192,6 +192,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         textAlign: 'center',
         ...Typography.default('semiBold'),
     },
+    unreadDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#007AFF',
+        marginRight: 6,
+    },
 }));
 
 export function SessionsList() {
@@ -401,6 +408,9 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             <View style={styles.sessionContent}>
                 {/* Title line */}
                 <View style={styles.sessionTitleRow}>
+                    {sessionStatus.hasUnreadCompletion && (
+                        <View style={styles.unreadDot} />
+                    )}
                     <Text style={[
                         styles.sessionTitle,
                         sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected

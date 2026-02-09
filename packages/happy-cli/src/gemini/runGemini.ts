@@ -315,6 +315,11 @@ export async function runGemini(opts: {
     } catch (pushError) {
       logger.debug('[Gemini] Failed to send ready push', pushError);
     }
+    // Mark task as completed in agent state for unread indicator
+    session.updateAgentState((state) => ({
+      ...state,
+      taskCompleted: Date.now()
+    }));
   };
 
   /**

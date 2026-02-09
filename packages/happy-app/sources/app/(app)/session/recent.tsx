@@ -128,6 +128,13 @@ const styles = StyleSheet.create((theme) => ({
         lineHeight: 16,
         ...Typography.default(),
     },
+    unreadDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#007AFF',
+        marginRight: 6,
+    },
 }));
 
 function formatDateHeader(date: Date): string {
@@ -386,9 +393,14 @@ const SessionHistoryItemCard = React.memo(({ session, isFirst, isLast, isSingle,
         >
             <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
             <View style={styles.sessionContent}>
-                <Text style={styles.sessionTitle} numberOfLines={1}>
-                    {sessionName}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {sessionStatus.hasUnreadCompletion && (
+                        <View style={styles.unreadDot} />
+                    )}
+                    <Text style={[styles.sessionTitle, { flex: 1 }]} numberOfLines={1}>
+                        {sessionName}
+                    </Text>
+                </View>
                 <Text style={styles.sessionSubtitle} numberOfLines={1}>
                     {sessionSubtitle}
                 </Text>

@@ -28,6 +28,7 @@ export type Metadata = z.infer<typeof MetadataSchema>;
 
 export const AgentStateSchema = z.object({
     controlledByUser: z.boolean().nullish(),
+    taskCompleted: z.number().nullish(),
     requests: z.record(z.string(), z.object({
         tool: z.string(),
         arguments: z.any(),

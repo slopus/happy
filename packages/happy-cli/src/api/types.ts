@@ -357,6 +357,7 @@ export type Metadata = {
 
 export type AgentState = {
   controlledByUser?: boolean | null | undefined
+  taskCompleted?: number | null | undefined
   requests?: {
     [id: string]: {
       tool: string,

@@ -147,6 +147,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         textAlign: 'center',
         ...Typography.default('semiBold'),
     },
+    unreadDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#007AFF',
+        marginLeft: 4,
+        marginRight: 8,
+    },
 }));
 
 interface ActiveSessionsGroupProps {
@@ -366,6 +374,13 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                                         isPulsing={sessionStatus.isPulsing} 
                                     />
                                 </View>
+                            );
+                        }
+                        
+                        // Show blue unread dot for completed tasks
+                        if (sessionStatus.state === 'waiting' && sessionStatus.hasUnreadCompletion) {
+                            return (
+                                <View style={[styles.unreadDot, { marginRight: 8 }]} />
                             );
                         }
                         

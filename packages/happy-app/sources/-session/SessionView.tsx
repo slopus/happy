@@ -512,7 +512,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     React.useLayoutEffect(() => {
 
         // Trigger session sync
-        sync.onSessionVisible(sessionId);
+        sync.onSessionVisible(sessionId, true);
 
 
         // Initialize git status sync for this session

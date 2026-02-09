@@ -12,6 +12,7 @@ export interface SessionStatus {
     statusColor: string;
     statusDotColor: string;
     isPulsing?: boolean;
+    hasUnreadCompletion?: boolean;
 }
 
 /**
@@ -81,7 +82,8 @@ export function useSessionStatus(session: Session): SessionStatus {
         statusText: t('status.online'),
         shouldShowStatus: false,
         statusColor: '#34C759',
-        statusDotColor: '#34C759'
+        statusDotColor: '#34C759',
+        hasUnreadCompletion: !!session.agentState?.taskCompleted
     };
 }
 

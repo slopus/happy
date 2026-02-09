@@ -191,6 +191,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         textAlign: 'center',
         ...Typography.default('semiBold'),
     },
+    unreadDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#007AFF',
+        marginRight: 6,
+    },
 }));
 
 interface ActiveSessionsGroupProps {
@@ -395,6 +402,9 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
             <View style={styles.sessionContent}>
                 {/* Title line */}
                 <View style={styles.sessionTitleRow}>
+                    {sessionStatus.hasUnreadCompletion && (
+                        <View style={styles.unreadDot} />
+                    )}
                     <Text
                         style={[
                             styles.sessionTitle,

@@ -452,6 +452,11 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                 `Claude is waiting for your command`,
                                 { sessionId: session.client.sessionId }
                             );
+                            // Mark task as completed in agent state for unread indicator
+                            session.client.updateAgentState((state) => ({
+                                ...state,
+                                taskCompleted: Date.now()
+                            }));
                         }
                     },
                     signal: abortController.signal,
