@@ -42,8 +42,7 @@ export function isUsingCustomVoiceProvider(): boolean {
 export function getElevenLabsAgentId(): string | undefined {
     const stored = voiceConfigStorage.getString(KEYS.elevenLabsAgentId);
     if (stored) return stored;
-    // Fallback to env-derived config (unified, no dev/prod split for user)
-    return __DEV__ ? configRef?.elevenLabsAgentIdDev : configRef?.elevenLabsAgentIdProd;
+    return configRef?.elevenLabsAgentId;
 }
 
 export function setElevenLabsAgentId(value: string | null): void {
@@ -164,8 +163,7 @@ export function initVoiceConfig(config: AppConfig): void {
 
     const agentId = voiceConfigStorage.getString(KEYS.elevenLabsAgentId);
     if (agentId) {
-        config.elevenLabsAgentIdDev = agentId;
-        config.elevenLabsAgentIdProd = agentId;
+        config.elevenLabsAgentId = agentId;
     }
 
     const gatewayUrl = voiceConfigStorage.getString(KEYS.liveKitGatewayUrl);

@@ -6,8 +6,7 @@ export interface AppConfig {
     revenueCatAppleKey?: string;
     revenueCatGoogleKey?: string;
     revenueCatStripeKey?: string;
-    elevenLabsAgentIdDev?: string;
-    elevenLabsAgentIdProd?: string;
+    elevenLabsAgentId?: string;
     serverUrl?: string;
     voiceProvider?: 'elevenlabs' | 'livekit';
     voiceBaseUrl?: string;
@@ -87,13 +86,9 @@ export function loadAppConfig(): AppConfig {
         console.log('[loadAppConfig] Override postHogKey from EXPO_PUBLIC_POSTHOG_KEY');
         config.postHogKey = process.env.EXPO_PUBLIC_POSTHOG_KEY;
     }
-    if (process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID_DEV && config.elevenLabsAgentIdDev !== process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID_DEV) {
-        console.log('[loadAppConfig] Override elevenLabsAgentIdDev from EXPO_PUBLIC_ELEVENLABS_AGENT_ID_DEV');
-        config.elevenLabsAgentIdDev = process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID_DEV;
-    }
-    if (process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID_PROD && config.elevenLabsAgentIdProd !== process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID_PROD) {
-        console.log('[loadAppConfig] Override elevenLabsAgentIdProd from EXPO_PUBLIC_ELEVENLABS_AGENT_ID_PROD');
-        config.elevenLabsAgentIdProd = process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID_PROD;
+    if (process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID && config.elevenLabsAgentId !== process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID) {
+        console.log('[loadAppConfig] Override elevenLabsAgentId from EXPO_PUBLIC_ELEVENLABS_AGENT_ID');
+        config.elevenLabsAgentId = process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID;
     }
     if (process.env.EXPO_PUBLIC_SERVER_URL && config.serverUrl !== process.env.EXPO_PUBLIC_SERVER_URL) {
         console.log('[loadAppConfig] Override serverUrl from EXPO_PUBLIC_SERVER_URL');
