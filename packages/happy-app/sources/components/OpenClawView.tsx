@@ -15,7 +15,7 @@ import { t } from '@/text';
 import { layout } from '@/components/layout';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { useAllOpenClawMachines, useIsDataReady, useAllMachines } from '@/sync/storage';
+import { useAllOpenClawMachines, useIsDataReady, useAllMachines, useOpenClawDirectStatus } from '@/sync/storage';
 import type { OpenClawMachine } from '@/openclaw/types';
 import type { Machine } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
@@ -80,23 +80,43 @@ interface OpenClawMachineCardProps {
 
 const OpenClawMachineCard = React.memo(({ machine, happyMachine, onPress, showDivider = true }: OpenClawMachineCardProps) => {
     const { theme } = useUnistyles();
+    const directStatus = useOpenClawDirectStatus(machine.id);
 
     // Determine machine name
     const name = machine.metadata?.name || (machine.type === 'happy' ? happyMachine?.metadata?.host : machine.directConfig?.url) || 'Unknown Machine';
 
     // Determine connection type and status
-    const isOnline = machine.type === 'happy' ? happyMachine?.active : true; // Direct connections are assumed available
     const typeLabel = machine.type === 'happy' ? t('openclaw.machineTypeHappy') : t('openclaw.machineTypeDirect');
+
+    // Status for display: Happy machines use heartbeat, direct machines use last known status
+    const { statusColor, statusText } = React.useMemo(() => {
+        if (machine.type === 'happy') {
+            const isOnline = happyMachine?.active ?? false;
+            return {
+                statusColor: isOnline ? theme.colors.status.connected : theme.colors.status.disconnected,
+                statusText: isOnline ? t('status.online') : t('status.offline'),
+            };
+        }
+        // Direct machines: use last known status from store
+        if (directStatus === 'connected') {
+            return { statusColor: theme.colors.status.connected, statusText: t('status.online') };
+        }
+        if (directStatus === 'disconnected' || directStatus === 'error') {
+            return { statusColor: theme.colors.status.disconnected, statusText: t('status.offline') };
+        }
+        // Never connected: unknown
+        return { statusColor: theme.colors.textSecondary, statusText: t('status.unknown') };
+    }, [machine.type, happyMachine?.active, directStatus, theme]);
 
     const statusElement = (
         <View style={styles.statusContainer}>
             <StatusDot
-                color={isOnline ? theme.colors.status.connected : theme.colors.status.disconnected}
+                color={statusColor}
                 isPulsing={false}
                 size={6}
             />
-            <Text style={[styles.statusText, { color: isOnline ? theme.colors.status.connected : theme.colors.status.disconnected }]}>
-                {isOnline ? t('status.online') : t('status.offline')}
+            <Text style={[styles.statusText, { color: statusColor }]}>
+                {statusText}
             </Text>
         </View>
     );

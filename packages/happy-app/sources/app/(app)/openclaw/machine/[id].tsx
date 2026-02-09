@@ -16,7 +16,7 @@ import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { useOpenClawMachine, useMachine } from '@/sync/storage';
+import { useOpenClawMachine, useMachine, storage } from '@/sync/storage';
 import { useOpenClawConnection } from '@/openclaw/connection';
 import { sync } from '@/sync/sync';
 import { Modal } from '@/modal/ModalManager';
@@ -192,6 +192,13 @@ export default function OpenClawMachineDetailPage() {
             console.log('[OpenClaw] Event:', event, payload);
         },
     });
+
+    // Persist connection status for direct machines to show in list view
+    React.useEffect(() => {
+        if (machine?.type === 'direct' && machineId && (status === 'connected' || status === 'disconnected' || status === 'error')) {
+            storage.getState().setOpenClawDirectStatus(machineId, status);
+        }
+    }, [machine?.type, machineId, status]);
 
     // Sessions state
     const [sessions, setSessions] = React.useState<OpenClawSession[]>([]);

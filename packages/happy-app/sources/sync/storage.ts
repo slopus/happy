@@ -21,7 +21,7 @@ import { isMutableTool } from "@/components/tools/knownTools";
 import { projectManager } from "./projectManager";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
-import type { OpenClawMachine } from "../openclaw/types";
+import type { OpenClawMachine, OpenClawConnectionStatus } from "../openclaw/types";
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -79,6 +79,7 @@ interface StorageState {
     sessionGitStatus: Record<string, GitStatus | null>;
     machines: Record<string, Machine>;
     openClawMachines: Record<string, OpenClawMachine>;  // OpenClaw machine configurations
+    openClawDirectStatus: Record<string, OpenClawConnectionStatus>;  // Last known status for direct OpenClaw machines
     artifacts: Record<string, DecryptedArtifact>;  // New artifacts storage
     friends: Record<string, UserProfile>;  // All relationships (friends, pending, requested, etc.)
     users: Record<string, UserProfile | null>;  // Global user cache, null = 404/failed fetch
@@ -101,6 +102,7 @@ interface StorageState {
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyOpenClawMachines: (machines: OpenClawMachine[], replace?: boolean) => void;
     removeOpenClawMachine: (machineId: string) => void;
+    setOpenClawDirectStatus: (machineId: string, status: OpenClawConnectionStatus) => void;
     applyLoaded: () => void;
     applyReady: () => void;
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
@@ -265,6 +267,7 @@ export const storage = create<StorageState>()((set, get) => {
         sessions: {},
         machines: {},
         openClawMachines: {},  // Initialize OpenClaw machines
+        openClawDirectStatus: {},  // Initialize direct OpenClaw machine status
         artifacts: {},  // Initialize artifacts
         friends: {},  // Initialize relationships cache
         users: {},  // Initialize global user cache
@@ -954,12 +957,18 @@ export const storage = create<StorageState>()((set, get) => {
         }),
         removeOpenClawMachine: (machineId: string) => set((state) => {
             const { [machineId]: removed, ...remaining } = state.openClawMachines;
+            const { [machineId]: removedStatus, ...remainingStatus } = state.openClawDirectStatus;
             console.log(`🤖 Storage.removeOpenClawMachine: Removed machine ${machineId}`);
             return {
                 ...state,
-                openClawMachines: remaining
+                openClawMachines: remaining,
+                openClawDirectStatus: remainingStatus,
             };
         }),
+        setOpenClawDirectStatus: (machineId: string, status: OpenClawConnectionStatus) => set((state) => ({
+            ...state,
+            openClawDirectStatus: { ...state.openClawDirectStatus, [machineId]: status },
+        })),
         // Artifact methods
         applyArtifacts: (artifacts: DecryptedArtifact[]) => set((state) => {
             console.log(`🗂️ Storage.applyArtifacts: Applying ${artifacts.length} artifacts`);
@@ -1234,6 +1243,10 @@ export function useAllOpenClawMachines(): OpenClawMachine[] {
 
 export function useOpenClawMachine(machineId: string): OpenClawMachine | null {
     return storage(useShallow((state) => state.openClawMachines[machineId] ?? null));
+}
+
+export function useOpenClawDirectStatus(machineId: string): OpenClawConnectionStatus | null {
+    return storage((state) => state.openClawDirectStatus[machineId] ?? null);
 }
 
 export function useSessionListViewData(): SessionListViewItem[] | null {
