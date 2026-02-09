@@ -319,6 +319,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             return;
         }
 
+        // Blur input to prevent keyboard from re-appearing when the modal closes
+        inputRef.current?.blur();
+
         setDuplicateSheetVisible(true);
         setDuplicateLoading(true);
         setDuplicateMessages(null);
