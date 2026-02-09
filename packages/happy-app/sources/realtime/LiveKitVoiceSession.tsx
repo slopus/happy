@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { registerGlobals } from '@livekit/react-native';
 import { Room, RoomEvent } from 'livekit-client';
 import { registerVoiceSession } from './RealtimeSession';
 import { storage } from '@/sync/storage';
@@ -11,6 +12,8 @@ import {
 } from '@/sync/apiLiveKitVoice';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 import { serializeLiveKitContext } from './LiveKitContextSerializer';
+
+registerGlobals();
 
 let roomInstance: Room | null = null;
 let activeGatewaySessionId: string | null = null;

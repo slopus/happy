@@ -17,7 +17,8 @@
             "**/expo-dev-client",
             "**/expo-dev-client/**",
             "**/react-native-edge-to-edge/**",
-            "**/react-native-incall-manager/**"
+            "**/react-native-incall-manager/**",
+            "**/happy-voice/@livekit/**"
         ]
     },
     "scripts": {

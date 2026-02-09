@@ -1,4 +1,5 @@
 import { llm, type APIConnectOptions } from '@livekit/agents';
+import { logInfo } from './log';
 import { loadAndRenderPromptFile } from './prompts';
 import {
     extractRecentAppContext,
@@ -186,6 +187,11 @@ export class PromptedLLM extends llm.LLM {
         replaceInstructions(chatCtx, systemPrompt);
         stripAppContextUpdates(chatCtx);
         minimizeChatContext(chatCtx, toolFollowup ? { keepLastUser: false } : undefined);
+
+        logInfo('PromptedLLM.chat()', {
+            toolFollowup,
+            itemCount: chatCtx.items.length,
+        });
 
         const forwardedInvocation: ChatInvocation = {
             ...invocation,

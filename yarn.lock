@@ -2437,6 +2437,13 @@
   dependencies:
     use-sync-external-store "^1.5.0"
 
+"@livekit/agents-plugin-cartesia@1.0.42":
+  version "1.0.42"
+  resolved "https://registry.yarnpkg.com/@livekit/agents-plugin-cartesia/-/agents-plugin-cartesia-1.0.42.tgz#69d4dce0f0521fca27f9bea8d3daf69868d93b43"
+  integrity sha512-y5m5m1nHAv0pOweFXPq2i+N1xLLJWtHPkUkpCTFZRiSoK3W6EzFNwjh7+k/VFhx2ffkWTSh6anRgK1C7e8H/lg==
+  dependencies:
+    ws "^8.16.0"
+
 "@livekit/agents-plugin-livekit@^1.0.42":
   version "1.0.42"
   resolved "https://registry.yarnpkg.com/@livekit/agents-plugin-livekit/-/agents-plugin-livekit-1.0.42.tgz#3412b2bebb78865fe885e7b10b99fce5933fb1c1"
@@ -2445,6 +2452,15 @@
     "@huggingface/hub" "2.4.1"
     "@huggingface/transformers" "3.7.2"
     onnxruntime-node "1.21.0"
+
+"@livekit/agents-plugin-openai@1.0.42":
+  version "1.0.42"
+  resolved "https://registry.yarnpkg.com/@livekit/agents-plugin-openai/-/agents-plugin-openai-1.0.42.tgz#113ba894d3a7cb577f670e09937e56b94513531c"
+  integrity sha512-8k7HPBLpvLDoIwmHR/hRAHztB4hD+JT8xojNdRyZUKUXbvg0ITig9zoDVgYsjXgO8VmdvgDT/lpVv5+rZe8YwA==
+  dependencies:
+    "@livekit/mutex" "^1.1.1"
+    openai "^6.8.1"
+    ws "^8.18.0"
 
 "@livekit/agents-plugin-silero@^1.0.42":
   version "1.0.42"

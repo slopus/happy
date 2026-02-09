@@ -5,10 +5,11 @@ import {
     ServerOptions,
     cli,
     defineAgent,
-    inference,
     llm,
     voice,
 } from '@livekit/agents';
+import * as cartesiaTts from '@livekit/agents-plugin-cartesia';
+import * as openaiPlugin from '@livekit/agents-plugin-openai';
 import * as silero from '@livekit/agents-plugin-silero';
 import { BackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
 import { RoomEvent } from '@livekit/rtc-node';
@@ -145,6 +146,69 @@ function isLlmIoLoggingEnabled(): boolean {
     return rawValue !== 'false' && rawValue !== '0' && rawValue !== 'off';
 }
 
+/** Strip provider prefix: "openai/gpt-5.2" → "gpt-5.2" */
+function stripProviderPrefix(modelString: string): string {
+    const idx = modelString.indexOf('/');
+    return idx !== -1 ? modelString.slice(idx + 1) : modelString;
+}
+
+/** Parse TTS model string: "cartesia/sonic-3:voice-id" → { model, voice } */
+function parseTTSModelString(modelString: string): { model: string; voice?: string } {
+    const name = stripProviderPrefix(modelString);
+    const idx = name.indexOf(':');
+    if (idx !== -1) {
+        return { model: name.slice(0, idx), voice: name.slice(idx + 1) };
+    }
+    return { model: name };
+}
+
+/** Returns true for OpenAI reasoning models that need reasoning_effort to produce output. */
+function isReasoningModel(model: string): boolean {
+    return /^gpt-5/.test(model) || /^o[1-9]/.test(model);
+}
+
+/**
+ * Thin wrapper that injects `reasoning_effort` into every chat() call
+ * for reasoning models (gpt-5.x, o-series) that default to effort=none.
+ */
+class ReasoningLLM extends llm.LLM {
+    constructor(
+        private readonly inner: llm.LLM,
+        private readonly reasoningEffort: string,
+    ) {
+        super();
+    }
+    label() { return this.inner.label(); }
+    get model() { return this.inner.model; }
+    prewarm() { this.inner.prewarm(); }
+    async aclose() { await this.inner.aclose(); }
+    chat(invocation: Parameters<llm.LLM['chat']>[0]): llm.LLMStream {
+        const kwargs = {
+            ...invocation.extraKwargs,
+            reasoning_effort: this.reasoningEffort,
+        };
+        logInfo('ReasoningLLM injecting extraKwargs', { reasoning_effort: this.reasoningEffort, model: this.inner.model });
+        return this.inner.chat({
+            ...invocation,
+            extraKwargs: kwargs,
+        });
+    }
+}
+
+function createDirectLlm(modelString: string): llm.LLM {
+    const model = stripProviderPrefix(modelString);
+    const base = new openaiPlugin.LLM({ model });
+    if (isReasoningModel(model)) {
+        return new ReasoningLLM(base, 'low');
+    }
+    return base;
+}
+
+function createDirectTts(modelString: string): cartesiaTts.TTS {
+    const { model, voice } = parseTTSModelString(modelString);
+    return new cartesiaTts.TTS({ model, voice, language: 'zh' });
+}
+
 function getMainSessionLlm(): llm.LLM {
     const model = env.AGENT_LLM;
     const llmIoLoggingEnabled = isLlmIoLoggingEnabled();
@@ -153,7 +217,7 @@ function getMainSessionLlm(): llm.LLM {
         || cachedMainSessionBaseModel !== model
         || cachedMainSessionBaseLogEnabled !== llmIoLoggingEnabled
     ) {
-        const baseLlm = inference.LLM.fromModelString(model);
+        const baseLlm = createDirectLlm(model);
         cachedMainSessionBaseLlm = llmIoLoggingEnabled
             ? withLLMLogging(baseLlm, 'voice-main')
             : baseLlm;
@@ -175,7 +239,7 @@ function getReadySummaryLlm(): llm.LLM {
         || cachedReadySummaryModel !== model
         || cachedReadySummaryLogEnabled !== llmIoLoggingEnabled
     ) {
-        const baseLlm = inference.LLM.fromModelString(model);
+        const baseLlm = createDirectLlm(model);
         cachedReadySummaryLlm = llmIoLoggingEnabled
             ? withLLMLogging(baseLlm, 'ready-summary')
             : baseLlm;
@@ -490,11 +554,12 @@ const agent = defineAgent({
                 }),
         });
 
+        const ttsInstance = createDirectTts(env.AGENT_TTS);
         const session = new voice.AgentSession({
             vad: vad as any,
             stt: env.AGENT_STT,
             llm: mainSessionLlm,
-            tts: env.AGENT_TTS,
+            tts: ttsInstance,
             turnDetection: 'vad',
             voiceOptions: {
                 minEndpointingDelay: env.AGENT_MIN_ENDPOINTING_DELAY_MS,
