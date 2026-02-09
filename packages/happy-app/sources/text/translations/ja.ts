@@ -821,6 +821,10 @@ export const ja: TranslationStructure = {
         deviceLinkedSuccessfully: 'デバイスが正常にリンクされました',
         terminalConnectedSuccessfully: 'ターミナルが正常に接続されました',
         invalidAuthUrl: '無効な認証URL',
+        unrecognizedQrCode: ({ content }: { content: string }) =>
+            `認識できないQRコードです。内容：\n${content}`,
+        scanOrPasteUrl: '認証',
+        pasteUrlFromTerminalOrDevice: 'ターミナルまたはデバイスの認証URLを貼り付けてください',
         developerMode: '開発者モード',
         developerModeEnabled: '開発者モードが有効になりました',
         developerModeDisabled: '開発者モードが無効になりました',

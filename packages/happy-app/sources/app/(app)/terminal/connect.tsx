@@ -4,7 +4,7 @@ import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '@/components/RoundButton';
-import { useConnectTerminal } from '@/hooks/useConnectTerminal';
+import { useUnifiedScanner } from '@/hooks/useUnifiedScanner';
 import { Ionicons } from '@expo/vector-icons';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -15,11 +15,7 @@ export default function TerminalConnectScreen() {
     const router = useRouter();
     const [publicKey, setPublicKey] = useState<string | null>(null);
     const [hashProcessed, setHashProcessed] = useState(false);
-    const { processAuthUrl, isLoading } = useConnectTerminal({
-        onSuccess: () => {
-            router.back();
-        }
-    });
+    const { connectWithUrl, isLoading } = useUnifiedScanner();
 
     // Extract key from hash on web platform
     useEffect(() => {
@@ -42,7 +38,8 @@ export default function TerminalConnectScreen() {
         if (publicKey) {
             // Convert the hash key format to the expected happy:// URL format
             const authUrl = `happy://terminal?${publicKey}`;
-            await processAuthUrl(authUrl);
+            const success = await connectWithUrl(authUrl);
+            if (success) router.back();
         }
     };
 

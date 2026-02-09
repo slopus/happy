@@ -1,19 +1,19 @@
 import * as React from 'react';
 import { View, TextInput, Text, TouchableOpacity } from 'react-native';
 import { RoundButton } from './RoundButton';
-import { useConnectTerminal } from '@/hooks/useConnectTerminal';
+import { useUnifiedScanner } from '@/hooks/useUnifiedScanner';
 import { trackConnectAttempt } from '@/track';
 import { Ionicons } from '@expo/vector-icons';
 import { t } from '@/text';
 
 export const ConnectButton = React.memo(() => {
-    const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
+    const { launchScanner, connectWithUrl, isLoading } = useUnifiedScanner();
     const [manualUrl, setManualUrl] = React.useState('');
     const [showManualEntry, setShowManualEntry] = React.useState(false);
 
     const handleConnect = async () => {
         trackConnectAttempt();
-        connectTerminal();
+        launchScanner();
     };
 
     const handleManualConnect = async () => {

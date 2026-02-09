@@ -10,7 +10,7 @@ import { Typography } from "@/constants/Typography";
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { useConnectTerminal } from '@/hooks/useConnectTerminal';
+import { useUnifiedScanner } from '@/hooks/useUnifiedScanner';
 import { useEntitlement, useLocalSettingMutable, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { isUsingCustomServer } from '@/sync/serverConfig';
@@ -44,7 +44,7 @@ export const SettingsView = React.memo(function SettingsView() {
     const avatarUrl = getAvatarUrl(profile);
     const bio = getBio(profile);
 
-    const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
+    const { launchScanner, connectWithUrl, isLoading } = useUnifiedScanner();
 
     const handleGitHub = async () => {
         const url = 'https://github.com/slopus/happy';
@@ -172,7 +172,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     <Item
                         title={t('settings.scanQrCodeToAuthenticate')}
                         icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
-                        onPress={connectTerminal}
+                        onPress={launchScanner}
                         loading={isLoading}
                         showChevron={false}
                     />
@@ -181,10 +181,10 @@ export const SettingsView = React.memo(function SettingsView() {
                         icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
                         onPress={async () => {
                             const url = await Modal.prompt(
-                                t('modals.authenticateTerminal'),
-                                t('modals.pasteUrlFromTerminal'),
+                                t('modals.scanOrPasteUrl'),
+                                t('modals.pasteUrlFromTerminalOrDevice'),
                                 {
-                                    placeholder: 'happy://terminal?...',
+                                    placeholder: 'happy://...',
                                     confirmText: t('common.authenticate')
                                 }
                             );

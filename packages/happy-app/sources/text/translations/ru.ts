@@ -787,6 +787,10 @@ export const ru: TranslationStructure = {
         deviceLinkedSuccessfully: 'Устройство успешно связано',
         terminalConnectedSuccessfully: 'Терминал успешно подключен',
         invalidAuthUrl: 'Неверный URL авторизации',
+        unrecognizedQrCode: ({ content }: { content: string }) =>
+            `Нераспознанный QR-код. Содержимое:\n${content}`,
+        scanOrPasteUrl: 'Аутентификация',
+        pasteUrlFromTerminalOrDevice: 'Вставьте URL аутентификации из терминала или устройства',
         developerMode: 'Режим разработчика',
         developerModeEnabled: 'Режим разработчика включен',
         developerModeDisabled: 'Режим разработчика отключен',

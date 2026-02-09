@@ -789,6 +789,10 @@ export const es: TranslationStructure = {
         deviceLinkedSuccessfully: 'Dispositivo vinculado exitosamente',
         terminalConnectedSuccessfully: 'Terminal conectado exitosamente',
         invalidAuthUrl: 'URL de autenticación inválida',
+        unrecognizedQrCode: ({ content }: { content: string }) =>
+            `Código QR no reconocido. Contenido:\n${content}`,
+        scanOrPasteUrl: 'Autenticar',
+        pasteUrlFromTerminalOrDevice: 'Pega la URL de autenticación de tu terminal o dispositivo',
         developerMode: 'Modo desarrollador',
         developerModeEnabled: 'Modo desarrollador habilitado',
         developerModeDisabled: 'Modo desarrollador deshabilitado',

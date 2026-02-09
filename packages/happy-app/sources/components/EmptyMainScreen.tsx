@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, Platform } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '@/components/RoundButton';
-import { useConnectTerminal } from '@/hooks/useConnectTerminal';
+import { useUnifiedScanner } from '@/hooks/useUnifiedScanner';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -86,7 +86,7 @@ const stylesheet = StyleSheet.create((theme) => ({
 }));
 
 export function EmptyMainScreen() {
-    const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
+    const { launchScanner, connectWithUrl, isLoading } = useUnifiedScanner();
     const { theme } = useUnistyles();
     const styles = stylesheet;
 
@@ -138,7 +138,7 @@ export function EmptyMainScreen() {
                                 title={t('components.emptyMainScreen.openCamera')}
                                 size="large"
                                 loading={isLoading}
-                                onPress={connectTerminal}
+                                onPress={launchScanner}
                             />
                         </View>
                         <View style={styles.buttonWrapperSecondary}>
@@ -148,10 +148,10 @@ export function EmptyMainScreen() {
                                 display="inverted"
                                 onPress={async () => {
                                     const url = await Modal.prompt(
-                                        t('modals.authenticateTerminal'),
-                                        t('modals.pasteUrlFromTerminal'),
+                                        t('modals.scanOrPasteUrl'),
+                                        t('modals.pasteUrlFromTerminalOrDevice'),
                                         {
-                                            placeholder: 'happy://terminal?...',
+                                            placeholder: 'happy://...',
                                             cancelText: t('common.cancel'),
                                             confirmText: t('common.authenticate')
                                         }

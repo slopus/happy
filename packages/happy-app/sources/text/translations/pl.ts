@@ -799,6 +799,10 @@ export const pl: TranslationStructure = {
         deviceLinkedSuccessfully: 'Urządzenie połączone pomyślnie',
         terminalConnectedSuccessfully: 'Terminal połączony pomyślnie',
         invalidAuthUrl: 'Nieprawidłowy URL uwierzytelnienia',
+        unrecognizedQrCode: ({ content }: { content: string }) =>
+            `Nierozpoznany kod QR. Treść:\n${content}`,
+        scanOrPasteUrl: 'Uwierzytelnij',
+        pasteUrlFromTerminalOrDevice: 'Wklej URL uwierzytelniania z terminala lub urządzenia',
         developerMode: 'Tryb deweloperski',
         developerModeEnabled: 'Tryb deweloperski włączony',
         developerModeDisabled: 'Tryb deweloperski wyłączony',

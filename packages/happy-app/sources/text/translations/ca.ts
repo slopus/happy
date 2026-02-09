@@ -789,6 +789,10 @@ export const ca: TranslationStructure = {
         deviceLinkedSuccessfully: 'Dispositiu enllaçat amb èxit',
         terminalConnectedSuccessfully: 'Terminal connectat amb èxit',
         invalidAuthUrl: 'URL d\'autenticació no vàlida',
+        unrecognizedQrCode: ({ content }: { content: string }) =>
+            `Codi QR no reconegut. Contingut:\n${content}`,
+        scanOrPasteUrl: 'Autenticar',
+        pasteUrlFromTerminalOrDevice: "Enganxa l'URL d'autenticació del teu terminal o dispositiu",
         developerMode: 'Mode desenvolupador',
         developerModeEnabled: 'Mode desenvolupador activat',
         developerModeDisabled: 'Mode desenvolupador desactivat',

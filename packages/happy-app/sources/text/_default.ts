@@ -795,6 +795,10 @@ export const en = {
         deviceLinkedSuccessfully: 'Device linked successfully',
         terminalConnectedSuccessfully: 'Terminal connected successfully',
         invalidAuthUrl: 'Invalid authentication URL',
+        unrecognizedQrCode: ({ content }: { content: string }) =>
+            `Unrecognized QR code. Content:\n${content}`,
+        scanOrPasteUrl: 'Authenticate',
+        pasteUrlFromTerminalOrDevice: 'Paste the authentication URL from your terminal or device',
         developerMode: 'Developer Mode',
         developerModeEnabled: 'Developer mode enabled',
         developerModeDisabled: 'Developer mode disabled',

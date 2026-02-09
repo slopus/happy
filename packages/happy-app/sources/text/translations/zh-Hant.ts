@@ -790,6 +790,10 @@ export const zhHant: TranslationStructure = {
         deviceLinkedSuccessfully: '裝置連結成功',
         terminalConnectedSuccessfully: '終端連線成功',
         invalidAuthUrl: '無效的驗證 URL',
+        unrecognizedQrCode: ({ content }: { content: string }) =>
+            `無法識別的 QR Code，內容：\n${content}`,
+        scanOrPasteUrl: '認證',
+        pasteUrlFromTerminalOrDevice: '貼上來自您終端或裝置的認證 URL',
         developerMode: '開發者模式',
         developerModeEnabled: '開發者模式已啟用',
         developerModeDisabled: '開發者模式已停用',

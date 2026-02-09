@@ -16,7 +16,7 @@ import { useSettingMutable, useProfile } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
-import { useConnectAccount } from '@/hooks/useConnectAccount';
+import { useUnifiedScanner } from '@/hooks/useUnifiedScanner';
 import { getDisplayName, getAvatarUrl } from '@/sync/profile';
 import { Image } from 'expo-image';
 import { useHappyAction } from '@/hooks/useHappyAction';
@@ -30,7 +30,7 @@ export default React.memo(() => {
     const [showSecret, setShowSecret] = useState(false);
     const [copiedRecently, setCopiedRecently] = useState(false);
     const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
-    const { connectAccount, isLoading: isConnecting } = useConnectAccount();
+    const { launchScanner, isLoading: isConnecting } = useUnifiedScanner();
     const profile = useProfile();
 
     // Get the current secret key
@@ -134,7 +134,7 @@ export default React.memo(() => {
                             title={t('settingsAccount.linkNewDevice')}
                             subtitle={isConnecting ? t('common.scanning') : t('settingsAccount.linkNewDeviceSubtitle')}
                             icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
-                            onPress={connectAccount}
+                            onPress={launchScanner}
                             disabled={isConnecting}
                             showChevron={false}
                         />

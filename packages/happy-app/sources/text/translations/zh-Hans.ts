@@ -791,6 +791,10 @@ export const zhHans: TranslationStructure = {
         deviceLinkedSuccessfully: '设备链接成功',
         terminalConnectedSuccessfully: '终端连接成功',
         invalidAuthUrl: '无效的认证 URL',
+        unrecognizedQrCode: ({ content }: { content: string }) =>
+            `无法识别的二维码，内容：\n${content}`,
+        scanOrPasteUrl: '认证',
+        pasteUrlFromTerminalOrDevice: '粘贴来自您终端或设备的认证 URL',
         developerMode: '开发者模式',
         developerModeEnabled: '开发者模式已启用',
         developerModeDisabled: '开发者模式已禁用',

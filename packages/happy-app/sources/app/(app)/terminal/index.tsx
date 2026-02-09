@@ -4,7 +4,7 @@ import { Text } from '@/components/StyledText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '@/components/RoundButton';
-import { useConnectTerminal } from '@/hooks/useConnectTerminal';
+import { useUnifiedScanner } from '@/hooks/useUnifiedScanner';
 import { Ionicons } from '@expo/vector-icons';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -28,17 +28,14 @@ export default function TerminalScreen() {
             return null;
         }
     }, [searchParams])
-    const { processAuthUrl, isLoading } = useConnectTerminal({
-        onSuccess: () => {
-            router.back();
-        }
-    });
+    const { connectWithUrl, isLoading } = useUnifiedScanner();
 
     const handleConnect = async () => {
         if (publicKey) {
             // Use the full happy:// URL format expected by the hook
             const authUrl = `happy://terminal?${publicKey}`;
-            await processAuthUrl(authUrl);
+            const success = await connectWithUrl(authUrl);
+            if (success) router.back();
         }
     };
 
