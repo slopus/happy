@@ -99,6 +99,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sessionTitle: {
         fontSize: 15,
         fontWeight: '500',
+        flex: 1,
         ...Typography.default('semiBold'),
     },
     sessionTitleConnected: {
