@@ -101,7 +101,6 @@ const styles = StyleSheet.create((theme, rt) => ({
     container: {
         flex: 1,
         justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
-        paddingTop: Platform.OS === 'web' ? 0 : 40,
     },
     scrollContainer: {
         flex: 1,
@@ -1164,7 +1163,7 @@ function NewSessionWizard() {
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
-                style={styles.container}
+                style={[styles.container, Platform.OS !== 'web' && { paddingTop: 40 }]}
             >
                 <View style={{ flex: 1, justifyContent: 'flex-end' }}>
                     {/* Session type selector */}
