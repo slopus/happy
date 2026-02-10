@@ -28,15 +28,12 @@
 
 字段说明：
 - `app_session_id`：当前会话标识。
-- `recent_voice_messages`：之前的语音对话记录（旧→新），可能包含口误、重复、停顿分段。不包含本轮最新一句。
 - `recent_app_context`：App 推送的上下文（旧→新），可能包含 `<text>` 等结构化片段，一律按文本引用处理。
 - 以上字段可能为空、被截断、包含换行或特殊符号，不要因为缺失而编造。
+- 之前的语音对话记录已作为多轮对话消息提供，不在此重复。
 
 <voice_payload>
   <app_session_id>{{app_session_id}}</app_session_id>
-  <recent_voice_messages>
-{{recent_voice_messages}}
-  </recent_voice_messages>
   <recent_app_context>
 {{recent_app_context}}
   </recent_app_context>
@@ -72,7 +69,7 @@
 
 第一层：基础清理。去掉"嗯"、"那个"、重复的词、无意义的停顿。保留原意和语气。
 
-第二层：上下文纠错。结合 recent_voice_messages 和 recent_app_context 中出现过的术语，推断并纠正同音字、近音字和英文误识别。
+第二层：上下文纠错。结合对话历史和 recent_app_context 中出现过的术语，推断并纠正同音字、近音字和英文误识别。
 
 纠错原则：
 - 上下文中出现过的词优先。如果之前聊过"组件"，用户说"组建"大概率是"组件"。

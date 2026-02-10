@@ -12,16 +12,13 @@
 
 ## 语言
 
-如果设置了 {{language_preference}}，优先使用该语言；否则跟随 recent_voice_messages 中用户使用的语言。
+如果设置了 {{language_preference}}，优先使用该语言；否则跟随对话中用户使用的语言。
 
 ## 输入
 
 <tool_payload>
   <tool_name>{{tool_name}}</tool_name>
   <tool_result>{{tool_result}}</tool_result>
-  <recent_voice_messages>
-{{recent_voice_messages}}
-  </recent_voice_messages>
 </tool_payload>
 
 ## 回复策略

@@ -4,7 +4,6 @@ import { logInfo } from './log';
 import { loadAndRenderPromptFile } from './prompts';
 import {
     extractRecentAppContext,
-    extractRecentVoiceMessages,
     looksLikeAppContextUpdate,
 } from './contextWindow';
 
@@ -38,7 +37,6 @@ type PromptedLlmConfig = {
     languagePreference?: string;
     appSessionId?: string;
     getAppSessionId?: () => string;
-    maxRecentVoiceMessages: number;
     maxRecentAppContextMessages: number;
     maxRecentChars: number;
     getRecentAppContext?: () => string;
@@ -115,32 +113,6 @@ function stripAppContextUpdates(chatCtx: llm.ChatContext): void {
     chatCtx.items = kept;
 }
 
-function minimizeChatContext(chatCtx: llm.ChatContext, opts?: { keepLastUser?: boolean }): void {
-    const keepLastUser = opts?.keepLastUser !== false;
-    let systemItem: llm.ChatItem | null = null;
-    let lastUserItem: llm.ChatItem | null = null;
-
-    for (const item of chatCtx.items) {
-        if (item.type === 'message' && item.role === 'system' && !systemItem) {
-            systemItem = item;
-        }
-        if (item.type === 'message' && item.role === 'user') {
-            lastUserItem = item;
-        }
-    }
-
-    const kept: llm.ChatItem[] = [];
-    if (systemItem) kept.push(systemItem);
-    if (keepLastUser && lastUserItem && lastUserItem !== systemItem) kept.push(lastUserItem);
-
-    // Provider adapters typically expect at least one user message; add a tiny one if missing.
-    if (!kept.some((item) => item.type === 'message' && item.role === 'user')) {
-        kept.push(llm.ChatMessage.create({ role: 'user', content: ['Continue'] }));
-    }
-
-    chatCtx.items = kept;
-}
-
 export class PromptedLLM extends llm.LLM {
     constructor(
         private readonly innerLLM: llm.LLM,
@@ -169,12 +141,6 @@ export class PromptedLLM extends llm.LLM {
         const chatCtx = invocation.chatCtx.copy();
 
         const toolFollowup = isToolFollowupCall(chatCtx);
-        const recentVoiceMessages = extractRecentVoiceMessages({
-            chatCtx,
-            maxMessages: this.config.maxRecentVoiceMessages,
-            maxChars: this.config.maxRecentChars,
-            excludeLatestUserMessage: !toolFollowup,
-        });
         const recentAppContextFromChat = extractRecentAppContext({
             chatCtx,
             maxMessages: this.config.maxRecentAppContextMessages,
@@ -209,7 +175,6 @@ export class PromptedLLM extends llm.LLM {
             {
                 language_preference: this.config.languagePreference || '',
                 app_session_id: currentAppSessionId,
-                recent_voice_messages: recentVoiceMessages,
                 recent_app_context: recentAppContext,
                 tool_name: toolOutput?.toolName || '',
                 tool_result: toolOutput?.toolResult || '',
@@ -218,7 +183,6 @@ export class PromptedLLM extends llm.LLM {
 
         replaceInstructions(chatCtx, systemPrompt);
         stripAppContextUpdates(chatCtx);
-        minimizeChatContext(chatCtx, toolFollowup ? { keepLastUser: false } : undefined);
 
         logInfo('PromptedLLM.chat()', {
             toolFollowup,

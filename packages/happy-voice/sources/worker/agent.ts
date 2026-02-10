@@ -590,7 +590,6 @@ const agent = defineAgent({
             toolFollowupPromptFile: env.PROMPT_VOICE_TOOL_FOLLOWUP_FILE,
             languagePreference: metadata.language,
             getAppSessionId: () => currentAppSessionId,
-            maxRecentVoiceMessages: env.PROMPT_RECENT_VOICE_MESSAGES,
             maxRecentAppContextMessages: env.PROMPT_RECENT_APP_CONTEXT_MESSAGES,
             maxRecentChars: env.PROMPT_RECENT_MAX_CHARS,
             getRecentAppContext: () =>
