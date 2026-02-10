@@ -416,7 +416,7 @@ function NewSessionWizard() {
         return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
     });
     const [isCreating, setIsCreating] = React.useState(false);
-    const [showAdvanced, setShowAdvanced] = React.useState(false);
+    const [showAdvanced, setShowAdvanced] = React.useState(true);
 
     // Handle machineId route param from picker screens (main's navigation pattern)
     React.useEffect(() => {
