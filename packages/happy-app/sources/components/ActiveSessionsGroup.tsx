@@ -22,6 +22,7 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useIsTablet } from '@/utils/responsive';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
+import { isWorktreeSession, cleanupWorktree } from '@/utils/worktreeOps';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -361,19 +362,48 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
 
     const handleArchive = React.useCallback(() => {
         swipeableRef.current?.close();
-        Modal.alert(
-            t('sessionInfo.archiveSession'),
-            t('sessionInfo.archiveSessionConfirm'),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: t('sessionInfo.archiveSession'),
-                    style: 'destructive',
-                    onPress: performArchive
-                }
-            ]
-        );
-    }, [performArchive]);
+        if (isWorktreeSession(session.metadata) && session.metadata?.machineId && session.metadata?.worktreeBasePath && session.metadata?.worktreeBranchName) {
+            const machineId = session.metadata.machineId;
+            const basePath = session.metadata.worktreeBasePath;
+            const branchName = session.metadata.worktreeBranchName;
+            Modal.alert(
+                t('sessionInfo.archiveSession'),
+                t('sessionInfo.worktree.archiveWorktreeConfirm'),
+                [
+                    { text: t('common.cancel'), style: 'cancel' },
+                    {
+                        text: t('sessionInfo.worktree.archiveAndCleanup'),
+                        style: 'destructive',
+                        onPress: async () => {
+                            try {
+                                await cleanupWorktree(machineId, basePath, branchName);
+                            } catch (e) {
+                                console.warn('Worktree cleanup failed:', e);
+                            }
+                            await performArchive();
+                        }
+                    },
+                    {
+                        text: t('sessionInfo.worktree.archiveKeepWorktree'),
+                        onPress: performArchive
+                    }
+                ]
+            );
+        } else {
+            Modal.alert(
+                t('sessionInfo.archiveSession'),
+                t('sessionInfo.archiveSessionConfirm'),
+                [
+                    { text: t('common.cancel'), style: 'cancel' },
+                    {
+                        text: t('sessionInfo.archiveSession'),
+                        style: 'destructive',
+                        onPress: performArchive
+                    }
+                ]
+            );
+        }
+    }, [performArchive, session.metadata]);
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
