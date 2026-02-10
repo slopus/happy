@@ -1,6 +1,6 @@
 import { Context } from "@/context";
 import { inTx, afterTx } from "@/storage/inTx";
-import { eventRouter, buildSessionUpdate } from "@/app/events/eventRouter";
+import { eventRouter, buildUpdateSessionUpdate } from "@/app/events/eventRouter";
 import { allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { log } from "@/utils/log";
@@ -48,7 +48,12 @@ export async function sessionRename(ctx: Context, sessionId: string, customName:
         // Send notification after transaction commits
         afterTx(tx, async () => {
             const updSeq = await allocateUserSeq(ctx.uid);
-            const updatePayload = buildSessionUpdate(updatedSession, updSeq, randomKeyNaked(12));
+            const updatePayload = buildUpdateSessionUpdate(
+                sessionId,
+                updSeq,
+                randomKeyNaked(12),
+                { value: updatedSession.metadata, version: updatedSession.metadataVersion }
+            );
 
             log({
                 module: 'session-rename',
