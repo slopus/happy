@@ -689,6 +689,26 @@ export const zhHant: TranslationStructure = {
         noChanges: '沒有要顯示的更改',
     },
 
+    repository: {
+        code: '程式碼',
+        commits: '提交',
+    },
+
+    browser: {
+        title: '程式碼',
+        emptyDirectory: '空目錄',
+        failedToLoad: '載入目錄失敗',
+    },
+
+    commits: {
+        title: '提交',
+        noCommits: '沒有找到提交記錄',
+        failedToLoad: '載入提交記錄失敗',
+        filesChanged: ({ count }: { count: number }) => `${count} 個檔案變更`,
+        insertions: ({ count }: { count: number }) => `${count} 處插入`,
+        deletions: ({ count }: { count: number }) => `${count} 處刪除`,
+    },
+
     settingsVoice: {
         providerTitle: '語音供應商',
         providerDescription: '選擇使用哪個語音服務。變更將在下次語音工作階段時生效。',

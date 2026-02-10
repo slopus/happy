@@ -688,6 +688,26 @@ export const es: TranslationStructure = {
         noChanges: 'No hay cambios que mostrar',
     },
 
+    repository: {
+        code: 'Code',
+        commits: 'Commits',
+    },
+
+    browser: {
+        title: 'Code',
+        emptyDirectory: 'Empty directory',
+        failedToLoad: 'Failed to load directory',
+    },
+
+    commits: {
+        title: 'Commits',
+        noCommits: 'No commits found',
+        failedToLoad: 'Failed to load commits',
+        filesChanged: ({ count }: { count: number }) => `${count} file${count !== 1 ? 's' : ''} changed`,
+        insertions: ({ count }: { count: number }) => `${count} insertion${count !== 1 ? 's' : ''}`,
+        deletions: ({ count }: { count: number }) => `${count} deletion${count !== 1 ? 's' : ''}`,
+    },
+
     settingsVoice: {
         providerTitle: 'Proveedor de voz',
         providerDescription: 'Elige qué servicio de voz usar. Los cambios se aplican en la próxima sesión de voz.',

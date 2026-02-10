@@ -400,6 +400,22 @@ function SessionInfoContent({ session }: { session: Session }) {
                     </ItemGroup>
                 )}
 
+                {/* Repository */}
+                {session.metadata?.path && sessionStatus.isConnected && (
+                    <ItemGroup>
+                        <Item
+                            title={t('repository.code')}
+                            icon={<Ionicons name="code-slash-outline" size={29} color="#007AFF" />}
+                            onPress={() => router.push(`/session/${session.id}/browser`)}
+                        />
+                        <Item
+                            title={t('repository.commits')}
+                            icon={<Ionicons name="git-commit-outline" size={29} color="#007AFF" />}
+                            onPress={() => router.push(`/session/${session.id}/commits`)}
+                        />
+                    </ItemGroup>
+                )}
+
                 {/* Session Details */}
                 <ItemGroup>
                     <Item

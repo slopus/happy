@@ -691,6 +691,26 @@ export const en = {
         noChanges: 'No changes to display',
     },
 
+    repository: {
+        code: 'Code',
+        commits: 'Commits',
+    },
+
+    browser: {
+        title: 'Code',
+        emptyDirectory: 'Empty directory',
+        failedToLoad: 'Failed to load directory',
+    },
+
+    commits: {
+        title: 'Commits',
+        noCommits: 'No commits found',
+        failedToLoad: 'Failed to load commits',
+        filesChanged: ({ count }: { count: number }) => `${count} file${count !== 1 ? 's' : ''} changed`,
+        insertions: ({ count }: { count: number }) => `${count} insertion${count !== 1 ? 's' : ''}`,
+        deletions: ({ count }: { count: number }) => `${count} deletion${count !== 1 ? 's' : ''}`,
+    },
+
     settingsVoice: {
         // Provider selection
         providerTitle: 'Voice Provider',

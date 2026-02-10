@@ -100,6 +100,30 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="session/[id]/browser"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('browser.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="session/[id]/commits"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('commits.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="session/[id]/commit"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('commits.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="settings/account"
                 options={{
                     headerTitle: t('settings.account'),

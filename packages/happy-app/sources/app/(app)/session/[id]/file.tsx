@@ -14,6 +14,8 @@ import { t } from '@/text';
 import { FileIcon } from '@/components/FileIcon';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { storeTempText } from '@/sync/persistence';
+import * as Clipboard from 'expo-clipboard';
+import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 
 interface FileContent {
     content: string;
@@ -77,6 +79,7 @@ export default function FileScreen() {
     const { id: sessionId } = useLocalSearchParams<{ id: string }>();
     const searchParams = useLocalSearchParams();
     const encodedPath = searchParams.path as string;
+    const ref = searchParams.ref as string | undefined;
     let filePath = '';
     
     // Decode base64 path with error handling (UTF-8 safe)
@@ -94,6 +97,9 @@ export default function FileScreen() {
         filePath = encodedPath || ''; // Fallback to original path if decoding fails
     }
     
+    const session = storage.getState().sessions[sessionId!];
+    const displayPath = formatPathRelativeToHome(filePath, session?.metadata?.homeDir);
+
     const [fileContent, setFileContent] = React.useState<FileContent | null>(null);
     const [diffContent, setDiffContent] = React.useState<string | null>(null);
     const [displayMode, setDisplayMode] = React.useState<'file' | 'diff'>('diff');
@@ -200,65 +206,89 @@ export default function FileScreen() {
                     return;
                 }
                 
-                // Fetch git diff for the file (if in git repo)
+                // Fetch git diff for the file
                 if (sessionPath && sessionId) {
                     try {
+                        const diffCommand = ref
+                            ? `git diff --no-ext-diff ${ref}~1 ${ref} -- "${filePath.startsWith(sessionPath) ? filePath.substring(sessionPath.length + 1) : filePath}"`
+                            : `git diff --no-ext-diff "${filePath}"`;
                         const diffResponse = await sessionBash(sessionId, {
-                            // If someone is using a custom diff tool like
-                            // difftastic, the parser would break. So instead
-                            // force git to use the built in diff tool.
-                            command: `git diff --no-ext-diff "${filePath}"`,
+                            command: diffCommand,
                             cwd: sessionPath,
                             timeout: 5000
                         });
-                        
+
                         if (!isCancelled && diffResponse.success && diffResponse.stdout.trim()) {
                             setDiffContent(diffResponse.stdout);
                         }
                     } catch (diffError) {
                         console.log('Could not fetch git diff:', diffError);
-                        // Continue with file loading even if diff fails
                     }
                 }
-                
-                const response = await sessionReadFile(sessionId, filePath);
-                
-                if (!isCancelled) {
-                    if (response.success && response.content) {
-                        // Decode base64 content to UTF-8 string
-                        let decodedContent: string;
-                        try {
-                            const binaryString = atob(response.content);
-                            const bytes = new Uint8Array(binaryString.length);
-                            for (let i = 0; i < binaryString.length; i++) {
-                                bytes[i] = binaryString.charCodeAt(i);
-                            }
-                            decodedContent = new TextDecoder('utf-8').decode(bytes);
-                        } catch (decodeError) {
-                            // If base64 decode fails, treat as binary
+
+                if (ref && sessionPath && sessionId) {
+                    // For a specific commit ref, use git show to get file content at that revision
+                    const relativePath = filePath.startsWith(sessionPath)
+                        ? filePath.substring(sessionPath.length + 1)
+                        : filePath;
+                    const showResponse = await sessionBash(sessionId, {
+                        command: `git show ${ref}:"${relativePath}"`,
+                        cwd: sessionPath,
+                        timeout: 10000,
+                    });
+
+                    if (!isCancelled) {
+                        if (showResponse.success) {
                             setFileContent({
-                                content: '',
-                                encoding: 'base64',
-                                isBinary: true
+                                content: showResponse.stdout || '',
+                                encoding: 'utf8',
+                                isBinary: false,
                             });
-                            return;
+                        } else {
+                            // File may have been deleted in this commit; show diff only
+                            setFileContent({ content: '', encoding: 'utf8', isBinary: false });
                         }
-                        
-                        // Check if content contains binary data (null bytes or too many non-printable chars)
-                        const hasNullBytes = decodedContent.includes('\0');
-                        const nonPrintableCount = decodedContent.split('').filter(char => {
-                            const code = char.charCodeAt(0);
-                            return code < 32 && code !== 9 && code !== 10 && code !== 13; // Allow tab, LF, CR
-                        }).length;
-                        const isBinary = hasNullBytes || (nonPrintableCount / decodedContent.length > 0.1);
-                        
-                        setFileContent({
-                            content: isBinary ? '' : decodedContent,
-                            encoding: 'utf8',
-                            isBinary
-                        });
-                    } else {
-                        setError(response.error || 'Failed to read file');
+                    }
+                } else {
+                    const response = await sessionReadFile(sessionId, filePath);
+
+                    if (!isCancelled) {
+                        if (response.success && response.content) {
+                            // Decode base64 content to UTF-8 string
+                            let decodedContent: string;
+                            try {
+                                const binaryString = atob(response.content);
+                                const bytes = new Uint8Array(binaryString.length);
+                                for (let i = 0; i < binaryString.length; i++) {
+                                    bytes[i] = binaryString.charCodeAt(i);
+                                }
+                                decodedContent = new TextDecoder('utf-8').decode(bytes);
+                            } catch (decodeError) {
+                                // If base64 decode fails, treat as binary
+                                setFileContent({
+                                    content: '',
+                                    encoding: 'base64',
+                                    isBinary: true
+                                });
+                                return;
+                            }
+
+                            // Check if content contains binary data (null bytes or too many non-printable chars)
+                            const hasNullBytes = decodedContent.includes('\0');
+                            const nonPrintableCount = decodedContent.split('').filter(char => {
+                                const code = char.charCodeAt(0);
+                                return code < 32 && code !== 9 && code !== 10 && code !== 13; // Allow tab, LF, CR
+                            }).length;
+                            const isBinary = hasNullBytes || (nonPrintableCount / decodedContent.length > 0.1);
+
+                            setFileContent({
+                                content: isBinary ? '' : decodedContent,
+                                encoding: 'utf8',
+                                isBinary
+                            });
+                        } else {
+                            setError(response.error || 'Failed to read file');
+                        }
                     }
                 }
             } catch (error) {
@@ -278,7 +308,7 @@ export default function FileScreen() {
         return () => {
             isCancelled = true;
         };
-    }, [sessionId, filePath, isBinaryFile]);
+    }, [sessionId, filePath, ref, isBinaryFile]);
 
     // Show error modal if there's an error
     React.useEffect(() => {
@@ -427,25 +457,41 @@ export default function FileScreen() {
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
             
-            {/* File path header */}
+            {/* File path header - single line, scrollable, long press to copy */}
             <View style={{
-                padding: 16,
                 borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
                 borderBottomColor: theme.colors.divider,
                 backgroundColor: theme.colors.surfaceHigh,
                 flexDirection: 'row',
-                alignItems: 'center'
+                alignItems: 'center',
+                paddingVertical: 12,
             }}>
-                <FileIcon fileName={fileName} size={20} />
-                <Text style={{
-                    fontSize: 14,
-                    color: theme.colors.textSecondary,
-                    marginLeft: 8,
-                    flex: 1,
-                    ...Typography.mono()
-                }}>
-                    {filePath}
-                </Text>
+                <View style={{ paddingLeft: 16 }}>
+                    <FileIcon fileName={fileName} size={20} />
+                </View>
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ paddingHorizontal: 8, paddingRight: 16, alignItems: 'center' }}
+                    style={{ flex: 1 }}
+                >
+                    <Pressable
+                        onLongPress={async () => {
+                            try {
+                                await Clipboard.setStringAsync(filePath);
+                                Modal.alert(t('common.success'), t('common.copied'));
+                            } catch { /* ignore */ }
+                        }}
+                    >
+                        <Text style={{
+                            fontSize: 14,
+                            color: theme.colors.textSecondary,
+                            ...Typography.mono(),
+                        }} numberOfLines={1}>
+                            {displayPath}
+                        </Text>
+                    </Pressable>
+                </ScrollView>
             </View>
 
             {/* Toggle buttons for File/Diff view */}

@@ -720,6 +720,26 @@ export const ja: TranslationStructure = {
         noChanges: '表示する変更はありません',
     },
 
+    repository: {
+        code: 'コード',
+        commits: 'コミット',
+    },
+
+    browser: {
+        title: 'コード',
+        emptyDirectory: '空のディレクトリ',
+        failedToLoad: 'ディレクトリの読み込みに失敗しました',
+    },
+
+    commits: {
+        title: 'コミット',
+        noCommits: 'コミットが見つかりません',
+        failedToLoad: 'コミットの読み込みに失敗しました',
+        filesChanged: ({ count }: { count: number }) => `${count}ファイル変更`,
+        insertions: ({ count }: { count: number }) => `${count}件の追加`,
+        deletions: ({ count }: { count: number }) => `${count}件の削除`,
+    },
+
     settingsVoice: {
         providerTitle: '音声プロバイダー',
         providerDescription: '使用する音声サービスを選択します。変更は次の音声セッションから有効になります。',

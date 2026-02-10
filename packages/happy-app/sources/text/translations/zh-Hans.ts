@@ -690,6 +690,26 @@ export const zhHans: TranslationStructure = {
         noChanges: '没有要显示的更改',
     },
 
+    repository: {
+        code: '代码',
+        commits: '提交',
+    },
+
+    browser: {
+        title: '代码',
+        emptyDirectory: '空目录',
+        failedToLoad: '加载目录失败',
+    },
+
+    commits: {
+        title: '提交',
+        noCommits: '没有找到提交记录',
+        failedToLoad: '加载提交记录失败',
+        filesChanged: ({ count }: { count: number }) => `${count} 个文件变更`,
+        insertions: ({ count }: { count: number }) => `${count} 处插入`,
+        deletions: ({ count }: { count: number }) => `${count} 处删除`,
+    },
+
     settingsVoice: {
         providerTitle: '语音供应商',
         providerDescription: '选择使用哪个语音服务。更改将在下次语音会话时生效。',
