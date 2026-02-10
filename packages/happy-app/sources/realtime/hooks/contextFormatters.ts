@@ -45,12 +45,13 @@ export function formatMessage(message: Message): string | null {
             lines.push(`<message role="user">${message.text}</message>`);
         } else if (message.kind === 'tool-call' && !VOICE_CONFIG.DISABLE_TOOL_CALLS) {
             const toolDescription = message.tool.description ? ` - ${message.tool.description}` : '';
+            const escapedName = message.tool.name.replace(/"/g, '&quot;');
             if (VOICE_CONFIG.LIMITED_TOOL_CALLS) {
                 if (message.tool.description) {
-                    lines.push(`<message role="tool" name="${message.tool.name}">${toolDescription.trim()}</message>`);
+                    lines.push(`<message role="tool" name="${escapedName}">${toolDescription.trim()}</message>`);
                 }
             } else {
-                lines.push(`<message role="tool" name="${message.tool.name}">${toolDescription} arguments: ${JSON.stringify(message.tool.input)}</message>`);
+                lines.push(`<message role="tool" name="${escapedName}">${toolDescription} arguments: ${JSON.stringify(message.tool.input)}</message>`);
             }
         }
     } else {
