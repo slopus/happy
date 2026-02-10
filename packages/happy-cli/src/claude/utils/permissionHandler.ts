@@ -95,7 +95,7 @@ export class PermissionHandler {
                 if (response.mode && ['default', 'acceptEdits', 'bypassPermissions'].includes(response.mode)) {
                     this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: response.mode });
                 } else {
-                    this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: 'default' });
+                    this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: this.permissionMode });
                 }
                 pending.resolve({ behavior: 'deny', message: PLAN_FAKE_REJECT });
             } else {
