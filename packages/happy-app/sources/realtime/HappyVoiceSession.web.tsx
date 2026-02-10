@@ -52,7 +52,7 @@ class HappyVoiceSessionImpl implements VoiceSession {
                 roomInstance = null;
             }
 
-            const language = getCurrentLanguage();
+            const language = storage.getState().settings.voiceAssistantLanguage || getCurrentLanguage();
             const initialContextPayload = config.initialContext
                 ? serializeHappyVoiceContext(config.initialContext)
                 : undefined;
