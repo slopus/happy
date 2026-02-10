@@ -1,3 +1,4 @@
 {
-    "prisma.pinToPrisma6": true
+    "prisma.pinToPrisma6": true,
+    "cSpell.enabled": false
 }
