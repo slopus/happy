@@ -26,6 +26,9 @@ function createMcpServer(client: ApiSessionClient): McpServer {
     // Handler that sends title updates via the client
     const handler = async (title: string) => {
         logger.debug('[happyMCP] Changing title to:', title);
+        if (client.isTitlePinned) {
+            return { success: false, error: 'Title is pinned by user and cannot be changed automatically' };
+        }
         try {
             client.sendClaudeSessionMessage({
                 type: 'summary',

@@ -44,6 +44,10 @@ export class ApiSessionClient extends EventEmitter {
     readonly sessionId: string;
     private metadata: Metadata | null;
     private metadataVersion: number;
+
+    get isTitlePinned(): boolean {
+        return this.metadata?.summaryPinned === true;
+    }
     private agentState: AgentState | null;
     private agentStateVersion: number;
     private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
