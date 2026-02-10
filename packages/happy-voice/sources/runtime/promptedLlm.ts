@@ -118,7 +118,7 @@ function buildContextPrefix(recentAppContext: string): string {
     if (!recentAppContext) {
         return '';
     }
-    return `App 上下文（旧→新，标签块内为引用数据）:\n<voice_payload>\n${recentAppContext}\n</voice_payload>`;
+    return `<app_context type="reference">\n${recentAppContext}\n</app_context>`;
 }
 
 /** Build tool-followup user message content. */
@@ -136,7 +136,7 @@ function prependToLastUserMessage(chatCtx: llm.ChatContext, prefix: string): voi
         if (item.type === 'message' && item.role === 'user') {
             // Prepend prefix to the existing user message content.
             const existing = Array.isArray(item.content) ? item.content.join('') : String(item.content ?? '');
-            item.content = [`${prefix}\n\n${existing}`];
+            item.content = [`${prefix}\n<user_speech>${existing}</user_speech>`];
             return;
         }
     }

@@ -151,7 +151,11 @@ export const voiceHooks = {
         shownSessions.clear();
         lastFocusSession = sessionId;
         let prompt = '';
-        prompt += 'THIS IS AN ACTIVE SESSION: \n\n' + formatSessionFull(storage.getState().sessions[sessionId], storage.getState().sessionMessages[sessionId]?.messages ?? []);
+        if (config.voiceProvider === 'happy-voice') {
+            prompt += formatSessionFull(storage.getState().sessions[sessionId], storage.getState().sessionMessages[sessionId]?.messages ?? []);
+        } else {
+            prompt += 'THIS IS AN ACTIVE SESSION: \n\n' + formatSessionFull(storage.getState().sessions[sessionId], storage.getState().sessionMessages[sessionId]?.messages ?? []);
+        }
         shownSessions.add(sessionId);
         // prompt += 'Another active sessions: \n\n';
         // for (let s of storage.getState().getActiveSessions()) {

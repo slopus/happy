@@ -38,18 +38,35 @@ export function formatMessage(message: Message): string | null {
 
     // Lines
     let lines: string[] = [];
-    if (message.kind === 'agent-text') {
-        lines.push(`Agent: \n<text>${message.text}</text>`);
-    } else if (message.kind === 'user-text') {
-        lines.push(`User sent message: \n<text>${message.text}</text>`);
-    } else if (message.kind === 'tool-call' && !VOICE_CONFIG.DISABLE_TOOL_CALLS) {
-        const toolDescription = message.tool.description ? ` - ${message.tool.description}` : '';
-        if (VOICE_CONFIG.LIMITED_TOOL_CALLS) {
-            if (message.tool.description) {
-                lines.push(`Agent is using ${message.tool.name}${toolDescription}`);
+    if (config.voiceProvider === 'happy-voice') {
+        if (message.kind === 'agent-text') {
+            lines.push(`<message role="agent">${message.text}</message>`);
+        } else if (message.kind === 'user-text') {
+            lines.push(`<message role="user">${message.text}</message>`);
+        } else if (message.kind === 'tool-call' && !VOICE_CONFIG.DISABLE_TOOL_CALLS) {
+            const toolDescription = message.tool.description ? ` - ${message.tool.description}` : '';
+            if (VOICE_CONFIG.LIMITED_TOOL_CALLS) {
+                if (message.tool.description) {
+                    lines.push(`<message role="tool" name="${message.tool.name}">${toolDescription.trim()}</message>`);
+                }
+            } else {
+                lines.push(`<message role="tool" name="${message.tool.name}">${toolDescription} arguments: ${JSON.stringify(message.tool.input)}</message>`);
             }
-        } else {
-            lines.push(`Agent is using ${message.tool.name}${toolDescription} (tool_use_id: ${message.id}) with arguments: <arguments>${JSON.stringify(message.tool.input)}</arguments>`);
+        }
+    } else {
+        if (message.kind === 'agent-text') {
+            lines.push(`Agent: \n<text>${message.text}</text>`);
+        } else if (message.kind === 'user-text') {
+            lines.push(`User sent message: \n<text>${message.text}</text>`);
+        } else if (message.kind === 'tool-call' && !VOICE_CONFIG.DISABLE_TOOL_CALLS) {
+            const toolDescription = message.tool.description ? ` - ${message.tool.description}` : '';
+            if (VOICE_CONFIG.LIMITED_TOOL_CALLS) {
+                if (message.tool.description) {
+                    lines.push(`Agent is using ${message.tool.name}${toolDescription}`);
+                }
+            } else {
+                lines.push(`Agent is using ${message.tool.name}${toolDescription} (tool_use_id: ${message.id}) with arguments: <arguments>${JSON.stringify(message.tool.input)}</arguments>`);
+            }
         }
     }
     if (lines.length === 0) {
@@ -91,6 +108,9 @@ export function formatHistory(sessionId: string, messages: Message[]): string {
         messagesToFormat = [...messagesToFormat].reverse();
     }
     let formatted = messagesToFormat.map(formatMessage).filter(Boolean);
+    if (config.voiceProvider === 'happy-voice') {
+        return formatted.join('\n');
+    }
     return 'History of messages in session: ' + sessionId + '\n\n' + formatted.join('\n\n');
 }
 
@@ -101,6 +121,12 @@ export function formatHistory(sessionId: string, messages: Message[]): string {
 export function formatSessionFull(session: Session, messages: Message[]): string {
     const sessionName = session.metadata?.summary?.text;
     const sessionPath = session.metadata?.path;
+
+    if (config.voiceProvider === 'happy-voice') {
+        const history = formatHistory(session.id, messages);
+        return `<session id="${session.id}" path="${sessionPath || ''}" summary="${(sessionName || '').replace(/"/g, '&quot;')}">\n${history}\n</session>`;
+    }
+
     const lines: string[] = [];
 
     // Add session context

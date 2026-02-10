@@ -71,6 +71,7 @@ const BACKGROUND_PERMISSION_PREFIX = 'background-session-permission:';
 const READY_SUMMARY_OUTPUT_MAX_CHARS = 120;
 const READY_FALLBACK_SPEECH = 'OK';
 const SESSION_ID_LINE_REGEX = /^# Session ID:\s*(.+)$/m;
+const SESSION_TAG_ID_REGEX = /<session\s+id="([^"]+)"/;
 
 let cachedReadySummaryLlm: llm.LLM | null = null;
 let cachedReadySummaryModel: string | null = null;
@@ -84,16 +85,24 @@ function isReadyEventMessage(message: string): boolean {
 }
 
 function extractLatestAssistantReply(contextMessage: string): LatestAssistantReplySnapshot | null {
-    const regex = /(?:Claude Code|Happy|Assistant|Agent|AI)\s*:\s*[\r\n]*<text>([\s\S]*?)<\/text>/gi;
-    let match: RegExpExecArray | null = null;
-    let latestRaw: string | null = null;
+    const patterns = [
+        /(?:Claude Code|Happy|Assistant|Agent|AI)\s*:\s*[\r\n]*<text>([\s\S]*?)<\/text>/gi,
+        /<message\s+role="agent">([\s\S]*?)<\/message>/gi,
+    ];
 
-    while (true) {
-        match = regex.exec(contextMessage);
-        if (!match) {
-            break;
+    let latestRaw: string | null = null;
+    let latestIndex = -1;
+
+    for (const regex of patterns) {
+        let match: RegExpExecArray | null = null;
+        while (true) {
+            match = regex.exec(contextMessage);
+            if (!match) break;
+            if (match.index > latestIndex) {
+                latestIndex = match.index;
+                latestRaw = match[1]?.trim() || null;
+            }
         }
-        latestRaw = match[1]?.trim() || null;
     }
 
     if (!latestRaw) {
@@ -107,7 +116,7 @@ function extractLatestAssistantReply(contextMessage: string): LatestAssistantRep
 }
 
 function extractSessionIdFromSnapshot(contextMessage: string): string | null {
-    const match = SESSION_ID_LINE_REGEX.exec(contextMessage);
+    const match = SESSION_ID_LINE_REGEX.exec(contextMessage) || SESSION_TAG_ID_REGEX.exec(contextMessage);
     const value = match?.[1]?.trim();
     return value || null;
 }
@@ -313,11 +322,15 @@ async function summarizeReadyReply(params: {
 
     // Dynamic context as user message.
     const payloadParts: string[] = [];
+    const contextParts: string[] = [];
     if (params.recentVoiceMessages) {
-        payloadParts.push(`最近的语音对话:\n${params.recentVoiceMessages}`);
+        contextParts.push(`最近的语音对话:\n${params.recentVoiceMessages}`);
     }
     if (params.recentAppContext) {
-        payloadParts.push(`App 上下文:\n${params.recentAppContext}`);
+        contextParts.push(params.recentAppContext);
+    }
+    if (contextParts.length > 0) {
+        payloadParts.push(`<app_context type="reference">\n${contextParts.join('\n\n')}\n</app_context>`);
     }
     payloadParts.push(`以下是 Happy 的最新回复，请按转述策略生成口播。标签块内为引用数据。\n<ready_payload>\n${params.latestAssistantReply.text}\n</ready_payload>`);
 
