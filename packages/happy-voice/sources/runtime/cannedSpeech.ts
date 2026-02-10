@@ -45,6 +45,12 @@ export const BACKGROUND_PERMISSION_SPEECH: LangMap = {
 // ---------------------------------------------------------------------------
 
 const ERROR_SIGNAL_REGEX = /error|fail|timeout|not found/i;
+const CANCEL_SIGNAL_REGEX = /cancel/i;
+
+/** Canned speech for cancelled tool results (currently only messageClaudeCode). */
+const CANNED_CANCEL_SPEECH: Record<string, LangMap> = {
+    messageClaudeCode: { zh: '已取消', en: 'Cancelled', ja: 'キャンセルしました', ko: '취소했습니다' },
+};
 
 /**
  * Returns a canned speech string for a tool follow-up, or null if the tool
@@ -55,10 +61,18 @@ export function tryGetCannedToolResponse(
     toolResult: string,
     languagePreference: string,
 ): string | null {
+    const lang = (languagePreference || DEFAULT_LANG).slice(0, 2).toLowerCase();
+
+    // Cancelled results get their own canned speech
+    if (CANCEL_SIGNAL_REGEX.test(toolResult)) {
+        const cancelSpeeches = CANNED_CANCEL_SPEECH[toolName];
+        if (cancelSpeeches) return cancelSpeeches[lang] ?? cancelSpeeches[DEFAULT_LANG] ?? null;
+        return null;
+    }
+
     const speeches = CANNED_TOOL_SPEECH[toolName];
     if (!speeches) return null;
     if (ERROR_SIGNAL_REGEX.test(toolResult)) return null;
-    const lang = (languagePreference || DEFAULT_LANG).slice(0, 2).toLowerCase();
     return speeches[lang] ?? speeches[DEFAULT_LANG] ?? null;
 }
 
