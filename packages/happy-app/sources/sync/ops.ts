@@ -410,6 +410,7 @@ export async function sessionUpdateSummary(
     currentMetadata: Metadata,
     newSummaryText: string,
     expectedVersion: number,
+    pinned?: boolean,
     maxRetries: number = 3
 ): Promise<{ version: number }> {
     let currentVersion = expectedVersion;
@@ -424,7 +425,8 @@ export async function sessionUpdateSummary(
         summary: {
             text: newSummaryText,
             updatedAt: Date.now()
-        }
+        },
+        summaryPinned: pinned
     };
 
     for (let retryCount = 0; retryCount < maxRetries; retryCount++) {
@@ -452,7 +454,8 @@ export async function sessionUpdateSummary(
                 summary: {
                     text: newSummaryText,
                     updatedAt: Date.now()
-                }
+                },
+                summaryPinned: pinned
             };
         } else {
             throw new Error(result.message || 'Failed to update session metadata');

@@ -473,9 +473,10 @@ export const zhHans: TranslationStructure = {
         failedToDeleteSession: '删除会话失败',
         sessionDeleted: '会话删除成功',
         renameSession: '重命名会话',
-        renameSessionHint: '当聊天话题发生变化时，AI 可能会自动更新会话名称。',
+        renameSessionHint: '为此会话设置自定义名称。',
         renameSessionSuccess: '会话重命名成功',
         failedToRenameSession: '重命名会话失败',
+        pinSessionTitle: '固定标题（阻止 AI 自动更新）',
 
     },
 

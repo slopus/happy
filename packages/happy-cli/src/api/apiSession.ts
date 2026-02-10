@@ -278,6 +278,12 @@ export class ApiSessionClient extends EventEmitter {
         // Update metadata with summary if this is a summary message
         if (body.type === 'summary' && 'summary' in body && 'leafUuid' in body) {
             this.updateMetadata((metadata) => {
+                // Skip auto-update if user has pinned the title
+                if (metadata.summaryPinned) {
+                    logger.debug('[SOCKET] Skipping summary update: title is pinned by user');
+                    return metadata;
+                }
+
                 const newSummary = body.summary as string;
                 const currentSummary = metadata.summary?.text;
 

@@ -472,9 +472,10 @@ export const zhHant: TranslationStructure = {
         failedToDeleteSession: '刪除工作階段失敗',
         sessionDeleted: '工作階段刪除成功',
         renameSession: '重新命名工作階段',
-        renameSessionHint: '當聊天話題發生變化時，AI 可能會自動更新工作階段名稱。',
+        renameSessionHint: '為此工作階段設定自訂名稱。',
         renameSessionSuccess: '工作階段重新命名成功',
         failedToRenameSession: '重新命名工作階段失敗',
+        pinSessionTitle: '釘選標題（防止 AI 自動更新）',
 
     },
 

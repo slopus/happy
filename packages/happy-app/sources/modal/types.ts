@@ -1,4 +1,4 @@
-import { ReactNode, ComponentType } from 'react';
+import { ComponentType } from 'react';
 
 export type ModalType = 'alert' | 'confirm' | 'prompt' | 'custom';
 
@@ -29,6 +29,11 @@ export interface ConfirmModalConfig extends BaseModalConfig {
     destructive?: boolean;
 }
 
+export interface PromptCheckboxConfig {
+    label: string;
+    defaultValue?: boolean;
+}
+
 export interface PromptModalConfig extends BaseModalConfig {
     type: 'prompt';
     title: string;
@@ -38,6 +43,7 @@ export interface PromptModalConfig extends BaseModalConfig {
     cancelText?: string;
     confirmText?: string;
     inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
+    checkbox?: PromptCheckboxConfig;
 }
 
 export interface CustomModalConfig extends BaseModalConfig {
@@ -47,6 +53,8 @@ export interface CustomModalConfig extends BaseModalConfig {
 }
 
 export type ModalConfig = AlertModalConfig | ConfirmModalConfig | PromptModalConfig | CustomModalConfig;
+
+export type PromptOptions = Omit<PromptModalConfig, 'id' | 'type' | 'title' | 'message'>;
 
 export interface ModalState {
     modals: ModalConfig[];
@@ -66,13 +74,8 @@ export interface IModal {
         confirmText?: string;
         destructive?: boolean;
     }): Promise<boolean>;
-    prompt(title: string, message?: string, options?: {
-        placeholder?: string;
-        defaultValue?: string;
-        cancelText?: string;
-        confirmText?: string;
-        inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
-    }): Promise<string | null>;
+    prompt(title: string, message?: string, options?: PromptOptions): Promise<string | null>;
+    promptWithCheckbox(title: string, message?: string, options?: PromptOptions): Promise<{ value: string; checked: boolean } | null>;
     show(config: Omit<CustomModalConfig, 'id' | 'type'>): string;
     hide(id: string): void;
     hideAll(): void;

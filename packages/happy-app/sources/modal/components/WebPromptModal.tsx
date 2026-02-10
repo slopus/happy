@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, KeyboardTypeOptions, Platform } from 'react-native';
 import { BaseModal } from './BaseModal';
 import { PromptModalConfig } from '../types';
+import { Modal } from '../ModalManager';
 import { Typography } from '@/constants/Typography';
+import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 
 interface WebPromptModalProps {
@@ -14,6 +16,7 @@ interface WebPromptModalProps {
 export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalProps) {
     const { theme } = useUnistyles();
     const [inputValue, setInputValue] = useState(config.defaultValue || '');
+    const [checkboxChecked, setCheckboxChecked] = useState(config.checkbox?.defaultValue ?? false);
     const inputRef = useRef<TextInput>(null);
 
     useEffect(() => {
@@ -23,6 +26,10 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
         }, 100);
         return () => clearTimeout(timer);
     }, []);
+
+    useEffect(() => {
+        Modal.setCheckboxState(config.id, checkboxChecked);
+    }, [checkboxChecked, config.id]);
 
     const handleCancel = () => {
         onConfirm(null);
@@ -145,6 +152,21 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
                         onSubmitEditing={handleConfirm}
                         returnKeyType="done"
                     />
+                    {config.checkbox && (
+                        <Pressable
+                            onPress={() => setCheckboxChecked(v => !v)}
+                            style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, alignSelf: 'flex-start', paddingVertical: 2 }}
+                        >
+                            <Ionicons
+                                name={checkboxChecked ? 'checkbox' : 'square-outline'}
+                                size={18}
+                                color={checkboxChecked ? theme.colors.textLink : theme.colors.textSecondary}
+                            />
+                            <Text style={[{ fontSize: 12, color: theme.colors.textSecondary, marginLeft: 6, flex: 1 }, Typography.default()]}>
+                                {config.checkbox.label}
+                            </Text>
+                        </Pressable>
+                    )}
                 </View>
                 
                 <View style={styles.buttonContainer}>

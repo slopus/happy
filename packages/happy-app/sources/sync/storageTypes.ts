@@ -14,6 +14,7 @@ export const MetadataSchema = z.object({
         text: z.string(),
         updatedAt: z.number()
     }).optional(),
+    summaryPinned: z.boolean().optional(),
     machineId: z.string().optional(),
     claudeSessionId: z.string().optional(), // Claude Code session ID
     tools: z.array(z.string()).optional(),

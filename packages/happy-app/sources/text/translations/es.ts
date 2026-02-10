@@ -471,9 +471,10 @@ export const es: TranslationStructure = {
         failedToDeleteSession: 'Error al eliminar la sesión',
         sessionDeleted: 'Sesión eliminada exitosamente',
         renameSession: 'Renombrar Sesión',
-        renameSessionHint: 'La IA puede actualizar automáticamente el título cuando cambie el tema de la conversación.',
+        renameSessionHint: 'Dale un nombre personalizado a esta sesión.',
         renameSessionSuccess: 'Sesión renombrada exitosamente',
         failedToRenameSession: 'Error al renombrar la sesión',
+        pinSessionTitle: 'Fijar título (evitar actualización automática por IA)',
 
     },
 

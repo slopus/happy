@@ -472,9 +472,10 @@ export const en = {
         failedToDeleteSession: 'Failed to delete session',
         sessionDeleted: 'Session deleted successfully',
         renameSession: 'Rename Session',
-        renameSessionHint: 'AI may automatically update the title when the conversation topic changes.',
+        renameSessionHint: 'Give this session a custom name.',
         renameSessionSuccess: 'Session renamed successfully',
         failedToRenameSession: 'Failed to rename session',
+        pinSessionTitle: 'Pin title (prevent AI from auto-updating)',
 
     },
 

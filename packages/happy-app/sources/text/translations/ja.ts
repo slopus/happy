@@ -503,9 +503,10 @@ export const ja: TranslationStructure = {
         failedToDeleteSession: 'セッションの削除に失敗しました',
         sessionDeleted: 'セッションが正常に削除されました',
         renameSession: 'セッション名を変更',
-        renameSessionHint: '会話のトピックが変わると、AIが自動的にタイトルを更新する場合があります。',
+        renameSessionHint: 'セッションにカスタム名を設定します。',
         renameSessionSuccess: 'セッション名が正常に変更されました',
         failedToRenameSession: 'セッション名の変更に失敗しました',
+        pinSessionTitle: 'タイトルを固定（AIの自動更新を防止）',
 
     },
 

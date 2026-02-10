@@ -336,6 +336,7 @@ export type Metadata = {
     text: string,
     updatedAt: number
   },
+  summaryPinned?: boolean,
   machineId?: string,
   claudeSessionId?: string, // Claude Code session ID
   tools?: string[],

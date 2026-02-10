@@ -1,6 +1,6 @@
 import { Platform, Alert } from 'react-native';
 import { t } from '@/text';
-import { AlertButton, ModalConfig, CustomModalConfig, IModal } from './types';
+import { AlertButton, ModalConfig, CustomModalConfig, IModal, PromptOptions } from './types';
 
 class ModalManagerClass implements IModal {
     private showModalFn: ((config: Omit<ModalConfig, 'id'>) => string) | null = null;
@@ -8,6 +8,7 @@ class ModalManagerClass implements IModal {
     private hideAllModalsFn: (() => void) | null = null;
     private confirmResolvers: Map<string, (value: boolean) => void> = new Map();
     private promptResolvers: Map<string, (value: string | null) => void> = new Map();
+    private _checkboxStates: Map<string, boolean> = new Map();
 
     setFunctions(
         showModal: (config: Omit<ModalConfig, 'id'>) => string,
@@ -17,10 +18,6 @@ class ModalManagerClass implements IModal {
         this.showModalFn = showModal;
         this.hideModalFn = hideModal;
         this.hideAllModalsFn = hideAllModals;
-    }
-
-    private generateId(): string {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
     }
 
     alert(title: string, message?: string, buttons?: AlertButton[]): void {
@@ -141,16 +138,42 @@ class ModalManagerClass implements IModal {
         }
     }
 
+    setCheckboxState(id: string, checked: boolean): void {
+        this._checkboxStates.set(id, checked);
+    }
+
+    private showPromptModal(
+        title: string,
+        message?: string,
+        options?: PromptOptions
+    ): { modalId: string; promise: Promise<string | null> } | null {
+        if (!this.showModalFn) {
+            console.error('ModalManager not initialized. Make sure ModalProvider is mounted.');
+            return null;
+        }
+
+        const modalId = this.showModalFn({
+            type: 'prompt',
+            title,
+            message,
+            ...options
+        } as Omit<ModalConfig, 'id'>);
+
+        if (options?.checkbox) {
+            this._checkboxStates.set(modalId, options.checkbox.defaultValue ?? false);
+        }
+
+        const promise = new Promise<string | null>((resolve) => {
+            this.promptResolvers.set(modalId, resolve);
+        });
+
+        return { modalId, promise };
+    }
+
     async prompt(
         title: string,
         message?: string,
-        options?: {
-            placeholder?: string;
-            defaultValue?: string;
-            cancelText?: string;
-            confirmText?: string;
-            inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
-        }
+        options?: PromptOptions
     ): Promise<string | null> {
         if (Platform.OS === 'ios' && !options?.inputType) {
             // Use native Alert.prompt on iOS (only supports basic text input)
@@ -175,28 +198,26 @@ class ModalManagerClass implements IModal {
                     'default'
                 );
             });
-        } else {
-            // Use custom modal for web and Android
-            if (!this.showModalFn) {
-                console.error('ModalManager not initialized. Make sure ModalProvider is mounted.');
-                return null;
-            }
-
-            const modalId = this.showModalFn({
-                type: 'prompt',
-                title,
-                message,
-                placeholder: options?.placeholder,
-                defaultValue: options?.defaultValue,
-                cancelText: options?.cancelText,
-                confirmText: options?.confirmText,
-                inputType: options?.inputType
-            } as Omit<ModalConfig, 'id'>);
-
-            return new Promise<string | null>((resolve) => {
-                this.promptResolvers.set(modalId, resolve);
-            });
         }
+
+        const result = this.showPromptModal(title, message, options);
+        if (!result) return null;
+        return result.promise;
+    }
+
+    async promptWithCheckbox(
+        title: string,
+        message?: string,
+        options?: PromptOptions
+    ): Promise<{ value: string; checked: boolean } | null> {
+        const result = this.showPromptModal(title, message, options);
+        if (!result) return null;
+
+        const value = await result.promise;
+        const checked = this._checkboxStates.get(result.modalId) ?? false;
+        this._checkboxStates.delete(result.modalId);
+        if (value === null) return null;
+        return { value, checked };
     }
 }
 

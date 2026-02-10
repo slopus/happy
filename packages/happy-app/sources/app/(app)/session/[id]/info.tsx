@@ -208,26 +208,31 @@ function SessionInfoContent({ session }: { session: Session }) {
     const handleRenameSession = useCallback(async () => {
         if (!session.metadata) return;
 
-        const newName = await Modal.prompt(
+        const result = await Modal.promptWithCheckbox(
             t('sessionInfo.renameSession'),
             t('sessionInfo.renameSessionHint'),
             {
                 defaultValue: session.metadata.summary?.text || '',
                 placeholder: getSessionName(session),
                 cancelText: t('common.cancel'),
-                confirmText: t('common.rename')
+                confirmText: t('common.rename'),
+                checkbox: {
+                    label: t('sessionInfo.pinSessionTitle'),
+                    defaultValue: session.metadata.summaryPinned ?? false
+                }
             }
         );
 
-        if (newName !== null) {
-            const trimmed = newName.trim();
+        if (result !== null) {
+            const trimmed = result.value.trim();
             if (!trimmed) return;
             try {
                 await sessionUpdateSummary(
                     session.id,
                     session.metadata,
                     trimmed,
-                    session.metadataVersion
+                    session.metadataVersion,
+                    result.checked
                 );
             } catch (error) {
                 Modal.alert(

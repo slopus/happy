@@ -442,9 +442,10 @@ export const ru: TranslationStructure = {
         failedToDeleteSession: 'Не удалось удалить сессию',
         sessionDeleted: 'Сессия успешно удалена',
         renameSession: 'Переименовать сессию',
-        renameSessionHint: 'ИИ может автоматически обновить название при изменении темы разговора.',
+        renameSessionHint: 'Задайте пользовательское название для этой сессии.',
         renameSessionSuccess: 'Сессия успешно переименована',
         failedToRenameSession: 'Не удалось переименовать сессию',
+        pinSessionTitle: 'Закрепить название (запретить автообновление ИИ)',
     },
 
     components: {

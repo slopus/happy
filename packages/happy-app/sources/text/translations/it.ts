@@ -500,9 +500,10 @@ export const it: TranslationStructure = {
         failedToDeleteSession: 'Impossibile eliminare la sessione',
         sessionDeleted: 'Sessione eliminata con successo',
         renameSession: 'Rinomina Sessione',
-        renameSessionHint: 'L\'IA potrebbe aggiornare automaticamente il titolo quando cambia l\'argomento della conversazione.',
+        renameSessionHint: 'Dai un nome personalizzato a questa sessione.',
         renameSessionSuccess: 'Sessione rinominata con successo',
         failedToRenameSession: 'Impossibile rinominare la sessione',
+        pinSessionTitle: 'Fissa il titolo (impedisci l\'aggiornamento automatico dell\'IA)',
 
     },
 

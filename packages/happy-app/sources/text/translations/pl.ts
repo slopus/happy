@@ -482,9 +482,10 @@ export const pl: TranslationStructure = {
         failedToDeleteSession: 'Nie udało się usunąć sesji',
         sessionDeleted: 'Sesja została pomyślnie usunięta',
         renameSession: 'Zmień nazwę sesji',
-        renameSessionHint: 'AI może automatycznie zaktualizować tytuł, gdy temat rozmowy się zmieni.',
+        renameSessionHint: 'Nadaj tej sesji własną nazwę.',
         renameSessionSuccess: 'Nazwa sesji została pomyślnie zmieniona',
         failedToRenameSession: 'Nie udało się zmienić nazwy sesji',
+        pinSessionTitle: 'Przypnij tytuł (zapobiegnij automatycznej aktualizacji przez AI)',
     },
 
     components: {

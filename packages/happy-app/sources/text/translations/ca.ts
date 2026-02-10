@@ -471,9 +471,10 @@ export const ca: TranslationStructure = {
         failedToDeleteSession: 'Error en eliminar la sessió',
         sessionDeleted: 'Sessió eliminada amb èxit',
         renameSession: 'Canviar el nom de la sessió',
-        renameSessionHint: 'La IA pot actualitzar automàticament el títol quan el tema de la conversa canviï.',
+        renameSessionHint: 'Dona un nom personalitzat a aquesta sessió.',
         renameSessionSuccess: 'Sessió canviada de nom amb èxit',
         failedToRenameSession: 'Error en canviar el nom de la sessió',
+        pinSessionTitle: 'Fixar el títol (evitar l\'actualització automàtica de la IA)',
 
     },
 
