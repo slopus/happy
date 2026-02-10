@@ -78,7 +78,7 @@ const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ 
     const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
 
     sessions.forEach(session => {
-        if (session.metadata?.machineId === machineId && session.metadata?.path) {
+        if (session.metadata?.machineId === machineId && session.metadata?.path && !session.metadata.path.includes('/.dev/worktree/')) {
             pathsWithTimestamps.push({
                 path: session.metadata.path,
                 timestamp: session.createdAt // Use createdAt, not updatedAt
@@ -619,7 +619,7 @@ function NewSessionWizard() {
 
         // First, add paths from recentMachinePaths (these are the most recent)
         recentMachinePaths.forEach(entry => {
-            if (entry.machineId === selectedMachineId && !pathSet.has(entry.path)) {
+            if (entry.machineId === selectedMachineId && !pathSet.has(entry.path) && !entry.path.includes('/.dev/worktree/')) {
                 paths.push(entry.path);
                 pathSet.add(entry.path);
             }
@@ -635,7 +635,7 @@ function NewSessionWizard() {
                 const session = item as any;
                 if (session.metadata?.machineId === selectedMachineId && session.metadata?.path) {
                     const path = session.metadata.path;
-                    if (!pathSet.has(path)) {
+                    if (!pathSet.has(path) && !path.includes('/.dev/worktree/')) {
                         pathSet.add(path);
                         pathsWithTimestamps.push({
                             path,

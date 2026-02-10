@@ -106,7 +106,7 @@ export default function MachineDetailScreen() {
     const recentPaths = useMemo(() => {
         const paths = new Set<string>();
         machineSessions.forEach(session => {
-            if (session.metadata?.path) {
+            if (session.metadata?.path && !session.metadata.path.includes('/.dev/worktree/')) {
                 paths.add(session.metadata.path);
             }
         });
