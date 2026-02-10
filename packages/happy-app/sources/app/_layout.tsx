@@ -18,7 +18,7 @@ import { AppState, View, Platform } from 'react-native';
 import { ModalProvider } from '@/modal';
 import { PostHogProvider } from 'posthog-react-native';
 import { tracking } from '@/track/tracking';
-import { syncRestore } from '@/sync/sync';
+import { sync, syncRestore } from '@/sync/sync';
 import { useTrackScreens } from '@/track/useTrackScreens';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { getVoiceProvider, onVoiceProviderChange } from '@/sync/voiceConfig';
@@ -215,7 +215,11 @@ export default function RootLayout() {
         };
     }, []);
     React.useEffect(() => {
-        currentSessionId = getSessionIdFromPath(pathname);
+        const newSessionId = getSessionIdFromPath(pathname);
+        if (currentSessionId && !newSessionId) {
+            sync.onSessionHidden();
+        }
+        currentSessionId = newSessionId;
     }, [pathname]);
     const { theme } = useUnistyles();
     const navigationTheme = React.useMemo(() => {

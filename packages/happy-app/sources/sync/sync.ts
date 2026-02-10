@@ -236,6 +236,10 @@ class Sync {
         }
     }
 
+    onSessionHidden = () => {
+        this.viewingSessionId = null;
+    }
+
     private clearTaskCompleted = async (sessionId: string, session: Session) => {
         const updatedState = { ...session.agentState, taskCompleted: null };
 
