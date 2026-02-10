@@ -24,8 +24,9 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
         return null;
     }
     
-    // Check if voice assistant is speaking
+    // Check if voice assistant is speaking or thinking
     const isVoiceSpeaking = realtimeMode === 'speaking';
+    const isVoiceThinking = realtimeMode === 'thinking';
 
     const getStatusInfo = () => {
         switch (realtimeStatus) {
@@ -120,14 +121,15 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                         </View>
                         
                         <View style={styles.rightSection}>
-                            {isVoiceSpeaking && (
-                                <VoiceBars 
-                                    isActive={isVoiceSpeaking} 
+                            {(isVoiceSpeaking || isVoiceThinking) && (
+                                <VoiceBars
+                                    isActive
                                     color={statusInfo.textColor}
                                     size="small"
+                                    mode={isVoiceThinking ? 'thinking' : 'speaking'}
                                 />
                             )}
-                            <Text style={[styles.tapToEndText, { color: statusInfo.textColor, marginLeft: isVoiceSpeaking ? 8 : 0 }]}>
+                            <Text style={[styles.tapToEndText, { color: statusInfo.textColor, marginLeft: (isVoiceSpeaking || isVoiceThinking) ? 8 : 0 }]}>
                                 Tap to end
                             </Text>
                         </View>
@@ -177,19 +179,20 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                         </Text>
                     </View>
                     
-                    {isVoiceSpeaking && (
-                        <VoiceBars 
-                            isActive={isVoiceSpeaking} 
+                    {(isVoiceSpeaking || isVoiceThinking) && (
+                        <VoiceBars
+                            isActive
                             color={statusInfo.textColor}
                             size="small"
+                            mode={isVoiceThinking ? 'thinking' : 'speaking'}
                         />
                     )}
-                    
+
                     <Ionicons
                         name="close"
                         size={14}
                         color={statusInfo.textColor}
-                        style={[styles.closeIcon, { marginLeft: isVoiceSpeaking ? 4 : 8 }]}
+                        style={[styles.closeIcon, { marginLeft: (isVoiceSpeaking || isVoiceThinking) ? 4 : 8 }]}
                     />
                 </View>
             </Pressable>

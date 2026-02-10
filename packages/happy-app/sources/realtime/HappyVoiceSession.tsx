@@ -17,6 +17,8 @@ registerGlobals();
 
 let roomInstance: Room | null = null;
 let activeGatewaySessionId: string | null = null;
+let thinkingTimeoutId: ReturnType<typeof setTimeout> | null = null;
+const THINKING_TIMEOUT_MS = 15000;
 
 class HappyVoiceSessionImpl implements VoiceSession {
     async startSession(config: VoiceSessionConfig): Promise<void> {
@@ -45,6 +47,7 @@ class HappyVoiceSessionImpl implements VoiceSession {
             });
 
             room.on(RoomEvent.Disconnected, () => {
+                if (thinkingTimeoutId) { clearTimeout(thinkingTimeoutId); thinkingTimeoutId = null; }
                 storage.getState().setRealtimeStatus('disconnected');
                 storage.getState().setRealtimeMode('idle', true);
                 storage.getState().clearRealtimeModeDebounce();
@@ -55,6 +58,33 @@ class HappyVoiceSessionImpl implements VoiceSession {
                     (speaker) => speaker.identity !== room.localParticipant.identity,
                 );
                 storage.getState().setRealtimeMode(remoteSpeaking ? 'speaking' : 'idle');
+            });
+
+            room.on(RoomEvent.DataReceived, (payload: Uint8Array, _participant, _kind, topic) => {
+                if (topic !== 'happy.voice.agent-state') return;
+                try {
+                    const data = JSON.parse(new TextDecoder().decode(payload));
+                    if (data.state === 'thinking') {
+                        storage.getState().setRealtimeMode('thinking', true);
+                        // Timeout fallback: clear thinking if no follow-up state arrives
+                        if (thinkingTimeoutId) clearTimeout(thinkingTimeoutId);
+                        thinkingTimeoutId = setTimeout(() => {
+                            thinkingTimeoutId = null;
+                            if (storage.getState().realtimeMode === 'thinking') {
+                                storage.getState().setRealtimeMode('idle', true);
+                            }
+                        }, THINKING_TIMEOUT_MS);
+                    } else if (data.state === 'idle' || data.state === 'listening') {
+                        // Agent finished processing without speaking — clear thinking
+                        if (thinkingTimeoutId) { clearTimeout(thinkingTimeoutId); thinkingTimeoutId = null; }
+                        if (storage.getState().realtimeMode === 'thinking') {
+                            storage.getState().setRealtimeMode('idle', true);
+                        }
+                    } else if (data.state === 'speaking') {
+                        // Speaking is handled by ActiveSpeakersChanged, but clear timeout
+                        if (thinkingTimeoutId) { clearTimeout(thinkingTimeoutId); thinkingTimeoutId = null; }
+                    }
+                } catch {}
             });
 
             await room.connect(start.roomUrl, start.participantToken);
@@ -71,6 +101,7 @@ class HappyVoiceSessionImpl implements VoiceSession {
     }
 
     async endSession(): Promise<void> {
+        if (thinkingTimeoutId) { clearTimeout(thinkingTimeoutId); thinkingTimeoutId = null; }
         const gatewaySessionId = activeGatewaySessionId;
         activeGatewaySessionId = null;
 

@@ -21,6 +21,7 @@ import { withLLMLogging } from '../runtime/loggingLlm';
 import { PromptedLLM } from '../runtime/promptedLlm';
 import { loadAndRenderPromptFile } from '../runtime/prompts';
 import { extractRecentAppContext, extractRecentTextUpdates, extractRecentVoiceMessages } from '../runtime/contextWindow';
+import { sendRoomData } from '../runtime/livekit';
 import { toolBridgeClient } from '../runtime/toolBridge';
 import type { HappyVoiceContextPayload } from '../types/voice';
 import {
@@ -619,6 +620,12 @@ const agent = defineAgent({
                 oldState: event.oldState,
                 newState: event.newState,
             });
+            // Broadcast to room so client can show thinking/speaking indicator
+            if (targetRoomName) {
+                sendRoomData(targetRoomName, 'happy.voice.agent-state', {
+                    state: event.newState,
+                }).catch((err) => logWarn('Failed to send agent state', { error: String(err) }));
+            }
         });
         session.on(voice.AgentSessionEventTypes.UserStateChanged, (event) => {
             logInfo('User state changed', {
