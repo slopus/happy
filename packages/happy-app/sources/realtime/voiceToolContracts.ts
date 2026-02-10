@@ -20,7 +20,7 @@ export const bridgedVoiceToolDescriptions: Record<BridgedVoiceToolName, string> 
     manageSession: 'List, switch, or create coding sessions.',
     changeSessionSettings: 'Change session settings such as model or permission mode.',
     getSessionStatus: 'Get current status from the active coding session.',
-    getLatestAssistantReply: 'Use when the user asks what Happy/Claude just replied. Returns the latest assistant text from the active coding session.',
+    getLatestAssistantReply: 'Use when the user asks what Happy just replied. Returns the latest assistant text from the active coding session.',
     deleteSessionTool: 'Delete an existing coding session after confirmation.',
     navigateHome: 'Navigate to the home screen and leave the current conversation.',
     endVoiceConversation: 'End the current voice conversation.',
