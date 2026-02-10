@@ -466,6 +466,53 @@ export async function sessionUpdateSummary(
 }
 
 /**
+ * Update arbitrary metadata fields on a session (with encryption and version-conflict retry)
+ */
+export async function sessionUpdateMetadataFields(
+    sessionId: string,
+    currentMetadata: Metadata,
+    updates: Partial<Metadata>,
+    expectedVersion: number,
+    maxRetries: number = 3
+): Promise<{ version: number }> {
+    let currentVersion = expectedVersion;
+
+    const sessionEncryption = sync.encryption.getSessionEncryption(sessionId);
+    if (!sessionEncryption) {
+        throw new Error(`Session encryption not found for ${sessionId}`);
+    }
+
+    let metadataToSend: Metadata = { ...currentMetadata, ...updates };
+
+    for (let retryCount = 0; retryCount < maxRetries; retryCount++) {
+        const encryptedMetadata = await sessionEncryption.encryptRaw(metadataToSend);
+
+        const result = await apiSocket.emitWithAck<{
+            result: 'success' | 'version-mismatch' | 'error';
+            version?: number;
+            metadata?: string;
+            message?: string;
+        }>('update-metadata', {
+            sid: sessionId,
+            metadata: encryptedMetadata,
+            expectedVersion: currentVersion
+        });
+
+        if (result.result === 'success') {
+            return { version: result.version! };
+        } else if (result.result === 'version-mismatch') {
+            currentVersion = result.version!;
+            const latestMetadata = await sessionEncryption.decryptRaw(result.metadata!) as Metadata;
+            metadataToSend = { ...latestMetadata, ...updates };
+        } else {
+            throw new Error(result.message || 'Failed to update session metadata');
+        }
+    }
+
+    throw new Error(`Failed to update after ${maxRetries} retries due to version conflicts`);
+}
+
+/**
  * Abort the current session operation
  */
 export async function sessionAbort(sessionId: string): Promise<void> {

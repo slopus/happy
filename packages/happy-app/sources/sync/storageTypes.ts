@@ -22,7 +22,10 @@ export const MetadataSchema = z.object({
     homeDir: z.string().optional(), // User's home directory on the machine
     happyHomeDir: z.string().optional(), // Happy configuration directory 
     hostPid: z.number().optional(), // Process ID of the session
-    flavor: z.string().nullish() // Session flavor/variant identifier
+    flavor: z.string().nullish(), // Session flavor/variant identifier
+    isWorktree: z.boolean().optional(), // Whether this session uses a git worktree
+    worktreeBasePath: z.string().optional(), // Original repository path before worktree
+    worktreeBranchName: z.string().optional() // Branch name created for the worktree
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;

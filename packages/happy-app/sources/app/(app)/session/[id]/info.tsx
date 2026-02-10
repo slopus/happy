@@ -12,6 +12,7 @@ import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeT
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionKill, sessionDelete, machineForkClaudeSession, machineSpawnNewSession, sessionUpdateSummary } from '@/sync/ops';
+import { isWorktreeSession, pushWorktreeBranch, mergeWorktreeBranch, createWorktreePR, cleanupWorktree } from '@/utils/worktreeOps';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -103,19 +104,50 @@ function SessionInfoContent({ session }: { session: Session }) {
     });
 
     const handleArchiveSession = useCallback(() => {
-        Modal.alert(
-            t('sessionInfo.archiveSession'),
-            t('sessionInfo.archiveSessionConfirm'),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: t('sessionInfo.archiveSession'),
-                    style: 'destructive',
-                    onPress: performArchive
-                }
-            ]
-        );
-    }, [performArchive]);
+        if (isWorktreeSession(session.metadata) && session.metadata?.machineId && session.metadata?.worktreeBasePath && session.metadata?.worktreeBranchName) {
+            const machineId = session.metadata.machineId;
+            const basePath = session.metadata.worktreeBasePath;
+            const branchName = session.metadata.worktreeBranchName;
+            Modal.alert(
+                t('sessionInfo.archiveSession'),
+                t('sessionInfo.worktree.archiveWorktreeConfirm'),
+                [
+                    { text: t('common.cancel'), style: 'cancel' },
+                    {
+                        text: t('sessionInfo.worktree.archiveAndCleanup'),
+                        style: 'destructive',
+                        onPress: async () => {
+                            // Clean up worktree first (while component is still mounted),
+                            // then archive (which navigates away)
+                            try {
+                                await cleanupWorktree(machineId, basePath, branchName);
+                            } catch (e) {
+                                console.warn('Worktree cleanup failed:', e);
+                            }
+                            await performArchive();
+                        }
+                    },
+                    {
+                        text: t('sessionInfo.worktree.archiveKeepWorktree'),
+                        onPress: performArchive
+                    }
+                ]
+            );
+        } else {
+            Modal.alert(
+                t('sessionInfo.archiveSession'),
+                t('sessionInfo.archiveSessionConfirm'),
+                [
+                    { text: t('common.cancel'), style: 'cancel' },
+                    {
+                        text: t('sessionInfo.archiveSession'),
+                        style: 'destructive',
+                        onPress: performArchive
+                    }
+                ]
+            );
+        }
+    }, [performArchive, session.metadata]);
 
     // Use HappyAction for deletion - it handles errors automatically
     const [deletingSession, performDelete] = useHappyAction(async () => {
@@ -253,6 +285,76 @@ function SessionInfoContent({ session }: { session: Session }) {
         }
     }, []);
 
+    // Worktree action handlers
+    const isWorktree = isWorktreeSession(session.metadata);
+    const worktreeMachineId = session.metadata?.machineId;
+    const worktreeBasePath = session.metadata?.worktreeBasePath;
+    const worktreeBranch = session.metadata?.worktreeBranchName;
+    const worktreePath = session.metadata?.path;
+
+    const [pushingBranch, handlePushBranch] = useHappyAction(async () => {
+        if (!worktreeMachineId || !worktreeBranch || !worktreePath) return;
+        const confirmed = await Modal.confirm(
+            t('sessionInfo.worktree.pushBranch'),
+            t('sessionInfo.worktree.pushConfirm', { branch: worktreeBranch })
+        );
+        if (!confirmed) return;
+        const result = await pushWorktreeBranch(worktreeMachineId, worktreePath, worktreeBranch);
+        if (!result.success) {
+            throw new HappyError(result.error || t('sessionInfo.worktree.pushFailed'), false);
+        }
+        Modal.alert(t('common.success'), t('sessionInfo.worktree.pushSuccess', { branch: worktreeBranch }));
+    });
+
+    const [creatingPR, handleCreatePR] = useHappyAction(async () => {
+        if (!worktreeMachineId || !worktreeBranch || !worktreePath) return;
+        const sessionTitle = session.metadata?.summary?.text || getSessionName(session);
+        const confirmed = await Modal.confirm(
+            t('sessionInfo.worktree.createPR'),
+            t('sessionInfo.worktree.createPRConfirm', { branch: worktreeBranch })
+        );
+        if (!confirmed) return;
+        const result = await createWorktreePR(worktreeMachineId, worktreePath, worktreeBranch, sessionTitle);
+        if (!result.success) {
+            if (result.error === 'gh_not_installed') {
+                throw new HappyError(t('sessionInfo.worktree.ghNotInstalled'), false);
+            }
+            throw new HappyError(result.error || t('sessionInfo.worktree.createPRFailed'), false);
+        }
+        Modal.alert(t('common.success'), t('sessionInfo.worktree.createPRSuccess', { url: result.prUrl || '' }));
+    });
+
+    const [mergingBranch, handleMergeBranch] = useHappyAction(async () => {
+        if (!worktreeMachineId || !worktreeBranch || !worktreeBasePath) return;
+        const confirmed = await Modal.confirm(
+            t('sessionInfo.worktree.mergeBranch'),
+            t('sessionInfo.worktree.mergeConfirm', { branch: worktreeBranch })
+        );
+        if (!confirmed) return;
+        const result = await mergeWorktreeBranch(worktreeMachineId, worktreeBasePath, worktreeBranch);
+        if (!result.success) {
+            if (result.hasConflicts) {
+                throw new HappyError(t('sessionInfo.worktree.mergeConflicts'), false);
+            }
+            throw new HappyError(result.error || t('sessionInfo.worktree.mergeFailed'), false);
+        }
+        Modal.alert(t('common.success'), t('sessionInfo.worktree.mergeSuccess'));
+    });
+
+    const [cleaningUp, handleCleanupWorktree] = useHappyAction(async () => {
+        if (!worktreeMachineId || !worktreeBranch || !worktreeBasePath) return;
+        const confirmed = await Modal.confirm(
+            t('sessionInfo.worktree.cleanup'),
+            t('sessionInfo.worktree.cleanupConfirm')
+        );
+        if (!confirmed) return;
+        const result = await cleanupWorktree(worktreeMachineId, worktreeBasePath, worktreeBranch);
+        if (!result.success) {
+            throw new HappyError(result.error || t('sessionInfo.worktree.cleanupFailed'), false);
+        }
+        Modal.alert(t('common.success'), t('sessionInfo.worktree.cleanupSuccess'));
+    });
+
     return (
         <>
             <ItemList>
@@ -385,6 +487,62 @@ function SessionInfoContent({ session }: { session: Session }) {
                         />
                     )}
                 </ItemGroup>
+
+                {/* Worktree Info & Actions */}
+                {isWorktree && worktreeBranch && (
+                    <ItemGroup title={t('sessionInfo.worktree.title')}>
+                        <Item
+                            title={t('sessionInfo.worktree.branch')}
+                            subtitle={worktreeBranch}
+                            icon={<Ionicons name="git-branch-outline" size={29} color="#34C759" />}
+                            showChevron={false}
+                        />
+                        {worktreeBasePath && (
+                            <Item
+                                title={t('sessionInfo.worktree.basePath')}
+                                subtitle={formatPathRelativeToHome(worktreeBasePath, session.metadata?.homeDir)}
+                                icon={<Ionicons name="folder-open-outline" size={29} color="#5856D6" />}
+                                showChevron={false}
+                            />
+                        )}
+                    </ItemGroup>
+                )}
+                {isWorktree && worktreeMachineId && worktreeBranch && (
+                    <ItemGroup title={t('sessionInfo.worktree.actions')}>
+                        <Item
+                            title={t('sessionInfo.worktree.pushBranch')}
+                            subtitle={t('sessionInfo.worktree.pushBranchSubtitle')}
+                            icon={<Ionicons name="cloud-upload-outline" size={29} color="#007AFF" />}
+                            onPress={handlePushBranch}
+                            loading={pushingBranch}
+                            disabled={pushingBranch}
+                        />
+                        <Item
+                            title={t('sessionInfo.worktree.createPR')}
+                            subtitle={t('sessionInfo.worktree.createPRSubtitle')}
+                            icon={<Ionicons name="git-pull-request-outline" size={29} color="#34C759" />}
+                            onPress={handleCreatePR}
+                            loading={creatingPR}
+                            disabled={creatingPR}
+                        />
+                        <Item
+                            title={t('sessionInfo.worktree.mergeBranch')}
+                            subtitle={t('sessionInfo.worktree.mergeBranchSubtitle')}
+                            icon={<Ionicons name="git-merge-outline" size={29} color="#FF9500" />}
+                            onPress={handleMergeBranch}
+                            loading={mergingBranch}
+                            disabled={mergingBranch}
+                        />
+                        <Item
+                            title={t('sessionInfo.worktree.cleanup')}
+                            subtitle={t('sessionInfo.worktree.cleanupSubtitle')}
+                            icon={<Ionicons name="trash-outline" size={29} color="#FF3B30" />}
+                            onPress={handleCleanupWorktree}
+                            loading={cleaningUp}
+                            disabled={cleaningUp}
+                        />
+                    </ItemGroup>
+                )}
 
                 {/* Metadata */}
                 {session.metadata && (

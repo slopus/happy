@@ -13,7 +13,7 @@ import { t } from '@/text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { machineSpawnNewSession } from '@/sync/ops';
+import { machineSpawnNewSession, sessionUpdateMetadataFields } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
@@ -999,9 +999,10 @@ function NewSessionWizard() {
 
         try {
             let actualPath = selectedPath;
+            let worktreeBranchName: string | undefined;
 
             // Handle worktree creation
-            if (sessionType === 'worktree' && experimentsEnabled) {
+            if (sessionType === 'worktree') {
                 const worktreeResult = await createWorktree(selectedMachineId, selectedPath);
 
                 if (!worktreeResult.success) {
@@ -1015,6 +1016,7 @@ function NewSessionWizard() {
                 }
 
                 actualPath = worktreeResult.worktreePath;
+                worktreeBranchName = worktreeResult.branchName;
             }
 
             // Save settings
@@ -1056,6 +1058,27 @@ function NewSessionWizard() {
                     storage.getState().updateSessionModelMode(result.sessionId, modelMode as 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite');
                 }
 
+                // Write worktree metadata to session
+                if (sessionType === 'worktree' && worktreeBranchName) {
+                    const newSession = storage.getState().sessions[result.sessionId];
+                    if (newSession?.metadata) {
+                        try {
+                            await sessionUpdateMetadataFields(
+                                result.sessionId,
+                                newSession.metadata,
+                                {
+                                    isWorktree: true,
+                                    worktreeBasePath: selectedPath,
+                                    worktreeBranchName,
+                                },
+                                newSession.metadataVersion,
+                            );
+                        } catch (e) {
+                            console.warn('Failed to write worktree metadata:', e);
+                        }
+                    }
+                }
+
                 // Send initial message if provided
                 if (sessionPrompt.trim()) {
                     await sync.sendMessage(result.sessionId, sessionPrompt);
@@ -1082,7 +1105,7 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router]);
 
     const screenWidth = useWindowDimensions().width;
 
@@ -1144,17 +1167,15 @@ function NewSessionWizard() {
                 style={styles.container}
             >
                 <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-                    {/* Session type selector only if experiments enabled */}
-                    {experimentsEnabled && (
-                        <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, marginBottom: 16 }}>
-                            <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                                <SessionTypeSelector
-                                    value={sessionType}
-                                    onChange={setSessionType}
-                                />
-                            </View>
+                    {/* Session type selector */}
+                    <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, marginBottom: 16 }}>
+                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                            <SessionTypeSelector
+                                value={sessionType}
+                                onChange={setSessionType}
+                            />
                         </View>
-                    )}
+                    </View>
 
                     {/* AgentInput with inline chips - sticky at bottom */}
                     <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
@@ -1859,29 +1880,25 @@ function NewSessionWizard() {
                             </ItemGroup>
 
                             {/* Section 5: Advanced Options (Collapsible) */}
-                            {experimentsEnabled && (
-                                <>
-                                    <Pressable
-                                        style={styles.advancedHeader}
-                                        onPress={() => setShowAdvanced(!showAdvanced)}
-                                    >
-                                        <Text style={styles.advancedHeaderText}>Advanced Options</Text>
-                                        <Ionicons
-                                            name={showAdvanced ? "chevron-up" : "chevron-down"}
-                                            size={20}
-                                            color={theme.colors.text}
-                                        />
-                                    </Pressable>
+                            <Pressable
+                                style={styles.advancedHeader}
+                                onPress={() => setShowAdvanced(!showAdvanced)}
+                            >
+                                <Text style={styles.advancedHeaderText}>Advanced Options</Text>
+                                <Ionicons
+                                    name={showAdvanced ? "chevron-up" : "chevron-down"}
+                                    size={20}
+                                    color={theme.colors.text}
+                                />
+                            </Pressable>
 
-                                    {showAdvanced && (
-                                        <View style={{ marginBottom: 12 }}>
-                                            <SessionTypeSelector
-                                                value={sessionType}
-                                                onChange={setSessionType}
-                                            />
-                                        </View>
-                                    )}
-                                </>
+                            {showAdvanced && (
+                                <View style={{ marginBottom: 12 }}>
+                                    <SessionTypeSelector
+                                        value={sessionType}
+                                        onChange={setSessionType}
+                                    />
+                                </View>
                             )}
                         </View>
                     </View>
