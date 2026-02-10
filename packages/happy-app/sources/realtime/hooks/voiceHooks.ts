@@ -110,11 +110,22 @@ export const voiceHooks = {
     },
 
     /**
+     * Called when user leaves a session (e.g. navigates back to home)
+     */
+    onSessionBlur() {
+        lastFocusSession = null;
+    },
+
+    /**
      * Called when the agent requests permission for a tool use
      */
     onPermissionRequested(sessionId: string, requestId: string, toolName: string, toolArgs: any) {
         if (VOICE_CONFIG.DISABLE_PERMISSION_REQUESTS) return;
-        
+
+        if (sessionId !== lastFocusSession) {
+            reportTextUpdate(`background-session-permission:${sessionId}`);
+            return;
+        }
         reportSession(sessionId);
         reportTextUpdate(formatPermissionRequest(sessionId, requestId, toolName, toolArgs));
     },
@@ -124,7 +135,8 @@ export const voiceHooks = {
      */
     onMessages(sessionId: string, messages: Message[]) {
         if (VOICE_CONFIG.DISABLE_MESSAGES) return;
-        
+        if (sessionId !== lastFocusSession) return;
+
         reportSession(sessionId);
         reportContextualUpdate(formatNewMessages(sessionId, messages));
     },
@@ -137,6 +149,7 @@ export const voiceHooks = {
             console.log('🎤 Voice session started for:', sessionId);
         }
         shownSessions.clear();
+        lastFocusSession = sessionId;
         let prompt = '';
         prompt += 'THIS IS AN ACTIVE SESSION: \n\n' + formatSessionFull(storage.getState().sessions[sessionId], storage.getState().sessionMessages[sessionId]?.messages ?? []);
         shownSessions.add(sessionId);
@@ -153,7 +166,11 @@ export const voiceHooks = {
      */
     onReady(sessionId: string) {
         if (VOICE_CONFIG.DISABLE_READY_EVENTS) return;
-        
+
+        if (sessionId !== lastFocusSession) {
+            reportTextUpdate(`background-session-ready:${sessionId}`);
+            return;
+        }
         reportSession(sessionId);
         reportTextUpdate(formatReadyEvent(sessionId));
     },

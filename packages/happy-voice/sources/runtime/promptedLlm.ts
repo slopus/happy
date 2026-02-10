@@ -1,4 +1,5 @@
 import { llm, type APIConnectOptions } from '@livekit/agents';
+import { tryGetCannedToolResponse } from './cannedSpeech';
 import { logInfo } from './log';
 import { loadAndRenderPromptFile } from './prompts';
 import {
@@ -6,6 +7,21 @@ import {
     extractRecentVoiceMessages,
     looksLikeAppContextUpdate,
 } from './contextWindow';
+
+class CannedLLMStream extends llm.LLMStream {
+    constructor(
+        parentLlm: llm.LLM,
+        chatCtx: llm.ChatContext,
+        private readonly text: string,
+    ) {
+        super(parentLlm, { chatCtx, connOptions: { maxRetry: 0, retryIntervalMs: 0, timeoutMs: 5_000 } });
+    }
+
+    protected async run(): Promise<void> {
+        this.queue.put({ id: 'canned', delta: { role: 'assistant', content: this.text } });
+        this.queue.close();
+    }
+}
 
 type ChatInvocation = {
     chatCtx: llm.ChatContext;
@@ -171,6 +187,22 @@ export class PromptedLLM extends llm.LLM {
                 : recentAppContextFromChat;
         const currentAppSessionId = this.config.getAppSessionId?.() || this.config.appSessionId || '';
         const toolOutput = toolFollowup ? findLatestToolOutput(chatCtx) : null;
+
+        // Short-circuit: for predictable tool results, return a canned response without calling LLM.
+        if (toolFollowup && toolOutput) {
+            const canned = tryGetCannedToolResponse(
+                toolOutput.toolName,
+                toolOutput.toolResult,
+                this.config.languagePreference || '',
+            );
+            if (canned) {
+                logInfo('PromptedLLM.chat() canned response', {
+                    toolName: toolOutput.toolName,
+                    canned,
+                });
+                return new CannedLLMStream(this.innerLLM, chatCtx, canned);
+            }
+        }
 
         const systemPrompt = loadAndRenderPromptFile(
             toolFollowup ? this.config.toolFollowupPromptFile : this.config.mainPromptFile,

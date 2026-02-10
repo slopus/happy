@@ -224,10 +224,12 @@ class Sync {
             this.viewingSessionId = sessionId;
         }
 
-        // Notify voice assistant about session visibility
+        // Notify voice assistant about session visibility (only for user-initiated navigation)
         const session = storage.getState().sessions[sessionId];
         if (session) {
-            voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
+            if (userInitiated) {
+                voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
+            }
 
             // Clear task completed indicator when user opens the session
             if (userInitiated && session.agentState?.taskCompleted) {
@@ -238,6 +240,7 @@ class Sync {
 
     onSessionHidden = () => {
         this.viewingSessionId = null;
+        voiceHooks.onSessionBlur();
     }
 
     private clearTaskCompleted = async (sessionId: string, session: Session) => {

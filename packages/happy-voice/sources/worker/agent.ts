@@ -15,6 +15,7 @@ import * as silero from '@livekit/agents-plugin-silero';
 import { BackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
 import { RoomEvent } from '@livekit/rtc-node';
 import { z } from 'zod';
+import { getBackgroundPermissionSpeech, getBackgroundReadySpeech } from '../runtime/cannedSpeech';
 import { env } from '../runtime/env';
 import { logError, logInfo, logWarn } from '../runtime/log';
 import { withLLMLogging } from '../runtime/loggingLlm';
@@ -65,6 +66,8 @@ const happyVoiceContextPayloadSchema = z.object({
 });
 
 const READY_EVENT_PREFIX_REGEX = /done working in session:/i;
+const BACKGROUND_READY_PREFIX = 'background-session-ready:';
+const BACKGROUND_PERMISSION_PREFIX = 'background-session-permission:';
 const READY_SUMMARY_OUTPUT_MAX_CHARS = 120;
 const READY_FALLBACK_SPEECH = 'OK';
 const SESSION_ID_LINE_REGEX = /^# Session ID:\s*(.+)$/m;
@@ -760,6 +763,35 @@ const agent = defineAgent({
                         if (!data.message) {
                             return;
                         }
+
+                        // Background session ready: short canned notification, no LLM, no context pollution.
+                        if (data.message.startsWith(BACKGROUND_READY_PREFIX)) {
+                            const speech = getBackgroundReadySpeech(metadata.language || 'en');
+                            logInfo('Background session ready notification', {
+                                backgroundSessionId: data.message.slice(BACKGROUND_READY_PREFIX.length),
+                            });
+                            const bgHandle = session.say(speech, {
+                                allowInterruptions: true,
+                                addToChatCtx: false,
+                            });
+                            await bgHandle.waitForPlayout();
+                            return;
+                        }
+
+                        // Background session permission: notify user without polluting context.
+                        if (data.message.startsWith(BACKGROUND_PERMISSION_PREFIX)) {
+                            const speech = getBackgroundPermissionSpeech(metadata.language || 'en');
+                            logInfo('Background session permission notification', {
+                                backgroundSessionId: data.message.slice(BACKGROUND_PERMISSION_PREFIX.length),
+                            });
+                            const bgHandle = session.say(speech, {
+                                allowInterruptions: true,
+                                addToChatCtx: false,
+                            });
+                            await bgHandle.waitForPlayout();
+                            return;
+                        }
+
                         const isReadyEvent = isReadyEventMessage(data.message);
                         const allowInterruptions = isReadyEvent
                             ? env.AGENT_READY_PLAYOUT_MODE === 'best_effort'
