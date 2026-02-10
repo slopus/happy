@@ -79,9 +79,16 @@ export default function FileScreen() {
     const encodedPath = searchParams.path as string;
     let filePath = '';
     
-    // Decode base64 path with error handling
+    // Decode base64 path with error handling (UTF-8 safe)
     try {
-        filePath = encodedPath ? atob(encodedPath) : '';
+        if (encodedPath) {
+            const binaryString = atob(encodedPath);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            filePath = new TextDecoder('utf-8').decode(bytes);
+        }
     } catch (error) {
         console.error('Failed to decode file path:', error);
         filePath = encodedPath || ''; // Fallback to original path if decoding fails
@@ -221,7 +228,12 @@ export default function FileScreen() {
                         // Decode base64 content to UTF-8 string
                         let decodedContent: string;
                         try {
-                            decodedContent = atob(response.content);
+                            const binaryString = atob(response.content);
+                            const bytes = new Uint8Array(binaryString.length);
+                            for (let i = 0; i < binaryString.length; i++) {
+                                bytes[i] = binaryString.charCodeAt(i);
+                            }
+                            decodedContent = new TextDecoder('utf-8').decode(bytes);
                         } catch (decodeError) {
                             // If base64 decode fails, treat as binary
                             setFileContent({

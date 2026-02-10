@@ -115,7 +115,7 @@ export default function FilesScreen() {
 
     const handleFilePress = React.useCallback((file: GitFileStatus | FileItem) => {
         // Navigate to file viewer with the file path (base64 encoded for special characters)
-        const encodedPath = btoa(file.fullPath);
+        const encodedPath = btoa(new TextEncoder().encode(file.fullPath).reduce((s, b) => s + String.fromCharCode(b), ''));
         router.push(`/session/${sessionId}/file?path=${encodedPath}`);
     }, [router, sessionId]);
 
