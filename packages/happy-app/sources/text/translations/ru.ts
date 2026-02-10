@@ -700,7 +700,23 @@ export const ru: TranslationStructure = {
             title: 'Языки',
             footer: ({ count }: { count: number }) => `Доступно ${count} ${plural({ count, one: 'язык', few: 'языка', many: 'языков' })}`,
             autoDetect: 'Автоопределение',
-        }
+        },
+
+        sendConfirmationTitle: 'Подтверждение отправки',
+        sendConfirmationDescription: 'Показывать диалог подтверждения с обратным отсчётом перед отправкой сообщений голосовым помощником.',
+        sendConfirmationLabel: 'Подтверждение отправки',
+        sendConfirmationSubtitle: 'Просмотр сообщений перед отправкой',
+        sendConfirmationSpeedTitle: 'Скорость отсчёта',
+        speedFast: 'Быстро (3с)',
+        speedNormal: 'Обычно (5с)',
+        speedSlow: 'Медленно (8с)',
+    },
+
+    voiceSendConfirmation: {
+        title: 'Отправка сообщения',
+        cancel: 'Отмена',
+        sendNow: 'Отправить сейчас',
+        countdown: ({ seconds }: { seconds: number }) => `${seconds}с`,
     },
 
     settingsAccount: {

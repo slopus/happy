@@ -707,7 +707,23 @@ export const en: TranslationStructure = {
             title: 'Languages',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'language', plural: 'languages' })} available`,
             autoDetect: 'Auto-detect',
-        }
+        },
+
+        sendConfirmationTitle: 'Send Confirmation',
+        sendConfirmationDescription: 'Show a confirmation dialog with a countdown before the voice assistant sends messages to the coding agent.',
+        sendConfirmationLabel: 'Send Confirmation',
+        sendConfirmationSubtitle: 'Review messages before sending',
+        sendConfirmationSpeedTitle: 'Countdown Speed',
+        speedFast: 'Fast (3s)',
+        speedNormal: 'Normal (5s)',
+        speedSlow: 'Slow (8s)',
+    },
+
+    voiceSendConfirmation: {
+        title: 'Sending Message',
+        cancel: 'Cancel',
+        sendNow: 'Send Now',
+        countdown: ({ seconds }: { seconds: number }) => `${seconds}s`,
     },
 
     settingsAccount: {

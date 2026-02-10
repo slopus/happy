@@ -690,7 +690,23 @@ export const pt: TranslationStructure = {
             title: 'Idiomas',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomas' })} disponíveis`,
             autoDetect: 'Detectar automaticamente',
-        }
+        },
+
+        sendConfirmationTitle: 'Confirmação de envio',
+        sendConfirmationDescription: 'Mostrar um diálogo de confirmação com contagem regressiva antes do assistente de voz enviar mensagens ao agente de codificação.',
+        sendConfirmationLabel: 'Confirmação de envio',
+        sendConfirmationSubtitle: 'Revisar mensagens antes de enviar',
+        sendConfirmationSpeedTitle: 'Velocidade da contagem',
+        speedFast: 'Rápido (3s)',
+        speedNormal: 'Normal (5s)',
+        speedSlow: 'Lento (8s)',
+    },
+
+    voiceSendConfirmation: {
+        title: 'Enviando mensagem',
+        cancel: 'Cancelar',
+        sendNow: 'Enviar agora',
+        countdown: ({ seconds }: { seconds: number }) => `${seconds}s`,
     },
 
     settingsAccount: {

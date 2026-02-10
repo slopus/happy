@@ -691,7 +691,23 @@ export const zhHant: TranslationStructure = {
             title: '語言',
             footer: ({ count }: { count: number }) => `${count} 種可用語言`,
             autoDetect: '自動偵測',
-        }
+        },
+
+        sendConfirmationTitle: '傳送確認',
+        sendConfirmationDescription: '語音助手向編碼代理傳送訊息前，顯示帶倒數計時的確認對話框。',
+        sendConfirmationLabel: '傳送確認',
+        sendConfirmationSubtitle: '傳送前預覽訊息內容',
+        sendConfirmationSpeedTitle: '倒數計時速度',
+        speedFast: '較快 (3秒)',
+        speedNormal: '正常 (5秒)',
+        speedSlow: '較慢 (8秒)',
+    },
+
+    voiceSendConfirmation: {
+        title: '即將傳送訊息',
+        cancel: '取消',
+        sendNow: '立即傳送',
+        countdown: ({ seconds }: { seconds: number }) => `${seconds}秒`,
     },
 
     settingsAccount: {

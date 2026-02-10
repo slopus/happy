@@ -7,6 +7,7 @@ import { ItemList } from '@/components/ItemList';
 import { useSettingMutable } from '@/sync/storage';
 import { findLanguageByCode, getLanguageDisplayName, LANGUAGES } from '@/constants/Languages';
 import { t } from '@/text';
+import { Switch } from '@/components/Switch';
 import {
     getVoiceProvider,
     setVoiceProvider,
@@ -16,6 +17,11 @@ import {
     hasCustomHappyVoiceGatewayUrl,
     getHappyVoicePublicKey,
     hasCustomHappyVoicePublicKey,
+    getSendConfirmation,
+    setSendConfirmation,
+    getSendConfirmationSpeed,
+    setSendConfirmationSpeed,
+    type SendConfirmationSpeed,
 } from '@/sync/voiceConfig';
 
 function truncate(s: string, maxLen: number): string {
@@ -32,6 +38,8 @@ export default function VoiceSettingsScreen() {
     const [agentId, setAgentId] = useState(() => getElevenLabsAgentId());
     const [gatewayUrl, setGatewayUrl] = useState(() => getHappyVoiceGatewayUrl());
     const [publicKey, setPublicKey] = useState(() => getHappyVoicePublicKey());
+    const [sendConfirmationEnabled, setSendConfirmationEnabled] = useState(() => getSendConfirmation());
+    const [confirmationSpeed, setConfirmationSpeed] = useState<SendConfirmationSpeed>(() => getSendConfirmationSpeed());
 
     useFocusEffect(
         useCallback(() => {
@@ -39,12 +47,24 @@ export default function VoiceSettingsScreen() {
             setAgentId(getElevenLabsAgentId());
             setGatewayUrl(getHappyVoiceGatewayUrl());
             setPublicKey(getHappyVoicePublicKey());
+            setSendConfirmationEnabled(getSendConfirmation());
+            setConfirmationSpeed(getSendConfirmationSpeed());
         }, []),
     );
 
     const handleProviderChange = (value: 'elevenlabs' | 'happy-voice') => {
         setVoiceProvider(value);
         setProvider(value);
+    };
+
+    const handleSendConfirmationChange = (value: boolean) => {
+        setSendConfirmation(value);
+        setSendConfirmationEnabled(value);
+    };
+
+    const handleSpeedChange = (value: SendConfirmationSpeed) => {
+        setSendConfirmationSpeed(value);
+        setConfirmationSpeed(value);
     };
 
     return (
@@ -132,6 +152,66 @@ export default function VoiceSettingsScreen() {
                     onPress={() => router.push('/settings/voice/language')}
                 />
             </ItemGroup>
+
+            {/* Send Confirmation */}
+            <ItemGroup
+                title={t('settingsVoice.sendConfirmationTitle')}
+                footer={t('settingsVoice.sendConfirmationDescription')}
+            >
+                <Item
+                    title={t('settingsVoice.sendConfirmationLabel')}
+                    subtitle={t('settingsVoice.sendConfirmationSubtitle')}
+                    icon={<Ionicons name="shield-checkmark-outline" size={29} color="#34C759" />}
+                    rightElement={
+                        <Switch
+                            value={sendConfirmationEnabled}
+                            onValueChange={handleSendConfirmationChange}
+                        />
+                    }
+                    showChevron={false}
+                />
+            </ItemGroup>
+
+            {/* Confirmation Speed */}
+            {sendConfirmationEnabled && (
+                <ItemGroup
+                    title={t('settingsVoice.sendConfirmationSpeedTitle')}
+                >
+                    <Item
+                        title={t('settingsVoice.speedFast')}
+                        icon={<Ionicons name="flash-outline" size={29} color="#FF9500" />}
+                        rightElement={
+                            confirmationSpeed === 'fast'
+                                ? <Ionicons name="checkmark-circle" size={24} color="#007AFF" />
+                                : null
+                        }
+                        onPress={() => handleSpeedChange('fast')}
+                        showChevron={false}
+                    />
+                    <Item
+                        title={t('settingsVoice.speedNormal')}
+                        icon={<Ionicons name="time-outline" size={29} color="#007AFF" />}
+                        rightElement={
+                            confirmationSpeed === 'normal'
+                                ? <Ionicons name="checkmark-circle" size={24} color="#007AFF" />
+                                : null
+                        }
+                        onPress={() => handleSpeedChange('normal')}
+                        showChevron={false}
+                    />
+                    <Item
+                        title={t('settingsVoice.speedSlow')}
+                        icon={<Ionicons name="hourglass-outline" size={29} color="#5856D6" />}
+                        rightElement={
+                            confirmationSpeed === 'slow'
+                                ? <Ionicons name="checkmark-circle" size={24} color="#007AFF" />
+                                : null
+                        }
+                        onPress={() => handleSpeedChange('slow')}
+                        showChevron={false}
+                    />
+                </ItemGroup>
+            )}
         </ItemList>
     );
 }

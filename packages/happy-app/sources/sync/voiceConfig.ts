@@ -9,6 +9,8 @@ const KEYS = {
     elevenLabsAgentId: 'voice-elevenlabs-agent-id',
     happyVoiceGatewayUrl: 'voice-happy-voice-gateway-url',
     happyVoicePublicKey: 'voice-happy-voice-public-key',
+    sendConfirmation: 'voice-send-confirmation',
+    sendConfirmationSpeed: 'voice-send-confirmation-speed',
 } as const;
 
 type VoiceProvider = 'elevenlabs' | 'happy-voice';
@@ -95,6 +97,39 @@ export function setHappyVoicePublicKey(value: string | null): void {
 
 export function hasCustomHappyVoicePublicKey(): boolean {
     return voiceConfigStorage.contains(KEYS.happyVoicePublicKey);
+}
+
+// ── Send Confirmation ──────────────────────────────────────────────
+
+export function getSendConfirmation(): boolean {
+    const stored = voiceConfigStorage.getBoolean(KEYS.sendConfirmation);
+    return stored ?? true; // default: enabled
+}
+
+export function setSendConfirmation(value: boolean): void {
+    voiceConfigStorage.set(KEYS.sendConfirmation, value);
+}
+
+export type SendConfirmationSpeed = 'fast' | 'normal' | 'slow';
+
+const SPEED_SECONDS: Record<SendConfirmationSpeed, number> = {
+    fast: 3,
+    normal: 5,
+    slow: 8,
+};
+
+export function getSendConfirmationSpeed(): SendConfirmationSpeed {
+    const stored = voiceConfigStorage.getString(KEYS.sendConfirmationSpeed);
+    if (stored === 'fast' || stored === 'normal' || stored === 'slow') return stored;
+    return 'normal';
+}
+
+export function setSendConfirmationSpeed(value: SendConfirmationSpeed): void {
+    voiceConfigStorage.set(KEYS.sendConfirmationSpeed, value);
+}
+
+export function getSendConfirmationSeconds(): number {
+    return SPEED_SECONDS[getSendConfirmationSpeed()];
 }
 
 // ── Utilities ───────────────────────────────────────────────────────

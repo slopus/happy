@@ -722,7 +722,23 @@ export const ja: TranslationStructure = {
             title: '言語',
             footer: ({ count }: { count: number }) => `${count}言語が利用可能`,
             autoDetect: '自動検出',
-        }
+        },
+
+        sendConfirmationTitle: '送信確認',
+        sendConfirmationDescription: '音声アシスタントがコーディングエージェントにメッセージを送信する前に、カウントダウン付きの確認ダイアログを表示します。',
+        sendConfirmationLabel: '送信確認',
+        sendConfirmationSubtitle: '送信前にメッセージを確認',
+        sendConfirmationSpeedTitle: 'カウントダウン速度',
+        speedFast: '速い (3秒)',
+        speedNormal: '普通 (5秒)',
+        speedSlow: '遅い (8秒)',
+    },
+
+    voiceSendConfirmation: {
+        title: 'メッセージ送信',
+        cancel: 'キャンセル',
+        sendNow: '今すぐ送信',
+        countdown: ({ seconds }: { seconds: number }) => `${seconds}秒`,
     },
 
     settingsAccount: {

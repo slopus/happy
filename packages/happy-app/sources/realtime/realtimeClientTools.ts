@@ -13,6 +13,8 @@ import {
     messageClaudeCodeParametersSchema,
     processPermissionRequestParametersSchema,
 } from './voiceToolContracts';
+import { getSendConfirmation, getVoiceProvider } from '@/sync/voiceConfig';
+import { showSendConfirmation } from './SendConfirmationModal';
 
 function getLatestAssistantReplyFromCurrentSession(maxChars: number): string | null {
     const sessionId = getCurrentRealtimeSessionId();
@@ -68,6 +70,28 @@ export const realtimeClientTools = {
         
         console.log('🔍 messageClaudeCode called with:', message);
         console.log('📤 Sending message to session:', sessionId);
+
+        if (getSendConfirmation()) {
+            const confirmationPromise = showSendConfirmation(message).then((result) => {
+                if (result === 'sent') {
+                    console.log('📤 Confirmed, sending message to session:', sessionId);
+                    sync.sendMessage(sessionId, message);
+                } else {
+                    console.log('🚫 Message cancelled by user');
+                }
+                return result;
+            });
+
+            // Happy Voice supports async tool results via RPC, so we can await.
+            // ElevenLabs SDK doesn't wait for async tools, so fire-and-forget.
+            if (getVoiceProvider() === 'happy-voice') {
+                const result = await confirmationPromise;
+                return result === 'sent' ? 'sent' : 'cancelled by user';
+            }
+
+            return "sent";
+        }
+
         sync.sendMessage(sessionId, message);
         return "sent";
     },

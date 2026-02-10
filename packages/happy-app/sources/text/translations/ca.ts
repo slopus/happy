@@ -690,7 +690,23 @@ export const ca: TranslationStructure = {
             title: 'Idiomes',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomes' })} disponibles`,
             autoDetect: 'Detecta automàticament',
-        }
+        },
+
+        sendConfirmationTitle: 'Confirmació d\'enviament',
+        sendConfirmationDescription: 'Mostra un diàleg de confirmació amb compte enrere abans que l\'assistent de veu enviï missatges a l\'agent de codificació.',
+        sendConfirmationLabel: 'Confirmació d\'enviament',
+        sendConfirmationSubtitle: 'Revisa els missatges abans d\'enviar',
+        sendConfirmationSpeedTitle: 'Velocitat del compte enrere',
+        speedFast: 'Ràpid (3s)',
+        speedNormal: 'Normal (5s)',
+        speedSlow: 'Lent (8s)',
+    },
+
+    voiceSendConfirmation: {
+        title: 'Enviant missatge',
+        cancel: 'Cancel·la',
+        sendNow: 'Envia ara',
+        countdown: ({ seconds }: { seconds: number }) => `${seconds}s`,
     },
 
     settingsAccount: {

@@ -719,7 +719,23 @@ export const it: TranslationStructure = {
             title: 'Lingue',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'lingua', plural: 'lingue' })} disponibili`,
             autoDetect: 'Rilevamento automatico',
-        }
+        },
+
+        sendConfirmationTitle: 'Conferma invio',
+        sendConfirmationDescription: 'Mostra una finestra di conferma con conto alla rovescia prima che l\'assistente vocale invii messaggi all\'agente di codifica.',
+        sendConfirmationLabel: 'Conferma invio',
+        sendConfirmationSubtitle: 'Rivedi i messaggi prima dell\'invio',
+        sendConfirmationSpeedTitle: 'Velocità del conto alla rovescia',
+        speedFast: 'Veloce (3s)',
+        speedNormal: 'Normale (5s)',
+        speedSlow: 'Lento (8s)',
+    },
+
+    voiceSendConfirmation: {
+        title: 'Invio messaggio',
+        cancel: 'Annulla',
+        sendNow: 'Invia ora',
+        countdown: ({ seconds }: { seconds: number }) => `${seconds}s`,
     },
 
     settingsAccount: {

@@ -692,7 +692,23 @@ export const zhHans: TranslationStructure = {
             title: '语言',
             footer: ({ count }: { count: number }) => `${count} 种可用语言`,
             autoDetect: '自动检测',
-        }
+        },
+
+        sendConfirmationTitle: '发送确认',
+        sendConfirmationDescription: '语音助手向编码代理发送消息前，显示带倒计时的确认对话框。',
+        sendConfirmationLabel: '发送确认',
+        sendConfirmationSubtitle: '发送前预览消息内容',
+        sendConfirmationSpeedTitle: '倒计时速度',
+        speedFast: '较快 (3秒)',
+        speedNormal: '正常 (5秒)',
+        speedSlow: '较慢 (8秒)',
+    },
+
+    voiceSendConfirmation: {
+        title: '即将发送消息',
+        cancel: '取消',
+        sendNow: '立即发送',
+        countdown: ({ seconds }: { seconds: number }) => `${seconds}秒`,
     },
 
     settingsAccount: {

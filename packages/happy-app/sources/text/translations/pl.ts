@@ -700,7 +700,23 @@ export const pl: TranslationStructure = {
             title: 'Języki',
             footer: ({ count }: { count: number }) => `Dostępnych ${count} ${plural({ count, one: 'język', few: 'języki', many: 'języków' })}`,
             autoDetect: 'Automatyczne wykrywanie',
-        }
+        },
+
+        sendConfirmationTitle: 'Potwierdzenie wysyłania',
+        sendConfirmationDescription: 'Pokaż okno potwierdzenia z odliczaniem przed wysłaniem wiadomości przez asystenta głosowego.',
+        sendConfirmationLabel: 'Potwierdzenie wysyłania',
+        sendConfirmationSubtitle: 'Przeglądaj wiadomości przed wysłaniem',
+        sendConfirmationSpeedTitle: 'Szybkość odliczania',
+        speedFast: 'Szybko (3s)',
+        speedNormal: 'Normalnie (5s)',
+        speedSlow: 'Wolno (8s)',
+    },
+
+    voiceSendConfirmation: {
+        title: 'Wysyłanie wiadomości',
+        cancel: 'Anuluj',
+        sendNow: 'Wyślij teraz',
+        countdown: ({ seconds }: { seconds: number }) => `${seconds}s`,
     },
 
     settingsAccount: {
