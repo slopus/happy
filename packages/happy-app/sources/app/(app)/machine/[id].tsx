@@ -19,6 +19,7 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
+import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
 
 const styles = StyleSheet.create((theme) => ({
@@ -421,29 +422,8 @@ export default function MachineDetailScreen() {
                         )}
                         <ItemGroup title={t('machine.launchNewSessionInDirectory')}>
                         <View style={{ opacity: isMachineOnline(machine) ? 1 : 0.5 }}>
-                            <View style={{ flexDirection: 'row', marginHorizontal: 16, marginTop: 12, marginBottom: 4, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: theme.colors.divider }}>
-                                {(['simple', 'worktree'] as const).map((type) => (
-                                    <Pressable
-                                        key={type}
-                                        onPress={() => setSessionType(type)}
-                                        style={{
-                                            flex: 1,
-                                            paddingVertical: 8,
-                                            alignItems: 'center',
-                                            backgroundColor: sessionType === type ? theme.colors.surfaceSelected : 'transparent',
-                                        }}
-                                    >
-                                        <Text style={[
-                                            Typography.default(sessionType === type ? 'semiBold' : 'regular'),
-                                            {
-                                                fontSize: 14,
-                                                color: sessionType === type ? theme.colors.text : theme.colors.textSecondary,
-                                            }
-                                        ]}>
-                                            {t(`newSession.sessionType.${type}`)}
-                                        </Text>
-                                    </Pressable>
-                                ))}
+                            <View style={{ marginHorizontal: 16, marginTop: 12, marginBottom: 4 }}>
+                                <SessionTypeSelector value={sessionType} onChange={setSessionType} />
                             </View>
                             <View style={styles.pathInputContainer}>
                                 <View style={[styles.pathInput, { paddingVertical: 8 }]}>
