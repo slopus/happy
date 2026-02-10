@@ -5,10 +5,10 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
-import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
+import { useSessions, useAllMachines, useMachine, storage } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
+import { machineStopDaemon, machineUpdateMetadata, sessionUpdateMetadataFields } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -19,6 +19,7 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
+import { createWorktree } from '@/utils/createWorktree';
 
 const styles = StyleSheet.create((theme) => ({
     pathInputContainer: {
@@ -81,6 +82,7 @@ export default function MachineDetailScreen() {
     const [isSpawning, setIsSpawning] = useState(false);
     const inputRef = useRef<MultiTextInputHandle>(null);
     const [showAllPaths, setShowAllPaths] = useState(false);
+    const [sessionType, setSessionType] = useState<'simple' | 'worktree'>('simple');
     const { width: screenWidth } = useWindowDimensions();
 
     // Left: back button (1), Right: edit button (1) - use larger side * 2 for symmetry
@@ -220,13 +222,56 @@ export default function MachineDetailScreen() {
             if (!isMachineOnline(machine)) return;
             setIsSpawning(true);
             const absolutePath = resolveAbsolutePath(pathToUse, machine?.metadata?.homeDir);
+
+            let actualPath = absolutePath;
+            let worktreeBranchName: string | undefined;
+
+            // Handle worktree creation
+            if (sessionType === 'worktree') {
+                const worktreeResult = await createWorktree(machineId, absolutePath);
+
+                if (!worktreeResult.success) {
+                    if (worktreeResult.error === 'Not a Git repository') {
+                        Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
+                    } else {
+                        Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));
+                    }
+                    setIsSpawning(false);
+                    return;
+                }
+
+                actualPath = worktreeResult.worktreePath;
+                worktreeBranchName = worktreeResult.branchName;
+            }
+
             const result = await machineSpawnNewSession({
                 machineId: machineId!,
-                directory: absolutePath,
+                directory: actualPath,
                 approvedNewDirectoryCreation
             });
             switch (result.type) {
                 case 'success':
+                    // Write worktree metadata to session
+                    if (sessionType === 'worktree' && worktreeBranchName) {
+                        await sync.refreshSessions();
+                        const newSession = storage.getState().sessions[result.sessionId];
+                        if (newSession?.metadata) {
+                            try {
+                                await sessionUpdateMetadataFields(
+                                    result.sessionId,
+                                    newSession.metadata,
+                                    {
+                                        isWorktree: true,
+                                        worktreeBasePath: absolutePath,
+                                        worktreeBranchName,
+                                    },
+                                    newSession.metadataVersion,
+                                );
+                            } catch (e) {
+                                console.warn('Failed to write worktree metadata:', e);
+                            }
+                        }
+                    }
                     // Dismiss machine picker & machine detail screen
                     router.back();
                     router.back();
@@ -376,6 +421,30 @@ export default function MachineDetailScreen() {
                         )}
                         <ItemGroup title={t('machine.launchNewSessionInDirectory')}>
                         <View style={{ opacity: isMachineOnline(machine) ? 1 : 0.5 }}>
+                            <View style={{ flexDirection: 'row', marginHorizontal: 16, marginTop: 12, marginBottom: 4, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: theme.colors.divider }}>
+                                {(['simple', 'worktree'] as const).map((type) => (
+                                    <Pressable
+                                        key={type}
+                                        onPress={() => setSessionType(type)}
+                                        style={{
+                                            flex: 1,
+                                            paddingVertical: 8,
+                                            alignItems: 'center',
+                                            backgroundColor: sessionType === type ? theme.colors.surfaceSelected : 'transparent',
+                                        }}
+                                    >
+                                        <Text style={[
+                                            Typography.default(sessionType === type ? 'semiBold' : 'regular'),
+                                            {
+                                                fontSize: 14,
+                                                color: sessionType === type ? theme.colors.text : theme.colors.textSecondary,
+                                            }
+                                        ]}>
+                                            {t(`newSession.sessionType.${type}`)}
+                                        </Text>
+                                    </Pressable>
+                                ))}
+                            </View>
                             <View style={styles.pathInputContainer}>
                                 <View style={[styles.pathInput, { paddingVertical: 8 }]}>
                                     <MultiTextInput
@@ -412,7 +481,6 @@ export default function MachineDetailScreen() {
                                     </Pressable>
                                 </View>
                             </View>
-                            <View style={{ paddingTop: 4 }} />
                             {pathsToShow.map((path, index) => {
                                 const display = formatPathRelativeToHome(path, machine.metadata?.homeDir);
                                 const isSelected = customPath.trim() === display;
