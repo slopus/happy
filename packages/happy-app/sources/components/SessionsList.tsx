@@ -26,7 +26,7 @@ import { useRouter } from 'expo-router';
 import { Item } from './Item';
 import { ItemGroup } from './ItemGroup';
 import { useHappyAction } from '@/hooks/useHappyAction';
-import { sessionDelete } from '@/sync/ops';
+import { sessionDelete, sessionRename } from '@/sync/ops';
 import { HappyError } from '@/utils/errors';
 import { Modal } from '@/modal';
 
@@ -192,6 +192,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         textAlign: 'center',
         ...Typography.default('semiBold'),
     },
+    swipeActionRename: {
+        backgroundColor: theme.colors.primary,
+    },
 }));
 
 export function SessionsList() {
@@ -346,6 +349,13 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         }
     });
 
+    const [renamingSession, performRename] = useHappyAction(async (newName: string | null) => {
+        const result = await sessionRename(session.id, newName);
+        if (!result.success) {
+            throw new HappyError(result.message || t('sessionInfo.failedToRenameSession'), false);
+        }
+    });
+
     const handleDelete = React.useCallback(() => {
         swipeableRef.current?.close();
         Modal.alert(
@@ -361,6 +371,25 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             ]
         );
     }, [performDelete]);
+
+    const handleRename = React.useCallback(async () => {
+        swipeableRef.current?.close();
+        const currentName = session.customName || getSessionName(session);
+        const newName = await Modal.prompt(
+            t('sessionInfo.renameSession'),
+            t('sessionInfo.renameSessionPrompt'),
+            {
+                placeholder: t('sessionInfo.sessionNamePlaceholder'),
+                defaultValue: currentName,
+                confirmText: t('common.rename'),
+                cancelText: t('common.cancel')
+            }
+        );
+
+        if (newName !== null && newName !== currentName) {
+            await performRename(newName || null);
+        }
+    }, [session, performRename]);
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
@@ -445,6 +474,19 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         );
     }
 
+    const renderLeftActions = () => (
+        <Pressable
+            style={[styles.swipeAction, styles.swipeActionRename]}
+            onPress={handleRename}
+            disabled={renamingSession}
+        >
+            <Ionicons name="create-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.swipeActionText} numberOfLines={2}>
+                {t('common.rename')}
+            </Text>
+        </Pressable>
+    );
+
     const renderRightActions = () => (
         <Pressable
             style={styles.swipeAction}
@@ -462,9 +504,11 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         <View style={containerStyles}>
             <Swipeable
                 ref={swipeableRef}
+                renderLeftActions={renderLeftActions}
                 renderRightActions={renderRightActions}
+                overshootLeft={false}
                 overshootRight={false}
-                enabled={!deletingSession}
+                enabled={!deletingSession && !renamingSession}
             >
                 {itemContent}
             </Swipeable>
