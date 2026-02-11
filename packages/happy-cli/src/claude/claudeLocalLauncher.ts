@@ -30,6 +30,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
     // Handle abort
     let exitReason: LauncherResult | null = null;
+    let switchRequested = false;
     const processAbortController = new AbortController();
     let exutFuture = new Future<void>();
     try {
@@ -51,6 +52,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
             if (!exitReason) {
                 exitReason = { type: 'switch' };
             }
+            switchRequested = true;
 
             // Reset sent messages
             session.queue.reset();
@@ -66,6 +68,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
             if (!exitReason) {
                 exitReason = { type: 'switch' };
             }
+            switchRequested = true;
 
             // Abort
             await abort();
@@ -126,6 +129,11 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                 logger.debug('[local]: launch error', e);
                 // If Claude exited with non-zero exit code, propagate it
                 if (e instanceof ExitCodeError) {
+                    // When switching from local -> remote we intentionally abort local Claude.
+                    // That abort commonly exits with 143; preserve switch intent instead of exiting the session.
+                    if (switchRequested) {
+                        break;
+                    }
                     exitReason = { type: 'exit', code: e.exitCode };
                     break;
                 }

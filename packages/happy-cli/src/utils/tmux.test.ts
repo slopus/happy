@@ -5,7 +5,7 @@
  * They do NOT require tmux to be installed on the system.
  * All tests mock environment variables and test string parsing only.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     parseTmuxSessionIdentifier,
     formatTmuxSessionIdentifier,
@@ -417,6 +417,182 @@ describe('TmuxUtilities.detectTmuxEnvironment', () => {
                 socket_path: '/tmp/tmux-1000/default'
             });
         });
+    });
+});
+
+describe('TmuxUtilities command compatibility', () => {
+    it('should not append duplicate -t when command already includes target', async () => {
+        const utils = new TmuxUtilities();
+        const runSpy = vi.spyOn(utils as any, 'runCommand').mockResolvedValue({
+            exitCode: 0,
+            stdout: '',
+            stderr: ''
+        });
+
+        await utils.executeTmuxCommand(
+            ['new-window', '-t', 'happy', '-n', 'win-1', 'echo ok'],
+            'ignored-session'
+        );
+
+        expect(runSpy).toHaveBeenCalledTimes(1);
+        const fullCmd = runSpy.mock.calls[0][0] as string[];
+        expect(fullCmd.filter((part) => part === '-t')).toHaveLength(1);
+        runSpy.mockRestore();
+    });
+
+    it('should pass -e env values without embedding shell quotes', async () => {
+        const utils = new TmuxUtilities();
+        const calls: string[][] = [];
+        const execSpy = vi.spyOn(utils as any, 'executeTmuxCommand').mockImplementation(
+            async (...mockArgs: unknown[]) => {
+                const cmd = mockArgs[0] as string[];
+                calls.push(cmd);
+                if (cmd[0] === 'list-sessions') {
+                    return { returncode: 0, stdout: 'happy\n', stderr: '', command: cmd };
+                }
+                if (cmd[0] === 'has-session') {
+                    return { returncode: 0, stdout: '', stderr: '', command: cmd };
+                }
+                if (cmd[0] === 'new-window') {
+                    return { returncode: 0, stdout: '123\n', stderr: '', command: cmd };
+                }
+                return { returncode: 0, stdout: '', stderr: '', command: cmd };
+            }
+        );
+
+        const result = await utils.spawnInTmux(
+            ['echo hi'],
+            { sessionName: 'happy', windowName: 'win-1' },
+            { HOME: '/Users/test user' }
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.pid).toBe(123);
+
+        const newWindowCall = calls.find((cmd) => cmd[0] === 'new-window');
+        expect(newWindowCall).toBeDefined();
+        expect(newWindowCall?.some((part) => part.startsWith('HOME=/Users/test user'))).toBe(true);
+        expect(newWindowCall?.some((part) => part.includes('HOME="'))).toBe(false);
+
+        execSpy.mockRestore();
+    });
+
+    it('should target new-window with session: form to avoid index collisions', async () => {
+        const utils = new TmuxUtilities();
+        const calls: string[][] = [];
+        const execSpy = vi.spyOn(utils as any, 'executeTmuxCommand').mockImplementation(
+            async (...mockArgs: unknown[]) => {
+                const cmd = mockArgs[0] as string[];
+                calls.push(cmd);
+                if (cmd[0] === 'list-sessions') {
+                    return { returncode: 0, stdout: 'happy\n', stderr: '', command: cmd };
+                }
+                if (cmd[0] === 'has-session') {
+                    return { returncode: 0, stdout: '', stderr: '', command: cmd };
+                }
+                if (cmd[0] === 'new-window') {
+                    return { returncode: 0, stdout: '321\n', stderr: '', command: cmd };
+                }
+                return { returncode: 0, stdout: '', stderr: '', command: cmd };
+            }
+        );
+
+        const result = await utils.spawnInTmux(
+            ['echo hi'],
+            { sessionName: 'happy', windowName: 'win-target' }
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.pid).toBe(321);
+
+        const newWindowCall = calls.find((cmd) => cmd[0] === 'new-window');
+        expect(newWindowCall).toBeDefined();
+        const targetIndex = newWindowCall!.indexOf('-t');
+        expect(targetIndex).toBeGreaterThanOrEqual(0);
+        expect(newWindowCall![targetIndex + 1]).toBe('happy:');
+
+        execSpy.mockRestore();
+    });
+
+    it('should fall back to list-panes when new-window does not output pane pid', async () => {
+        const utils = new TmuxUtilities();
+        const execSpy = vi.spyOn(utils as any, 'executeTmuxCommand').mockImplementation(
+            async (...mockArgs: unknown[]) => {
+                const cmd = mockArgs[0] as string[];
+                if (cmd[0] === 'list-sessions') {
+                    return { returncode: 0, stdout: 'happy\n', stderr: '', command: cmd };
+                }
+                if (cmd[0] === 'has-session') {
+                    return { returncode: 0, stdout: '', stderr: '', command: cmd };
+                }
+                if (cmd[0] === 'new-window') {
+                    return { returncode: 0, stdout: '', stderr: '', command: cmd };
+                }
+                if (cmd[0] === 'list-panes') {
+                    return { returncode: 0, stdout: '456\n', stderr: '', command: cmd };
+                }
+                return { returncode: 0, stdout: '', stderr: '', command: cmd };
+            }
+        );
+
+        const result = await utils.spawnInTmux(
+            ['echo hi'],
+            { sessionName: 'happy', windowName: 'win-2' }
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.pid).toBe(456);
+        execSpy.mockRestore();
+    });
+
+    it('should fall back to session-level env injection when new-window -e is unsupported', async () => {
+        const utils = new TmuxUtilities();
+        const calls: string[][] = [];
+        const execSpy = vi.spyOn(utils as any, 'executeTmuxCommand').mockImplementation(
+            async (...mockArgs: unknown[]) => {
+                const cmd = mockArgs[0] as string[];
+                calls.push(cmd);
+
+                if (cmd[0] === 'list-sessions') {
+                    return { returncode: 0, stdout: 'happy\n', stderr: '', command: cmd };
+                }
+                if (cmd[0] === 'has-session') {
+                    return { returncode: 0, stdout: '', stderr: '', command: cmd };
+                }
+                if (cmd[0] === 'new-window') {
+                    // Simulate older tmux that doesn't support -e
+                    if (cmd.includes('-e')) {
+                        return { returncode: 1, stdout: '', stderr: 'unknown option -- e', command: cmd };
+                    }
+                    return { returncode: 0, stdout: '789\n', stderr: '', command: cmd };
+                }
+                if (cmd[0] === 'show-environment') {
+                    return { returncode: 0, stdout: '-HOME\n', stderr: '', command: cmd };
+                }
+                if (cmd[0] === 'set-environment') {
+                    return { returncode: 0, stdout: '', stderr: '', command: cmd };
+                }
+                return { returncode: 0, stdout: '', stderr: '', command: cmd };
+            }
+        );
+
+        const result = await utils.spawnInTmux(
+            ['echo hi'],
+            { sessionName: 'happy', windowName: 'legacy-win' },
+            { HOME: '/Users/test' }
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.pid).toBe(789);
+
+        const newWindowCalls = calls.filter((cmd) => cmd[0] === 'new-window');
+        expect(newWindowCalls.length).toBeGreaterThanOrEqual(3);
+        expect(newWindowCalls[0].includes('-e')).toBe(true);
+        expect(newWindowCalls[1].includes('-e')).toBe(true);
+        expect(newWindowCalls[newWindowCalls.length - 1].includes('-e')).toBe(false);
+        expect(calls.some((cmd) => cmd[0] === 'set-environment')).toBe(true);
+
+        execSpy.mockRestore();
     });
 });
 

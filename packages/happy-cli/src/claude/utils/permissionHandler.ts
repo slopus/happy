@@ -5,6 +5,7 @@
  * Handles tool permission requests, responses, and state management.
  */
 
+import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { logger } from "@/lib";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "../sdk";
@@ -141,7 +142,10 @@ export class PermissionHandler {
         // Handle special cases
         //
 
-        if (this.permissionMode === 'bypassPermissions') {
+        // AskUserQuestion should always wait for user interaction - it's a question, not a permission
+        const isInteractiveQuestion = toolName === 'AskUserQuestion';
+
+        if (this.permissionMode === 'bypassPermissions' && !isInteractiveQuestion) {
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
@@ -154,12 +158,13 @@ export class PermissionHandler {
         //
 
         let toolCallId = this.resolveToolCallId(toolName, input);
-        if (!toolCallId) { // What if we got permission before tool call
-            await delay(1000);
-            toolCallId = this.resolveToolCallId(toolName, input);
-            if (!toolCallId) {
-                throw new Error(`Could not resolve tool call ID for ${toolName}`);
-            }
+        if (!toolCallId) {
+            // Generate a unique ID - the control_request (can_use_tool) arrives
+            // before the assistant message with the tool_use block, creating a
+            // deadlock in readMessages(). We can't poll because no more stdout
+            // lines are read while handleControlRequest() is awaited.
+            toolCallId = `perm-${randomUUID()}`;
+            logger.debug(`Generated fallback permission ID for ${toolName}: ${toolCallId}`);
         }
         return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
     }
@@ -268,7 +273,7 @@ export class PermissionHandler {
             const call = this.toolCalls[i];
             if (call.name === name && isDeepStrictEqual(call.input, args)) {
                 if (call.used) {
-                    return null;
+                    continue;
                 }
                 // Found unused match - mark as used and return
                 call.used = true;
@@ -391,10 +396,8 @@ export class PermissionHandler {
             this.responses.set(id, { ...message, receivedAt: Date.now() });
             this.pendingRequests.delete(id);
 
-            // Handle the permission response based on tool type
-            this.handlePermissionResponse(message, pending);
-
-            // Move processed request to completedRequests
+            // Move processed request to completedRequests BEFORE resolving,
+            // to avoid race where SDK broadcasts state without completed status
             this.session.client.updateAgentState((currentState) => {
                 const request = currentState.requests?.[id];
                 if (!request) return currentState;
@@ -416,6 +419,9 @@ export class PermissionHandler {
                     }
                 };
             });
+
+            // Handle the permission response based on tool type
+            this.handlePermissionResponse(message, pending);
         });
     }
 
