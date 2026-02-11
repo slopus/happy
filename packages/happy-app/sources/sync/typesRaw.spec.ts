@@ -48,7 +48,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (result.success) {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'assistant') {
-                    const firstItem = content.data.message.content[0];
+                    const firstItem = content.data.message.content![0];
                     expect(firstItem.type).toBe('tool_use');
                     if (firstItem.type === 'tool_use') {
                         expect(firstItem.id).toBe('call_abc123');  // callId → id
@@ -127,7 +127,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (result.success) {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'assistant') {
-                    const firstItem: any = content.data.message.content[0];
+                    const firstItem: any = content.data.message.content![0];
                     expect(firstItem.type).toBe('tool_use');
                     expect(firstItem.id).toBe('call_xyz');
                     // Verify unknown fields are preserved
@@ -167,7 +167,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (result.success) {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'assistant') {
-                    const firstItem = content.data.message.content[0];
+                    const firstItem = content.data.message.content![0];
                     expect(firstItem.type).toBe('tool_use');
                     if (firstItem.type === 'tool_use') {
                         expect(firstItem.id).toBe('call_123');
@@ -240,7 +240,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (result.success) {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'assistant') {
-                    const firstItem = content.data.message.content[0];
+                    const firstItem = content.data.message.content![0];
                     expect(firstItem.type).toBe('text');
                     if (firstItem.type === 'text') {
                         expect(firstItem.text).toBe('Hello world');
@@ -313,7 +313,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (result.success) {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'assistant') {
-                    const items = content.data.message.content;
+                    const items = content.data.message.content!;
 
                     // Text passes through
                     expect(items[0].type).toBe('text');
@@ -404,7 +404,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (result.success) {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'assistant') {
-                    const firstItem = content.data.message.content[0];
+                    const firstItem = content.data.message.content![0];
                     expect(firstItem.type).toBe('tool_use');
                     if (firstItem.type === 'tool_use') {
                         expect(firstItem.id).toBe('call_old');
@@ -502,7 +502,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (result.success) {
                 const content = result.data.content;
                 if (content.type === 'output' && content.data.type === 'assistant') {
-                    const firstItem = content.data.message.content[0];
+                    const firstItem = content.data.message.content![0];
                     expect(firstItem.type).toBe('tool_use');
                     if (firstItem.type === 'tool_use') {
                         // Should use callId as the canonical id
@@ -692,7 +692,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 expect(result.data.role).toBe('agent');
                 expect(result.data.content.type).toBe('output');
                 if (result.data.content.type === 'output' && result.data.content.data.type === 'assistant') {
-                    const content = result.data.content.data.message.content;
+                    const content = result.data.content.data.message.content!;
                     expect(content.length).toBe(2);
                     expect(content[0].type).toBe('text');
                     expect(content[1].type).toBe('tool_use');
@@ -813,7 +813,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
 
             expect(result.success).toBe(true);
             if (result.success && result.data.content.type === 'output' && result.data.content.data.type === 'assistant') {
-                const item: any = result.data.content.data.message.content[0];
+                const item: any = result.data.content.data.message.content![0];
                 expect(item.type).toBe('tool_use');
                 // Unknown fields should be preserved
                 expect(item.priority).toBe('high');
@@ -1095,7 +1095,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             expect(result.success).toBe(true);
             // Verify underscore types remain unchanged (idempotent)
             if (result.success && result.data.content.type === 'output' && result.data.content.data.type === 'assistant') {
-                expect(result.data.content.data.message.content[0].type).toBe('tool_use');
+                expect(result.data.content.data.message.content![0].type).toBe('tool_use');
             }
         });
 
@@ -1176,7 +1176,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             expect(result.success).toBe(true);
             if (result.success && result.data.content.type === 'output' && result.data.content.data.type === 'assistant') {
                 // Should transform to tool_use
-                const item = result.data.content.data.message.content[0];
+                const item = result.data.content.data.message.content![0];
                 expect(item.type).toBe('tool_use');
                 if (item.type === 'tool_use') {
                     expect(item.id).toBe('defensive_test');
@@ -1211,7 +1211,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             expect(result.success).toBe(true);
             // Verify output format matches what old preprocessing would produce
             if (result.success && result.data.content.type === 'output' && result.data.content.data.type === 'assistant') {
-                const content = result.data.content.data.message.content;
+                const content = result.data.content.data.message.content!;
                 expect(content[0].type).toBe('text');
                 if (content[0].type === 'text') {
                     expect(content[0].text).toBe('Hello');
@@ -1318,7 +1318,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
 
             expect(result.success).toBe(true);
             if (result.success && result.data.content.type === 'output' && result.data.content.data.type === 'assistant') {
-                const thinkingContent = result.data.content.data.message.content[0];
+                const thinkingContent = result.data.content.data.message.content![0];
                 if (thinkingContent.type === 'thinking') {
                     // Verify unknown fields preserved
                     expect((thinkingContent as any).signature).toBe('EqkCCkYICxgCKkB...');
@@ -1355,7 +1355,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
 
             expect(result.success).toBe(true);
             if (result.success && result.data.content.type === 'output' && result.data.content.data.type === 'assistant') {
-                const toolUseContent = result.data.content.data.message.content[0];
+                const toolUseContent = result.data.content.data.message.content![0];
                 if (toolUseContent.type === 'tool_use') {
                     // Verify transform preserved unknown fields
                     expect(toolUseContent.id).toBe('test-call');
