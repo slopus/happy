@@ -59,10 +59,16 @@ export function shouldBypassProxy(targetUrl: string): boolean {
         return false;
     }
 
+    const noProxyList = noProxy.split(',').map(h => h.trim().toLowerCase());
+
+    // Handle NO_PROXY=* to disable all proxying
+    if (noProxyList.includes('*')) {
+        return true;
+    }
+
     try {
         const url = new URL(targetUrl);
         const hostname = url.hostname.toLowerCase();
-        const noProxyList = noProxy.split(',').map(h => h.trim().toLowerCase());
 
         for (const pattern of noProxyList) {
             if (!pattern) continue;
@@ -103,11 +109,19 @@ export function parseProxyUrl(proxyUrl: string): ProxyConfig | null {
             protocol = 'socks4';
         }
 
+        // Default ports: HTTP=80, HTTPS=443, SOCKS=1080
+        let defaultPort = 80;
+        if (protocol === 'https') {
+            defaultPort = 443;
+        } else if (protocol === 'socks4' || protocol === 'socks5') {
+            defaultPort = 1080;
+        }
+
         const config: ProxyConfig = {
             url: proxyUrl,
             protocol,
             hostname: url.hostname,
-            port: parseInt(url.port) || (protocol === 'https' ? 443 : 1080)
+            port: parseInt(url.port) || defaultPort
         };
 
         if (url.username || url.password) {
