@@ -767,7 +767,7 @@ export const it: TranslationStructure = {
         filesChanged: ({ count }: { count: number }) => `${count} file${count !== 1 ? 's' : ''} changed`,
         insertions: ({ count }: { count: number }) => `${count} insertion${count !== 1 ? 's' : ''}`,
         deletions: ({ count }: { count: number }) => `${count} deletion${count !== 1 ? 's' : ''}`,
-        selectBranch: 'Seleziona ramo',
+        selectBranch: 'Seleziona un ramo per visualizzare i commit',
     },
 
     settingsVoice: {

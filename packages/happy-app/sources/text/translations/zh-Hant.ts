@@ -739,7 +739,7 @@ export const zhHant: TranslationStructure = {
         filesChanged: ({ count }: { count: number }) => `${count} 個檔案變更`,
         insertions: ({ count }: { count: number }) => `${count} 處插入`,
         deletions: ({ count }: { count: number }) => `${count} 處刪除`,
-        selectBranch: '選擇分支',
+        selectBranch: '選擇分支查看提交記錄',
     },
 
     settingsVoice: {

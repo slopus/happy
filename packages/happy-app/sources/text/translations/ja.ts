@@ -770,7 +770,7 @@ export const ja: TranslationStructure = {
         filesChanged: ({ count }: { count: number }) => `${count}ファイル変更`,
         insertions: ({ count }: { count: number }) => `${count}件の追加`,
         deletions: ({ count }: { count: number }) => `${count}件の削除`,
-        selectBranch: 'ブランチを選択',
+        selectBranch: 'ブランチを選択してコミットを表示',
     },
 
     settingsVoice: {

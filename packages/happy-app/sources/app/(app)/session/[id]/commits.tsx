@@ -75,6 +75,30 @@ export default function CommitsScreen() {
     const [hasMore, setHasMore] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
 
+    // Diff stats for headerRight badge
+    const [diffStats, setDiffStats] = React.useState<{ insertions: number; deletions: number } | null>(null);
+
+    React.useEffect(() => {
+        (async () => {
+            try {
+                const result = await sessionBash(sessionId, {
+                    command: "git diff HEAD --shortstat",
+                    cwd: sessionPath,
+                    timeout: 10000,
+                });
+                if (result.success && result.stdout) {
+                    const ins = result.stdout.match(/(\d+) insertion/);
+                    const del = result.stdout.match(/(\d+) deletion/);
+                    const insertions = ins ? parseInt(ins[1], 10) : 0;
+                    const deletions = del ? parseInt(del[1], 10) : 0;
+                    if (insertions > 0 || deletions > 0) {
+                        setDiffStats({ insertions, deletions });
+                    }
+                }
+            } catch { /* ignore */ }
+        })();
+    }, [sessionId, sessionPath]);
+
     // Branch selector state
     const [localBranches, setLocalBranches] = React.useState<string[]>([]);
     const [remoteBranches, setRemoteBranches] = React.useState<string[]>([]);
@@ -269,9 +293,22 @@ export default function CommitsScreen() {
                     headerRight: () => (
                         <Pressable
                             onPress={() => router.push(`/session/${sessionId}/status`)}
-                            style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                            style={diffStats
+                                ? { flexDirection: 'row', alignItems: 'center', paddingLeft: 8, paddingRight: 0, paddingVertical: 4, gap: 6 }
+                                : { paddingHorizontal: 8, paddingVertical: 4 }
+                            }
                         >
                             <Ionicons name="git-compare-outline" size={22} color={theme.colors.header.tint} />
+                            {diffStats ? (
+                                <View style={{ flexDirection: 'row', gap: 2 }}>
+                                    <Text style={{ fontSize: 11, color: '#34C759', fontWeight: '700', ...Typography.mono() }}>
+                                        +{diffStats.insertions}
+                                    </Text>
+                                    <Text style={{ fontSize: 11, color: '#FF3B30', fontWeight: '700', ...Typography.mono() }}>
+                                        -{diffStats.deletions}
+                                    </Text>
+                                </View>
+                            ) : null}
                         </Pressable>
                     ),
                 }}
