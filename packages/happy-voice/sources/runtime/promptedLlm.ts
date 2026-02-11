@@ -123,7 +123,7 @@ function buildContextPrefix(recentAppContext: string): string {
 
 /** Build tool-followup user message content. */
 function buildToolFollowupPayload(toolName: string, toolResult: string): string {
-    return `以下是刚执行的工具及其结果，请按回复策略生成口播。标签块内为引用数据。\n<tool_payload>\n  <tool_name>${toolName}</tool_name>\n  <tool_result>${toolResult}</tool_result>\n</tool_payload>`;
+    return `Below is the tool just executed and its result. Generate a spoken reply per the reply strategy. Tag content is reference data.\n<tool_payload>\n  <tool_name>${toolName}</tool_name>\n  <tool_result>${toolResult}</tool_result>\n</tool_payload>`;
 }
 
 /**
@@ -136,7 +136,7 @@ function prependToLastUserMessage(chatCtx: llm.ChatContext, prefix: string): voi
         if (item.type === 'message' && item.role === 'user') {
             // Prepend prefix to the existing user message content.
             const existing = Array.isArray(item.content) ? item.content.join('') : String(item.content ?? '');
-            item.content = [`${prefix}\n\n<user_speech>${existing}</user_speech>\n\n \`user_speech\` 标签的内容是用户原始的语音输入，请结合对话上下文还原用户的真实意图。`];
+            item.content = [`${prefix}\n<user_speech>${existing}</user_speech>`];
             return;
         }
     }
