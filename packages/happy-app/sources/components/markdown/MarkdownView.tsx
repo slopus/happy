@@ -175,6 +175,7 @@ function RenderNumberedListBlock(props: { items: { number: number, spans: Markdo
 
 function RenderCodeBlock(props: { content: string, language: string | null, first: boolean, last: boolean, selectable: boolean }) {
     const [isHovered, setIsHovered] = React.useState(false);
+    const { scrollViewProps, wheelProps } = useWebHorizontalScroll();
 
     const copyCode = React.useCallback(async () => {
         try {
@@ -193,9 +194,11 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
             onMouseEnter={() => setIsHovered(true)}
             // @ts-ignore - Web only events
             onMouseLeave={() => setIsHovered(false)}
+            {...wheelProps}
         >
             {props.language && <Text selectable={props.selectable} style={style.codeLanguage}>{props.language}</Text>}
             <ScrollView
+                {...scrollViewProps}
                 style={{ flexGrow: 0, flexShrink: 0 }}
                 horizontal={true}
                 contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}
@@ -341,51 +344,122 @@ function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
     </>)
 }
 
-// Table rendering uses column-first layout to ensure consistent column widths.
-// Each column is rendered as a vertical container with all its cells (header + data).
-// This ensures that cells in the same column have the same width, determined by the widest content.
+// Hook: Web mouse wheel → horizontal scroll for ScrollView
+function useWebHorizontalScroll() {
+    const scrollRef = React.useRef<ScrollView>(null);
+    const scrollOffsetRef = React.useRef(0);
+    const contentWidthRef = React.useRef(0);
+    const containerWidthRef = React.useRef(0);
+    const handleWheel = React.useCallback((e: any) => {
+        if (Platform.OS !== 'web' || !scrollRef.current) return;
+        const delta = e.deltaX || e.deltaY;
+        if (delta === 0) return;
+        e.preventDefault();
+        const maxScroll = Math.max(0, contentWidthRef.current - containerWidthRef.current);
+        const next = Math.min(maxScroll, Math.max(0, scrollOffsetRef.current + delta));
+        scrollOffsetRef.current = next;
+        (scrollRef.current as any).scrollTo({ x: next, animated: false });
+    }, []);
+    const scrollViewProps = {
+        ref: scrollRef,
+        onScroll: (e: any) => { scrollOffsetRef.current = e.nativeEvent.contentOffset.x; },
+        scrollEventThrottle: 16,
+        onContentSizeChange: (w: number) => { contentWidthRef.current = w; },
+        onLayout: (e: any) => { containerWidthRef.current = e.nativeEvent.layout.width; },
+    };
+    const wheelProps = Platform.OS === 'web' ? { onWheel: handleWheel } as any : {};
+    return { scrollViewProps, wheelProps };
+}
+
+// Table rendering: column-first layout for natural column widths, with synchronized row heights.
+// First pass measures each row's max height across columns, second render applies uniform heights.
 function RenderTableBlock(props: {
     headers: MarkdownSpan[][],
     rows: MarkdownSpan[][][],
     first: boolean,
-    last: boolean
+    last: boolean,
 }) {
     const columnCount = props.headers.length;
     const rowCount = props.rows.length;
+    const totalRows = 1 + rowCount; // header + data rows
+
+    // Track measured heights: rowHeights[rowIndex] = max height across all columns
+    const [rowHeights, setRowHeights] = React.useState<(number | undefined)[]>(() => new Array(totalRows).fill(undefined));
+    const measuredRef = React.useRef<number[][]>(
+        Array.from({ length: totalRows }, () => new Array(columnCount).fill(0))
+    );
+
+    // Lazily ensure the measurement grid is the right size
+    if (measuredRef.current.length !== totalRows || (measuredRef.current[0] && measuredRef.current[0].length !== columnCount)) {
+        const arr: number[][] = [];
+        for (let i = 0; i < totalRows; i++) arr.push(new Array(columnCount).fill(0));
+        measuredRef.current = arr;
+    }
+
+    const handleCellLayout = React.useCallback((rowIndex: number, colIndex: number, height: number) => {
+        const grid = measuredRef.current;
+        if (!grid[rowIndex]) return;
+        const prev = grid[rowIndex][colIndex];
+        if (prev === height) return;
+        grid[rowIndex][colIndex] = height;
+
+        // Compute max height for this row
+        const maxH = Math.max(...grid[rowIndex]);
+        setRowHeights(old => {
+            if (old[rowIndex] === maxH) return old;
+            const next = [...old];
+            next[rowIndex] = maxH;
+            return next;
+        });
+    }, []);
+
     const isLastRow = (rowIndex: number) => rowIndex === rowCount - 1;
+    const { scrollViewProps, wheelProps } = useWebHorizontalScroll();
 
     return (
-        <View style={[style.tableContainer, props.first && style.first, props.last && style.last]}>
+        <View
+            style={[style.tableContainer, props.first && style.first, props.last && style.last]}
+            {...wheelProps}
+        >
             <ScrollView
+                {...scrollViewProps}
                 horizontal
                 showsHorizontalScrollIndicator={Platform.OS !== 'web'}
                 nestedScrollEnabled={true}
                 style={style.tableScrollView}
             >
                 <View style={style.tableContent}>
-                    {/* Render each column as a vertical container */}
                     {props.headers.map((headerSpans, colIndex) => (
                         <View
                             key={`column-${colIndex}`}
                             style={[
                                 style.tableColumn,
-                                colIndex === columnCount - 1 && style.tableColumnLast
+                                colIndex < columnCount - 1 && style.tableCellRightBorder
                             ]}
                         >
-                            {/* Header cell for this column */}
-                            <View style={[style.tableCell, style.tableHeaderCell, style.tableCellFirst]}>
+                            {/* Header cell */}
+                            <View
+                                style={[
+                                    style.tableCell,
+                                    style.tableHeaderCell,
+                                    rowHeights[0] != null ? { height: rowHeights[0] } : undefined,
+                                ]}
+                                onLayout={(e) => handleCellLayout(0, colIndex, e.nativeEvent.layout.height)}
+                            >
                                 <Text style={style.tableHeaderText}>
                                     <RenderSpans spans={headerSpans} baseStyle={style.tableHeaderText} />
                                 </Text>
                             </View>
-                            {/* Data cells for this column */}
+                            {/* Data cells */}
                             {props.rows.map((row, rowIndex) => (
                                 <View
                                     key={`cell-${rowIndex}-${colIndex}`}
                                     style={[
                                         style.tableCell,
-                                        isLastRow(rowIndex) && style.tableCellLast
+                                        isLastRow(rowIndex) && style.tableCellLast,
+                                        rowHeights[rowIndex + 1] != null ? { height: rowHeights[rowIndex + 1] } : undefined,
                                     ]}
+                                    onLayout={(e) => handleCellLayout(rowIndex + 1, colIndex, e.nativeEvent.layout.height)}
                                 >
                                     <Text style={style.tableCellText}>
                                         <RenderSpans spans={row[colIndex] ?? []} baseStyle={style.tableCellText} />
@@ -514,6 +588,7 @@ const style = StyleSheet.create((theme) => ({
         marginVertical: 8,
         position: 'relative',
         zIndex: 1,
+        maxWidth: '100%',
     },
     copyButtonWrapper: {
         position: 'absolute',
@@ -636,6 +711,7 @@ const style = StyleSheet.create((theme) => ({
         borderRadius: 8,
         overflow: 'hidden',
         alignSelf: 'flex-start',
+        maxWidth: '100%',
     },
     tableScrollView: {
         flexGrow: 0,
@@ -645,11 +721,6 @@ const style = StyleSheet.create((theme) => ({
     },
     tableColumn: {
         flexDirection: 'column',
-        borderRightWidth: 1,
-        borderRightColor: theme.colors.divider,
-    },
-    tableColumnLast: {
-        borderRightWidth: 0,
     },
     tableCell: {
         paddingHorizontal: 12,
@@ -657,9 +728,11 @@ const style = StyleSheet.create((theme) => ({
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.divider,
         alignItems: 'flex-start',
+        justifyContent: 'center',
     },
-    tableCellFirst: {
-        borderTopWidth: 0,
+    tableCellRightBorder: {
+        borderRightWidth: 1,
+        borderRightColor: theme.colors.divider,
     },
     tableCellLast: {
         borderBottomWidth: 0,

@@ -300,10 +300,11 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: '100%',
   },
   agentMessageContainer: {
-    marginHorizontal: 16,
+    paddingHorizontal: 16,
     marginBottom: 12,
     borderRadius: 16,
     alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
   agentEventContainer: {
     marginHorizontal: 8,
