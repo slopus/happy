@@ -99,6 +99,7 @@
     "@types/tmp": "^0.2.6",
     "ai": "^5.0.107",
     "axios": "^1.13.2",
+    "https-proxy-agent": "^7.0.6",
     "chalk": "^5.6.2",
     "cross-spawn": "^7.0.6",
     "expo-server-sdk": "^3.15.0",

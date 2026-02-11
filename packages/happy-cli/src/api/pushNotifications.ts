@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { logger } from '@/ui/logger'
 import { Expo, ExpoPushMessage } from 'expo-server-sdk'
+import { getAxiosProxyAgents } from '@/utils/proxy'
 
 export interface PushToken {
     id: string
@@ -26,13 +27,17 @@ export class PushNotificationClient {
      */
     async fetchPushTokens(): Promise<PushToken[]> {
         try {
+            // Get proxy agents if configured
+            const proxyAgents = getAxiosProxyAgents(this.baseUrl);
+
             const response = await axios.get<{ tokens: PushToken[] }>(
                 `${this.baseUrl}/v1/push-tokens`,
                 {
                     headers: {
                         'Authorization': `Bearer ${this.token}`,
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    ...proxyAgents
                 }
             )
 
