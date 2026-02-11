@@ -528,6 +528,9 @@ function createInterpretedInputFilter(): TransformStream<string, string> {
     });
 }
 
+/** Max age (ms) for merging a previous user transcript that had no assistant response. */
+const INTERRUPTED_MERGE_WINDOW_MS = 3000;
+
 class HappyVoiceAgent extends voice.Agent {
     private readonly mainPromptFile: string;
     private readonly toolFollowupPromptFile: string;
@@ -640,6 +643,50 @@ class HappyVoiceAgent extends voice.Agent {
         this.maxRecentAppContextMessages = params.maxRecentAppContextMessages;
         this.maxRecentChars = params.maxRecentChars;
         this.getRecentAppContext = params.getRecentAppContext;
+    }
+
+    /**
+     * Merge interrupted speech fragments.
+     *
+     * When VAD splits a single utterance into two turns (user pauses briefly),
+     * the first turn's LLM response is interrupted before producing output.
+     * This leaves the first user message in chatCtx with no assistant follow-up.
+     *
+     * We detect this pattern — the last chatCtx item is a user message created
+     * within INTERRUPTED_MERGE_WINDOW_MS — and prepend its text to the new
+     * message so the LLM sees the full utterance.
+     */
+    override async onUserTurnCompleted(chatCtx: llm.ChatContext, newMessage: llm.ChatMessage): Promise<void> {
+        // Walk backwards to find the last non-system item.
+        for (let i = chatCtx.items.length - 1; i >= 0; i--) {
+            const item = chatCtx.items[i];
+            if (!item) continue;
+            if (item.type !== 'message') break;
+            if (item.role === 'system' || item.role === 'developer') continue;
+
+            // If the last conversational item is a user message with no assistant
+            // response after it, and it was created recently, merge it.
+            if (item.role === 'user') {
+                const age = Date.now() - item.createdAt;
+                if (age <= INTERRUPTED_MERGE_WINDOW_MS) {
+                    const prevText = item.textContent ?? '';
+                    const newText = newMessage.textContent ?? '';
+                    if (prevText) {
+                        logInfo('HappyVoiceAgent.onUserTurnCompleted merging interrupted speech', {
+                            prevText,
+                            newText,
+                            ageMs: age,
+                        });
+                        // Replace new message content with merged text.
+                        newMessage.content = [`${prevText} ${newText}`.trim()];
+                        // Remove the orphaned user message from chatCtx so
+                        // the LLM does not see a duplicate.
+                        chatCtx.items.splice(i, 1);
+                    }
+                }
+            }
+            break;
+        }
     }
 
     // Filter <interpreted_input> tags from LLM output before TTS reads it aloud.
