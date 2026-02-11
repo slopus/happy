@@ -6,6 +6,7 @@ import React from "react";
 import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
+import { restoreStdin } from "@/utils/restoreStdin";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
@@ -15,6 +16,7 @@ import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
+import { createNonBlockingStdout } from "@/utils/nonBlockingStdout";
 
 interface PermissionsField {
     date: number;
@@ -37,6 +39,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     if (hasTTY) {
         console.clear();
+        // Use non-blocking stdout wrapper to prevent event loop blocking
+        // when tmux detaches and the PTY buffer fills up
+        const inkStdout = createNonBlockingStdout();
         inkInstance = render(React.createElement(RemoteModeDisplay, {
             messageBuffer,
             logPath: process.env.DEBUG ? session.logPath : undefined,
@@ -55,7 +60,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             }
         }), {
             exitOnCtrlC: false,
-            patchConsole: false
+            patchConsole: false,
+            stdout: inkStdout
         });
     }
 
@@ -442,14 +448,19 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         // Clean up permission handler
         permissionHandler.reset();
 
-        // Reset Terminal
-        process.stdin.off('data', abort);
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(false);
-        }
+        // Unmount Ink FIRST — it expects raw mode to still be active during teardown.
+        // Reversing this order (disabling raw mode first) causes Ink to corrupt the terminal.
         if (inkInstance) {
-            inkInstance.unmount();
+            try {
+                inkInstance.unmount();
+            } catch {
+                // Ink unmount can throw if already unmounted
+            }
         }
+
+        // Now restore stdin to a clean state for the next consumer (local mode / child process)
+        restoreStdin();
+
         messageBuffer.clear();
 
         // Resolve abort future
