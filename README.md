@@ -36,7 +36,7 @@ npm install -g happy-blue
 **Or install from source:**
 
 ```bash
-git clone https://github.com/slopus/happy.git
+git clone https://github.com/HirokiKobayashi-R/happy.git
 cd happy
 yarn install
 cd packages/happy-cli
@@ -93,7 +93,7 @@ We're engineers scattered across Bay Area coffee shops and hacker houses, consta
 That said, Happy Server is open source and self-hostable if you prefer running your own infrastructure. The security model is identical whether you use our servers or your own.
 
 ```bash
-git clone https://github.com/slopus/happy.git
+git clone https://github.com/HirokiKobayashi-R/happy.git
 cd happy/packages/happy-server/deploy
 cp .env.example .env   # Edit with your values
 docker compose up -d
