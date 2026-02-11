@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { encodeBase64, encodeBase64Url, authChallenge } from './encryption';
 import { configuration } from '@/configuration';
-import { getAxiosProxyAgents } from '@/utils/proxy';
+import { getAxiosProxyConfig } from '@/utils/proxy';
 
 /**
  * Note: This function is deprecated. Use readPrivateKey/writePrivateKey from persistence module instead.
@@ -20,15 +20,15 @@ export async function getOrCreateSecretKey(): Promise<Uint8Array> {
 export async function authGetToken(secret: Uint8Array): Promise<string> {
   const { challenge, publicKey, signature } = authChallenge(secret);
 
-  // Get proxy agents if configured
-  const proxyAgents = getAxiosProxyAgents(configuration.serverUrl);
+  // Get proxy config if configured
+  const proxyConfig = getAxiosProxyConfig(configuration.serverUrl);
 
   const response = await axios.post(`${configuration.serverUrl}/v1/auth`, {
     challenge: encodeBase64(challenge),
     publicKey: encodeBase64(publicKey),
     signature: encodeBase64(signature)
   }, {
-    ...proxyAgents
+    proxy: proxyConfig
   });
 
   if (!response.data.success || !response.data.token) {
