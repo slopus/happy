@@ -23,6 +23,7 @@ import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile } from '@/sync/profileUtils';
+import { useUserMessageHistory } from '@/hooks/useUserMessageHistory';
 
 interface AgentInputProps {
     value: string;
@@ -298,6 +299,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const screenWidth = useWindowDimensions().width;
 
     const hasText = props.value.trim().length > 0;
+    const messageHistory = useUserMessageHistory();
 
     // Check if this is a Codex or Gemini session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
@@ -458,6 +460,23 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             }
         }
 
+        // Handle message history navigation (when no autocomplete suggestions)
+        if (Platform.OS === 'web') {
+            if (event.key === 'ArrowUp') {
+                const msg = messageHistory.navigateUp(props.value);
+                if (msg !== null) {
+                    props.onChangeText(msg);
+                    return true;
+                }
+            } else if (event.key === 'ArrowDown') {
+                const msg = messageHistory.navigateDown();
+                if (msg !== null) {
+                    props.onChangeText(msg);
+                    return true;
+                }
+            }
+        }
+
         // Handle Escape for abort when no suggestions are visible
         if (event.key === 'Escape' && props.showAbortButton && props.onAbort && !isAborting) {
             handleAbortPress();
@@ -486,7 +505,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.onChangeText, props.permissionMode, props.onPermissionModeChange, messageHistory]);
 
 
     // Add window focus handler to restore focus to input on web
@@ -1122,6 +1141,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         onPress={() => {
                                             hapticsLight();
                                             if (hasText) {
+                                                messageHistory.reset();
                                                 props.onSend();
                                             } else {
                                                 props.onMicPress?.();
