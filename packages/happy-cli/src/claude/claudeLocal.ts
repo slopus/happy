@@ -316,7 +316,9 @@ export async function claudeLocal(opts: {
                 // Ignore
             });
             child.on('exit', (code, signal) => {
-                if (signal === 'SIGTERM' && opts.abort.aborted) {
+                // Handle abort-triggered termination
+                // SIGTERM can manifest as signal='SIGTERM' or code=143 (128 + 15)
+                if (opts.abort.aborted && (signal === 'SIGTERM' || code === 143)) {
                     // Normal termination due to abort signal
                     r();
                 } else if (signal) {
