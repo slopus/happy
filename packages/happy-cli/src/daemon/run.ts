@@ -338,6 +338,13 @@ export async function startDaemon(): Promise<void> {
             extraEnv.HAPPY_SESSION_TITLE = sessionTitle;
           }
         }
+        // Worktree metadata - passed to agent process so initial metadata includes it
+        if (options.worktreeBasePath) {
+          extraEnv.HAPPY_WORKTREE_BASE_PATH = options.worktreeBasePath;
+        }
+        if (options.worktreeBranchName) {
+          extraEnv.HAPPY_WORKTREE_BRANCH_NAME = options.worktreeBranchName;
+        }
         logger.debug(`[DAEMON RUN] Final environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
 
         // Expand ${VAR} references from daemon's process.env

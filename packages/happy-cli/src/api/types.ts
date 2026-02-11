@@ -353,7 +353,11 @@ export type Metadata = {
   lifecycleStateSince?: number,
   archivedBy?: string,
   archiveReason?: string,
-  flavor?: string
+  flavor?: string,
+  // Worktree metadata
+  isWorktree?: boolean,
+  worktreeBasePath?: string,
+  worktreeBranchName?: string,
 };
 
 export type AgentState = {

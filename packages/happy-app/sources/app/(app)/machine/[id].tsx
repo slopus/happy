@@ -5,10 +5,10 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
-import { useSessions, useAllMachines, useMachine, storage } from '@/sync/storage';
+import { useSessions, useMachine } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { machineStopDaemon, machineUpdateMetadata, sessionUpdateMetadataFields } from '@/sync/ops';
+import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -248,31 +248,15 @@ export default function MachineDetailScreen() {
             const result = await machineSpawnNewSession({
                 machineId: machineId!,
                 directory: actualPath,
-                approvedNewDirectoryCreation
+                approvedNewDirectoryCreation,
+                // Pass worktree metadata so CLI includes it in initial metadata (avoids race condition)
+                ...(sessionType === 'worktree' && worktreeBranchName ? {
+                    worktreeBasePath: absolutePath,
+                    worktreeBranchName,
+                } : {}),
             });
             switch (result.type) {
                 case 'success':
-                    // Write worktree metadata to session
-                    if (sessionType === 'worktree' && worktreeBranchName) {
-                        await sync.refreshSessions();
-                        const newSession = storage.getState().sessions[result.sessionId];
-                        if (newSession?.metadata) {
-                            try {
-                                await sessionUpdateMetadataFields(
-                                    result.sessionId,
-                                    newSession.metadata,
-                                    {
-                                        isWorktree: true,
-                                        worktreeBasePath: absolutePath,
-                                        worktreeBranchName,
-                                    },
-                                    newSession.metadataVersion,
-                                );
-                            } catch (e) {
-                                console.warn('Failed to write worktree metadata:', e);
-                            }
-                        }
-                    }
                     // Dismiss machine picker & machine detail screen
                     router.back();
                     router.back();

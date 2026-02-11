@@ -82,7 +82,13 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         startedBy: opts.startedBy || 'terminal',
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),
-        flavor: opts.flavor
+        flavor: opts.flavor,
+        // Worktree metadata (passed via environment from daemon)
+        ...(process.env.HAPPY_WORKTREE_BASE_PATH ? {
+            isWorktree: true,
+            worktreeBasePath: process.env.HAPPY_WORKTREE_BASE_PATH,
+            worktreeBranchName: process.env.HAPPY_WORKTREE_BRANCH_NAME,
+        } : {}),
     };
 
     return { state, metadata };

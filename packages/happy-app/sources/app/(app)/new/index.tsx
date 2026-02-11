@@ -13,7 +13,7 @@ import { t } from '@/text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { machineSpawnNewSession, sessionUpdateMetadataFields } from '@/sync/ops';
+import { machineSpawnNewSession } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
@@ -1042,7 +1042,12 @@ function NewSessionWizard() {
                 directory: actualPath,
                 approvedNewDirectoryCreation: true,
                 agent: agentType,
-                environmentVariables
+                environmentVariables,
+                // Pass worktree metadata so CLI includes it in initial metadata (avoids race condition)
+                ...(sessionType === 'worktree' && worktreeBranchName ? {
+                    worktreeBasePath: selectedPath,
+                    worktreeBranchName,
+                } : {}),
             });
 
             if ('sessionId' in result && result.sessionId) {
@@ -1055,27 +1060,6 @@ function NewSessionWizard() {
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
                 if (agentType === 'gemini' && modelMode && modelMode !== 'default') {
                     storage.getState().updateSessionModelMode(result.sessionId, modelMode as 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite');
-                }
-
-                // Write worktree metadata to session
-                if (sessionType === 'worktree' && worktreeBranchName) {
-                    const newSession = storage.getState().sessions[result.sessionId];
-                    if (newSession?.metadata) {
-                        try {
-                            await sessionUpdateMetadataFields(
-                                result.sessionId,
-                                newSession.metadata,
-                                {
-                                    isWorktree: true,
-                                    worktreeBasePath: selectedPath,
-                                    worktreeBranchName,
-                                },
-                                newSession.metadataVersion,
-                            );
-                        } catch (e) {
-                            console.warn('Failed to write worktree metadata:', e);
-                        }
-                    }
                 }
 
                 // Send initial message if provided

@@ -154,6 +154,9 @@ export interface SpawnSessionOptions {
     // - API_TIMEOUT_MS, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
     // - Custom variables (DEEPSEEK_*, Z_AI_*, etc.)
     environmentVariables?: Record<string, string>;
+    // Worktree metadata - passed to CLI so it's included in initial metadata (avoids race condition)
+    worktreeBasePath?: string;
+    worktreeBranchName?: string;
 }
 
 export interface ClaudeSessionIndexEntry {
@@ -186,7 +189,7 @@ export interface ClaudeUserMessageWithUuid {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeSessionId, sessionTitle, skipForkSession, environmentVariables } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeSessionId, sessionTitle, skipForkSession, environmentVariables, worktreeBasePath, worktreeBranchName } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -199,10 +202,12 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             sessionTitle?: string,
             skipForkSession?: boolean,
             environmentVariables?: Record<string, string>;
+            worktreeBasePath?: string,
+            worktreeBranchName?: string,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeSessionId, sessionTitle, skipForkSession, environmentVariables }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeSessionId, sessionTitle, skipForkSession, environmentVariables, worktreeBasePath, worktreeBranchName }
         );
         return result;
     } catch (error) {

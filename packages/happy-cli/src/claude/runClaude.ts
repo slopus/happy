@@ -112,7 +112,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // Initialize lifecycle state
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),
-        flavor: 'claude'
+        flavor: 'claude',
+        // Worktree metadata (passed via environment from daemon)
+        ...(process.env.HAPPY_WORKTREE_BASE_PATH ? {
+            isWorktree: true,
+            worktreeBasePath: process.env.HAPPY_WORKTREE_BASE_PATH,
+            worktreeBranchName: process.env.HAPPY_WORKTREE_BRANCH_NAME,
+        } : {}),
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 
