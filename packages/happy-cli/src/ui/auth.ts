@@ -13,6 +13,7 @@ import { render } from 'ink';
 import React from 'react';
 import { randomUUID } from 'node:crypto';
 import { logger } from './logger';
+import { getAxiosProxyAgents } from '@/utils/proxy';
 
 export async function doAuth(): Promise<Credentials | null> {
     console.clear();
@@ -34,9 +35,13 @@ export async function doAuth(): Promise<Credentials | null> {
             console.log(`[AUTH DEBUG] Sending auth request to: ${configuration.serverUrl}/v1/auth/request`);
             console.log(`[AUTH DEBUG] Public key: ${encodeBase64(keypair.publicKey).substring(0, 20)}...`);
         }
+        const proxyAgents = getAxiosProxyAgents(configuration.serverUrl);
         await axios.post(`${configuration.serverUrl}/v1/auth/request`, {
             publicKey: encodeBase64(keypair.publicKey),
             supportsV2: true
+        }, {
+            ...proxyAgents,
+            proxy: proxyAgents ? false : undefined
         });
         if (process.env.DEBUG) {
             console.log(`[AUTH DEBUG] Auth request sent successfully`);
