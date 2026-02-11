@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, ActivityIndicator, FlatList, Platform } from 'react-native';
+import { View, ActivityIndicator, FlatList, Platform, Pressable } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -122,71 +122,62 @@ export default function CommitsScreen() {
     }, [router, sessionId]);
 
     const renderCommit = React.useCallback(({ item, index }: { item: CommitInfo; index: number }) => (
-        <View
+        <Pressable
             key={item.hash}
+            onPress={() => handleCommitPress(item)}
             style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 16,
+                paddingVertical: 14,
                 borderBottomWidth: index < commits.length - 1 ? Platform.select({ ios: 0.33, default: 1 }) : 0,
                 borderBottomColor: theme.colors.divider,
             }}
         >
-            <View
-                style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingHorizontal: 16,
-                    paddingVertical: 14,
-                }}
-                // Use Pressable wrapper for press handling
-            >
-                <View style={{ flex: 1, marginRight: 8 }}
-                    onTouchEnd={() => handleCommitPress(item)}
-                    accessible={true}
-                    accessibilityRole="button"
+            <View style={{ flex: 1, marginRight: 8 }}>
+                <Text
+                    style={{
+                        fontSize: 15,
+                        color: theme.colors.text,
+                        fontWeight: '500',
+                        marginBottom: 4,
+                        ...Typography.default('semiBold'),
+                    }}
+                    numberOfLines={2}
                 >
+                    {item.title}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{
+                        fontSize: 13,
+                        color: theme.colors.textSecondary,
+                        ...Typography.mono(),
+                    }}>
+                        {item.shortHash}
+                    </Text>
+                    <Text style={{
+                        fontSize: 13,
+                        color: theme.colors.textSecondary,
+                        marginHorizontal: 6,
+                        ...Typography.default(),
+                    }}>
+                        ·
+                    </Text>
                     <Text
                         style={{
-                            fontSize: 15,
-                            color: theme.colors.text,
-                            fontWeight: '500',
-                            marginBottom: 4,
-                            ...Typography.default('semiBold'),
-                        }}
-                        numberOfLines={2}
-                    >
-                        {item.title}
-                    </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={{
                             fontSize: 13,
                             color: theme.colors.textSecondary,
-                            ...Typography.mono(),
-                        }}>
-                            {item.shortHash}
-                        </Text>
-                        <Text style={{
-                            fontSize: 13,
-                            color: theme.colors.textSecondary,
-                            marginHorizontal: 6,
+                            flex: 1,
                             ...Typography.default(),
-                        }}>
-                            ·
-                        </Text>
-                        <Text
-                            style={{
-                                fontSize: 13,
-                                color: theme.colors.textSecondary,
-                                flex: 1,
-                                ...Typography.default(),
-                            }}
-                            numberOfLines={1}
-                        >
-                            {item.author} · {formatRelativeTime(item.date)}
-                        </Text>
-                    </View>
+                        }}
+                        numberOfLines={1}
+                    >
+                        {item.author} · {formatRelativeTime(item.date)}
+                    </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={theme.colors.groupped?.chevron || theme.colors.textSecondary} />
             </View>
-        </View>
+            <Ionicons name="chevron-forward" size={16} color={theme.colors.groupped?.chevron || theme.colors.textSecondary} />
+        </Pressable>
     ), [commits.length, theme, handleCommitPress]);
 
     if (isLoading) {
