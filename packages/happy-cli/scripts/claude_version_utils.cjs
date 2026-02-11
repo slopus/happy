@@ -501,9 +501,18 @@ function runClaudeCli(cliPath) {
         // Forward termination signals to the child process.
         // Without this, the child becomes an orphan competing for stdin
         // when the parent is killed (e.g., during remote→local mode switch).
+        // Note: we track exit ourselves rather than using child.killed, because
+        // child.killed becomes true after the first kill() call — not when the
+        // child actually exits. We need to keep forwarding signals (e.g., a
+        // second SIGTERM) in case the child trapped the first one.
+        let childExited = false;
         const forwardSignal = (signal) => {
-            if (!child.killed) {
-                child.kill(signal);
+            if (!childExited) {
+                try {
+                    child.kill(signal);
+                } catch {
+                    // Child already gone
+                }
             }
         };
         const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
@@ -512,6 +521,7 @@ function runClaudeCli(cliPath) {
         }
 
         child.on('exit', (code) => {
+            childExited = true;
             // Clean up signal handlers to avoid leaks
             for (const sig of signals) {
                 process.removeAllListeners(sig);
