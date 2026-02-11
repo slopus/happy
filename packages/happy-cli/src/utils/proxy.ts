@@ -27,7 +27,10 @@ export interface ProxyConfig {
 
 /**
  * Get proxy URL from environment variables
- * Priority: HTTPS_PROXY > HTTP_PROXY > ALL_PROXY
+ * Selects proxy based on target URL scheme:
+ * - https:// or wss:// → HTTPS_PROXY
+ * - http:// or ws:// → HTTP_PROXY
+ * - Fallback → ALL_PROXY
  */
 export function getProxyUrl(targetUrl?: string): string | undefined {
     // Check if target should bypass proxy
@@ -35,13 +38,36 @@ export function getProxyUrl(targetUrl?: string): string | undefined {
         return undefined;
     }
 
-    const proxyUrl =
-        process.env.HTTPS_PROXY ||
-        process.env.https_proxy ||
-        process.env.HTTP_PROXY ||
-        process.env.http_proxy ||
-        process.env.ALL_PROXY ||
-        process.env.all_proxy;
+    let proxyUrl: string | undefined;
+
+    // Select proxy based on target URL scheme
+    if (targetUrl) {
+        try {
+            const url = new URL(targetUrl);
+            const isSecure = url.protocol === 'https:' || url.protocol === 'wss:';
+
+            if (isSecure) {
+                // For HTTPS/WSS, prefer HTTPS_PROXY
+                proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
+            } else {
+                // For HTTP/WS, prefer HTTP_PROXY
+                proxyUrl = process.env.HTTP_PROXY || process.env.http_proxy;
+            }
+        } catch {
+            // If URL parsing fails, fall through to default behavior
+        }
+    }
+
+    // Fallback: try all proxy env vars
+    if (!proxyUrl) {
+        proxyUrl =
+            process.env.HTTPS_PROXY ||
+            process.env.https_proxy ||
+            process.env.HTTP_PROXY ||
+            process.env.http_proxy ||
+            process.env.ALL_PROXY ||
+            process.env.all_proxy;
+    }
 
     if (proxyUrl) {
         logger.debug(`[PROXY] Using proxy: ${proxyUrl}`);
@@ -80,7 +106,15 @@ export function shouldBypassProxy(targetUrl: string): boolean {
                     return true;
                 }
             }
-            // Handle exact matches or suffix matches
+            // Handle leading-dot patterns like .example.com (common format)
+            else if (pattern.startsWith('.')) {
+                // .example.com should match sub.example.com and example.com
+                const domain = pattern.slice(1); // example.com
+                if (hostname === domain || hostname.endsWith(pattern)) {
+                    return true;
+                }
+            }
+            // Handle exact matches or suffix matches (e.g., example.com matches sub.example.com)
             else if (hostname === pattern || hostname.endsWith('.' + pattern)) {
                 return true;
             }
