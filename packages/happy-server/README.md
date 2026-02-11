@@ -9,7 +9,7 @@ Happy Server is the synchronization backbone for secure Claude Code clients. It 
 ## Features
 
 - 🔐 **Zero Knowledge** - The server stores encrypted data but has no ability to decrypt it
-- 🎯 **Minimal Surface** - Only essential features for secure sync, nothing more  
+- 🎯 **Minimal Surface** - Only essential features for secure sync, nothing more
 - 🕵️ **Privacy First** - No analytics, no tracking, no data mining
 - 📖 **Open Source** - Transparent implementation you can audit and self-host
 - 🔑 **Cryptographic Auth** - No passwords stored, only public key signatures
@@ -22,11 +22,9 @@ Happy Server is the synchronization backbone for secure Claude Code clients. It 
 
 Your Claude Code clients generate encryption keys locally and use Happy Server as a secure relay. Messages are end-to-end encrypted before leaving your device. The server's job is simple: store encrypted blobs and sync them between your devices in real-time.
 
-## Hosting
+## Self-Hosting
 
-**You don't need to self-host!** Our free cloud Happy Server at `happy-api.slopus.com` is just as secure as running your own. Since all data is end-to-end encrypted before it reaches our servers, we literally cannot read your messages even if we wanted to. The encryption happens on your device, and only you have the keys.
-
-That said, Happy Server is open source and self-hostable if you prefer running your own infrastructure. The security model is identical whether you use our servers or your own.
+See the [main README](../../README.md#-self-hosting-the-server) for deployment instructions.
 
 ## License
 
