@@ -15,13 +15,22 @@ import * as silero from '@livekit/agents-plugin-silero';
 import { BackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
 import { RoomEvent } from '@livekit/rtc-node';
 import { z } from 'zod';
-import { getBackgroundPermissionSpeech, getBackgroundReadySpeech } from '../runtime/cannedSpeech';
+import { getBackgroundPermissionSpeech, getBackgroundReadySpeech, tryGetCannedToolResponse } from '../runtime/cannedSpeech';
+import {
+    buildContextPrefix,
+    buildToolFollowupPayload,
+    deepCloneMessages,
+    findLatestToolOutput,
+    isToolFollowupCall,
+    replaceInstructions,
+    stripAppContextUpdates,
+    wrapLastUserMessage,
+} from '../runtime/chatContextTransforms';
+import { extractRecentAppContext, extractRecentTextUpdates, extractRecentVoiceMessages } from '../runtime/contextWindow';
 import { env } from '../runtime/env';
 import { logError, logInfo, logWarn } from '../runtime/log';
 import { withLLMLogging } from '../runtime/loggingLlm';
-import { PromptedLLM } from '../runtime/promptedLlm';
 import { loadAndRenderPromptFile } from '../runtime/prompts';
-import { extractRecentAppContext, extractRecentTextUpdates, extractRecentVoiceMessages } from '../runtime/contextWindow';
 import { sendRoomData } from '../runtime/livekit';
 import { toolBridgeClient } from '../runtime/toolBridge';
 import type { HappyVoiceContextPayload } from '../types/voice';
@@ -451,7 +460,7 @@ function parseMetadata(ctx: JobContext): DispatchMetadata {
 }
 
 function buildInstructions(metadata: DispatchMetadata) {
-    // The real per-call system prompts are injected by PromptedLLM.
+    // The real per-call system prompts are injected by HappyVoiceAgent.llmNode().
     // Keep this short to avoid large static instructions being carried around in the chat context.
     const languageLine = metadata.language ? `Language preference: ${metadata.language}.` : '';
     return `You are Happy Code's voice assistant. ${languageLine}`.trim();
@@ -520,9 +529,22 @@ function createInterpretedInputFilter(): TransformStream<string, string> {
 }
 
 class HappyVoiceAgent extends voice.Agent {
+    private readonly mainPromptFile: string;
+    private readonly toolFollowupPromptFile: string;
+    private readonly languagePreference: string;
+    private readonly getCurrentAppSessionId: () => string;
+    private readonly maxRecentAppContextMessages: number;
+    private readonly maxRecentChars: number;
+    private readonly getRecentAppContext: () => string;
+
     constructor(params: {
         metadata: DispatchMetadata;
         getCurrentAppSessionId: () => string;
+        mainPromptFile: string;
+        toolFollowupPromptFile: string;
+        maxRecentAppContextMessages: number;
+        maxRecentChars: number;
+        getRecentAppContext: () => string;
     }) {
         const { metadata, getCurrentAppSessionId } = params;
         const buildToolPayload = (
@@ -610,6 +632,14 @@ class HappyVoiceAgent extends voice.Agent {
                 }),
             },
         });
+
+        this.mainPromptFile = params.mainPromptFile;
+        this.toolFollowupPromptFile = params.toolFollowupPromptFile;
+        this.languagePreference = params.metadata.language || '';
+        this.getCurrentAppSessionId = params.getCurrentAppSessionId;
+        this.maxRecentAppContextMessages = params.maxRecentAppContextMessages;
+        this.maxRecentChars = params.maxRecentChars;
+        this.getRecentAppContext = params.getRecentAppContext;
     }
 
     // Filter <interpreted_input> tags from LLM output before TTS reads it aloud.
@@ -617,6 +647,89 @@ class HappyVoiceAgent extends voice.Agent {
     override async ttsNode(text: any, modelSettings: any): Promise<any> {
         const filtered = text.pipeThrough(createInterpretedInputFilter());
         return super.ttsNode(filtered, modelSettings);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    override async llmNode(
+        chatCtx: llm.ChatContext,
+        toolCtx: llm.ToolContext,
+        modelSettings: voice.ModelSettings,
+    ): Promise<any> {
+        // Deep-clone message items so content mutations do not leak back into
+        // the live session history (LiveKit's chatCtx.copy() is shallow).
+        deepCloneMessages(chatCtx);
+
+        const toolFollowup = isToolFollowupCall(chatCtx);
+
+        // Extract recent app context while items are still intact (before mutations).
+        const recentAppContextFromChat = extractRecentAppContext({
+            chatCtx,
+            maxMessages: this.maxRecentAppContextMessages,
+            maxChars: this.maxRecentChars,
+        });
+        const appContextOverride = this.getRecentAppContext();
+        const recentAppContext =
+            appContextOverride.trim().length > 0
+                ? appContextOverride
+                : recentAppContextFromChat;
+        const currentAppSessionId = this.getCurrentAppSessionId();
+        const toolOutput = toolFollowup ? findLatestToolOutput(chatCtx) : null;
+
+        // Short-circuit: for predictable tool results, return a canned response.
+        if (toolFollowup && toolOutput) {
+            const canned = tryGetCannedToolResponse(
+                toolOutput.toolName,
+                toolOutput.toolResult,
+                this.languagePreference,
+            );
+            if (canned) {
+                logInfo('HappyVoiceAgent.llmNode canned response', {
+                    toolName: toolOutput.toolName,
+                    canned,
+                });
+                return new ReadableStream<string>({
+                    start(controller) {
+                        controller.enqueue(canned);
+                        controller.close();
+                    },
+                });
+            }
+        }
+
+        // Load system prompt with session-level static variables.
+        const systemPrompt = loadAndRenderPromptFile(
+            toolFollowup ? this.toolFollowupPromptFile : this.mainPromptFile,
+            {
+                language_preference: this.languagePreference,
+                app_session_id: currentAppSessionId,
+            },
+        );
+
+        replaceInstructions(chatCtx, systemPrompt);
+        stripAppContextUpdates(chatCtx);
+
+        // Inject dynamic context into user messages.
+        if (toolFollowup && toolOutput) {
+            // Tool followup: append tool payload as user message.
+            const payload = buildToolFollowupPayload(toolOutput.toolName, toolOutput.toolResult);
+            chatCtx.items.push(llm.ChatMessage.create({ role: 'user', content: [payload] }));
+        } else {
+            // Main conversation: wrap the last user message with context + inline hints.
+            const contextPrefix = buildContextPrefix(recentAppContext);
+            wrapLastUserMessage(chatCtx, contextPrefix);
+        }
+
+        logInfo('HappyVoiceAgent.llmNode', {
+            toolFollowup,
+            itemCount: chatCtx.items.length,
+        });
+
+        if (toolFollowup) {
+            // Tool follow-up should never expose tools to the model.
+            return super.llmNode(chatCtx, {}, {});
+        }
+
+        return super.llmNode(chatCtx, toolCtx, modelSettings);
     }
 }
 
@@ -683,27 +796,12 @@ const agent = defineAgent({
             throw error;
         }
 
-        const mainSessionLlm = new PromptedLLM(getMainSessionLlm(), {
-            mainPromptFile: env.PROMPT_VOICE_MAIN_FILE,
-            toolFollowupPromptFile: env.PROMPT_VOICE_TOOL_FOLLOWUP_FILE,
-            languagePreference: metadata.language,
-            getAppSessionId: () => currentAppSessionId,
-            maxRecentAppContextMessages: env.PROMPT_RECENT_APP_CONTEXT_MESSAGES,
-            maxRecentChars: env.PROMPT_RECENT_MAX_CHARS,
-            getRecentAppContext: () =>
-                extractRecentTextUpdates({
-                    updates: appContextUpdates,
-                    maxMessages: env.PROMPT_RECENT_APP_CONTEXT_MESSAGES,
-                    maxChars: env.PROMPT_RECENT_MAX_CHARS,
-                }),
-        });
-
         const ttsInstance = createTts(env.AGENT_TTS);
         const sttInstance = createStt(env.AGENT_STT);
         const session = new voice.AgentSession({
             vad: vad as any,
             stt: sttInstance,
-            llm: mainSessionLlm,
+            llm: getMainSessionLlm(),
             tts: ttsInstance,
             turnDetection: 'vad',
             voiceOptions: {
@@ -825,6 +923,16 @@ const agent = defineAgent({
             agent: new HappyVoiceAgent({
                 metadata,
                 getCurrentAppSessionId: () => currentAppSessionId,
+                mainPromptFile: env.PROMPT_VOICE_MAIN_FILE,
+                toolFollowupPromptFile: env.PROMPT_VOICE_TOOL_FOLLOWUP_FILE,
+                maxRecentAppContextMessages: env.PROMPT_RECENT_APP_CONTEXT_MESSAGES,
+                maxRecentChars: env.PROMPT_RECENT_MAX_CHARS,
+                getRecentAppContext: () =>
+                    extractRecentTextUpdates({
+                        updates: appContextUpdates,
+                        maxMessages: env.PROMPT_RECENT_APP_CONTEXT_MESSAGES,
+                        maxChars: env.PROMPT_RECENT_MAX_CHARS,
+                    }),
             }),
             inputOptions: {
                 noiseCancellation: BackgroundVoiceCancellation(),
