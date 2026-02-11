@@ -1152,7 +1152,7 @@ function NewSessionWizard() {
                 <View style={{ flex: 1, justifyContent: 'flex-end' }}>
                     {/* Session type selector */}
                     <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
-                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                        <View style={{ maxWidth: layout.maxWidth, width: '100%', paddingHorizontal: screenWidth > 700 ? 16 : 0, alignSelf: 'center' }}>
                             <SessionTypeSelector
                                 value={sessionType}
                                 onChange={setSessionType}
