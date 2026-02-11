@@ -720,6 +720,9 @@ export const pl: TranslationStructure = {
         title: 'Code',
         emptyDirectory: 'Empty directory',
         failedToLoad: 'Failed to load directory',
+        searchPlaceholder: 'Szukaj plików…',
+        noResults: 'Nie znaleziono plików',
+        globalResults: 'Wyniki w całym projekcie',
     },
 
     commits: {

@@ -710,6 +710,9 @@ export const pt: TranslationStructure = {
         title: 'Code',
         emptyDirectory: 'Empty directory',
         failedToLoad: 'Failed to load directory',
+        searchPlaceholder: 'Buscar arquivos…',
+        noResults: 'Nenhum arquivo encontrado',
+        globalResults: 'Resultados do projeto',
     },
 
     commits: {

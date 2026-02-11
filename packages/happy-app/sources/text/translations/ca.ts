@@ -710,6 +710,9 @@ export const ca: TranslationStructure = {
         title: 'Code',
         emptyDirectory: 'Empty directory',
         failedToLoad: 'Failed to load directory',
+        searchPlaceholder: 'Cerca fitxers…',
+        noResults: "No s'han trobat fitxers",
+        globalResults: 'Resultats del projecte',
     },
 
     commits: {

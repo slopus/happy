@@ -742,6 +742,9 @@ export const ja: TranslationStructure = {
         title: 'コード',
         emptyDirectory: '空のディレクトリ',
         failedToLoad: 'ディレクトリの読み込みに失敗しました',
+        searchPlaceholder: 'ファイルを検索…',
+        noResults: '一致するファイルがありません',
+        globalResults: 'プロジェクト全体の結果',
     },
 
     commits: {

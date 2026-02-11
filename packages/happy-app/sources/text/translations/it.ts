@@ -739,6 +739,9 @@ export const it: TranslationStructure = {
         title: 'Code',
         emptyDirectory: 'Empty directory',
         failedToLoad: 'Failed to load directory',
+        searchPlaceholder: 'Cerca file…',
+        noResults: 'Nessun file trovato',
+        globalResults: 'Risultati del progetto',
     },
 
     commits: {

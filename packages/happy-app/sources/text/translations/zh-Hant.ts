@@ -711,6 +711,9 @@ export const zhHant: TranslationStructure = {
         title: '程式碼',
         emptyDirectory: '空目錄',
         failedToLoad: '載入目錄失敗',
+        searchPlaceholder: '搜尋檔案…',
+        noResults: '沒有匹配的檔案',
+        globalResults: '全專案搜尋結果',
     },
 
     commits: {

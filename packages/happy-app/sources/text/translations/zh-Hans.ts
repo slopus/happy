@@ -712,6 +712,9 @@ export const zhHans: TranslationStructure = {
         title: '代码',
         emptyDirectory: '空目录',
         failedToLoad: '加载目录失败',
+        searchPlaceholder: '搜索文件…',
+        noResults: '没有匹配的文件',
+        globalResults: '全项目搜索结果',
     },
 
     commits: {
