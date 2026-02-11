@@ -11,7 +11,7 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete, machineForkClaudeSession, machineSpawnNewSession, sessionUpdateSummary } from '@/sync/ops';
+import { sessionKill, sessionDelete, machineForkClaudeSession, machineSpawnNewSession, sessionUpdateSummary, sessionUpdateMetadataFields } from '@/sync/ops';
 import { isWorktreeSession, pushWorktreeBranch, mergeWorktreeBranch, createWorktreePR, cleanupWorktree } from '@/utils/worktreeOps';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
@@ -71,6 +71,21 @@ function SessionInfoContent({ session }: { session: Session }) {
     
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
+
+    // Auto-repair worktree metadata if path indicates worktree but isWorktree flag is missing
+    React.useEffect(() => {
+        const metadata = session.metadata;
+        if (!metadata || metadata.isWorktree) return;
+        const worktreeMatch = metadata.path?.match(/\/\.dev\/worktree\/([^/]+)/);
+        if (!worktreeMatch) return;
+        const branchName = worktreeMatch[1];
+        const basePath = metadata.path.replace(/\/\.dev\/worktree\/[^/]+$/, '');
+        sessionUpdateMetadataFields(session.id, metadata, {
+            isWorktree: true,
+            worktreeBasePath: basePath,
+            worktreeBranchName: branchName,
+        }, session.metadataVersion).catch(e => console.warn('Failed to repair worktree metadata:', e));
+    }, [session.id, session.metadata?.isWorktree, session.metadata?.path]);
 
     const handleCopySessionId = useCallback(async () => {
         if (!session) return;
