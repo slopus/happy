@@ -1,6 +1,17 @@
 import type { MarkdownBlock } from "./parseMarkdown";
 import { parseMarkdownSpans } from "./parseMarkdownSpans";
 
+// Split a table row by '|', stripping leading/trailing pipes but preserving empty cells in between
+function splitTableRow(line: string): string[] {
+    // Remove leading/trailing pipe and whitespace
+    let s = line;
+    if (s.startsWith('|')) s = s.slice(1);
+    if (s.endsWith('|')) s = s.slice(0, -1);
+    // If nothing left after stripping pipes, no cells
+    if (s.trim().length === 0 && !line.includes('|')) return [];
+    return s.split('|').map(cell => cell.trim());
+}
+
 function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock | null; nextIndex: number } {
     let index = startIndex;
     const tableLines: string[] = [];
@@ -23,12 +34,9 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
         return { table: null, nextIndex: startIndex };
     }
 
-    // Extract header cells from the first line, filtering out empty cells that may result from leading/trailing pipes
+    // Extract header cells from the first line, stripping leading/trailing pipes but preserving empty cells
     const headerLine = tableLines[0].trim();
-    const headerStrings = headerLine
-        .split('|')
-        .map(cell => cell.trim())
-        .filter(cell => cell.length > 0);
+    const headerStrings = splitTableRow(headerLine);
 
     if (headerStrings.length === 0) {
         return { table: null, nextIndex: startIndex };
@@ -41,13 +49,10 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
     const rows: ReturnType<typeof parseMarkdownSpans>[][] = [];
     for (let i = 2; i < tableLines.length; i++) {
         const rowLine = tableLines[i].trim();
-        if (rowLine.startsWith('|')) {
-            const rowCells = rowLine
-                .split('|')
-                .map(cell => cell.trim())
-                .filter(cell => cell.length > 0);
+        if (rowLine.includes('|')) {
+            const rowCells = splitTableRow(rowLine);
 
-            // Include rows that contain actual content, filtering out empty rows
+            // Include rows that contain at least one cell
             if (rowCells.length > 0) {
                 // Parse inline markdown for each cell
                 rows.push(rowCells.map(cell => parseMarkdownSpans(cell, false)));
