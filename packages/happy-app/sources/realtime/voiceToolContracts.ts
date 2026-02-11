@@ -3,7 +3,9 @@ import { z } from 'zod';
 const bridgedVoiceToolNameSchema = z.enum([
     'messageClaudeCode',
     'processPermissionRequest',
-    'manageSession',
+    'listSessions',
+    'switchSession',
+    'createSession',
     'changeSessionSettings',
     'getSessionStatus',
     'getLatestAssistantReply',
@@ -15,9 +17,11 @@ const bridgedVoiceToolNameSchema = z.enum([
 export type BridgedVoiceToolName = z.infer<typeof bridgedVoiceToolNameSchema>;
 
 export const bridgedVoiceToolDescriptions: Record<BridgedVoiceToolName, string> = {
-    messageClaudeCode: 'Send a message to the coding agent in the active session.',
+    messageClaudeCode: 'Forward a message to the coding agent. Use when the user explicitly asks to send something to Happy, or for code/project tasks. For app operations (sessions, settings, navigation) use the dedicated tools instead.',
     processPermissionRequest: 'Allow or deny a pending permission request.',
-    manageSession: 'List, switch, or create coding sessions.',
+    listSessions: 'List all coding sessions.',
+    switchSession: 'Switch to a different coding session by its ID.',
+    createSession: 'Create a new coding session.',
     changeSessionSettings: 'Change session settings such as model or permission mode.',
     getSessionStatus: 'Get current status from the active coding session.',
     getLatestAssistantReply: 'Use when the user asks what Happy just replied. Returns the latest assistant text from the active coding session.',
@@ -34,11 +38,16 @@ export const processPermissionRequestParametersSchema = z.object({
     decision: z.enum(['allow', 'deny']),
 });
 
-export const manageSessionParametersSchema = z.object({
-    action: z.enum(['list', 'switch', 'create']),
-    sessionId: z.string().optional(),
-    directory: z.string().optional(),
+export const listSessionsParametersSchema = z.object({
     includeOffline: z.boolean().optional(),
+});
+
+export const switchSessionParametersSchema = z.object({
+    sessionId: z.string().min(1, 'sessionId is required'),
+});
+
+export const createSessionParametersSchema = z.object({
+    directory: z.string().optional(),
 });
 
 export const changeSessionSettingsParametersSchema = z.object({

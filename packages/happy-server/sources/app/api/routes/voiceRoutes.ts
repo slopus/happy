@@ -6,7 +6,9 @@ import { invokeUserRpc } from "../socket/rpcRegistry";
 const bridgedVoiceToolNameSchema = z.enum([
     'messageClaudeCode',
     'processPermissionRequest',
-    'manageSession',
+    'listSessions',
+    'switchSession',
+    'createSession',
     'changeSessionSettings',
     'getSessionStatus',
     'getLatestAssistantReply',

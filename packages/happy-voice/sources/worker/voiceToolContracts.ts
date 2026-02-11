@@ -3,7 +3,9 @@ import { z } from 'zod';
 const bridgedVoiceToolNameSchema = z.enum([
     'messageClaudeCode',
     'processPermissionRequest',
-    'manageSession',
+    'listSessions',
+    'switchSession',
+    'createSession',
     'changeSessionSettings',
     'getSessionStatus',
     'getLatestAssistantReply',
@@ -15,9 +17,11 @@ const bridgedVoiceToolNameSchema = z.enum([
 export type BridgedVoiceToolName = z.infer<typeof bridgedVoiceToolNameSchema>;
 
 export const bridgedVoiceToolDescriptions: Record<BridgedVoiceToolName, string> = {
-    messageClaudeCode: 'Send a message to the coding agent in the active session.',
+    messageClaudeCode: 'Forward a message to the coding agent. Use when the user explicitly asks to send something to Happy, or for code/project tasks. For app operations (sessions, settings, navigation) use the dedicated tools instead.',
     processPermissionRequest: 'Allow or deny a pending permission request.',
-    manageSession: 'List, switch, or create coding sessions.',
+    listSessions: 'List all coding sessions.',
+    switchSession: 'Switch to a different coding session by its ID.',
+    createSession: 'Create a new coding session.',
     changeSessionSettings: 'Change session settings such as model or permission mode.',
     getSessionStatus: 'Get current status from the active coding session.',
     getLatestAssistantReply: 'Use when the user asks what Happy just replied. Returns the latest assistant text from the active coding session.',
@@ -34,21 +38,46 @@ export const processPermissionRequestParametersSchema = z.object({
     decision: z.enum(['allow', 'deny']),
 });
 
-export const manageSessionParametersSchema = z.object({
-    action: z.enum(['list', 'switch', 'create']),
-    sessionId: z.string().optional(),
-    directory: z.string().optional(),
-    includeOffline: z.boolean().optional(),
+// Raw JSON schema to avoid zod-to-json-schema forcing optional fields into "required".
+// With Zod v3 + target 'openAi', `.optional()` is converted to `.nullable()` and still
+// marked required, which deters the LLM from calling the tool.
+export const listSessionsParametersSchema = {
+    type: 'object' as const,
+    properties: {
+        includeOffline: { type: 'boolean' as const, description: 'Include offline sessions. Defaults to false.' },
+    },
+    required: [] as string[],
+    additionalProperties: false,
+};
+
+export const switchSessionParametersSchema = z.object({
+    sessionId: z.string().min(1, 'sessionId is required'),
 });
+
+// Raw JSON schema — same reason as listSessionsParametersSchema above.
+export const createSessionParametersSchema = {
+    type: 'object' as const,
+    properties: {
+        directory: { type: 'string' as const, description: 'Working directory for the new session' },
+    },
+    required: [] as string[],
+    additionalProperties: false,
+};
 
 export const changeSessionSettingsParametersSchema = z.object({
     setting: z.enum(['permissionMode', 'modelMode']),
     value: z.string(),
 });
 
-export const getLatestAssistantReplyParametersSchema = z.object({
-    maxChars: z.number().int().min(1).max(2000).optional(),
-});
+// Raw JSON schema — same reason as listSessionsParametersSchema above.
+export const getLatestAssistantReplyParametersSchema = {
+    type: 'object' as const,
+    properties: {
+        maxChars: { type: 'integer' as const, minimum: 1, maximum: 2000, description: 'Max characters to return' },
+    },
+    required: [] as string[],
+    additionalProperties: false,
+};
 
 export const deleteSessionParametersSchema = z.object({
     sessionId: z.string(),

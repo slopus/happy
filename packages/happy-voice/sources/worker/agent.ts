@@ -29,13 +29,15 @@ import {
     type BridgedVoiceToolName,
     bridgedVoiceToolDescriptions,
     changeSessionSettingsParametersSchema,
+    createSessionParametersSchema,
     endVoiceConversationParametersSchema,
     deleteSessionParametersSchema,
     getLatestAssistantReplyParametersSchema,
-    manageSessionParametersSchema,
+    listSessionsParametersSchema,
     messageClaudeCodeParametersSchema,
     navigateHomeParametersSchema,
     processPermissionRequestParametersSchema,
+    switchSessionParametersSchema,
 } from './voiceToolContracts';
 
 interface DispatchMetadata {
@@ -472,70 +474,77 @@ class HappyVoiceAgent extends voice.Agent {
             parameters,
         });
 
+        // Wrap tool execution to prevent uncaught exceptions from being swallowed
+        // by the LiveKit SDK as generic "An internal error occurred" messages.
+        const bridgedExecute = async (
+            functionName: BridgedVoiceToolName,
+            parameters: Record<string, unknown>,
+        ): Promise<string> => {
+            try {
+                return await toolBridgeClient.execute(buildToolPayload(functionName, parameters));
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                logError(`Tool ${functionName} threw unexpected error`, { error: message });
+                return `error (${message})`;
+            }
+        };
+
         super({
             instructions: buildInstructions(metadata),
             tools: {
                 messageClaudeCode: llm.tool({
                     description: bridgedVoiceToolDescriptions.messageClaudeCode,
                     parameters: messageClaudeCodeParametersSchema,
-                    execute: async (parameters) => {
-                        return toolBridgeClient.execute(buildToolPayload('messageClaudeCode', parameters));
-                    },
+                    execute: async (parameters) => bridgedExecute('messageClaudeCode', parameters),
                 }),
                 processPermissionRequest: llm.tool({
                     description: bridgedVoiceToolDescriptions.processPermissionRequest,
                     parameters: processPermissionRequestParametersSchema,
-                    execute: async (parameters) => {
-                        return toolBridgeClient.execute(buildToolPayload('processPermissionRequest', parameters));
-                    },
+                    execute: async (parameters) => bridgedExecute('processPermissionRequest', parameters),
                 }),
-                manageSession: llm.tool({
-                    description: bridgedVoiceToolDescriptions.manageSession,
-                    parameters: manageSessionParametersSchema,
-                    execute: async (parameters) => {
-                        return toolBridgeClient.execute(buildToolPayload('manageSession', parameters));
-                    },
+                listSessions: llm.tool({
+                    description: bridgedVoiceToolDescriptions.listSessions,
+                    parameters: listSessionsParametersSchema,
+                    execute: async (parameters) => bridgedExecute('listSessions', parameters),
+                }),
+                switchSession: llm.tool({
+                    description: bridgedVoiceToolDescriptions.switchSession,
+                    parameters: switchSessionParametersSchema,
+                    execute: async (parameters) => bridgedExecute('switchSession', parameters),
+                }),
+                createSession: llm.tool({
+                    description: bridgedVoiceToolDescriptions.createSession,
+                    parameters: createSessionParametersSchema,
+                    execute: async (parameters) => bridgedExecute('createSession', parameters),
                 }),
                 changeSessionSettings: llm.tool({
                     description: bridgedVoiceToolDescriptions.changeSessionSettings,
                     parameters: changeSessionSettingsParametersSchema,
-                    execute: async (parameters) => {
-                        return toolBridgeClient.execute(buildToolPayload('changeSessionSettings', parameters));
-                    },
+                    execute: async (parameters) => bridgedExecute('changeSessionSettings', parameters),
                 }),
                 getSessionStatus: llm.tool({
                     description: bridgedVoiceToolDescriptions.getSessionStatus,
-                    execute: async (_parameters: Record<string, never>) => {
-                        return toolBridgeClient.execute(buildToolPayload('getSessionStatus', {}));
-                    },
+                    execute: async (_parameters: Record<string, never>) => bridgedExecute('getSessionStatus', {}),
                 }),
                 getLatestAssistantReply: llm.tool({
                     description: bridgedVoiceToolDescriptions.getLatestAssistantReply,
                     parameters: getLatestAssistantReplyParametersSchema,
-                    execute: async (parameters) => {
-                        return toolBridgeClient.execute(buildToolPayload('getLatestAssistantReply', parameters));
-                    },
+                    execute: async (parameters) => bridgedExecute('getLatestAssistantReply', parameters),
                 }),
                 deleteSessionTool: llm.tool({
                     description: bridgedVoiceToolDescriptions.deleteSessionTool,
                     parameters: deleteSessionParametersSchema,
-                    execute: async (parameters) => {
-                        return toolBridgeClient.execute(buildToolPayload('deleteSessionTool', parameters));
-                    },
+                    execute: async (parameters) => bridgedExecute('deleteSessionTool', parameters),
                 }),
                 navigateHome: llm.tool({
                     description: bridgedVoiceToolDescriptions.navigateHome,
                     parameters: navigateHomeParametersSchema,
-                    execute: async (parameters) => {
-                        return toolBridgeClient.execute(buildToolPayload('navigateHome', parameters));
-                    },
+                    execute: async (parameters) => bridgedExecute('navigateHome', parameters),
                 }),
                 endVoiceConversation: llm.tool({
                     description: bridgedVoiceToolDescriptions.endVoiceConversation,
                     parameters: endVoiceConversationParametersSchema,
-                    execute: async (parameters) => {
-                        return toolBridgeClient.execute(buildToolPayload('endVoiceConversation', parameters));
-                    },
+                    execute: async (parameters) => bridgedExecute('endVoiceConversation', parameters),
                 }),
             },
         });

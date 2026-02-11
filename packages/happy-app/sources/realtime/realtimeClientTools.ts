@@ -7,11 +7,13 @@ import { getCurrentRealtimeSessionId, setCurrentRealtimeSessionId, stopRealtimeS
 import { getSessionName, getSessionSubtitle, isSessionOnline, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import {
     changeSessionSettingsParametersSchema,
+    createSessionParametersSchema,
     deleteSessionParametersSchema,
     getLatestAssistantReplyParametersSchema,
-    manageSessionParametersSchema,
+    listSessionsParametersSchema,
     messageClaudeCodeParametersSchema,
     processPermissionRequestParametersSchema,
+    switchSessionParametersSchema,
 } from './voiceToolContracts';
 import { getSendConfirmation, getVoiceProvider } from '@/sync/voiceConfig';
 import { showSendConfirmation } from './SendConfirmationModal';
@@ -144,140 +146,152 @@ export const realtimeClientTools = {
     },
 
     /**
-     * Manage sessions: list, switch, or create
+     * List all sessions
      */
-    manageSession: async (parameters: unknown) => {
-        const parsed = manageSessionParametersSchema.safeParse(parameters);
+    listSessions: async (parameters: unknown) => {
+        const parsed = listSessionsParametersSchema.safeParse(parameters ?? {});
 
         if (!parsed.success) {
-            console.error('❌ Invalid manageSession parameters:', parsed.error);
-            return "error (invalid parameters, expected action: 'list', 'switch', or 'create')";
+            console.error('❌ Invalid listSessions parameters:', parsed.error);
+            return "error (invalid parameters)";
         }
 
-        const { action, sessionId, directory, includeOffline } = parsed.data;
+        const { includeOffline } = parsed.data;
+        const allSessions = Object.values(storage.getState().sessions);
+        const sessions = includeOffline ? allSessions : allSessions.filter(s => isSessionOnline(s));
 
-        if (action === 'list') {
-            const allSessions = Object.values(storage.getState().sessions);
-            const sessions = includeOffline ? allSessions : allSessions.filter(s => isSessionOnline(s));
+        if (sessions.length === 0) {
+            return includeOffline ? "No sessions found." : "No online sessions found. Try again with includeOffline: true to see all sessions.";
+        }
 
-            if (sessions.length === 0) {
-                return includeOffline ? "No sessions found." : "No online sessions found. Try again with includeOffline: true to see all sessions.";
+        // Group sessions by project path, then by machine — matching home screen order
+        const projectGroups = new Map<string, {
+            displayPath: string;
+            machines: Map<string, { machineName: string; sessions: typeof sessions }>;
+        }>();
+
+        const machines = storage.getState().machines;
+
+        sessions.forEach(s => {
+            const projectPath = s.metadata?.path || '';
+            const machineId = s.metadata?.machineId || 'unknown';
+            const machine = machineId !== 'unknown' ? machines[machineId] : null;
+            const machineName = machine?.metadata?.displayName ||
+                machine?.metadata?.host ||
+                (machineId !== 'unknown' ? machineId : '<unknown>');
+
+            let projectGroup = projectGroups.get(projectPath);
+            if (!projectGroup) {
+                const displayPath = formatPathRelativeToHome(projectPath, s.metadata?.homeDir);
+                projectGroup = { displayPath, machines: new Map() };
+                projectGroups.set(projectPath, projectGroup);
             }
 
-            // Group sessions by project path, then by machine — matching home screen order
-            const projectGroups = new Map<string, {
-                displayPath: string;
-                machines: Map<string, { machineName: string; sessions: typeof sessions }>;
-            }>();
+            let machineGroup = projectGroup.machines.get(machineId);
+            if (!machineGroup) {
+                machineGroup = { machineName, sessions: [] };
+                projectGroup.machines.set(machineId, machineGroup);
+            }
 
-            const machines = storage.getState().machines;
+            machineGroup.sessions.push(s);
+        });
 
-            sessions.forEach(s => {
-                const projectPath = s.metadata?.path || '';
-                const machineId = s.metadata?.machineId || 'unknown';
-                const machine = machineId !== 'unknown' ? machines[machineId] : null;
-                const machineName = machine?.metadata?.displayName ||
-                    machine?.metadata?.host ||
-                    (machineId !== 'unknown' ? machineId : '<unknown>');
+        // Sort: projects by displayPath, machines by name, sessions by createdAt desc
+        const sortedProjects = Array.from(projectGroups.entries())
+            .sort(([, a], [, b]) => a.displayPath.localeCompare(b.displayPath));
 
-                let projectGroup = projectGroups.get(projectPath);
-                if (!projectGroup) {
-                    const displayPath = formatPathRelativeToHome(projectPath, s.metadata?.homeDir);
-                    projectGroup = { displayPath, machines: new Map() };
-                    projectGroups.set(projectPath, projectGroup);
+        const lines: string[] = [];
+        let index = 1;
+
+        for (const [, projectGroup] of sortedProjects) {
+            const sortedMachines = Array.from(projectGroup.machines.entries())
+                .sort(([, a], [, b]) => a.machineName.localeCompare(b.machineName));
+
+            for (const [, machineGroup] of sortedMachines) {
+                machineGroup.sessions.sort((a, b) => b.createdAt - a.createdAt);
+
+                lines.push(`[${projectGroup.displayPath}] (${machineGroup.machineName})`);
+                for (const s of machineGroup.sessions) {
+                    const name = getSessionName(s);
+                    const active = s.id === getCurrentRealtimeSessionId() ? ' (current)' : '';
+                    lines.push(`  ${index}. "${name}"${active} (id: ${s.id})`);
+                    index++;
                 }
+            }
+        }
 
-                let machineGroup = projectGroup.machines.get(machineId);
-                if (!machineGroup) {
-                    machineGroup = { machineName, sessions: [] };
-                    projectGroup.machines.set(machineId, machineGroup);
-                }
+        const label = includeOffline ? '' : ' online';
+        return `Found ${sessions.length}${label} sessions:\n${lines.join('\n')}`;
+    },
 
-                machineGroup.sessions.push(s);
+    /**
+     * Switch to a different session
+     */
+    switchSession: async (parameters: unknown) => {
+        const parsed = switchSessionParametersSchema.safeParse(parameters);
+
+        if (!parsed.success) {
+            console.error('❌ Invalid switchSession parameters:', parsed.error);
+            return "error (invalid parameters, sessionId is required)";
+        }
+
+        const { sessionId } = parsed.data;
+        const session = storage.getState().sessions[sessionId];
+        if (!session) {
+            return "error (session not found)";
+        }
+
+        try {
+            setCurrentRealtimeSessionId(sessionId);
+            router.navigate(`/session/${sessionId}`);
+            return `Switched to session "${getSessionName(session)}".`;
+        } catch (error) {
+            console.error('❌ Failed to switch session:', error);
+            return "error (failed to navigate to session)";
+        }
+    },
+
+    /**
+     * Create a new session
+     */
+    createSession: async (parameters: unknown) => {
+        const parsed = createSessionParametersSchema.safeParse(parameters ?? {});
+
+        if (!parsed.success) {
+            console.error('❌ Invalid createSession parameters:', parsed.error);
+            return "error (invalid parameters)";
+        }
+
+        const { directory } = parsed.data;
+        const currentSessionId = getCurrentRealtimeSessionId();
+        const currentSession = currentSessionId ? storage.getState().sessions[currentSessionId] : null;
+        const machineId = currentSession?.metadata?.machineId;
+
+        if (!machineId) {
+            return "error (no machine available to create session on)";
+        }
+
+        const dir = directory || currentSession?.metadata?.path || '/';
+
+        try {
+            const result = await machineSpawnNewSession({
+                machineId,
+                directory: dir,
             });
 
-            // Sort: projects by displayPath, machines by name, sessions by createdAt desc
-            const sortedProjects = Array.from(projectGroups.entries())
-                .sort(([, a], [, b]) => a.displayPath.localeCompare(b.displayPath));
-
-            const lines: string[] = [];
-            let index = 1;
-
-            for (const [, projectGroup] of sortedProjects) {
-                const sortedMachines = Array.from(projectGroup.machines.entries())
-                    .sort(([, a], [, b]) => a.machineName.localeCompare(b.machineName));
-
-                for (const [, machineGroup] of sortedMachines) {
-                    machineGroup.sessions.sort((a, b) => b.createdAt - a.createdAt);
-
-                    lines.push(`[${projectGroup.displayPath}] (${machineGroup.machineName})`);
-                    for (const s of machineGroup.sessions) {
-                        const name = getSessionName(s);
-                        const active = s.id === getCurrentRealtimeSessionId() ? ' (current)' : '';
-                        lines.push(`  ${index}. "${name}"${active} (id: ${s.id})`);
-                        index++;
-                    }
-                }
+            if (result.type === 'success') {
+                setCurrentRealtimeSessionId(result.sessionId);
+                router.navigate(`/session/${result.sessionId}`);
+                return "Created new session.";
+            } else if (result.type === 'requestToApproveDirectoryCreation') {
+                return `The directory "${result.directory}" does not exist. Ask the user if they want to create it.`;
+            } else {
+                return `error (${result.errorMessage})`;
             }
-
-            const label = includeOffline ? '' : ' online';
-            return `Found ${sessions.length}${label} sessions:\n${lines.join('\n')}`;
+        } catch (error) {
+            console.error('❌ Failed to create session:', error);
+            return "error (failed to create session)";
         }
-
-        if (action === 'switch') {
-            if (!sessionId) {
-                return "error (sessionId is required for switch action)";
-            }
-
-            const session = storage.getState().sessions[sessionId];
-            if (!session) {
-                return "error (session not found)";
-            }
-
-            try {
-                setCurrentRealtimeSessionId(sessionId);
-                router.navigate(`/session/${sessionId}`);
-                return `Switched to session "${getSessionName(session)}".`;
-            } catch (error) {
-                console.error('❌ Failed to switch session:', error);
-                return "error (failed to navigate to session)";
-            }
-        }
-
-        if (action === 'create') {
-            // Find a machine to create the session on
-            const currentSessionId = getCurrentRealtimeSessionId();
-            const currentSession = currentSessionId ? storage.getState().sessions[currentSessionId] : null;
-            const machineId = currentSession?.metadata?.machineId;
-
-            if (!machineId) {
-                return "error (no machine available to create session on)";
-            }
-
-            const dir = directory || currentSession?.metadata?.path || '/';
-
-            try {
-                const result = await machineSpawnNewSession({
-                    machineId,
-                    directory: dir,
-                });
-
-                if (result.type === 'success') {
-                    setCurrentRealtimeSessionId(result.sessionId);
-                    router.navigate(`/session/${result.sessionId}`);
-                    return "Created new session.";
-                } else if (result.type === 'requestToApproveDirectoryCreation') {
-                    return `The directory "${result.directory}" does not exist. Ask the user if they want to create it.`;
-                } else {
-                    return `error (${result.errorMessage})`;
-                }
-            } catch (error) {
-                console.error('❌ Failed to create session:', error);
-                return "error (failed to create session)";
-            }
-        }
-
-        return "error (unknown action)";
     },
 
     /**

@@ -136,7 +136,7 @@ function prependToLastUserMessage(chatCtx: llm.ChatContext, prefix: string): voi
         if (item.type === 'message' && item.role === 'user') {
             // Prepend prefix to the existing user message content.
             const existing = Array.isArray(item.content) ? item.content.join('') : String(item.content ?? '');
-            item.content = [`${prefix}\n<user_speech>${existing}</user_speech>`];
+            item.content = [`${prefix}\n\n<user_speech>${existing}</user_speech>\n\n \`user_speech\` 标签的内容是用户原始的语音输入，请结合对话上下文还原用户的真实意图。`];
             return;
         }
     }
