@@ -6,6 +6,8 @@
  */
 
 import { isDeepStrictEqual } from 'node:util';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { logger } from "@/lib";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "../sdk";
 import { PermissionResult } from "../sdk/types";
@@ -69,7 +71,7 @@ export class PermissionHandler {
         pending: PendingRequest
     ): void {
 
-        // Update allowed tools
+        // Update allowed tools (in-memory for current session)
         if (response.allowTools && response.allowTools.length > 0) {
             response.allowTools.forEach(tool => {
                 if (tool.startsWith('Bash(') || tool === 'Bash') {
@@ -78,6 +80,9 @@ export class PermissionHandler {
                     this.allowedTools.add(tool);
                 }
             });
+
+            // Persist to .claude/settings.local.json for cross-session permanence
+            this.persistAllowedTools(response.allowTools);
         }
 
         // Update permission mode
@@ -245,6 +250,51 @@ export class PermissionHandler {
         });
     }
 
+
+    /**
+     * Persists allowed tools to .claude/settings.local.json so they survive across sessions.
+     * This matches Claude Code CLI's native behavior for "Allow always".
+     */
+    private async persistAllowedTools(tools: string[]): Promise<void> {
+        try {
+            const settingsDir = join(this.session.path, '.claude');
+            const settingsPath = join(settingsDir, 'settings.local.json');
+
+            // Read existing settings
+            let settings: any = {};
+            try {
+                const content = await readFile(settingsPath, 'utf-8');
+                settings = JSON.parse(content);
+            } catch {
+                // File doesn't exist or is invalid JSON, start fresh
+            }
+
+            // Ensure permissions.allow array exists
+            if (!settings.permissions) {
+                settings.permissions = {};
+            }
+            if (!Array.isArray(settings.permissions.allow)) {
+                settings.permissions.allow = [];
+            }
+
+            // Add new tools (avoid duplicates)
+            let changed = false;
+            for (const tool of tools) {
+                if (!settings.permissions.allow.includes(tool)) {
+                    settings.permissions.allow.push(tool);
+                    changed = true;
+                }
+            }
+
+            if (changed) {
+                await mkdir(settingsDir, { recursive: true });
+                await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+                logger.debug(`Persisted allowed tools to ${settingsPath}: ${tools.join(', ')}`);
+            }
+        } catch (error) {
+            logger.debug(`Failed to persist allowed tools: ${error}`);
+        }
+    }
 
     /**
      * Parses Bash permission strings into literal and prefix sets
