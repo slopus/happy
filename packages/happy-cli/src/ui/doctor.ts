@@ -8,9 +8,8 @@
 import chalk from 'chalk'
 import { configuration } from '@/configuration'
 import { readSettings, readCredentials } from '@/persistence'
-import { checkIfDaemonRunningAndCleanupStaleState } from '@/daemon/controlClient'
+import { getDaemonStatus } from '@/daemon/controlClient'
 import { findRunawayHappyProcesses, findAllHappyProcesses } from '@/daemon/doctor'
-import { readDaemonState } from '@/persistence'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -143,27 +142,56 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
     // Daemon status - shown for both 'all' and 'daemon' filters
     console.log(chalk.bold('\n🤖 Daemon Status'));
     try {
-        const isRunning = await checkIfDaemonRunningAndCleanupStaleState();
-        const state = await readDaemonState();
+        const daemonStatus = await getDaemonStatus();
+        const { status, state, message, details } = daemonStatus;
 
-        if (isRunning && state) {
-            console.log(chalk.green('✓ Daemon is running'));
-            console.log(`  PID: ${state.pid}`);
-            console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`);
-            console.log(`  CLI Version: ${state.startedWithCliVersion}`);
-            if (state.httpPort) {
-                console.log(`  HTTP Port: ${state.httpPort}`);
-            }
-        } else if (state && !isRunning) {
-            console.log(chalk.yellow('⚠️  Daemon state exists but process not running (stale)'));
-        } else {
-            console.log(chalk.red('❌ Daemon is not running'));
+        switch (status) {
+            case 'running':
+                console.log(chalk.green('✓ Daemon is running'));
+                if (state) {
+                    console.log(`  PID: ${state.pid}`);
+                    console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`);
+                    console.log(`  CLI Version: ${state.startedWithCliVersion}`);
+                    if (state.httpPort) {
+                        console.log(`  HTTP Port: ${state.httpPort}`);
+                    }
+                    if (state.lastHeartbeat) {
+                        console.log(`  Last Heartbeat: ${new Date(state.lastHeartbeat).toLocaleString()}`);
+                    }
+                }
+                break;
+
+            case 'version-mismatch':
+                console.log(chalk.yellow('⚠️  Daemon is running with different CLI version'));
+                if (state) {
+                    console.log(`  PID: ${state.pid}`);
+                    console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`);
+                }
+                if (details) {
+                    console.log(`  Daemon Version: ${chalk.yellow(details.daemonCliVersion || 'unknown')}`);
+                    console.log(`  Current CLI Version: ${chalk.green(details.currentCliVersion || 'unknown')}`);
+                }
+                console.log(chalk.gray('  Tip: Restart daemon with `happy daemon stop && happy daemon start`'));
+                break;
+
+            case 'stale':
+                console.log(chalk.yellow('⚠️  Daemon state exists but process not running (stale)'));
+                console.log(chalk.gray('  State was cleaned up automatically'));
+                break;
+
+            case 'not-running':
+                console.log(chalk.red('❌ Daemon is not running'));
+                break;
+
+            case 'error':
+                console.log(chalk.red(`❌ Error checking daemon status: ${details?.error || 'Unknown error'}`));
+                break;
         }
 
         // Show daemon state file
         if (state) {
             console.log(chalk.bold('\n📄 Daemon State:'));
-            console.log(chalk.blue(`Location: ${configuration.daemonStateFile}`));
+            console.log(chalk.blue(`Location: ${details?.stateFilePath || configuration.daemonStateFile}`));
             console.log(chalk.gray(JSON.stringify(state, null, 2)));
         }
 
