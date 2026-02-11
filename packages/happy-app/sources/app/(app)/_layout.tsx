@@ -96,7 +96,7 @@ export default function RootLayout() {
                 options={{
                     headerShown: true,
                     headerTitle: t('common.fileViewer'),
-                    headerBackTitle: t('common.files'),
+                    headerBackTitle: t('common.back'),
                 }}
             />
             <Stack.Screen
@@ -120,6 +120,14 @@ export default function RootLayout() {
                 options={{
                     headerShown: true,
                     headerTitle: t('commits.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="session/[id]/edit"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('files.editFileTitle'),
                     headerBackTitle: t('common.back'),
                 }}
             />

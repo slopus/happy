@@ -1,11 +1,14 @@
 import * as React from 'react';
-import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
+import { View, ScrollView, ActivityIndicator, Platform, Pressable, Share } from 'react-native';
 import { useRoute } from '@react-navigation/native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Text } from '@/components/StyledText';
 import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
 import { Typography } from '@/constants/Typography';
-import { sessionReadFile, sessionBash } from '@/sync/ops';
+import { Ionicons } from '@expo/vector-icons';
+import { sessionReadFile, sessionBash, sessionWriteFile } from '@/sync/ops';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import type { ActionMenuItem } from '@/components/ActionMenu';
 import { storage, useSetting } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
@@ -100,12 +103,106 @@ export default function FileScreen() {
     const session = storage.getState().sessions[sessionId!];
     const displayPath = formatPathRelativeToHome(filePath, session?.metadata?.homeDir);
 
+    const sessionPath = session?.metadata?.path || '';
+
     const [fileContent, setFileContent] = React.useState<FileContent | null>(null);
     const [diffContent, setDiffContent] = React.useState<string | null>(null);
     const [displayMode, setDisplayMode] = React.useState<'file' | 'diff'>('diff');
     const [isLoading, setIsLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
+    const [menuVisible, setMenuVisible] = React.useState(false);
     const wordWrap = useSetting('wrapLinesInDiffs');
+
+    const fileName = filePath.split('/').pop() || filePath;
+
+    // Relative path for display/copy
+    const relativePath = React.useMemo(() => {
+        if (sessionPath && filePath.startsWith(sessionPath + '/')) {
+            return filePath.substring(sessionPath.length + 1);
+        }
+        return filePath;
+    }, [filePath, sessionPath]);
+
+    // Menu items
+    const menuItems: ActionMenuItem[] = React.useMemo(() => {
+        const items: ActionMenuItem[] = [
+            {
+                label: t('files.copyRelativePath'),
+                onPress: async () => {
+                    await Clipboard.setStringAsync(relativePath);
+                    Modal.alert(t('common.success'), t('common.copied'));
+                },
+            },
+            {
+                label: t('files.copyFileName'),
+                onPress: async () => {
+                    await Clipboard.setStringAsync(fileName);
+                    Modal.alert(t('common.success'), t('common.copied'));
+                },
+            },
+            {
+                label: t('files.share'),
+                onPress: async () => {
+                    const content = fileContent?.content || diffContent || '';
+                    if (content) {
+                        await Share.share({ title: fileName, message: content });
+                    }
+                },
+            },
+        ];
+
+        // History: only for non-ref views (viewing current file, not a specific commit)
+        if (!ref && sessionPath) {
+            items.push({
+                label: t('files.fileHistory'),
+                onPress: () => {
+                    router.push(`/session/${sessionId}/commits?file=${encodeURIComponent(relativePath)}`);
+                },
+            });
+        }
+
+        // Edit: only for non-ref, non-binary files
+        if (!ref && fileContent && !fileContent.isBinary) {
+            items.push({
+                label: t('files.editFile'),
+                onPress: () => {
+                    const encodedPath = btoa(
+                        new TextEncoder().encode(filePath).reduce((s, b) => s + String.fromCharCode(b), '')
+                    );
+                    router.push(`/session/${sessionId}/edit?path=${encodedPath}`);
+                },
+            });
+        }
+
+        // Delete: only for non-ref views
+        if (!ref && sessionPath) {
+            items.push({
+                label: t('files.deleteFile'),
+                destructive: true,
+                onPress: async () => {
+                    const confirmed = await Modal.confirm(
+                        t('files.deleteFile'),
+                        t('files.deleteFileConfirm', { fileName }),
+                        { destructive: true },
+                    );
+                    if (!confirmed) return;
+                    const result = await sessionBash(sessionId!, {
+                        command: `rm "${filePath}"`,
+                        cwd: sessionPath,
+                        timeout: 5000,
+                    });
+                    if (result.success) {
+                        Modal.alert(t('common.success'), t('files.deleteFileSuccess'));
+                        router.back();
+                    } else {
+                        Modal.alert(t('common.error'), t('files.deleteFileFailed'));
+                    }
+                },
+            });
+        }
+
+        return items;
+    }, [relativePath, fileName, fileContent, diffContent, ref, sessionPath, sessionId, filePath, router]);
 
     // Determine file language from extension
     const getFileLanguage = React.useCallback((path: string): string | null => {
@@ -326,7 +423,6 @@ export default function FileScreen() {
         }
     }, [diffContent, fileContent]);
 
-    const fileName = filePath.split('/').pop() || filePath;
     const language = getFileLanguage(filePath);
 
     // Handle long press to open text selection screen
@@ -456,7 +552,24 @@ export default function FileScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
-            
+            <Stack.Screen
+                options={{
+                    headerRight: () => (
+                        <Pressable
+                            onPress={() => setMenuVisible(true)}
+                            style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                        >
+                            <Ionicons name="ellipsis-horizontal" size={22} color={theme.colors.header.tint} />
+                        </Pressable>
+                    ),
+                }}
+            />
+            <ActionMenuModal
+                visible={menuVisible}
+                items={menuItems}
+                onClose={() => setMenuVisible(false)}
+            />
+
             {/* File path header - single line, scrollable, long press to copy */}
             <View style={{
                 borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),

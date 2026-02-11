@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View, ActivityIndicator, Platform, Pressable, ScrollView } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
@@ -42,8 +42,8 @@ export default function BrowserScreen() {
     const [isLoading, setIsLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
 
-    const loadDirectory = React.useCallback(async (path: string) => {
-        setIsLoading(true);
+    const loadDirectory = React.useCallback(async (path: string, silent?: boolean) => {
+        if (!silent) setIsLoading(true);
         setError(null);
         try {
             const response = await sessionListDirectory(sessionId, path);
@@ -56,13 +56,22 @@ export default function BrowserScreen() {
         } catch (e) {
             setError(t('browser.failedToLoad'));
         } finally {
-            setIsLoading(false);
+            if (!silent) setIsLoading(false);
         }
     }, [sessionId]);
 
     React.useEffect(() => {
         loadDirectory(rootPath);
     }, [rootPath, loadDirectory]);
+
+    // Refresh silently when screen is focused (after returning from file view)
+    useFocusEffect(
+        React.useCallback(() => {
+            if (entries.length > 0) {
+                loadDirectory(currentPath, true);
+            }
+        }, [entries.length, currentPath, loadDirectory])
+    );
 
     const navigateTo = React.useCallback((path: string) => {
         loadDirectory(path);

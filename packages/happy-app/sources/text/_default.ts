@@ -689,6 +689,20 @@ export const en = {
         file: 'File',
         fileEmpty: 'File is empty',
         noChanges: 'No changes to display',
+        // File menu
+        copyRelativePath: 'Copy Relative Path',
+        copyFileName: 'Copy File Name',
+        share: 'Share...',
+        fileHistory: 'History',
+        editFile: 'Edit File',
+        deleteFile: 'Delete File',
+        deleteFileConfirm: ({ fileName }: { fileName: string }) => `Are you sure you want to delete "${fileName}"?`,
+        deleteFileSuccess: 'File deleted',
+        deleteFileFailed: 'Failed to delete file',
+        editFileTitle: 'Edit File',
+        saving: 'Saving...',
+        saved: 'File saved',
+        saveFailed: 'Failed to save file',
     },
 
     repository: {

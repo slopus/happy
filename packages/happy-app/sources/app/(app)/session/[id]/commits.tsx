@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, ActivityIndicator, FlatList, Platform } from 'react-native';
 import { useRoute } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
@@ -60,6 +60,8 @@ export default function CommitsScreen() {
     const route = useRoute();
     const router = useRouter();
     const sessionId = (route.params! as any).id as string;
+    const searchParams = useLocalSearchParams();
+    const fileFilter = searchParams.file as string | undefined;
     const { theme } = useUnistyles();
 
     const session = storage.getState().sessions[sessionId];
@@ -77,8 +79,9 @@ export default function CommitsScreen() {
         setError(null);
 
         try {
+            const fileArg = fileFilter ? ` -- "${fileFilter}"` : '';
             const response = await sessionBash(sessionId, {
-                command: `git log --format="%H%n%h%n%an%n%ae%n%at%n%s%n---END---" -${PAGE_SIZE} --skip=${offset}`,
+                command: `git log --format="%H%n%h%n%an%n%ae%n%at%n%s%n---END---" -${PAGE_SIZE} --skip=${offset}${fileArg}`,
                 cwd: sessionPath,
                 timeout: 10000,
             });
@@ -102,7 +105,7 @@ export default function CommitsScreen() {
             setIsLoading(false);
             setIsLoadingMore(false);
         }
-    }, [sessionId, sessionPath]);
+    }, [sessionId, sessionPath, fileFilter]);
 
     React.useEffect(() => {
         loadCommits(0, false);
@@ -218,6 +221,13 @@ export default function CommitsScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+            {fileFilter && (
+                <Stack.Screen
+                    options={{
+                        headerTitle: fileFilter.split('/').pop() || t('commits.title'),
+                    }}
+                />
+            )}
             <FlatList
                 data={commits}
                 renderItem={renderCommit}
