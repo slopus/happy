@@ -1,0 +1,25 @@
+FROM node:20-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install global packages
+RUN npm install -g happy-coder @anthropic-ai/claude-code
+
+# Create non-root user
+RUN useradd -m -s /bin/bash happy-coder
+
+# Setup working directory
+WORKDIR /home/happy-coder
+
+# Switch to non-root user
+USER happy-coder
+
+# Default command
+CMD ["happy", "start"]

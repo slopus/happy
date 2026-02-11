@@ -57,6 +57,16 @@ happy codex
 
 On your computer, run `happy` instead of `claude` or `happy codex` instead of `codex` to start your AI through our wrapper. When you want to control your coding agent from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
 
+## Full Auto Mode (Experimental)
+
+To run Happy CLI in "Full Auto Mode" (bypassing all permission prompts), use the `--yolo` or `--dangerously-skip-permissions` flag:
+
+```bash
+docker compose exec cli happy --yolo
+```
+
+**Note:** This mode allows Claude to execute any tool (including file writes and command execution) without user confirmation. Use with caution.
+
 ## 🔥 Why Happy Coder?
 
 - 📱 **Mobile access to Claude Code and Codex** - Check what your AI is building while away from your desk

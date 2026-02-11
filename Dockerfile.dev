@@ -1,0 +1,40 @@
+FROM node:20-slim
+
+# Install system dependencies and GitHub CLI
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      curl git ca-certificates && \
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list && \
+    apt-get update && \
+    apt-get install -y gh && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Copy local happy-cli source and build
+COPY packages/happy-cli /usr/src/happy-cli
+WORKDIR /usr/src/happy-cli
+RUN npm install && \
+    npm run build && \
+    npm install -g . && \
+    npm install -g @anthropic-ai/claude-code
+
+# Clean up build artifacts (optional but good practice)
+# RUN rm -rf /usr/src/happy-cli
+
+# Create home directory structure with correct permissions
+RUN mkdir -p /home/happy-coder/.happy \
+             /home/happy-coder/.config/gh \
+             /home/happy-coder/.config/git \
+             /home/happy-coder/.claude \
+             /prj && \
+    chmod -R 777 /home/happy-coder
+
+# Default working directory
+WORKDIR /prj
+
+# Set HOME so tools write config to /home/happy-coder
+ENV HOME=/home/happy-coder
+ENV XDG_CONFIG_HOME=/home/happy-coder/.config
+ENV NODE_ENV=production
