@@ -404,8 +404,8 @@ export default function BrowserScreen() {
                         {/* Parent directory entry */}
                         {!isAtRoot && (
                             <Item
-                                title=".."
-                                icon={<Ionicons name="return-up-back-outline" size={29} color={theme.colors.textSecondary} />}
+                                title=""
+                                icon={<Text style={{ fontSize: 22, color: theme.colors.textSecondary, fontWeight: '800', width: 29, textAlign: 'center' }}>..</Text>}
                                 onPress={handleNavigateUp}
                                 showDivider={entries.length > 0}
                             />
