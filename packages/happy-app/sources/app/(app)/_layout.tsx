@@ -124,6 +124,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="session/[id]/status"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('status.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="session/[id]/edit"
                 options={{
                     headerShown: true,

@@ -212,13 +212,19 @@ export default function CommitsScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
-            {fileFilter && (
-                <Stack.Screen
-                    options={{
-                        headerTitle: fileFilter.split('/').pop() || t('commits.title'),
-                    }}
-                />
-            )}
+            <Stack.Screen
+                options={{
+                    ...(fileFilter ? { headerTitle: fileFilter.split('/').pop() || t('commits.title') } : {}),
+                    headerRight: () => (
+                        <Pressable
+                            onPress={() => router.push(`/session/${sessionId}/status`)}
+                            style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                        >
+                            <Ionicons name="git-compare-outline" size={22} color={theme.colors.header.tint} />
+                        </Pressable>
+                    ),
+                }}
+            />
             <FlatList
                 data={commits}
                 renderItem={renderCommit}
