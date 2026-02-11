@@ -3,6 +3,7 @@ import * as Minio from 'minio';
 const s3Host = process.env.S3_HOST!;
 const s3Port = process.env.S3_PORT ? parseInt(process.env.S3_PORT, 10) : undefined;
 const s3UseSSL = process.env.S3_USE_SSL ? process.env.S3_USE_SSL === 'true' : true;
+const s3Region = process.env.S3_REGION || 'us-east-1';
 
 export const s3client = new Minio.Client({
     endPoint: s3Host,
@@ -10,6 +11,7 @@ export const s3client = new Minio.Client({
     useSSL: s3UseSSL,
     accessKey: process.env.S3_ACCESS_KEY!,
     secretKey: process.env.S3_SECRET_KEY!,
+    region: s3Region
 });
 
 export const s3bucket = process.env.S3_BUCKET!;
