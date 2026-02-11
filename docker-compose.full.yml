@@ -1,0 +1,177 @@
+
+
+services:
+  # ============================================================
+  # Infrastructure Services
+  # ============================================================
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-handy}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-handy}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # MinIO bucket initialization
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+        mc mb -p local/$${S3_BUCKET} || true;
+        mc anonymous set download local/$${S3_BUCKET};
+        echo 'Bucket initialized successfully';
+      "
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-happy}
+
+  # ============================================================
+  # Application Services
+  # ============================================================
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-handy}?schema=public
+      REDIS_URL: redis://redis:6379
+      S3_HOST: minio
+      S3_PORT: "9000"
+      S3_USE_SSL: "false"
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-happy}
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://localhost:9000/happy}
+      HANDY_MASTER_SECRET: ${HANDY_MASTER_SECRET:-change-me-in-production-use-a-long-random-string}
+      # Optional: GitHub Integration
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_PRIVATE_KEY: ${GITHUB_PRIVATE_KEY:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      # Optional: ElevenLabs Voice
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+    ports:
+      - "${SERVER_PORT:-3000}:3000"
+
+  webapp:
+    build:
+      context: .
+      dockerfile: Dockerfile.webapp
+      args:
+        POSTHOG_API_KEY: ${POSTHOG_API_KEY:-}
+        REVENUE_CAT_STRIPE: ${REVENUE_CAT_STRIPE:-}
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "${WEBAPP_PORT:-80}:80"
+
+  # ============================================================
+  # Happy CLI (happy-coder)
+  # ============================================================
+
+  cli:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    depends_on:
+      - server
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      HAPPY_SERVER_URL: http://server:3000
+      HAPPY_WEBAPP_URL: http://localhost:${WEBAPP_PORT:-80}
+    volumes:
+      - ./prj:/prj
+      - cli_data:/home/happy-coder/.happy
+      - gh_data:/home/happy-coder/.config/gh
+      - claude_data:/home/happy-coder/.claude
+    ports:
+      - "${CLI_PORT:-3005}:3005"
+    stdin_open: true
+    tty: true
+
+  # ============================================================
+  # Database Migration (run once)
+  # ============================================================
+
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+      target: deps
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-handy}?schema=public
+    command: ["npx", "prisma", "migrate", "deploy", "--schema", "packages/happy-server/prisma/schema.prisma"]
+    profiles:
+      - migration
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  cli_data:
+  gh_data:
+  claude_data:

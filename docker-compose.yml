@@ -1,0 +1,25 @@
+services:
+  # ============================================================
+  # Happy CLI (happy-coder) - Minimal Setup
+  # ============================================================
+
+  cli:
+    build:
+      context: .
+      dockerfile: Dockerfile.cli
+    env_file: .env
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ./prj:/prj
+      - cli_data:/home/happy-coder/.happy
+      - gh_data:/home/happy-coder/.config/gh
+      - claude_data:/home/happy-coder/.claude
+    ports:
+      - "${CLI_PORT:-3005}:3005"
+    stdin_open: true
+    tty: true
+
+volumes:
+  cli_data:
+  gh_data:
+  claude_data:
