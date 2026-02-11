@@ -1,27 +1,21 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ElevenLabsProvider } from "@elevenlabs/react-native";
 import { RealtimeVoiceSession } from './RealtimeVoiceSession';
 import { HappyVoiceSession } from './HappyVoiceSession';
 import { registerVoiceToolRpcHandlers } from './registerVoiceToolRpcHandlers';
-import { getVoiceProvider } from '@/sync/voiceConfig';
+import { getVoiceProvider, onVoiceProviderChange } from '@/sync/voiceConfig';
 
 export const RealtimeProvider = ({ children }: { children: React.ReactNode }) => {
+    const [provider, setProvider] = useState(getVoiceProvider);
+    useEffect(() => onVoiceProviderChange(() => setProvider(getVoiceProvider())), []);
+
     useEffect(() => {
         return registerVoiceToolRpcHandlers();
     }, []);
 
-    if (getVoiceProvider() === 'happy-voice') {
-        return (
-            <>
-                <HappyVoiceSession />
-                {children}
-            </>
-        );
-    }
-
     return (
         <ElevenLabsProvider>
-            <RealtimeVoiceSession />
+            {provider === 'happy-voice' ? <HappyVoiceSession /> : <RealtimeVoiceSession />}
             {children}
         </ElevenLabsProvider>
     );

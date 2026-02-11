@@ -8,6 +8,7 @@ import { useSettingMutable } from '@/sync/storage';
 import { findLanguageByCode, getLanguageDisplayName, LANGUAGES } from '@/constants/Languages';
 import { t } from '@/text';
 import { Switch } from '@/components/Switch';
+import { isVoiceSessionStarted, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import {
     getVoiceProvider,
     setVoiceProvider,
@@ -52,7 +53,10 @@ export default function VoiceSettingsScreen() {
         }, []),
     );
 
-    const handleProviderChange = (value: 'elevenlabs' | 'happy-voice') => {
+    const handleProviderChange = async (value: 'elevenlabs' | 'happy-voice') => {
+        if (isVoiceSessionStarted()) {
+            await stopRealtimeSession();
+        }
         setVoiceProvider(value);
         setProvider(value);
     };

@@ -21,7 +21,6 @@ import { tracking } from '@/track/tracking';
 import { sync, syncRestore } from '@/sync/sync';
 import { useTrackScreens } from '@/track/useTrackScreens';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
-import { getVoiceProvider, onVoiceProviderChange } from '@/sync/voiceConfig';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
 import { StatusBarProvider } from '@/components/StatusBarProvider';
@@ -272,10 +271,6 @@ export default function RootLayout() {
     }, [initState]);
 
 
-    // Re-mount RealtimeProvider when voice provider changes in settings
-    const [voiceProviderKey, setVoiceProviderKey] = React.useState(() => getVoiceProvider());
-    React.useEffect(() => onVoiceProviderChange(() => setVoiceProviderKey(getVoiceProvider())), []);
-
     // Track the screens
     useTrackScreens()
 
@@ -300,7 +295,7 @@ export default function RootLayout() {
                             <StatusBarProvider />
                             <ModalProvider>
                                 <CommandPaletteProvider>
-                                    <RealtimeProvider key={voiceProviderKey}>
+                                    <RealtimeProvider>
                                         <HorizontalSafeAreaWrapper>
                                             <SidebarNavigator />
                                         </HorizontalSafeAreaWrapper>
