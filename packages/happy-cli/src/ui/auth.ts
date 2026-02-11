@@ -157,12 +157,17 @@ async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair): Promise<Cre
 
     process.on('SIGINT', handleInterrupt);
 
+    const proxyAgents = getAxiosProxyAgents(configuration.serverUrl);
+
     try {
         while (!cancelled) {
             try {
                 const response = await axios.post(`${configuration.serverUrl}/v1/auth/request`, {
                     publicKey: encodeBase64(keypair.publicKey),
                     supportsV2: true
+                }, {
+                    ...proxyAgents,
+                    proxy: proxyAgents ? false : undefined
                 });
                 if (response.data.state === 'authorized') {
                     let token = response.data.token as string;
