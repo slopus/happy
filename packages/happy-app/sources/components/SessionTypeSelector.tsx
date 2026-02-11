@@ -9,21 +9,27 @@ interface SessionTypeSelectorProps {
     onChange: (value: 'simple' | 'worktree') => void;
 }
 
-const stylesheet = StyleSheet.create((theme) => ({
+const stylesheet = StyleSheet.create((theme, rt) => ({
     container: {
         flexDirection: 'row',
-        borderRadius: 8,
+        borderRadius: 10,
         overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: theme.colors.divider,
+        padding: 2,
+        backgroundColor: rt.themeName === 'dark' ? theme.colors.surfaceHighest : theme.colors.input.background,
     },
     option: {
         flex: 1,
         paddingVertical: 8,
         alignItems: 'center',
+        borderRadius: 8,
     },
     optionActive: {
-        backgroundColor: theme.colors.surfaceSelected,
+        backgroundColor: theme.colors.surface,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
     },
     label: {
         fontSize: 14,
