@@ -28,6 +28,8 @@ interface ActionMenuModalProps {
     onClose: () => void;
     /** If true, item.onPress will be called after modal is fully closed (for camera/gallery pickers) */
     deferItemPress?: boolean;
+    /** Optional title displayed at the top of the menu */
+    title?: string;
 }
 
 const ANIMATION_DURATION = 250;
@@ -49,7 +51,7 @@ const styles = StyleSheet.create({
     },
 });
 
-export function ActionMenuModal({ visible, items, onClose, deferItemPress }: ActionMenuModalProps) {
+export function ActionMenuModal({ visible, items, onClose, deferItemPress, title }: ActionMenuModalProps) {
     // Track actual modal visibility (delayed hide for animation)
     const [modalVisible, setModalVisible] = useState(false);
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -156,7 +158,7 @@ export function ActionMenuModal({ visible, items, onClose, deferItemPress }: Act
                         },
                     ]}
                 >
-                    <ActionMenu items={wrappedItems} onClose={handleClose} />
+                    <ActionMenu items={wrappedItems} onClose={handleClose} title={title} />
                 </Animated.View>
             </View>
         </Modal>

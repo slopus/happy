@@ -740,6 +740,7 @@ export const zhHans: TranslationStructure = {
         filesChanged: ({ count }: { count: number }) => `${count} 个文件变更`,
         insertions: ({ count }: { count: number }) => `${count} 处插入`,
         deletions: ({ count }: { count: number }) => `${count} 处删除`,
+        selectBranch: '选择分支',
     },
 
     settingsVoice: {

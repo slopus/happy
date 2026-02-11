@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, ScrollView } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
@@ -16,11 +16,14 @@ export interface ActionMenuItem {
     label: string;
     onPress: () => void;
     destructive?: boolean;
+    /** Display label in secondary/muted color */
+    secondary?: boolean;
 }
 
 interface ActionMenuProps {
     items: ActionMenuItem[];
     onClose: () => void;
+    title?: string;
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -52,6 +55,21 @@ const styles = StyleSheet.create((theme) => ({
     itemTextDestructive: {
         color: theme.colors.textDestructive,
     },
+    itemTextSecondary: {
+        color: theme.colors.textSecondary,
+    },
+    titleContainer: {
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        alignItems: 'center',
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: theme.colors.divider,
+    },
+    titleText: {
+        fontSize: 13,
+        color: theme.colors.textSecondary,
+        ...Typography.default('semiBold'),
+    },
     cancelContainer: {
         marginTop: 8,
         backgroundColor: theme.colors.surface,
@@ -70,7 +88,7 @@ const styles = StyleSheet.create((theme) => ({
     },
 }));
 
-export function ActionMenu({ items, onClose }: ActionMenuProps) {
+export function ActionMenu({ items, onClose, title }: ActionMenuProps) {
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
 
@@ -83,27 +101,35 @@ export function ActionMenu({ items, onClose }: ActionMenuProps) {
 
     return (
         <View style={[styles.wrapper, { paddingBottom: safeArea.bottom + 8 }]}>
-            <View style={styles.container}>
-                {items.map((item, index) => (
-                    <Pressable
-                        key={index}
-                        style={({ pressed }) => [
-                            styles.item,
-                            index === items.length - 1 && styles.itemLast,
-                            pressed && { backgroundColor: theme.colors.surfacePressed },
-                        ]}
-                        onPress={() => handleItemPress(item)}
-                    >
-                        <Text
-                            style={[
-                                styles.itemText,
-                                item.destructive && styles.itemTextDestructive,
+            <View style={[styles.container, { maxHeight: 400 }]}>
+                {title ? (
+                    <View style={styles.titleContainer}>
+                        <Text style={styles.titleText}>{title}</Text>
+                    </View>
+                ) : null}
+                <ScrollView bounces={false}>
+                    {items.map((item, index) => (
+                        <Pressable
+                            key={index}
+                            style={({ pressed }) => [
+                                styles.item,
+                                index === items.length - 1 && styles.itemLast,
+                                pressed && { backgroundColor: theme.colors.surfacePressed },
                             ]}
+                            onPress={() => handleItemPress(item)}
                         >
-                            {item.label}
-                        </Text>
-                    </Pressable>
-                ))}
+                            <Text
+                                style={[
+                                    styles.itemText,
+                                    item.destructive && styles.itemTextDestructive,
+                                    item.secondary && styles.itemTextSecondary,
+                                ]}
+                            >
+                                {item.label}
+                            </Text>
+                        </Pressable>
+                    ))}
+                </ScrollView>
             </View>
             <View style={styles.cancelContainer}>
                 <Pressable

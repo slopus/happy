@@ -2,13 +2,15 @@ import * as React from 'react';
 import { View, ActivityIndicator, FlatList, Platform, Pressable } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { sessionBash } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import { ActionMenuItem } from '@/components/ActionMenu';
 import { t } from '@/text';
 
 const PAGE_SIZE = 30;
@@ -73,15 +75,64 @@ export default function CommitsScreen() {
     const [hasMore, setHasMore] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
 
+    // Branch selector state
+    const [localBranches, setLocalBranches] = React.useState<string[]>([]);
+    const [remoteBranches, setRemoteBranches] = React.useState<string[]>([]);
+    const [currentBranch, setCurrentBranch] = React.useState<string>('');
+    const [selectedBranch, setSelectedBranch] = React.useState<string>('');
+    const [branchMenuVisible, setBranchMenuVisible] = React.useState(false);
+
+    // Load branches on mount
+    React.useEffect(() => {
+        (async () => {
+            try {
+                const [localResult, remoteResult, currentResult] = await Promise.all([
+                    sessionBash(sessionId, {
+                        command: "git branch --list --format='%(refname:short)'",
+                        cwd: sessionPath,
+                        timeout: 10000,
+                    }),
+                    sessionBash(sessionId, {
+                        command: "git branch -r --format='%(refname:short)'",
+                        cwd: sessionPath,
+                        timeout: 10000,
+                    }),
+                    sessionBash(sessionId, {
+                        command: 'git branch --show-current',
+                        cwd: sessionPath,
+                        timeout: 5000,
+                    }),
+                ]);
+                if (localResult.success && localResult.stdout) {
+                    setLocalBranches(localResult.stdout.trim().split('\n').filter(Boolean));
+                }
+                if (remoteResult.success && remoteResult.stdout) {
+                    // Filter out HEAD pointers like "origin/HEAD"
+                    setRemoteBranches(remoteResult.stdout.trim().split('\n').filter(b => b && !b.includes('/HEAD')));
+                }
+                if (currentResult.success && currentResult.stdout) {
+                    setCurrentBranch(currentResult.stdout.trim());
+                }
+            } catch { /* ignore */ }
+        })();
+    }, [sessionId, sessionPath]);
+
+    const handleBranchSelect = React.useCallback((branch: string) => {
+        setSelectedBranch(branch === currentBranch ? '' : branch);
+        setCommits([]);
+        setHasMore(true);
+    }, [currentBranch]);
+
     const loadCommits = React.useCallback(async (offset: number, append: boolean) => {
         if (!append) setIsLoading(true);
         else setIsLoadingMore(true);
         setError(null);
 
         try {
+            const branchArg = selectedBranch ? `${selectedBranch} ` : '';
             const fileArg = fileFilter ? ` -- "${fileFilter}"` : '';
             const response = await sessionBash(sessionId, {
-                command: `git log --format="%H%n%h%n%an%n%ae%n%at%n%s%n---END---" -${PAGE_SIZE} --skip=${offset}${fileArg}`,
+                command: `git log ${branchArg}--format="%H%n%h%n%an%n%ae%n%at%n%s%n---END---" -${PAGE_SIZE} --skip=${offset}${fileArg}`,
                 cwd: sessionPath,
                 timeout: 10000,
             });
@@ -105,7 +156,7 @@ export default function CommitsScreen() {
             setIsLoading(false);
             setIsLoadingMore(false);
         }
-    }, [sessionId, sessionPath, fileFilter]);
+    }, [sessionId, sessionPath, fileFilter, selectedBranch]);
 
     React.useEffect(() => {
         loadCommits(0, false);
@@ -231,6 +282,31 @@ export default function CommitsScreen() {
                 keyExtractor={item => item.hash}
                 onEndReached={handleLoadMore}
                 onEndReachedThreshold={0.3}
+                ListHeaderComponent={!fileFilter && (localBranches.length > 1 || remoteBranches.length > 0) ? (
+                    <Pressable
+                        onPress={() => setBranchMenuVisible(true)}
+                        style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingHorizontal: 16,
+                            paddingVertical: 10,
+                            borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
+                            borderBottomColor: theme.colors.divider,
+                            backgroundColor: theme.colors.surfaceHigh,
+                        }}
+                    >
+                        <Octicons name="git-branch" size={16} color={theme.colors.textSecondary} style={{ marginRight: 8 }} />
+                        <Text style={{
+                            fontSize: 15,
+                            color: theme.colors.text,
+                            flex: 1,
+                            ...Typography.default('semiBold'),
+                        }}>
+                            {selectedBranch || currentBranch || 'HEAD'}
+                        </Text>
+                        <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
+                    </Pressable>
+                ) : null}
                 ListFooterComponent={
                     isLoadingMore ? (
                         <View style={{ paddingVertical: 20 }}>
@@ -238,6 +314,33 @@ export default function CommitsScreen() {
                         </View>
                     ) : null
                 }
+            />
+            <ActionMenuModal
+                visible={branchMenuVisible}
+                title={t('commits.selectBranch')}
+                items={(() => {
+                    const activeBranch = selectedBranch || currentBranch;
+                    const localSet = new Set(localBranches);
+                    // Local branches first
+                    const items: ActionMenuItem[] = localBranches.map(branch => ({
+                        label: branch === activeBranch ? `${branch} ✓` : branch,
+                        onPress: () => handleBranchSelect(branch),
+                    }));
+                    // Remote-only branches (filter out those that have a local counterpart)
+                    for (const remote of remoteBranches) {
+                        // remote is like "origin/xxx" — extract the part after first "/"
+                        const shortName = remote.includes('/') ? remote.substring(remote.indexOf('/') + 1) : remote;
+                        if (!localSet.has(shortName)) {
+                            items.push({
+                                label: remote === activeBranch ? `${remote} ✓` : remote,
+                                onPress: () => handleBranchSelect(remote),
+                                secondary: true,
+                            });
+                        }
+                    }
+                    return items;
+                })()}
+                onClose={() => setBranchMenuVisible(false)}
             />
         </View>
     );
