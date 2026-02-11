@@ -12,7 +12,7 @@ import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeT
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionKill, sessionDelete, machineForkClaudeSession, machineSpawnNewSession, sessionUpdateSummary, sessionUpdateMetadataFields } from '@/sync/ops';
-import { isWorktreeSession, pushWorktreeBranch, mergeWorktreeBranch, createWorktreePR, cleanupWorktree } from '@/utils/worktreeOps';
+import { isWorktreeSession, getWorktreeInfo, pushWorktreeBranch, mergeWorktreeBranch, createWorktreePR, cleanupWorktree } from '@/utils/worktreeOps';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -119,10 +119,10 @@ function SessionInfoContent({ session }: { session: Session }) {
     });
 
     const handleArchiveSession = useCallback(() => {
-        if (isWorktreeSession(session.metadata) && session.metadata?.machineId && session.metadata?.worktreeBasePath && session.metadata?.worktreeBranchName) {
+        const worktreeInfo = getWorktreeInfo(session.metadata);
+        if (worktreeInfo && session.metadata?.machineId) {
             const machineId = session.metadata.machineId;
-            const basePath = session.metadata.worktreeBasePath;
-            const branchName = session.metadata.worktreeBranchName;
+            const { basePath, branchName } = worktreeInfo;
             Modal.alert(
                 t('sessionInfo.archiveSession'),
                 t('sessionInfo.worktree.archiveWorktreeConfirm'),

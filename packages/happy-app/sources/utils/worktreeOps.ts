@@ -16,9 +16,23 @@ function shellEscape(s: string): string {
     return s.replace(/'/g, "'\\''");
 }
 
-/** Check if a session is a worktree session */
+/** Check if a session is a worktree session (also detects by path pattern as fallback) */
 export function isWorktreeSession(metadata: Metadata | null): boolean {
-    return metadata?.isWorktree === true;
+    if (!metadata) return false;
+    return metadata.isWorktree === true || /\/\.dev\/worktree\/[^/]+$/.test(metadata.path ?? '');
+}
+
+/** Extract worktree info from metadata, falling back to path parsing */
+export function getWorktreeInfo(metadata: Metadata | null): { basePath: string; branchName: string } | null {
+    if (!metadata) return null;
+    if (metadata.worktreeBasePath && metadata.worktreeBranchName) {
+        return { basePath: metadata.worktreeBasePath, branchName: metadata.worktreeBranchName };
+    }
+    const match = metadata.path?.match(/^(.+)\/\.dev\/worktree\/([^/]+)$/);
+    if (match) {
+        return { basePath: match[1], branchName: match[2] };
+    }
+    return null;
 }
 
 /** Get the default branch name (main/master) of the repository */

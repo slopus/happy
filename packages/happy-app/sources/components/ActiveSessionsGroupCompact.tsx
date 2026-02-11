@@ -22,7 +22,7 @@ import { useIsTablet } from '@/utils/responsive';
 import { ProjectGitStatus } from './ProjectGitStatus';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
-import { isWorktreeSession, cleanupWorktree } from '@/utils/worktreeOps';
+import { getWorktreeInfo, cleanupWorktree } from '@/utils/worktreeOps';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -317,10 +317,10 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
 
     const handleArchive = React.useCallback(() => {
         swipeableRef.current?.close();
-        if (isWorktreeSession(session.metadata) && session.metadata?.machineId && session.metadata?.worktreeBasePath && session.metadata?.worktreeBranchName) {
+        const worktreeInfo = getWorktreeInfo(session.metadata);
+        if (worktreeInfo && session.metadata?.machineId) {
             const machineId = session.metadata.machineId;
-            const basePath = session.metadata.worktreeBasePath;
-            const branchName = session.metadata.worktreeBranchName;
+            const { basePath, branchName } = worktreeInfo;
             Modal.alert(
                 t('sessionInfo.archiveSession'),
                 t('sessionInfo.worktree.archiveWorktreeConfirm'),
