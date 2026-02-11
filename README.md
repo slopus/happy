@@ -30,7 +30,7 @@ Step 2: Install CLI on your computer
 </h3>
 
 ```bash
-npm install -g happy-coder
+npm install -g happy-blue
 ```
 
 <h3 align="center">

@@ -369,7 +369,7 @@ export const zhHant: TranslationStructure = {
         cliVersionOutdated: '需要更新 CLI',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `已安裝版本 ${currentVersion}。請更新到 ${requiredVersion} 或更高版本`,
-        updateCliInstructions: '請執行 npm install -g happy-coder@latest',
+        updateCliInstructions: '請執行 npm install -g happy-blue@latest',
         deleteSession: '刪除工作階段',
         deleteSessionSubtitle: '永久刪除此工作階段',
         deleteSessionConfirm: '永久刪除工作階段？',
@@ -720,7 +720,7 @@ export const zhHant: TranslationStructure = {
     machine: {
         launchNewSessionInDirectory: '在目錄中啟動新工作階段',
         offlineUnableToSpawn: '裝置離線時無法啟動',
-        offlineHelp: '• 確保您的電腦在線上\n• 執行 `happy daemon status` 進行診斷\n• 您是否在執行最新的 CLI 版本？請使用 `npm install -g happy-coder@latest` 升級',
+        offlineHelp: '• 確保您的電腦在線上\n• 執行 `happy daemon status` 進行診斷\n• 您是否在執行最新的 CLI 版本？請使用 `npm install -g happy-blue@latest` 升級',
         daemon: '守護程序',
         status: '狀態',
         stopDaemon: '停止守護程序',

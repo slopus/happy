@@ -30,7 +30,7 @@ Step 2: Install CLI on your computer
 </h3>
 
 ```bash
-npm install -g happy-coder
+npm install -g happy-blue
 ```
 
 <h3 align="center">
@@ -67,7 +67,7 @@ On your computer, run `happy` instead of `claude` or `happy codex` instead of `c
 
 - **[happy-cli](https://github.com/slopus/happy-cli)** - Command-line interface for Claude Code and Codex
 - **[happy-server](https://github.com/slopus/happy-server)** - Backend server for encrypted sync
-- **happy-coder** - This mobile client (you are here)
+- **happy-blue** - This mobile client (you are here)
 
 ## 🏠 Who We Are
 

@@ -1,14 +1,19 @@
 {
-  "name": "happy-coder",
+  "name": "happy-blue",
   "version": "0.14.0-0",
   "description": "Mobile and Web client for Claude Code and Codex",
   "author": "Kirill Dubovitskiy",
+  "contributors": [
+    "HirokiKobayashi-R (https://github.com/HirokiKobayashi-R)"
+  ],
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/slopus/happy-cli",
-  "bugs": "https://github.com/slopus/happy-cli/issues",
-  "repository": "slopus/happy-cli",
+  "homepage": "https://github.com/HirokiKobayashi-R/happy",
+  "bugs": "https://github.com/HirokiKobayashi-R/happy/issues",
+  "repository": "HirokiKobayashi-R/happy",
   "bin": {
+    "happy-blue": "./bin/happy.mjs",
+    "happy-blue-mcp": "./bin/happy-mcp.mjs",
     "happy": "./bin/happy.mjs",
     "happy-mcp": "./bin/happy-mcp.mjs"
   },

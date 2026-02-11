@@ -25,6 +25,7 @@ export async function findAllHappyProcesses(): Promise<Array<{ pid: number, comm
                       name === 'node' && (cmd.includes('happy-cli') || cmd.includes('dist/index.mjs')) ||
                       cmd.includes('happy.mjs') ||
                       cmd.includes('happy-coder') ||
+                      cmd.includes('happy-blue') ||
                       (cmd.includes('tsx') && cmd.includes('src/index.ts') && cmd.includes('happy-cli'));
       
       if (!isHappy) continue;

@@ -7,7 +7,7 @@ Free. Open source. Code anywhere.
 ## Installation
 
 ```bash
-npm install -g happy-coder
+npm install -g happy-blue
 ```
 
 ## Usage

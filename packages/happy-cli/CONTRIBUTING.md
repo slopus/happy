@@ -31,7 +31,7 @@ This creates a `happy-dev` command in your PATH pointing to your local build, wh
 
 | Command | Runs |
 |---------|------|
-| `happy` | Stable npm version (from `npm install -g happy-coder`) |
+| `happy` | Stable npm version (from `npm install -g happy-blue`) |
 | `happy-dev` | Local development version (from this repo) |
 
 **Note:** Run `yarn build` before `yarn link:dev` to ensure the binary exists.
