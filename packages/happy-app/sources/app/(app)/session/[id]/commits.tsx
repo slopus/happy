@@ -78,27 +78,6 @@ export default function CommitsScreen() {
     // Diff stats for headerRight badge
     const [diffStats, setDiffStats] = React.useState<{ insertions: number; deletions: number } | null>(null);
 
-    React.useEffect(() => {
-        (async () => {
-            try {
-                const result = await sessionBash(sessionId, {
-                    command: "git diff HEAD --shortstat",
-                    cwd: sessionPath,
-                    timeout: 10000,
-                });
-                if (result.success && result.stdout) {
-                    const ins = result.stdout.match(/(\d+) insertion/);
-                    const del = result.stdout.match(/(\d+) deletion/);
-                    const insertions = ins ? parseInt(ins[1], 10) : 0;
-                    const deletions = del ? parseInt(del[1], 10) : 0;
-                    if (insertions > 0 || deletions > 0) {
-                        setDiffStats({ insertions, deletions });
-                    }
-                }
-            } catch { /* ignore */ }
-        })();
-    }, [sessionId, sessionPath]);
-
     // Branch selector state
     const [localBranches, setLocalBranches] = React.useState<string[]>([]);
     const [remoteBranches, setRemoteBranches] = React.useState<string[]>([]);
@@ -106,11 +85,14 @@ export default function CommitsScreen() {
     const [selectedBranch, setSelectedBranch] = React.useState<string>('');
     const [branchMenuVisible, setBranchMenuVisible] = React.useState(false);
 
-    // Load branches on mount
+    // Worktree branch→path mapping
+    const [worktreeMap, setWorktreeMap] = React.useState<Record<string, string>>({});
+
+    // Load branches and worktree list on mount
     React.useEffect(() => {
         (async () => {
             try {
-                const [localResult, remoteResult, currentResult] = await Promise.all([
+                const [localResult, remoteResult, currentResult, worktreeResult] = await Promise.all([
                     sessionBash(sessionId, {
                         command: "git branch --list --format='%(refname:short)'",
                         cwd: sessionPath,
@@ -126,6 +108,11 @@ export default function CommitsScreen() {
                         cwd: sessionPath,
                         timeout: 5000,
                     }),
+                    sessionBash(sessionId, {
+                        command: 'git worktree list --porcelain',
+                        cwd: sessionPath,
+                        timeout: 10000,
+                    }),
                 ]);
                 if (localResult.success && localResult.stdout) {
                     setLocalBranches(localResult.stdout.trim().split('\n').filter(Boolean));
@@ -137,13 +124,68 @@ export default function CommitsScreen() {
                 if (currentResult.success && currentResult.stdout) {
                     setCurrentBranch(currentResult.stdout.trim());
                 }
+                // Parse worktree list: each entry has "worktree <path>\nHEAD ...\nbranch refs/heads/<name>\n"
+                if (worktreeResult.success && worktreeResult.stdout) {
+                    const map: Record<string, string> = {};
+                    const entries = worktreeResult.stdout.split('\n\n');
+                    for (const entry of entries) {
+                        const lines = entry.trim().split('\n');
+                        let path = '';
+                        let branch = '';
+                        for (const line of lines) {
+                            if (line.startsWith('worktree ')) {
+                                path = line.substring('worktree '.length);
+                            } else if (line.startsWith('branch refs/heads/')) {
+                                branch = line.substring('branch refs/heads/'.length);
+                            }
+                        }
+                        if (path && branch) {
+                            map[branch] = path;
+                        }
+                    }
+                    setWorktreeMap(map);
+                }
             } catch { /* ignore */ }
         })();
     }, [sessionId, sessionPath]);
 
+    // Resolve the working directory for the active branch
+    // selectedBranch='' means current branch (use sessionPath)
+    // Otherwise check if this branch has a worktree
+    const activeCwd = React.useMemo(() => {
+        if (!selectedBranch) return sessionPath; // current branch = session's own path
+        return worktreeMap[selectedBranch] || null; // null = no worktree for this branch
+    }, [selectedBranch, worktreeMap, sessionPath]);
+
+    // Load diff stats when active branch/worktree changes
+    React.useEffect(() => {
+        setDiffStats(null);
+        if (!activeCwd) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const result = await sessionBash(sessionId, {
+                    command: "git diff HEAD --shortstat",
+                    cwd: activeCwd,
+                    timeout: 10000,
+                });
+                if (cancelled) return;
+                if (result.success && result.stdout) {
+                    const ins = result.stdout.match(/(\d+) insertion/);
+                    const del = result.stdout.match(/(\d+) deletion/);
+                    const insertions = ins ? parseInt(ins[1], 10) : 0;
+                    const deletions = del ? parseInt(del[1], 10) : 0;
+                    if (insertions > 0 || deletions > 0) {
+                        setDiffStats({ insertions, deletions });
+                    }
+                }
+            } catch { /* ignore */ }
+        })();
+        return () => { cancelled = true; };
+    }, [sessionId, activeCwd]);
+
     const handleBranchSelect = React.useCallback((branch: string) => {
         setSelectedBranch(branch === currentBranch ? '' : branch);
-        setCommits([]);
         setHasMore(true);
     }, [currentBranch]);
 
@@ -153,7 +195,7 @@ export default function CommitsScreen() {
         setError(null);
 
         try {
-            const branchArg = selectedBranch ? `${selectedBranch} ` : '';
+            const branchArg = selectedBranch ? `"${selectedBranch}" ` : '';
             const fileArg = fileFilter ? ` -- "${fileFilter}"` : '';
             const response = await sessionBash(sessionId, {
                 command: `git log ${branchArg}--format="%H%n%h%n%an%n%ae%n%at%n%s%n---END---" -${PAGE_SIZE} --skip=${offset}${fileArg}`,
@@ -255,7 +297,7 @@ export default function CommitsScreen() {
         </Pressable>
     ), [commits.length, theme, handleCommitPress]);
 
-    if (isLoading) {
+    if (isLoading && commits.length === 0) {
         return (
             <View style={[styles.container, { backgroundColor: theme.colors.surface, justifyContent: 'center', alignItems: 'center' }]}>
                 <ActivityIndicator size="small" color={theme.colors.textSecondary} />
@@ -263,7 +305,7 @@ export default function CommitsScreen() {
         );
     }
 
-    if (error) {
+    if (error && commits.length === 0) {
         return (
             <View style={[styles.container, { backgroundColor: theme.colors.surface, justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
                 <Ionicons name="alert-circle-outline" size={48} color={theme.colors.textSecondary} />
@@ -274,7 +316,7 @@ export default function CommitsScreen() {
         );
     }
 
-    if (commits.length === 0) {
+    if (!isLoading && commits.length === 0) {
         return (
             <View style={[styles.container, { backgroundColor: theme.colors.surface, justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
                 <Ionicons name="git-commit-outline" size={48} color={theme.colors.textSecondary} />
@@ -292,7 +334,10 @@ export default function CommitsScreen() {
                     ...(fileFilter ? { headerTitle: fileFilter.split('/').pop() || t('commits.title') } : {}),
                     headerRight: () => (
                         <Pressable
-                            onPress={() => router.push(`/session/${sessionId}/status`)}
+                            onPress={() => router.push(activeCwd && activeCwd !== sessionPath
+                                ? `/session/${sessionId}/status?cwd=${encodeURIComponent(activeCwd)}`
+                                : `/session/${sessionId}/status`
+                            )}
                             style={diffStats
                                 ? { flexDirection: 'row', alignItems: 'center', paddingLeft: 8, paddingRight: 0, paddingVertical: 4, gap: 6 }
                                 : { paddingHorizontal: 8, paddingVertical: 4 }
@@ -352,6 +397,17 @@ export default function CommitsScreen() {
                     ) : null
                 }
             />
+            {isLoading && commits.length > 0 ? (
+                <View style={{
+                    position: 'absolute',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    backgroundColor: theme.colors.surface + '80',
+                }}>
+                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                </View>
+            ) : null}
             <ActionMenuModal
                 visible={branchMenuVisible}
                 title={t('commits.selectBranch')}

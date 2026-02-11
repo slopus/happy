@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, ActivityIndicator, Platform, Pressable } from 'react-native';
 import { useRoute } from '@react-navigation/native';
-import { useRouter, Stack } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
@@ -23,10 +23,12 @@ export default function StatusScreen() {
     const route = useRoute();
     const router = useRouter();
     const sessionId = (route.params! as any).id as string;
+    const searchParams = useLocalSearchParams();
+    const cwdParam = searchParams.cwd as string | undefined;
     const { theme } = useUnistyles();
 
     const session = storage.getState().sessions[sessionId];
-    const sessionPath = session?.metadata?.path || '';
+    const sessionPath = cwdParam || session?.metadata?.path || '';
 
     const [gitStatus, setGitStatus] = React.useState<GitStatusFiles | null>(null);
     const [isLoading, setIsLoading] = React.useState(true);
@@ -35,14 +37,14 @@ export default function StatusScreen() {
     const loadStatus = React.useCallback(async (silent?: boolean) => {
         if (!silent) setIsLoading(true);
         try {
-            const result = await getGitStatusFiles(sessionId);
+            const result = await getGitStatusFiles(sessionId, cwdParam);
             setGitStatus(result);
         } catch {
             setGitStatus(null);
         } finally {
             if (!silent) setIsLoading(false);
         }
-    }, [sessionId]);
+    }, [sessionId, cwdParam]);
 
     React.useEffect(() => {
         loadStatus();

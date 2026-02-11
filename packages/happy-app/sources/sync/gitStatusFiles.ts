@@ -30,11 +30,12 @@ export interface GitStatusFiles {
 /**
  * Fetch detailed git status with file-level information
  */
-export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFiles | null> {
+export async function getGitStatusFiles(sessionId: string, cwd?: string): Promise<GitStatusFiles | null> {
     try {
         // Check if we have a session with valid metadata
         const session = storage.getState().sessions[sessionId];
-        if (!session?.metadata?.path) {
+        const workingDir = cwd || session?.metadata?.path;
+        if (!workingDir) {
             return null;
         }
 
@@ -42,7 +43,7 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
         // --untracked-files=all ensures we get individual files, not directories
         const statusResult = await sessionBash(sessionId, {
             command: 'git status --porcelain=v2 --branch --untracked-files=all',
-            cwd: session.metadata.path,
+            cwd: workingDir,
             timeout: 10000
         });
 
@@ -54,7 +55,7 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
         // Get combined diff statistics for both staged and unstaged changes
         const diffStatResult = await sessionBash(sessionId, {
             command: 'git diff --numstat HEAD && echo "---STAGED---" && git diff --cached --numstat',
-            cwd: session.metadata.path,
+            cwd: workingDir,
             timeout: 10000
         });
 
