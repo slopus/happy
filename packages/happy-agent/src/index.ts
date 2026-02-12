@@ -36,6 +36,7 @@ function createClient(session: DecryptedSession, creds: Credentials, config: Con
         encryptionVariant: session.encryption.variant,
         token: creds.token,
         serverUrl: config.serverUrl,
+        initialAgentState: session.agentState ?? null,
     });
 }
 

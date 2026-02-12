@@ -161,7 +161,7 @@ describe('formatSessionStatus', () => {
 
     it('should display agent state as idle when not busy', () => {
         const session = makeSession({
-            agentState: { controlledByUser: false, requests: [] },
+            agentState: { controlledByUser: false, requests: {} },
         });
         const output = formatSessionStatus(session);
         expect(output).toContain('Agent: idle');
@@ -169,7 +169,7 @@ describe('formatSessionStatus', () => {
 
     it('should display agent state as busy when controlledByUser is true', () => {
         const session = makeSession({
-            agentState: { controlledByUser: true, requests: [] },
+            agentState: { controlledByUser: true, requests: {} },
         });
         const output = formatSessionStatus(session);
         expect(output).toContain('Agent: busy');
@@ -177,7 +177,7 @@ describe('formatSessionStatus', () => {
 
     it('should display pending requests count', () => {
         const session = makeSession({
-            agentState: { controlledByUser: true, requests: [{}, {}, {}] },
+            agentState: { controlledByUser: true, requests: { 'r1': {}, 'r2': {}, 'r3': {} } },
         });
         const output = formatSessionStatus(session);
         expect(output).toContain('Pending Requests: 3');

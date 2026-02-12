@@ -26,6 +26,10 @@ if (!hasNoWarnings || !hasNoDeprecation) {
     });
   } catch (error) {
     // execFileSync throws if the process exits with non-zero
+    // If there's no exit status, this is a spawn error (e.g. ENOENT) - show the message
+    if (error.status == null) {
+      console.error(error.message);
+    }
     process.exit(error.status || 1);
   }
 } else {

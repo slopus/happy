@@ -357,7 +357,7 @@ describe('SessionClient', () => {
         it('decrypts and caches agentState updates', () => {
             const opts = makeOptions();
             const client = new SessionClient(opts);
-            const agentState = { controlledByUser: true, requests: [{ id: 'req-1' }] };
+            const agentState = { controlledByUser: true, requests: { 'req-1': { tool: 'test', arguments: {}, createdAt: Date.now() } } };
 
             const stateChanges: unknown[] = [];
             client.on('state-change', (data) => stateChanges.push(data));
@@ -399,12 +399,12 @@ describe('SessionClient', () => {
             const client = new SessionClient(opts);
 
             const update1 = makeSessionUpdate(opts.encryptionKey, opts.encryptionVariant, opts.sessionId, {
-                agentState: { data: { controlledByUser: true, requests: [] }, version: 3 },
+                agentState: { data: { controlledByUser: true, requests: {} }, version: 3 },
             });
             mockSocketInstance!.simulateServerEvent('update', update1);
 
             const update2 = makeSessionUpdate(opts.encryptionKey, opts.encryptionVariant, opts.sessionId, {
-                agentState: { data: { controlledByUser: false, requests: [] }, version: 2 },
+                agentState: { data: { controlledByUser: false, requests: {} }, version: 2 },
             });
             mockSocketInstance!.simulateServerEvent('update', update2);
 
@@ -432,7 +432,7 @@ describe('SessionClient', () => {
             const opts = makeOptions();
             const client = new SessionClient(opts);
             const metadata = { path: '/project' };
-            const agentState = { controlledByUser: false, requests: [] };
+            const agentState = { controlledByUser: false, requests: {} };
 
             const update = makeSessionUpdate(opts.encryptionKey, opts.encryptionVariant, opts.sessionId, {
                 metadata: { data: metadata, version: 1 },
@@ -536,7 +536,7 @@ describe('SessionClient', () => {
 
             // Set initial state as busy
             const busyUpdate = makeSessionUpdate(opts.encryptionKey, opts.encryptionVariant, opts.sessionId, {
-                agentState: { data: { controlledByUser: true, requests: [{ id: 'r1' }] }, version: 1 },
+                agentState: { data: { controlledByUser: true, requests: { 'r1': { tool: 'test', arguments: {}, createdAt: Date.now() } } }, version: 1 },
             });
             mockSocketInstance!.simulateServerEvent('update', busyUpdate);
 
@@ -545,7 +545,7 @@ describe('SessionClient', () => {
 
             // Transition to idle
             const idleUpdate = makeSessionUpdate(opts.encryptionKey, opts.encryptionVariant, opts.sessionId, {
-                agentState: { data: { controlledByUser: false, requests: [] }, version: 2 },
+                agentState: { data: { controlledByUser: false, requests: {} }, version: 2 },
             });
             mockSocketInstance!.simulateServerEvent('update', idleUpdate);
 
@@ -561,7 +561,7 @@ describe('SessionClient', () => {
 
             // Set initial state as busy
             const busyUpdate = makeSessionUpdate(opts.encryptionKey, opts.encryptionVariant, opts.sessionId, {
-                agentState: { data: { controlledByUser: true, requests: [] }, version: 1 },
+                agentState: { data: { controlledByUser: true, requests: {} }, version: 1 },
             });
             mockSocketInstance!.simulateServerEvent('update', busyUpdate);
 
@@ -583,7 +583,7 @@ describe('SessionClient', () => {
             const client = new SessionClient(opts);
 
             const busyUpdate = makeSessionUpdate(opts.encryptionKey, opts.encryptionVariant, opts.sessionId, {
-                agentState: { data: { controlledByUser: true, requests: [{ id: 'r1' }] }, version: 1 },
+                agentState: { data: { controlledByUser: true, requests: { 'r1': { tool: 'test', arguments: {}, createdAt: Date.now() } } }, version: 1 },
             });
             mockSocketInstance!.simulateServerEvent('update', busyUpdate);
 
@@ -594,7 +594,7 @@ describe('SessionClient', () => {
 
             // Only change controlledByUser, keep requests
             const partialUpdate = makeSessionUpdate(opts.encryptionKey, opts.encryptionVariant, opts.sessionId, {
-                agentState: { data: { controlledByUser: false, requests: [{ id: 'r1' }] }, version: 2 },
+                agentState: { data: { controlledByUser: false, requests: { 'r1': { tool: 'test', arguments: {}, createdAt: Date.now() } } }, version: 2 },
             });
             mockSocketInstance!.simulateServerEvent('update', partialUpdate);
 
@@ -604,7 +604,7 @@ describe('SessionClient', () => {
 
             // Now clear requests
             const fullyIdleUpdate = makeSessionUpdate(opts.encryptionKey, opts.encryptionVariant, opts.sessionId, {
-                agentState: { data: { controlledByUser: false, requests: [] }, version: 3 },
+                agentState: { data: { controlledByUser: false, requests: {} }, version: 3 },
             });
             mockSocketInstance!.simulateServerEvent('update', fullyIdleUpdate);
 
@@ -620,7 +620,7 @@ describe('SessionClient', () => {
 
             // Set busy state
             const busyUpdate = makeSessionUpdate(opts.encryptionKey, opts.encryptionVariant, opts.sessionId, {
-                agentState: { data: { controlledByUser: true, requests: [] }, version: 1 },
+                agentState: { data: { controlledByUser: true, requests: {} }, version: 1 },
             });
             mockSocketInstance!.simulateServerEvent('update', busyUpdate);
 

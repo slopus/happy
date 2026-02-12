@@ -11,6 +11,7 @@ export type SessionClientOptions = {
     encryptionVariant: EncryptionVariant;
     token: string;
     serverUrl: string;
+    initialAgentState?: unknown | null;
 };
 
 // --- SessionClient ---
@@ -30,6 +31,9 @@ export class SessionClient extends EventEmitter {
         this.sessionId = opts.sessionId;
         this.encryptionKey = opts.encryptionKey;
         this.encryptionVariant = opts.encryptionVariant;
+        if (opts.initialAgentState !== undefined) {
+            this.agentState = opts.initialAgentState;
+        }
 
         // Prevent unhandled 'error' event from crashing the process
         this.on('error', () => {});
@@ -176,8 +180,8 @@ export class SessionClient extends EventEmitter {
                     return false; // No state received yet, not known to be idle
                 }
                 const controlledByUser = state.controlledByUser === true;
-                const requests = state.requests as unknown[] | undefined;
-                const hasRequests = Array.isArray(requests) && requests.length > 0;
+                const requests = state.requests;
+                const hasRequests = requests != null && typeof requests === 'object' && !Array.isArray(requests) && Object.keys(requests as Record<string, unknown>).length > 0;
                 return !controlledByUser && !hasRequests;
             };
 

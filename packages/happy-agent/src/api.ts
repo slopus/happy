@@ -124,8 +124,15 @@ function handleApiError(err: unknown, context: string): never {
         if (status === 401) {
             throw new Error('Authentication expired. Run `happy-agent auth login` to re-authenticate.');
         }
+        if (status === 403) {
+            throw new Error(`Forbidden: ${context}. Check your account permissions.`);
+        }
         if (status === 404) {
             throw new Error(`Not found: ${context}`);
+        }
+        if (status && status >= 400 && status < 500) {
+            const detail = err.response?.data ? `: ${JSON.stringify(err.response.data)}` : '';
+            throw new Error(`Request failed (${status})${detail}`);
         }
         if (status && status >= 500) {
             throw new Error(`Server error (${status}): ${context}`);

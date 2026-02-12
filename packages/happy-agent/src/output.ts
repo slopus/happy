@@ -14,7 +14,7 @@ type SessionMetadata = {
 
 type AgentState = {
     controlledByUser?: boolean;
-    requests?: unknown[];
+    requests?: Record<string, unknown>;
     [key: string]: unknown;
 };
 
@@ -104,7 +104,7 @@ export function formatSessionStatus(session: DecryptedSession): string {
     lines.push(chalk.bold('Last Active: ') + formatTime(session.activeAt));
 
     if (state) {
-        const requests = Array.isArray(state.requests) ? state.requests.length : 0;
+        const requests = state.requests != null && typeof state.requests === 'object' ? Object.keys(state.requests).length : 0;
         const busy = state.controlledByUser === true || requests > 0;
         const agentStatus = busy ? chalk.yellow('busy') : chalk.green('idle');
         lines.push(chalk.bold('Agent: ') + agentStatus);
