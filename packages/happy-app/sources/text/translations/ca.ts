@@ -744,8 +744,8 @@ export const ca: TranslationStructure = {
     settingsVoice: {
         providerTitle: 'Proveïdor de veu',
         providerDescription: 'Tria quin servei de veu fer servir. Els canvis s\'apliquen a la propera sessió de veu.',
-        providerElevenLabsSubtitle: 'Servei de veu IA al núvol',
-        providerHappyVoiceSubtitle: 'Passarel·la de veu autoallotjada',
+        providerElevenLabsSubtitle: 'Servei de veu IA ElevenLabs',
+        providerHappyVoiceSubtitle: 'Servei de veu IA profundament optimitzat',
 
         elevenLabsTitle: 'ElevenLabs',
         elevenLabsDescription: 'Configura el teu agent d\'ElevenLabs. Deixa buit per usar el predeterminat.',

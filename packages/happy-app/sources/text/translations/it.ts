@@ -773,8 +773,8 @@ export const it: TranslationStructure = {
     settingsVoice: {
         providerTitle: 'Provider vocale',
         providerDescription: 'Scegli quale servizio vocale utilizzare. Le modifiche hanno effetto dalla prossima sessione vocale.',
-        providerElevenLabsSubtitle: 'Servizio vocale IA cloud',
-        providerHappyVoiceSubtitle: 'Gateway vocale self-hosted',
+        providerElevenLabsSubtitle: 'Servizio vocale IA ElevenLabs',
+        providerHappyVoiceSubtitle: 'Servizio vocale IA profondamente ottimizzato',
 
         elevenLabsTitle: 'ElevenLabs',
         elevenLabsDescription: 'Configura il tuo agente ElevenLabs. Lascia vuoto per usare il predefinito.',

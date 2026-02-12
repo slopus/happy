@@ -81,7 +81,7 @@ export default function VoiceSettingsScreen() {
                 <Item
                     title="Happy Voice"
                     subtitle={t('settingsVoice.providerHappyVoiceSubtitle')}
-                    icon={<Ionicons name="server-outline" size={29} color="#34C759" />}
+                    icon={<Ionicons name="sparkles" size={29} color="#34C759" />}
                     rightElement={
                         provider === 'happy-voice'
                             ? <Ionicons name="checkmark-circle" size={24} color="#007AFF" />

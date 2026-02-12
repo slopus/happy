@@ -746,8 +746,8 @@ export const zhHans: TranslationStructure = {
     settingsVoice: {
         providerTitle: '语音供应商',
         providerDescription: '选择使用哪个语音服务。更改将在下次语音会话时生效。',
-        providerElevenLabsSubtitle: '云端语音 AI 服务',
-        providerHappyVoiceSubtitle: '自托管语音网关',
+        providerElevenLabsSubtitle: 'ElevenLabs AI 语音服务',
+        providerHappyVoiceSubtitle: '深度优化 AI 语音服务',
 
         elevenLabsTitle: 'ElevenLabs',
         elevenLabsDescription: '配置 ElevenLabs 代理。留空则使用默认值。',

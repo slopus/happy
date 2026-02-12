@@ -776,8 +776,8 @@ export const ja: TranslationStructure = {
     settingsVoice: {
         providerTitle: '音声プロバイダー',
         providerDescription: '使用する音声サービスを選択します。変更は次の音声セッションから有効になります。',
-        providerElevenLabsSubtitle: 'クラウドホスト型音声AIサービス',
-        providerHappyVoiceSubtitle: 'セルフホスト型音声ゲートウェイ',
+        providerElevenLabsSubtitle: 'ElevenLabs AI 音声サービス',
+        providerHappyVoiceSubtitle: '高度に最適化された AI 音声サービス',
 
         elevenLabsTitle: 'ElevenLabs',
         elevenLabsDescription: 'ElevenLabsエージェントを設定します。空欄の場合はデフォルトが使用されます。',

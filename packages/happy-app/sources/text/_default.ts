@@ -749,8 +749,8 @@ export const en = {
         // Provider selection
         providerTitle: 'Voice Provider',
         providerDescription: 'Choose which voice service to use. Changes take effect on the next voice session.',
-        providerElevenLabsSubtitle: 'Cloud-hosted voice AI service',
-        providerHappyVoiceSubtitle: 'Self-hosted voice gateway',
+        providerElevenLabsSubtitle: 'ElevenLabs AI voice service',
+        providerHappyVoiceSubtitle: 'Deeply optimized AI voice service',
 
         // ElevenLabs configuration
         elevenLabsTitle: 'ElevenLabs',

@@ -754,8 +754,8 @@ export const ru: TranslationStructure = {
     settingsVoice: {
         providerTitle: 'Голосовой провайдер',
         providerDescription: 'Выберите голосовой сервис. Изменения вступят в силу при следующей голосовой сессии.',
-        providerElevenLabsSubtitle: 'Облачный голосовой ИИ-сервис',
-        providerHappyVoiceSubtitle: 'Собственный голосовой шлюз',
+        providerElevenLabsSubtitle: 'Голосовой ИИ-сервис ElevenLabs',
+        providerHappyVoiceSubtitle: 'Глубоко оптимизированный голосовой ИИ-сервис',
 
         elevenLabsTitle: 'ElevenLabs',
         elevenLabsDescription: 'Настройте агента ElevenLabs. Оставьте пустым для использования значения по умолчанию.',
