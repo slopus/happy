@@ -226,3 +226,29 @@ export function retrieveTempText(id: string): string | null {
 export function clearPersistence() {
     mmkv.clearAll();
 }
+
+// Preset Messages Types and Functions
+export type PresetMessage = {
+    id: string;
+    text: string;
+    order: number;
+};
+
+const PRESET_MESSAGES_KEY = 'preset-messages-v1';
+
+export function loadPresetMessages(): Record<string, PresetMessage[]> {
+    const data = mmkv.getString(PRESET_MESSAGES_KEY);
+    if (data) {
+        try {
+            return JSON.parse(data);
+        } catch (e) {
+            console.error('Failed to parse preset messages', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function savePresetMessages(messages: Record<string, PresetMessage[]>) {
+    mmkv.set(PRESET_MESSAGES_KEY, JSON.stringify(messages));
+}

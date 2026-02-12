@@ -37,6 +37,7 @@ export interface PromptModalConfig extends BaseModalConfig {
     defaultValue?: string;
     cancelText?: string;
     confirmText?: string;
+    destructiveText?: string;
     inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
 }
 
@@ -71,6 +72,7 @@ export interface IModal {
         defaultValue?: string;
         cancelText?: string;
         confirmText?: string;
+        destructiveText?: string;
         inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
     }): Promise<string | null>;
     show(config: Omit<CustomModalConfig, 'id' | 'type'>): string;

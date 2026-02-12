@@ -1,9 +1,16 @@
 import * as Haptics from 'expo-haptics';
+import { Platform } from 'react-native';
 
 export function hapticsError() {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    if (Platform.OS === 'web') return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {
+        // Ignore haptics errors
+    });
 }
 
 export function hapticsLight() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.OS === 'web') return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {
+        // Ignore haptics errors
+    });
 }

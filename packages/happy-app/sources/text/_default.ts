@@ -914,6 +914,14 @@ export const en = {
             confirm: 'Delete',
             cancel: 'Cancel',
         },
+    },
+
+    presetMessages: {
+        // Preset messages feature (iOS only)
+        addTitle: 'Add Preset Message',
+        editTitle: 'Edit Preset Message',
+        messageLabel: 'Message',
+        messagePlaceholder: 'Enter a preset message...',
     }
 } as const;
 
