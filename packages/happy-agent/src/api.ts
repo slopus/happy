@@ -218,6 +218,7 @@ export async function getSessionMessages(
     config: Config,
     creds: Credentials,
     sessionId: string,
+    encryption: SessionEncryption,
 ): Promise<DecryptedMessage[]> {
     let data: { messages: RawMessage[] };
     try {
@@ -230,28 +231,6 @@ export async function getSessionMessages(
         handleApiError(err, `session ${sessionId} messages`);
     }
 
-    // We need the session to resolve encryption — fetch it from the sessions list
-    // or accept that the caller provides the encryption info.
-    // For simplicity, we'll need to look up the session first.
-    // But the plan says this function takes (config, creds, sessionId).
-    // We'll fetch the session list and find the matching one.
-    let sessions: { sessions: RawSession[] };
-    try {
-        const resp = await axios.get(`${config.serverUrl}/v1/sessions`, {
-            headers: authHeaders(creds),
-        });
-        sessions = resp.data as { sessions: RawSession[] };
-    } catch (err) {
-        handleApiError(err, `fetching sessions for decryption key`);
-    }
-
-    const rawSession = sessions.sessions.find(s => s.id === sessionId);
-    if (!rawSession) {
-        throw new Error(`Session ${sessionId} not found`);
-    }
-
-    const encryption = resolveSessionEncryption(rawSession, creds);
-
     return data.messages.map(msg => ({
         id: msg.id,
         seq: msg.seq,
@@ -260,19 +239,4 @@ export async function getSessionMessages(
         createdAt: msg.createdAt,
         updatedAt: msg.updatedAt,
     }));
-}
-
-export async function deleteSession(
-    config: Config,
-    creds: Credentials,
-    sessionId: string,
-): Promise<void> {
-    try {
-        await axios.delete(
-            `${config.serverUrl}/v1/sessions/${sessionId}`,
-            { headers: authHeaders(creds) },
-        );
-    } catch (err) {
-        handleApiError(err, `deleting session ${sessionId}`);
-    }
 }

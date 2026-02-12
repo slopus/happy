@@ -27,7 +27,6 @@ import {
     encrypt,
     decrypt,
     deriveKey,
-    authChallenge,
 } from './encryption';
 import { loadConfig } from './config';
 import type { Config } from './config';
@@ -546,10 +545,6 @@ describe('Acceptance: Full test suite runs', () => {
         const expectedHex = '1011C097D2105D27362B987A631496BBF68B836124D1D072E9D1613C6028CF75';
         expect(Buffer.from(derivedKey).toString('hex').toUpperCase()).toBe(expectedHex);
 
-        // Auth challenge
-        const secret = getRandomBytes(32);
-        const { challenge, publicKey, signature } = authChallenge(secret);
-        expect(tweetnacl.sign.detached.verify(challenge, signature, publicKey)).toBe(true);
     });
 
     it('config loads with correct defaults', () => {

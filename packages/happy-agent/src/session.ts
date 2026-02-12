@@ -104,8 +104,8 @@ export class SessionClient extends EventEmitter {
                         agentState: this.agentState,
                     });
                 }
-            } catch {
-                // Silently ignore decryption errors for robustness
+            } catch (err) {
+                this.emit('error', err);
             }
         });
 
@@ -139,12 +139,38 @@ export class SessionClient extends EventEmitter {
         return this.agentState;
     }
 
+    waitForConnect(timeoutMs = 10_000): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (this.socket.connected) {
+                resolve();
+                return;
+            }
+            const timeout = setTimeout(() => {
+                this.removeListener('connected', onConnect);
+                this.removeListener('connect_error', onError);
+                reject(new Error('Timeout waiting for socket connection'));
+            }, timeoutMs);
+            const onConnect = () => {
+                clearTimeout(timeout);
+                this.removeListener('connect_error', onError);
+                resolve();
+            };
+            const onError = (err: Error) => {
+                clearTimeout(timeout);
+                this.removeListener('connected', onConnect);
+                reject(err);
+            };
+            this.once('connected', onConnect);
+            this.once('connect_error', onError);
+        });
+    }
+
     waitForIdle(timeoutMs = 300_000): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             const checkIdle = () => {
                 const state = this.agentState as Record<string, unknown> | null;
                 if (!state) {
-                    return true;
+                    return false; // No state received yet, not known to be idle
                 }
                 const controlledByUser = state.controlledByUser === true;
                 const requests = state.requests as unknown[] | undefined;

@@ -13,22 +13,20 @@ export type Credentials = {
 };
 
 export function readCredentials(config: Config): Credentials | null {
-    let raw: string;
     try {
-        raw = readFileSync(config.credentialPath, 'utf-8');
+        const raw = readFileSync(config.credentialPath, 'utf-8');
+        const parsed = JSON.parse(raw) as { token: string; secret: string };
+        if (!parsed.token || !parsed.secret) return null;
+        const secret = decodeBase64(parsed.secret);
+        const contentKeyPair = deriveContentKeyPair(secret);
+        return {
+            token: parsed.token,
+            secret,
+            contentKeyPair,
+        };
     } catch {
         return null;
     }
-
-    const parsed = JSON.parse(raw) as { token: string; secret: string };
-    const secret = decodeBase64(parsed.secret);
-    const contentKeyPair = deriveContentKeyPair(secret);
-
-    return {
-        token: parsed.token,
-        secret,
-        contentKeyPair,
-    };
 }
 
 export function writeCredentials(config: Config, token: string, secret: Uint8Array): void {

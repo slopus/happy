@@ -161,12 +161,3 @@ export function formatJson(data: unknown): string {
     return JSON.stringify(data, null, 2);
 }
 
-// --- Output dispatcher ---
-
-export function outputResult(data: unknown, json: boolean, formatter: (data: unknown) => string): void {
-    if (json) {
-        console.log(formatJson(data));
-    } else {
-        console.log(formatter(data));
-    }
-}

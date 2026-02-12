@@ -518,12 +518,14 @@ describe('SessionClient', () => {
     });
 
     describe('waitForIdle', () => {
-        it('resolves immediately when no agentState is set', async () => {
+        it('does not resolve immediately when no agentState is set', async () => {
             const opts = makeOptions();
             const client = new SessionClient(opts);
 
-            await client.waitForIdle(1000);
-            // Should not throw or hang
+            // With null agentState, waitForIdle should not resolve (no state = not known to be idle)
+            await expect(client.waitForIdle(100)).rejects.toThrow(
+                'Timeout waiting for agent to become idle',
+            );
 
             client.close();
         });
@@ -553,7 +555,7 @@ describe('SessionClient', () => {
             client.close();
         });
 
-        it('resolves when agentState becomes null', async () => {
+        it('does not resolve when agentState becomes null', async () => {
             const opts = makeOptions();
             const client = new SessionClient(opts);
 
@@ -563,15 +565,15 @@ describe('SessionClient', () => {
             });
             mockSocketInstance!.simulateServerEvent('update', busyUpdate);
 
-            const idlePromise = client.waitForIdle(5000);
-
-            // Set agentState to null
+            // Set agentState to null -- null is not considered idle
             const nullUpdate = makeSessionUpdate(opts.encryptionKey, opts.encryptionVariant, opts.sessionId, {
                 agentState: { data: null, version: 2 },
             });
             mockSocketInstance!.simulateServerEvent('update', nullUpdate);
 
-            await idlePromise;
+            await expect(client.waitForIdle(200)).rejects.toThrow(
+                'Timeout waiting for agent to become idle',
+            );
 
             client.close();
         });

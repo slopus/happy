@@ -3,11 +3,40 @@
 import { Command } from 'commander';
 import { hostname } from 'node:os';
 import { loadConfig } from './config';
+import type { Config } from './config';
 import { requireCredentials } from './credentials';
+import type { Credentials } from './credentials';
 import { authLogin, authLogout, authStatus } from './auth';
 import { listSessions, listActiveSessions, createSession, getSessionMessages } from './api';
+import type { DecryptedSession } from './api';
 import { SessionClient } from './session';
 import { formatSessionTable, formatSessionStatus, formatMessageHistory, formatJson } from './output';
+
+// --- Helpers ---
+
+async function resolveSession(config: Config, creds: Credentials, sessionId: string): Promise<DecryptedSession> {
+    const sessions = await listSessions(config, creds);
+    const matches = sessions.filter(s => s.id.startsWith(sessionId));
+    if (matches.length === 0) {
+        throw new Error(`No session found matching "${sessionId}"`);
+    }
+    if (matches.length > 1) {
+        throw new Error(`Ambiguous session ID "${sessionId}" matches ${matches.length} sessions. Be more specific.`);
+    }
+    return matches[0];
+}
+
+function createClient(session: DecryptedSession, creds: Credentials, config: Config): SessionClient {
+    return new SessionClient({
+        sessionId: session.id,
+        encryptionKey: session.encryption.key,
+        encryptionVariant: session.encryption.variant,
+        token: creds.token,
+        serverUrl: config.serverUrl,
+    });
+}
+
+// --- CLI ---
 
 const program = new Command();
 
@@ -64,34 +93,11 @@ program
     .action(async (sessionId: string, opts: { json?: boolean }) => {
         const config = loadConfig();
         const creds = requireCredentials(config);
+        const session = await resolveSession(config, creds, sessionId);
 
-        // Fetch sessions and find matching one by ID prefix
-        const sessions = await listSessions(config, creds);
-        const matches = sessions.filter(s => s.id.startsWith(sessionId));
+        const client = createClient(session, creds, config);
 
-        if (matches.length === 0) {
-            console.error(`No session found matching "${sessionId}"`);
-            process.exitCode = 1;
-            return;
-        }
-        if (matches.length > 1) {
-            console.error(`Ambiguous session ID "${sessionId}" matches ${matches.length} sessions. Be more specific.`);
-            process.exitCode = 1;
-            return;
-        }
-
-        const session = matches[0];
-
-        // Connect via Socket.IO to get live agent state, then disconnect
-        const client = new SessionClient({
-            sessionId: session.id,
-            encryptionKey: session.encryption.key,
-            encryptionVariant: session.encryption.variant,
-            token: creds.token,
-            serverUrl: config.serverUrl,
-        });
-
-        // Wait for a state-change event or a short timeout to get live data
+        // Wait for connection, then wait for a state-change event or a short timeout
         await new Promise<void>(resolve => {
             const timeout = setTimeout(() => {
                 resolve();
@@ -99,7 +105,6 @@ program
 
             client.once('state-change', (data: { metadata: unknown; agentState: unknown }) => {
                 clearTimeout(timeout);
-                // Update session with live data
                 session.metadata = data.metadata ?? session.metadata;
                 session.agentState = data.agentState ?? session.agentState;
                 resolve();
@@ -107,7 +112,6 @@ program
 
             client.once('connect_error', () => {
                 clearTimeout(timeout);
-                // Fall back to data we already have from HTTP
                 resolve();
             });
         });
@@ -156,32 +160,10 @@ program
     .action(async (sessionId: string, message: string, opts: { wait?: boolean; json?: boolean }) => {
         const config = loadConfig();
         const creds = requireCredentials(config);
+        const session = await resolveSession(config, creds, sessionId);
+        const client = createClient(session, creds, config);
 
-        // Resolve session by ID prefix
-        const sessions = await listSessions(config, creds);
-        const matches = sessions.filter(s => s.id.startsWith(sessionId));
-
-        if (matches.length === 0) {
-            console.error(`No session found matching "${sessionId}"`);
-            process.exitCode = 1;
-            return;
-        }
-        if (matches.length > 1) {
-            console.error(`Ambiguous session ID "${sessionId}" matches ${matches.length} sessions. Be more specific.`);
-            process.exitCode = 1;
-            return;
-        }
-
-        const session = matches[0];
-
-        const client = new SessionClient({
-            sessionId: session.id,
-            encryptionKey: session.encryption.key,
-            encryptionVariant: session.encryption.variant,
-            token: creds.token,
-            serverUrl: config.serverUrl,
-        });
-
+        await client.waitForConnect();
         client.sendMessage(message);
 
         if (opts.wait) {
@@ -206,24 +188,8 @@ program
     .action(async (sessionId: string, opts: { limit?: number; json?: boolean }) => {
         const config = loadConfig();
         const creds = requireCredentials(config);
-
-        // Resolve session by ID prefix
-        const sessions = await listSessions(config, creds);
-        const matches = sessions.filter(s => s.id.startsWith(sessionId));
-
-        if (matches.length === 0) {
-            console.error(`No session found matching "${sessionId}"`);
-            process.exitCode = 1;
-            return;
-        }
-        if (matches.length > 1) {
-            console.error(`Ambiguous session ID "${sessionId}" matches ${matches.length} sessions. Be more specific.`);
-            process.exitCode = 1;
-            return;
-        }
-
-        const session = matches[0];
-        let messages = await getSessionMessages(config, creds, session.id);
+        const session = await resolveSession(config, creds, sessionId);
+        let messages = await getSessionMessages(config, creds, session.id, session.encryption);
 
         // Sort chronologically by createdAt
         messages.sort((a, b) => a.createdAt - b.createdAt);
@@ -247,33 +213,14 @@ program
     .action(async (sessionId: string) => {
         const config = loadConfig();
         const creds = requireCredentials(config);
+        const session = await resolveSession(config, creds, sessionId);
+        const client = createClient(session, creds, config);
 
-        // Resolve session by ID prefix
-        const sessions = await listSessions(config, creds);
-        const matches = sessions.filter(s => s.id.startsWith(sessionId));
-
-        if (matches.length === 0) {
-            console.error(`No session found matching "${sessionId}"`);
-            process.exitCode = 1;
-            return;
-        }
-        if (matches.length > 1) {
-            console.error(`Ambiguous session ID "${sessionId}" matches ${matches.length} sessions. Be more specific.`);
-            process.exitCode = 1;
-            return;
-        }
-
-        const session = matches[0];
-
-        const client = new SessionClient({
-            sessionId: session.id,
-            encryptionKey: session.encryption.key,
-            encryptionVariant: session.encryption.variant,
-            token: creds.token,
-            serverUrl: config.serverUrl,
-        });
-
+        await client.waitForConnect();
         client.sendStop();
+
+        // Brief delay to allow the event to flush before closing
+        await new Promise(resolve => setTimeout(resolve, 100));
         client.close();
 
         console.log(`Stopped session ${session.id}`);
@@ -287,31 +234,8 @@ program
     .action(async (sessionId: string, opts: { timeout: number }) => {
         const config = loadConfig();
         const creds = requireCredentials(config);
-
-        // Resolve session by ID prefix
-        const sessions = await listSessions(config, creds);
-        const matches = sessions.filter(s => s.id.startsWith(sessionId));
-
-        if (matches.length === 0) {
-            console.error(`No session found matching "${sessionId}"`);
-            process.exitCode = 1;
-            return;
-        }
-        if (matches.length > 1) {
-            console.error(`Ambiguous session ID "${sessionId}" matches ${matches.length} sessions. Be more specific.`);
-            process.exitCode = 1;
-            return;
-        }
-
-        const session = matches[0];
-
-        const client = new SessionClient({
-            sessionId: session.id,
-            encryptionKey: session.encryption.key,
-            encryptionVariant: session.encryption.variant,
-            token: creds.token,
-            serverUrl: config.serverUrl,
-        });
+        const session = await resolveSession(config, creds, sessionId);
+        const client = createClient(session, creds, config);
 
         try {
             await client.waitForIdle(opts.timeout * 1000);
@@ -324,4 +248,7 @@ program
         }
     });
 
-program.parse(process.argv);
+program.parseAsync(process.argv).catch(err => {
+    console.error(err.message);
+    process.exitCode = 1;
+});
