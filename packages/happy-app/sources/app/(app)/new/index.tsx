@@ -35,6 +35,9 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
 import { SearchableListSelector, SelectorConfig } from '@/components/SearchableListSelector';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
+import { useImagePicker } from '@/hooks/useImagePicker';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import type { ActionMenuItem } from '@/components/ActionMenu';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -416,6 +419,57 @@ function NewSessionWizard() {
     });
     const [isCreating, setIsCreating] = React.useState(false);
     const [showAdvanced, setShowAdvanced] = React.useState(true);
+
+    // Image picker
+    const {
+        images,
+        pickFromGallery,
+        pickFromCamera,
+        addImageFromUri,
+        removeImage,
+        clearImages,
+        canAddMore,
+    } = useImagePicker({ maxImages: 4 });
+
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const [imagePickerSheetVisible, setImagePickerSheetVisible] = React.useState(false);
+
+    const supportsImages = agentType === 'claude' || agentType === 'gemini' || agentType === 'codex';
+
+    const handleImageButtonPress = React.useCallback(() => {
+        if (Platform.OS === 'web') {
+            fileInputRef.current?.click();
+        } else {
+            setImagePickerSheetVisible(true);
+        }
+    }, []);
+
+    const imagePickerMenuItems: ActionMenuItem[] = React.useMemo(() => [
+        { label: t('session.takePhoto'), onPress: pickFromCamera },
+        { label: t('session.chooseFromLibrary'), onPress: pickFromGallery },
+    ], [pickFromCamera, pickFromGallery]);
+
+    const handleFileInputChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files;
+        if (!files || files.length === 0) return;
+        Array.from(files).forEach(file => {
+            if (file.type.startsWith('image/')) {
+                const url = URL.createObjectURL(file);
+                addImageFromUri(url, file.type);
+            }
+        });
+        event.target.value = '';
+    }, [addImageFromUri]);
+
+    const handleImageDrop = React.useCallback(async (files: File[]) => {
+        if (!canAddMore || !supportsImages) return;
+        for (const file of files) {
+            if (file.type.startsWith('image/') && canAddMore) {
+                const url = URL.createObjectURL(file);
+                await addImageFromUri(url, file.type);
+            }
+        }
+    }, [canAddMore, supportsImages, addImageFromUri]);
 
     // Handle machineId route param from picker screens (main's navigation pattern)
     React.useEffect(() => {
@@ -1063,8 +1117,9 @@ function NewSessionWizard() {
                 }
 
                 // Send initial message if provided
-                if (sessionPrompt.trim()) {
-                    await sync.sendMessage(result.sessionId, sessionPrompt);
+                if (sessionPrompt.trim() || images.length > 0) {
+                    await sync.sendMessage(result.sessionId, sessionPrompt, undefined, images.length > 0 ? images : undefined);
+                    clearImages();
                 }
 
                 router.replace(`/session/${result.sessionId}`, {
@@ -1088,7 +1143,7 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router, images, clearImages]);
 
     const screenWidth = useWindowDimensions().width;
 
@@ -1183,10 +1238,42 @@ function NewSessionWizard() {
                                 onMachineClick={handleMachineClick}
                                 currentPath={selectedPath}
                                 onPathClick={handlePathClick}
+                                images={images}
+                                onImagesChange={(newImages) => {
+                                    const currentUris = new Set(newImages.map(img => img.uri));
+                                    images.forEach((img, index) => {
+                                        if (!currentUris.has(img.uri)) {
+                                            removeImage(index);
+                                        }
+                                    });
+                                }}
+                                onImageButtonPress={handleImageButtonPress}
+                                supportsImages={supportsImages}
+                                onImageDrop={handleImageDrop}
                             />
                         </View>
                     </View>
                 </View>
+
+                {/* Hidden file input for web image upload */}
+                {Platform.OS === 'web' && (
+                    <input
+                        ref={fileInputRef as any}
+                        type="file"
+                        accept="image/jpeg,image/png"
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={handleFileInputChange as any}
+                    />
+                )}
+
+                {/* Image Picker Sheet (native) */}
+                <ActionMenuModal
+                    visible={imagePickerSheetVisible}
+                    items={imagePickerMenuItems}
+                    onClose={() => setImagePickerSheetVisible(false)}
+                    deferItemPress
+                />
             </KeyboardAvoidingView>
         );
     }
@@ -1913,9 +2000,41 @@ function NewSessionWizard() {
                             onPathClick={handleAgentInputPathClick}
                             profileId={selectedProfileId}
                             onProfileClick={handleAgentInputProfileClick}
+                            images={images}
+                            onImagesChange={(newImages) => {
+                                const currentUris = new Set(newImages.map(img => img.uri));
+                                images.forEach((img, index) => {
+                                    if (!currentUris.has(img.uri)) {
+                                        removeImage(index);
+                                    }
+                                });
+                            }}
+                            onImageButtonPress={handleImageButtonPress}
+                            supportsImages={supportsImages}
+                            onImageDrop={handleImageDrop}
                         />
                     </View>
                 </View>
+
+                {/* Hidden file input for web image upload */}
+                {Platform.OS === 'web' && (
+                    <input
+                        ref={fileInputRef as any}
+                        type="file"
+                        accept="image/jpeg,image/png"
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={handleFileInputChange as any}
+                    />
+                )}
+
+                {/* Image Picker Sheet (native) */}
+                <ActionMenuModal
+                    visible={imagePickerSheetVisible}
+                    items={imagePickerMenuItems}
+                    onClose={() => setImagePickerSheetVisible(false)}
+                    deferItemPress
+                />
             </View>
         </KeyboardAvoidingView>
     );
