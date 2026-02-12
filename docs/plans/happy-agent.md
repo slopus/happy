@@ -157,11 +157,11 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 - [x] Run tests — must pass before task 8
 
 ### Task 8: CLI commands — `create` and `send`
-- [ ] `happy-agent create --tag <tag> [--path <path>]` — creates new session with given tag and metadata (path defaults to cwd, host to hostname). Prints session ID. With `--json` outputs full session JSON.
-- [ ] `happy-agent send <session-id> <message>` — resolves session key, connects Socket.IO, sends user message (encrypted with AES-256-GCM), optionally waits for idle with `--wait`. Disconnects after. Prints confirmation. With `--json` outputs message details.
-- [ ] Write tests for create command (argument parsing, metadata construction)
-- [ ] Write tests for send command (message encryption, --wait flag)
-- [ ] Run tests — must pass before task 9
+- [x] `happy-agent create --tag <tag> [--path <path>]` — creates new session with given tag and metadata (path defaults to cwd, host to hostname). Prints session ID. With `--json` outputs full session JSON.
+- [x] `happy-agent send <session-id> <message>` — resolves session key, connects Socket.IO, sends user message (encrypted with AES-256-GCM), optionally waits for idle with `--wait`. Disconnects after. Prints confirmation. With `--json` outputs message details.
+- [x] Write tests for create command (argument parsing, metadata construction)
+- [x] Write tests for send command (message encryption, --wait flag)
+- [x] Run tests — must pass before task 9
 
 ### Task 9: CLI commands — `history`, `stop`, and `wait`
 - [ ] `happy-agent history <session-id>` — fetches messages via HTTP, resolves session encryption key (dataKey or legacy), decrypts each message, displays in chronological order with role/timestamp. With `--json` outputs raw JSON. With `--limit <n>` limits output.

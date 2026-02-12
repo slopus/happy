@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { hostname } from 'node:os';
 import { loadConfig } from './config';
 import { requireCredentials } from './credentials';
 import { authLogin, authLogout, authStatus } from './auth';
-import { listSessions, listActiveSessions } from './api';
+import { listSessions, listActiveSessions, createSession } from './api';
 import { SessionClient } from './session';
 import { formatSessionTable, formatSessionStatus, formatJson } from './output';
 
@@ -126,19 +127,74 @@ program
     .requiredOption('--tag <tag>', 'Session tag')
     .option('--path <path>', 'Working directory path')
     .option('--json', 'Output as JSON')
-    .action(async () => {
-        console.log('Create not yet implemented');
+    .action(async (opts: { tag: string; path?: string; json?: boolean }) => {
+        const config = loadConfig();
+        const creds = requireCredentials(config);
+        const metadata = {
+            tag: opts.tag,
+            path: opts.path ?? process.cwd(),
+            host: hostname(),
+        };
+        const session = await createSession(config, creds, {
+            tag: opts.tag,
+            metadata,
+        });
+        if (opts.json) {
+            console.log(formatJson(session));
+        } else {
+            console.log(`Session created: ${session.id}`);
+        }
     });
 
 program
     .command('send')
     .description('Send a message to a session')
-    .argument('<session-id>', 'Session ID')
+    .argument('<session-id>', 'Session ID or prefix')
     .argument('<message>', 'Message text')
     .option('--wait', 'Wait for agent to become idle')
     .option('--json', 'Output as JSON')
-    .action(async () => {
-        console.log('Send not yet implemented');
+    .action(async (sessionId: string, message: string, opts: { wait?: boolean; json?: boolean }) => {
+        const config = loadConfig();
+        const creds = requireCredentials(config);
+
+        // Resolve session by ID prefix
+        const sessions = await listSessions(config, creds);
+        const matches = sessions.filter(s => s.id.startsWith(sessionId));
+
+        if (matches.length === 0) {
+            console.error(`No session found matching "${sessionId}"`);
+            process.exitCode = 1;
+            return;
+        }
+        if (matches.length > 1) {
+            console.error(`Ambiguous session ID "${sessionId}" matches ${matches.length} sessions. Be more specific.`);
+            process.exitCode = 1;
+            return;
+        }
+
+        const session = matches[0];
+
+        const client = new SessionClient({
+            sessionId: session.id,
+            encryptionKey: session.encryption.key,
+            encryptionVariant: session.encryption.variant,
+            token: creds.token,
+            serverUrl: config.serverUrl,
+        });
+
+        client.sendMessage(message);
+
+        if (opts.wait) {
+            await client.waitForIdle();
+        }
+
+        client.close();
+
+        if (opts.json) {
+            console.log(formatJson({ sessionId: session.id, message, sent: true }));
+        } else {
+            console.log(`Message sent to session ${session.id}`);
+        }
     });
 
 program

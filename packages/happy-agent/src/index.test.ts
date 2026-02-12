@@ -77,4 +77,43 @@ describe('happy-agent CLI', () => {
             expect(stderr).toContain('happy-agent auth login');
         });
     });
+
+    describe('create command', () => {
+        it('should show create help with --tag, --path, and --json options', () => {
+            const { stdout } = runCli('create', '--help');
+            expect(stdout).toContain('Create a new session');
+            expect(stdout).toContain('--tag');
+            expect(stdout).toContain('--path');
+            expect(stdout).toContain('--json');
+        });
+
+        it('should require --tag option', () => {
+            const { stderr, exitCode } = runCli('create');
+            expect(exitCode).not.toBe(0);
+            expect(stderr).toContain('--tag');
+        });
+
+        it('should fail with auth error when not authenticated', () => {
+            const { stderr, exitCode } = runCli('create', '--tag', 'my-tag');
+            expect(exitCode).not.toBe(0);
+            expect(stderr).toContain('happy-agent auth login');
+        });
+    });
+
+    describe('send command', () => {
+        it('should show send help with session-id, message arguments and --wait, --json options', () => {
+            const { stdout } = runCli('send', '--help');
+            expect(stdout).toContain('Send a message to a session');
+            expect(stdout).toContain('session-id');
+            expect(stdout).toContain('message');
+            expect(stdout).toContain('--wait');
+            expect(stdout).toContain('--json');
+        });
+
+        it('should fail with auth error when not authenticated', () => {
+            const { stderr, exitCode } = runCli('send', 'fake-id', 'hello');
+            expect(exitCode).not.toBe(0);
+            expect(stderr).toContain('happy-agent auth login');
+        });
+    });
 });
