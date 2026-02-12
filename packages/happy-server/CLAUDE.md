@@ -167,7 +167,7 @@ The project has pending Prisma migrations that need to be applied:
 The project includes a multi-stage Dockerfile:
 1. Builder stage: Installs dependencies and builds the application
 2. Runner stage: Minimal runtime with only necessary files
-3. Exposes port 3000
+3. Exposes port 3005
 4. Requires FFmpeg and Python3 in the runtime
 
 ## Important Reminders
