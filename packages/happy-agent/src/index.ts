@@ -15,6 +15,9 @@ import { formatSessionTable, formatSessionStatus, formatMessageHistory, formatJs
 // --- Helpers ---
 
 async function resolveSession(config: Config, creds: Credentials, sessionId: string): Promise<DecryptedSession> {
+    if (!sessionId || sessionId.trim().length === 0) {
+        throw new Error('Session ID is required');
+    }
     const sessions = await listSessions(config, creds);
     const matches = sessions.filter(s => s.id.startsWith(sessionId));
     if (matches.length === 0) {
@@ -100,7 +103,11 @@ program
         try {
             // Wait for connection, then wait for a state-change event or a short timeout
             await new Promise<void>(resolve => {
+                let resolved = false;
                 const done = () => {
+                    if (resolved) return;
+                    resolved = true;
+                    clearTimeout(timeout);
                     client.removeAllListeners('state-change');
                     client.removeAllListeners('connect_error');
                     resolve();
@@ -109,14 +116,12 @@ program
                 const timeout = setTimeout(done, 3000);
 
                 client.once('state-change', (data: { metadata: unknown; agentState: unknown }) => {
-                    clearTimeout(timeout);
                     session.metadata = data.metadata ?? session.metadata;
                     session.agentState = data.agentState ?? session.agentState;
                     done();
                 });
 
                 client.once('connect_error', () => {
-                    clearTimeout(timeout);
                     done();
                 });
             });
@@ -167,8 +172,8 @@ program
         const config = loadConfig();
         const creds = requireCredentials(config);
         const session = await resolveSession(config, creds, sessionId);
-        const client = createClient(session, creds, config);
 
+        const client = createClient(session, creds, config);
         try {
             await client.waitForConnect();
             client.sendMessage(message);
@@ -176,8 +181,8 @@ program
             if (opts.wait) {
                 await client.waitForIdle();
             } else {
-                // Brief delay to allow the event to flush before closing
-                await new Promise(resolve => setTimeout(resolve, 100));
+                // Delay to allow the Socket.IO event to flush before closing
+                await new Promise(resolve => setTimeout(resolve, 500));
             }
         } finally {
             client.close();
@@ -194,7 +199,11 @@ program
     .command('history')
     .description('Read message history')
     .argument('<session-id>', 'Session ID or prefix')
-    .option('--limit <n>', 'Limit number of messages', (v: string) => parseInt(v, 10))
+    .option('--limit <n>', 'Limit number of messages', (v: string) => {
+        const n = parseInt(v, 10);
+        if (isNaN(n) || n <= 0) throw new Error('--limit must be a positive integer');
+        return n;
+    })
     .option('--json', 'Output as JSON')
     .action(async (sessionId: string, opts: { limit?: number; json?: boolean }) => {
         const config = loadConfig();
@@ -225,14 +234,14 @@ program
         const config = loadConfig();
         const creds = requireCredentials(config);
         const session = await resolveSession(config, creds, sessionId);
-        const client = createClient(session, creds, config);
 
+        const client = createClient(session, creds, config);
         try {
             await client.waitForConnect();
             client.sendStop();
 
-            // Brief delay to allow the event to flush before closing
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Delay to allow the Socket.IO event to flush before closing
+            await new Promise(resolve => setTimeout(resolve, 500));
         } finally {
             client.close();
         }
@@ -253,8 +262,8 @@ program
         const config = loadConfig();
         const creds = requireCredentials(config);
         const session = await resolveSession(config, creds, sessionId);
-        const client = createClient(session, creds, config);
 
+        const client = createClient(session, creds, config);
         try {
             await client.waitForConnect();
             await client.waitForIdle(opts.timeout * 1000);

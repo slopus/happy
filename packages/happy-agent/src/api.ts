@@ -220,7 +220,7 @@ export async function deleteSession(
     sessionId: string,
 ): Promise<void> {
     try {
-        await axios.delete(`${config.serverUrl}/v1/sessions/${sessionId}`, {
+        await axios.delete(`${config.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}`, {
             headers: authHeaders(creds),
         });
     } catch (err) {
@@ -237,7 +237,7 @@ export async function getSessionMessages(
     let data: { messages: RawMessage[] };
     try {
         const resp = await axios.get(
-            `${config.serverUrl}/v1/sessions/${sessionId}/messages`,
+            `${config.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
             { headers: authHeaders(creds) },
         );
         data = resp.data as { messages: RawMessage[] };
