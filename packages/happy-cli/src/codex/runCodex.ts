@@ -15,11 +15,10 @@ import { initialMachineMetadata } from '@/daemon/run';
 import os from 'node:os';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
-import { projectPath } from '@/projectPath';
+import { createMcpContext } from '@/agent/mcp';
 import { join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import fs from 'node:fs';
-import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 // trimIdent not currently used
@@ -297,15 +296,9 @@ export async function runCodex(opts: {
         }
     }
 
-    // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
-    const happyServer = await startHappyServer(session);
-    const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
-    const mcpServers: Record<string, { command: string; args: string[] }> = {
-        happy: {
-            command: bridgeCommand,
-            args: ['--url', happyServer.url]
-        }
-    };
+    // Start MCP servers with per-agent adapter (STDIO bridge for Codex)
+    const mcp = await createMcpContext(session);
+    const mcpServers = mcp.configForStdio();
 
     const handleKillSession = async () => {
         logger.debug('[Codex] Kill session requested - terminating process');
@@ -333,7 +326,7 @@ export async function runCodex(opts: {
             }
 
             stopCaffeinate();
-            happyServer.stop();
+            mcp.stop();
 
             logger.debug('[Codex] Session termination complete, exiting');
             process.exit(0);
@@ -868,8 +861,8 @@ export async function runCodex(opts: {
         logger.debug('[codex]: backend.dispose done');
 
         // Stop Happy MCP server
-        logger.debug('[codex]: happyServer.stop');
-        happyServer.stop();
+        logger.debug('[codex]: mcp.stop');
+        mcp.stop();
 
         // Clean up ink UI
         if (process.stdin.isTTY) {

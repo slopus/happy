@@ -10,7 +10,6 @@ import { render } from 'ink';
 import React from 'react';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
-import { join, resolve } from 'node:path';
 
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
@@ -21,8 +20,7 @@ import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
-import { projectPath } from '@/projectPath';
-import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { createMcpContext } from '@/agent/mcp';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
@@ -402,7 +400,7 @@ export async function runGemini(opts: {
       }
 
       stopCaffeinate();
-      happyServer.stop();
+      mcp.stop();
 
       if (geminiBackend) {
         await geminiBackend.dispose();
@@ -508,14 +506,8 @@ export async function runGemini(opts: {
   // Start Happy MCP server and create Gemini backend
   //
 
-  const happyServer = await startHappyServer(session);
-  const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
-  const mcpServers = {
-    happy: {
-      command: bridgeCommand,
-      args: ['--url', happyServer.url]
-    }
-  };
+  const mcp = await createMcpContext(session);
+  const mcpServers = mcp.configForStdio();
 
   // Create permission handler for tool approval (variable declared earlier for onSessionSwap)
   permissionHandler = new GeminiPermissionHandler(session);
@@ -1356,7 +1348,7 @@ export async function runGemini(opts: {
       await geminiBackend.dispose();
     }
 
-    happyServer.stop();
+    mcp.stop();
 
     if (process.stdin.isTTY) {
       try { process.stdin.setRawMode(false); } catch { /* ignore */ }
