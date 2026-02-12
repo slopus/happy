@@ -50,6 +50,8 @@ import {
   formatOptionsXml,
 } from '@/gemini/utils/optionsParser';
 import { ConversationHistory } from '@/gemini/utils/conversationHistory';
+import { GeminiSessionWriter } from '@/gemini/utils/sessionWriter';
+import { readGeminiSessionLog, buildResumeContextFromSessionLog } from '@/gemini/utils/sessionReader';
 
 
 /**
@@ -129,6 +131,10 @@ export async function runGemini(opts: {
     startedBy: opts.startedBy
   });
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+
+  // Initialize session persistence (JSONL on disk for resume/fork)
+  const sessionWriter = new GeminiSessionWriter(response?.id || sessionTag);
+  await sessionWriter.init({ model: getInitialGeminiModel(), cwd: process.cwd() });
 
   // Handle server unreachable case - create offline stub with hot reconnection
   let session: ApiSessionClient;
@@ -303,6 +309,7 @@ export async function runGemini(opts: {
     
     // Record user message in conversation history for context preservation
     conversationHistory.addUserMessage(originalUserMessage);
+    sessionWriter.writeUser(originalUserMessage);
   });
 
   let thinking = false;
@@ -705,6 +712,7 @@ export async function runGemini(opts: {
           input: msg.args,
           id: randomUUID(),
         });
+        sessionWriter.writeToolCall(msg.toolName, msg.callId, msg.args);
         break;
 
       case 'tool-result':
@@ -753,6 +761,7 @@ export async function runGemini(opts: {
           output: msg.result,
           id: randomUUID(),
         });
+        sessionWriter.writeToolResult(msg.callId, msg.result, !!isError);
         break;
 
       case 'fs-edit':
@@ -769,6 +778,7 @@ export async function runGemini(opts: {
           filePath: msg.path || 'unknown',
           id: randomUUID(),
         });
+        sessionWriter.writeFileEdit(msg.path || 'unknown', msg.description, msg.diff);
         break;
 
       default:
@@ -918,6 +928,22 @@ export async function runGemini(opts: {
 
   // Note: Backend will be created dynamically in the main loop based on model from first message
   // This allows us to support model changes by recreating the backend
+
+  // Resume support: load session history from disk if env var is set
+  const geminiResumeSessionId = process.env.HAPPY_GEMINI_RESUME_SESSION_ID?.trim();
+  let resumeContextPrefix = '';
+  if (geminiResumeSessionId) {
+    try {
+      const resumeLines = await readGeminiSessionLog(geminiResumeSessionId);
+      if (resumeLines.length > 0) {
+        resumeContextPrefix = buildResumeContextFromSessionLog(resumeLines);
+        logger.debug(`[gemini] Loaded resume context from session ${geminiResumeSessionId} (${resumeContextPrefix.length} chars)`);
+        messageBuffer.addMessage('Resuming from previous session...', 'status');
+      }
+    } catch (error) {
+      logger.debug(`[gemini] Failed to load resume session:`, error);
+    }
+  }
 
   let first = true;
 
@@ -1097,7 +1123,14 @@ export async function runGemini(opts: {
         // The prompt already includes system prompt and change_title instruction (added in onUserMessage handler)
         // This is done in the message queue, so message.message already contains everything
         let promptToSend = message.message;
-        
+
+        // Inject resume context into the first prompt of a resumed session
+        if (first && resumeContextPrefix) {
+          promptToSend = resumeContextPrefix + promptToSend;
+          resumeContextPrefix = '';
+          logger.debug(`[gemini] Injected resume context into first prompt`);
+        }
+
         // Inject conversation history context if model was just changed
         if (injectHistoryContext && conversationHistory.hasHistory()) {
           const historyContext = conversationHistory.getContextForNewSession();
@@ -1287,7 +1320,8 @@ export async function runGemini(opts: {
           
           // Record assistant response in conversation history for context preservation
           conversationHistory.addAssistantMessage(messageText);
-          
+          sessionWriter.writeAssistant(messageText, displayedModel);
+
           // Mobile app parses options from text via parseMarkdown
           let finalMessageText = messageText;
           if (options.length > 0) {
