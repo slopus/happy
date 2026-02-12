@@ -25,7 +25,9 @@ export function useDemoMessages(messages: Message[]) {
                     messages: sortedMessages,
                     messagesMap: messagesMap,
                     reducerState: createReducer(),
-                    isLoaded: true
+                    isLoaded: true,
+                    oldestSeq: null,
+                    hasMore: false,
                 }
             }
         }));

@@ -1909,6 +1909,47 @@ class Sync {
         }
     }
 
+    private decryptAndNormalizeMessages = async (
+        sessionId: string,
+        apiMessages: ApiMessage[],
+        encryption: { decryptMessages: (messages: ApiMessage[]) => Promise<any[]> },
+    ): Promise<NormalizedMessage[]> => {
+        // Collect existing messages for dedup
+        let existingMessages = this.sessionReceivedMessages.get(sessionId);
+        if (!existingMessages) {
+            existingMessages = new Set<string>();
+            this.sessionReceivedMessages.set(sessionId, existingMessages);
+        }
+
+        // Filter out existing messages and prepare for batch decryption
+        const messagesToDecrypt: ApiMessage[] = [];
+        for (const msg of [...apiMessages].reverse()) {
+            if (!existingMessages.has(msg.id)) {
+                messagesToDecrypt.push(msg);
+            }
+        }
+
+        // Batch decrypt all messages at once
+        const start = Date.now();
+        const decryptedMessages = await encryption.decryptMessages(messagesToDecrypt);
+
+        // Process decrypted messages
+        const normalizedMessages: NormalizedMessage[] = [];
+        for (let i = 0; i < decryptedMessages.length; i++) {
+            const decrypted = decryptedMessages[i];
+            if (decrypted) {
+                existingMessages.add(decrypted.id);
+                const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                if (normalized) {
+                    normalizedMessages.push(normalized);
+                }
+            }
+        }
+        console.log('Batch decrypted and normalized messages in', Date.now() - start, 'ms');
+
+        return normalizedMessages;
+    }
+
     private fetchMessages = async (sessionId: string) => {
         log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
 
@@ -1923,49 +1964,59 @@ class Sync {
         // Request
         const response = await apiSocket.request(`/v1/sessions/${sessionId}/messages`);
         const data = await response.json();
+        const apiMessages = data.messages as ApiMessage[];
+        const hasMore: boolean = data.hasMore ?? false;
 
-        // Collect existing messages
-        let eixstingMessages = this.sessionReceivedMessages.get(sessionId);
-        if (!eixstingMessages) {
-            eixstingMessages = new Set<string>();
-            this.sessionReceivedMessages.set(sessionId, eixstingMessages);
-        }
-
-        // Decrypt and normalize messages
-        let start = Date.now();
-        let normalizedMessages: NormalizedMessage[] = [];
-
-        // Filter out existing messages and prepare for batch decryption
-        const messagesToDecrypt: ApiMessage[] = [];
-        for (const msg of [...data.messages as ApiMessage[]].reverse()) {
-            if (!eixstingMessages.has(msg.id)) {
-                messagesToDecrypt.push(msg);
-            }
-        }
-
-        // Batch decrypt all messages at once
-        const decryptedMessages = await encryption.decryptMessages(messagesToDecrypt);
-
-        // Process decrypted messages
-        for (let i = 0; i < decryptedMessages.length; i++) {
-            const decrypted = decryptedMessages[i];
-            if (decrypted) {
-                eixstingMessages.add(decrypted.id);
-                // Normalize the decrypted message
-                let normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
-                if (normalized) {
-                    normalizedMessages.push(normalized);
-                }
-            }
-        }
-        console.log('Batch decrypted and normalized messages in', Date.now() - start, 'ms');
-        console.log('normalizedMessages', JSON.stringify(normalizedMessages));
-        // console.log('messages', JSON.stringify(normalizedMessages));
+        // Decrypt and normalize
+        const normalizedMessages = await this.decryptAndNormalizeMessages(sessionId, apiMessages, encryption);
 
         // Apply to storage
         this.applyMessages(sessionId, normalizedMessages);
         storage.getState().applyMessagesLoaded(sessionId);
+
+        // Track pagination cursor: find the minimum seq from the API response
+        const minSeq = apiMessages.length > 0
+            ? Math.min(...apiMessages.map(m => m.seq))
+            : null;
+        storage.getState().setSessionPagination(sessionId, minSeq, hasMore);
+
         log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${normalizedMessages.length} messages`);
+    }
+
+    fetchOlderMessages = async (sessionId: string) => {
+        const sessionState = storage.getState().sessionMessages[sessionId];
+        if (!sessionState || !sessionState.hasMore || sessionState.oldestSeq === null) {
+            return;
+        }
+
+        const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            return;
+        }
+
+        try {
+            const before = sessionState.oldestSeq;
+            const response = await apiSocket.request(`/v1/sessions/${sessionId}/messages?before=${before}&limit=150`);
+            const data = await response.json();
+            const apiMessages = data.messages as ApiMessage[];
+            const hasMore: boolean = data.hasMore ?? false;
+
+            // Decrypt and normalize
+            const normalizedMessages = await this.decryptAndNormalizeMessages(sessionId, apiMessages, encryption);
+
+            // Apply to storage (merge logic handles dedup and sorting)
+            this.applyMessages(sessionId, normalizedMessages);
+
+            // Update pagination cursor
+            const minSeq = apiMessages.length > 0
+                ? Math.min(...apiMessages.map(m => m.seq))
+                : sessionState.oldestSeq;
+            storage.getState().setSessionPagination(sessionId, minSeq, hasMore);
+
+            log.log(`💬 fetchOlderMessages completed for session ${sessionId} - loaded ${normalizedMessages.length} older messages, hasMore=${hasMore}`);
+        } catch (error) {
+            console.error(`Failed to fetch older messages for session ${sessionId}:`, error);
+        }
     }
 
     private registerPushToken = async () => {

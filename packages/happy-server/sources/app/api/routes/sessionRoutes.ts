@@ -309,12 +309,17 @@ export function sessionRoutes(app: Fastify) {
         schema: {
             params: z.object({
                 sessionId: z.string()
+            }),
+            querystring: z.object({
+                before: z.coerce.number().int().optional(),
+                limit: z.coerce.number().int().min(1).max(200).default(150),
             })
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
+        const { before, limit } = request.query;
 
         // Verify session belongs to user
         const session = await db.session.findFirst({
@@ -329,9 +334,12 @@ export function sessionRoutes(app: Fastify) {
         }
 
         const messages = await db.sessionMessage.findMany({
-            where: { sessionId },
-            orderBy: { createdAt: 'desc' },
-            take: 150,
+            where: {
+                sessionId,
+                ...(before !== undefined ? { seq: { lt: before } } : {}),
+            },
+            orderBy: { seq: 'desc' },
+            take: limit + 1,
             select: {
                 id: true,
                 seq: true,
@@ -342,15 +350,19 @@ export function sessionRoutes(app: Fastify) {
             }
         });
 
+        const hasMore = messages.length > limit;
+        const result = messages.slice(0, limit);
+
         return reply.send({
-            messages: messages.map((v) => ({
+            messages: result.map((v) => ({
                 id: v.id,
                 seq: v.seq,
                 content: v.content,
                 localId: v.localId,
                 createdAt: v.createdAt.getTime(),
                 updatedAt: v.updatedAt.getTime()
-            }))
+            })),
+            hasMore
         });
     });
 

@@ -508,6 +508,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         }
     }, [canAddMore, supportsImages, addImageFromUri]);
 
+    // Handle loading more older messages when scrolling to top
+    const handleLoadMore = React.useCallback(() => {
+        return sync.fetchOlderMessages(sessionId);
+    }, [sessionId]);
+
     // Trigger session visibility and initialize git status sync
     React.useLayoutEffect(() => {
 
@@ -535,7 +540,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         <>
             <Deferred>
                 {messages.length > 0 && (
-                    <ChatList session={session} onFillInput={handleFillInput} />
+                    <ChatList session={session} onFillInput={handleFillInput} onLoadMore={handleLoadMore} />
                 )}
             </Deferred>
         </>

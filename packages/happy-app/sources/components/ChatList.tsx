@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useSession, useSessionMessages } from "@/sync/storage";
-import { FlatList, Platform, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Platform, Pressable, Text, View } from 'react-native';
 import { useCallback, useRef, useState } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,14 +12,16 @@ import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
 import { layout } from './layout';
 
-export const ChatList = React.memo((props: { session: Session; onFillInput?: (text: string, allOptions?: string[]) => void }) => {
-    const { messages } = useSessionMessages(props.session.id);
+export const ChatList = React.memo((props: { session: Session; onFillInput?: (text: string, allOptions?: string[]) => void; onLoadMore?: () => void }) => {
+    const { messages, hasMore } = useSessionMessages(props.session.id);
     return (
         <ChatListInternal
             metadata={props.session.metadata}
             sessionId={props.session.id}
             messages={messages}
+            hasMore={hasMore}
             onFillInput={props.onFillInput}
+            onLoadMore={props.onLoadMore}
         />
     )
 });
@@ -44,7 +46,9 @@ const ChatListInternal = React.memo((props: {
     metadata: Metadata | null,
     sessionId: string,
     messages: Message[],
+    hasMore: boolean,
     onFillInput?: (text: string, allOptions?: string[]) => void,
+    onLoadMore?: () => void,
 }) => {
     const { theme } = useUnistyles();
     const flatListRef = useRef<FlatList>(null);
@@ -54,6 +58,9 @@ const ChatListInternal = React.memo((props: {
 
     // Track the message count when button became visible (for unread count)
     const lastSeenLengthRef = useRef<number>(props.messages.length);
+
+    // Prevent duplicate load-more calls
+    const isLoadingMoreRef = useRef(false);
 
     // Calculate unread count
     const unreadCount = showScrollButton
@@ -90,6 +97,29 @@ const ChatListInternal = React.memo((props: {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
     }, []);
 
+    // Handle load more when scrolling to top (oldest messages)
+    const handleEndReached = useCallback(() => {
+        if (!props.hasMore || !props.onLoadMore || isLoadingMoreRef.current) {
+            return;
+        }
+        isLoadingMoreRef.current = true;
+        Promise.resolve(props.onLoadMore()).finally(() => {
+            isLoadingMoreRef.current = false;
+        });
+    }, [props.hasMore, props.onLoadMore]);
+
+    // Loading indicator shown at the top (oldest end) of the list
+    const listFooter = React.useMemo(() => (
+        <View>
+            <ListHeader />
+            {props.hasMore && (
+                <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                </View>
+            )}
+        </View>
+    ), [props.hasMore, theme.colors.textSecondary]);
+
     return (
         <View style={{ flex: 1 }}>
             <FlatList
@@ -105,9 +135,11 @@ const ChatListInternal = React.memo((props: {
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
                 renderItem={renderItem}
                 ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
-                ListFooterComponent={<ListHeader />}
+                ListFooterComponent={listFooter}
                 onScroll={handleScroll}
                 scrollEventThrottle={16}
+                onEndReached={handleEndReached}
+                onEndReachedThreshold={0.5}
             />
 
             {/* Scroll to bottom button - positioned relative to content area */}
