@@ -31,6 +31,9 @@ export class SessionClient extends EventEmitter {
         this.encryptionKey = opts.encryptionKey;
         this.encryptionVariant = opts.encryptionVariant;
 
+        // Prevent unhandled 'error' event from crashing the process
+        this.on('error', () => {});
+
         this.socket = io(opts.serverUrl, {
             auth: {
                 token: opts.token,

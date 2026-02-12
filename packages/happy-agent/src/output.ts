@@ -158,6 +158,14 @@ export function formatMessageHistory(messages: DecryptedMessage[]): string {
 // --- JSON output ---
 
 export function formatJson(data: unknown): string {
-    return JSON.stringify(data, null, 2);
+    return JSON.stringify(data, (key, value) => {
+        // Strip encryption keys from output
+        if (key === 'encryption' || key === 'dataEncryptionKey') return undefined;
+        // Serialize Uint8Array as base64
+        if (value instanceof Uint8Array) {
+            return Buffer.from(value).toString('base64');
+        }
+        return value;
+    }, 2);
 }
 

@@ -97,26 +97,32 @@ program
 
         const client = createClient(session, creds, config);
 
-        // Wait for connection, then wait for a state-change event or a short timeout
-        await new Promise<void>(resolve => {
-            const timeout = setTimeout(() => {
-                resolve();
-            }, 3000);
+        try {
+            // Wait for connection, then wait for a state-change event or a short timeout
+            await new Promise<void>(resolve => {
+                const done = () => {
+                    client.removeAllListeners('state-change');
+                    client.removeAllListeners('connect_error');
+                    resolve();
+                };
 
-            client.once('state-change', (data: { metadata: unknown; agentState: unknown }) => {
-                clearTimeout(timeout);
-                session.metadata = data.metadata ?? session.metadata;
-                session.agentState = data.agentState ?? session.agentState;
-                resolve();
+                const timeout = setTimeout(done, 3000);
+
+                client.once('state-change', (data: { metadata: unknown; agentState: unknown }) => {
+                    clearTimeout(timeout);
+                    session.metadata = data.metadata ?? session.metadata;
+                    session.agentState = data.agentState ?? session.agentState;
+                    done();
+                });
+
+                client.once('connect_error', () => {
+                    clearTimeout(timeout);
+                    done();
+                });
             });
-
-            client.once('connect_error', () => {
-                clearTimeout(timeout);
-                resolve();
-            });
-        });
-
-        client.close();
+        } finally {
+            client.close();
+        }
 
         if (opts.json) {
             console.log(formatJson(session));
@@ -163,14 +169,19 @@ program
         const session = await resolveSession(config, creds, sessionId);
         const client = createClient(session, creds, config);
 
-        await client.waitForConnect();
-        client.sendMessage(message);
+        try {
+            await client.waitForConnect();
+            client.sendMessage(message);
 
-        if (opts.wait) {
-            await client.waitForIdle();
+            if (opts.wait) {
+                await client.waitForIdle();
+            } else {
+                // Brief delay to allow the event to flush before closing
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        } finally {
+            client.close();
         }
-
-        client.close();
 
         if (opts.json) {
             console.log(formatJson({ sessionId: session.id, message, sent: true }));
@@ -183,7 +194,7 @@ program
     .command('history')
     .description('Read message history')
     .argument('<session-id>', 'Session ID or prefix')
-    .option('--limit <n>', 'Limit number of messages', parseInt)
+    .option('--limit <n>', 'Limit number of messages', (v: string) => parseInt(v, 10))
     .option('--json', 'Output as JSON')
     .action(async (sessionId: string, opts: { limit?: number; json?: boolean }) => {
         const config = loadConfig();
@@ -216,12 +227,15 @@ program
         const session = await resolveSession(config, creds, sessionId);
         const client = createClient(session, creds, config);
 
-        await client.waitForConnect();
-        client.sendStop();
+        try {
+            await client.waitForConnect();
+            client.sendStop();
 
-        // Brief delay to allow the event to flush before closing
-        await new Promise(resolve => setTimeout(resolve, 100));
-        client.close();
+            // Brief delay to allow the event to flush before closing
+            await new Promise(resolve => setTimeout(resolve, 100));
+        } finally {
+            client.close();
+        }
 
         console.log(`Stopped session ${session.id}`);
     });
@@ -230,7 +244,7 @@ program
     .command('wait')
     .description('Wait for agent to become idle')
     .argument('<session-id>', 'Session ID or prefix')
-    .option('--timeout <seconds>', 'Timeout in seconds', parseInt, 300)
+    .option('--timeout <seconds>', 'Timeout in seconds', (v: string) => parseInt(v, 10), 300)
     .action(async (sessionId: string, opts: { timeout: number }) => {
         const config = loadConfig();
         const creds = requireCredentials(config);

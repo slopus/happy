@@ -40,8 +40,7 @@
     "commander": "^13.1.0",
     "qrcode-terminal": "^0.12.0",
     "socket.io-client": "^4.8.1",
-    "tweetnacl": "^1.0.3",
-    "zod": "3.25.76"
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@types/node": ">=20",

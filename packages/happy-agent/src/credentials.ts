@@ -30,7 +30,7 @@ export function readCredentials(config: Config): Credentials | null {
 }
 
 export function writeCredentials(config: Config, token: string, secret: Uint8Array): void {
-    mkdirSync(dirname(config.credentialPath), { recursive: true });
+    mkdirSync(dirname(config.credentialPath), { recursive: true, mode: 0o700 });
     const data = JSON.stringify({ token, secret: encodeBase64(secret) });
     writeFileSync(config.credentialPath, data, { mode: 0o600 });
 }
