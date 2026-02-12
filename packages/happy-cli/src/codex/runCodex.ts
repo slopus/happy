@@ -12,13 +12,10 @@ import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
 // configuration and packageJson not currently used but kept for future use
-import os from 'node:os';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { createMcpContext } from '@/agent/mcp';
-import { join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
-import fs from 'node:fs';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 // trimIdent not currently used
@@ -34,6 +31,7 @@ import { downloadImage } from '@/utils/downloadImage';
 import type { ImageContent } from '@/api/types';
 import type { SendPromptOptions } from '@/agent/core';
 import type { AgentMessage } from '@/agent/core';
+import { findCodexSessionFile } from './utils/codexSessionReader';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -289,6 +287,9 @@ export async function runCodex(opts: {
 
     let shouldExit = false;
     let storedSessionIdForResume: string | null = null;
+
+    // Resume file from App-side resume/duplicate (passed via daemon env var)
+    const envResumeFile = process.env.HAPPY_CODEX_RESUME_FILE || null;
     // Current backend instance (re-created on mode change)
     // Typed as any to prevent TS narrowing issues (assigned inside createBackend())
     let backend: any = null;
@@ -592,45 +593,10 @@ export async function runCodex(opts: {
         }
     }
 
-    // Helper: find Codex session transcript for a given sessionId
+    // Helper: find Codex session transcript — delegates to codexSessionReader
     function findCodexResumeFile(sessionId: string | null): string | null {
         if (!sessionId) return null;
-        try {
-            const codexHomeDir = process.env.CODEX_HOME || join(os.homedir(), '.codex');
-            const rootDir = join(codexHomeDir, 'sessions');
-
-            function collectFilesRecursive(dir: string, acc: string[] = []): string[] {
-                let entries: fs.Dirent[];
-                try {
-                    entries = fs.readdirSync(dir, { withFileTypes: true });
-                } catch {
-                    return acc;
-                }
-                for (const entry of entries) {
-                    const full = join(dir, entry.name);
-                    if (entry.isDirectory()) {
-                        collectFilesRecursive(full, acc);
-                    } else if (entry.isFile()) {
-                        acc.push(full);
-                    }
-                }
-                return acc;
-            }
-
-            const candidates = collectFilesRecursive(rootDir)
-                .filter(full => full.endsWith(`-${sessionId}.jsonl`))
-                .filter(full => {
-                    try { return fs.statSync(full).isFile(); } catch { return false; }
-                })
-                .sort((a, b) => {
-                    const sa = fs.statSync(a).mtimeMs;
-                    const sb = fs.statSync(b).mtimeMs;
-                    return sb - sa;
-                });
-            return candidates[0] || null;
-        } catch {
-            return null;
-        }
+        return findCodexSessionFile(sessionId);
     }
 
     /**
@@ -762,6 +728,10 @@ export async function runCodex(opts: {
                         resumeFile = nextResumeFile;
                         nextResumeFile = null;
                         logger.debug('[Codex] Using resume file from mode change:', resumeFile);
+                    } else if (first && envResumeFile) {
+                        resumeFile = envResumeFile;
+                        logger.debug('[Codex] Using resume file from App-side resume:', resumeFile);
+                        messageBuffer.addMessage('Resuming from previous session...', 'status');
                     } else if (storedSessionIdForResume) {
                         const abortResumeFile = findCodexResumeFile(storedSessionIdForResume);
                         if (abortResumeFile) {
@@ -796,6 +766,12 @@ export async function runCodex(opts: {
                         await backend!.startSession(promptText);
                         wasCreated = true;
                         first = false;
+                    }
+
+                    // Store Codex conversation ID in Happy metadata for App-side resume/duplicate
+                    const codexConvId = backend!.getSessionId?.();
+                    if (codexConvId) {
+                        session.updateMetadata((m: any) => ({ ...m, codexSessionId: codexConvId }));
                     }
 
                     // Wait for this turn to complete

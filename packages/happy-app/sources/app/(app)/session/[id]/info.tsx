@@ -11,7 +11,7 @@ import { useSession, useIsDataReady, storage } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete, machineForkClaudeSession, machineSpawnNewSession, sessionUpdateSummary, sessionUpdateMetadataFields } from '@/sync/ops';
+import { sessionKill, sessionDelete, machineForkClaudeSession, machineForkGeminiSession, machineForkCodexSession, machineSpawnNewSession, sessionUpdateSummary, sessionUpdateMetadataFields } from '@/sync/ops';
 import { isWorktreeSession, getWorktreeInfo, pushWorktreeBranch, mergeWorktreeBranch, createWorktreePR, cleanupWorktree } from '@/utils/worktreeOps';
 import { buildReviewPrompt } from '@/utils/reviewPrompt';
 import { sync } from '@/sync/sync';
@@ -177,10 +177,14 @@ function SessionInfoContent({ session }: { session: Session }) {
     const [forkingSession, setForkingSession] = React.useState(false);
     const handleForkSession = useCallback(async () => {
         if (forkingSession) return;
+        const flavor = session.metadata?.flavor;
         const claudeSessionId = session.metadata?.claudeSessionId;
+        const codexSessionId = session.metadata?.codexSessionId;
         const machineId = session.metadata?.machineId;
         const directory = session.metadata?.path;
-        if (!claudeSessionId || !directory || !machineId) return;
+
+        const hasForkableId = claudeSessionId || flavor === 'gemini' || codexSessionId;
+        if (!hasForkableId || !directory || !machineId) return;
 
         const isOnline = session.active;
         const confirmTitle = isOnline ? t('sessionHistory.copyConfirmTitle') : t('sessionHistory.resumeConfirmTitle');
@@ -200,17 +204,44 @@ function SessionInfoContent({ session }: { session: Session }) {
                 const timeSuffix = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
                 sessionTitle = `${originalTitle}_${timeSuffix}`;
             }
-            const forkResult = await machineForkClaudeSession(machineId, claudeSessionId);
-            if (!forkResult.success || !forkResult.newSessionId) {
-                Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+
+            let resumeSessionId: string | undefined;
+            let agent: 'claude' | 'gemini' | 'codex' = 'claude';
+
+            if (flavor === 'gemini') {
+                const forkResult = await machineForkGeminiSession(machineId, session.id);
+                if (!forkResult.success || !forkResult.newSessionId) {
+                    Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                    return;
+                }
+                resumeSessionId = forkResult.newSessionId;
+                agent = 'gemini';
+            } else if (flavor === 'codex' && codexSessionId) {
+                const forkResult = await machineForkCodexSession(machineId, codexSessionId);
+                if (!forkResult.success || !forkResult.newFilePath) {
+                    Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                    return;
+                }
+                resumeSessionId = forkResult.newFilePath;
+                agent = 'codex';
+            } else if (claudeSessionId) {
+                const forkResult = await machineForkClaudeSession(machineId, claudeSessionId);
+                if (!forkResult.success || !forkResult.newSessionId) {
+                    Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                    return;
+                }
+                resumeSessionId = forkResult.newSessionId;
+                agent = 'claude';
+            } else {
                 return;
             }
+
             const result = await machineSpawnNewSession({
                 machineId,
                 directory,
                 approvedNewDirectoryCreation: false,
-                agent: 'claude',
-                resumeSessionId: forkResult.newSessionId,
+                agent,
+                resumeSessionId,
                 sessionTitle,
                 skipForkSession: true,
             });
@@ -554,7 +585,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
                         />
                     )}
-                    {session.metadata?.claudeSessionId && session.metadata?.machineId && session.metadata?.path && (
+                    {(session.metadata?.claudeSessionId || session.metadata?.flavor === 'gemini' || session.metadata?.codexSessionId) && session.metadata?.machineId && session.metadata?.path && (
                         <Item
                             title={session.active ? t('sessionInfo.copySession') : t('sessionInfo.resumeSession')}
                             subtitle={session.active ? t('sessionInfo.copySessionSubtitle') : t('sessionInfo.resumeSessionSubtitle')}

@@ -13,7 +13,7 @@ import { layout } from '@/components/layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Ionicons } from '@expo/vector-icons';
 import { Modal } from '@/modal';
-import { machineForkClaudeSession, machineSpawnNewSession } from '@/sync/ops';
+import { machineForkClaudeSession, machineForkGeminiSession, machineForkCodexSession, machineSpawnNewSession } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 
@@ -251,10 +251,14 @@ export default function SessionHistory() {
     
     const handleForkSession = React.useCallback(async (session: Session, mode: 'resume' | 'copy') => {
         if (resumingSessionId) return;
+        const flavor = session.metadata?.flavor;
         const claudeSessionId = session.metadata?.claudeSessionId;
+        const codexSessionId = session.metadata?.codexSessionId;
         const machineId = session.metadata?.machineId;
         const directory = session.metadata?.path;
-        if (!claudeSessionId) return;
+
+        // Guard: must have a forkable session identifier
+        if (!claudeSessionId && flavor !== 'gemini' && !codexSessionId) return;
         if (!directory) {
             Modal.alert(t('common.error'), t('claudeHistory.pathUnavailable'));
             return;
@@ -282,9 +286,35 @@ export default function SessionHistory() {
                 const timeSuffix = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
                 sessionTitle = `${originalTitle}_${timeSuffix}`;
             }
-            const forkResult = await machineForkClaudeSession(machineId, claudeSessionId);
-            if (!forkResult.success || !forkResult.newSessionId) {
-                Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+
+            let resumeSessionId: string | undefined;
+            let agent: 'claude' | 'gemini' | 'codex' = 'claude';
+
+            if (flavor === 'gemini') {
+                const forkResult = await machineForkGeminiSession(machineId, session.id);
+                if (!forkResult.success || !forkResult.newSessionId) {
+                    Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                    return;
+                }
+                resumeSessionId = forkResult.newSessionId;
+                agent = 'gemini';
+            } else if (flavor === 'codex' && codexSessionId) {
+                const forkResult = await machineForkCodexSession(machineId, codexSessionId);
+                if (!forkResult.success || !forkResult.newFilePath) {
+                    Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                    return;
+                }
+                resumeSessionId = forkResult.newFilePath;
+                agent = 'codex';
+            } else if (claudeSessionId) {
+                const forkResult = await machineForkClaudeSession(machineId, claudeSessionId);
+                if (!forkResult.success || !forkResult.newSessionId) {
+                    Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                    return;
+                }
+                resumeSessionId = forkResult.newSessionId;
+                agent = 'claude';
+            } else {
                 return;
             }
 
@@ -292,8 +322,8 @@ export default function SessionHistory() {
                 machineId,
                 directory,
                 approvedNewDirectoryCreation: false,
-                agent: 'claude',
-                resumeSessionId: forkResult.newSessionId,
+                agent,
+                resumeSessionId,
                 sessionTitle,
                 skipForkSession: true,
             });
@@ -460,7 +490,7 @@ const SessionHistoryItemCard = React.memo(({ session, isFirst, isLast, isSingle,
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
     const avatarId = getSessionAvatarId(session);
-    const canFork = Boolean(session.metadata?.claudeSessionId);
+    const canFork = Boolean(session.metadata?.claudeSessionId || session.metadata?.flavor === 'gemini' || session.metadata?.codexSessionId);
     const isOnline = session.active;
 
     return (

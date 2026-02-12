@@ -58,8 +58,8 @@ const DEFAULT_COMMANDS: CommandItem[] = [
     { command: 'clear', description: 'Clear the conversation' },
 ];
 
-// Commands only available for Claude sessions (require claudeSessionId)
-const CLAUDE_ONLY_COMMANDS: CommandItem[] = [
+// Commands available for sessions with forkable history (Claude, Gemini, Codex)
+const FORKABLE_COMMANDS: CommandItem[] = [
     { command: 'duplicate', description: 'Duplicate conversation from a specific point' },
 ];
 
@@ -93,9 +93,9 @@ function getCommandsFromSession(sessionId: string): CommandItem[] {
 
     const commands: CommandItem[] = [...DEFAULT_COMMANDS];
 
-    // Add Claude-only commands if session has a claudeSessionId
-    if (session.metadata.claudeSessionId) {
-        commands.push(...CLAUDE_ONLY_COMMANDS);
+    // Add forkable commands for sessions with session history (Claude, Gemini, Codex)
+    if (session.metadata.claudeSessionId || session.metadata.flavor === 'gemini' || session.metadata.codexSessionId) {
+        commands.push(...FORKABLE_COMMANDS);
     }
     
     // Add commands from metadata.slashCommands (filter with ignore list)
