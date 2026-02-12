@@ -10,7 +10,7 @@ const POLL_INTERVAL_MS = 1000;
 const AUTH_TIMEOUT_MS = 120_000; // 2 minutes
 
 export type AuthRequestResponse = {
-    state: 'pending' | 'authorized';
+    state: 'requested' | 'authorized';
     token?: string;
     response?: string; // base64-encoded encrypted account secret
 };

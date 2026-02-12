@@ -30,7 +30,7 @@ if (!hasNoWarnings || !hasNoDeprecation) {
     if (error.status == null) {
       console.error(error.message);
     }
-    process.exit(error.status || 1);
+    process.exit(error.status ?? 1);
   }
 } else {
   // We're running Node with the flags we wanted, import the CLI entrypoint

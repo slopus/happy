@@ -174,7 +174,13 @@ export class SessionClient extends EventEmitter {
 
     waitForIdle(timeoutMs = 300_000): Promise<void> {
         return new Promise<void>((resolve, reject) => {
-            const checkIdle = () => {
+            const checkIdle = (): 'archived' | boolean => {
+                // Check if session is archived (per plan: lifecycleState must not be 'archived')
+                const meta = this.metadata as Record<string, unknown> | null;
+                if (meta?.lifecycleState === 'archived') {
+                    return 'archived';
+                }
+
                 const state = this.agentState as Record<string, unknown> | null;
                 if (!state) {
                     return false; // No state received yet, not known to be idle
@@ -185,25 +191,45 @@ export class SessionClient extends EventEmitter {
                 return !controlledByUser && !hasRequests;
             };
 
-            if (checkIdle()) {
+            const cleanup = () => {
+                clearTimeout(timeout);
+                this.removeListener('state-change', onStateChange);
+                this.removeListener('disconnected', onDisconnect);
+            };
+
+            const result = checkIdle();
+            if (result === 'archived') {
+                reject(new Error('Session is archived'));
+                return;
+            }
+            if (result === true) {
                 resolve();
                 return;
             }
 
             const timeout = setTimeout(() => {
-                this.removeListener('state-change', onStateChange);
+                cleanup();
                 reject(new Error('Timeout waiting for agent to become idle'));
             }, timeoutMs);
 
             const onStateChange = () => {
-                if (checkIdle()) {
-                    clearTimeout(timeout);
-                    this.removeListener('state-change', onStateChange);
+                const r = checkIdle();
+                if (r === 'archived') {
+                    cleanup();
+                    reject(new Error('Session is archived'));
+                } else if (r === true) {
+                    cleanup();
                     resolve();
                 }
             };
 
+            const onDisconnect = () => {
+                cleanup();
+                reject(new Error('Socket disconnected while waiting for agent to become idle'));
+            };
+
             this.on('state-change', onStateChange);
+            this.on('disconnected', onDisconnect);
         });
     }
 

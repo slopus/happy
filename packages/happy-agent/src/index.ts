@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import chalk from 'chalk';
 import { hostname } from 'node:os';
 import { loadConfig } from './config';
 import type { Config } from './config';
@@ -101,6 +102,7 @@ program
 
         const client = createClient(session, creds, config);
 
+        let liveData = false;
         try {
             // Wait for connection, then wait for a state-change event or a short timeout
             await new Promise<void>(resolve => {
@@ -119,6 +121,7 @@ program
                 client.once('state-change', (data: { metadata: unknown; agentState: unknown }) => {
                     session.metadata = data.metadata ?? session.metadata;
                     session.agentState = data.agentState ?? session.agentState;
+                    liveData = true;
                     done();
                 });
 
@@ -133,6 +136,9 @@ program
         if (opts.json) {
             console.log(formatJson(session));
         } else {
+            if (!liveData) {
+                console.log(chalk.dim('(showing cached data — could not get live status)'));
+            }
             console.log(formatSessionStatus(session));
         }
     });
@@ -269,8 +275,9 @@ program
             await client.waitForConnect();
             await client.waitForIdle(opts.timeout * 1000);
             console.log(`Agent is idle for session ${session.id}`);
-        } catch {
-            console.error(`Timeout: agent did not become idle within ${opts.timeout} seconds`);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(msg);
             process.exitCode = 1;
         } finally {
             client.close();
