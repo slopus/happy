@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { loadConfig } from './config';
+import { authLogin, authLogout, authStatus } from './auth';
 
 const program = new Command();
 
@@ -14,17 +16,20 @@ program
     .description('Manage authentication')
     .addCommand(
         new Command('login').description('Authenticate via QR code').action(async () => {
-            console.log('Auth login not yet implemented');
+            const config = loadConfig();
+            await authLogin(config);
         })
     )
     .addCommand(
         new Command('logout').description('Clear stored credentials').action(async () => {
-            console.log('Auth logout not yet implemented');
+            const config = loadConfig();
+            await authLogout(config);
         })
     )
     .addCommand(
         new Command('status').description('Show authentication status').action(async () => {
-            console.log('Auth status not yet implemented');
+            const config = loadConfig();
+            await authStatus(config);
         })
     );
 

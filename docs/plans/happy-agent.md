@@ -91,7 +91,7 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 - [x] Run tests — must pass before task 4
 
 ### Task 4: Authentication command (`happy-agent auth`)
-- [ ] Create `src/auth.ts` implementing the account auth flow:
+- [x] Create `src/auth.ts` implementing the account auth flow:
   1. Generate ephemeral box keypair: `tweetnacl.box.keyPair.fromSecretKey(randomBytes(32))`
   2. POST `/v1/auth/account/request` with `{ publicKey: base64(keypair.publicKey) }`
   3. Generate QR code data: `happy:///account?` + base64url(keypair.publicKey)
@@ -101,13 +101,13 @@ This is a completely separate client from `happy-cli`. It has its own authentica
   7. When `state === 'authorized'`: decrypt `response` using `decryptBoxBundle(decodeBase64(response), keypair.secretKey)` to get the account secret (32 bytes)
   8. Save token + secret via `writeCredentials(config, token, secret)`
   9. Print success message
-- [ ] Add `happy-agent auth login` subcommand that runs the flow above
-- [ ] Add `happy-agent auth logout` subcommand that calls `clearCredentials()`
-- [ ] Add `happy-agent auth status` subcommand that reads credentials and prints auth status (authenticated / not authenticated)
-- [ ] Write tests for auth flow with mocked HTTP (polling, success case)
-- [ ] Write tests for auth flow error cases (server unreachable, timeout)
-- [ ] Write tests for logout (credential deletion)
-- [ ] Run tests — must pass before task 5
+- [x] Add `happy-agent auth login` subcommand that runs the flow above
+- [x] Add `happy-agent auth logout` subcommand that calls `clearCredentials()`
+- [x] Add `happy-agent auth status` subcommand that reads credentials and prints auth status (authenticated / not authenticated)
+- [x] Write tests for auth flow with mocked HTTP (polling, success case)
+- [x] Write tests for auth flow error cases (server unreachable, timeout)
+- [x] Write tests for logout (credential deletion)
+- [x] Run tests — must pass before task 5
 
 ### Task 5: HTTP API client
 - [ ] Create `src/api.ts` with functions:
