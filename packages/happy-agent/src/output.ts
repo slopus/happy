@@ -7,7 +7,7 @@ type SessionMetadata = {
     path?: string;
     host?: string;
     tag?: string;
-    summary?: string;
+    summary?: string | { text?: unknown; [key: string]: unknown };
     lifecycleState?: string;
     [key: string]: unknown;
 };
@@ -42,6 +42,19 @@ function padRight(str: string, len: number): string {
     return str.length >= len ? str : str + ' '.repeat(len - str.length);
 }
 
+function toNonEmptyString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
+function extractSessionSummary(meta: SessionMetadata): string | undefined {
+    const direct = toNonEmptyString(meta.summary);
+    if (direct) return direct;
+    if (meta.summary != null && typeof meta.summary === 'object') {
+        return toNonEmptyString((meta.summary as { text?: unknown }).text);
+    }
+    return undefined;
+}
+
 // --- Session list formatting ---
 
 export function formatSessionTable(sessions: DecryptedSession[]): string {
@@ -52,8 +65,8 @@ export function formatSessionTable(sessions: DecryptedSession[]): string {
     const headers = ['ID', 'NAME', 'PATH', 'STATUS', 'LAST ACTIVE'];
     const rows: string[][] = sessions.map(s => {
         const meta = (s.metadata ?? {}) as SessionMetadata;
-        const name = meta.summary || meta.tag || '-';
-        const path = meta.path || '-';
+        const name = extractSessionSummary(meta) ?? toNonEmptyString(meta.tag) ?? '-';
+        const path = toNonEmptyString(meta.path) ?? '-';
         const status = s.active ? 'active' : 'inactive';
         const lastActive = formatTime(s.activeAt);
         return [truncateId(s.id), name, path, status, lastActive];
@@ -90,15 +103,20 @@ export function formatSessionTable(sessions: DecryptedSession[]): string {
 export function formatSessionStatus(session: DecryptedSession): string {
     const meta = (session.metadata ?? {}) as SessionMetadata;
     const state = (session.agentState ?? null) as AgentState | null;
+    const tag = toNonEmptyString(meta.tag);
+    const summary = extractSessionSummary(meta);
+    const path = toNonEmptyString(meta.path);
+    const host = toNonEmptyString(meta.host);
+    const lifecycleState = toNonEmptyString(meta.lifecycleState);
 
     const lines: string[] = [];
 
     lines.push(chalk.bold('Session: ') + session.id);
-    if (meta.tag) lines.push(chalk.bold('Tag: ') + meta.tag);
-    if (meta.summary) lines.push(chalk.bold('Summary: ') + meta.summary);
-    if (meta.path) lines.push(chalk.bold('Path: ') + meta.path);
-    if (meta.host) lines.push(chalk.bold('Host: ') + meta.host);
-    if (meta.lifecycleState) lines.push(chalk.bold('Lifecycle: ') + meta.lifecycleState);
+    if (tag) lines.push(chalk.bold('Tag: ') + tag);
+    if (summary) lines.push(chalk.bold('Summary: ') + summary);
+    if (path) lines.push(chalk.bold('Path: ') + path);
+    if (host) lines.push(chalk.bold('Host: ') + host);
+    if (lifecycleState) lines.push(chalk.bold('Lifecycle: ') + lifecycleState);
 
     lines.push(chalk.bold('Active: ') + (session.active ? chalk.green('yes') : chalk.dim('no')));
     lines.push(chalk.bold('Last Active: ') + formatTime(session.activeAt));
@@ -168,4 +186,3 @@ export function formatJson(data: unknown): string {
         return value;
     }, 2);
 }
-

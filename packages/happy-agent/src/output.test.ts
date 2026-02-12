@@ -67,6 +67,21 @@ describe('formatSessionTable', () => {
         expect(output).toContain('My Summary');
     });
 
+    it('should display session name from summary.text object shape', () => {
+        const sessions = [
+            makeSession({
+                metadata: {
+                    summary: { text: 'Summary from object', updatedAt: 1700000000000 },
+                    tag: 'my-tag',
+                    path: '/tmp',
+                },
+            }),
+        ];
+        const output = formatSessionTable(sessions);
+        expect(output).toContain('Summary from object');
+        expect(output).not.toContain('[object Object]');
+    });
+
     it('should fall back to tag when no summary', () => {
         const sessions = [
             makeSession({ metadata: { tag: 'my-tag', path: '/tmp' } }),
@@ -145,6 +160,19 @@ describe('formatSessionStatus', () => {
         expect(output).toContain('Path: /home/user/project');
         expect(output).toContain('Host: my-machine');
         expect(output).toContain('Lifecycle: running');
+    });
+
+    it('should display summary from summary.text object shape', () => {
+        const session = makeSession({
+            metadata: {
+                tag: 'my-tag',
+                summary: { text: 'Object summary value', updatedAt: 1700000000000 },
+                path: '/home/user/project',
+            },
+        });
+        const output = formatSessionStatus(session);
+        expect(output).toContain('Summary: Object summary value');
+        expect(output).not.toContain('[object Object]');
     });
 
     it('should display active status', () => {
