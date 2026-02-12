@@ -182,8 +182,8 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 - [x] Run linter — all issues must be fixed
 
 ### Task 11: [Final] Update documentation
-- [ ] Add README.md to `packages/happy-agent/` with usage examples for all commands
-- [ ] Update root README if it references packages
+- [x] Add README.md to `packages/happy-agent/` with usage examples for all commands
+- [x] Update root README if it references packages
 
 ## Technical Details
 
