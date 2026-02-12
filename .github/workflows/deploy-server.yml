@@ -136,7 +136,7 @@ jobs:
               -l "traefik.http.routers.happy-api.rule=Host(\`$API_DOMAIN\`)" \
               -l "traefik.http.routers.happy-api.tls=true" \
               -l "traefik.http.routers.happy-api.tls.certresolver=letsencrypt" \
-              -l "traefik.http.services.happy-api.loadbalancer.server.port=3000" \
+              -l "traefik.http.services.happy-api.loadbalancer.server.port=3005" \
               "$IMAGE_NAME"
 
             # Wait for container to be ready
