@@ -17,10 +17,11 @@ import { RoomEvent } from '@livekit/rtc-node';
 import { z } from 'zod';
 import { getBackgroundPermissionSpeech, getBackgroundReadySpeech, tryGetCannedToolResponse } from '../runtime/cannedSpeech';
 import {
-    buildContextPrefix,
+    buildAppContextContent,
     buildToolFollowupPayload,
     deepCloneMessages,
     findLatestToolOutput,
+    injectAppContext,
     isToolFollowupCall,
     replaceInstructions,
     stripAppContextUpdates,
@@ -761,9 +762,10 @@ class HappyVoiceAgent extends voice.Agent {
             const payload = buildToolFollowupPayload(toolOutput.toolName, toolOutput.toolResult);
             chatCtx.items.push(llm.ChatMessage.create({ role: 'user', content: [payload] }));
         } else {
-            // Main conversation: wrap the last user message with context + inline hints.
-            const contextPrefix = buildContextPrefix(recentAppContext);
-            wrapLastUserMessage(chatCtx, contextPrefix);
+            // Main conversation: wrap user speech and inject app_context separately.
+            wrapLastUserMessage(chatCtx);
+            const appContextContent = buildAppContextContent(recentAppContext);
+            injectAppContext(chatCtx, appContextContent);
         }
 
         logInfo('HappyVoiceAgent.llmNode', {

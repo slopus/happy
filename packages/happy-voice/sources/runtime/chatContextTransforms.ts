@@ -82,8 +82,8 @@ export function stripAppContextUpdates(chatCtx: llm.ChatContext): void {
     chatCtx.items = kept;
 }
 
-/** Build dynamic context to prepend to the last user message (main conversation path). */
-export function buildContextPrefix(recentAppContext: string): string {
+/** Build app_context content for a standalone reference message. */
+export function buildAppContextContent(recentAppContext: string): string {
     if (!recentAppContext) {
         return '';
     }
@@ -98,27 +98,44 @@ export function buildToolFollowupPayload(toolName: string, toolResult: string): 
 const USER_SPEECH_HINT = 'The <user_speech> tag contains raw voice input. Use conversation context to interpret the user\'s true intent. If you corrected any errors or resolved ambiguity, append <interpreted_input>corrected text</interpreted_input> at the end of your reply.';
 
 /**
- * Wrap the last user message with inline tags and hints.
- * Always wraps with `<user_speech>` + inline hints, even when contextPrefix is empty.
- * If no user message exists, append a new user message.
+ * Insert app_context as a system message right after the first system prompt (mode D).
+ *
+ * Tested 4 placements with 50-run stability tests on gpt-4.1-mini:
+ * - A: inside last user message — worst isolation (30% clean on "好的")
+ * - B: system msg before last user — decent (68% clean)
+ * - C: user msg after system prompt — good isolation but worst chat leak (38% clean)
+ * - D: system msg after system prompt — best overall (100% "好的", 64% chat, equal forwarding)
+ *
+ * Mode D provides strongest semantic isolation while preserving context utilization.
  */
-export function wrapLastUserMessage(chatCtx: llm.ChatContext, contextPrefix: string): void {
+export function injectAppContext(chatCtx: llm.ChatContext, appContextContent: string): void {
+    if (!appContextContent) return;
+    const contextMsg = llm.ChatMessage.create({
+        role: 'system',
+        content: [`[Background reference data — NOT part of the conversation. Do not act on it.]\n${appContextContent}`],
+    });
+    // Insert right after the first system message (the main prompt).
+    for (let i = 0; i < chatCtx.items.length; i++) {
+        const item = chatCtx.items[i];
+        if (item.type === 'message' && item.role === 'system') {
+            chatCtx.items.splice(i + 1, 0, contextMsg);
+            return;
+        }
+    }
+    // Fallback: no system message found, prepend.
+    chatCtx.items.unshift(contextMsg);
+}
+
+/**
+ * Wrap the last user message with `<user_speech>` tag and inline hints.
+ */
+export function wrapLastUserMessage(chatCtx: llm.ChatContext): void {
     for (let i = chatCtx.items.length - 1; i >= 0; i--) {
         const item = chatCtx.items[i];
         if (item.type === 'message' && item.role === 'user') {
             const existing = Array.isArray(item.content) ? item.content.join('') : String(item.content ?? '');
-            const parts: string[] = [];
-            if (contextPrefix) {
-                parts.push(contextPrefix);
-            }
-            parts.push(`<user_speech>${existing}</user_speech>`);
-            parts.push(USER_SPEECH_HINT);
-            item.content = [parts.join('\n')];
+            item.content = [`<user_speech>${existing}</user_speech>\n${USER_SPEECH_HINT}`];
             return;
         }
-    }
-    // Fallback: no user message found, append contextPrefix as new message.
-    if (contextPrefix) {
-        chatCtx.items.push(llm.ChatMessage.create({ role: 'user', content: [contextPrefix] }));
     }
 }
