@@ -660,11 +660,22 @@ export const storage = create<StorageState>()((set, get) => {
         setSessionPagination: (sessionId: string, oldestSeq: number | null, hasMore: boolean) => set((state) => {
             const existing = state.sessionMessages[sessionId];
             if (!existing) return state;
+
+            // Only move oldestSeq backward (smaller), never forward.
+            // This prevents re-fetching latest messages from resetting the cursor
+            // when older messages are already cached in the store.
+            let finalOldestSeq = oldestSeq;
+            let finalHasMore = hasMore;
+            if (existing.oldestSeq !== null && oldestSeq !== null && oldestSeq > existing.oldestSeq) {
+                finalOldestSeq = existing.oldestSeq;
+                finalHasMore = existing.hasMore;
+            }
+
             return {
                 ...state,
                 sessionMessages: {
                     ...state.sessionMessages,
-                    [sessionId]: { ...existing, oldestSeq, hasMore },
+                    [sessionId]: { ...existing, oldestSeq: finalOldestSeq, hasMore: finalHasMore },
                 },
             };
         }),
