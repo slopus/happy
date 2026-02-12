@@ -25,7 +25,9 @@ export const MetadataSchema = z.object({
     flavor: z.string().nullish(), // Session flavor/variant identifier
     isWorktree: z.boolean().optional(), // Whether this session uses a git worktree
     worktreeBasePath: z.string().optional(), // Original repository path before worktree
-    worktreeBranchName: z.string().optional() // Branch name created for the worktree
+    worktreeBranchName: z.string().optional(), // Branch name created for the worktree
+    worktreePrUrl: z.string().optional(), // GitHub PR URL for this worktree
+    reviewOfSessionId: z.string().optional(), // Links review session to the session being reviewed
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;

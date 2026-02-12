@@ -179,6 +179,18 @@ export async function runGemini(opts: {
   });
   session = initialSession;
 
+  // Set initial session title if provided (e.g. review sessions)
+  const sessionTitle = process.env.HAPPY_SESSION_TITLE?.trim();
+  if (sessionTitle) {
+    session.updateMetadata((currentMetadata) => ({
+      ...currentMetadata,
+      summary: {
+        text: sessionTitle,
+        updatedAt: Date.now()
+      }
+    }));
+  }
+
   // Report to daemon (only if we have a real session)
   if (response) {
     try {

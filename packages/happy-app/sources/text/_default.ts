@@ -526,6 +526,15 @@ export const en = {
             archiveWorktreeConfirm: 'This session uses a Git worktree. Would you like to clean it up?',
             archiveAndCleanup: 'Archive & Clean Up',
             archiveKeepWorktree: 'Archive Only',
+            // Code Review
+            prLink: 'Pull Request',
+            requestReview: 'Request Code Review',
+            requestReviewSubtitle: 'Have an AI agent review your PR changes',
+            reviewSelectAgent: 'Select Reviewer',
+            reviewSelectAgentMessage: 'Choose which AI agent should review the pull request',
+            reviewNoPR: 'No pull request found. Create a PR first.',
+            reviewDiffFailed: 'Failed to fetch the PR diff',
+            reviewSpawnFailed: 'Failed to start the review session',
         },
 
     },

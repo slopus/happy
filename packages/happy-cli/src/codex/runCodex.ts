@@ -171,6 +171,18 @@ export async function runCodex(opts: {
     });
     session = initialSession;
 
+    // Set initial session title if provided (e.g. review sessions)
+    const sessionTitle = process.env.HAPPY_SESSION_TITLE?.trim();
+    if (sessionTitle) {
+        session.updateMetadata((currentMetadata) => ({
+            ...currentMetadata,
+            summary: {
+                text: sessionTitle,
+                updatedAt: Date.now()
+            }
+        }));
+    }
+
     // Always report to daemon if it exists (skip if offline)
     if (response) {
         try {
