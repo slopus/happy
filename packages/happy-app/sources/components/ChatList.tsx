@@ -56,16 +56,23 @@ const ChatListInternal = React.memo((props: {
     // Track if scroll-to-bottom button should be visible
     const [showScrollButton, setShowScrollButton] = useState(false);
 
-    // Track the message count when button became visible (for unread count)
-    const lastSeenLengthRef = useRef<number>(props.messages.length);
+    // Track the newest message timestamp when button became visible (for unread count)
+    const lastSeenTimestampRef = useRef<number>(props.messages[0]?.createdAt ?? 0);
 
     // Prevent duplicate load-more calls
     const isLoadingMoreRef = useRef(false);
 
-    // Calculate unread count
-    const unreadCount = showScrollButton
-        ? Math.max(0, props.messages.length - lastSeenLengthRef.current)
-        : 0;
+    // Calculate unread count: count messages newer than the last seen timestamp
+    let unreadCount = 0;
+    if (showScrollButton) {
+        for (const msg of props.messages) {
+            if (msg.createdAt > lastSeenTimestampRef.current) {
+                unreadCount++;
+            } else {
+                break; // messages are sorted newest-first, no need to continue
+            }
+        }
+    }
 
     const keyExtractor = useCallback((item: any) => item.id, []);
     const renderItem = useCallback(({ item, index }: { item: any, index: number }) => (
@@ -84,13 +91,13 @@ const ChatListInternal = React.memo((props: {
         const shouldShow = offsetY > SCROLL_THRESHOLD;
 
         setShowScrollButton(prev => {
-            // When button becomes visible, record current message count
+            // When button becomes visible, record newest message timestamp
             if (shouldShow && !prev) {
-                lastSeenLengthRef.current = props.messages.length;
+                lastSeenTimestampRef.current = props.messages[0]?.createdAt ?? 0;
             }
             return shouldShow;
         });
-    }, [props.messages.length]);
+    }, [props.messages]);
 
     // Scroll to bottom when button is pressed
     const handleScrollToBottom = useCallback(() => {
