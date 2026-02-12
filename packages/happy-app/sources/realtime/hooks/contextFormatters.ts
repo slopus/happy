@@ -12,6 +12,12 @@ interface SessionMetadata {
     [key: string]: any;
 }
 
+export interface ContextMessage {
+    role: 'agent' | 'user' | 'tool';
+    text: string;
+    name?: string;
+}
+
 
 /**
  * Format a permission request for natural language context
@@ -34,26 +40,34 @@ export function formatPermissionRequest(
 // Message formatting
 //
 
+function formatMessageObj(message: Message): ContextMessage | null {
+    if (message.kind === 'agent-text') {
+        return { role: 'agent', text: message.text };
+    }
+    if (message.kind === 'user-text') {
+        return { role: 'user', text: message.text };
+    }
+    if (message.kind === 'tool-call' && !VOICE_CONFIG.DISABLE_TOOL_CALLS) {
+        const toolDescription = message.tool.description ? ` - ${message.tool.description}` : '';
+        if (VOICE_CONFIG.LIMITED_TOOL_CALLS) {
+            if (message.tool.description) {
+                return { role: 'tool', name: message.tool.name, text: toolDescription.trim() };
+            }
+        } else {
+            return { role: 'tool', name: message.tool.name, text: `${toolDescription} arguments: ${JSON.stringify(message.tool.input)}` };
+        }
+    }
+    return null;
+}
+
 export function formatMessage(message: Message): string | null {
 
     // Lines
     let lines: string[] = [];
     if (config.voiceProvider === 'happy-voice') {
-        if (message.kind === 'agent-text') {
-            lines.push(`<message role="agent">${message.text}</message>`);
-        } else if (message.kind === 'user-text') {
-            lines.push(`<message role="user">${message.text}</message>`);
-        } else if (message.kind === 'tool-call' && !VOICE_CONFIG.DISABLE_TOOL_CALLS) {
-            const toolDescription = message.tool.description ? ` - ${message.tool.description}` : '';
-            const escapedName = message.tool.name.replace(/"/g, '&quot;');
-            if (VOICE_CONFIG.LIMITED_TOOL_CALLS) {
-                if (message.tool.description) {
-                    lines.push(`<message role="tool" name="${escapedName}">${toolDescription.trim()}</message>`);
-                }
-            } else {
-                lines.push(`<message role="tool" name="${escapedName}">${toolDescription} arguments: ${JSON.stringify(message.tool.input)}</message>`);
-            }
-        }
+        const obj = formatMessageObj(message);
+        if (!obj) return null;
+        return JSON.stringify(obj);
     } else {
         if (message.kind === 'agent-text') {
             lines.push(`Agent: \n<text>${message.text}</text>`);
@@ -77,25 +91,44 @@ export function formatMessage(message: Message): string | null {
 }
 
 export function formatNewSingleMessage(sessionId: string, message: Message): string | null {
+    if (config.voiceProvider === 'happy-voice') {
+        const obj = formatMessageObj(message);
+        if (!obj) return null;
+        return JSON.stringify({ type: 'messages', messages: [obj] });
+    }
     let formatted = formatMessage(message);
     if (!formatted) {
         return null;
-    }
-    if (config.voiceProvider === 'happy-voice') {
-        return formatted;
     }
     return 'New message in session: ' + sessionId + '\n\n' + formatted;
 }
 
 export function formatNewMessages(sessionId: string, messages: Message[]): string | null {
+    if (config.voiceProvider === 'happy-voice') {
+        const objs = [...messages]
+            .sort((a, b) => a.createdAt - b.createdAt)
+            .map(formatMessageObj)
+            .filter((m): m is ContextMessage => m !== null);
+        if (objs.length === 0) return null;
+        return JSON.stringify({ type: 'messages', messages: objs });
+    }
     let formatted = [...messages].sort((a, b) => a.createdAt - b.createdAt).map(formatMessage).filter(Boolean);
     if (formatted.length === 0) {
         return null;
     }
-    if (config.voiceProvider === 'happy-voice') {
-        return formatted.join('\n\n');
-    }
     return 'New messages in session: ' + sessionId + '\n\n' + formatted.join('\n\n');
+}
+
+function formatHistoryAsArray(messages: Message[]): ContextMessage[] {
+    let messagesToFormat: Message[];
+    messagesToFormat = VOICE_CONFIG.MAX_HISTORY_MESSAGES > 0
+        ? messages.slice(0, VOICE_CONFIG.MAX_HISTORY_MESSAGES)
+        : messages;
+
+    // Stored message order is newest->oldest; Happy Voice providers use oldest->newest.
+    messagesToFormat = [...messagesToFormat].reverse();
+
+    return messagesToFormat.map(formatMessageObj).filter((m): m is ContextMessage => m !== null);
 }
 
 export function formatHistory(sessionId: string, messages: Message[]): string {
@@ -124,8 +157,13 @@ export function formatSessionFull(session: Session, messages: Message[]): string
     const sessionPath = session.metadata?.path;
 
     if (config.voiceProvider === 'happy-voice') {
-        const history = formatHistory(session.id, messages);
-        return `<session id="${session.id}" path="${sessionPath || ''}" summary="${(sessionName || '').replace(/"/g, '&quot;')}">\n${history}\n</session>`;
+        return JSON.stringify({
+            type: 'session',
+            sessionId: session.id,
+            path: sessionPath || '',
+            summary: sessionName || '',
+            messages: formatHistoryAsArray(messages),
+        });
     }
 
     const lines: string[] = [];

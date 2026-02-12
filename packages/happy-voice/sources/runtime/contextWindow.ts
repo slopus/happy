@@ -48,10 +48,12 @@ export function extractRecentVoiceMessages(params: {
         .filter((m) => !latestUserMessage || m !== latestUserMessage)
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map((m) => {
-            const label = m.role === 'user' ? 'User' : 'Assistant';
-            return `${label}: ${chatMessageText(m).trim()}`;
+            const text = chatMessageText(m).trim();
+            if (!text) return '';
+            const role = m.role === 'user' ? 'user' : 'assistant';
+            return `<message role="${role}">${text}</message>`;
         })
-        .filter((line) => line !== 'User:' && line !== 'Assistant:' && line.trim().length > 0);
+        .filter((line) => line.length > 0);
 
     const picked = messages
         .slice(-Math.max(0, params.maxMessages));
