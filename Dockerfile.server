@@ -26,15 +26,17 @@ RUN apt-get update && apt-get install -y python3 ffmpeg && rm -rf /var/lib/apt/l
 ENV NODE_ENV=production
 
 # Copy production dependencies from deps stage
-COPY --from=deps /repo/packages/happy-server/node_modules ./node_modules
+COPY --from=deps --chown=node:node /repo/packages/happy-server/node_modules ./node_modules
 
 # Copy package.json (required for yarn to work)
-COPY --from=deps /repo/packages/happy-server/package.json ./
+COPY --from=deps --chown=node:node /repo/packages/happy-server/package.json ./
 
 # Copy tsconfig, source code and prisma schema
-COPY packages/happy-server/tsconfig.json ./
-COPY packages/happy-server/sources ./sources
-COPY packages/happy-server/prisma ./prisma
+COPY --chown=node:node packages/happy-server/tsconfig.json ./
+COPY --chown=node:node packages/happy-server/sources ./sources
+COPY --chown=node:node packages/happy-server/prisma ./prisma
+
+USER node
 
 # Expose the port the app will run on
 EXPOSE 3000
