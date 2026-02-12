@@ -127,6 +127,8 @@ export const en = {
         disconnected: 'disconnected',
         error: 'error',
         online: 'online',
+        refreshing: 'refreshing',
+        refreshFailed: 'refresh failed',
         offline: 'offline',
         lastSeen: ({ time }: { time: string }) => `last seen ${time}`,
         permissionRequired: 'permission required',

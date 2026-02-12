@@ -159,6 +159,8 @@ export const ja: TranslationStructure = {
         disconnected: '切断済み',
         error: 'エラー',
         online: 'オンライン',
+        refreshing: '更新中...',
+        refreshFailed: '更新失敗',
         offline: 'オフライン',
         lastSeen: ({ time }: { time: string }) => `最終アクセス: ${time}`,
         permissionRequired: '権限が必要です',

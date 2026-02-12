@@ -47,6 +47,7 @@ interface AgentInputProps {
         color: string;
         dotColor: string;
         isPulsing?: boolean;
+        onPress?: () => void;
         cliStatus?: {
             claude: boolean | null;
             codex: boolean | null;
@@ -578,7 +579,22 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         return false; // Key was not handled
     }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange]);
 
-
+    const connectionStatusIndicator = props.connectionStatus ? (
+        <>
+            <StatusDot
+                color={props.connectionStatus.dotColor}
+                isPulsing={props.connectionStatus.isPulsing}
+                size={6}
+            />
+            <Text style={{
+                fontSize: 11,
+                color: props.connectionStatus.color,
+                ...Typography.default()
+            }}>
+                {props.connectionStatus.text}
+            </Text>
+        </>
+    ) : null;
 
     return (
         <View style={[
@@ -806,20 +822,23 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 11 }}>
                             {props.connectionStatus && (
                                 <>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                        <StatusDot
-                                            color={props.connectionStatus.dotColor}
-                                            isPulsing={props.connectionStatus.isPulsing}
-                                            size={6}
-                                        />
-                                        <Text style={{
-                                            fontSize: 11,
-                                            color: props.connectionStatus.color,
-                                            ...Typography.default()
-                                        }}>
-                                            {props.connectionStatus.text}
-                                        </Text>
-                                    </View>
+                                    {props.connectionStatus.onPress ? (
+                                        <Pressable
+                                            onPress={props.connectionStatus.onPress}
+                                            style={({ pressed }) => ({
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                gap: 4,
+                                                opacity: pressed ? 0.7 : 1
+                                            })}
+                                        >
+                                            {connectionStatusIndicator}
+                                        </Pressable>
+                                    ) : (
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                            {connectionStatusIndicator}
+                                        </View>
+                                    )}
                                     {/* CLI Status - only shown when provided (wizard only) */}
                                     {props.connectionStatus.cliStatus && (
                                         <>

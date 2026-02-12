@@ -28,12 +28,16 @@ import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/u
 import { formatPathRelativeToHome, generateCopyTitle, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
 import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
+
+const SILENT_REFRESH_INDICATOR_DELAY_MS = 3000;
+const SILENT_REFRESH_FAILED_TIMEOUT_MS = 12000;
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -225,6 +229,99 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
+    const [isSilentRefreshTracking, setIsSilentRefreshTracking] = React.useState(false);
+    const [silentRefreshPhase, setSilentRefreshPhase] = React.useState<'idle' | 'refreshing' | 'failed'>('idle');
+    const latestMessageSnapshotRef = React.useRef({ isLoaded, messages });
+    latestMessageSnapshotRef.current = { isLoaded, messages };
+    const silentRefreshBaselineRef = React.useRef<{ isLoaded: boolean; messagesRef: typeof messages } | null>(null);
+
+    const startSilentRefreshTracking = React.useCallback(() => {
+        const snapshot = latestMessageSnapshotRef.current;
+        if (!snapshot.isLoaded) {
+            setIsSilentRefreshTracking(false);
+            setSilentRefreshPhase('idle');
+            silentRefreshBaselineRef.current = null;
+            return;
+        }
+
+        silentRefreshBaselineRef.current = {
+            isLoaded: snapshot.isLoaded,
+            messagesRef: snapshot.messages,
+        };
+        setIsSilentRefreshTracking(true);
+        setSilentRefreshPhase('idle');
+    }, []);
+
+    React.useEffect(() => {
+        if (!isSilentRefreshTracking) {
+            return;
+        }
+        const baseline = silentRefreshBaselineRef.current;
+        if (!baseline) {
+            return;
+        }
+        if (messages !== baseline.messagesRef || isLoaded !== baseline.isLoaded) {
+            setIsSilentRefreshTracking(false);
+            setSilentRefreshPhase('idle');
+            silentRefreshBaselineRef.current = null;
+        }
+    }, [isSilentRefreshTracking, isLoaded, messages]);
+
+    React.useEffect(() => {
+        if (!isSilentRefreshTracking) {
+            return;
+        }
+        const refreshingTimer = setTimeout(() => {
+            setSilentRefreshPhase((prev) => (prev === 'idle' ? 'refreshing' : prev));
+        }, SILENT_REFRESH_INDICATOR_DELAY_MS);
+        const failedTimer = setTimeout(() => {
+            setSilentRefreshPhase((prev) => {
+                if (prev === 'idle' || prev === 'refreshing') {
+                    return 'failed';
+                }
+                return prev;
+            });
+        }, SILENT_REFRESH_FAILED_TIMEOUT_MS);
+        return () => {
+            clearTimeout(refreshingTimer);
+            clearTimeout(failedTimer);
+        };
+    }, [isSilentRefreshTracking]);
+
+    const handleRetryStatusRefresh = React.useCallback(() => {
+        startSilentRefreshTracking();
+        void sync.refreshSessions().catch(() => {
+            // Keep current phase and rely on timeout-based feedback.
+        });
+    }, [startSilentRefreshTracking]);
+
+    const isRefreshingStatus = silentRefreshPhase === 'refreshing' || sessionStatus.state === 'syncing';
+
+    const inputConnectionStatus = React.useMemo(() => {
+        if (silentRefreshPhase === 'failed') {
+            return {
+                text: t('status.refreshFailed'),
+                color: theme.colors.status.error,
+                dotColor: theme.colors.status.error,
+                isPulsing: false,
+                onPress: handleRetryStatusRefresh
+            };
+        }
+        if (isRefreshingStatus) {
+            return {
+                text: t('status.refreshing'),
+                color: theme.colors.status.connecting,
+                dotColor: theme.colors.status.connecting,
+                isPulsing: true
+            };
+        }
+        return {
+            text: sessionStatus.statusText,
+            color: sessionStatus.statusColor,
+            dotColor: sessionStatus.statusDotColor,
+            isPulsing: sessionStatus.isPulsing
+        };
+    }, [silentRefreshPhase, isRefreshingStatus, sessionStatus, theme.colors.status.connecting, theme.colors.status.error, handleRetryStatusRefresh]);
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
@@ -509,16 +606,17 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         return sync.fetchOlderMessages(sessionId);
     }, [sessionId]);
 
-    // Trigger session visibility and initialize git status sync
-    React.useLayoutEffect(() => {
-
-        // Trigger session sync
-        sync.onSessionVisible(sessionId, true);
-
-
-        // Initialize git status sync for this session
-        gitStatusSync.getSync(sessionId);
-    }, [sessionId, realtimeStatus]);
+    // Trigger refresh whenever this session screen gets focus.
+    useFocusEffect(
+        React.useCallback(() => {
+            sync.onSessionVisible(sessionId, true);
+            startSilentRefreshTracking();
+            void sync.refreshSessions().catch(() => {
+                // Silent refresh indicator handles delayed feedback if status stays stale.
+            });
+            gitStatusSync.getSync(sessionId);
+        }, [sessionId, startSilentRefreshTracking])
+    );
 
     // Add paste event listener for images (web only)
     React.useEffect(() => {
@@ -563,12 +661,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             modelMode={modelMode as any}
             onModelModeChange={updateModelMode as any}
             metadata={session.metadata}
-            connectionStatus={{
-                text: sessionStatus.statusText,
-                color: sessionStatus.statusColor,
-                dotColor: sessionStatus.statusDotColor,
-                isPulsing: sessionStatus.isPulsing
-            }}
+            connectionStatus={inputConnectionStatus}
             onSend={async () => {
                 if (message.trim() || images.length > 0) {
                     const messageToSend = message.trim();

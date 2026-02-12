@@ -508,6 +508,8 @@ export const ru: TranslationStructure = {
         disconnected: 'отключено',
         error: 'ошибка',
         online: 'online',
+        refreshing: 'обновление...',
+        refreshFailed: 'обновление не удалось',
         offline: 'offline',
         lastSeen: ({ time }: { time: string }) => `в сети ${time}`,
         permissionRequired: 'требуется разрешение',

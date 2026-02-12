@@ -156,6 +156,8 @@ export const it: TranslationStructure = {
         disconnected: 'disconnesso',
         error: 'errore',
         online: 'online',
+        refreshing: 'aggiornando...',
+        refreshFailed: 'aggiornamento non riuscito',
         offline: 'offline',
         lastSeen: ({ time }: { time: string }) => `visto l'ultima volta ${time}`,
         permissionRequired: 'permesso richiesto',

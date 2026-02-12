@@ -127,6 +127,8 @@ export const ca: TranslationStructure = {
         disconnected: 'desconnectat',
         error: 'error',
         online: 'en línia',
+        refreshing: 'actualitzant...',
+        refreshFailed: 'actualització fallida',
         offline: 'fora de línia',
         lastSeen: ({ time }: { time: string }) => `vist per última vegada ${time}`,
         permissionRequired: 'permís requerit',
