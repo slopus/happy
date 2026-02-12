@@ -22,6 +22,8 @@ import {
     setSendConfirmation,
     getSendConfirmationSpeed,
     setSendConfirmationSpeed,
+    getWelcomeMessage,
+    hasCustomWelcomeMessage,
     type SendConfirmationSpeed,
 } from '@/sync/voiceConfig';
 
@@ -41,6 +43,7 @@ export default function VoiceSettingsScreen() {
     const [publicKey, setPublicKey] = useState(() => getHappyVoicePublicKey());
     const [sendConfirmationEnabled, setSendConfirmationEnabled] = useState(() => getSendConfirmation());
     const [confirmationSpeed, setConfirmationSpeed] = useState<SendConfirmationSpeed>(() => getSendConfirmationSpeed());
+    const [welcomeMessage, setWelcomeMessageState] = useState(() => getWelcomeMessage());
 
     useFocusEffect(
         useCallback(() => {
@@ -50,6 +53,7 @@ export default function VoiceSettingsScreen() {
             setPublicKey(getHappyVoicePublicKey());
             setSendConfirmationEnabled(getSendConfirmation());
             setConfirmationSpeed(getSendConfirmationSpeed());
+            setWelcomeMessageState(getWelcomeMessage());
         }, []),
     );
 
@@ -139,6 +143,22 @@ export default function VoiceSettingsScreen() {
                         detail={publicKey ? '********' : t('settingsVoice.notConfigured')}
                         subtitle={hasCustomHappyVoicePublicKey() ? t('settingsVoice.usingCustomConfig') : t('settingsVoice.usingDefaultConfig')}
                         onPress={() => router.push('/settings/voice/happy-voice')}
+                    />
+                </ItemGroup>
+            )}
+
+            {/* Welcome Message */}
+            {provider === 'happy-voice' && (
+                <ItemGroup
+                    title={t('settingsVoice.welcomeMessageTitle')}
+                    footer={t('settingsVoice.welcomeMessageDescription')}
+                >
+                    <Item
+                        title={t('settingsVoice.welcomeMessage')}
+                        icon={<Ionicons name="chatbubble-ellipses-outline" size={29} color="#FF9500" />}
+                        detail={welcomeMessage ? truncate(welcomeMessage, 30) : t('settingsVoice.usingDefaultConfig')}
+                        subtitle={hasCustomWelcomeMessage() ? t('settingsVoice.usingCustomConfig') : t('settingsVoice.usingDefaultConfig')}
+                        onPress={() => router.push('/settings/voice/welcome-message')}
                     />
                 </ItemGroup>
             )}

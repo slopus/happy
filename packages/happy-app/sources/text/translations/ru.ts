@@ -787,6 +787,11 @@ export const ru: TranslationStructure = {
             autoDetect: 'Автоопределение',
         },
 
+        welcomeMessageTitle: 'Приветственное сообщение',
+        welcomeMessage: 'Приветственное сообщение',
+        welcomeMessageDescription: 'Настройте приветствие голосового ассистента при начале сеанса. Оставьте пустым для использования приветствия по умолчанию.',
+        welcomeMessagePlaceholder: 'Поздоровайтесь и спросите, что пользователь хочет создать.',
+
         sendConfirmationTitle: 'Подтверждение отправки',
         sendConfirmationDescription: 'Показывать диалог подтверждения с обратным отсчётом перед отправкой сообщений голосовым помощником.',
         sendConfirmationLabel: 'Подтверждение отправки',

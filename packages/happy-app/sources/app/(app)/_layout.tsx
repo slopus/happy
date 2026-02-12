@@ -191,6 +191,13 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="settings/voice/welcome-message"
+                options={{
+                    headerTitle: t('settingsVoice.welcomeMessage'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="terminal/connect"
                 options={{
                     headerTitle: t('navigation.connectTerminal'),

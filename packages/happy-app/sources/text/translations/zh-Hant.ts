@@ -778,6 +778,11 @@ export const zhHant: TranslationStructure = {
             autoDetect: '自動偵測',
         },
 
+        welcomeMessageTitle: '歡迎語',
+        welcomeMessage: '歡迎語',
+        welcomeMessageDescription: '自訂語音助手開始對話時的歡迎語。留空則使用預設歡迎語。',
+        welcomeMessagePlaceholder: '打個招呼，然後詢問使用者想要建構什麼。',
+
         sendConfirmationTitle: '傳送確認',
         sendConfirmationDescription: '語音助手向編碼代理傳送訊息前，顯示帶倒數計時的確認對話框。',
         sendConfirmationLabel: '傳送確認',

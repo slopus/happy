@@ -777,6 +777,11 @@ export const ca: TranslationStructure = {
             autoDetect: 'Detecta automàticament',
         },
 
+        welcomeMessageTitle: 'Missatge de benvinguda',
+        welcomeMessage: 'Missatge de benvinguda',
+        welcomeMessageDescription: 'Personalitza el que diu l\'assistent de veu en iniciar una sessió. Deixa\'l buit per usar la salutació predeterminada.',
+        welcomeMessagePlaceholder: 'Saluda i pregunta què vol construir l\'usuari.',
+
         sendConfirmationTitle: 'Confirmació d\'enviament',
         sendConfirmationDescription: 'Mostra un diàleg de confirmació amb compte enrere abans que l\'assistent de veu enviï missatges a l\'agent de codificació.',
         sendConfirmationLabel: 'Confirmació d\'enviament',

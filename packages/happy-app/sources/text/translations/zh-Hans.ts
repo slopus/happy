@@ -779,6 +779,11 @@ export const zhHans: TranslationStructure = {
             autoDetect: '自动检测',
         },
 
+        welcomeMessageTitle: '欢迎语',
+        welcomeMessage: '欢迎语',
+        welcomeMessageDescription: '自定义语音助手开始会话时的欢迎语。留空则使用默认欢迎语。',
+        welcomeMessagePlaceholder: '打个招呼，然后询问用户想要构建什么。',
+
         sendConfirmationTitle: '发送确认',
         sendConfirmationDescription: '语音助手向编码代理发送消息前，显示带倒计时的确认对话框。',
         sendConfirmationLabel: '发送确认',

@@ -54,6 +54,7 @@ const startSchema = z.object({
     }).optional(),
     language: z.string().optional(),
     toolBridgeBaseUrl: z.string().optional(),
+    welcomeMessage: z.string().max(500).optional(),
 });
 
 const stopSchema = z.object({
@@ -127,6 +128,7 @@ export function registerRoutes(
             initialContextPayload: body.initialContextPayload,
             language: body.language,
             toolBridgeBaseUrl: body.toolBridgeBaseUrl,
+            welcomeMessage: body.welcomeMessage,
         });
 
         try {

@@ -809,6 +809,11 @@ export const ja: TranslationStructure = {
             autoDetect: '自動検出',
         },
 
+        welcomeMessageTitle: 'ウェルカムメッセージ',
+        welcomeMessage: 'ウェルカムメッセージ',
+        welcomeMessageDescription: '音声アシスタントのセッション開始時の挨拶をカスタマイズします。空にするとデフォルトの挨拶が使用されます。',
+        welcomeMessagePlaceholder: '挨拶をして、何を作りたいか聞いてください。',
+
         sendConfirmationTitle: '送信確認',
         sendConfirmationDescription: '音声アシスタントがコーディングエージェントにメッセージを送信する前に、カウントダウン付きの確認ダイアログを表示します。',
         sendConfirmationLabel: '送信確認',

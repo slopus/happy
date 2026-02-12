@@ -11,6 +11,7 @@ const KEYS = {
     happyVoicePublicKey: 'voice-happy-voice-public-key',
     sendConfirmation: 'voice-send-confirmation',
     sendConfirmationSpeed: 'voice-send-confirmation-speed',
+    welcomeMessage: 'voice-welcome-message',
 } as const;
 
 type VoiceProvider = 'elevenlabs' | 'happy-voice';
@@ -132,13 +133,32 @@ export function getSendConfirmationSeconds(): number {
     return SPEED_SECONDS[getSendConfirmationSpeed()];
 }
 
+// ── Welcome Message ─────────────────────────────────────────────────
+
+export function getWelcomeMessage(): string | undefined {
+    return voiceConfigStorage.getString(KEYS.welcomeMessage) || undefined;
+}
+
+export function setWelcomeMessage(value: string | null): void {
+    if (value && value.trim()) {
+        voiceConfigStorage.set(KEYS.welcomeMessage, value.trim());
+    } else {
+        voiceConfigStorage.delete(KEYS.welcomeMessage);
+    }
+}
+
+export function hasCustomWelcomeMessage(): boolean {
+    return voiceConfigStorage.contains(KEYS.welcomeMessage);
+}
+
 // ── Utilities ───────────────────────────────────────────────────────
 
 export function isUsingCustomVoiceConfig(): boolean {
     return isUsingCustomVoiceProvider()
         || hasCustomElevenLabsAgentId()
         || hasCustomHappyVoiceGatewayUrl()
-        || hasCustomHappyVoicePublicKey();
+        || hasCustomHappyVoicePublicKey()
+        || hasCustomWelcomeMessage();
 }
 
 export function resetVoiceConfig(): void {
@@ -146,6 +166,7 @@ export function resetVoiceConfig(): void {
     voiceConfigStorage.delete(KEYS.elevenLabsAgentId);
     voiceConfigStorage.delete(KEYS.happyVoiceGatewayUrl);
     voiceConfigStorage.delete(KEYS.happyVoicePublicKey);
+    voiceConfigStorage.delete(KEYS.welcomeMessage);
     notifyProviderChange();
 }
 

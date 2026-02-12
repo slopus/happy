@@ -787,6 +787,11 @@ export const pl: TranslationStructure = {
             autoDetect: 'Automatyczne wykrywanie',
         },
 
+        welcomeMessageTitle: 'Wiadomość powitalna',
+        welcomeMessage: 'Wiadomość powitalna',
+        welcomeMessageDescription: 'Dostosuj powitanie asystenta głosowego na początku sesji. Pozostaw puste, aby użyć domyślnego powitania.',
+        welcomeMessagePlaceholder: 'Przywitaj się i zapytaj, co użytkownik chce zbudować.',
+
         sendConfirmationTitle: 'Potwierdzenie wysyłania',
         sendConfirmationDescription: 'Pokaż okno potwierdzenia z odliczaniem przed wysłaniem wiadomości przez asystenta głosowego.',
         sendConfirmationLabel: 'Potwierdzenie wysyłania',

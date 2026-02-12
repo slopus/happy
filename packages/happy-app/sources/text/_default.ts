@@ -786,6 +786,11 @@ export const en = {
             autoDetect: 'Auto-detect',
         },
 
+        welcomeMessageTitle: 'Welcome Message',
+        welcomeMessage: 'Welcome Message',
+        welcomeMessageDescription: 'Customize what the voice assistant says when a session starts. Leave empty to use the default greeting.',
+        welcomeMessagePlaceholder: 'Say hello and ask what the user wants to build.',
+
         sendConfirmationTitle: 'Send Confirmation',
         sendConfirmationDescription: 'Show a confirmation dialog with a countdown before the voice assistant sends messages to the coding agent.',
         sendConfirmationLabel: 'Send Confirmation',

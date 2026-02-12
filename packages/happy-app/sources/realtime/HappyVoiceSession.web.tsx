@@ -9,6 +9,7 @@ import {
     startHappyVoiceSession,
     stopHappyVoiceSession,
 } from '@/sync/apiHappyVoice';
+import { getWelcomeMessage } from '@/sync/voiceConfig';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 import { serializeHappyVoiceContext } from './HappyVoiceContextSerializer';
 
@@ -56,10 +57,12 @@ class HappyVoiceSessionImpl implements VoiceSession {
             const initialContextPayload = config.initialContext
                 ? serializeHappyVoiceContext(config.initialContext)
                 : undefined;
+            const welcomeMessage = getWelcomeMessage();
             const start = await startHappyVoiceSession(
                 config.sessionId,
                 initialContextPayload,
                 language,
+                welcomeMessage,
             );
 
             const room = new Room({

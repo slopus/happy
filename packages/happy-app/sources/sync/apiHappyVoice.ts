@@ -37,6 +37,7 @@ export async function startHappyVoiceSession(
     sessionId: string,
     initialContextPayload?: HappyVoiceContextPayload,
     language?: string,
+    welcomeMessage?: string,
 ): Promise<HappyVoiceStartResponse> {
     const userId = storage.getState().profile.id;
     if (!userId) {
@@ -52,6 +53,7 @@ export async function startHappyVoiceSession(
             initialContextPayload,
             language,
             toolBridgeBaseUrl: getServerUrl(),
+            welcomeMessage,
         }),
     });
 

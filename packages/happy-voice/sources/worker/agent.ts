@@ -59,6 +59,7 @@ interface DispatchMetadata {
     initialContextPayload?: HappyVoiceContextPayload;
     language?: string;
     toolBridgeBaseUrl?: string;
+    welcomeMessage?: string;
 }
 
 interface GatewayRoomMessage {
@@ -1137,7 +1138,8 @@ const agent = defineAgent({
         });
 
         // Use TTS directly for the welcome sentence so first audio does not depend on LLM generation.
-        const handle = session.say(env.AGENT_WELCOME_MESSAGE, {
+        const welcomeText = metadata.welcomeMessage || env.AGENT_WELCOME_MESSAGE;
+        const handle = session.say(welcomeText, {
             allowInterruptions: true,
             addToChatCtx: false,
         });

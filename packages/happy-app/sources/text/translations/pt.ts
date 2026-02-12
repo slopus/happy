@@ -777,6 +777,11 @@ export const pt: TranslationStructure = {
             autoDetect: 'Detectar automaticamente',
         },
 
+        welcomeMessageTitle: 'Mensagem de boas-vindas',
+        welcomeMessage: 'Mensagem de boas-vindas',
+        welcomeMessageDescription: 'Personalize o que o assistente de voz diz ao iniciar uma sessão. Deixe vazio para usar a saudação padrão.',
+        welcomeMessagePlaceholder: 'Diga olá e pergunte o que o usuário quer construir.',
+
         sendConfirmationTitle: 'Confirmação de envio',
         sendConfirmationDescription: 'Mostrar um diálogo de confirmação com contagem regressiva antes do assistente de voz enviar mensagens ao agente de codificação.',
         sendConfirmationLabel: 'Confirmação de envio',

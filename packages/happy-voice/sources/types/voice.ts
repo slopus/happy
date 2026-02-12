@@ -22,6 +22,7 @@ export interface VoiceStartRequest {
     initialContextPayload?: HappyVoiceContextPayload;
     language?: string;
     toolBridgeBaseUrl?: string;
+    welcomeMessage?: string;
 }
 
 export interface VoiceStartResponse {

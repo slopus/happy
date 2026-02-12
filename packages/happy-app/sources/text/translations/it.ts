@@ -806,6 +806,11 @@ export const it: TranslationStructure = {
             autoDetect: 'Rilevamento automatico',
         },
 
+        welcomeMessageTitle: 'Messaggio di benvenuto',
+        welcomeMessage: 'Messaggio di benvenuto',
+        welcomeMessageDescription: 'Personalizza il messaggio dell\'assistente vocale all\'inizio di una sessione. Lascia vuoto per usare il saluto predefinito.',
+        welcomeMessagePlaceholder: 'Saluta e chiedi cosa vuole creare l\'utente.',
+
         sendConfirmationTitle: 'Conferma invio',
         sendConfirmationDescription: 'Mostra una finestra di conferma con conto alla rovescia prima che l\'assistente vocale invii messaggi all\'agente di codifica.',
         sendConfirmationLabel: 'Conferma invio',
