@@ -48,33 +48,33 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 - [x] Run tests — must pass before task 2
 
 ### Task 2: Encryption and key derivation module
-- [ ] Create `src/encryption.ts` with `encodeBase64`, `decodeBase64`, `encodeBase64Url`, `getRandomBytes` functions
-- [ ] Implement `hmac_sha512(key, data)` using Node.js `createHmac('sha512', ...)`
-- [ ] Implement key derivation tree:
+- [x] Create `src/encryption.ts` with `encodeBase64`, `decodeBase64`, `encodeBase64Url`, `getRandomBytes` functions
+- [x] Implement `hmac_sha512(key, data)` using Node.js `createHmac('sha512', ...)`
+- [x] Implement key derivation tree:
   - `deriveSecretKeyTreeRoot(seed, usage)` — HMAC-SHA512 with key = `usage + ' Master Seed'` (UTF-8), data = seed. Split 64-byte result: key = `[0:32]`, chainCode = `[32:64]`
   - `deriveSecretKeyTreeChild(chainCode, index)` — HMAC-SHA512 with key = chainCode, data = `[0x00, ...UTF-8(index)]`. Split same way.
   - `deriveKey(master, usage, path)` — derives root, then iterates path elements through child derivation
   - `deriveContentKeyPair(secret)` — calls `deriveKey(secret, 'Happy EnCoder', ['content'])` → seed → `sha512(seed)[0:32]` → `tweetnacl.box.keyPair.fromSecretKey()` → returns `{ publicKey, secretKey }`
-- [ ] Implement AES-256-GCM encryption:
+- [x] Implement AES-256-GCM encryption:
   - `encryptWithDataKey(data, dataKey)` — AES-256-GCM: `[1-byte version=0][12-byte nonce][ciphertext][16-byte auth tag]`
   - `decryptWithDataKey(bundle, dataKey)` — reverse of above
-- [ ] Implement legacy encryption (needed for backward compatibility with existing sessions):
+- [x] Implement legacy encryption (needed for backward compatibility with existing sessions):
   - `encryptLegacy(data, secret)` — TweetNaCl secretbox: `[24-byte nonce][ciphertext + MAC]`
   - `decryptLegacy(data, secret)` — reverse of above
-- [ ] Implement `encrypt(key, variant, data)` / `decrypt(key, variant, data)` dispatcher for `'legacy' | 'dataKey'` variants
-- [ ] Implement `libsodiumEncryptForPublicKey(data, recipientPublicKey)` — encrypts data with NaCl box using ephemeral keypair. Bundle: `[32-byte ephemeral pubkey][24-byte nonce][ciphertext]`
-- [ ] Implement `decryptBoxBundle(bundle, recipientSecretKey)` — decrypts NaCl box bundle (used for auth response decryption AND per-session key decryption)
-- [ ] Implement `authChallenge(secret)` — generates signing keypair from secret seed, creates random 32-byte challenge, signs with `tweetnacl.sign.detached`. Returns `{ challenge, publicKey, signature }` for token refresh via `/v1/auth`
-- [ ] Write tests for key derivation with known test vectors:
+- [x] Implement `encrypt(key, variant, data)` / `decrypt(key, variant, data)` dispatcher for `'legacy' | 'dataKey'` variants
+- [x] Implement `libsodiumEncryptForPublicKey(data, recipientPublicKey)` — encrypts data with NaCl box using ephemeral keypair. Bundle: `[32-byte ephemeral pubkey][24-byte nonce][ciphertext]`
+- [x] Implement `decryptBoxBundle(bundle, recipientSecretKey)` — decrypts NaCl box bundle (used for auth response decryption AND per-session key decryption)
+- [x] Implement `authChallenge(secret)` — generates signing keypair from secret seed, creates random 32-byte challenge, signs with `tweetnacl.sign.detached`. Returns `{ challenge, publicKey, signature }` for token refresh via `/v1/auth`
+- [x] Write tests for key derivation with known test vectors:
   - seed=`'test seed'`, usage=`'test usage'`, path=`['child1','child2']`
   - Expected root key: `E6E55652456F9FE47D6FF46CA3614E85B499F77E7B340FBBB1553307CEDC1E74`
   - Expected final key: `1011C097D2105D27362B987A631496BBF68B836124D1D072E9D1613C6028CF75`
-- [ ] Write tests for AES-256-GCM encrypt/decrypt round-trip
-- [ ] Write tests for legacy encrypt/decrypt round-trip
-- [ ] Write tests for base64 encode/decode (standard and URL-safe)
-- [ ] Write tests for libsodiumEncryptForPublicKey + decryptBoxBundle round-trip
-- [ ] Write tests for authChallenge signature verification with `tweetnacl.sign.detached.verify`
-- [ ] Run tests — must pass before task 3
+- [x] Write tests for AES-256-GCM encrypt/decrypt round-trip
+- [x] Write tests for legacy encrypt/decrypt round-trip
+- [x] Write tests for base64 encode/decode (standard and URL-safe)
+- [x] Write tests for libsodiumEncryptForPublicKey + decryptBoxBundle round-trip
+- [x] Write tests for authChallenge signature verification with `tweetnacl.sign.detached.verify`
+- [x] Run tests — must pass before task 3
 
 ### Task 3: Configuration and credential storage
 - [ ] Create `src/config.ts` — reads `HAPPY_SERVER_URL` (default: `https://api.cluster-fluster.com`), `HAPPY_HOME_DIR` (default: `~/.happy`), derives credential file path as `${happyHomeDir}/agent.key`
