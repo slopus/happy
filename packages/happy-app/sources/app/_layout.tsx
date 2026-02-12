@@ -73,7 +73,17 @@ function getSessionIdFromPath(pathname: string | null | undefined): string | nul
         return null;
     }
     const match = pathname.match(/\/session\/([^/]+)/);
-    return match ? decodeURIComponent(match[1]) : null;
+    if (!match) {
+        return null;
+    }
+
+    const candidate = decodeURIComponent(match[1]);
+    // Static routes under /session are not actual conversation pages.
+    if (candidate === 'recent' || candidate === 'claude') {
+        return null;
+    }
+
+    return candidate;
 }
 
 // Configure notification handler for foreground notifications
