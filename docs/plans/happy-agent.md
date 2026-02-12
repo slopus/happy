@@ -133,7 +133,7 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 - [x] Run tests — must pass before task 6
 
 ### Task 6: Socket.IO session client
-- [ ] Create `src/session.ts` — `SessionClient` class that:
+- [x] Create `src/session.ts` — `SessionClient` class that:
   - Takes session ID, encryption key, encryption variant, token, server URL
   - Connects to Socket.IO at `serverUrl/v1/updates` with `{ token, clientType: 'session-scoped', sessionId }`
   - Listens for `update` events, decrypts messages using session encryption key (AES-256-GCM or legacy depending on variant), emits typed events (`message`, `state-change`)
@@ -142,10 +142,10 @@ This is a completely separate client from `happy-cli`. It has its own authentica
   - Provides `waitForIdle(timeoutMs?)` — watches `agentState.controlledByUser` and `agentState.requests`, resolves when agent has no pending requests and `controlledByUser !== true`
   - Provides `sendStop()` — emits `session-end` event
   - Provides `close()` — disconnects socket
-- [ ] Write tests for SessionClient message encryption/sending (mock socket.io-client)
-- [ ] Write tests for waitForIdle logic (various agentState combinations)
-- [ ] Write tests for update event handling and decryption
-- [ ] Run tests — must pass before task 7
+- [x] Write tests for SessionClient message encryption/sending (mock socket.io-client)
+- [x] Write tests for waitForIdle logic (various agentState combinations)
+- [x] Write tests for update event handling and decryption
+- [x] Run tests — must pass before task 7
 
 ### Task 7: CLI commands — `list` and `status`
 - [ ] Create `src/index.ts` using `commander` with program name `happy-agent`
