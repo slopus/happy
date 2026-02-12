@@ -30,25 +30,46 @@ interface UseImagePickerReturn {
  * Compress image with aspect ratio preservation.
  * If either dimension exceeds MAX_DIMENSION, scale down proportionally.
  * Always apply JPEG quality compression.
+ *
+ * For very large images (>4096px), uses a two-step resize to reduce memory pressure:
+ * first halve the dimensions, then resize to the target.
  */
 async function compressImage(
     uri: string,
     originalWidth: number,
     originalHeight: number
 ): Promise<{ uri: string; width: number; height: number }> {
+    let currentUri = uri;
+    let currentWidth = originalWidth;
+    let currentHeight = originalHeight;
+
+    // For very large images, do a coarse resize first to reduce memory pressure
+    const LARGE_THRESHOLD = 4096;
+    if (currentWidth > LARGE_THRESHOLD || currentHeight > LARGE_THRESHOLD) {
+        const halfWidth = Math.round(currentWidth / 2);
+        const halfHeight = Math.round(currentHeight / 2);
+        const preResult = await ImageManipulator.manipulateAsync(
+            currentUri,
+            [{ resize: { width: halfWidth, height: halfHeight } }],
+            { compress: 1, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        currentUri = preResult.uri;
+        currentWidth = preResult.width;
+        currentHeight = preResult.height;
+    }
+
     const actions: ImageManipulator.Action[] = [];
 
-    // Only resize if either dimension exceeds MAX_DIMENSION
-    if (originalWidth > MAX_DIMENSION || originalHeight > MAX_DIMENSION) {
-        // Calculate scale factor to fit within MAX_DIMENSION while preserving aspect ratio
-        const scale = Math.min(MAX_DIMENSION / originalWidth, MAX_DIMENSION / originalHeight);
-        const newWidth = Math.round(originalWidth * scale);
-        const newHeight = Math.round(originalHeight * scale);
+    // Resize to fit within MAX_DIMENSION if still needed
+    if (currentWidth > MAX_DIMENSION || currentHeight > MAX_DIMENSION) {
+        const scale = Math.min(MAX_DIMENSION / currentWidth, MAX_DIMENSION / currentHeight);
+        const newWidth = Math.round(currentWidth * scale);
+        const newHeight = Math.round(currentHeight * scale);
         actions.push({ resize: { width: newWidth, height: newHeight } });
     }
 
     const manipResult = await ImageManipulator.manipulateAsync(
-        uri,
+        currentUri,
         actions,
         { compress: JPEG_QUALITY, format: ImageManipulator.SaveFormat.JPEG }
     );
@@ -81,14 +102,25 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
                 continue;
             }
 
-            // Always compress (resize if needed + quality compression)
-            const compressed = await compressImage(img.uri, img.width, img.height);
-            processed.push({
-                uri: compressed.uri,
-                width: compressed.width,
-                height: compressed.height,
-                mimeType: 'image/jpeg',
-            });
+            try {
+                // Always compress (resize if needed + quality compression)
+                const compressed = await compressImage(img.uri, img.width, img.height);
+                processed.push({
+                    uri: compressed.uri,
+                    width: compressed.width,
+                    height: compressed.height,
+                    mimeType: 'image/jpeg',
+                });
+            } catch (error) {
+                console.warn('[ImagePicker] Failed to compress image, using original:', error);
+                // Fallback: use original image without compression
+                processed.push({
+                    uri: img.uri,
+                    width: img.width,
+                    height: img.height,
+                    mimeType,
+                });
+            }
         }
 
         setImages(prev => [...prev, ...processed]);
@@ -100,21 +132,26 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
             return;
         }
 
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-            Modal.alert('Permission Required', 'Please allow access to your photo library in settings');
-            return;
-        }
+        try {
+            const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (!permission.granted) {
+                Modal.alert('Permission Required', 'Please allow access to your photo library in settings');
+                return;
+            }
 
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsMultipleSelection: true,
-            selectionLimit: maxImages - images.length,
-            quality: 1,
-        });
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                allowsMultipleSelection: true,
+                selectionLimit: maxImages - images.length,
+                quality: 0.8,
+            });
 
-        if (!result.canceled && result.assets.length > 0) {
-            await addImages(result.assets);
+            if (!result.canceled && result.assets.length > 0) {
+                await addImages(result.assets);
+            }
+        } catch (error) {
+            console.error('[ImagePicker] Gallery pick failed:', error);
+            Modal.alert('Error', 'Failed to select image. Please try again.');
         }
     }, [canAddMore, maxImages, images.length, addImages]);
 
@@ -124,19 +161,24 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
             return;
         }
 
-        const permission = await ImagePicker.requestCameraPermissionsAsync();
-        if (!permission.granted) {
-            Modal.alert('Permission Required', 'Please allow access to your camera in settings');
-            return;
-        }
+        try {
+            const permission = await ImagePicker.requestCameraPermissionsAsync();
+            if (!permission.granted) {
+                Modal.alert('Permission Required', 'Please allow access to your camera in settings');
+                return;
+            }
 
-        const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
-            quality: 1,
-        });
+            const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ['images'],
+                quality: 0.8,
+            });
 
-        if (!result.canceled && result.assets.length > 0) {
-            await addImages(result.assets);
+            if (!result.canceled && result.assets.length > 0) {
+                await addImages(result.assets);
+            }
+        } catch (error) {
+            console.error('[ImagePicker] Camera pick failed:', error);
+            Modal.alert('Error', 'Failed to capture image. Please try again.');
         }
     }, [canAddMore, maxImages, addImages]);
 
