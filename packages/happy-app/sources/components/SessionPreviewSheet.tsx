@@ -28,7 +28,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from './StyledText';
 import { layout } from './layout';
 import { t } from '@/text';
-import type { ClaudeSessionPreviewMessage, ClaudeSessionIndexEntry } from '@/sync/ops';
+import type { ClaudeSessionPreviewMessage, ClaudeSessionIndexEntry, AgentSessionIndexEntry } from '@/sync/ops';
 
 // On web, stop events from propagating to expo-router's modal overlay
 const stopPropagation = (e: { stopPropagation: () => void }) => e.stopPropagation();
@@ -38,7 +38,7 @@ const webEventHandlers = Platform.OS === 'web'
 
 interface SessionPreviewSheetProps {
     visible: boolean;
-    entry: ClaudeSessionIndexEntry | null;
+    entry: ClaudeSessionIndexEntry | AgentSessionIndexEntry | null;
     messages: ClaudeSessionPreviewMessage[] | null;
     loading: boolean;
     onClose: () => void;
@@ -70,7 +70,7 @@ export function SessionPreviewSheet({
     const dragStartY = useRef(0);
     const dragStartHeight = useRef(0);
     // Cache entry for display during close animation
-    const cachedEntryRef = useRef<ClaudeSessionIndexEntry | null>(null);
+    const cachedEntryRef = useRef<ClaudeSessionIndexEntry | AgentSessionIndexEntry | null>(null);
     if (entry) {
         cachedEntryRef.current = entry;
     }

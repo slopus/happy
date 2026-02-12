@@ -185,6 +185,21 @@ export interface UserMessageWithUuid {
 /** @deprecated Use UserMessageWithUuid instead */
 export type ClaudeUserMessageWithUuid = UserMessageWithUuid;
 
+/** Unified session entry type for multi-agent history browser */
+export interface AgentSessionIndexEntry {
+    sessionId: string;
+    agent: 'claude' | 'gemini' | 'codex';
+    originalPath: string | null;
+    title?: string | null;
+    updatedAt?: number;
+    messageCount?: number;
+    gitBranch?: string | null;
+    projectId?: string; // Claude only
+}
+
+/** Agent-agnostic alias for preview messages */
+export type SessionPreviewMessage = ClaudeSessionPreviewMessage;
+
 // Exported session operation functions
 
 /**
@@ -305,6 +320,128 @@ export async function machineGetClaudeSessionPreview(
         return { messages: [] };
     }
     return { messages: result.messages };
+}
+
+/**
+ * List Gemini sessions from a machine
+ */
+export async function machineListGeminiSessions(
+    machineId: string,
+    options?: { offset?: number; limit?: number; timeoutMs?: number }
+): Promise<{ sessions: AgentSessionIndexEntry[]; total: number }> {
+    const timeoutMs = options?.timeoutMs ?? 15000;
+
+    const rpcPromise = apiSocket.machineRPC<any, { offset?: number; limit?: number }>(
+        machineId,
+        'gemini-list-sessions',
+        { offset: options?.offset, limit: options?.limit }
+    );
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+    });
+
+    const result = await Promise.race([rpcPromise, timeoutPromise]);
+
+    if (!result) throw new Error('RPC returned empty response');
+    if (result.error) throw new Error(result.error);
+    if (!Array.isArray(result.sessions)) return { sessions: [], total: 0 };
+
+    const sessions: AgentSessionIndexEntry[] = result.sessions.map((s: any) => ({
+        ...s,
+        agent: 'gemini' as const,
+    }));
+    const total = typeof result.total === 'number' ? result.total : sessions.length;
+    return { sessions, total };
+}
+
+/**
+ * Get preview messages from a Gemini session
+ */
+export async function machineGetGeminiSessionPreview(
+    machineId: string,
+    sessionId: string,
+    options?: { limit?: number; timeoutMs?: number }
+): Promise<{ messages: SessionPreviewMessage[] }> {
+    const timeoutMs = options?.timeoutMs ?? 10000;
+    const limit = options?.limit ?? 10;
+
+    const rpcPromise = apiSocket.machineRPC<any, { sessionId: string; limit: number }>(
+        machineId,
+        'gemini-session-preview',
+        { sessionId, limit }
+    );
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+    });
+
+    const result = await Promise.race([rpcPromise, timeoutPromise]);
+
+    if (!result) throw new Error('RPC returned empty response');
+    if (result.error) throw new Error(result.error);
+    return { messages: Array.isArray(result.messages) ? result.messages : [] };
+}
+
+/**
+ * List Codex sessions from a machine
+ */
+export async function machineListCodexSessions(
+    machineId: string,
+    options?: { offset?: number; limit?: number; timeoutMs?: number }
+): Promise<{ sessions: AgentSessionIndexEntry[]; total: number }> {
+    const timeoutMs = options?.timeoutMs ?? 15000;
+
+    const rpcPromise = apiSocket.machineRPC<any, { offset?: number; limit?: number }>(
+        machineId,
+        'codex-list-sessions',
+        { offset: options?.offset, limit: options?.limit }
+    );
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+    });
+
+    const result = await Promise.race([rpcPromise, timeoutPromise]);
+
+    if (!result) throw new Error('RPC returned empty response');
+    if (result.error) throw new Error(result.error);
+    if (!Array.isArray(result.sessions)) return { sessions: [], total: 0 };
+
+    const sessions: AgentSessionIndexEntry[] = result.sessions.map((s: any) => ({
+        ...s,
+        agent: 'codex' as const,
+    }));
+    const total = typeof result.total === 'number' ? result.total : sessions.length;
+    return { sessions, total };
+}
+
+/**
+ * Get preview messages from a Codex session
+ */
+export async function machineGetCodexSessionPreview(
+    machineId: string,
+    codexSessionId: string,
+    options?: { limit?: number; timeoutMs?: number }
+): Promise<{ messages: SessionPreviewMessage[] }> {
+    const timeoutMs = options?.timeoutMs ?? 10000;
+    const limit = options?.limit ?? 10;
+
+    const rpcPromise = apiSocket.machineRPC<any, { codexSessionId: string; limit: number }>(
+        machineId,
+        'codex-session-preview',
+        { codexSessionId, limit }
+    );
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+    });
+
+    const result = await Promise.race([rpcPromise, timeoutPromise]);
+
+    if (!result) throw new Error('RPC returned empty response');
+    if (result.error) throw new Error(result.error);
+    return { messages: Array.isArray(result.messages) ? result.messages : [] };
 }
 
 /**

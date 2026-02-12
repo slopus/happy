@@ -208,6 +208,7 @@ export const zhHant: TranslationStructure = {
         history: '歷史',
         sessionHistorySubtitle: '查看過去的 Happy 工作階段',
         claudeSessionsSubtitle: '瀏覽此裝置上的 Claude CLI 工作階段',
+        agentHistorySubtitle: '瀏覽 Claude、Gemini 和 Codex 的工作階段歷史',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已連結 ${service} 帳戶`,
@@ -397,6 +398,16 @@ export const zhHant: TranslationStructure = {
         pathUnavailable: '此工作階段的原始路徑不可用',
         directoryNotFound: '原始目錄已不存在於此機器上。',
         resumeFailed: '無法繼續 Claude 工作階段',
+    },
+
+    agentHistory: {
+        title: '智慧體工作階段',
+        loadFailed: '無法載入工作階段',
+        empty: '未找到工作階段',
+        resumeFailed: '無法繼續工作階段',
+        tabClaude: 'Claude',
+        tabGemini: 'Gemini',
+        tabCodex: 'Codex',
     },
 
     sessionPreview: {

@@ -178,3 +178,171 @@ export async function readCodexSessionUserMessages(
 
   return messages.slice(-limit);
 }
+
+export interface CodexSessionIndexEntry {
+  sessionId: string;
+  originalPath: string | null;
+  title?: string | null;
+  updatedAt?: number;
+  messageCount?: number;
+  gitBranch?: string | null;
+}
+
+export interface CodexPreviewMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp?: string;
+}
+
+/**
+ * List all Codex sessions from the native session directory.
+ * Scans ~/.codex/sessions/ recursively, reads first line (session_meta) and
+ * counts user messages for each JSONL file.
+ */
+export async function listCodexSessions(): Promise<CodexSessionIndexEntry[]> {
+  const codexHomeDir = process.env.CODEX_HOME || join(os.homedir(), '.codex');
+  const rootDir = join(codexHomeDir, 'sessions');
+
+  const files = collectFilesRecursive(rootDir).filter(f => f.endsWith('.jsonl'));
+  const results: CodexSessionIndexEntry[] = [];
+
+  for (const filePath of files) {
+    let content: string;
+    try {
+      content = await readFile(filePath, 'utf-8');
+    } catch {
+      continue;
+    }
+
+    const lines = content.split('\n');
+    let sessionId: string | null = null;
+    let originalPath: string | null = null;
+    let updatedAt: number | undefined;
+    let gitBranch: string | null = null;
+    let title: string | null = null;
+    let messageCount = 0;
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const parsed = JSON.parse(line);
+
+        if (parsed.type === 'session_meta') {
+          const payload = parsed.payload;
+          sessionId = typeof payload?.id === 'string' ? payload.id : null;
+          originalPath = typeof payload?.cwd === 'string' ? payload.cwd : null;
+          gitBranch = typeof payload?.git?.branch === 'string' ? payload.git.branch : null;
+          if (typeof payload?.timestamp === 'string') {
+            updatedAt = Date.parse(payload.timestamp);
+          }
+        }
+
+        if (parsed.type === 'response_item' && parsed.payload?.role === 'user') {
+          const text = extractUserText(parsed.payload);
+          if (text && !isSystemMessage(text)) {
+            messageCount++;
+            if (!title) {
+              title = text.trim().substring(0, 80);
+            }
+          }
+        }
+
+        // Track last timestamp for better updatedAt
+        if (typeof parsed.timestamp === 'string') {
+          const ts = Date.parse(parsed.timestamp);
+          if (!Number.isNaN(ts)) updatedAt = ts;
+        }
+      } catch {
+        // skip malformed lines
+      }
+    }
+
+    // Fallback: extract sessionId from filename if not in metadata
+    if (!sessionId) {
+      const match = filePath.match(/-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/);
+      if (match) sessionId = match[1];
+    }
+
+    if (!sessionId || messageCount === 0) continue;
+
+    // Use file mtime as fallback
+    if (updatedAt === undefined) {
+      try {
+        const stats = fs.statSync(filePath);
+        updatedAt = stats.mtimeMs;
+      } catch {
+        // ignore
+      }
+    }
+
+    results.push({ sessionId, originalPath, title, updatedAt, messageCount, gitBranch });
+  }
+
+  results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  return results;
+}
+
+/**
+ * Get preview messages (user + assistant) from a Codex session.
+ * Returns the last N messages in chronological order.
+ */
+export async function getCodexSessionPreview(
+  codexSessionId: string,
+  limit: number = 10,
+): Promise<CodexPreviewMessage[]> {
+  const filePath = findCodexSessionFile(codexSessionId);
+  if (!filePath) return [];
+
+  let content: string;
+  try {
+    content = await readFile(filePath, 'utf-8');
+  } catch {
+    return [];
+  }
+
+  const lines = content.split('\n');
+  const messages: CodexPreviewMessage[] = [];
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const parsed = JSON.parse(line);
+      if (parsed.type !== 'response_item') continue;
+
+      const payload = parsed.payload;
+      if (payload?.role === 'user') {
+        const text = extractUserText(payload);
+        if (text && !isSystemMessage(text)) {
+          messages.push({
+            role: 'user',
+            content: text,
+            timestamp: parsed.timestamp,
+          });
+        }
+      } else if (payload?.role === 'assistant') {
+        // Extract assistant text from content array
+        const content = payload?.content;
+        if (Array.isArray(content)) {
+          const texts: string[] = [];
+          for (const block of content) {
+            if (block?.type === 'output_text' && typeof block.text === 'string') {
+              texts.push(block.text);
+            }
+          }
+          const text = texts.join('\n');
+          if (text) {
+            messages.push({
+              role: 'assistant',
+              content: text,
+              timestamp: parsed.timestamp,
+            });
+          }
+        }
+      }
+    } catch {
+      // skip malformed lines
+    }
+  }
+
+  return messages.slice(-limit);
+}

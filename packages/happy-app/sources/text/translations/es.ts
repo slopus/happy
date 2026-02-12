@@ -207,6 +207,7 @@ export const es: TranslationStructure = {
         history: 'History',
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',
+        agentHistorySubtitle: 'Browse Claude, Gemini, and Codex session history',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Cuenta de ${service} conectada`,
@@ -396,6 +397,16 @@ export const es: TranslationStructure = {
         pathUnavailable: 'Original path unavailable for this session',
         directoryNotFound: 'The original directory no longer exists on this machine.',
         resumeFailed: 'Failed to resume Claude session',
+    },
+
+    agentHistory: {
+        title: 'Agent Sessions',
+        loadFailed: 'Failed to load sessions',
+        empty: 'No sessions found',
+        resumeFailed: 'Failed to resume session',
+        tabClaude: 'Claude',
+        tabGemini: 'Gemini',
+        tabCodex: 'Codex',
     },
 
     sessionPreview: {

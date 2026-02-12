@@ -209,6 +209,7 @@ export const zhHans: TranslationStructure = {
         history: '历史记录',
         sessionHistorySubtitle: '查看过去的 Happy 会话',
         claudeSessionsSubtitle: '浏览设备上的 Claude CLI 会话',
+        agentHistorySubtitle: '浏览 Claude、Gemini 和 Codex 的会话历史',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已连接 ${service} 账户`,
@@ -398,6 +399,16 @@ export const zhHans: TranslationStructure = {
         pathUnavailable: '此会话缺少原始路径',
         directoryNotFound: '该会话的原始目录已不存在。',
         resumeFailed: '恢复 Claude 会话失败',
+    },
+
+    agentHistory: {
+        title: '智能体会话',
+        loadFailed: '加载会话失败',
+        empty: '未找到会话',
+        resumeFailed: '恢复会话失败',
+        tabClaude: 'Claude',
+        tabGemini: 'Gemini',
+        tabCodex: 'Codex',
     },
 
     sessionPreview: {

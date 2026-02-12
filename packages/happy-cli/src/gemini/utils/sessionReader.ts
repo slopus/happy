@@ -6,10 +6,11 @@
  * and session fork (reading + filtering lines).
  */
 
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
 import { logger } from '@/ui/logger';
 import { GeminiSessionLineSchema, type GeminiSessionLine } from './sessionTypes';
-import { getGeminiSessionFilePath } from './sessionWriter';
+import { getGeminiSessionFilePath, getGeminiSessionsDir } from './sessionWriter';
 
 /**
  * Read and parse a Gemini session JSONL file.
@@ -64,6 +65,124 @@ export interface ResumeContextOptions {
  *
  * Format matches ConversationHistory.getContextForNewSession() for consistency.
  */
+export interface GeminiSessionIndexEntry {
+  sessionId: string;
+  originalPath: string | null;
+  title?: string | null;
+  updatedAt?: number;
+  messageCount?: number;
+}
+
+export interface SessionPreviewMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp?: string;
+}
+
+/**
+ * List all Gemini sessions from the local JSONL directory.
+ * For each file, parses the first few lines to extract metadata.
+ */
+export async function listGeminiSessions(): Promise<GeminiSessionIndexEntry[]> {
+  const sessionsDir = getGeminiSessionsDir();
+
+  let dirents: Dirent[];
+  try {
+    dirents = await readdir(sessionsDir, { withFileTypes: true }) as Dirent[];
+  } catch {
+    return [];
+  }
+
+  const results: GeminiSessionIndexEntry[] = [];
+
+  for (const dirent of dirents) {
+    if (!dirent.isFile() || !dirent.name.endsWith('.jsonl')) continue;
+
+    const sessionId = dirent.name.replace(/\.jsonl$/, '');
+    const filePath = getGeminiSessionFilePath(sessionId);
+
+    let content: string;
+    try {
+      content = await readFile(filePath, 'utf-8');
+    } catch {
+      continue;
+    }
+
+    const lines = content.split('\n');
+    let originalPath: string | null = null;
+    let title: string | null = null;
+    let messageCount = 0;
+    let updatedAt: number | undefined;
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const parsed = JSON.parse(line);
+
+        if (parsed.type === 'meta' && parsed.key === 'sessionStart') {
+          originalPath = typeof parsed.value?.cwd === 'string' ? parsed.value.cwd : null;
+        }
+
+        if (parsed.type === 'user') {
+          messageCount++;
+          if (!title && typeof parsed.message === 'string' && parsed.message.trim()) {
+            title = parsed.message.trim().substring(0, 80);
+          }
+        }
+
+        // Track last timestamp for updatedAt
+        if (typeof parsed.timestamp === 'number') {
+          updatedAt = parsed.timestamp;
+        }
+      } catch {
+        // skip malformed lines
+      }
+    }
+
+    // Skip sessions with no user messages
+    if (messageCount === 0) continue;
+
+    // Use file mtime as fallback for updatedAt
+    if (updatedAt === undefined) {
+      try {
+        const stats = await stat(filePath);
+        updatedAt = stats.mtimeMs;
+      } catch {
+        // ignore
+      }
+    }
+
+    results.push({ sessionId, originalPath, title, updatedAt, messageCount });
+  }
+
+  results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  return results;
+}
+
+/**
+ * Get preview messages (user + assistant) from a Gemini session.
+ * Returns the last N messages in chronological order.
+ */
+export async function getGeminiSessionPreview(
+  sessionId: string,
+  limit: number = 10,
+): Promise<SessionPreviewMessage[]> {
+  const lines = await readGeminiSessionLog(sessionId);
+
+  const messages: SessionPreviewMessage[] = [];
+  for (const line of lines) {
+    if (line.type === 'user' || line.type === 'assistant') {
+      messages.push({
+        role: line.type,
+        content: line.message,
+        timestamp: new Date(line.timestamp).toISOString(),
+      });
+    }
+  }
+
+  return messages.slice(-limit);
+}
+
 export function buildResumeContextFromSessionLog(
   lines: GeminiSessionLine[],
   options?: ResumeContextOptions,

@@ -239,6 +239,7 @@ export const ja: TranslationStructure = {
         history: 'History',
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',
+        agentHistorySubtitle: 'Claude、Gemini、Codex のセッション履歴を閲覧',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service}アカウントが接続されました`,
@@ -428,6 +429,16 @@ export const ja: TranslationStructure = {
         pathUnavailable: 'Original path unavailable for this session',
         directoryNotFound: 'The original directory no longer exists on this machine.',
         resumeFailed: 'Failed to resume Claude session',
+    },
+
+    agentHistory: {
+        title: 'エージェントセッション',
+        loadFailed: 'セッションの読み込みに失敗しました',
+        empty: 'セッションが見つかりません',
+        resumeFailed: 'セッションの再開に失敗しました',
+        tabClaude: 'Claude',
+        tabGemini: 'Gemini',
+        tabCodex: 'Codex',
     },
 
     sessionPreview: {
