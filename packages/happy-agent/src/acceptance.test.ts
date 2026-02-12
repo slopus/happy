@@ -469,7 +469,8 @@ describe('Acceptance: Interop — dataKey vs legacy encryption', () => {
 describe('Acceptance: Output formatting', () => {
     it('formatSessionTable handles empty sessions list', () => {
         const result = formatSessionTable([]);
-        expect(result).toBe('No sessions found.');
+        expect(result).toContain('## Sessions');
+        expect(result).toContain('- Total: 0');
     });
 
     it('formatSessionTable renders sessions with correct columns', () => {
@@ -495,17 +496,16 @@ describe('Acceptance: Output formatting', () => {
         };
 
         const result = formatSessionTable([session]);
-        expect(result).toContain('ID');
-        expect(result).toContain('NAME');
-        expect(result).toContain('PATH');
-        expect(result).toContain('STATUS');
-        expect(result).toContain('sess-123');  // truncated ID
+        expect(result).toContain('### Session 1');
+        expect(result).toContain('- ID: `sess-12345678`');
+        expect(result).toContain('- Name: My Project');
         expect(result).toContain('/home/user');
     });
 
     it('formatMessageHistory handles empty messages', () => {
         const result = formatMessageHistory([]);
-        expect(result).toBe('No messages.');
+        expect(result).toContain('## Message History');
+        expect(result).toContain('- Count: 0');
     });
 
     it('formatJson produces parseable JSON for any data', () => {

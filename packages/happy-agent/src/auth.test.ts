@@ -272,7 +272,10 @@ describe('auth', () => {
 
         it('prints logout message', async () => {
             await authLogout(config);
-            expect(consoleSpy).toHaveBeenCalledWith('Logged out. Credentials cleared.');
+            const calls = consoleSpy.mock.calls.map(c => String(c[0]));
+            expect(calls).toContain('## Authentication');
+            expect(calls).toContain('- Status: Logged out');
+            expect(calls).toContain('- Credentials: Cleared');
         });
     });
 
@@ -282,13 +285,17 @@ describe('auth', () => {
 
             await authStatus(config);
 
-            expect(consoleSpy).toHaveBeenCalledWith('Authenticated');
+            const calls = consoleSpy.mock.calls.map(c => String(c[0]));
+            expect(calls).toContain('## Authentication');
+            expect(calls).toContain('- Status: Authenticated');
         });
 
         it('shows not authenticated when no credentials', async () => {
             await authStatus(config);
 
-            expect(consoleSpy).toHaveBeenCalledWith('Not authenticated');
+            const calls = consoleSpy.mock.calls.map(c => String(c[0]));
+            expect(calls).toContain('## Authentication');
+            expect(calls).toContain('- Status: Not authenticated');
         });
 
         it('shows public key when authenticated', async () => {
@@ -299,7 +306,7 @@ describe('auth', () => {
 
             // Should include a call with the public key
             const calls = consoleSpy.mock.calls.map(c => String(c[0]));
-            const pubKeyCall = calls.find(c => c.includes('Public key:'));
+            const pubKeyCall = calls.find(c => c.includes('- Public Key: `'));
             expect(pubKeyCall).toBeDefined();
         });
     });

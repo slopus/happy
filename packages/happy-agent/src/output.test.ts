@@ -1,23 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { formatSessionTable, formatSessionStatus, formatMessageHistory, formatJson } from './output';
 import type { DecryptedSession, DecryptedMessage } from './api';
-
-// Mock chalk to pass through text without ANSI codes for easier testing
-vi.mock('chalk', () => {
-    const passthrough = (s: string) => s;
-    const chalkMock: Record<string, unknown> = {
-        default: new Proxy({}, {
-            get: (_target, prop) => {
-                if (prop === 'bold') return passthrough;
-                if (prop === 'green') return passthrough;
-                if (prop === 'yellow') return passthrough;
-                if (prop === 'dim') return passthrough;
-                return passthrough;
-            },
-        }),
-    };
-    return chalkMock;
-});
 
 function makeSession(overrides: Partial<DecryptedSession> = {}): DecryptedSession {
     return {
@@ -36,27 +19,27 @@ function makeSession(overrides: Partial<DecryptedSession> = {}): DecryptedSessio
 }
 
 describe('formatSessionTable', () => {
-    it('should return "No sessions found." when sessions array is empty', () => {
-        expect(formatSessionTable([])).toBe('No sessions found.');
+    it('should return markdown summary when sessions array is empty', () => {
+        const output = formatSessionTable([]);
+        expect(output).toContain('## Sessions');
+        expect(output).toContain('- Total: 0');
     });
 
-    it('should display a table with headers for sessions', () => {
+    it('should display markdown list sections for sessions', () => {
         const sessions = [makeSession()];
         const output = formatSessionTable(sessions);
 
-        expect(output).toContain('ID');
-        expect(output).toContain('NAME');
-        expect(output).toContain('PATH');
-        expect(output).toContain('STATUS');
-        expect(output).toContain('LAST ACTIVE');
+        expect(output).toContain('### Session 1');
+        expect(output).toContain(`- ID: \`${sessions[0].id}\``);
+        expect(output).toContain('- Name: Test session');
+        expect(output).toContain('- Path: /home/user/project');
     });
 
-    it('should truncate session IDs to 8 characters', () => {
+    it('should display full session IDs for agent-friendly parsing', () => {
         const sessions = [makeSession({ id: 'abcdef1234567890abcdef' })];
         const output = formatSessionTable(sessions);
 
-        expect(output).toContain('abcdef12');
-        expect(output).not.toContain('abcdef1234567890abcdef');
+        expect(output).toContain('abcdef1234567890abcdef');
     });
 
     it('should display session name from summary or tag', () => {
@@ -111,10 +94,8 @@ describe('formatSessionTable', () => {
     it('should display "-" for missing metadata fields', () => {
         const sessions = [makeSession({ metadata: {} })];
         const output = formatSessionTable(sessions);
-        // name and path should both be "-"
-        const lines = output.split('\n');
-        const dataLine = lines[2]; // skip header and separator
-        expect(dataLine).toContain('-');
+        expect(output).toContain('- Name: -');
+        expect(output).toContain('- Path: -');
     });
 
     it('should handle null metadata gracefully', () => {
@@ -130,9 +111,8 @@ describe('formatSessionTable', () => {
             makeSession({ id: 'session-3-ghi' }),
         ];
         const output = formatSessionTable(sessions);
-        const lines = output.split('\n');
-        // header + separator + 3 data rows
-        expect(lines.length).toBe(5);
+        const sectionLines = output.split('\n').filter(line => line.startsWith('### Session '));
+        expect(sectionLines.length).toBe(3);
     });
 });
 
@@ -140,8 +120,8 @@ describe('formatSessionStatus', () => {
     it('should display session ID', () => {
         const session = makeSession();
         const output = formatSessionStatus(session);
-        expect(output).toContain('Session: ');
-        expect(output).toContain(session.id);
+        expect(output).toContain('## Session Status');
+        expect(output).toContain(`- Session ID: \`${session.id}\``);
     });
 
     it('should display metadata fields', () => {
@@ -155,11 +135,11 @@ describe('formatSessionStatus', () => {
             },
         });
         const output = formatSessionStatus(session);
-        expect(output).toContain('Tag: my-tag');
-        expect(output).toContain('Summary: My project session');
-        expect(output).toContain('Path: /home/user/project');
-        expect(output).toContain('Host: my-machine');
-        expect(output).toContain('Lifecycle: running');
+        expect(output).toContain('- Tag: my-tag');
+        expect(output).toContain('- Summary: My project session');
+        expect(output).toContain('- Path: /home/user/project');
+        expect(output).toContain('- Host: my-machine');
+        expect(output).toContain('- Lifecycle: running');
     });
 
     it('should display summary from summary.text object shape', () => {
@@ -171,20 +151,20 @@ describe('formatSessionStatus', () => {
             },
         });
         const output = formatSessionStatus(session);
-        expect(output).toContain('Summary: Object summary value');
+        expect(output).toContain('- Summary: Object summary value');
         expect(output).not.toContain('[object Object]');
     });
 
     it('should display active status', () => {
         const session = makeSession({ active: true });
         const output = formatSessionStatus(session);
-        expect(output).toContain('Active: yes');
+        expect(output).toContain('- Active: yes');
     });
 
     it('should display inactive status', () => {
         const session = makeSession({ active: false });
         const output = formatSessionStatus(session);
-        expect(output).toContain('Active: no');
+        expect(output).toContain('- Active: no');
     });
 
     it('should display agent state as idle when not busy', () => {
@@ -192,7 +172,7 @@ describe('formatSessionStatus', () => {
             agentState: { controlledByUser: false, requests: {} },
         });
         const output = formatSessionStatus(session);
-        expect(output).toContain('Agent: idle');
+        expect(output).toContain('- Agent: idle');
     });
 
     it('should display agent state as busy when controlledByUser is true', () => {
@@ -200,7 +180,7 @@ describe('formatSessionStatus', () => {
             agentState: { controlledByUser: true, requests: {} },
         });
         const output = formatSessionStatus(session);
-        expect(output).toContain('Agent: busy');
+        expect(output).toContain('- Agent: busy');
     });
 
     it('should display pending requests count', () => {
@@ -208,13 +188,13 @@ describe('formatSessionStatus', () => {
             agentState: { controlledByUser: true, requests: { 'r1': {}, 'r2': {}, 'r3': {} } },
         });
         const output = formatSessionStatus(session);
-        expect(output).toContain('Pending Requests: 3');
+        expect(output).toContain('- Pending Requests: 3');
     });
 
     it('should display "no state" when agentState is null', () => {
         const session = makeSession({ agentState: null });
         const output = formatSessionStatus(session);
-        expect(output).toContain('Agent: no state');
+        expect(output).toContain('- Agent: no state');
     });
 
     it('should omit missing optional metadata fields', () => {
@@ -240,13 +220,16 @@ describe('formatMessageHistory', () => {
         };
     }
 
-    it('should return "No messages." when messages array is empty', () => {
-        expect(formatMessageHistory([])).toBe('No messages.');
+    it('should return markdown summary when messages array is empty', () => {
+        const output = formatMessageHistory([]);
+        expect(output).toContain('## Message History');
+        expect(output).toContain('- Count: 0');
     });
 
     it('should display user messages with role and text', () => {
         const messages = [makeMessage()];
         const output = formatMessageHistory(messages);
+        expect(output).toContain('### Message 1');
         expect(output).toContain('user');
         expect(output).toContain('Hello');
     });
@@ -266,10 +249,10 @@ describe('formatMessageHistory', () => {
             makeMessage({ id: 'msg-2', content: { role: 'assistant', content: { type: 'text', text: 'Hi!' } }, createdAt: 2000 }),
         ];
         const output = formatMessageHistory(messages);
-        const lines = output.split('\n');
-        expect(lines.length).toBe(2);
-        expect(lines[0]).toContain('Hello');
-        expect(lines[1]).toContain('Hi!');
+        expect(output).toContain('### Message 1');
+        expect(output).toContain('### Message 2');
+        expect(output).toContain('Hello');
+        expect(output).toContain('Hi!');
     });
 
     it('should handle string content directly', () => {

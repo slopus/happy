@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import chalk from 'chalk';
 import { hostname } from 'node:os';
 import { loadConfig } from './config';
 import type { Config } from './config';
@@ -137,7 +136,7 @@ program
             console.log(formatJson(session));
         } else {
             if (!liveData) {
-                console.log(chalk.dim('(showing cached data — could not get live status)'));
+                console.log('> Note: showing cached data (could not get live status).');
             }
             console.log(formatSessionStatus(session));
         }
@@ -164,7 +163,11 @@ program
         if (opts.json) {
             console.log(formatJson(session));
         } else {
-            console.log(`Session created: ${session.id}`);
+            console.log([
+                '## Session Created',
+                '',
+                `- Session ID: \`${session.id}\``,
+            ].join('\n'));
         }
     });
 
@@ -198,7 +201,12 @@ program
         if (opts.json) {
             console.log(formatJson({ sessionId: session.id, message, sent: true }));
         } else {
-            console.log(`Message sent to session ${session.id}`);
+            console.log([
+                '## Message Sent',
+                '',
+                `- Session ID: \`${session.id}\``,
+                `- Waited For Idle: ${opts.wait ? 'yes' : 'no'}`,
+            ].join('\n'));
         }
     });
 
@@ -253,7 +261,11 @@ program
             client.close();
         }
 
-        console.log(`Stopped session ${session.id}`);
+        console.log([
+            '## Session Stopped',
+            '',
+            `- Session ID: \`${session.id}\``,
+        ].join('\n'));
     });
 
 program
@@ -274,7 +286,11 @@ program
         try {
             await client.waitForConnect();
             await client.waitForIdle(opts.timeout * 1000);
-            console.log(`Agent is idle for session ${session.id}`);
+            console.log([
+                '## Session Idle',
+                '',
+                `- Session ID: \`${session.id}\``,
+            ].join('\n'));
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             console.error(msg);

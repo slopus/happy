@@ -1,7 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import tweetnacl from 'tweetnacl';
 import qrcode from 'qrcode-terminal';
-import chalk from 'chalk';
 import { encodeBase64, encodeBase64Url, decodeBase64, decryptBoxBundle, getRandomBytes } from './encryption';
 import { writeCredentials, clearCredentials, readCredentials } from './credentials';
 import type { Config } from './config';
@@ -39,8 +38,9 @@ export async function authLogin(config: Config): Promise<void> {
     qrcode.generate(qrData, { small: true }, (code: string) => {
         console.log(code);
     });
-    console.log(chalk.bold('Scan this QR code with the Happy app'));
-    console.log(chalk.dim('Settings → Account → Link New Device'));
+    console.log('## Authentication');
+    console.log('- Action: Scan this QR code with the Happy app');
+    console.log('- Path: Settings -> Account -> Link New Device');
     console.log('');
 
     // 4. Poll until authorized or timeout
@@ -72,7 +72,8 @@ export async function authLogin(config: Config): Promise<void> {
             // 6. Save credentials
             writeCredentials(config, result.token, secret);
 
-            console.log(chalk.green('Authenticated successfully!'));
+            console.log('## Authentication');
+            console.log('- Status: Authenticated');
             return;
         }
     }
@@ -82,17 +83,20 @@ export async function authLogin(config: Config): Promise<void> {
 
 export async function authLogout(config: Config): Promise<void> {
     clearCredentials(config);
-    console.log('Logged out. Credentials cleared.');
+    console.log('## Authentication');
+    console.log('- Status: Logged out');
+    console.log('- Credentials: Cleared');
 }
 
 export async function authStatus(config: Config): Promise<void> {
     const creds = readCredentials(config);
+    console.log('## Authentication');
     if (creds) {
-        console.log(chalk.green('Authenticated'));
-        console.log(chalk.dim(`Public key: ${encodeBase64(creds.contentKeyPair.publicKey)}`));
+        console.log('- Status: Authenticated');
+        console.log(`- Public Key: \`${encodeBase64(creds.contentKeyPair.publicKey)}\``);
     } else {
-        console.log(chalk.yellow('Not authenticated'));
-        console.log(chalk.dim('Run `happy-agent auth login` to authenticate.'));
+        console.log('- Status: Not authenticated');
+        console.log('- Action: Run `happy-agent auth login` to authenticate.');
     }
 }
 

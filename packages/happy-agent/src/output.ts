@@ -1,4 +1,3 @@
-import chalk from 'chalk';
 import type { DecryptedSession, DecryptedMessage } from './api';
 
 // --- Types ---
@@ -20,10 +19,6 @@ type AgentState = {
 
 // --- Helpers ---
 
-function truncateId(id: string, len = 8): string {
-    return id.length > len ? id.slice(0, len) : id;
-}
-
 function formatTime(ts: number): string {
     if (!ts) return '-';
     const date = new Date(ts);
@@ -38,8 +33,32 @@ function formatTime(ts: number): string {
     return `${diffDay}d ago`;
 }
 
-function padRight(str: string, len: number): string {
-    return str.length >= len ? str : str + ' '.repeat(len - str.length);
+function formatIsoTime(ts: number): string {
+    if (!ts) return '-';
+    const date = new Date(ts);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toISOString();
+}
+
+function formatLastActive(ts: number): string {
+    const relative = formatTime(ts);
+    const absolute = formatIsoTime(ts);
+    if (absolute === '-') return relative;
+    return `${relative} (${absolute})`;
+}
+
+function toMarkdownInline(value: string): string {
+    const escaped = value.replace(/`/g, '\\`');
+    return `\`${escaped}\``;
+}
+
+function normalizeCodeBlockText(value: string): string {
+    const text = value.trim().length > 0 ? value : '(empty)';
+    return text.replace(/```/g, '``\\`');
+}
+
+function normalizeListValue(value: string): string {
+    return value.replace(/\r?\n/g, ' ').trim();
 }
 
 function toNonEmptyString(value: unknown): string | undefined {
@@ -59,43 +78,26 @@ function extractSessionSummary(meta: SessionMetadata): string | undefined {
 
 export function formatSessionTable(sessions: DecryptedSession[]): string {
     if (sessions.length === 0) {
-        return 'No sessions found.';
+        return '## Sessions\n\n- Total: 0\n- Items: none';
     }
 
-    const headers = ['ID', 'NAME', 'PATH', 'STATUS', 'LAST ACTIVE'];
-    const rows: string[][] = sessions.map(s => {
+    const sections = sessions.map((s, index) => {
         const meta = (s.metadata ?? {}) as SessionMetadata;
-        const name = extractSessionSummary(meta) ?? toNonEmptyString(meta.tag) ?? '-';
-        const path = toNonEmptyString(meta.path) ?? '-';
+        const name = normalizeListValue(extractSessionSummary(meta) ?? toNonEmptyString(meta.tag) ?? '-');
+        const path = normalizeListValue(toNonEmptyString(meta.path) ?? '-');
         const status = s.active ? 'active' : 'inactive';
-        const lastActive = formatTime(s.activeAt);
-        return [truncateId(s.id), name, path, status, lastActive];
+        const lastActive = normalizeListValue(formatLastActive(s.activeAt));
+        return [
+            `### Session ${index + 1}`,
+            `- ID: ${toMarkdownInline(s.id)}`,
+            `- Name: ${name}`,
+            `- Path: ${path}`,
+            `- Status: ${status}`,
+            `- Last Active: ${lastActive}`,
+        ].join('\n');
     });
 
-    // Calculate column widths
-    const widths = headers.map((h, i) => {
-        const maxRow = rows.reduce((max, row) => Math.max(max, row[i].length), 0);
-        return Math.max(h.length, maxRow);
-    });
-
-    const headerLine = headers.map((h, i) => padRight(h, widths[i])).join('  ');
-    const separator = widths.map(w => '-'.repeat(w)).join('  ');
-    const dataLines = rows.map(row => {
-        return row.map((cell, i) => {
-            if (i === 3) {
-                // status column - colorize
-                const padded = padRight(cell, widths[i]);
-                return cell === 'active' ? chalk.green(padded) : chalk.dim(padded);
-            }
-            return padRight(cell, widths[i]);
-        }).join('  ');
-    });
-
-    return [
-        chalk.bold(headerLine),
-        separator,
-        ...dataLines,
-    ].join('\n');
+    return `## Sessions\n\n- Total: ${sessions.length}\n\n${sections.join('\n\n')}`;
 }
 
 // --- Session status formatting ---
@@ -109,28 +111,29 @@ export function formatSessionStatus(session: DecryptedSession): string {
     const host = toNonEmptyString(meta.host);
     const lifecycleState = toNonEmptyString(meta.lifecycleState);
 
-    const lines: string[] = [];
-
-    lines.push(chalk.bold('Session: ') + session.id);
-    if (tag) lines.push(chalk.bold('Tag: ') + tag);
-    if (summary) lines.push(chalk.bold('Summary: ') + summary);
-    if (path) lines.push(chalk.bold('Path: ') + path);
-    if (host) lines.push(chalk.bold('Host: ') + host);
-    if (lifecycleState) lines.push(chalk.bold('Lifecycle: ') + lifecycleState);
-
-    lines.push(chalk.bold('Active: ') + (session.active ? chalk.green('yes') : chalk.dim('no')));
-    lines.push(chalk.bold('Last Active: ') + formatTime(session.activeAt));
+    const lines: string[] = [
+        '## Session Status',
+        '',
+        `- Session ID: ${toMarkdownInline(session.id)}`,
+    ];
+    if (tag) lines.push(`- Tag: ${tag}`);
+    if (summary) lines.push(`- Summary: ${summary}`);
+    if (path) lines.push(`- Path: ${path}`);
+    if (host) lines.push(`- Host: ${host}`);
+    if (lifecycleState) lines.push(`- Lifecycle: ${lifecycleState}`);
+    lines.push(`- Active: ${session.active ? 'yes' : 'no'}`);
+    lines.push(`- Last Active: ${formatLastActive(session.activeAt)}`);
 
     if (state) {
         const requests = state.requests != null && typeof state.requests === 'object' ? Object.keys(state.requests).length : 0;
         const busy = state.controlledByUser === true || requests > 0;
-        const agentStatus = busy ? chalk.yellow('busy') : chalk.green('idle');
-        lines.push(chalk.bold('Agent: ') + agentStatus);
+        const agentStatus = busy ? 'busy' : 'idle';
+        lines.push(`- Agent: ${agentStatus}`);
         if (requests > 0) {
-            lines.push(chalk.bold('Pending Requests: ') + requests);
+            lines.push(`- Pending Requests: ${requests}`);
         }
     } else {
-        lines.push(chalk.bold('Agent: ') + chalk.dim('no state'));
+        lines.push('- Agent: no state');
     }
 
     return lines.join('\n');
@@ -146,31 +149,36 @@ type MessageContent = {
 
 export function formatMessageHistory(messages: DecryptedMessage[]): string {
     if (messages.length === 0) {
-        return 'No messages.';
+        return '## Message History\n\n- Count: 0\n- Items: none';
     }
 
-    return messages.map(msg => {
+    const sections = messages.map((msg, index) => {
         const content = msg.content as MessageContent | null;
         const role = content?.role ?? 'unknown';
-        const timestamp = new Date(msg.createdAt).toLocaleString();
+        const timestamp = formatIsoTime(msg.createdAt);
 
         let text: string;
         if (content?.content && typeof content.content === 'object' && content.content.text) {
-            text = content.content.text;
+            text = String(content.content.text);
         } else if (content?.content && typeof content.content === 'string') {
             text = content.content;
         } else {
             text = JSON.stringify(content);
         }
 
-        const roleLabel = role === 'user'
-            ? chalk.blue(role)
-            : role === 'assistant'
-                ? chalk.green(role)
-                : chalk.dim(role);
+        return [
+            `### Message ${index + 1}`,
+            `- ID: ${toMarkdownInline(msg.id)}`,
+            `- Time: ${timestamp}`,
+            `- Role: ${role}`,
+            '- Text:',
+            '```text',
+            normalizeCodeBlockText(text),
+            '```',
+        ].join('\n');
+    });
 
-        return `${chalk.dim(timestamp)} ${roleLabel}: ${text}`;
-    }).join('\n');
+    return `## Message History\n\n- Count: ${messages.length}\n\n${sections.join('\n\n')}`;
 }
 
 // --- JSON output ---
