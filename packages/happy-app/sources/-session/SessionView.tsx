@@ -306,8 +306,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         storage.getState().updateSessionPermissionMode(sessionId, mode);
     }, [sessionId]);
 
-    // Function to update model mode (for Gemini sessions)
-    const updateModelMode = React.useCallback((mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => {
+    // Function to update model mode
+    const updateModelMode = React.useCallback((mode: string) => {
         storage.getState().updateSessionModelMode(sessionId, mode);
     }, [sessionId]);
 
