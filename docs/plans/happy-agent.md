@@ -110,7 +110,7 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 - [x] Run tests — must pass before task 5
 
 ### Task 5: HTTP API client
-- [ ] Create `src/api.ts` with functions:
+- [x] Create `src/api.ts` with functions:
   - `listSessions(config, creds)` — GET `/v1/sessions`, for each session: resolve encryption key (see key resolution below), decrypt metadata/agentState, return decrypted session list
   - `listActiveSessions(config, creds)` — GET `/v2/sessions/active`, same decryption logic
   - `createSession(config, creds, opts: { tag, metadata })` — POST `/v1/sessions`:
@@ -120,17 +120,17 @@ This is a completely separate client from `happy-cli`. It has its own authentica
     - Returns decrypted session with the sessionKey attached
   - `getSessionMessages(config, creds, sessionId)` — GET `/v1/sessions/:id/messages`
   - `deleteSession(config, creds, sessionId)` — DELETE `/v1/sessions/:id`
-- [ ] Implement session encryption key resolution for existing sessions:
+- [x] Implement session encryption key resolution for existing sessions:
   - If session has `dataEncryptionKey`: strip version byte, `decryptBoxBundle(encrypted, creds.contentKeyPair.secretKey)` → per-session AES key, use `'dataKey'` variant
   - If session has no `dataEncryptionKey`: use `creds.secret` as key with `'legacy'` variant
-- [ ] All requests include `Authorization: Bearer <token>` header
-- [ ] All functions handle HTTP errors gracefully (404 → "not found", 401 → "re-authenticate", 5xx → "server error")
-- [ ] Write tests with mocked axios for listSessions (success + error)
-- [ ] Write tests for session key resolution (dataKey and legacy paths)
-- [ ] Write tests with mocked axios for createSession (new + existing tag)
-- [ ] Write tests with mocked axios for getSessionMessages
-- [ ] Write tests with mocked axios for deleteSession
-- [ ] Run tests — must pass before task 6
+- [x] All requests include `Authorization: Bearer <token>` header
+- [x] All functions handle HTTP errors gracefully (404 → "not found", 401 → "re-authenticate", 5xx → "server error")
+- [x] Write tests with mocked axios for listSessions (success + error)
+- [x] Write tests for session key resolution (dataKey and legacy paths)
+- [x] Write tests with mocked axios for createSession (new + existing tag)
+- [x] Write tests with mocked axios for getSessionMessages
+- [x] Write tests with mocked axios for deleteSession
+- [x] Run tests — must pass before task 6
 
 ### Task 6: Socket.IO session client
 - [ ] Create `src/session.ts` — `SessionClient` class that:
