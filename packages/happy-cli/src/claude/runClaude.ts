@@ -25,6 +25,7 @@ import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/util
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { projectPath } from '../projectPath';
 import { resolve, join } from 'node:path';
+import { detectGitWorktree } from '@/utils/gitWorktree';
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
@@ -54,6 +55,26 @@ export interface StartOptions {
     startedBy?: 'daemon' | 'terminal'
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
+}
+
+/** Env vars from daemon take priority; otherwise detect via git */
+function detectWorktreeMetadata(cwd: string): Partial<Metadata> {
+    if (process.env.HAPPY_WORKTREE_BASE_PATH) {
+        return {
+            isWorktree: true,
+            worktreeBasePath: process.env.HAPPY_WORKTREE_BASE_PATH,
+            worktreeBranchName: process.env.HAPPY_WORKTREE_BRANCH_NAME,
+        };
+    }
+    const info = detectGitWorktree(cwd);
+    if (info.isWorktree) {
+        return {
+            isWorktree: true,
+            worktreeBasePath: info.worktreeBasePath,
+            worktreeBranchName: info.worktreeBranchName,
+        };
+    }
+    return {};
 }
 
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
@@ -113,12 +134,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),
         flavor: 'claude',
-        // Worktree metadata (passed via environment from daemon)
-        ...(process.env.HAPPY_WORKTREE_BASE_PATH ? {
-            isWorktree: true,
-            worktreeBasePath: process.env.HAPPY_WORKTREE_BASE_PATH,
-            worktreeBranchName: process.env.HAPPY_WORKTREE_BRANCH_NAME,
-        } : {}),
+        // Worktree metadata: env vars from daemon take priority, otherwise detect via git
+        ...detectWorktreeMetadata(workingDirectory),
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 

@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import type { AgentState, Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
+import { detectGitWorktree } from '@/utils/gitWorktree';
 import packageJson from '../../package.json';
 
 /**
@@ -62,6 +63,26 @@ export interface SessionMetadataResult {
  * const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
  * ```
  */
+/** Env vars from daemon take priority; otherwise detect via git */
+function detectWorktreeMetadata(): Partial<Metadata> {
+    if (process.env.HAPPY_WORKTREE_BASE_PATH) {
+        return {
+            isWorktree: true,
+            worktreeBasePath: process.env.HAPPY_WORKTREE_BASE_PATH,
+            worktreeBranchName: process.env.HAPPY_WORKTREE_BRANCH_NAME,
+        };
+    }
+    const info = detectGitWorktree(process.cwd());
+    if (info.isWorktree) {
+        return {
+            isWorktree: true,
+            worktreeBasePath: info.worktreeBasePath,
+            worktreeBranchName: info.worktreeBranchName,
+        };
+    }
+    return {};
+}
+
 export function createSessionMetadata(opts: CreateSessionMetadataOptions): SessionMetadataResult {
     const state: AgentState = {
         controlledByUser: false,
@@ -83,12 +104,8 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),
         flavor: opts.flavor,
-        // Worktree metadata (passed via environment from daemon)
-        ...(process.env.HAPPY_WORKTREE_BASE_PATH ? {
-            isWorktree: true,
-            worktreeBasePath: process.env.HAPPY_WORKTREE_BASE_PATH,
-            worktreeBranchName: process.env.HAPPY_WORKTREE_BRANCH_NAME,
-        } : {}),
+        // Worktree metadata: env vars from daemon take priority, otherwise detect via git
+        ...detectWorktreeMetadata(),
     };
 
     return { state, metadata };
