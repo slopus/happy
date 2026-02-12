@@ -79,18 +79,6 @@ export default function VoiceSettingsScreen() {
                 footer={t('settingsVoice.providerDescription')}
             >
                 <Item
-                    title="ElevenLabs"
-                    subtitle={t('settingsVoice.providerElevenLabsSubtitle')}
-                    icon={<Ionicons name="cloud-outline" size={29} color="#007AFF" />}
-                    rightElement={
-                        provider === 'elevenlabs'
-                            ? <Ionicons name="checkmark-circle" size={24} color="#007AFF" />
-                            : null
-                    }
-                    onPress={() => handleProviderChange('elevenlabs')}
-                    showChevron={false}
-                />
-                <Item
                     title="Happy Voice"
                     subtitle={t('settingsVoice.providerHappyVoiceSubtitle')}
                     icon={<Ionicons name="server-outline" size={29} color="#34C759" />}
@@ -100,6 +88,18 @@ export default function VoiceSettingsScreen() {
                             : null
                     }
                     onPress={() => handleProviderChange('happy-voice')}
+                    showChevron={false}
+                />
+                <Item
+                    title="ElevenLabs"
+                    subtitle={t('settingsVoice.providerElevenLabsSubtitle')}
+                    icon={<Ionicons name="cloud-outline" size={29} color="#007AFF" />}
+                    rightElement={
+                        provider === 'elevenlabs'
+                            ? <Ionicons name="checkmark-circle" size={24} color="#007AFF" />
+                            : null
+                    }
+                    onPress={() => handleProviderChange('elevenlabs')}
                     showChevron={false}
                 />
             </ItemGroup>

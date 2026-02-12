@@ -25,7 +25,7 @@ export function getVoiceProvider(): VoiceProvider {
     if (stored === 'elevenlabs' || stored === 'happy-voice') return stored;
     const fallback = configRef?.voiceProvider;
     if (fallback === 'elevenlabs' || fallback === 'happy-voice') return fallback;
-    return 'elevenlabs';
+    return 'happy-voice';
 }
 
 export function setVoiceProvider(value: VoiceProvider | null): void {
