@@ -577,6 +577,25 @@ export const pt: TranslationStructure = {
             useDefault: 'Usar padrão',
             hint: 'O prompt do sistema define a personalidade e as capacidades do assistente de voz. Ele será combinado com o contexto da sessão ao iniciar uma sessão de voz.',
         },
+        // Provider settings
+        providerTitle: 'Provedor de voz',
+        providerDescription: 'Selecione e configure seu provedor de assistente de voz',
+        providerLabel: 'Provedor',
+        providerSubtitle: 'Escolha qual serviço de voz usar',
+        providerNotConfigured: 'Não configurado',
+        provider: {
+            selectTitle: 'Selecionar provedor',
+            selectDescription: 'Escolha um provedor de voz para interações de voz em tempo real',
+            stepfunConfig: 'Configuração do StepFun',
+            stepfunConfigDescription: 'Configure suas credenciais e preferências da API StepFun',
+            elevenLabsConfig: 'Configuração do ElevenLabs',
+            elevenLabsConfigDescription: 'Configure as configurações do agente ElevenLabs',
+            apiKeyPlaceholder: 'Digite sua chave API do StepFun',
+            model: 'Modelo',
+            voice: 'Voz',
+            agentIdDevPlaceholder: 'Agent ID (Desenvolvimento)',
+            agentIdProdPlaceholder: 'Agent ID (Produção)',
+        },
     },
 
     settingsAccount: {

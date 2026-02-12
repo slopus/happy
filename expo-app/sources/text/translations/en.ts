@@ -592,6 +592,25 @@ export const en: TranslationStructure = {
             useDefault: 'Use Default',
             hint: 'The system prompt defines the voice assistant\'s personality and capabilities. It will be combined with session context when starting a voice session.',
         },
+        // Provider settings
+        providerTitle: 'Voice Provider',
+        providerDescription: 'Select and configure your voice assistant provider',
+        providerLabel: 'Provider',
+        providerSubtitle: 'Choose which voice service to use',
+        providerNotConfigured: 'Not configured',
+        provider: {
+            selectTitle: 'Select Provider',
+            selectDescription: 'Choose a voice provider for real-time voice interactions',
+            stepfunConfig: 'StepFun Configuration',
+            stepfunConfigDescription: 'Configure your StepFun API credentials and preferences',
+            elevenLabsConfig: 'ElevenLabs Configuration',
+            elevenLabsConfigDescription: 'Configure your ElevenLabs agent settings',
+            apiKeyPlaceholder: 'Enter your StepFun API key',
+            model: 'Model',
+            voice: 'Voice',
+            agentIdDevPlaceholder: 'Agent ID (Development)',
+            agentIdProdPlaceholder: 'Agent ID (Production)',
+        },
     },
 
     settingsAccount: {

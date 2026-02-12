@@ -274,6 +274,17 @@ export const SettingsSchema = z.object({
     reviewPromptLikedApp: z.boolean().nullish().describe('Whether user liked the app when asked'),
     voiceAssistantLanguage: z.string().nullable().describe('Preferred language for voice assistant (null for auto-detect)'),
     voiceAssistantSystemPrompt: z.string().nullable().describe('Custom system prompt for voice assistant (null for default)'),
+    // Voice provider configuration
+    voiceProvider: z.enum(['stepfun', 'elevenlabs', 'none']).nullable().describe('Selected voice provider'),
+    voiceProviderStepFun: z.object({
+        apiKey: z.string().optional(),
+        modelId: z.string().optional(),
+        voice: z.string().optional(),
+    }).nullable().describe('StepFun voice provider configuration'),
+    voiceProviderElevenLabs: z.object({
+        agentIdDev: z.string().optional(),
+        agentIdProd: z.string().optional(),
+    }).nullable().describe('ElevenLabs voice provider configuration'),
     preferredLanguage: z.string().nullable().describe('Preferred UI language (null for auto-detect from device locale)'),
     recentMachinePaths: z.array(z.object({
         machineId: z.string(),
@@ -344,6 +355,10 @@ export const settingsDefaults: Settings = {
     reviewPromptLikedApp: null,
     voiceAssistantLanguage: null,
     voiceAssistantSystemPrompt: null,
+    // Voice provider defaults
+    voiceProvider: null,
+    voiceProviderStepFun: null,
+    voiceProviderElevenLabs: null,
     preferredLanguage: null,
     recentMachinePaths: [],
     lastUsedAgent: null,

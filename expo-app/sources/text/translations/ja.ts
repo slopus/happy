@@ -609,6 +609,25 @@ export const ja: TranslationStructure = {
             useDefault: 'デフォルトを使用',
             hint: 'システムプロンプトは音声アシスタントの性格と機能を定義します。音声セッション開始時にセッションコンテキストと組み合わされます。',
         },
+        // Provider settings
+        providerTitle: '音声プロバイダー',
+        providerDescription: '音声アシスタントプロバイダーを選択して設定',
+        providerLabel: 'プロバイダー',
+        providerSubtitle: '使用する音声サービスを選択',
+        providerNotConfigured: '未設定',
+        provider: {
+            selectTitle: 'プロバイダーを選択',
+            selectDescription: 'リアルタイム音声対話用の音声プロバイダーを選択',
+            stepfunConfig: 'StepFun 設定',
+            stepfunConfigDescription: 'StepFun API の資格情報と設定を構成',
+            elevenLabsConfig: 'ElevenLabs 設定',
+            elevenLabsConfigDescription: 'ElevenLabs エージェントの設定を構成',
+            apiKeyPlaceholder: 'StepFun API キーを入力',
+            model: 'モデル',
+            voice: '音声',
+            agentIdDevPlaceholder: 'Agent ID（開発）',
+            agentIdProdPlaceholder: 'Agent ID（本番）',
+        },
     },
 
     settingsAccount: {

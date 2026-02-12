@@ -587,6 +587,25 @@ export const ru: TranslationStructure = {
             useDefault: 'По умолчанию',
             hint: 'Системный промпт определяет личность и возможности голосового помощника. Он будет объединён с контекстом сессии при запуске голосовой сессии.',
         },
+        // Provider settings
+        providerTitle: 'Голосовой провайдер',
+        providerDescription: 'Выберите и настройте провайдера голосового помощника',
+        providerLabel: 'Провайдер',
+        providerSubtitle: 'Выберите, какой голосовой сервис использовать',
+        providerNotConfigured: 'Не настроено',
+        provider: {
+            selectTitle: 'Выбрать провайдера',
+            selectDescription: 'Выберите голосового провайдера для голосового взаимодействия в реальном времени',
+            stepfunConfig: 'Настройка StepFun',
+            stepfunConfigDescription: 'Настройте учётные данные и предпочтения StepFun API',
+            elevenLabsConfig: 'Настройка ElevenLabs',
+            elevenLabsConfigDescription: 'Настройте параметры агента ElevenLabs',
+            apiKeyPlaceholder: 'Введите ваш StepFun API ключ',
+            model: 'Модель',
+            voice: 'Голос',
+            agentIdDevPlaceholder: 'Agent ID (разработка)',
+            agentIdProdPlaceholder: 'Agent ID (продакшен)',
+        },
     },
 
     settingsAccount: {

@@ -587,6 +587,25 @@ export const pl: TranslationStructure = {
             useDefault: 'Użyj domyślnego',
             hint: 'Prompt systemowy definiuje osobowość i możliwości asystenta głosowego. Zostanie połączony z kontekstem sesji podczas uruchamiania sesji głosowej.',
         },
+        // Provider settings
+        providerTitle: 'Dostawca głosu',
+        providerDescription: 'Wybierz i skonfiguruj dostawcę asystenta głosowego',
+        providerLabel: 'Dostawca',
+        providerSubtitle: 'Wybierz, którego serwisu głosowego użyć',
+        providerNotConfigured: 'Nie skonfigurowano',
+        provider: {
+            selectTitle: 'Wybierz dostawcę',
+            selectDescription: 'Wybierz dostawcę głosu do interakcji głosowych w czasie rzeczywistym',
+            stepfunConfig: 'Konfiguracja StepFun',
+            stepfunConfigDescription: 'Skonfiguruj poświadczenia i preferencje API StepFun',
+            elevenLabsConfig: 'Konfiguracja ElevenLabs',
+            elevenLabsConfigDescription: 'Skonfiguruj ustawienia agenta ElevenLabs',
+            apiKeyPlaceholder: 'Wprowadź klucz API StepFun',
+            model: 'Model',
+            voice: 'Głos',
+            agentIdDevPlaceholder: 'Agent ID (deweloperski)',
+            agentIdProdPlaceholder: 'Agent ID (produkcyjny)',
+        },
     },
 
     settingsAccount: {

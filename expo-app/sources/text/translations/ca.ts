@@ -577,6 +577,25 @@ export const ca: TranslationStructure = {
             useDefault: 'Utilitza predeterminat',
             hint: 'El prompt del sistema defineix la personalitat i les capacitats de l\'assistent de veu. Es combinarà amb el context de la sessió en iniciar una sessió de veu.',
         },
+        // Provider settings
+        providerTitle: 'Proveïdor de veu',
+        providerDescription: 'Selecciona i configura el teu proveïdor d\'assistent de veu',
+        providerLabel: 'Proveïdor',
+        providerSubtitle: 'Tria quin servei de veu utilitzar',
+        providerNotConfigured: 'No configurat',
+        provider: {
+            selectTitle: 'Selecciona proveïdor',
+            selectDescription: 'Tria un proveïdor de veu per a interaccions de veu en temps real',
+            stepfunConfig: 'Configuració de StepFun',
+            stepfunConfigDescription: 'Configura les teves credencials i preferències de l\'API de StepFun',
+            elevenLabsConfig: 'Configuració d\'ElevenLabs',
+            elevenLabsConfigDescription: 'Configura els ajustos de l\'agent d\'ElevenLabs',
+            apiKeyPlaceholder: 'Introdueix la teva clau API de StepFun',
+            model: 'Model',
+            voice: 'Veu',
+            agentIdDevPlaceholder: 'Agent ID (Desenvolupament)',
+            agentIdProdPlaceholder: 'Agent ID (Producció)',
+        },
     },
 
     settingsAccount: {

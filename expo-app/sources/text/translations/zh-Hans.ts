@@ -579,6 +579,25 @@ export const zhHans: TranslationStructure = {
             useDefault: '使用默认',
             hint: '系统提示词定义了语音助手的个性和能力。启动语音会话时，它将与会话上下文结合使用。',
         },
+        // Provider settings
+        providerTitle: '语音服务提供商',
+        providerDescription: '选择并配置您的语音助手提供商',
+        providerLabel: '提供商',
+        providerSubtitle: '选择使用哪个语音服务',
+        providerNotConfigured: '未配置',
+        provider: {
+            selectTitle: '选择提供商',
+            selectDescription: '为实时语音交互选择语音提供商',
+            stepfunConfig: 'StepFun 配置',
+            stepfunConfigDescription: '配置您的 StepFun API 凭证和偏好设置',
+            elevenLabsConfig: 'ElevenLabs 配置',
+            elevenLabsConfigDescription: '配置您的 ElevenLabs 代理设置',
+            apiKeyPlaceholder: '输入您的 StepFun API 密钥',
+            model: '模型',
+            voice: '语音',
+            agentIdDevPlaceholder: 'Agent ID（开发环境）',
+            agentIdProdPlaceholder: 'Agent ID（生产环境）',
+        },
     },
 
     settingsAccount: {
