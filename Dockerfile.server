@@ -39,7 +39,7 @@ COPY --chown=node:node packages/happy-server/prisma ./prisma
 USER node
 
 # Expose the port the app will run on
-EXPOSE 3000
+EXPOSE 3005
 
 # Command to run the application
 CMD ["yarn", "start"]
