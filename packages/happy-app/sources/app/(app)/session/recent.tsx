@@ -153,6 +153,7 @@ const styles = StyleSheet.create((theme) => ({
     searchInput: {
         flex: 1,
         fontSize: 15,
+        lineHeight: 20,
         height: 36,
         color: theme.colors.text,
         ...Typography.default(),
