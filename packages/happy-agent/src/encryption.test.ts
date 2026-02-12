@@ -19,6 +19,7 @@ import {
     decrypt,
     libsodiumEncryptForPublicKey,
     decryptBoxBundle,
+    authChallenge,
 } from './encryption';
 
 // Helper: hex encode for test vector comparison
@@ -306,6 +307,41 @@ describe('libsodiumEncryptForPublicKey + decryptBoxBundle', () => {
         const encrypted = libsodiumEncryptForPublicKey(data, contentKeyPair.publicKey);
         const decrypted = decryptBoxBundle(encrypted, contentKeyPair.secretKey);
         expect(decrypted).toEqual(data);
+    });
+});
+
+describe('authChallenge', () => {
+    it('returns challenge, publicKey, and signature with correct sizes', () => {
+        const secret = getRandomBytes(32);
+        const result = authChallenge(secret);
+        expect(result.challenge.length).toBe(32);
+        expect(result.publicKey.length).toBe(32);
+        expect(result.signature.length).toBe(64);
+    });
+
+    it('signature is verifiable with tweetnacl.sign.detached.verify', () => {
+        const secret = getRandomBytes(32);
+        const result = authChallenge(secret);
+        const valid = tweetnacl.sign.detached.verify(result.challenge, result.signature, result.publicKey);
+        expect(valid).toBe(true);
+    });
+
+    it('signature fails verification with wrong publicKey', () => {
+        const secret1 = getRandomBytes(32);
+        const secret2 = getRandomBytes(32);
+        const result1 = authChallenge(secret1);
+        const result2 = authChallenge(secret2);
+        const valid = tweetnacl.sign.detached.verify(result1.challenge, result1.signature, result2.publicKey);
+        expect(valid).toBe(false);
+    });
+
+    it('is deterministic for publicKey given same secret', () => {
+        const secret = getRandomBytes(32);
+        const r1 = authChallenge(secret);
+        const r2 = authChallenge(secret);
+        expect(r1.publicKey).toEqual(r2.publicKey);
+        // challenge should differ (random)
+        expect(r1.challenge).not.toEqual(r2.challenge);
     });
 });
 

@@ -244,7 +244,11 @@ program
     .command('wait')
     .description('Wait for agent to become idle')
     .argument('<session-id>', 'Session ID or prefix')
-    .option('--timeout <seconds>', 'Timeout in seconds', (v: string) => parseInt(v, 10), 300)
+    .option('--timeout <seconds>', 'Timeout in seconds', (v: string) => {
+        const n = parseInt(v, 10);
+        if (isNaN(n) || n <= 0) throw new Error('--timeout must be a positive integer');
+        return n;
+    }, 300)
     .action(async (sessionId: string, opts: { timeout: number }) => {
         const config = loadConfig();
         const creds = requireCredentials(config);
@@ -252,6 +256,7 @@ program
         const client = createClient(session, creds, config);
 
         try {
+            await client.waitForConnect();
             await client.waitForIdle(opts.timeout * 1000);
             console.log(`Agent is idle for session ${session.id}`);
         } catch {
@@ -263,6 +268,6 @@ program
     });
 
 program.parseAsync(process.argv).catch(err => {
-    console.error(err.message);
+    console.error(err instanceof Error ? err.message : String(err));
     process.exitCode = 1;
 });

@@ -158,6 +158,26 @@ export function decrypt(key: Uint8Array, variant: 'legacy' | 'dataKey', data: Ui
     }
 }
 
+// --- Auth challenge (for token refresh) ---
+
+export function authChallenge(secret: Uint8Array): {
+    challenge: Uint8Array;
+    publicKey: Uint8Array;
+    signature: Uint8Array;
+} {
+    // Derive signing keypair from secret seed
+    const signingKeyPair = tweetnacl.sign.keyPair.fromSeed(secret);
+    // Create random 32-byte challenge
+    const challenge = getRandomBytes(32);
+    // Sign the challenge
+    const signature = tweetnacl.sign.detached(challenge, signingKeyPair.secretKey);
+    return {
+        challenge,
+        publicKey: signingKeyPair.publicKey,
+        signature,
+    };
+}
+
 // --- NaCl box encryption (public key) ---
 
 export function libsodiumEncryptForPublicKey(data: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array {

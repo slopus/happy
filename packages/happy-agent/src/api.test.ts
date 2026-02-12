@@ -37,6 +37,7 @@ import {
     listSessions,
     listActiveSessions,
     createSession,
+    deleteSession,
     getSessionMessages,
     resolveSessionEncryption,
 } from './api';
@@ -45,6 +46,7 @@ import {
 const mockedAxios = axios as any as {
     get: ReturnType<typeof vi.fn>;
     post: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
 };
 
 // --- Test helpers ---
@@ -508,6 +510,37 @@ describe('api', () => {
             await expect(
                 getSessionMessages(config, creds, 'bad-id', encryption),
             ).rejects.toThrow('Not found');
+        });
+    });
+
+    describe('deleteSession', () => {
+        it('sends DELETE request with correct URL and auth headers', async () => {
+            mockedAxios.delete.mockResolvedValueOnce({ data: {} });
+
+            await deleteSession(config, creds, 'session-to-delete');
+
+            expect(mockedAxios.delete).toHaveBeenCalledWith(
+                'https://test-server.example.com/v1/sessions/session-to-delete',
+                { headers: { Authorization: 'Bearer test-jwt-token' } },
+            );
+        });
+
+        it('throws on 404', async () => {
+            const { AxiosError } = await import('axios');
+            const err = new (AxiosError as any)('Not Found', { response: { status: 404 } });
+            mockedAxios.delete.mockRejectedValueOnce(err);
+
+            await expect(deleteSession(config, creds, 'bad-id')).rejects.toThrow('Not found');
+        });
+
+        it('throws on 401 with re-authenticate message', async () => {
+            const { AxiosError } = await import('axios');
+            const err = new (AxiosError as any)('Unauthorized', { response: { status: 401 } });
+            mockedAxios.delete.mockRejectedValueOnce(err);
+
+            await expect(deleteSession(config, creds, 'some-id')).rejects.toThrow(
+                'Authentication expired',
+            );
         });
     });
 });

@@ -211,7 +211,21 @@ export async function createSession(
     }
 
     const decrypted = decryptSession(data.session, creds);
-    return { ...decrypted, sessionKey };
+    return { ...decrypted, sessionKey: decrypted.encryption.key };
+}
+
+export async function deleteSession(
+    config: Config,
+    creds: Credentials,
+    sessionId: string,
+): Promise<void> {
+    try {
+        await axios.delete(`${config.serverUrl}/v1/sessions/${sessionId}`, {
+            headers: authHeaders(creds),
+        });
+    } catch (err) {
+        handleApiError(err, `deleting session ${sessionId}`);
+    }
 }
 
 export async function getSessionMessages(
