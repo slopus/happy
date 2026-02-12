@@ -29,13 +29,23 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     
     // Check if this is a Codex session - check both metadata.flavor and tool name prefix
     const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
+    const getCurrentClaudeMode = (): 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | undefined => {
+        const mode = storage.getState().sessions[sessionId]?.permissionMode;
+        if (mode === 'default' || mode === 'acceptEdits' || mode === 'bypassPermissions' || mode === 'plan') {
+            return mode;
+        }
+        return undefined;
+    };
 
     const handleApprove = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
 
         setLoadingButton('allow');
         try {
-            await sessionAllow(sessionId, permission.id);
+            const modeForExitPlan = (toolName === 'exit_plan_mode' || toolName === 'ExitPlanMode')
+                ? getCurrentClaudeMode()
+                : undefined;
+            await sessionAllow(sessionId, permission.id, modeForExitPlan);
         } catch (error) {
             console.error('Failed to approve permission:', error);
         } finally {

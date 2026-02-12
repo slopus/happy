@@ -45,6 +45,7 @@ export class PermissionHandler {
     private allowedBashLiterals = new Set<string>();
     private allowedBashPrefixes = new Set<string>();
     private permissionMode: PermissionMode = 'default';
+    private lastNonPlanPermissionMode: Exclude<PermissionMode, 'plan'> = 'default';
     private onPermissionRequestCallback?: (toolCallId: string) => void;
 
     constructor(session: Session) {
@@ -61,6 +62,19 @@ export class PermissionHandler {
 
     handleModeChange(mode: PermissionMode) {
         this.permissionMode = mode;
+        if (mode !== 'plan') {
+            this.lastNonPlanPermissionMode = mode;
+        }
+    }
+
+    private getResumeModeAfterPlan(responseMode?: PermissionResponse['mode']): Exclude<PermissionMode, 'plan'> {
+        if (responseMode && responseMode !== 'plan') {
+            return responseMode;
+        }
+        if (this.permissionMode !== 'plan') {
+            return this.permissionMode;
+        }
+        return this.lastNonPlanPermissionMode;
     }
 
     /**
@@ -88,6 +102,9 @@ export class PermissionHandler {
         // Update permission mode
         if (response.mode) {
             this.permissionMode = response.mode;
+            if (response.mode !== 'plan') {
+                this.lastNonPlanPermissionMode = response.mode;
+            }
         }
 
         // Handle 
@@ -97,11 +114,8 @@ export class PermissionHandler {
             if (response.approved) {
                 logger.debug('Plan approved - injecting PLAN_FAKE_RESTART');
                 // Inject the approval message at the beginning of the queue
-                if (response.mode && ['default', 'acceptEdits', 'bypassPermissions'].includes(response.mode)) {
-                    this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: response.mode });
-                } else {
-                    this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: this.permissionMode });
-                }
+                const resumeMode = this.getResumeModeAfterPlan(response.mode);
+                this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: resumeMode });
                 pending.resolve({ behavior: 'deny', message: PLAN_FAKE_REJECT });
             } else {
                 pending.resolve({ behavior: 'deny', message: response.reason || 'Plan rejected' });
@@ -408,6 +422,8 @@ export class PermissionHandler {
         this.allowedTools.clear();
         this.allowedBashLiterals.clear();
         this.allowedBashPrefixes.clear();
+        this.permissionMode = 'default';
+        this.lastNonPlanPermissionMode = 'default';
 
         // Cancel all pending requests
         for (const [, pending] of this.pendingRequests.entries()) {
