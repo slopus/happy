@@ -173,13 +173,13 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 - [x] Run tests — must pass before task 10
 
 ### Task 10: Verify acceptance criteria
-- [ ] Verify all 8 operations work: auth, create, send, stop, history, wait, status, list
-- [ ] Verify `--json` flag works on all applicable commands
-- [ ] Verify error handling: no credentials, server unreachable, invalid session ID
-- [ ] Verify interop: session created by happy-agent is visible and controllable from mobile app
-- [ ] Verify interop: session created by happy-cli can be listed and history read by happy-agent
-- [ ] Run full test suite (unit tests)
-- [ ] Run linter — all issues must be fixed
+- [x] Verify all 8 operations work: auth, create, send, stop, history, wait, status, list
+- [x] Verify `--json` flag works on all applicable commands
+- [x] Verify error handling: no credentials, server unreachable, invalid session ID
+- [x] Verify interop: session created by happy-agent is visible and controllable from mobile app
+- [x] Verify interop: session created by happy-cli can be listed and history read by happy-agent
+- [x] Run full test suite (unit tests)
+- [x] Run linter — all issues must be fixed
 
 ### Task 11: [Final] Update documentation
 - [ ] Add README.md to `packages/happy-agent/` with usage examples for all commands
