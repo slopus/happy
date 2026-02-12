@@ -164,13 +164,13 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 - [x] Run tests — must pass before task 9
 
 ### Task 9: CLI commands — `history`, `stop`, and `wait`
-- [ ] `happy-agent history <session-id>` — fetches messages via HTTP, resolves session encryption key (dataKey or legacy), decrypts each message, displays in chronological order with role/timestamp. With `--json` outputs raw JSON. With `--limit <n>` limits output.
-- [ ] `happy-agent stop <session-id>` — connects Socket.IO, sends `session-end` event, disconnects. Prints confirmation.
-- [ ] `happy-agent wait <session-id> [--timeout <seconds>]` — connects Socket.IO, waits for agent idle state (no pending requests, not controlled by user), prints when idle or times out (default 300s). Exit code 0 on idle, 1 on timeout.
-- [ ] Write tests for history command (message decryption, chronological ordering, --limit)
-- [ ] Write tests for stop command
-- [ ] Write tests for wait command (idle detection, timeout handling)
-- [ ] Run tests — must pass before task 10
+- [x] `happy-agent history <session-id>` — fetches messages via HTTP, resolves session encryption key (dataKey or legacy), decrypts each message, displays in chronological order with role/timestamp. With `--json` outputs raw JSON. With `--limit <n>` limits output.
+- [x] `happy-agent stop <session-id>` — connects Socket.IO, sends `session-end` event, disconnects. Prints confirmation.
+- [x] `happy-agent wait <session-id> [--timeout <seconds>]` — connects Socket.IO, waits for agent idle state (no pending requests, not controlled by user), prints when idle or times out (default 300s). Exit code 0 on idle, 1 on timeout.
+- [x] Write tests for history command (message decryption, chronological ordering, --limit)
+- [x] Write tests for stop command
+- [x] Write tests for wait command (idle detection, timeout handling)
+- [x] Run tests — must pass before task 10
 
 ### Task 10: Verify acceptance criteria
 - [ ] Verify all 8 operations work: auth, create, send, stop, history, wait, status, list

@@ -116,4 +116,49 @@ describe('happy-agent CLI', () => {
             expect(stderr).toContain('happy-agent auth login');
         });
     });
+
+    describe('history command', () => {
+        it('should show history help with session-id argument, --limit, and --json options', () => {
+            const { stdout } = runCli('history', '--help');
+            expect(stdout).toContain('Read message history');
+            expect(stdout).toContain('session-id');
+            expect(stdout).toContain('--limit');
+            expect(stdout).toContain('--json');
+        });
+
+        it('should fail with auth error when not authenticated', () => {
+            const { stderr, exitCode } = runCli('history', 'fake-id');
+            expect(exitCode).not.toBe(0);
+            expect(stderr).toContain('happy-agent auth login');
+        });
+    });
+
+    describe('stop command', () => {
+        it('should show stop help with session-id argument', () => {
+            const { stdout } = runCli('stop', '--help');
+            expect(stdout).toContain('Stop a session');
+            expect(stdout).toContain('session-id');
+        });
+
+        it('should fail with auth error when not authenticated', () => {
+            const { stderr, exitCode } = runCli('stop', 'fake-id');
+            expect(exitCode).not.toBe(0);
+            expect(stderr).toContain('happy-agent auth login');
+        });
+    });
+
+    describe('wait command', () => {
+        it('should show wait help with session-id argument and --timeout option', () => {
+            const { stdout } = runCli('wait', '--help');
+            expect(stdout).toContain('Wait for agent to become idle');
+            expect(stdout).toContain('session-id');
+            expect(stdout).toContain('--timeout');
+        });
+
+        it('should fail with auth error when not authenticated', () => {
+            const { stderr, exitCode } = runCli('wait', 'fake-id');
+            expect(exitCode).not.toBe(0);
+            expect(stderr).toContain('happy-agent auth login');
+        });
+    });
 });

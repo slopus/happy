@@ -5,9 +5,9 @@ import { hostname } from 'node:os';
 import { loadConfig } from './config';
 import { requireCredentials } from './credentials';
 import { authLogin, authLogout, authStatus } from './auth';
-import { listSessions, listActiveSessions, createSession } from './api';
+import { listSessions, listActiveSessions, createSession, getSessionMessages } from './api';
 import { SessionClient } from './session';
-import { formatSessionTable, formatSessionStatus, formatJson } from './output';
+import { formatSessionTable, formatSessionStatus, formatMessageHistory, formatJson } from './output';
 
 const program = new Command();
 
@@ -200,28 +200,128 @@ program
 program
     .command('history')
     .description('Read message history')
-    .argument('<session-id>', 'Session ID')
+    .argument('<session-id>', 'Session ID or prefix')
     .option('--limit <n>', 'Limit number of messages', parseInt)
     .option('--json', 'Output as JSON')
-    .action(async () => {
-        console.log('History not yet implemented');
+    .action(async (sessionId: string, opts: { limit?: number; json?: boolean }) => {
+        const config = loadConfig();
+        const creds = requireCredentials(config);
+
+        // Resolve session by ID prefix
+        const sessions = await listSessions(config, creds);
+        const matches = sessions.filter(s => s.id.startsWith(sessionId));
+
+        if (matches.length === 0) {
+            console.error(`No session found matching "${sessionId}"`);
+            process.exitCode = 1;
+            return;
+        }
+        if (matches.length > 1) {
+            console.error(`Ambiguous session ID "${sessionId}" matches ${matches.length} sessions. Be more specific.`);
+            process.exitCode = 1;
+            return;
+        }
+
+        const session = matches[0];
+        let messages = await getSessionMessages(config, creds, session.id);
+
+        // Sort chronologically by createdAt
+        messages.sort((a, b) => a.createdAt - b.createdAt);
+
+        // Apply limit
+        if (opts.limit && opts.limit > 0) {
+            messages = messages.slice(-opts.limit);
+        }
+
+        if (opts.json) {
+            console.log(formatJson(messages));
+        } else {
+            console.log(formatMessageHistory(messages));
+        }
     });
 
 program
     .command('stop')
     .description('Stop a session')
-    .argument('<session-id>', 'Session ID')
-    .action(async () => {
-        console.log('Stop not yet implemented');
+    .argument('<session-id>', 'Session ID or prefix')
+    .action(async (sessionId: string) => {
+        const config = loadConfig();
+        const creds = requireCredentials(config);
+
+        // Resolve session by ID prefix
+        const sessions = await listSessions(config, creds);
+        const matches = sessions.filter(s => s.id.startsWith(sessionId));
+
+        if (matches.length === 0) {
+            console.error(`No session found matching "${sessionId}"`);
+            process.exitCode = 1;
+            return;
+        }
+        if (matches.length > 1) {
+            console.error(`Ambiguous session ID "${sessionId}" matches ${matches.length} sessions. Be more specific.`);
+            process.exitCode = 1;
+            return;
+        }
+
+        const session = matches[0];
+
+        const client = new SessionClient({
+            sessionId: session.id,
+            encryptionKey: session.encryption.key,
+            encryptionVariant: session.encryption.variant,
+            token: creds.token,
+            serverUrl: config.serverUrl,
+        });
+
+        client.sendStop();
+        client.close();
+
+        console.log(`Stopped session ${session.id}`);
     });
 
 program
     .command('wait')
     .description('Wait for agent to become idle')
-    .argument('<session-id>', 'Session ID')
+    .argument('<session-id>', 'Session ID or prefix')
     .option('--timeout <seconds>', 'Timeout in seconds', parseInt, 300)
-    .action(async () => {
-        console.log('Wait not yet implemented');
+    .action(async (sessionId: string, opts: { timeout: number }) => {
+        const config = loadConfig();
+        const creds = requireCredentials(config);
+
+        // Resolve session by ID prefix
+        const sessions = await listSessions(config, creds);
+        const matches = sessions.filter(s => s.id.startsWith(sessionId));
+
+        if (matches.length === 0) {
+            console.error(`No session found matching "${sessionId}"`);
+            process.exitCode = 1;
+            return;
+        }
+        if (matches.length > 1) {
+            console.error(`Ambiguous session ID "${sessionId}" matches ${matches.length} sessions. Be more specific.`);
+            process.exitCode = 1;
+            return;
+        }
+
+        const session = matches[0];
+
+        const client = new SessionClient({
+            sessionId: session.id,
+            encryptionKey: session.encryption.key,
+            encryptionVariant: session.encryption.variant,
+            token: creds.token,
+            serverUrl: config.serverUrl,
+        });
+
+        try {
+            await client.waitForIdle(opts.timeout * 1000);
+            console.log(`Agent is idle for session ${session.id}`);
+        } catch {
+            console.error(`Timeout: agent did not become idle within ${opts.timeout} seconds`);
+            process.exitCode = 1;
+        } finally {
+            client.close();
+        }
     });
 
 program.parse(process.argv);

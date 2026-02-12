@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import type { DecryptedSession } from './api';
+import type { DecryptedSession, DecryptedMessage } from './api';
 
 // --- Types ---
 
@@ -116,6 +116,43 @@ export function formatSessionStatus(session: DecryptedSession): string {
     }
 
     return lines.join('\n');
+}
+
+// --- Message history formatting ---
+
+type MessageContent = {
+    role?: string;
+    content?: { type?: string; text?: string } | string;
+    [key: string]: unknown;
+};
+
+export function formatMessageHistory(messages: DecryptedMessage[]): string {
+    if (messages.length === 0) {
+        return 'No messages.';
+    }
+
+    return messages.map(msg => {
+        const content = msg.content as MessageContent | null;
+        const role = content?.role ?? 'unknown';
+        const timestamp = new Date(msg.createdAt).toLocaleString();
+
+        let text: string;
+        if (content?.content && typeof content.content === 'object' && content.content.text) {
+            text = content.content.text;
+        } else if (content?.content && typeof content.content === 'string') {
+            text = content.content;
+        } else {
+            text = JSON.stringify(content);
+        }
+
+        const roleLabel = role === 'user'
+            ? chalk.blue(role)
+            : role === 'assistant'
+                ? chalk.green(role)
+                : chalk.dim(role);
+
+        return `${chalk.dim(timestamp)} ${roleLabel}: ${text}`;
+    }).join('\n');
 }
 
 // --- JSON output ---

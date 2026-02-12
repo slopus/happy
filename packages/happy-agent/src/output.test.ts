@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { formatSessionTable, formatSessionStatus, formatJson } from './output';
-import type { DecryptedSession } from './api';
+import { formatSessionTable, formatSessionStatus, formatMessageHistory, formatJson } from './output';
+import type { DecryptedSession, DecryptedMessage } from './api';
 
 // Mock chalk to pass through text without ANSI codes for easier testing
 vi.mock('chalk', () => {
@@ -196,6 +196,76 @@ describe('formatSessionStatus', () => {
         expect(output).not.toContain('Summary:');
         expect(output).not.toContain('Path:');
         expect(output).not.toContain('Host:');
+    });
+});
+
+describe('formatMessageHistory', () => {
+    function makeMessage(overrides: Partial<DecryptedMessage> = {}): DecryptedMessage {
+        return {
+            id: 'msg-1',
+            seq: 1,
+            content: { role: 'user', content: { type: 'text', text: 'Hello' } },
+            localId: null,
+            createdAt: 1700000000000,
+            updatedAt: 1700000000000,
+            ...overrides,
+        };
+    }
+
+    it('should return "No messages." when messages array is empty', () => {
+        expect(formatMessageHistory([])).toBe('No messages.');
+    });
+
+    it('should display user messages with role and text', () => {
+        const messages = [makeMessage()];
+        const output = formatMessageHistory(messages);
+        expect(output).toContain('user');
+        expect(output).toContain('Hello');
+    });
+
+    it('should display assistant messages', () => {
+        const messages = [makeMessage({
+            content: { role: 'assistant', content: { type: 'text', text: 'Hi there!' } },
+        })];
+        const output = formatMessageHistory(messages);
+        expect(output).toContain('assistant');
+        expect(output).toContain('Hi there!');
+    });
+
+    it('should display multiple messages', () => {
+        const messages = [
+            makeMessage({ id: 'msg-1', content: { role: 'user', content: { type: 'text', text: 'Hello' } }, createdAt: 1000 }),
+            makeMessage({ id: 'msg-2', content: { role: 'assistant', content: { type: 'text', text: 'Hi!' } }, createdAt: 2000 }),
+        ];
+        const output = formatMessageHistory(messages);
+        const lines = output.split('\n');
+        expect(lines.length).toBe(2);
+        expect(lines[0]).toContain('Hello');
+        expect(lines[1]).toContain('Hi!');
+    });
+
+    it('should handle string content directly', () => {
+        const messages = [makeMessage({
+            content: { role: 'user', content: 'Plain text message' },
+        })];
+        const output = formatMessageHistory(messages);
+        expect(output).toContain('Plain text message');
+    });
+
+    it('should handle null content by showing JSON', () => {
+        const messages = [makeMessage({ content: null })];
+        const output = formatMessageHistory(messages);
+        expect(output).toContain('unknown');
+        expect(output).toContain('null');
+    });
+
+    it('should handle unknown role gracefully', () => {
+        const messages = [makeMessage({
+            content: { role: 'system', content: { type: 'text', text: 'System message' } },
+        })];
+        const output = formatMessageHistory(messages);
+        expect(output).toContain('system');
+        expect(output).toContain('System message');
     });
 });
 
