@@ -30,7 +30,7 @@ Step 2: Install CLI on your computer
 </h3>
 
 ```bash
-npm install -g happy-blue
+npm install -g slaphappy
 ```
 
 **Or install from source:**

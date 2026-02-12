@@ -7,7 +7,7 @@ Free. Open source. Code anywhere.
 ## Installation
 
 ```bash
-npm install -g happy-blue
+npm install -g slaphappy
 ```
 
 ## Usage

@@ -1,5 +1,5 @@
 {
-  "name": "happy-blue",
+  "name": "slaphappy",
   "version": "0.14.0-0",
   "description": "Mobile and Web client for Claude Code and Codex",
   "author": "Kirill Dubovitskiy",
@@ -12,8 +12,8 @@
   "bugs": "https://github.com/HirokiKobayashi-R/happy/issues",
   "repository": "HirokiKobayashi-R/happy",
   "bin": {
-    "happy-blue": "./bin/happy.mjs",
-    "happy-blue-mcp": "./bin/happy-mcp.mjs",
+    "slaphappy": "./bin/happy.mjs",
+    "slaphappy-mcp": "./bin/happy-mcp.mjs",
     "happy": "./bin/happy.mjs",
     "happy-mcp": "./bin/happy-mcp.mjs"
   },

@@ -97,7 +97,7 @@ export function EmptyMainScreen() {
             <Text style={styles.title}>{t('components.emptyMainScreen.readyToCode')}</Text>
             <View style={styles.terminalBlock}>
                 <Text style={[styles.terminalText, styles.terminalTextFirst]}>
-                    $ npm i -g happy-blue
+                    $ npm i -g slaphappy
                 </Text>
                 <Text style={styles.terminalText}>
                     $ happy

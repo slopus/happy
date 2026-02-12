@@ -35,10 +35,10 @@ jobs:
       run: yarn install --immutable
 
     - name: Build package
-      run: yarn workspace happy-blue build
+      run: yarn workspace slaphappy build
 
     - name: Pack package
-      run: yarn workspace happy-blue pack
+      run: yarn workspace slaphappy pack
 
     - name: Install packed package globally
       run: |
@@ -95,10 +95,10 @@ jobs:
       run: yarn install --immutable
 
     - name: Build package
-      run: yarn workspace happy-blue build
+      run: yarn workspace slaphappy build
 
     - name: Pack package
-      run: yarn workspace happy-blue pack
+      run: yarn workspace slaphappy pack
 
     - name: Install packed package globally
       shell: cmd
@@ -118,20 +118,20 @@ jobs:
           echo Found node_modules directory
           dir "%NPM_PREFIX%\node_modules" 2>nul
           echo.
-          echo Checking for happy-blue package:
-          if exist "%NPM_PREFIX%\node_modules\happy-blue" (
-            echo Found happy-blue package
-            dir "%NPM_PREFIX%\node_modules\happy-blue" 2>nul
+          echo Checking for slaphappy package:
+          if exist "%NPM_PREFIX%\node_modules\slaphappy" (
+            echo Found slaphappy package
+            dir "%NPM_PREFIX%\node_modules\slaphappy" 2>nul
             echo.
             echo Checking for dist directory:
-            if exist "%NPM_PREFIX%\node_modules\happy-blue\dist" (
+            if exist "%NPM_PREFIX%\node_modules\slaphappy\dist" (
               echo Found dist directory
-              dir "%NPM_PREFIX%\node_modules\happy-blue\dist" 2>nul
+              dir "%NPM_PREFIX%\node_modules\slaphappy\dist" 2>nul
             ) else (
               echo No dist directory found
             )
           ) else (
-            echo No happy-blue package found
+            echo No slaphappy package found
           )
         ) else (
           echo No node_modules directory found
