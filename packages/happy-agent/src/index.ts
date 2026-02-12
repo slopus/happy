@@ -2,7 +2,11 @@
 
 import { Command } from 'commander';
 import { loadConfig } from './config';
+import { requireCredentials } from './credentials';
 import { authLogin, authLogout, authStatus } from './auth';
+import { listSessions, listActiveSessions } from './api';
+import { SessionClient } from './session';
+import { formatSessionTable, formatSessionStatus, formatJson } from './output';
 
 const program = new Command();
 
@@ -38,17 +42,82 @@ program
     .description('List all sessions')
     .option('--active', 'Show only active sessions')
     .option('--json', 'Output as JSON')
-    .action(async () => {
-        console.log('List not yet implemented');
+    .action(async (opts: { active?: boolean; json?: boolean }) => {
+        const config = loadConfig();
+        const creds = requireCredentials(config);
+        const sessions = opts.active
+            ? await listActiveSessions(config, creds)
+            : await listSessions(config, creds);
+        if (opts.json) {
+            console.log(formatJson(sessions));
+        } else {
+            console.log(formatSessionTable(sessions));
+        }
     });
 
 program
     .command('status')
     .description('Get live session state')
-    .argument('<session-id>', 'Session ID')
+    .argument('<session-id>', 'Session ID or prefix')
     .option('--json', 'Output as JSON')
-    .action(async () => {
-        console.log('Status not yet implemented');
+    .action(async (sessionId: string, opts: { json?: boolean }) => {
+        const config = loadConfig();
+        const creds = requireCredentials(config);
+
+        // Fetch sessions and find matching one by ID prefix
+        const sessions = await listSessions(config, creds);
+        const matches = sessions.filter(s => s.id.startsWith(sessionId));
+
+        if (matches.length === 0) {
+            console.error(`No session found matching "${sessionId}"`);
+            process.exitCode = 1;
+            return;
+        }
+        if (matches.length > 1) {
+            console.error(`Ambiguous session ID "${sessionId}" matches ${matches.length} sessions. Be more specific.`);
+            process.exitCode = 1;
+            return;
+        }
+
+        const session = matches[0];
+
+        // Connect via Socket.IO to get live agent state, then disconnect
+        const client = new SessionClient({
+            sessionId: session.id,
+            encryptionKey: session.encryption.key,
+            encryptionVariant: session.encryption.variant,
+            token: creds.token,
+            serverUrl: config.serverUrl,
+        });
+
+        // Wait for a state-change event or a short timeout to get live data
+        await new Promise<void>(resolve => {
+            const timeout = setTimeout(() => {
+                resolve();
+            }, 3000);
+
+            client.once('state-change', (data: { metadata: unknown; agentState: unknown }) => {
+                clearTimeout(timeout);
+                // Update session with live data
+                session.metadata = data.metadata ?? session.metadata;
+                session.agentState = data.agentState ?? session.agentState;
+                resolve();
+            });
+
+            client.once('connect_error', () => {
+                clearTimeout(timeout);
+                // Fall back to data we already have from HTTP
+                resolve();
+            });
+        });
+
+        client.close();
+
+        if (opts.json) {
+            console.log(formatJson(session));
+        } else {
+            console.log(formatSessionStatus(session));
+        }
     });
 
 program

@@ -148,13 +148,13 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 - [x] Run tests — must pass before task 7
 
 ### Task 7: CLI commands — `list` and `status`
-- [ ] Create `src/index.ts` using `commander` with program name `happy-agent`
-- [ ] `happy-agent list` — calls `listSessions`, displays table: ID (truncated), name/summary, path, status (active/inactive), last active time. With `--json` outputs raw JSON. With `--active` filters to active only.
-- [ ] `happy-agent status <session-id>` — fetches session via list + filter by ID prefix, connects Socket.IO to get live state, displays: session ID, metadata (path, host, lifecycle state), agent state (idle/busy, pending requests count), last message preview. With `--json` outputs raw JSON. Disconnects after displaying.
-- [ ] Create `src/output.ts` — helper for human-readable vs JSON formatting based on `--json` flag
-- [ ] Write tests for output formatting (human-readable table, JSON mode)
-- [ ] Write tests for CLI argument parsing (list, list --active, list --json, status <id>)
-- [ ] Run tests — must pass before task 8
+- [x] Create `src/index.ts` using `commander` with program name `happy-agent`
+- [x] `happy-agent list` — calls `listSessions`, displays table: ID (truncated), name/summary, path, status (active/inactive), last active time. With `--json` outputs raw JSON. With `--active` filters to active only.
+- [x] `happy-agent status <session-id>` — fetches session via list + filter by ID prefix, connects Socket.IO to get live state, displays: session ID, metadata (path, host, lifecycle state), agent state (idle/busy, pending requests count), last message preview. With `--json` outputs raw JSON. Disconnects after displaying.
+- [x] Create `src/output.ts` — helper for human-readable vs JSON formatting based on `--json` flag
+- [x] Write tests for output formatting (human-readable table, JSON mode)
+- [x] Write tests for CLI argument parsing (list, list --active, list --json, status <id>)
+- [x] Run tests — must pass before task 8
 
 ### Task 8: CLI commands — `create` and `send`
 - [ ] `happy-agent create --tag <tag> [--path <path>]` — creates new session with given tag and metadata (path defaults to cwd, host to hostname). Prints session ID. With `--json` outputs full session JSON.
