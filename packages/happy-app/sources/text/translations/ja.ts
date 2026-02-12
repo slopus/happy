@@ -415,6 +415,8 @@ export const ja: TranslationStructure = {
         resumeConfirmMessage: '接続済みのデバイス上のClaudeセッションを再開します。',
         copyConfirmTitle: 'このセッションをコピーしますか？',
         copyConfirmMessage: '接続済みのデバイス上にClaudeセッションのコピーを作成します。',
+        searchPlaceholder: 'セッションを検索...',
+        noResults: '一致するセッションがありません',
     },
 
     claudeHistory: {

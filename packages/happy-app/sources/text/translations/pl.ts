@@ -394,6 +394,8 @@ export const pl: TranslationStructure = {
         resumeConfirmMessage: 'Spowoduje to wznowienie sesji Claude na twoim podłączonym urządzeniu.',
         copyConfirmTitle: 'Skopiować tę sesję?',
         copyConfirmMessage: 'Spowoduje to utworzenie kopii sesji Claude na twoim podłączonym urządzeniu.',
+        searchPlaceholder: 'Szukaj sesji...',
+        noResults: 'Brak pasujących sesji',
     },
 
     claudeHistory: {

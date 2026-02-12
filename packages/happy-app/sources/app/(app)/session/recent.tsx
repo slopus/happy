@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, FlatList, Pressable, ActivityIndicator } from 'react-native';
+import { View, FlatList, Pressable, ActivityIndicator, TextInput } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useAllSessions } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
@@ -135,6 +135,31 @@ const styles = StyleSheet.create((theme) => ({
         backgroundColor: '#007AFF',
         marginRight: 6,
     },
+    searchContainer: {
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        paddingBottom: 4,
+    },
+    searchInputWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.surface,
+        borderRadius: 10,
+        paddingHorizontal: 8,
+    },
+    searchIcon: {
+        marginRight: 6,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 15,
+        height: 36,
+        color: theme.colors.text,
+        ...Typography.default(),
+    },
+    clearButton: {
+        padding: 4,
+    },
 }));
 
 function formatDateHeader(date: Date): string {
@@ -202,14 +227,26 @@ function groupSessionsByDate(sessions: Session[]): SessionHistoryItem[] {
 }
 
 export default function SessionHistory() {
+    const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const allSessions = useAllSessions();
     const navigateToSession = useNavigateToSession();
     const [resumingSessionId, setResumingSessionId] = React.useState<string | null>(null);
-    
+    const [searchQuery, setSearchQuery] = React.useState('');
+
+    const filteredSessions = React.useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) return allSessions;
+        return allSessions.filter(session => {
+            const name = getSessionName(session).toLowerCase();
+            const subtitle = getSessionSubtitle(session).toLowerCase();
+            return name.includes(query) || subtitle.includes(query);
+        });
+    }, [allSessions, searchQuery]);
+
     const groupedItems = React.useMemo(() => {
-        return groupSessionsByDate(allSessions);
-    }, [allSessions]);
+        return groupSessionsByDate(filteredSessions);
+    }, [filteredSessions]);
     
     const handleForkSession = React.useCallback(async (session: Session, mode: 'resume' | 'copy') => {
         if (resumingSessionId) return;
@@ -333,20 +370,62 @@ export default function SessionHistory() {
         );
     }
     
+    const searchHeader = React.useMemo(() => (
+        <View style={styles.searchContainer}>
+            <View style={styles.searchInputWrapper}>
+                <Ionicons name="search" size={16} color={theme.colors.textSecondary} style={styles.searchIcon} />
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder={t('sessionHistory.searchPlaceholder')}
+                    placeholderTextColor={theme.colors.textSecondary}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                />
+                {searchQuery.length > 0 && (
+                    <Pressable style={styles.clearButton} onPress={() => setSearchQuery('')}>
+                        <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
+                    </Pressable>
+                )}
+            </View>
+        </View>
+    ), [searchQuery, theme]);
+
     if (groupedItems.length === 0) {
         return (
             <View style={styles.container}>
                 <View style={styles.contentContainer}>
-                    <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>
-                            {t('sessionHistory.empty')}
-                        </Text>
-                    </View>
+                    {allSessions.length > 0 ? (
+                        <FlatList
+                            data={[]}
+                            renderItem={() => null}
+                            ListHeaderComponent={searchHeader}
+                            ListEmptyComponent={
+                                <View style={styles.emptyContainer}>
+                                    <Text style={styles.emptyText}>
+                                        {t('sessionHistory.noResults')}
+                                    </Text>
+                                </View>
+                            }
+                            contentContainerStyle={{
+                                paddingBottom: safeArea.bottom + 16,
+                                paddingTop: 8,
+                                flex: 1,
+                            }}
+                        />
+                    ) : (
+                        <View style={styles.emptyContainer}>
+                            <Text style={styles.emptyText}>
+                                {t('sessionHistory.empty')}
+                            </Text>
+                        </View>
+                    )}
                 </View>
             </View>
         );
     }
-    
+
     return (
         <View style={styles.container}>
             <View style={styles.contentContainer}>
@@ -354,7 +433,9 @@ export default function SessionHistory() {
                     data={groupedItems}
                     renderItem={renderItem}
                     keyExtractor={keyExtractor}
-                    contentContainerStyle={{ 
+                    ListHeaderComponent={searchHeader}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={{
                         paddingBottom: safeArea.bottom + 16,
                         paddingTop: 8,
                     }}

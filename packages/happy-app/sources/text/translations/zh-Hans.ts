@@ -385,6 +385,8 @@ export const zhHans: TranslationStructure = {
         resumeConfirmMessage: '这将恢复你已连接设备上的 Claude 会话。',
         copyConfirmTitle: '确认复制该会话？',
         copyConfirmMessage: '这将在你已连接的设备上创建该 Claude 会话的副本。',
+        searchPlaceholder: '搜索会话...',
+        noResults: '没有匹配的会话',
     },
 
     claudeHistory: {

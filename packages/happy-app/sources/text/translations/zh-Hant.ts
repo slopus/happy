@@ -384,6 +384,8 @@ export const zhHant: TranslationStructure = {
         resumeConfirmMessage: '是否要繼續此工作階段？',
         copyConfirmTitle: '複製此工作階段？',
         copyConfirmMessage: '這將在你已連接的裝置上建立此 Claude 工作階段的副本。',
+        searchPlaceholder: '搜尋工作階段...',
+        noResults: '沒有匹配的工作階段',
     },
 
     claudeHistory: {

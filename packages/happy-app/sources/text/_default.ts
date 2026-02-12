@@ -383,6 +383,8 @@ export const en = {
         resumeConfirmMessage: 'This will resume the Claude session on your connected device.',
         copyConfirmTitle: 'Copy this session?',
         copyConfirmMessage: 'This will create a copy of the Claude session on your connected device.',
+        searchPlaceholder: 'Search sessions...',
+        noResults: 'No matching sessions',
     },
 
     claudeHistory: {

@@ -412,6 +412,8 @@ export const it: TranslationStructure = {
         resumeConfirmMessage: 'Questo riprenderà la sessione di Claude sul tuo dispositivo collegato.',
         copyConfirmTitle: 'Copiare questa sessione?',
         copyConfirmMessage: 'Questo creerà una copia della sessione di Claude sul tuo dispositivo collegato.',
+        searchPlaceholder: 'Cerca sessioni...',
+        noResults: 'Nessuna sessione corrispondente',
     },
 
     claudeHistory: {

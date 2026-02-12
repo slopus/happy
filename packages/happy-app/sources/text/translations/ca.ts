@@ -383,6 +383,8 @@ export const ca: TranslationStructure = {
         resumeConfirmMessage: 'Això reprendrà la sessió de Claude al teu dispositiu connectat.',
         copyConfirmTitle: 'Copiar aquesta sessió?',
         copyConfirmMessage: 'Això crearà una còpia de la sessió de Claude al teu dispositiu connectat.',
+        searchPlaceholder: 'Cerca sessions...',
+        noResults: 'Cap sessió coincident',
     },
 
     claudeHistory: {

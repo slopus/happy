@@ -349,6 +349,8 @@ export const ru: TranslationStructure = {
         resumeConfirmMessage: 'Это возобновит сеанс Claude на вашем подключённом устройстве.',
         copyConfirmTitle: 'Скопировать этот сеанс?',
         copyConfirmMessage: 'Это создаст копию сеанса Claude на вашем подключённом устройстве.',
+        searchPlaceholder: 'Поиск сессий...',
+        noResults: 'Совпадений не найдено',
     },
 
     claudeHistory: {
