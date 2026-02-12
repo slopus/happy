@@ -8,7 +8,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession, useIsDataReady } from '@/sync/storage';
-import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
+import { generateCopyTitle, getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionKill, sessionDelete, machineForkClaudeSession, machineSpawnNewSession, sessionUpdateSummary } from '@/sync/ops';
@@ -195,9 +195,7 @@ function SessionInfoContent({ session }: { session: Session }) {
             const originalTitle = session.metadata?.summary?.text || getSessionName(session);
             let sessionTitle = originalTitle;
             if (isOnline) {
-                const now = new Date();
-                const timeSuffix = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
-                sessionTitle = `${originalTitle}_${timeSuffix}`;
+                sessionTitle = generateCopyTitle(originalTitle);
             }
             const forkResult = await machineForkClaudeSession(machineId, claudeSessionId);
             if (!forkResult.success || !forkResult.newSessionId) {

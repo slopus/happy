@@ -4,7 +4,7 @@ import { Text } from '@/components/StyledText';
 import { useAllSessions } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { Avatar } from '@/components/Avatar';
-import { getSessionName, getSessionSubtitle, getSessionAvatarId, useSessionStatus } from '@/utils/sessionUtils';
+import { generateCopyTitle, getSessionName, getSessionSubtitle, getSessionAvatarId, useSessionStatus } from '@/utils/sessionUtils';
 import { StatusDot } from '@/components/StatusDot';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -278,9 +278,7 @@ export default function SessionHistory() {
             const originalTitle = session.metadata?.summary?.text || getSessionName(session);
             let sessionTitle = originalTitle;
             if (mode === 'copy') {
-                const now = new Date();
-                const timeSuffix = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
-                sessionTitle = `${originalTitle}_${timeSuffix}`;
+                sessionTitle = generateCopyTitle(originalTitle);
             }
             const forkResult = await machineForkClaudeSession(machineId, claudeSessionId);
             if (!forkResult.success || !forkResult.newSessionId) {

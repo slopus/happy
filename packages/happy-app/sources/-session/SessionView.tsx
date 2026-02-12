@@ -25,7 +25,7 @@ import { t } from '@/text';
 import { tracking, trackMessageSent } from '@/track';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
-import { formatPathRelativeToHome, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { formatPathRelativeToHome, generateCopyTitle, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -365,11 +365,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }
 
             // Step 2: Spawn a new Happy session that resumes the forked Claude session
-            // Generate new title with time suffix (e.g., "原标题_1420" for 14:20)
-            const originalTitle = getSessionName(session);
-            const now = new Date();
-            const timeSuffix = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
-            const newSessionTitle = `${originalTitle}_${timeSuffix}`;
+            const newSessionTitle = generateCopyTitle(getSessionName(session));
 
             const spawnResult = await machineSpawnNewSession({
                 machineId,

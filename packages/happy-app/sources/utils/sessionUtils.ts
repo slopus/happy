@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { storage } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 
@@ -103,6 +104,23 @@ export function getSessionName(session: Session): string {
         return lastSegment;
     }
     return t('status.unknown');
+}
+
+/**
+ * Generate a unique copy title by appending " (N)" suffix.
+ * Checks existing session names to find the next available number.
+ * e.g., "聊天" → "聊天 (2)", and if "聊天 (2)" exists → "聊天 (3)"
+ */
+export function generateCopyTitle(originalTitle: string): string {
+    const baseTitle = originalTitle.replace(/ \(\d+\)$/, '');
+    const existingNames = new Set(
+        Object.values(storage.getState().sessions).map(s => getSessionName(s))
+    );
+    let n = 2;
+    while (existingNames.has(`${baseTitle} (${n})`)) {
+        n++;
+    }
+    return `${baseTitle} (${n})`;
 }
 
 /**
