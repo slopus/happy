@@ -1,0 +1,56 @@
+{
+  "name": "happy-agent",
+  "version": "0.1.0",
+  "description": "CLI client for controlling Happy Coder agents remotely",
+  "author": "Kirill Dubovitskiy",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "happy-agent": "./bin/happy-agent.mjs"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "bin",
+    "package.json"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
+    "test": "$npm_execpath run build && vitest run",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "chalk": "^5.6.2",
+    "commander": "^13.1.0",
+    "qrcode-terminal": "^0.12.0",
+    "socket.io-client": "^4.8.1",
+    "tweetnacl": "^1.0.3",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": ">=20",
+    "@types/qrcode-terminal": "^0.12.2",
+    "pkgroll": "^2.14.2",
+    "shx": "^0.3.3",
+    "tsx": "^4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "packageManager": "yarn@1.22.22"
+}
