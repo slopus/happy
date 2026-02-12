@@ -77,18 +77,18 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 - [x] Run tests — must pass before task 3
 
 ### Task 3: Configuration and credential storage
-- [ ] Create `src/config.ts` — reads `HAPPY_SERVER_URL` (default: `https://api.cluster-fluster.com`), `HAPPY_HOME_DIR` (default: `~/.happy`), derives credential file path as `${happyHomeDir}/agent.key`
-- [ ] Create `src/credentials.ts`:
+- [x] Create `src/config.ts` — reads `HAPPY_SERVER_URL` (default: `https://api.cluster-fluster.com`), `HAPPY_HOME_DIR` (default: `~/.happy`), derives credential file path as `${happyHomeDir}/agent.key`
+- [x] Create `src/credentials.ts`:
   - `Credentials` type: `{ token: string, secret: Uint8Array, contentKeyPair: { publicKey: Uint8Array, secretKey: Uint8Array } }`
   - `readCredentials(config)` — parses `~/.happy/agent.key` JSON `{ token, secret }`, decodes secret from base64, derives contentKeyPair via `deriveContentKeyPair(secret)`. Returns `Credentials` or `null` if file missing.
   - `writeCredentials(config, token, secret)` — writes `{ token, secret: base64(secret) }` to `~/.happy/agent.key`
   - `clearCredentials(config)` — deletes `~/.happy/agent.key`
   - `requireCredentials(config)` — calls `readCredentials`, throws with "Run `happy-agent auth login` first" if null
-- [ ] Write tests for credential read/write round-trip (use temp directory)
-- [ ] Write tests for contentKeyPair derivation from secret
-- [ ] Write tests for missing file returns null
-- [ ] Write tests for config defaults and env var overrides
-- [ ] Run tests — must pass before task 4
+- [x] Write tests for credential read/write round-trip (use temp directory)
+- [x] Write tests for contentKeyPair derivation from secret
+- [x] Write tests for missing file returns null
+- [x] Write tests for config defaults and env var overrides
+- [x] Run tests — must pass before task 4
 
 ### Task 4: Authentication command (`happy-agent auth`)
 - [ ] Create `src/auth.ts` implementing the account auth flow:
