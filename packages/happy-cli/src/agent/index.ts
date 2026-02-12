@@ -40,5 +40,7 @@ export function initializeAgents(): void {
   // Import and register agents from factories
   const { registerGeminiAgent } = require('./factories/gemini');
   registerGeminiAgent();
+  const { registerCodexAgent } = require('./factories/codex');
+  registerCodexAgent();
 }
 

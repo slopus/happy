@@ -15,7 +15,14 @@ export {
   type GeminiBackendResult,
 } from './gemini';
 
+// Codex factory
+export {
+  createCodexBackend,
+  registerCodexAgent,
+  type CodexBackendOptions,
+  type CodexBackendResult,
+} from './codex';
+
 // Future factories:
-// export { createCodexBackend, registerCodexAgent, type CodexBackendOptions } from './codex';
 // export { createClaudeBackend, registerClaudeAgent, type ClaudeBackendOptions } from './claude';
 // export { createOpenCodeBackend, registerOpenCodeAgent, type OpenCodeBackendOptions } from './opencode';
