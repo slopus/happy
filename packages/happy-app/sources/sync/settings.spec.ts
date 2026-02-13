@@ -123,6 +123,11 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
+                sttEnabled: true,
+                sttLocalModel: 'small',
+                sttLanguage: null,
+                sttShowWaveform: true,
+                sttHapticFeedback: true,
             };
             const delta: Partial<Settings> = {
                 viewInline: true
@@ -157,6 +162,11 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
+                sttEnabled: true,
+                sttLocalModel: 'small',
+                sttLanguage: null,
+                sttShowWaveform: true,
+                sttHapticFeedback: true,
             });
         });
 
@@ -191,6 +201,11 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
+                sttEnabled: true,
+                sttLocalModel: 'small',
+                sttLanguage: null,
+                sttShowWaveform: true,
+                sttHapticFeedback: true,
             };
             const delta: Partial<Settings> = {};
             expect(applySettings(currentSettings, delta)).toEqual(currentSettings);
@@ -227,6 +242,11 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
+                sttEnabled: true,
+                sttLocalModel: 'small',
+                sttLanguage: null,
+                sttShowWaveform: true,
+                sttHapticFeedback: true,
             };
             const delta: Partial<Settings> = {
                 viewInline: false
@@ -268,6 +288,11 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
+                sttEnabled: true,
+                sttLocalModel: 'small',
+                sttLanguage: null,
+                sttShowWaveform: true,
+                sttHapticFeedback: true,
             };
             expect(applySettings(currentSettings, {})).toEqual(currentSettings);
         });
@@ -318,6 +343,11 @@ describe('settings', () => {
                 favoriteDirectories: [],
                 favoriteMachines: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
+                sttEnabled: true,
+                sttLocalModel: 'small',
+                sttLanguage: null,
+                sttShowWaveform: true,
+                sttHapticFeedback: true,
             };
             const delta: any = {
                 viewInline: false,

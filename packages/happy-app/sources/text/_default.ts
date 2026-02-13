@@ -59,6 +59,7 @@ export const en = {
         loading: 'Loading...',
         retry: 'Retry',
         delete: 'Delete',
+        download: 'Download',
         optional: 'optional',
     },
 
@@ -374,6 +375,11 @@ export const en = {
         deleteSessionWarning: 'This action cannot be undone. All messages and data associated with this session will be permanently deleted.',
         failedToDeleteSession: 'Failed to delete session',
         sessionDeleted: 'Session deleted successfully',
+        editTitle: 'Edit Title',
+        editTitleSubtitle: 'Change the session title',
+        titlePlaceholder: 'Enter session title',
+        titleUpdated: 'Title updated successfully',
+        failedToUpdateTitle: 'Failed to update title',
         
     },
 
@@ -566,6 +572,80 @@ export const en = {
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'language', plural: 'languages' })} available`,
             autoDetect: 'Auto-detect',
         }
+    },
+
+    settingsSTT: {
+        // Speech-to-Text settings
+        title: 'Speech to Text',
+        description: 'Convert speech to text for voice input in the chat',
+        enable: 'Enable Voice Input',
+        enableDescription: 'Use microphone button for speech-to-text',
+
+        // Mode
+        mode: 'Recognition Mode',
+        modeDescription: 'Choose between on-device or cloud processing',
+        modeFooter: 'On-device processing keeps your data private. Cloud processing may be faster but requires internet.',
+        modeLocal: 'On-device (Whisper)',
+        modeLocalDescription: 'Process speech locally using Whisper AI',
+        modeCloud: 'Cloud',
+        modeCloudDescription: 'Use cloud services (requires API key)',
+        modeSystem: 'System',
+        modeSystemDescription: 'Use device built-in speech recognition',
+
+        // Model
+        model: 'Whisper Model',
+        modelDescription: 'Larger models are more accurate but slower',
+        modelFooter: 'Larger models are more accurate but require more storage and processing time. Small is recommended for most users.',
+        modelTinyDesc: 'Fastest, lower accuracy',
+        modelBaseDesc: 'Fast, good for simple tasks',
+        modelSmallDesc: 'Recommended, balanced',
+        modelMediumDesc: 'Most accurate, slower',
+
+        // Download
+        downloaded: 'Downloaded',
+        downloading: 'Downloading...',
+        downloadModel: 'Download Model',
+        downloadModelConfirm: 'Download',
+        cancelDownload: 'Cancel Download',
+        cancelDownloadConfirm: 'Are you sure you want to cancel this download?',
+        deleteModel: 'Delete Model',
+        deleteModelConfirm: 'Delete',
+        cannotDelete: 'Cannot Delete',
+        cannotDeleteActive: 'Cannot delete the currently active model. Please select a different model first.',
+        totalStorage: 'Total storage used:',
+
+        // Language
+        language: 'Recognition Language',
+        languageFooter: 'Auto-detect works well for most languages. Set a specific language for better accuracy.',
+        autoDetect: 'Auto-detect',
+        autoDetectDescription: 'Automatically detect spoken language',
+        chinese: 'Chinese',
+        english: 'English',
+        japanese: 'Japanese',
+
+        // UI Options
+        uiOptions: 'Interface Options',
+        showWaveform: 'Show Waveform',
+        showWaveformDescription: 'Display audio visualization while recording',
+        hapticFeedback: 'Haptic Feedback',
+        hapticFeedbackDescription: 'Vibrate when starting and stopping recording',
+    },
+
+    stt: {
+        // STT Overlay
+        recording: 'Listening...',
+        processing: 'Processing...',
+        speakNow: 'Start speaking...',
+        cancel: 'Cancel',
+        send: 'Send',
+        slideUpToCancel: 'Slide up to cancel',
+        releaseToCancel: 'Release to cancel',
+
+        // Errors
+        errorPermission: 'Microphone permission required',
+        errorNetwork: 'Network error',
+        errorModelNotReady: 'Model not ready, please download first',
+        errorRecognition: 'Recognition failed',
     },
 
     settingsAccount: {

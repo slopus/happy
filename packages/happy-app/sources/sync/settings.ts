@@ -301,6 +301,13 @@ export const SettingsSchema = z.object({
             gemini: z.boolean().optional(),
         }).default({}),
     }).default({ perMachine: {}, global: {} }).describe('Tracks which CLI installation warnings user has dismissed (per-machine or globally)'),
+
+    // Speech-to-Text settings (stt prefix) - local Whisper only
+    sttEnabled: z.boolean().describe('Whether speech-to-text voice input is enabled'),
+    sttLocalModel: z.enum(['tiny', 'base', 'small', 'medium']).describe('Local Whisper model size to use'),
+    sttLanguage: z.string().nullable().describe('STT recognition language (null for auto-detect)'),
+    sttShowWaveform: z.boolean().describe('Show audio waveform visualization during recording'),
+    sttHapticFeedback: z.boolean().describe('Enable haptic feedback for STT actions'),
 });
 
 //
@@ -356,6 +363,12 @@ export const settingsDefaults: Settings = {
     favoriteMachines: [],
     // Dismissed CLI warnings (empty by default)
     dismissedCLIWarnings: { perMachine: {}, global: {} },
+    // Speech-to-Text defaults (local Whisper only)
+    sttEnabled: true,
+    sttLocalModel: 'small',
+    sttLanguage: null,
+    sttShowWaveform: true,
+    sttHapticFeedback: true,
 };
 Object.freeze(settingsDefaults);
 

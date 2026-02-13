@@ -61,6 +61,7 @@ export const zhHans: TranslationStructure = {
         loading: '加载中...',
         retry: '重试',
         delete: '删除',
+        download: '下载',
         optional: '可选的',
     },
 
@@ -569,6 +570,80 @@ export const zhHans: TranslationStructure = {
             footer: ({ count }: { count: number }) => `${count} 种可用语言`,
             autoDetect: '自动检测',
         }
+    },
+
+    settingsSTT: {
+        // Speech-to-Text settings
+        title: '语音转文字',
+        description: '将语音转换为文字输入到聊天中',
+        enable: '启用语音输入',
+        enableDescription: '使用麦克风按钮进行语音转文字',
+
+        // Mode
+        mode: '识别模式',
+        modeDescription: '选择本地处理或云端处理',
+        modeFooter: '本地处理可保护您的隐私。云端处理可能更快但需要网络连接。',
+        modeLocal: '本地 (Whisper)',
+        modeLocalDescription: '使用 Whisper AI 在本地处理语音',
+        modeCloud: '云端',
+        modeCloudDescription: '使用云服务 (需要 API 密钥)',
+        modeSystem: '系统',
+        modeSystemDescription: '使用设备内置语音识别',
+
+        // Model
+        model: 'Whisper 模型',
+        modelDescription: '较大的模型更准确但速度较慢',
+        modelFooter: '较大的模型更准确但需要更多存储空间和处理时间。建议大多数用户使用 Small 模型。',
+        modelTinyDesc: '最快，准确度较低',
+        modelBaseDesc: '较快，适合简单任务',
+        modelSmallDesc: '推荐，均衡',
+        modelMediumDesc: '最准确，较慢',
+
+        // Download
+        downloaded: '已下载',
+        downloading: '下载中...',
+        downloadModel: '下载模型',
+        downloadModelConfirm: '下载',
+        cancelDownload: '取消下载',
+        cancelDownloadConfirm: '确定要取消此下载吗？',
+        deleteModel: '删除模型',
+        deleteModelConfirm: '删除',
+        cannotDelete: '无法删除',
+        cannotDeleteActive: '无法删除当前使用的模型。请先选择其他模型。',
+        totalStorage: '总存储空间：',
+
+        // Language
+        language: '识别语言',
+        languageFooter: '自动检测适用于大多数语言。设置特定语言可获得更高准确度。',
+        autoDetect: '自动检测',
+        autoDetectDescription: '自动检测所说的语言',
+        chinese: '中文',
+        english: '英文',
+        japanese: '日文',
+
+        // UI Options
+        uiOptions: '界面选项',
+        showWaveform: '显示波形',
+        showWaveformDescription: '录音时显示音频可视化',
+        hapticFeedback: '触觉反馈',
+        hapticFeedbackDescription: '开始和停止录音时振动',
+    },
+
+    stt: {
+        // STT Overlay
+        recording: '正在聆听...',
+        processing: '处理中...',
+        speakNow: '请开始说话...',
+        cancel: '取消',
+        send: '发送',
+        slideUpToCancel: '上滑取消',
+        releaseToCancel: '松开取消',
+
+        // Errors
+        errorPermission: '需要麦克风权限',
+        errorNetwork: '网络错误',
+        errorModelNotReady: '模型未就绪，请先下载',
+        errorRecognition: '识别失败',
     },
 
     settingsAccount: {
