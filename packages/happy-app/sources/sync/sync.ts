@@ -48,6 +48,7 @@ import {
     processNewOpenClawMachineEvent,
     processUpdateOpenClawMachineEvent,
 } from '../openclaw/storage';
+import { resolveModelSelectionForFlavor } from '@/constants/modelCatalog';
 
 type PermissionMode = NonNullable<Session['permissionMode']>;
 
@@ -311,10 +312,9 @@ class Sync {
         // Read permission mode from session state
         const permissionMode = session.permissionMode || 'default';
 
-        // Read model mode - for Gemini, default to gemini-2.5-pro if not set
+        // Read model mode - default maps to CLI-configured model
         const flavor = session.metadata?.flavor;
-        const isGemini = flavor === 'gemini';
-        const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
+        const modelMode = session.modelMode || 'default';
 
         // Use existing localId for retry, or generate new one
         const localId = existingLocalId || randomUUID();
@@ -336,12 +336,8 @@ class Sync {
             sentFrom = 'web'; // fallback
         }
 
-        // Model settings - for Gemini, we pass the selected model; for others, CLI handles it
-        let model: string | null = null;
-        if (isGemini && modelMode !== 'default') {
-            // For Gemini ACP, pass the selected model to CLI
-            model = modelMode;
-        }
+        // Model settings - pass explicit model overrides when selected, otherwise defer to CLI profile/default.
+        const { model, reasoningEffort } = resolveModelSelectionForFlavor(flavor, modelMode);
         const fallbackModel: string | null = null;
 
         // Upload images if present
@@ -377,6 +373,7 @@ class Sync {
                 sentFrom,
                 permissionMode: permissionMode || 'default',
                 model,
+                reasoningEffort,
                 fallbackModel,
                 appendSystemPrompt: systemPrompt,
                 ...(displayText && { displayText }) // Add displayText if provided

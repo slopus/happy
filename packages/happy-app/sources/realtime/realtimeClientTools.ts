@@ -17,6 +17,7 @@ import {
 } from './voiceToolContracts';
 import { getSendConfirmation, getVoiceProvider } from '@/sync/voiceConfig';
 import { showSendConfirmation } from './SendConfirmationModal';
+import { MODEL_MODES } from '@/constants/modelCatalog';
 
 function getLatestAssistantReplyFromCurrentSession(maxChars: number): string | null {
     const sessionId = getCurrentRealtimeSessionId();
@@ -323,12 +324,7 @@ export const realtimeClientTools = {
             }
 
             if (setting === 'modelMode') {
-                const validModels = [
-                    'default', 'adaptiveUsage', 'sonnet', 'opus',                          // Claude
-                    'gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low',           // Codex
-                    'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high',            // Codex
-                    'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',          // Gemini
-                ] as const;
+                const validModels = MODEL_MODES;
                 if (!validModels.includes(value as any)) {
                     return `error (invalid model. Valid models: ${validModels.join(', ')})`;
                 }

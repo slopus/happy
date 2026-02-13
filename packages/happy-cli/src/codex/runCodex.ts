@@ -107,6 +107,7 @@ export async function runCodex(opts: {
     interface EnhancedMode {
         permissionMode: PermissionMode;
         model?: string;
+        reasoningEffort?: string;
         images?: ImageContent[];
     }
 
@@ -199,6 +200,7 @@ export async function runCodex(opts: {
     const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
         permissionMode: mode.permissionMode,
         model: mode.model,
+        reasoningEffort: mode.reasoningEffort,
     }));
 
     // Track current overrides to apply per message
@@ -272,10 +274,19 @@ export async function runCodex(opts: {
             messageModel = message.meta.model || undefined;
             currentModel = messageModel;
             logger.debug(`[Codex] Model updated from user message: ${messageModel || 'reset to default'}`);
-            syncSessionModelInfo({ model: messageModel });
         } else {
             logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
         }
+
+        // Resolve reasoning effort; explicit null resets to default (undefined)
+        let messageReasoningEffort = currentSessionReasoningEffort;
+        if (message.meta?.hasOwnProperty('reasoningEffort')) {
+            messageReasoningEffort = message.meta.reasoningEffort || undefined;
+            logger.debug(`[Codex] Reasoning effort updated from user message: ${messageReasoningEffort || 'reset to default'}`);
+        } else {
+            logger.debug(`[Codex] User message received with no reasoning effort override, using current: ${currentSessionReasoningEffort || 'default'}`);
+        }
+        syncSessionModelInfo({ model: messageModel, reasoningEffort: messageReasoningEffort });
 
         // Extract text and images based on content type (text-only or mixed)
         const isMixedContent = message.content.type === 'mixed';
@@ -291,6 +302,7 @@ export async function runCodex(opts: {
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode || 'default',
             model: messageModel,
+            reasoningEffort: messageReasoningEffort,
             images: images.length > 0 ? images : undefined,
         };
         messageQueue.push(messageText, enhancedMode);
@@ -710,6 +722,7 @@ export async function runCodex(opts: {
      */
     async function createBackend(opts: {
         model?: string;
+        reasoningEffort?: string;
         approvalPolicy: ApprovalPolicy;
         sandbox: SandboxMode;
         resumeFile?: string | null;
@@ -722,6 +735,7 @@ export async function runCodex(opts: {
         const { backend: newBackend } = createCodexBackend({
             cwd: process.cwd(),
             model: opts.model,
+            reasoningEffort: opts.reasoningEffort,
             approvalPolicy: opts.approvalPolicy,
             sandbox: opts.sandbox,
             mcpServers,
@@ -850,6 +864,7 @@ export async function runCodex(opts: {
                     // Create backend with the new configuration
                     await createBackend({
                         model: message.mode.model,
+                        reasoningEffort: message.mode.reasoningEffort,
                         approvalPolicy,
                         sandbox,
                         resumeFile,

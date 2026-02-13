@@ -38,6 +38,7 @@ import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
+import { isModelModeForAgent } from '@/constants/modelCatalog';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -360,21 +361,12 @@ function NewSessionWizard() {
     // A duplicate unconditional reset here was removed to prevent race conditions.
 
     const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
-        const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
-        const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
-        // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-        const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-
         if (lastUsedModelMode) {
-            if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            } else if (agentType === 'gemini' && validGeminiModes.includes(lastUsedModelMode as ModelMode)) {
+            if (isModelModeForAgent(agentType, lastUsedModelMode)) {
                 return lastUsedModelMode as ModelMode;
             }
         }
-        return agentType === 'codex' ? 'gpt-5-codex-high' : agentType === 'gemini' ? 'gemini-2.5-pro' : 'default';
+        return 'default';
     });
 
     // Session details state
@@ -757,29 +749,8 @@ function NewSessionWizard() {
 
     // Reset model mode when agent type changes to appropriate default
     React.useEffect(() => {
-        const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
-        const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
-        // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-        const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-
-        let isValidForCurrentAgent = false;
-        if (agentType === 'codex') {
-            isValidForCurrentAgent = validCodexModes.includes(modelMode);
-        } else if (agentType === 'gemini') {
-            isValidForCurrentAgent = validGeminiModes.includes(modelMode);
-        } else {
-            isValidForCurrentAgent = validClaudeModes.includes(modelMode);
-        }
-
-        if (!isValidForCurrentAgent) {
-            // Set appropriate default for each agent type
-            if (agentType === 'codex') {
-                setModelMode('gpt-5-codex-high');
-            } else if (agentType === 'gemini') {
-                setModelMode('gemini-2.5-pro');
-            } else {
-                setModelMode('default');
-            }
+        if (!isModelModeForAgent(agentType, modelMode)) {
+            setModelMode('default');
         }
     }, [agentType, modelMode]);
 

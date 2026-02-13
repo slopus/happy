@@ -64,6 +64,8 @@ export interface CodexAppServerBackendOptions {
   env?: Record<string, string>;
   /** Model to use */
   model?: string | null;
+  /** Model reasoning effort */
+  reasoningEffort?: string | null;
   /** Approval policy */
   approvalPolicy?: ApprovalPolicy | null;
   /** Sandbox mode */
@@ -275,6 +277,7 @@ export class CodexAppServerBackend implements AgentBackend {
     };
 
     if (this.options.model) params.model = this.options.model;
+    if (this.options.reasoningEffort) params.reasoningEffort = this.options.reasoningEffort;
     if (this.options.approvalPolicy) params.approvalPolicy = this.options.approvalPolicy;
     if (this.options.sandbox) params.sandbox = this.options.sandbox;
 

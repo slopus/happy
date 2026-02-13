@@ -582,6 +582,7 @@ export const zhHant: TranslationStructure = {
         model: {
             title: '模型',
             configureInCli: '在 CLI 設定中配置模型',
+            reasoningEffort: 'Reasoning Effort',
         },
         codexPermissionMode: {
             title: 'CODEX 權限模式',

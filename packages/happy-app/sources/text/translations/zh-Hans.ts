@@ -583,6 +583,7 @@ export const zhHans: TranslationStructure = {
         model: {
             title: '模型',
             configureInCli: '在 CLI 设置中配置模型',
+            reasoningEffort: 'Reasoning Effort',
         },
         codexPermissionMode: {
             title: 'CODEX 权限模式',

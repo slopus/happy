@@ -25,6 +25,17 @@ import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAge
 import { getBuiltInProfile } from '@/sync/profileUtils';
 import { ImagePreview, LocalImage } from '@/components/ImagePreview';
 import { Modal } from '@/modal';
+import {
+    buildCodexModelMode,
+    CLAUDE_MODEL_OPTIONS,
+    CODEX_MODEL_FAMILY_OPTIONS,
+    CodexModelFamily,
+    CodexReasoningEffort,
+    GEMINI_MODEL_OPTIONS,
+    getCodexReasoningOptions,
+    MODEL_MODE_DEFAULT,
+    parseCodexModelMode,
+} from '@/constants/modelCatalog';
 
 interface AgentInputProps {
     value: string;
@@ -335,6 +346,36 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
     const isCodex = props.metadata?.flavor === 'codex' || props.agentType === 'codex';
     const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
+    const selectedModelMode: ModelMode = props.modelMode || 'default';
+    const codexSelection = React.useMemo<{ family: CodexModelFamily; effort: CodexReasoningEffort }>(() => {
+        return parseCodexModelMode(selectedModelMode);
+    }, [selectedModelMode]);
+    const codexFamilyOptions = React.useMemo<Array<{ value: CodexModelFamily; label: string; description: string }>>(
+        () => [...CODEX_MODEL_FAMILY_OPTIONS],
+        [],
+    );
+    const codexReasoningOptions = React.useMemo<Array<{ value: CodexReasoningEffort; label: string }>>(() => {
+        const options = getCodexReasoningOptions(codexSelection.family);
+        return options.map((value) => ({
+            value,
+            label: value === 'xhigh'
+                ? 'Very High'
+                : value.charAt(0).toUpperCase() + value.slice(1),
+        }));
+    }, [codexSelection.family]);
+    const handleCodexFamilyChange = React.useCallback((family: CodexModelFamily) => {
+        if (!props.onModelModeChange) return;
+        props.onModelModeChange(buildCodexModelMode(family, codexSelection.effort || 'medium'));
+    }, [codexSelection.effort, props.onModelModeChange]);
+    const handleCodexReasoningChange = React.useCallback((effort: CodexReasoningEffort) => {
+        if (!props.onModelModeChange || codexSelection.family === MODEL_MODE_DEFAULT) return;
+        props.onModelModeChange(buildCodexModelMode(codexSelection.family, effort));
+    }, [codexSelection.family, props.onModelModeChange]);
+    const modelOptions = React.useMemo<Array<{ value: ModelMode; label: string; description: string }>>(() => {
+        if (isGemini) return [...GEMINI_MODEL_OPTIONS];
+        if (isCodex) return [{ value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', description: 'Use profile/CLI defaults' }];
+        return [...CLAUDE_MODEL_OPTIONS];
+    }, [isCodex, isGemini]);
 
     // Profile data
     const profiles = useSetting('profiles');
@@ -728,23 +769,140 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     }}>
                                         {t('agentInput.model.title')}
                                     </Text>
-                                    {isGemini ? (
-                                        // Gemini model selector
-                                        (['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const).map((model) => {
-                                            const modelConfig = {
-                                                'gemini-2.5-pro': { label: 'Gemini 2.5 Pro', description: 'Most capable' },
-                                                'gemini-2.5-flash': { label: 'Gemini 2.5 Flash', description: 'Fast & efficient' },
-                                                'gemini-2.5-flash-lite': { label: 'Gemini 2.5 Flash Lite', description: 'Fastest' },
-                                            };
-                                            const config = modelConfig[model];
-                                            const isSelected = props.modelMode === model;
-
+                                    {isCodex ? (
+                                        <>
+                                            {codexFamilyOptions.map((option) => {
+                                                const isSelected = codexSelection.family === option.value;
+                                                return (
+                                                    <Pressable
+                                                        key={option.value}
+                                                        onPress={() => {
+                                                            hapticsLight();
+                                                            handleCodexFamilyChange(option.value);
+                                                        }}
+                                                        style={({ pressed }) => ({
+                                                            flexDirection: 'row',
+                                                            alignItems: 'center',
+                                                            paddingHorizontal: 16,
+                                                            paddingVertical: 8,
+                                                            backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                                        })}
+                                                    >
+                                                        <View style={{
+                                                            width: 16,
+                                                            height: 16,
+                                                            borderRadius: 8,
+                                                            borderWidth: 2,
+                                                            borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            marginRight: 12
+                                                        }}>
+                                                            {isSelected && (
+                                                                <View style={{
+                                                                    width: 6,
+                                                                    height: 6,
+                                                                    borderRadius: 3,
+                                                                    backgroundColor: theme.colors.radio.dot
+                                                                }} />
+                                                            )}
+                                                        </View>
+                                                        <View>
+                                                            <Text style={{
+                                                                fontSize: 14,
+                                                                color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                                ...Typography.default()
+                                                            }}>
+                                                                {option.label}
+                                                            </Text>
+                                                            <Text style={{
+                                                                fontSize: 11,
+                                                                color: theme.colors.textSecondary,
+                                                                ...Typography.default()
+                                                            }}>
+                                                                {option.description}
+                                                            </Text>
+                                                        </View>
+                                                    </Pressable>
+                                                );
+                                            })}
+                                            {codexSelection.family !== 'default' && (
+                                                <>
+                                                    <View style={{
+                                                        height: 1,
+                                                        backgroundColor: theme.colors.divider,
+                                                        marginHorizontal: 16,
+                                                        marginTop: 4,
+                                                        marginBottom: 6,
+                                                    }} />
+                                                    <Text style={{
+                                                        fontSize: 12,
+                                                        fontWeight: '600',
+                                                        color: theme.colors.textSecondary,
+                                                        paddingHorizontal: 16,
+                                                        paddingBottom: 4,
+                                                        ...Typography.default('semiBold')
+                                                    }}>
+                                                        {t('agentInput.model.reasoningEffort')}
+                                                    </Text>
+                                                    {codexReasoningOptions.map((effortOption) => {
+                                                        const isSelected = codexSelection.effort === effortOption.value;
+                                                        return (
+                                                            <Pressable
+                                                                key={effortOption.value}
+                                                                onPress={() => {
+                                                                    hapticsLight();
+                                                                    handleCodexReasoningChange(effortOption.value);
+                                                                }}
+                                                                style={({ pressed }) => ({
+                                                                    flexDirection: 'row',
+                                                                    alignItems: 'center',
+                                                                    paddingHorizontal: 16,
+                                                                    paddingVertical: 8,
+                                                                    backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                                                })}
+                                                            >
+                                                                <View style={{
+                                                                    width: 16,
+                                                                    height: 16,
+                                                                    borderRadius: 8,
+                                                                    borderWidth: 2,
+                                                                    borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    marginRight: 12
+                                                                }}>
+                                                                    {isSelected && (
+                                                                        <View style={{
+                                                                            width: 6,
+                                                                            height: 6,
+                                                                            borderRadius: 3,
+                                                                            backgroundColor: theme.colors.radio.dot
+                                                                        }} />
+                                                                    )}
+                                                                </View>
+                                                                <Text style={{
+                                                                    fontSize: 14,
+                                                                    color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                                    ...Typography.default()
+                                                                }}>
+                                                                    {effortOption.label}
+                                                                </Text>
+                                                            </Pressable>
+                                                        );
+                                                    })}
+                                                </>
+                                            )}
+                                        </>
+                                    ) : (
+                                        modelOptions.map((modelOption) => {
+                                            const isSelected = selectedModelMode === modelOption.value;
                                             return (
                                                 <Pressable
-                                                    key={model}
+                                                    key={modelOption.value}
                                                     onPress={() => {
                                                         hapticsLight();
-                                                        props.onModelModeChange?.(model);
+                                                        props.onModelModeChange?.(modelOption.value);
                                                     }}
                                                     style={({ pressed }) => ({
                                                         flexDirection: 'row',
@@ -779,29 +937,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                             color: isSelected ? theme.colors.radio.active : theme.colors.text,
                                                             ...Typography.default()
                                                         }}>
-                                                            {config.label}
+                                                            {modelOption.label}
                                                         </Text>
                                                         <Text style={{
                                                             fontSize: 11,
                                                             color: theme.colors.textSecondary,
                                                             ...Typography.default()
                                                         }}>
-                                                            {config.description}
+                                                            {modelOption.description}
                                                         </Text>
                                                     </View>
                                                 </Pressable>
                                             );
                                         })
-                                    ) : (
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.textSecondary,
-                                            paddingHorizontal: 16,
-                                            paddingVertical: 8,
-                                            ...Typography.default()
-                                        }}>
-                                            {t('agentInput.model.configureInCli')}
-                                        </Text>
                                     )}
                                 </View>
                             </FloatingOverlay>

@@ -581,6 +581,7 @@ export const pt: TranslationStructure = {
         model: {
             title: 'MODELO',
             configureInCli: 'Configurar modelos nas configurações do CLI',
+            reasoningEffort: 'Reasoning Effort',
         },
         codexPermissionMode: {
             title: 'MODO DE PERMISSÃO CODEX',

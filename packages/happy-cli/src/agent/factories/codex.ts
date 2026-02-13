@@ -22,6 +22,8 @@ import { logger } from '@/ui/logger';
 export interface CodexBackendOptions extends AgentFactoryOptions {
   /** Model to use (e.g. 'codex-mini', 'o4-mini') */
   model?: string | null;
+  /** Model reasoning effort (e.g. 'low', 'medium', 'high') */
+  reasoningEffort?: string | null;
   /** Approval policy */
   approvalPolicy?: ApprovalPolicy | null;
   /** Sandbox mode */
@@ -67,6 +69,7 @@ export function createCodexBackend(options: CodexBackendOptions): CodexBackendRe
       ...options.env,
     },
     model,
+    reasoningEffort: options.reasoningEffort,
     approvalPolicy: options.approvalPolicy,
     sandbox: options.sandbox,
     mcpServers: options.mcpServers,
@@ -78,6 +81,7 @@ export function createCodexBackend(options: CodexBackendOptions): CodexBackendRe
   logger.debug('[Codex] Creating app-server backend with options:', {
     cwd: backendOptions.cwd,
     model: model ?? '(Codex CLI default)',
+    reasoningEffort: options.reasoningEffort ?? '(Codex CLI default)',
     approvalPolicy: options.approvalPolicy,
     sandbox: options.sandbox,
     mcpServerCount: options.mcpServers ? Object.keys(options.mcpServers).length : 0,

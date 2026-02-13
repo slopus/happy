@@ -14,6 +14,7 @@ import { AIBackendProfile, validateProfileForAgent, getProfileEnvironmentVariabl
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { profileSyncService } from '@/sync/profileSync';
+import { CLAUDE_MODEL_OPTIONS, GEMINI_MODEL_OPTIONS, CODEX_MODEL_OPTIONS, MODEL_MODE_DEFAULT } from '@/constants/modelCatalog';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -513,7 +514,7 @@ interface NewSessionWizardProps {
     onComplete: (config: {
         sessionType: 'simple' | 'worktree';
         profileId: string | null;
-        agentType: 'claude' | 'codex';
+        agentType: 'claude' | 'codex' | 'gemini';
         permissionMode: PermissionMode;
         modelMode: ModelMode;
         machineId: string;
@@ -1146,6 +1147,27 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         }
     }, [currentStep, selectedMachineId, selectedPath, prompt, showCustomPathInput, customPath, selectedProfileId, profileApiKeys, profileConfigs, getProfileRequiredFields]);
 
+    const modelModeOptions = useMemo<Array<{ value: ModelMode; label: string; description: string; icon: keyof typeof Ionicons.glyphMap }>>(() => {
+        const withIcon = (value: ModelMode, label: string, description: string) => {
+            if (value === MODEL_MODE_DEFAULT) return { value, label, description, icon: 'settings-outline' as const };
+            if (value === 'gemini-3-flash-preview' || value.endsWith('-low') || value.includes('haiku')) {
+                return { value, label, description, icon: 'speedometer-outline' as const };
+            }
+            if (value.includes('medium') || value.includes('sonnet') || value.includes('2.5-pro')) {
+                return { value, label, description, icon: 'cube-outline' as const };
+            }
+            return { value, label, description, icon: 'diamond-outline' as const };
+        };
+
+        if (agentType === 'claude') {
+            return CLAUDE_MODEL_OPTIONS.map((option) => withIcon(option.value, option.label, option.description));
+        }
+        if (agentType === 'gemini') {
+            return GEMINI_MODEL_OPTIONS.map((option) => withIcon(option.value, option.label, option.description));
+        }
+        return CODEX_MODEL_OPTIONS.map((option) => withIcon(option.value, option.label, option.description));
+    }, [agentType]);
+
     const renderStepContent = () => {
         switch (currentStep) {
             case 'profile':
@@ -1622,16 +1644,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                         </ItemGroup>
 
                         <ItemGroup title="Model Mode">
-                            {(agentType === 'claude' ? [
-                                { value: 'default', label: 'Default', description: 'Balanced performance', icon: 'cube-outline' },
-                                { value: 'adaptiveUsage', label: 'Adaptive Usage', description: 'Automatically choose model', icon: 'analytics-outline' },
-                                { value: 'sonnet', label: 'Sonnet', description: 'Fast and efficient', icon: 'speedometer-outline' },
-                                { value: 'opus', label: 'Opus', description: 'Most capable model', icon: 'diamond-outline' },
-                            ] as const : [
-                                { value: 'gpt-5-codex-high', label: 'GPT-5 Codex High', description: 'Best for complex coding', icon: 'diamond-outline' },
-                                { value: 'gpt-5-codex-medium', label: 'GPT-5 Codex Medium', description: 'Balanced coding assistance', icon: 'cube-outline' },
-                                { value: 'gpt-5-codex-low', label: 'GPT-5 Codex Low', description: 'Fast coding help', icon: 'speedometer-outline' },
-                            ] as const).map((option, index, array) => (
+                            {modelModeOptions.map((option, index, array) => (
                                 <Item
                                     key={option.value}
                                     title={option.label}

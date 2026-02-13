@@ -23,6 +23,7 @@ import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
+import { formatModelDisplay, resolveLocalModelDisplay } from '@/constants/modelCatalog';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -69,6 +70,12 @@ function SessionInfoContent({ session }: { session: Session }) {
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
+    const localModelDisplay = React.useMemo(() => resolveLocalModelDisplay(session.modelMode), [session.modelMode]);
+    const modelSubtitle = React.useMemo(() => {
+        const model = localModelDisplay.model || session.metadata?.model;
+        const reasoningEffort = localModelDisplay.reasoningEffort || session.metadata?.reasoningEffort;
+        return formatModelDisplay(model, reasoningEffort);
+    }, [localModelDisplay.model, localModelDisplay.reasoningEffort, session.metadata?.model, session.metadata?.reasoningEffort]);
     
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
@@ -732,12 +739,10 @@ function SessionInfoContent({ session }: { session: Session }) {
                             icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
                             showChevron={false}
                         />
-                        {session.metadata.model && (
+                        {modelSubtitle && (
                             <Item
                                 title={t('sessionInfo.model')}
-                                subtitle={session.metadata.reasoningEffort
-                                    ? `${session.metadata.model} (${session.metadata.reasoningEffort})`
-                                    : session.metadata.model}
+                                subtitle={modelSubtitle}
                                 icon={<Ionicons name="options-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
                             />

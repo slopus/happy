@@ -591,6 +591,7 @@ export const ru: TranslationStructure = {
         model: {
             title: 'МОДЕЛЬ',
             configureInCli: 'Настройте модели в настройках CLI',
+            reasoningEffort: 'Reasoning Effort',
         },
         codexPermissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ CODEX',
