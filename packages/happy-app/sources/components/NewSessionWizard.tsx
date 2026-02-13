@@ -1596,7 +1596,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                 { value: 'default', label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
                                 { value: 'acceptEdits', label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
                                 { value: 'plan', label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                                { value: 'bypassPermissions', label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
+                                { value: 'bypassPermissions', label: 'Yolo', description: 'Skip all permissions', icon: 'flash-outline' },
                             ] as const).map((option, index, array) => (
                                 <Item
                                     key={option.value}

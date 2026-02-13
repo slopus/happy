@@ -1853,7 +1853,7 @@ function NewSessionWizard() {
                                         { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
                                         { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
                                         { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                                        { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
+                                        { value: 'bypassPermissions' as PermissionMode, label: 'Yolo', description: 'Skip all permissions', icon: 'flash-outline' },
                                     ]
                                 ).map((option, index, array) => (
                                     <Item
