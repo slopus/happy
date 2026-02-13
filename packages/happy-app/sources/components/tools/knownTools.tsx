@@ -17,6 +17,7 @@ const ICON_EXIT = (size: number = 24, color: string = '#000') => <Ionicons name=
 const ICON_TODO = (size: number = 24, color: string = '#000') => <Ionicons name="bulb-outline" size={size} color={color} />;
 const ICON_REASONING = (size: number = 24, color: string = '#000') => <Octicons name="light-bulb" size={size} color={color} />;
 const ICON_QUESTION = (size: number = 24, color: string = '#000') => <Ionicons name="help-circle-outline" size={size} color={color} />;
+const ICON_SKILL = (size: number = 24, color: string = '#000') => <Ionicons name="construct-outline" size={size} color={color} />;
 
 export const knownTools = {
     'Task': {
@@ -921,6 +922,18 @@ export const knownTools = {
             }
             return null;
         }
+    },
+    'Skill': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            let title = "Skill";
+            // Check for skill field at runtime
+            if (opts.tool.input && opts.tool.input.skill && typeof opts.tool.input.skill === 'string') {
+                title += `: ${opts.tool.input.skill}`;
+            }
+            return title;
+        },
+        icon: ICON_SKILL,
+        minimal: true
     }
 } satisfies Record<string, {
     title?: string | ((opts: { metadata: Metadata | null, tool: ToolCall }) => string);
