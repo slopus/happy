@@ -140,8 +140,9 @@ All session data is end-to-end encrypted. New sessions use AES-256-GCM with per-
 Maintainers can publish a new version:
 
 ```bash
-cd packages/happy-agent
-yarn release
+yarn release               # From repo root: choose library to release
+# or directly:
+yarn workspace happy-agent release
 ```
 
 This flow:

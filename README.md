@@ -44,6 +44,15 @@ yarn cli codex
 ```
 
 <h3 align="center">
+Release (Maintainers)
+</h3>
+
+```bash
+# from repository root
+yarn release
+```
+
+<h3 align="center">
 Step 3: Start using `happy` instead of `claude` or `codex`
 </h3>
 

@@ -37,7 +37,7 @@
     "test": "$npm_execpath run build && vitest run",
     "dev": "tsx src/index.ts",
     "prepublishOnly": "$npm_execpath run build && $npm_execpath test",
-    "release": "$npm_execpath install && release-it"
+    "release": "release-it"
   },
   "dependencies": {
     "axios": "^1.13.2",

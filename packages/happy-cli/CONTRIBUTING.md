@@ -323,7 +323,9 @@ When modifying profile schemas:
 Maintainers can publish new versions:
 
 ```bash
-yarn release       # Interactive version bump, changelog, publish
+yarn release       # From repo root: choose library to release
+# or directly:
+yarn workspace happy-coder release
 ```
 
 This runs tests, builds, and publishes to npm. The published package includes:
