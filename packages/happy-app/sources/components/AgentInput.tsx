@@ -609,7 +609,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             default: { label: t('agentInput.permissionMode.default') },
                                             acceptEdits: { label: t('agentInput.permissionMode.acceptEdits') },
                                             plan: { label: t('agentInput.permissionMode.plan') },
-                                            bypassPermissions: { label: withSandboxSuffix(t('agentInput.permissionMode.bypassPermissions'), 'bypassPermissions') },
+                                            bypassPermissions: { label: t('agentInput.permissionMode.bypassPermissions') },
                                         };
                                         const config = modeConfig[mode as keyof typeof modeConfig];
                                         if (!config) return null;
