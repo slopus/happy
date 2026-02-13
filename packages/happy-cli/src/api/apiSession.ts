@@ -276,7 +276,10 @@ export class ApiSessionClient extends EventEmitter {
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
             try {
-                this.sendUsageData(body.message.usage, body.message.model);
+                // Don't update model metadata from subagent messages (e.g. Explore uses Haiku)
+                // to avoid misleading the user into thinking the main session switched models
+                const isSidechain = (body as any).isSidechain === true;
+                this.sendUsageData(body.message.usage, isSidechain ? undefined : body.message.model);
             } catch (error) {
                 logger.debug('[SOCKET] Failed to send usage data:', error);
             }
