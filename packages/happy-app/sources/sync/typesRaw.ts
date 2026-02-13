@@ -30,6 +30,67 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
 })]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
 
+const sessionTextEventSchema = z.object({
+    t: z.literal('text'),
+    text: z.string(),
+    thinking: z.boolean().optional(),
+});
+
+const sessionToolCallStartEventSchema = z.object({
+    t: z.literal('tool-call-start'),
+    call: z.string(),
+    name: z.string(),
+    title: z.string(),
+    description: z.string(),
+    args: z.record(z.string(), z.unknown()),
+});
+
+const sessionToolCallEndEventSchema = z.object({
+    t: z.literal('tool-call-end'),
+    call: z.string(),
+});
+
+const sessionFileEventSchema = z.object({
+    t: z.literal('file'),
+    ref: z.string(),
+    name: z.string(),
+});
+
+const sessionPhotoEventSchema = z.object({
+    t: z.literal('photo'),
+    ref: z.string(),
+    thumbhash: z.string(),
+    width: z.number(),
+    height: z.number(),
+});
+
+const sessionTurnStartEventSchema = z.object({
+    t: z.literal('turn-start'),
+});
+
+const sessionTurnEndEventSchema = z.object({
+    t: z.literal('turn-end'),
+});
+
+const sessionEventSchema = z.discriminatedUnion('t', [
+    sessionTextEventSchema,
+    sessionToolCallStartEventSchema,
+    sessionToolCallEndEventSchema,
+    sessionFileEventSchema,
+    sessionPhotoEventSchema,
+    sessionTurnStartEventSchema,
+    sessionTurnEndEventSchema,
+]);
+
+const sessionEnvelopeSchema = z.object({
+    id: z.string(),
+    time: z.number(),
+    role: z.enum(['user', 'agent']),
+    turn: z.string().optional(),
+    invoke: z.string().optional(),
+    ev: sessionEventSchema,
+});
+
 const rawTextContentSchema = z.object({
     type: z.literal('text'),
     text: z.string(),
@@ -206,6 +267,9 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
             id: z.string()
         })
     ])
+}), z.object({
+    type: z.literal('session'),
+    data: sessionEnvelopeSchema
 }), z.object({
     // ACP (Agent Communication Protocol) - unified format for all agent providers
     type: z.literal('acp'),
@@ -634,6 +698,156 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                         is_error: false,
                         uuid: raw.content.data.id,
                         parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+        }
+        if (raw.content.type === 'session') {
+            const envelope = raw.content.data;
+            const messageId = envelope.id;
+            const messageCreatedAt = envelope.time;
+            const parentUUID = envelope.invoke ?? null;
+            const isSidechain = parentUUID !== null;
+            const contentUUID = envelope.id;
+
+            if (envelope.ev.t === 'turn-start') {
+                return null;
+            }
+
+            if (envelope.ev.t === 'turn-end') {
+                return {
+                    id: messageId,
+                    localId,
+                    createdAt: messageCreatedAt,
+                    role: 'event',
+                    isSidechain: false,
+                    content: { type: 'ready' },
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+
+            if (envelope.ev.t === 'text') {
+                if (envelope.role === 'user') {
+                    return {
+                        id: messageId,
+                        localId,
+                        createdAt: messageCreatedAt,
+                        role: 'user',
+                        isSidechain: false,
+                        content: {
+                            type: 'text',
+                            text: envelope.ev.text
+                        },
+                        meta: raw.meta
+                    } satisfies NormalizedMessage;
+                }
+
+                return {
+                    id: messageId,
+                    localId,
+                    createdAt: messageCreatedAt,
+                    role: 'agent',
+                    isSidechain,
+                    content: [
+                        envelope.ev.thinking ? {
+                            type: 'thinking',
+                            thinking: envelope.ev.text,
+                            uuid: contentUUID,
+                            parentUUID
+                        } : {
+                            type: 'text',
+                            text: envelope.ev.text,
+                            uuid: contentUUID,
+                            parentUUID
+                        }
+                    ],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+
+            if (envelope.ev.t === 'tool-call-start') {
+                return {
+                    id: messageId,
+                    localId,
+                    createdAt: messageCreatedAt,
+                    role: 'agent',
+                    isSidechain,
+                    content: [{
+                        type: 'tool-call',
+                        id: envelope.ev.call,
+                        name: envelope.ev.name || 'unknown',
+                        input: envelope.ev.args,
+                        description: envelope.ev.description,
+                        uuid: contentUUID,
+                        parentUUID
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+
+            if (envelope.ev.t === 'tool-call-end') {
+                return {
+                    id: messageId,
+                    localId,
+                    createdAt: messageCreatedAt,
+                    role: 'agent',
+                    isSidechain,
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: envelope.ev.call,
+                        content: null,
+                        is_error: false,
+                        uuid: contentUUID,
+                        parentUUID
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+
+            if (envelope.ev.t === 'file') {
+                return {
+                    id: messageId,
+                    localId,
+                    createdAt: messageCreatedAt,
+                    role: 'agent',
+                    isSidechain,
+                    content: [{
+                        type: 'tool-call',
+                        id: messageId,
+                        name: 'file',
+                        input: {
+                            ref: envelope.ev.ref,
+                            name: envelope.ev.name
+                        },
+                        description: `Attached file: ${envelope.ev.name}`,
+                        uuid: contentUUID,
+                        parentUUID
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+
+            if (envelope.ev.t === 'photo') {
+                return {
+                    id: messageId,
+                    localId,
+                    createdAt: messageCreatedAt,
+                    role: 'agent',
+                    isSidechain,
+                    content: [{
+                        type: 'tool-call',
+                        id: messageId,
+                        name: 'photo',
+                        input: {
+                            ref: envelope.ev.ref,
+                            thumbhash: envelope.ev.thumbhash,
+                            width: envelope.ev.width,
+                            height: envelope.ev.height
+                        },
+                        description: `Attached photo (${envelope.ev.width}x${envelope.ev.height})`,
+                        uuid: contentUUID,
+                        parentUUID
                     }],
                     meta: raw.meta
                 } satisfies NormalizedMessage;

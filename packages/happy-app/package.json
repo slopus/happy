@@ -26,6 +26,7 @@
     "start:dev": "cross-env APP_ENV=development expo start",
     "start:preview": "cross-env APP_ENV=preview expo start",
     "start:production": "cross-env APP_ENV=production expo start",
+    "web:test": "cross-env APP_ENV=development expo start --web --non-interactive",
     "// ==== macOS Desktop (Tauri) Variants ====": "",
     "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "tauri:build:dev": "tauri build --config src-tauri/tauri.dev.conf.json",

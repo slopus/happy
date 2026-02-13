@@ -71,6 +71,7 @@ export interface TracerState {
     
     // Sidechain tracking - maps message UUIDs to their originating Task message ID
     uuidToSidechainId: Map<string, string>;  // uuid -> sidechain ID (originating task message ID)
+    toolCallToMessageId: Map<string, string>; // tool call id -> parent message ID (session-protocol invoke support)
     
     // Buffering for out-of-order messages that arrive before their parent
     orphanMessages: Map<string, NormalizedMessage[]>;  // parentUuid -> orphan messages waiting for parent
@@ -85,6 +86,7 @@ export function createTracer(): TracerState {
         taskTools: new Map(),
         promptToTaskId: new Map(),
         uuidToSidechainId: new Map(),
+        toolCallToMessageId: new Map(),
         orphanMessages: new Map(),
         processedIds: new Set()
     };
@@ -166,6 +168,16 @@ export function traceMessages(state: TracerState, messages: NormalizedMessage[])
         // Extract Task tools and index them by message ID for later sidechain matching
         if (message.role === 'agent') {
             for (const content of message.content) {
+                if (content.type === 'tool-call') {
+                    state.toolCallToMessageId.set(content.id, message.id);
+
+                    // Session protocol sidechain messages can arrive before their parent tool call.
+                    // If we already buffered children keyed by invoke/tool id, flush them now.
+                    const invokeOrphans = processOrphans(state, content.id, message.id);
+                    if (invokeOrphans.length > 0) {
+                        results.push(...invokeOrphans);
+                    }
+                }
                 if (content.type === 'tool-call' && content.name === 'Task') {
                     if (content.input && typeof content.input === 'object' && 'prompt' in content.input) {
                         // Store Task info indexed by message ID (not tool ID)
@@ -227,7 +239,7 @@ export function traceMessages(state: TracerState, messages: NormalizedMessage[])
             results.push(...orphanResults);
         } else if (parentUuid) {
             // This message has a parent - check if parent's sidechain ID is known
-            const parentSidechainId = state.uuidToSidechainId.get(parentUuid);
+            const parentSidechainId = state.uuidToSidechainId.get(parentUuid) || state.toolCallToMessageId.get(parentUuid);
             
             if (parentSidechainId) {
                 // Parent is known - inherit the same sidechain ID

@@ -9,6 +9,7 @@ describe('reducerTracer', () => {
             expect(state.taskTools.size).toBe(0);
             expect(state.promptToTaskId.size).toBe(0);
             expect(state.uuidToSidechainId.size).toBe(0);
+            expect(state.toolCallToMessageId.size).toBe(0);
             expect(state.orphanMessages.size).toBe(0);
             expect(state.processedIds.size).toBe(0);
         });
@@ -178,6 +179,47 @@ describe('reducerTracer', () => {
             expect(state.uuidToSidechainId.get('child-uuid')).toBe('task1');
         });
 
+        it('should link invoke-based sidechain messages to parent tool call message', () => {
+            const state = createTracer();
+
+            const parentToolMessage: NormalizedMessage = {
+                id: 'parent-msg',
+                localId: null,
+                createdAt: 1000,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-call-1',
+                    name: 'Task',
+                    input: { prompt: 'Inspect auth code' },
+                    description: null,
+                    uuid: 'parent-uuid',
+                    parentUUID: null
+                }]
+            };
+
+            traceMessages(state, [parentToolMessage]);
+
+            const invokeMessage: NormalizedMessage = {
+                id: 'child-msg',
+                localId: null,
+                createdAt: 2000,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'text',
+                    text: 'subagent output',
+                    uuid: 'child-uuid',
+                    parentUUID: 'tool-call-1'
+                }]
+            };
+
+            const traced = traceMessages(state, [invokeMessage]);
+            expect(traced).toHaveLength(1);
+            expect(traced[0].sidechainId).toBe('parent-msg');
+        });
+
         it('should buffer orphan messages until parent arrives', () => {
             const state = createTracer();
             
@@ -337,6 +379,52 @@ describe('reducerTracer', () => {
             
             // Orphan buffers should be cleared
             expect(state.orphanMessages.size).toBe(0);
+        });
+
+        it('should flush invoke-orphans when parent tool call arrives later', () => {
+            const state = createTracer();
+
+            const orphanInvoke: NormalizedMessage = {
+                id: 'invoke-child',
+                localId: null,
+                createdAt: 1500,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'text',
+                    text: 'waiting for parent tool',
+                    uuid: 'invoke-child-uuid',
+                    parentUUID: 'tool-call-late'
+                }]
+            };
+
+            const firstPass = traceMessages(state, [orphanInvoke]);
+            expect(firstPass).toHaveLength(0);
+            expect(state.orphanMessages.has('tool-call-late')).toBe(true);
+
+            const parentToolMessage: NormalizedMessage = {
+                id: 'late-parent-msg',
+                localId: null,
+                createdAt: 2000,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-call-late',
+                    name: 'Task',
+                    input: { prompt: 'Late parent' },
+                    description: null,
+                    uuid: 'late-parent-uuid',
+                    parentUUID: null
+                }]
+            };
+
+            const secondPass = traceMessages(state, [parentToolMessage]);
+            expect(secondPass.length).toBeGreaterThanOrEqual(2);
+
+            const flushedChild = secondPass.find(msg => msg.id === 'invoke-child');
+            expect(flushedChild?.sidechainId).toBe('late-parent-msg');
+            expect(state.orphanMessages.has('tool-call-late')).toBe(false);
         });
 
         it('should skip already processed messages', () => {

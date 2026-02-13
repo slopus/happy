@@ -3,7 +3,8 @@
     "private": true,
     "scripts": {
         "cli": "yarn workspace happy-coder cli",
-        "release": "node ./scripts/release.cjs"
+        "release": "node ./scripts/release.cjs",
+        "web": "yarn workspace happy-app web"
     },
     "workspaces": {
         "packages": [

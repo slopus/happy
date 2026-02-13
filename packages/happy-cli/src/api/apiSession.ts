@@ -11,6 +11,7 @@ import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
+import type { SessionEnvelope } from '@/sessionProtocol/types';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -272,6 +273,30 @@ export class ApiSessionClient extends EventEmitter {
         if (!this.socket.connected) {
             logger.debug('[API] Socket not connected, cannot send message. Message will be lost:', { type: body.type });
             // TODO: Consider implementing message queue or HTTP fallback for reliability
+        }
+
+        this.socket.emit('message', {
+            sid: this.sessionId,
+            message: encrypted
+        });
+    }
+
+    sendSessionProtocolMessage(envelope: SessionEnvelope) {
+        let content = {
+            role: envelope.role,
+            content: {
+                type: 'session',
+                data: envelope
+            },
+            meta: {
+                sentFrom: 'cli'
+            }
+        };
+
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+
+        if (!this.socket.connected) {
+            logger.debug('[API] Socket not connected, cannot send session protocol message. Message will be lost:', { eventType: envelope.ev.t });
         }
 
         this.socket.emit('message', {
