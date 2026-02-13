@@ -27,6 +27,10 @@ export interface GitStatusFiles {
     totalUnstaged: number;
 }
 
+function shellEscapeSingleQuoted(value: string): string {
+    return value.replace(/'/g, "'\\''");
+}
+
 /**
  * Fetch detailed git status with file-level information
  */
@@ -34,16 +38,22 @@ export async function getGitStatusFiles(sessionId: string, cwd?: string): Promis
     try {
         // Check if we have a session with valid metadata
         const session = storage.getState().sessions[sessionId];
-        const workingDir = cwd || session?.metadata?.path;
-        if (!workingDir) {
+        const sessionPath = session?.metadata?.path;
+        const targetRepoPath = cwd || sessionPath;
+        if (!targetRepoPath) {
             return null;
         }
+        const useGitPathOverride = Boolean(cwd && sessionPath && cwd !== sessionPath);
+        const commandCwd = useGitPathOverride ? sessionPath : targetRepoPath;
+        const gitPrefix = useGitPathOverride
+            ? `git -C '${shellEscapeSingleQuoted(targetRepoPath)}'`
+            : 'git';
 
         // Get git status in porcelain v2 format (includes branch info and repo check)
         // --untracked-files=all ensures we get individual files, not directories
         const statusResult = await sessionBash(sessionId, {
-            command: 'git status --porcelain=v2 --branch --untracked-files=all',
-            cwd: workingDir,
+            command: `${gitPrefix} status --porcelain=v2 --branch --untracked-files=all`,
+            cwd: commandCwd,
             timeout: 10000
         });
 
@@ -54,8 +64,8 @@ export async function getGitStatusFiles(sessionId: string, cwd?: string): Promis
 
         // Get combined diff statistics for both staged and unstaged changes
         const diffStatResult = await sessionBash(sessionId, {
-            command: 'git diff --numstat HEAD && echo "---STAGED---" && git diff --cached --numstat',
-            cwd: workingDir,
+            command: `${gitPrefix} diff --numstat HEAD && echo "---STAGED---" && ${gitPrefix} diff --cached --numstat`,
+            cwd: commandCwd,
             timeout: 10000
         });
 

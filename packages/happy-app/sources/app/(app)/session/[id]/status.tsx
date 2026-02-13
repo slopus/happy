@@ -19,6 +19,10 @@ import { ActionMenuModal } from '@/components/ActionMenuModal';
 import { ActionMenuItem } from '@/components/ActionMenu';
 import { t } from '@/text';
 
+function shellEscapeSingleQuoted(value: string): string {
+    return value.replace(/'/g, "'\\''");
+}
+
 export default function StatusScreen() {
     const route = useRoute();
     const router = useRouter();
@@ -28,7 +32,16 @@ export default function StatusScreen() {
     const { theme } = useUnistyles();
 
     const session = storage.getState().sessions[sessionId];
-    const sessionPath = cwdParam || session?.metadata?.path || '';
+    const defaultSessionPath = session?.metadata?.path || '';
+    const targetRepoPath = cwdParam || defaultSessionPath;
+    const useGitPathOverride = Boolean(cwdParam && defaultSessionPath && cwdParam !== defaultSessionPath);
+    const commandCwd = useGitPathOverride ? defaultSessionPath : targetRepoPath;
+    const gitPrefix = React.useMemo(() => (
+        useGitPathOverride
+            ? `git -C '${shellEscapeSingleQuoted(targetRepoPath)}'`
+            : 'git'
+    ), [useGitPathOverride, targetRepoPath]);
+    const gitCommand = React.useCallback((args: string) => `${gitPrefix} ${args}`, [gitPrefix]);
 
     const [gitStatus, setGitStatus] = React.useState<GitStatusFiles | null>(null);
     const [isLoading, setIsLoading] = React.useState(true);
@@ -63,8 +76,8 @@ export default function StatusScreen() {
         setIsOperating(true);
         try {
             await sessionBash(sessionId, {
-                command: `git add "${file.fullPath}"`,
-                cwd: sessionPath,
+                command: gitCommand(`add "${file.fullPath}"`),
+                cwd: commandCwd,
                 timeout: 10000,
             });
             await loadStatus(true);
@@ -73,15 +86,15 @@ export default function StatusScreen() {
         } finally {
             setIsOperating(false);
         }
-    }, [sessionId, sessionPath, loadStatus]);
+    }, [sessionId, gitCommand, commandCwd, loadStatus]);
 
     // Unstage a file
     const handleUnstageFile = React.useCallback(async (file: GitFileStatus) => {
         setIsOperating(true);
         try {
             await sessionBash(sessionId, {
-                command: `git reset HEAD -- "${file.fullPath}"`,
-                cwd: sessionPath,
+                command: gitCommand(`reset HEAD -- "${file.fullPath}"`),
+                cwd: commandCwd,
                 timeout: 10000,
             });
             await loadStatus(true);
@@ -90,15 +103,15 @@ export default function StatusScreen() {
         } finally {
             setIsOperating(false);
         }
-    }, [sessionId, sessionPath, loadStatus]);
+    }, [sessionId, gitCommand, commandCwd, loadStatus]);
 
     // Stage all files
     const handleStageAll = React.useCallback(async () => {
         setIsOperating(true);
         try {
             await sessionBash(sessionId, {
-                command: 'git add -A',
-                cwd: sessionPath,
+                command: gitCommand('add -A'),
+                cwd: commandCwd,
                 timeout: 10000,
             });
             await loadStatus(true);
@@ -107,15 +120,15 @@ export default function StatusScreen() {
         } finally {
             setIsOperating(false);
         }
-    }, [sessionId, sessionPath, loadStatus]);
+    }, [sessionId, gitCommand, commandCwd, loadStatus]);
 
     // Unstage all files
     const handleUnstageAll = React.useCallback(async () => {
         setIsOperating(true);
         try {
             await sessionBash(sessionId, {
-                command: 'git reset HEAD',
-                cwd: sessionPath,
+                command: gitCommand('reset HEAD'),
+                cwd: commandCwd,
                 timeout: 10000,
             });
             await loadStatus(true);
@@ -124,7 +137,7 @@ export default function StatusScreen() {
         } finally {
             setIsOperating(false);
         }
-    }, [sessionId, sessionPath, loadStatus]);
+    }, [sessionId, gitCommand, commandCwd, loadStatus]);
 
     // Commit staged changes
     const handleCommit = React.useCallback(async () => {
@@ -139,8 +152,8 @@ export default function StatusScreen() {
         try {
             const escaped = message.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
             const result = await sessionBash(sessionId, {
-                command: `git commit -m "${escaped}"`,
-                cwd: sessionPath,
+                command: gitCommand(`commit -m "${escaped}"`),
+                cwd: commandCwd,
                 timeout: 30000,
             });
             if (result.success && result.exitCode === 0) {
@@ -154,7 +167,7 @@ export default function StatusScreen() {
         } finally {
             setIsOperating(false);
         }
-    }, [sessionId, sessionPath, loadStatus]);
+    }, [sessionId, gitCommand, commandCwd, loadStatus]);
 
     // Discard changes for a file
     const handleDiscardFile = React.useCallback(async (file: GitFileStatus) => {
@@ -169,21 +182,21 @@ export default function StatusScreen() {
         try {
             if (file.status === 'untracked') {
                 await sessionBash(sessionId, {
-                    command: `rm -f "${file.fullPath}"`,
-                    cwd: sessionPath,
+                    command: gitCommand(`clean -f -- "${file.fullPath}"`),
+                    cwd: commandCwd,
                     timeout: 10000,
                 });
             } else if (file.isStaged) {
                 // Staged file: reset from index first, then restore working tree
                 await sessionBash(sessionId, {
-                    command: `git reset HEAD -- "${file.fullPath}" && git checkout -- "${file.fullPath}"`,
-                    cwd: sessionPath,
+                    command: `${gitCommand(`reset HEAD -- "${file.fullPath}"`)} && ${gitCommand(`checkout -- "${file.fullPath}"`)}`,
+                    cwd: commandCwd,
                     timeout: 10000,
                 });
             } else {
                 await sessionBash(sessionId, {
-                    command: `git checkout -- "${file.fullPath}"`,
-                    cwd: sessionPath,
+                    command: gitCommand(`checkout -- "${file.fullPath}"`),
+                    cwd: commandCwd,
                     timeout: 10000,
                 });
             }
@@ -193,7 +206,7 @@ export default function StatusScreen() {
         } finally {
             setIsOperating(false);
         }
-    }, [sessionId, sessionPath, loadStatus]);
+    }, [sessionId, gitCommand, commandCwd, loadStatus]);
 
     // Navigate to file diff viewer
     const handleFilePress = React.useCallback((file: GitFileStatus) => {
