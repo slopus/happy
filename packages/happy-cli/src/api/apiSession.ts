@@ -269,7 +269,7 @@ export class ApiSessionClient extends EventEmitter {
                 }
             );
 
-            const messages = response.data.messages || [];
+            const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
             let maxSeq = afterSeq;
 
             for (const message of messages) {
@@ -294,9 +294,16 @@ export class ApiSessionClient extends EventEmitter {
             }
 
             this.lastSeq = Math.max(this.lastSeq, maxSeq);
+            const hasMore = !!response.data.hasMore;
+            if (hasMore && maxSeq === afterSeq) {
+                logger.debug('[API] fetchMessages pagination stalled, stopping to avoid infinite loop', {
+                    sessionId: this.sessionId,
+                    afterSeq
+                });
+                break;
+            }
             afterSeq = maxSeq;
-
-            if (!response.data.hasMore) {
+            if (!hasMore) {
                 break;
             }
         }
@@ -321,7 +328,8 @@ export class ApiSessionClient extends EventEmitter {
 
         this.pendingOutbox.splice(0, batch.length);
 
-        const maxSeq = response.data.messages.reduce((acc, message) => (
+        const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
+        const maxSeq = messages.reduce((acc, message) => (
             message.seq > acc ? message.seq : acc
         ), this.lastSeq);
         this.lastSeq = maxSeq;
