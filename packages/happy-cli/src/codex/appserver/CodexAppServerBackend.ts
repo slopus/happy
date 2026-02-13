@@ -394,7 +394,7 @@ export class CodexAppServerBackend implements AgentBackend {
       payload: {
         sessionId,
         model,
-        reasoningEffort,
+        ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
       },
     });
   }

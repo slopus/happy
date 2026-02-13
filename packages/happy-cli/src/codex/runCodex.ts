@@ -229,7 +229,11 @@ export async function runCodex(opts: {
             return;
         }
 
-        const normalizedEffort = normalizeReasoningEffort(opts.reasoningEffort);
+        const hasReasoningEffort = Object.prototype.hasOwnProperty.call(opts, 'reasoningEffort');
+        const normalizedEffort = hasReasoningEffort
+            ? normalizeReasoningEffort(opts.reasoningEffort)
+            : currentSessionReasoningEffort;
+
         if (normalizedModel === currentSessionModel && normalizedEffort === currentSessionReasoningEffort) {
             return;
         }
@@ -239,13 +243,14 @@ export async function runCodex(opts: {
         session.updateMetadata((currentMetadata) => {
             const currentModelValue = normalizeModel(currentMetadata.model);
             const currentEffortValue = normalizeReasoningEffort(currentMetadata.reasoningEffort);
-            if (currentModelValue === normalizedModel && currentEffortValue === normalizedEffort) {
+            const targetEffortValue = hasReasoningEffort ? normalizedEffort : currentEffortValue;
+            if (currentModelValue === normalizedModel && currentEffortValue === targetEffortValue) {
                 return currentMetadata;
             }
             return {
                 ...currentMetadata,
                 model: normalizedModel,
-                reasoningEffort: normalizedEffort,
+                ...(targetEffortValue ? { reasoningEffort: targetEffortValue } : {}),
             };
         });
     };
@@ -267,7 +272,7 @@ export async function runCodex(opts: {
             messageModel = message.meta.model || undefined;
             currentModel = messageModel;
             logger.debug(`[Codex] Model updated from user message: ${messageModel || 'reset to default'}`);
-            syncSessionModelInfo({ model: messageModel, reasoningEffort: undefined });
+            syncSessionModelInfo({ model: messageModel });
         } else {
             logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
         }
@@ -658,7 +663,11 @@ export async function runCodex(opts: {
                     });
                 } else if (msg.name === 'session_configured') {
                     const payload = msg.payload as { model?: string; reasoningEffort?: string };
-                    syncSessionModelInfo({ model: payload.model, reasoningEffort: payload.reasoningEffort });
+                    if (payload.reasoningEffort !== undefined) {
+                        syncSessionModelInfo({ model: payload.model, reasoningEffort: payload.reasoningEffort });
+                    } else {
+                        syncSessionModelInfo({ model: payload.model });
+                    }
                 }
                 break;
             }
