@@ -376,9 +376,10 @@ export default function AgentHistoryPage() {
             Modal.alert(t('common.error'), t('claudeHistory.pathUnavailable'));
             return;
         }
+        const provider = entry.agent === 'gemini' ? 'Gemini' : entry.agent === 'codex' ? 'Codex' : 'Claude';
         const confirmed = await Modal.confirm(
             t('sessionHistory.resumeConfirmTitle'),
-            t('sessionHistory.resumeConfirmMessage'),
+            t('sessionHistory.resumeConfirmMessage', { provider }),
             { confirmText: t('common.continue'), cancelText: t('common.cancel') }
         );
         if (!confirmed) return;

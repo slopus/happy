@@ -268,8 +268,9 @@ export default function SessionHistory() {
             return;
         }
 
+        const provider = flavor === 'gemini' ? 'Gemini' : flavor === 'codex' ? 'Codex' : 'Claude';
         const confirmTitle = mode === 'copy' ? t('sessionHistory.copyConfirmTitle') : t('sessionHistory.resumeConfirmTitle');
-        const confirmMessage = mode === 'copy' ? t('sessionHistory.copyConfirmMessage') : t('sessionHistory.resumeConfirmMessage');
+        const confirmMessage = mode === 'copy' ? t('sessionHistory.copyConfirmMessage', { provider }) : t('sessionHistory.resumeConfirmMessage', { provider });
         const confirmed = await Modal.confirm(
             confirmTitle,
             confirmMessage,

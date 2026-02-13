@@ -298,7 +298,7 @@ export default function ClaudeSessionHistory() {
         }
         const confirmed = await Modal.confirm(
             t('sessionHistory.resumeConfirmTitle'),
-            t('sessionHistory.resumeConfirmMessage'),
+            t('sessionHistory.resumeConfirmMessage', { provider: 'Claude' }),
             { confirmText: t('common.continue'), cancelText: t('common.cancel') }
         );
         if (!confirmed) return;

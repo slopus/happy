@@ -187,8 +187,9 @@ function SessionInfoContent({ session }: { session: Session }) {
         if (!hasForkableId || !directory || !machineId) return;
 
         const isOnline = session.active;
+        const provider = flavor === 'gemini' ? 'Gemini' : flavor === 'codex' ? 'Codex' : 'Claude';
         const confirmTitle = isOnline ? t('sessionHistory.copyConfirmTitle') : t('sessionHistory.resumeConfirmTitle');
-        const confirmMessage = isOnline ? t('sessionHistory.copyConfirmMessage') : t('sessionHistory.resumeConfirmMessage');
+        const confirmMessage = isOnline ? t('sessionHistory.copyConfirmMessage', { provider }) : t('sessionHistory.resumeConfirmMessage', { provider });
         const confirmed = await Modal.confirm(confirmTitle, confirmMessage, {
             confirmText: t('common.continue'),
             cancelText: t('common.cancel'),
