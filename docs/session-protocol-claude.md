@@ -92,20 +92,22 @@ Implemented in:
 | `assistant` text block | `agent:text` |
 | `assistant` thinking block | `agent:text` with `thinking: true` |
 | `assistant` tool_use block (non-Task) | `agent:tool-call-start` |
-| `assistant` tool_use block (`Task`) | no parent tool-call envelope; registers subagent and flushes buffered subagent messages |
+| `assistant` tool_use block (`Task`) | no parent tool-call envelope; registers provider->session subagent mapping and flushes buffered subagent messages |
 | `user` tool_result block (non-Task) | `agent:tool-call-end` |
 | `user` tool_result block (`Task` parent result) | `agent:stop` for the subagent (no parent `tool-call-end`) |
 | `user` plain string (non-sidechain) | `turn-end(completed)` (if open), then `user:text` |
-| `user` plain string (sidechain) | `agent:start` (once) then `agent:text` (`subagent` set) |
+| `user` plain string (sidechain) | `agent:start` (once) then `agent:text` (`subagent` set to session cuid2) |
 | `system` | ignored for protocol output |
 | `summary` | ignored for protocol output (metadata update only) |
 
 Notes:
 - Turn starts lazily on first agent output in a turn (`turn-start` envelope created when needed).
-- Sidechain linking uses `subagent` on envelopes.
-- If `parent_tool_use_id` is missing (common in local/non-SDK logs), mapper infers `subagent` from:
-  1. `parentUuid` ancestry (`uuid -> subagent` propagation), or
-  2. `Task` tool prompt matching (sidechain root prompt to pending Task call id).
+- `turn` values in emitted protocol envelopes are cuid2 (examples below use `tA` shorthand for readability).
+- Sidechain linking uses `subagent` on envelopes, and `subagent` is always a session cuid2.
+- Mapper tracks `providerSubagentToSessionSubagent` so provider tool ids (Claude `toolu_*`) never leak into protocol envelopes.
+- If `parent_tool_use_id` is missing (common in local/non-SDK logs), mapper infers provider subagent id from:
+  1. `parentUuid` ancestry (`uuid -> providerSubagent` propagation), or
+  2. `Task` tool prompt matching (sidechain root prompt to pending Task tool id).
 
 ## Concrete Examples
 
@@ -150,10 +152,12 @@ Session envelope:
 {
   "role": "agent",
   "turn": "tA",
-  "subagent": "toolu_task_1",
+  "subagent": "d6a2s8ydz2lh6ry5od3r2n6n",
   "ev": { "t": "text", "text": "Subagent: found 3 files." }
 }
 ```
+
+Where `d6a2s8ydz2lh6ry5od3r2n6n` is an adapter-generated cuid2 mapped from provider id `toolu_task_1`.
 
 App normalization result (conceptual):
 
@@ -161,7 +165,7 @@ App normalization result (conceptual):
 {
   "role": "agent",
   "isSidechain": true,
-  "content": [ { "type": "text", "text": "Subagent: found 3 files.", "parentUUID": "toolu_task_1" } ]
+  "content": [ { "type": "text", "text": "Subagent: found 3 files.", "parentUUID": "d6a2s8ydz2lh6ry5od3r2n6n" } ]
 }
 ```
 
@@ -183,9 +187,9 @@ Arrival order:
 
 CLI mapper behavior:
 
-- Buffers the first message in `bufferedSubagentMessages["toolu_late"]` (no envelope emitted yet).
-- When `Task` `tool_use.id = "toolu_late"` is observed, mapper marks this subagent as known.
-- Mapper immediately replays buffered entries and emits envelopes after this registration step.
+- Buffers the first message in `bufferedSubagentMessages["toolu_late"]` (keyed by provider subagent id; no envelope emitted yet).
+- When `Task` `tool_use.id = "toolu_late"` is observed, mapper creates/uses `providerSubagentToSessionSubagent["toolu_late"] = "<cuid2>"`.
+- Mapper immediately replays buffered entries and emits envelopes with `subagent = <cuid2>`.
 - No parent `tool-call-start` envelope is emitted for `Task`.
 
 ### Example 4: Local restart dedupe (same JSONL line not resent)
@@ -226,7 +230,7 @@ On abort/finalize:
 2. Mapper emits:
 
 ```json
-{ "role": "agent", "turn": "tA", "subagent": "toolu_task_1", "ev": { "t": "tool-call-end", "call": "toolu_sc_1" } }
+{ "role": "agent", "turn": "tA", "subagent": "d6a2s8ydz2lh6ry5od3r2n6n", "ev": { "t": "tool-call-end", "call": "toolu_sc_1" } }
 ```
 
 3. Launcher closes turn:
@@ -238,7 +242,7 @@ On abort/finalize:
 When the parent Task tool result is observed in the main turn, mapper emits:
 
 ```json
-{ "role": "agent", "turn": "tA", "subagent": "toolu_task_1", "ev": { "t": "stop" } }
+{ "role": "agent", "turn": "tA", "subagent": "d6a2s8ydz2lh6ry5od3r2n6n", "ev": { "t": "stop" } }
 ```
 
 ## Sidechain Deep Dive
@@ -277,43 +281,44 @@ Relevant files:
 `mapClaudeLogMessageToSessionEnvelopes()` extracts subagent linkage:
 
 - Reads `parent_tool_use_id` (or camel variant) when provided
-- Otherwise infers subagent via:
-  - `parentUuid` -> previously known `subagent`
+- Otherwise infers provider subagent via:
+  - `parentUuid` -> previously known provider subagent id
   - sidechain root prompt -> pending `Task` tool call id
+- Maps provider subagent id to session cuid2 via `providerSubagentToSessionSubagent`
 - Emits agent envelopes with:
   - `turn = currentTurnId`
-  - `subagent = resolved subagent id`
+  - `subagent = mapped session cuid2`
 - For `Task` parent tool calls:
   - does **not** emit `tool-call-start` / `tool-call-end`
-  - emits only subagent stream lifecycle/content (`start`, `text`, `stop`) for that subagent id
+  - emits only subagent stream lifecycle/content (`start`, `text`, `stop`) for that mapped subagent cuid2
 - Tracks subagent ownership in CLI state:
-  - `knownSubagents`: tool call ids that were registered as subagent parents
-  - `bufferedSubagentMessages`: raw sidechain messages waiting for parent subagent registration
-- If a sidechain message resolves `subagent = X` but `X` is not yet known:
+  - `providerSubagentToSessionSubagent`: provider id -> session cuid2
+  - `bufferedSubagentMessages`: raw sidechain messages waiting for provider subagent mapping
+- If a sidechain message resolves provider subagent `X` but mapping for `X` does not exist yet:
   - message is buffered in CLI
   - nothing is emitted to server yet
 - When a later `Task` `tool_use` has `id = X`:
-  - mapper marks `X` as known
-  - mapper flushes buffered messages for `X` in arrival order
+  - mapper creates/looks up mapped session cuid2 for `X`
+  - mapper flushes buffered messages for `X` in arrival order and emits envelopes with that cuid2
 
 This is the main protocol-level sidechain key.
 
 ```mermaid
 flowchart LR
     A[Raw Claude message] --> B{Has parent tool id}
-    B -- yes --> C[Set subagent from parent id]
+    B -- yes --> C[Resolve provider subagent]
     B -- no --> D{Has parent UUID ancestry}
-    D -- yes --> E[Inherit subagent from parent UUID]
+    D -- yes --> E[Inherit provider subagent]
     D -- no --> F{Matches pending Task prompt}
-    F -- yes --> G[Set subagent from Task id]
+    F -- yes --> G[Resolve provider subagent from Task id]
     F -- no --> H[No subagent]
-    C --> I{Known subagent}
+    C --> I{Has provider to session mapping}
     E --> I
     G --> I
     H --> M[Emit envelope without subagent]
-    I -- no --> J[Buffer in CLI]
-    I -- yes --> K[Emit session envelope]
-    K --> L[App uses parentUUID from subagent]
+    I -- no --> J[Buffer by provider subagent in CLI]
+    I -- yes --> K[Emit envelope with subagent cuid2]
+    K --> L[App receives parentUUID as cuid2]
     M --> L
 ```
 
@@ -330,9 +335,10 @@ When `content.type = "session"` is normalized:
 Then reducer tracer resolves ownership:
 
 1. Tool-call message indexed: `toolCallToMessageId[toolCallId] = parentMessageId`
-2. Sidechain message with `parentUUID = toolCallId` maps directly to parent Task message via `toolCallToMessageId`
-3. Legacy prompt-based root matching (`sidechain` content + Task prompt) still supported
-4. App orphan buffering remains as a safety fallback for legacy/history data, but the source of truth for new Claude session-protocol streams is CLI buffering.
+2. Legacy sidechain message with `parentUUID = toolCallId` still maps directly via `toolCallToMessageId`
+3. Session-protocol sidechain message uses `parentUUID = subagent cuid2`; app treats this as sidechain context identity, not provider tool id
+4. Legacy prompt-based root matching (`sidechain` content + Task prompt) is still supported
+5. App orphan buffering remains a fallback for legacy/history data, but source-of-truth orphan handling for new Claude session-protocol streams is CLI buffering.
 
 ```mermaid
 sequenceDiagram
@@ -341,11 +347,11 @@ sequenceDiagram
     participant Parent as Parent Task tool use
 
     Child->>Mapper: arrives first
-    Mapper->>Mapper: buffer by subagent id
+    Mapper->>Mapper: buffer by provider subagent id
     Parent->>Mapper: Task tool use with same id
-    Mapper->>Mapper: mark subagent as known
+    Mapper->>Mapper: create provider to session cuid2 mapping
     Mapper->>Mapper: flush buffered messages
-    Mapper-->>Mapper: emit children in order
+    Mapper-->>Mapper: emit children with mapped subagent cuid2
 ```
 
 Relevant files:
@@ -393,7 +399,7 @@ Sidechain-specific effect:
 ### Turn-state safety across restarts
 
 - `ApiSessionClient` keeps Claude protocol turn state (`currentTurnId`).
-- `ApiSessionClient` also preserves mapper state for sidechains (`knownSubagents`, `bufferedSubagentMessages` and linkage maps) during a launcher cycle.
+- `ApiSessionClient` also preserves mapper sidechain state (`providerSubagentToSessionSubagent`, `bufferedSubagentMessages`, prompt/uuid linkage maps) during a launcher cycle.
 - Launchers explicitly close turns on completion/abort/failure via `closeClaudeSessionTurn(...)`.
 - This prevents stale open turns when loops restart.
 - App tracer still has orphan maps as defensive fallback, but CLI mapper is responsible for first-pass orphan resolution for new session-protocol traffic.

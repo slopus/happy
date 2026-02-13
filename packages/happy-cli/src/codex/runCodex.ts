@@ -198,6 +198,7 @@ export async function runCodex(opts: {
     let currentTurnId: string | null = null;
     let codexStartedSubagents = new Set<string>();
     let codexActiveSubagents = new Set<string>();
+    let codexProviderSubagentToSessionSubagent = new Map<string, string>();
     session.keepAlive(thinking, 'remote');
     // Periodic keep-alive; store handle so we can clear on exit
     const keepAliveInterval = setInterval(() => {
@@ -513,10 +514,12 @@ export async function runCodex(opts: {
                 currentTurnId,
                 startedSubagents: codexStartedSubagents,
                 activeSubagents: codexActiveSubagents,
+                providerSubagentToSessionSubagent: codexProviderSubagentToSessionSubagent,
             });
             currentTurnId = mapped.currentTurnId;
             codexStartedSubagents = mapped.startedSubagents;
             codexActiveSubagents = mapped.activeSubagents;
+            codexProviderSubagentToSessionSubagent = mapped.providerSubagentToSessionSubagent;
             for (const envelope of mapped.envelopes) {
                 session.sendSessionProtocolMessage(envelope);
             }

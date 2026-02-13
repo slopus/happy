@@ -8,12 +8,14 @@ export type CodexTurnState = {
     currentTurnId: string | null;
     startedSubagents?: Set<string>;
     activeSubagents?: Set<string>;
+    providerSubagentToSessionSubagent?: Map<string, string>;
 };
 
 type CodexMapperResult = {
     currentTurnId: string | null;
     startedSubagents: Set<string>;
     activeSubagents: Set<string>;
+    providerSubagentToSessionSubagent: Map<string, string>;
     envelopes: SessionEnvelope[];
 };
 
@@ -36,6 +38,10 @@ function getStartedSubagents(state: CodexTurnState): Set<string> {
 
 function getActiveSubagents(state: CodexTurnState): Set<string> {
     return state.activeSubagents ?? new Set<string>();
+}
+
+function getProviderSubagentToSessionSubagent(state: CodexTurnState): Map<string, string> {
+    return state.providerSubagentToSessionSubagent ?? new Map<string, string>();
 }
 
 function maybeEmitSubagentStart(
@@ -75,7 +81,7 @@ function buildEnvelopeOptions(currentTurnId: string | null, subagent?: string): 
     };
 }
 
-function pickSubagent(message: Record<string, unknown>): string | undefined {
+function pickProviderSubagent(message: Record<string, unknown>): string | undefined {
     const candidates = [message.subagent, message.parent_call_id, message.parentCallId];
     for (const candidate of candidates) {
         if (typeof candidate === 'string' && candidate.length > 0) {
@@ -83,6 +89,25 @@ function pickSubagent(message: Record<string, unknown>): string | undefined {
         }
     }
     return undefined;
+}
+
+function resolveSessionSubagent(
+    message: Record<string, unknown>,
+    providerSubagentToSessionSubagent: Map<string, string>,
+): string | undefined {
+    const providerSubagent = pickProviderSubagent(message);
+    if (!providerSubagent) {
+        return undefined;
+    }
+
+    const existing = providerSubagentToSessionSubagent.get(providerSubagent);
+    if (existing) {
+        return existing;
+    }
+
+    const created = createId();
+    providerSubagentToSessionSubagent.set(providerSubagent, created);
+    return created;
 }
 
 function pickCallId(message: Record<string, unknown>): string {
@@ -155,16 +180,19 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     const type = message.type;
     const startedSubagents = getStartedSubagents(state);
     const activeSubagents = getActiveSubagents(state);
+    const providerSubagentToSessionSubagent = getProviderSubagentToSessionSubagent(state);
 
     if (type === 'task_started') {
         const turnId = createId();
         const turnStart = createEnvelope('agent', { t: 'turn-start' }, { turn: turnId });
         startedSubagents.clear();
         activeSubagents.clear();
+        providerSubagentToSessionSubagent.clear();
         return {
             currentTurnId: turnId,
             startedSubagents,
             activeSubagents,
+            providerSubagentToSessionSubagent,
             envelopes: [turnStart],
         };
     }
@@ -175,15 +203,18 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                 currentTurnId: null,
                 startedSubagents,
                 activeSubagents,
+                providerSubagentToSessionSubagent,
                 envelopes: [],
             };
         }
 
         const lifecycleOpts = { turn: state.currentTurnId } satisfies CreateEnvelopeOptions;
+        providerSubagentToSessionSubagent.clear();
         return {
             currentTurnId: null,
             startedSubagents,
             activeSubagents,
+            providerSubagentToSessionSubagent,
             envelopes: [
                 ...emitSubagentStops(lifecycleOpts, startedSubagents, activeSubagents),
                 createEnvelope('agent', {
@@ -199,16 +230,23 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
+            providerSubagentToSessionSubagent,
             envelopes: [],
         };
     }
 
-    const subagent = pickSubagent(message);
+    const subagent = resolveSessionSubagent(message, providerSubagentToSessionSubagent);
     const opts = buildEnvelopeOptions(state.currentTurnId, subagent);
 
     if (type === 'agent_message') {
         if (typeof message.message !== 'string') {
-            return { currentTurnId: state.currentTurnId, startedSubagents, activeSubagents, envelopes: [] };
+            return {
+                currentTurnId: state.currentTurnId,
+                startedSubagents,
+                activeSubagents,
+                providerSubagentToSessionSubagent,
+                envelopes: [],
+            };
         }
 
         const envelopes: SessionEnvelope[] = [];
@@ -218,6 +256,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
+            providerSubagentToSessionSubagent,
             envelopes,
         };
     }
@@ -228,7 +267,13 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             : (typeof message.delta === 'string' ? message.delta : null);
 
         if (!text) {
-            return { currentTurnId: state.currentTurnId, startedSubagents, activeSubagents, envelopes: [] };
+            return {
+                currentTurnId: state.currentTurnId,
+                startedSubagents,
+                activeSubagents,
+                providerSubagentToSessionSubagent,
+                envelopes: [],
+            };
         }
 
         const envelopes: SessionEnvelope[] = [];
@@ -238,6 +283,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
+            providerSubagentToSessionSubagent,
             envelopes,
         };
     }
@@ -267,6 +313,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
+            providerSubagentToSessionSubagent,
             envelopes,
         };
     }
@@ -280,6 +327,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
+            providerSubagentToSessionSubagent,
             envelopes,
         };
     }
@@ -308,6 +356,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
+            providerSubagentToSessionSubagent,
             envelopes,
         };
     }
@@ -321,6 +370,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
+            providerSubagentToSessionSubagent,
             envelopes,
         };
     }
@@ -329,6 +379,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         currentTurnId: state.currentTurnId,
         startedSubagents,
         activeSubagents,
+        providerSubagentToSessionSubagent,
         envelopes: [],
     };
 }

@@ -1,4 +1,4 @@
-import { createId } from '@paralleldrive/cuid2';
+import { createId, isCuid } from '@paralleldrive/cuid2';
 import * as z from 'zod';
 
 export const sessionRoleSchema = z.enum(['user', 'agent']);
@@ -84,7 +84,9 @@ export const sessionEnvelopeSchema = z.object({
     time: z.number(),
     role: sessionRoleSchema,
     turn: z.string().optional(),
-    subagent: z.string().optional(),
+    subagent: z.string().refine((value) => isCuid(value), {
+        message: 'subagent must be a cuid2 value',
+    }).optional(),
     ev: sessionEventSchema,
 }).superRefine((envelope, ctx) => {
     if (envelope.ev.t === 'service' && envelope.role !== 'agent') {

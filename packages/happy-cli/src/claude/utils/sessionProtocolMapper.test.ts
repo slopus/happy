@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { createId, isCuid } from '@paralleldrive/cuid2';
 import {
     closeClaudeTurnWithStatus,
     mapClaudeLogMessageToSessionEnvelopes,
@@ -81,9 +82,10 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
     });
 
     it('uses parent_tool_use_id as subagent and emits subagent start', () => {
+        const mappedSubagent = createId();
         const state = {
             currentTurnId: 'turn-1',
-            knownSubagents: new Set<string>(['task-1']),
+            providerSubagentToSessionSubagent: new Map<string, string>([['task-1', mappedSubagent]]),
         };
 
         const result = mapClaudeLogMessageToSessionEnvelopes({
@@ -97,9 +99,9 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         } as any, state);
 
         expect(result.envelopes).toHaveLength(2);
-        expect(result.envelopes[0].subagent).toBe('task-1');
+        expect(result.envelopes[0].subagent).toBe(mappedSubagent);
         expect(result.envelopes[0].ev).toEqual({ t: 'start' });
-        expect(result.envelopes[1].subagent).toBe('task-1');
+        expect(result.envelopes[1].subagent).toBe(mappedSubagent);
         expect(result.envelopes[1].ev).toEqual({ t: 'text', text: 'sidechain text' });
     });
 
@@ -135,11 +137,13 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
             return envelope.ev.t === 'tool-call-start'
                 && envelope.ev.call === 'task-buffer-1';
         })).toBe(false);
-        expect(parent.envelopes.some((envelope) => {
-            return envelope.subagent === 'task-buffer-1'
-                && envelope.ev.t === 'text'
+        const bufferedText = parent.envelopes.find((envelope) => {
+            return envelope.ev.t === 'text'
                 && envelope.ev.text === 'buffer me';
-        })).toBe(true);
+        });
+        expect(bufferedText?.subagent).toBeDefined();
+        expect(isCuid(bufferedText!.subagent!)).toBe(true);
+        expect(bufferedText?.subagent).not.toBe('task-buffer-1');
     });
 
     it('creates and tags subagent chain from Task prompt when parent_tool_use_id is absent', () => {
@@ -180,10 +184,14 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         } as any, state);
 
         expect(sidechainRoot.envelopes).toHaveLength(2);
+        const mappedSubagent = sidechainRoot.envelopes[0].subagent;
+        expect(mappedSubagent).toBeDefined();
+        expect(isCuid(mappedSubagent!)).toBe(true);
+        expect(mappedSubagent).not.toBe('task-call-1');
         expect(sidechainRoot.envelopes[0].role).toBe('agent');
-        expect(sidechainRoot.envelopes[0].subagent).toBe('task-call-1');
+        expect(sidechainRoot.envelopes[0].subagent).toBe(mappedSubagent);
         expect(sidechainRoot.envelopes[0].ev).toEqual({ t: 'start', title: 'Search TypeScript docs' });
-        expect(sidechainRoot.envelopes[1].subagent).toBe('task-call-1');
+        expect(sidechainRoot.envelopes[1].subagent).toBe(mappedSubagent);
         expect(sidechainRoot.envelopes[1].ev).toEqual({ t: 'text', text: prompt });
 
         const sidechainChild = mapClaudeLogMessageToSessionEnvelopes({
@@ -198,7 +206,7 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         } as any, state);
 
         expect(sidechainChild.envelopes).toHaveLength(1);
-        expect(sidechainChild.envelopes[0].subagent).toBe('task-call-1');
+        expect(sidechainChild.envelopes[0].subagent).toBe(mappedSubagent);
         expect(sidechainChild.envelopes[0].ev).toEqual({ t: 'text', text: 'Subagent result' });
     });
 
@@ -219,19 +227,22 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
             return envelope.ev.t === 'text'
                 && envelope.ev.text.startsWith('Search the web for information about TypeScript 5.6');
         });
-        expect(subagentRoot?.subagent).toBe('toolu_01EmKA8FJ7B2Ah9seGxK1Wct');
+        expect(subagentRoot?.subagent).toBeDefined();
+        expect(isCuid(subagentRoot!.subagent!)).toBe(true);
+        expect(subagentRoot?.subagent).not.toBe('toolu_01EmKA8FJ7B2Ah9seGxK1Wct');
 
         const subagentChild = envelopes.find((envelope) => {
             return envelope.ev.t === 'text'
                 && envelope.ev.text.includes("I'll search for information about TypeScript 5.6");
         });
-        expect(subagentChild?.subagent).toBe('toolu_01EmKA8FJ7B2Ah9seGxK1Wct');
+        expect(subagentChild?.subagent).toBe(subagentRoot?.subagent);
     });
 
     it('emits stop for completed subagent when parent Task tool returns', () => {
+        const mappedSubagent = createId();
         const state = {
             currentTurnId: 'turn-1',
-            knownSubagents: new Set<string>(['task-2']),
+            providerSubagentToSessionSubagent: new Map<string, string>([['task-2', mappedSubagent]]),
             hiddenParentToolCalls: new Set<string>(['task-2']),
         };
 
@@ -246,7 +257,7 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         } as any, state);
 
         expect(started.envelopes.some((envelope) => {
-            return envelope.ev.t === 'start' && envelope.subagent === 'task-2';
+            return envelope.ev.t === 'start' && envelope.subagent === mappedSubagent;
         })).toBe(true);
 
         const stopped = mapClaudeLogMessageToSessionEnvelopes({
@@ -262,7 +273,7 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         expect(stopped.envelopes).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
-                    subagent: 'task-2',
+                    subagent: mappedSubagent,
                     ev: { t: 'stop' },
                 }),
             ]),

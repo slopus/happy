@@ -8,10 +8,10 @@ import {
 
 export type ClaudeSessionProtocolState = {
     currentTurnId: string | null;
-    uuidToSubagent?: Map<string, string>;
+    uuidToProviderSubagent?: Map<string, string>;
     taskPromptToSubagents?: Map<string, string[]>;
+    providerSubagentToSessionSubagent?: Map<string, string>;
     subagentTitles?: Map<string, string>;
-    knownSubagents?: Set<string>;
     bufferedSubagentMessages?: Map<string, RawJSONLines[]>;
     hiddenParentToolCalls?: Set<string>;
     startedSubagents?: Set<string>;
@@ -34,7 +34,7 @@ function pickTimestamp(message: RawJSONLines): number {
     return Date.now();
 }
 
-function pickInvoke(message: RawJSONLines): string | undefined {
+function pickProviderSubagent(message: RawJSONLines): string | undefined {
     const raw = message as { parent_tool_use_id?: unknown; parentToolUseId?: unknown };
     if (typeof raw.parent_tool_use_id === 'string' && raw.parent_tool_use_id.length > 0) {
         return raw.parent_tool_use_id;
@@ -45,11 +45,11 @@ function pickInvoke(message: RawJSONLines): string | undefined {
     return undefined;
 }
 
-function getUuidToSubagent(state: ClaudeSessionProtocolState): Map<string, string> {
-    if (!state.uuidToSubagent) {
-        state.uuidToSubagent = new Map<string, string>();
+function getUuidToProviderSubagent(state: ClaudeSessionProtocolState): Map<string, string> {
+    if (!state.uuidToProviderSubagent) {
+        state.uuidToProviderSubagent = new Map<string, string>();
     }
-    return state.uuidToSubagent;
+    return state.uuidToProviderSubagent;
 }
 
 function getTaskPromptToSubagents(state: ClaudeSessionProtocolState): Map<string, string[]> {
@@ -59,18 +59,39 @@ function getTaskPromptToSubagents(state: ClaudeSessionProtocolState): Map<string
     return state.taskPromptToSubagents;
 }
 
+function getProviderSubagentToSessionSubagent(state: ClaudeSessionProtocolState): Map<string, string> {
+    if (!state.providerSubagentToSessionSubagent) {
+        state.providerSubagentToSessionSubagent = new Map<string, string>();
+    }
+    return state.providerSubagentToSessionSubagent;
+}
+
+function getSessionSubagentIdForProviderSubagent(
+    state: ClaudeSessionProtocolState,
+    providerSubagent: string,
+): string | undefined {
+    return getProviderSubagentToSessionSubagent(state).get(providerSubagent);
+}
+
+function ensureSessionSubagentIdForProviderSubagent(
+    state: ClaudeSessionProtocolState,
+    providerSubagent: string,
+): string {
+    const existing = getSessionSubagentIdForProviderSubagent(state, providerSubagent);
+    if (existing) {
+        return existing;
+    }
+
+    const created = createId();
+    getProviderSubagentToSessionSubagent(state).set(providerSubagent, created);
+    return created;
+}
+
 function getSubagentTitles(state: ClaudeSessionProtocolState): Map<string, string> {
     if (!state.subagentTitles) {
         state.subagentTitles = new Map<string, string>();
     }
     return state.subagentTitles;
-}
-
-function getKnownSubagents(state: ClaudeSessionProtocolState): Set<string> {
-    if (!state.knownSubagents) {
-        state.knownSubagents = new Set<string>();
-    }
-    return state.knownSubagents;
 }
 
 function getBufferedSubagentMessages(state: ClaudeSessionProtocolState): Map<string, RawJSONLines[]> {
@@ -224,15 +245,15 @@ function pickSidechainRootPrompt(message: RawJSONLines): string | undefined {
     return undefined;
 }
 
-function resolveSubagent(message: RawJSONLines, state: ClaudeSessionProtocolState): string | undefined {
-    const explicitSubagent = pickInvoke(message);
+function resolveProviderSubagent(message: RawJSONLines, state: ClaudeSessionProtocolState): string | undefined {
+    const explicitSubagent = pickProviderSubagent(message);
     if (explicitSubagent) {
         return explicitSubagent;
     }
 
     const parentUuid = pickParentUuid(message);
     if (parentUuid) {
-        const inheritedSubagent = getUuidToSubagent(state).get(parentUuid);
+        const inheritedSubagent = getUuidToProviderSubagent(state).get(parentUuid);
         if (inheritedSubagent) {
             return inheritedSubagent;
         }
@@ -257,8 +278,8 @@ function resolveSubagent(message: RawJSONLines, state: ClaudeSessionProtocolStat
     return undefined;
 }
 
-function rememberSubagentForMessage(message: RawJSONLines, state: ClaudeSessionProtocolState, subagent: string | undefined): void {
-    if (!subagent) {
+function rememberSubagentForMessage(message: RawJSONLines, state: ClaudeSessionProtocolState, providerSubagent: string | undefined): void {
+    if (!providerSubagent) {
         return;
     }
 
@@ -267,7 +288,7 @@ function rememberSubagentForMessage(message: RawJSONLines, state: ClaudeSessionP
         return;
     }
 
-    getUuidToSubagent(state).set(uuid, subagent);
+    getUuidToProviderSubagent(state).set(uuid, providerSubagent);
 }
 
 function pickTaskPrompt(input: unknown): string | undefined {
@@ -349,10 +370,10 @@ function maybeEmitSubagentStop(
 }
 
 function clearSubagentTracking(state: ClaudeSessionProtocolState): void {
-    getUuidToSubagent(state).clear();
+    getUuidToProviderSubagent(state).clear();
     getTaskPromptToSubagents(state).clear();
+    getProviderSubagentToSessionSubagent(state).clear();
     getSubagentTitles(state).clear();
-    getKnownSubagents(state).clear();
     getBufferedSubagentMessages(state).clear();
     getHiddenParentToolCalls(state).clear();
     getStartedSubagents(state).clear();
@@ -430,11 +451,14 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
 ): ClaudeMapperResult {
     const envelopes: SessionEnvelope[] = [];
     const time = pickTimestamp(message);
-    const subagent = resolveSubagent(message, state);
-    rememberSubagentForMessage(message, state, subagent);
+    const providerSubagent = resolveProviderSubagent(message, state);
+    const subagent = providerSubagent
+        ? getSessionSubagentIdForProviderSubagent(state, providerSubagent)
+        : undefined;
+    rememberSubagentForMessage(message, state, providerSubagent);
 
-    if (subagent && !getKnownSubagents(state).has(subagent)) {
-        bufferSubagentMessage(state, subagent, message);
+    if (providerSubagent && !subagent) {
+        bufferSubagentMessage(state, providerSubagent, message);
         return {
             currentTurnId: state.currentTurnId,
             envelopes: [],
@@ -476,13 +500,13 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                 const name = typeof block.name === 'string' && block.name.length > 0 ? block.name : 'unknown';
                 const args = toToolArgs(block.input);
                 const title = toolTitle(name, block.input);
+                const sessionSubagentForCall = ensureSessionSubagentIdForProviderSubagent(state, call);
                 if (name === 'Task') {
                     const prompt = pickTaskPrompt(block.input);
                     if (prompt) {
                         queueTaskPromptSubagent(state, prompt, call);
                     }
-                    setSubagentTitle(state, call, pickTaskTitle(block.input) ?? prompt);
-                    getKnownSubagents(state).add(call);
+                    setSubagentTitle(state, sessionSubagentForCall, pickTaskTitle(block.input) ?? prompt);
                     getHiddenParentToolCalls(state).add(call);
 
                     const buffered = consumeBufferedSubagentMessages(state, call);
@@ -501,8 +525,6 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                     description: title,
                     args,
                 }, { turn: turnId, subagent, time }));
-                getKnownSubagents(state).add(call);
-
                 const buffered = consumeBufferedSubagentMessages(state, call);
                 for (const bufferedMessage of buffered) {
                     const replay = mapClaudeLogMessageToSessionEnvelopesInternal(bufferedMessage, state);
@@ -548,13 +570,18 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         }
         for (const block of blocks) {
             if (block.type === 'tool_result' && typeof block.tool_use_id === 'string' && block.tool_use_id.length > 0) {
+                const sessionSubagentForToolResult = getSessionSubagentIdForProviderSubagent(state, block.tool_use_id);
                 if (!message.isSidechain) {
                     if (getHiddenParentToolCalls(state).has(block.tool_use_id)) {
-                        maybeEmitSubagentStop(state, turnId, block.tool_use_id, time, envelopes);
+                        if (sessionSubagentForToolResult) {
+                            maybeEmitSubagentStop(state, turnId, sessionSubagentForToolResult, time, envelopes);
+                        }
                         getHiddenParentToolCalls(state).delete(block.tool_use_id);
                         continue;
                     }
-                    maybeEmitSubagentStop(state, turnId, block.tool_use_id, time, envelopes);
+                    if (sessionSubagentForToolResult) {
+                        maybeEmitSubagentStop(state, turnId, sessionSubagentForToolResult, time, envelopes);
+                    }
                 }
                 envelopes.push(createEnvelope('agent', {
                     t: 'tool-call-end',

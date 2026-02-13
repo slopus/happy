@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { isCuid } from '@paralleldrive/cuid2';
 import { MessageMetaSchema, MessageMeta } from './typesMessageMeta';
 
 //
@@ -105,7 +106,9 @@ const sessionEnvelopeSchema = z.object({
     time: z.number(),
     role: z.enum(['user', 'agent']),
     turn: z.string().optional(),
-    subagent: z.string().optional(),
+    subagent: z.string().refine((value) => isCuid(value), {
+        message: 'subagent must be a cuid2 value',
+    }).optional(),
     ev: sessionEventSchema,
 }).superRefine((envelope, ctx) => {
     if (envelope.ev.t === 'service' && envelope.role !== 'agent') {

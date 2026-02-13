@@ -42,8 +42,8 @@ Every encrypted message payload:
   "id": "<cuid2>",
   "time": 1739347200000,
   "role": "user" | "agent",
-  "turn": "<turn id>",
-  "subagent": "<subagent id>",
+  "turn": "<cuid2>",
+  "subagent": "<cuid2>",
   "ev": { "t": "...", ... }
 }
 ```
@@ -53,17 +53,19 @@ Every encrypted message payload:
 | `id` | cuid2 | Globally unique message identifier |
 | `time` | number | Unix timestamp in milliseconds |
 | `role` | `"user"` \| `"agent"` | Who produced this event |
-| `turn` | string? | Turn id established by `turn-start`. Required on all agent messages; agent messages without `turn` are ignored |
-| `subagent` | string? | Optional. Subagent identifier for messages produced by a subagent |
+| `turn` | cuid2? | Turn id established by `turn-start`. Required on all agent messages; agent messages without `turn` are ignored |
+| `subagent` | cuid2? | Optional. Subagent identifier for messages produced by a subagent. Must be adapter-generated cuid2 |
 | `ev` | object | Event body, discriminated by `ev.t` |
 
 ## Subagents
 
-When a tool call spawns a subagent (e.g. a Task tool), all messages produced by that subagent carry `subagent` set to the subagent id (typically the parent `call` id). Parent provider tool-call envelopes are optional; adapters may hide parent tool-call noise and emit only subagent lifecycle/content.
+When a tool call spawns a subagent (e.g. a Task tool), all messages produced by that subagent carry `subagent` set to an adapter-generated cuid2 id. Parent provider tool-call envelopes are optional; adapters may hide parent tool-call noise and emit only subagent lifecycle/content.
 
 Subagents can nest — a subagent's tool call can spawn another subagent. Each level uses its own `subagent` id.
 
 For provider adapters, orphan handling is a CLI responsibility: if a subagent message arrives before its parent subagent registration, the CLI should buffer and emit it only after the parent is known.
+
+Provider-native ids (Claude/Codex tool ids, etc.) must not be used as `subagent` values.
 
 ## Events
 
@@ -163,7 +165,7 @@ Image attachment. The image must be uploaded to the server first.
 
 ### `turn-start`
 
-Agent begins processing. Always `role: "agent"`. The envelope includes a `turn` id that identifies the turn. This `turn` value must be treated as the turn identifier; it is separate from message `id`.
+Agent begins processing. Always `role: "agent"`. The envelope includes a `turn` id (cuid2) that identifies the turn. This `turn` value must be treated as the turn identifier; it is separate from message `id`.
 
 ```json
 { "id": "a2", "turn": "t2", "ev": { "t": "turn-start" } }
@@ -220,16 +222,16 @@ Agent spawning a subagent:
 
 ```
 ← { id: "c1", time: 3000, role: "agent", turn: "t2", ev: { t: "tool-call-start", call: "tc2", name: "task", title: "Exploring codebase", description: "Searching for **auth** implementations", args: { prompt: "Find auth code" } } }
-← { id: "c2", time: 3001, role: "agent", turn: "t2", subagent: "tc2", ev: { t: "start", title: "Auth explorer" } }
-← { id: "c3", time: 3002, role: "agent", turn: "t2", subagent: "tc2", ev: { t: "text", text: "Looking at src/auth/..." } }
-← { id: "c4", time: 3003, role: "agent", turn: "t2", subagent: "tc2", ev: { t: "tool-call-start", call: "tc3", name: "grep", title: "Searching for login", description: "Searching for `login` in **src/auth/**", args: { pattern: "login" } } }
-← { id: "c5", time: 3004, role: "agent", turn: "t2", subagent: "tc2", ev: { t: "tool-call-end", call: "tc3" } }
-← { id: "c6", time: 3005, role: "agent", turn: "t2", subagent: "tc2", ev: { t: "text", text: "Found auth handler." } }
-← { id: "c7", time: 3006, role: "agent", turn: "t2", subagent: "tc2", ev: { t: "stop" } }
+← { id: "c2", time: 3001, role: "agent", turn: "t2", subagent: "v8x9j2q7k1n4m5p6r3s0t1u2", ev: { t: "start", title: "Auth explorer" } }
+← { id: "c3", time: 3002, role: "agent", turn: "t2", subagent: "v8x9j2q7k1n4m5p6r3s0t1u2", ev: { t: "text", text: "Looking at src/auth/..." } }
+← { id: "c4", time: 3003, role: "agent", turn: "t2", subagent: "v8x9j2q7k1n4m5p6r3s0t1u2", ev: { t: "tool-call-start", call: "tc3", name: "grep", title: "Searching for login", description: "Searching for `login` in **src/auth/**", args: { pattern: "login" } } }
+← { id: "c5", time: 3004, role: "agent", turn: "t2", subagent: "v8x9j2q7k1n4m5p6r3s0t1u2", ev: { t: "tool-call-end", call: "tc3" } }
+← { id: "c6", time: 3005, role: "agent", turn: "t2", subagent: "v8x9j2q7k1n4m5p6r3s0t1u2", ev: { t: "text", text: "Found auth handler." } }
+← { id: "c7", time: 3006, role: "agent", turn: "t2", subagent: "v8x9j2q7k1n4m5p6r3s0t1u2", ev: { t: "stop" } }
 ← { id: "c8", time: 3007, role: "agent", turn: "t2", ev: { t: "tool-call-end", call: "tc2" } }
 ```
 
-All messages carry `turn: "t2"` — they all belong to the same turn. Messages `c2`–`c7` also carry `subagent: "tc2"`, linking them to the same subagent.
+All messages carry `turn: "t2"` — they all belong to the same turn. Messages `c2`–`c7` also carry the same cuid2 `subagent` value, linking them to the same subagent.
 
 User sending a photo:
 
@@ -247,3 +249,10 @@ User sending a photo:
 5. **Provider-agnostic** — no agent backend leaks into the protocol
 6. **Consistent naming** — all `kebab-case`, no mixed conventions
 7. **Inline markdown** — `title` and `description` support `` `code` ``, **bold**, *italic*, [links]
+
+## Example ID shorthand
+
+Examples in this document may use short placeholder ids (for readability), but protocol values must still satisfy schema rules:
+- `id`: cuid2
+- `turn`: cuid2 (when present)
+- `subagent`: cuid2 (when present)
