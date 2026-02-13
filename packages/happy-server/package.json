@@ -41,6 +41,7 @@
     "@fastify/cors": "^10.0.1",
     "@prisma/client": "^6.11.1",
     "@socket.io/redis-streams-adapter": "^0.2.2",
+    "@slopus/happy-wire": "^0.1.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/semver": "^7.7.0",
     "axios": "^1.6.8",

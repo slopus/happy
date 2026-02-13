@@ -4,7 +4,7 @@ import {
     createEnvelope,
     type SessionEnvelope,
     type SessionTurnEndStatus,
-} from '@/sessionProtocol/types';
+} from '@slopus/happy-wire';
 
 export type ClaudeSessionProtocolState = {
     currentTurnId: string | null;
@@ -22,17 +22,6 @@ type ClaudeMapperResult = {
     currentTurnId: string | null;
     envelopes: SessionEnvelope[];
 };
-
-function pickTimestamp(message: RawJSONLines): number {
-    const rawTimestamp = (message as { timestamp?: unknown }).timestamp;
-    if (typeof rawTimestamp === 'string') {
-        const parsed = Date.parse(rawTimestamp);
-        if (!Number.isNaN(parsed)) {
-            return parsed;
-        }
-    }
-    return Date.now();
-}
 
 function pickProviderSubagent(message: RawJSONLines): string | undefined {
     const raw = message as { parent_tool_use_id?: unknown; parentToolUseId?: unknown };
@@ -332,7 +321,6 @@ function maybeEmitSubagentStart(
     state: ClaudeSessionProtocolState,
     turn: string,
     subagent: string | undefined,
-    time: number,
     envelopes: SessionEnvelope[],
 ): void {
     if (!subagent) {
@@ -348,7 +336,7 @@ function maybeEmitSubagentStart(
     envelopes.push(createEnvelope('agent', {
         t: 'start',
         ...(title ? { title } : {}),
-    }, { turn, subagent, time }));
+    }, { turn, subagent }));
     started.add(subagent);
     getActiveSubagents(state).add(subagent);
 }
@@ -357,7 +345,6 @@ function maybeEmitSubagentStop(
     state: ClaudeSessionProtocolState,
     turn: string,
     subagent: string,
-    time: number,
     envelopes: SessionEnvelope[],
 ): void {
     const active = getActiveSubagents(state);
@@ -365,7 +352,7 @@ function maybeEmitSubagentStop(
         return;
     }
 
-    envelopes.push(createEnvelope('agent', { t: 'stop' }, { turn, subagent, time }));
+    envelopes.push(createEnvelope('agent', { t: 'stop' }, { turn, subagent }));
     active.delete(subagent);
 }
 
@@ -380,20 +367,19 @@ function clearSubagentTracking(state: ClaudeSessionProtocolState): void {
     getActiveSubagents(state).clear();
 }
 
-function ensureTurn(state: ClaudeSessionProtocolState, time: number, envelopes: SessionEnvelope[]): string {
+function ensureTurn(state: ClaudeSessionProtocolState, envelopes: SessionEnvelope[]): string {
     if (state.currentTurnId) {
         return state.currentTurnId;
     }
 
     const turnId = createId();
-    envelopes.push(createEnvelope('agent', { t: 'turn-start' }, { turn: turnId, time }));
+    envelopes.push(createEnvelope('agent', { t: 'turn-start' }, { turn: turnId }));
     state.currentTurnId = turnId;
     return turnId;
 }
 
 function closeTurn(
     state: ClaudeSessionProtocolState,
-    time: number,
     status: SessionTurnEndStatus,
     envelopes: SessionEnvelope[],
 ): void {
@@ -401,7 +387,7 @@ function closeTurn(
         return;
     }
 
-    envelopes.push(createEnvelope('agent', { t: 'turn-end', status }, { turn: state.currentTurnId, time }));
+    envelopes.push(createEnvelope('agent', { t: 'turn-end', status }, { turn: state.currentTurnId }));
     state.currentTurnId = null;
     clearSubagentTracking(state);
 }
@@ -431,7 +417,7 @@ export function closeClaudeTurnWithStatus(
     status: SessionTurnEndStatus,
 ): ClaudeMapperResult {
     const envelopes: SessionEnvelope[] = [];
-    closeTurn(state, Date.now(), status, envelopes);
+    closeTurn(state, status, envelopes);
     return {
         currentTurnId: state.currentTurnId,
         envelopes,
@@ -450,7 +436,6 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     state: ClaudeSessionProtocolState,
 ): ClaudeMapperResult {
     const envelopes: SessionEnvelope[] = [];
-    const time = pickTimestamp(message);
     const providerSubagent = resolveProviderSubagent(message, state);
     const subagent = providerSubagent
         ? getSessionSubagentIdForProviderSubagent(state, providerSubagent)
@@ -480,18 +465,18 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     }
 
     if (message.type === 'assistant') {
-        const turnId = ensureTurn(state, time, envelopes);
-        maybeEmitSubagentStart(state, turnId, subagent, time, envelopes);
+        const turnId = ensureTurn(state, envelopes);
+        maybeEmitSubagentStart(state, turnId, subagent, envelopes);
         const blocks = Array.isArray(message.message?.content) ? message.message.content : [];
 
         for (const block of blocks) {
             if (block.type === 'text' && typeof block.text === 'string') {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, time }));
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent }));
                 continue;
             }
 
             if (block.type === 'thinking' && typeof block.thinking === 'string') {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent, time }));
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent }));
                 continue;
             }
 
@@ -524,7 +509,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                     title,
                     description: title,
                     args,
-                }, { turn: turnId, subagent, time }));
+                }, { turn: turnId, subagent }));
                 const buffered = consumeBufferedSubagentMessages(state, call);
                 for (const bufferedMessage of buffered) {
                     const replay = mapClaudeLogMessageToSessionEnvelopesInternal(bufferedMessage, state);
@@ -542,12 +527,12 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     if (message.type === 'user') {
         if (typeof message.message.content === 'string') {
             if (message.isSidechain) {
-                const turnId = ensureTurn(state, time, envelopes);
-                maybeEmitSubagentStart(state, turnId, subagent, time, envelopes);
-                envelopes.push(createEnvelope('agent', { t: 'text', text: message.message.content }, { turn: turnId, subagent, time }));
+                const turnId = ensureTurn(state, envelopes);
+                maybeEmitSubagentStart(state, turnId, subagent, envelopes);
+                envelopes.push(createEnvelope('agent', { t: 'text', text: message.message.content }, { turn: turnId, subagent }));
             } else {
-                closeTurn(state, time, 'completed', envelopes);
-                envelopes.push(createEnvelope('user', { t: 'text', text: message.message.content }, { time }));
+                closeTurn(state, 'completed', envelopes);
+                envelopes.push(createEnvelope('user', { t: 'text', text: message.message.content }));
             }
 
             return {
@@ -564,9 +549,9 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
             };
         }
 
-        const turnId = ensureTurn(state, time, envelopes);
+        const turnId = ensureTurn(state, envelopes);
         if (message.isSidechain) {
-            maybeEmitSubagentStart(state, turnId, subagent, time, envelopes);
+            maybeEmitSubagentStart(state, turnId, subagent, envelopes);
         }
         for (const block of blocks) {
             if (block.type === 'tool_result' && typeof block.tool_use_id === 'string' && block.tool_use_id.length > 0) {
@@ -574,24 +559,24 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                 if (!message.isSidechain) {
                     if (getHiddenParentToolCalls(state).has(block.tool_use_id)) {
                         if (sessionSubagentForToolResult) {
-                            maybeEmitSubagentStop(state, turnId, sessionSubagentForToolResult, time, envelopes);
+                            maybeEmitSubagentStop(state, turnId, sessionSubagentForToolResult, envelopes);
                         }
                         getHiddenParentToolCalls(state).delete(block.tool_use_id);
                         continue;
                     }
                     if (sessionSubagentForToolResult) {
-                        maybeEmitSubagentStop(state, turnId, sessionSubagentForToolResult, time, envelopes);
+                        maybeEmitSubagentStop(state, turnId, sessionSubagentForToolResult, envelopes);
                     }
                 }
                 envelopes.push(createEnvelope('agent', {
                     t: 'tool-call-end',
                     call: block.tool_use_id,
-                }, { turn: turnId, subagent, time }));
+                }, { turn: turnId, subagent }));
                 continue;
             }
 
             if (block.type === 'text' && typeof block.text === 'string' && block.text.trim().length > 0) {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, time }));
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent }));
             }
         }
 

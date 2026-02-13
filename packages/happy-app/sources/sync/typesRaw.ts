@@ -17,6 +17,15 @@ const usageDataSchema = z.object({
 
 export type UsageData = z.infer<typeof usageDataSchema>;
 
+function isSessionProtocolSendEnabled(): boolean {
+    const raw = (
+        process.env.EXPO_PUBLIC_ENABLE_SESSION_PROTOCOL_SEND
+        ?? process.env.ENABLE_SESSION_PROTOCOL_SEND
+        ?? ''
+    ).toLowerCase();
+    return raw === '1' || raw === 'true' || raw === 'yes';
+}
+
 const agentEventSchema = z.discriminatedUnion('type', [z.object({
     type: z.literal('switch'),
     mode: z.enum(['local', 'remote'])
@@ -60,14 +69,12 @@ const sessionFileEventSchema = z.object({
     t: z.literal('file'),
     ref: z.string(),
     name: z.string(),
-});
-
-const sessionPhotoEventSchema = z.object({
-    t: z.literal('photo'),
-    ref: z.string(),
-    thumbhash: z.string(),
-    width: z.number(),
-    height: z.number(),
+    size: z.number(),
+    image: z.object({
+        width: z.number(),
+        height: z.number(),
+        thumbhash: z.string(),
+    }).optional(),
 });
 
 const sessionTurnStartEventSchema = z.object({
@@ -94,7 +101,6 @@ const sessionEventSchema = z.discriminatedUnion('t', [
     sessionToolCallStartEventSchema,
     sessionToolCallEndEventSchema,
     sessionFileEventSchema,
-    sessionPhotoEventSchema,
     sessionTurnStartEventSchema,
     sessionStartEventSchema,
     sessionTurnEndEventSchema,
@@ -126,6 +132,7 @@ const sessionEnvelopeSchema = z.object({
         });
     }
 });
+type SessionEnvelope = z.infer<typeof sessionEnvelopeSchema>;
 
 const rawTextContentSchema = z.object({
     type: z.literal('text'),
@@ -403,6 +410,23 @@ function preprocessMessageContent(data: any): any {
         data.content.data.message.content = data.content.data.message.content.map(normalizeContent);
     }
 
+    // Accept new session wrapper shape and normalize to canonical wrapped shape.
+    // New shape:
+    // { role: 'session', content: { id, role, turn?, subagent?, ev }, meta? }
+    if (data.role === 'session' && data.content && typeof data.content === 'object') {
+        const content = data.content as Record<string, unknown>;
+        const looksLikeEnvelope = content.type !== 'session'
+            && typeof content.id === 'string'
+            && typeof content.role === 'string'
+            && content.ev !== undefined;
+        if (looksLikeEnvelope) {
+            data.content = {
+                type: 'session',
+                data: content,
+            };
+        }
+    }
+
     return data;
 }
 
@@ -419,6 +443,14 @@ const rawRecordSchema = z.preprocess(
             content: z.object({
                 type: z.literal('text'),
                 text: z.string()
+            }),
+            meta: MessageMetaSchema.optional()
+        }),
+        z.object({
+            role: z.literal('session'),
+            content: z.object({
+                type: z.literal('session'),
+                data: sessionEnvelopeSchema
             }),
             meta: MessageMetaSchema.optional()
         })
@@ -498,6 +530,188 @@ export type NormalizedMessage = ({
     usage?: UsageData,
 };
 
+function normalizeSessionEnvelope(
+    envelope: SessionEnvelope,
+    localId: string | null,
+    createdAt: number,
+    meta: MessageMeta | undefined,
+): NormalizedMessage | null {
+    // Session protocol requires turn id on all agent-originated envelopes.
+    // Drop malformed agent events without turn to avoid attaching stray messages.
+    if (envelope.role === 'agent' && !envelope.turn) {
+        return null;
+    }
+
+    const messageId = envelope.id;
+    const messageCreatedAt = envelope.time;
+    const parentUUID = envelope.subagent ?? null;
+    const isSidechain = parentUUID !== null;
+    const contentUUID = envelope.id;
+
+    if (envelope.ev.t === 'turn-start') {
+        return null;
+    }
+
+    if (envelope.ev.t === 'start' || envelope.ev.t === 'stop') {
+        // Lifecycle marker for subagent boundaries; currently not rendered as chat content.
+        return null;
+    }
+
+    if (envelope.ev.t === 'turn-end') {
+        return {
+            id: messageId,
+            localId,
+            createdAt: messageCreatedAt,
+            role: 'event',
+            isSidechain: false,
+            content: { type: 'ready' },
+            meta
+        } satisfies NormalizedMessage;
+    }
+
+    if (envelope.ev.t === 'service') {
+        if (envelope.role !== 'agent') {
+            return null;
+        }
+
+        return {
+            id: messageId,
+            localId,
+            createdAt: messageCreatedAt,
+            role: 'agent',
+            isSidechain,
+            content: [{
+                type: 'text',
+                text: envelope.ev.text,
+                uuid: contentUUID,
+                parentUUID
+            }],
+            meta
+        } satisfies NormalizedMessage;
+    }
+
+    if (envelope.ev.t === 'text') {
+        if (envelope.role === 'user') {
+            if (!isSessionProtocolSendEnabled()) {
+                return null;
+            }
+
+            return {
+                id: messageId,
+                localId,
+                createdAt: messageCreatedAt,
+                role: 'user',
+                isSidechain: false,
+                content: {
+                    type: 'text',
+                    text: envelope.ev.text
+                },
+                meta
+            } satisfies NormalizedMessage;
+        }
+
+        return {
+            id: messageId,
+            localId,
+            createdAt: messageCreatedAt,
+            role: 'agent',
+            isSidechain,
+            content: [
+                envelope.ev.thinking ? {
+                    type: 'thinking',
+                    thinking: envelope.ev.text,
+                    uuid: contentUUID,
+                    parentUUID
+                } : {
+                    type: 'text',
+                    text: envelope.ev.text,
+                    uuid: contentUUID,
+                    parentUUID
+                }
+            ],
+            meta
+        } satisfies NormalizedMessage;
+    }
+
+    if (envelope.ev.t === 'tool-call-start') {
+        return {
+            id: messageId,
+            localId,
+            createdAt: messageCreatedAt,
+            role: 'agent',
+            isSidechain,
+            content: [{
+                type: 'tool-call',
+                id: envelope.ev.call,
+                name: envelope.ev.name || 'unknown',
+                input: envelope.ev.args,
+                description: envelope.ev.description,
+                uuid: contentUUID,
+                parentUUID
+            }],
+            meta
+        } satisfies NormalizedMessage;
+    }
+
+    if (envelope.ev.t === 'tool-call-end') {
+        return {
+            id: messageId,
+            localId,
+            createdAt: messageCreatedAt,
+            role: 'agent',
+            isSidechain,
+            content: [{
+                type: 'tool-result',
+                tool_use_id: envelope.ev.call,
+                content: null,
+                is_error: false,
+                uuid: contentUUID,
+                parentUUID
+            }],
+            meta
+        } satisfies NormalizedMessage;
+    }
+
+    if (envelope.ev.t === 'file') {
+        const maybeImageMetadata = envelope.ev.image
+            ? {
+                image: {
+                    width: envelope.ev.image.width,
+                    height: envelope.ev.image.height,
+                    thumbhash: envelope.ev.image.thumbhash
+                }
+            }
+            : {};
+
+        return {
+            id: messageId,
+            localId,
+            createdAt: messageCreatedAt,
+            role: 'agent',
+            isSidechain,
+            content: [{
+                type: 'tool-call',
+                id: messageId,
+                name: 'file',
+                input: {
+                    ref: envelope.ev.ref,
+                    name: envelope.ev.name,
+                    size: envelope.ev.size,
+                    ...maybeImageMetadata
+                },
+                description: envelope.ev.image
+                    ? `Attached image: ${envelope.ev.name} (${envelope.ev.image.width}x${envelope.ev.image.height})`
+                    : `Attached file: ${envelope.ev.name}`,
+                uuid: contentUUID,
+                parentUUID
+            }],
+            meta
+        } satisfies NormalizedMessage;
+    }
+
+    return null;
+}
+
 export function normalizeRawMessage(id: string, localId: string | null, createdAt: number, raw: RawRecord): NormalizedMessage | null {
     // Zod transform handles normalization during validation
     let parsed = rawRecordSchema.safeParse(raw);
@@ -510,6 +724,10 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
     }
     raw = parsed.data;
     if (raw.role === 'user') {
+        if (isSessionProtocolSendEnabled()) {
+            return null;
+        }
+
         return {
             id,
             localId,
@@ -519,6 +737,14 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
             isSidechain: false,
             meta: raw.meta,
         };
+    }
+    if (raw.role === 'session') {
+        return normalizeSessionEnvelope(
+            raw.content.data,
+            localId,
+            createdAt,
+            raw.meta,
+        );
     }
     if (raw.role === 'agent') {
         if (raw.content.type === 'output') {
@@ -740,187 +966,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
             }
         }
         if (raw.content.type === 'session') {
-            const envelope = raw.content.data;
-
-            // Session protocol requires turn id on all agent-originated envelopes.
-            // Drop malformed agent events without turn to avoid attaching stray messages.
-            if (envelope.role === 'agent' && !envelope.turn) {
-                return null;
-            }
-
-            const messageId = envelope.id;
-            const messageCreatedAt = envelope.time;
-            const parentUUID = envelope.subagent ?? null;
-            const isSidechain = parentUUID !== null;
-            const contentUUID = envelope.id;
-
-            if (envelope.ev.t === 'turn-start') {
-                return null;
-            }
-
-            if (envelope.ev.t === 'start' || envelope.ev.t === 'stop') {
-                // Lifecycle marker for subagent boundaries; currently not rendered as chat content.
-                return null;
-            }
-
-            if (envelope.ev.t === 'turn-end') {
-                return {
-                    id: messageId,
-                    localId,
-                    createdAt: messageCreatedAt,
-                    role: 'event',
-                    isSidechain: false,
-                    content: { type: 'ready' },
-                    meta: raw.meta
-                } satisfies NormalizedMessage;
-            }
-
-            if (envelope.ev.t === 'service') {
-                if (envelope.role !== 'agent') {
-                    return null;
-                }
-
-                return {
-                    id: messageId,
-                    localId,
-                    createdAt: messageCreatedAt,
-                    role: 'agent',
-                    isSidechain,
-                    content: [{
-                        type: 'text',
-                        text: envelope.ev.text,
-                        uuid: contentUUID,
-                        parentUUID
-                    }],
-                    meta: raw.meta
-                } satisfies NormalizedMessage;
-            }
-
-            if (envelope.ev.t === 'text') {
-                if (envelope.role === 'user') {
-                    return {
-                        id: messageId,
-                        localId,
-                        createdAt: messageCreatedAt,
-                        role: 'user',
-                        isSidechain: false,
-                        content: {
-                            type: 'text',
-                            text: envelope.ev.text
-                        },
-                        meta: raw.meta
-                    } satisfies NormalizedMessage;
-                }
-
-                return {
-                    id: messageId,
-                    localId,
-                    createdAt: messageCreatedAt,
-                    role: 'agent',
-                    isSidechain,
-                    content: [
-                        envelope.ev.thinking ? {
-                            type: 'thinking',
-                            thinking: envelope.ev.text,
-                            uuid: contentUUID,
-                            parentUUID
-                        } : {
-                            type: 'text',
-                            text: envelope.ev.text,
-                            uuid: contentUUID,
-                            parentUUID
-                        }
-                    ],
-                    meta: raw.meta
-                } satisfies NormalizedMessage;
-            }
-
-            if (envelope.ev.t === 'tool-call-start') {
-                return {
-                    id: messageId,
-                    localId,
-                    createdAt: messageCreatedAt,
-                    role: 'agent',
-                    isSidechain,
-                    content: [{
-                        type: 'tool-call',
-                        id: envelope.ev.call,
-                        name: envelope.ev.name || 'unknown',
-                        input: envelope.ev.args,
-                        description: envelope.ev.description,
-                        uuid: contentUUID,
-                        parentUUID
-                    }],
-                    meta: raw.meta
-                } satisfies NormalizedMessage;
-            }
-
-            if (envelope.ev.t === 'tool-call-end') {
-                return {
-                    id: messageId,
-                    localId,
-                    createdAt: messageCreatedAt,
-                    role: 'agent',
-                    isSidechain,
-                    content: [{
-                        type: 'tool-result',
-                        tool_use_id: envelope.ev.call,
-                        content: null,
-                        is_error: false,
-                        uuid: contentUUID,
-                        parentUUID
-                    }],
-                    meta: raw.meta
-                } satisfies NormalizedMessage;
-            }
-
-            if (envelope.ev.t === 'file') {
-                return {
-                    id: messageId,
-                    localId,
-                    createdAt: messageCreatedAt,
-                    role: 'agent',
-                    isSidechain,
-                    content: [{
-                        type: 'tool-call',
-                        id: messageId,
-                        name: 'file',
-                        input: {
-                            ref: envelope.ev.ref,
-                            name: envelope.ev.name
-                        },
-                        description: `Attached file: ${envelope.ev.name}`,
-                        uuid: contentUUID,
-                        parentUUID
-                    }],
-                    meta: raw.meta
-                } satisfies NormalizedMessage;
-            }
-
-            if (envelope.ev.t === 'photo') {
-                return {
-                    id: messageId,
-                    localId,
-                    createdAt: messageCreatedAt,
-                    role: 'agent',
-                    isSidechain,
-                    content: [{
-                        type: 'tool-call',
-                        id: messageId,
-                        name: 'photo',
-                        input: {
-                            ref: envelope.ev.ref,
-                            thumbhash: envelope.ev.thumbhash,
-                            width: envelope.ev.width,
-                            height: envelope.ev.height
-                        },
-                        description: `Attached photo (${envelope.ev.width}x${envelope.ev.height})`,
-                        uuid: contentUUID,
-                        parentUUID
-                    }],
-                    meta: raw.meta
-                } satisfies NormalizedMessage;
-            }
+            return normalizeSessionEnvelope(raw.content.data, localId, createdAt, raw.meta);
         }
         // ACP (Agent Communication Protocol) - unified format for all agent providers
         if (raw.content.type === 'acp') {

@@ -11,8 +11,7 @@ import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
-import type { SessionEnvelope } from '@/sessionProtocol/types';
-import type { SessionTurnEndStatus } from '@/sessionProtocol/types';
+import { type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
 import {
     closeClaudeTurnWithStatus,
     mapClaudeLogMessageToSessionEnvelopes,
@@ -335,13 +334,15 @@ export class ApiSessionClient extends EventEmitter {
         this.lastSeq = maxSeq;
     }
 
-    private enqueueMessage(content: unknown) {
+    private enqueueMessage(content: unknown, invalidate: boolean = true) {
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.pendingOutbox.push({
             content: encrypted,
             localId: randomUUID()
         });
-        this.sendSync.invalidate();
+        if (invalidate) {
+            this.sendSync.invalidate();
+        }
     }
 
     /**
@@ -397,19 +398,30 @@ export class ApiSessionClient extends EventEmitter {
         this.enqueueMessage(content);
     }
 
-    sendSessionProtocolMessage(envelope: SessionEnvelope) {
-        let content = {
-            role: envelope.role,
-            content: {
-                type: 'session',
-                data: envelope
-            },
+    private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true) {
+        const content = {
+            role: 'session',
+            content: envelope,
             meta: {
                 sentFrom: 'cli'
             }
         };
 
-        this.enqueueMessage(content);
+        this.enqueueMessage(content, invalidate);
+    }
+
+    sendSessionProtocolMessage(envelope: SessionEnvelope) {
+        if (envelope.role !== 'user') {
+            this.enqueueSessionProtocolEnvelope(envelope);
+            return;
+        }
+
+        if (envelope.ev.t !== 'text') {
+            this.enqueueSessionProtocolEnvelope(envelope);
+            return;
+        }
+
+        this.enqueueSessionProtocolEnvelope(envelope);
     }
 
     /**

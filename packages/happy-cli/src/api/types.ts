@@ -1,6 +1,24 @@
 import { z } from 'zod'
+import type { Update, UpdateMachineBody } from '@slopus/happy-wire';
 import { UsageSchema } from '@/claude/types'
 import type { SandboxConfig } from '@/persistence'
+
+export {
+  SessionMessageContentSchema,
+  SessionMessageSchema,
+  UpdateBodySchema,
+  UpdateMachineBodySchema,
+  UpdateSchema,
+  UpdateSessionBodySchema,
+} from '@slopus/happy-wire';
+export type {
+  SessionMessage,
+  SessionMessageContent,
+  Update,
+  UpdateBody,
+  UpdateMachineBody,
+  UpdateSessionBody,
+} from '@slopus/happy-wire';
 
 /**
  * Permission mode type - includes both Claude and Codex modes
@@ -20,80 +38,6 @@ export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | '
  * Usage data type from Claude
  */
 export type Usage = z.infer<typeof UsageSchema>
-
-/**
- * Base message content structure for encrypted messages
- */
-export const SessionMessageContentSchema = z.object({
-  c: z.string(), // Base64 encoded encrypted content
-  t: z.literal('encrypted')
-})
-
-export type SessionMessageContent = z.infer<typeof SessionMessageContentSchema>
-
-/**
- * Update body for new messages
- */
-export const UpdateBodySchema = z.object({
-  message: z.object({
-    id: z.string(),
-    seq: z.number(),
-    content: SessionMessageContentSchema
-  }),
-  sid: z.string(), // Session ID
-  t: z.literal('new-message')
-})
-
-export type UpdateBody = z.infer<typeof UpdateBodySchema>
-
-export const UpdateSessionBodySchema = z.object({
-  t: z.literal('update-session'),
-  sid: z.string(),
-  metadata: z.object({
-    version: z.number(),
-    value: z.string()
-  }).nullish(),
-  agentState: z.object({
-    version: z.number(),
-    value: z.string()
-  }).nullish()
-})
-
-export type UpdateSessionBody = z.infer<typeof UpdateSessionBodySchema>
-
-/**
- * Update body for machine updates
- */
-export const UpdateMachineBodySchema = z.object({
-  t: z.literal('update-machine'),
-  machineId: z.string(),
-  metadata: z.object({
-    version: z.number(),
-    value: z.string()
-  }).nullish(),
-  daemonState: z.object({
-    version: z.number(),
-    value: z.string()
-  }).nullish()
-})
-
-export type UpdateMachineBody = z.infer<typeof UpdateMachineBodySchema>
-
-/**
- * Update event from server
- */
-export const UpdateSchema = z.object({
-  id: z.string(),
-  seq: z.number(),
-  body: z.union([
-    UpdateBodySchema,
-    UpdateSessionBodySchema,
-    UpdateMachineBodySchema,
-  ]),
-  createdAt: z.number()
-})
-
-export type Update = z.infer<typeof UpdateSchema>
 
 /**
  * Socket events from server to client
@@ -224,19 +168,6 @@ export type Machine = {
   daemonState: DaemonState | null,
   daemonStateVersion: number,
 }
-
-/**
- * Session message from API
- */
-export const SessionMessageSchema = z.object({
-  content: SessionMessageContentSchema,
-  createdAt: z.number(),
-  id: z.string(),
-  seq: z.number(),
-  updatedAt: z.number()
-})
-
-export type SessionMessage = z.infer<typeof SessionMessageSchema>
 
 /**
  * Message metadata schema

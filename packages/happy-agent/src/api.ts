@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios';
+import type { SessionMessage as WireSessionMessage } from '@slopus/happy-wire';
 import type { Config } from './config';
 import type { Credentials } from './credentials';
 import {
@@ -48,14 +49,7 @@ export type DecryptedSession = {
     encryption: SessionEncryption;
 };
 
-export type RawMessage = {
-    id: string;
-    seq: number;
-    content: { t: 'encrypted'; c: string };
-    localId: string | null;
-    createdAt: number;
-    updatedAt: number;
-};
+export type RawMessage = WireSessionMessage;
 
 export type DecryptedMessage = {
     id: string;
@@ -256,7 +250,7 @@ export async function getSessionMessages(
         id: msg.id,
         seq: msg.seq,
         content: decryptField(msg.content.c, encryption),
-        localId: msg.localId,
+        localId: msg.localId ?? null,
         createdAt: msg.createdAt,
         updatedAt: msg.updatedAt,
     }));

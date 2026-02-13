@@ -81,7 +81,7 @@ Create the TypeScript types and Zod schemas for all 7 session-protocol event typ
 Add a new send method that wraps session-protocol envelopes in the wire format.
 
 - [x] Add `sendSessionProtocolMessage(envelope)` to `ApiSessionClient` in `packages/happy-cli/src/api/apiSession.ts`
-  - Wraps as `{ role: envelope.role, content: { type: 'session', data: envelope } }`
+  - Wraps as `{ role: 'session', content: envelope }`
   - Encrypts and sends via socket (same pattern as `sendCodexMessage`)
 - [x] Write tests for the new method (verify envelope wrapping, encryption call)
 - [x] Run tests — must pass before next task
@@ -135,7 +135,7 @@ Add a new `type: 'session'` branch to the raw record schema and update `normaliz
   - `ev.t === 'turn-start'` → `NormalizedMessage` with `role: 'event'`, content: `{ type: 'message', message: 'Turn started' }` (or skip)
   - `ev.t === 'turn-end'` → `NormalizedMessage` with `role: 'event'`, content: `{ type: 'ready' }` (triggers ready handling)
   - `ev.t === 'file'` → map to tool-call for display
-  - `ev.t === 'photo'` → map to tool-call for display (or new message type later)
+  - `ev.t === 'file'` with `image` metadata → map to tool-call for display (or new message type later)
 - [x] Handle `invoke` field: set `parentUUID` to the `invoke` value so sidechains work through existing tracer
 - [x] Handle `turn` field: set `uuid` to `turn` value so grouping works
 - [x] Write tests for each event type normalization (valid input → correct NormalizedMessage)
