@@ -10,6 +10,11 @@ export const sessionTextEventSchema = z.object({
     thinking: z.boolean().optional(),
 });
 
+export const sessionServiceMessageEventSchema = z.object({
+    t: z.literal('service'),
+    text: z.string(),
+});
+
 export const sessionToolCallStartEventSchema = z.object({
     t: z.literal('tool-call-start'),
     call: z.string(),
@@ -42,18 +47,34 @@ export const sessionTurnStartEventSchema = z.object({
     t: z.literal('turn-start'),
 });
 
+export const sessionStartEventSchema = z.object({
+    t: z.literal('start'),
+    title: z.string().optional(),
+});
+
+export const sessionTurnEndStatusSchema = z.enum(['completed', 'failed', 'cancelled']);
+export type SessionTurnEndStatus = z.infer<typeof sessionTurnEndStatusSchema>;
+
 export const sessionTurnEndEventSchema = z.object({
     t: z.literal('turn-end'),
+    status: sessionTurnEndStatusSchema,
+});
+
+export const sessionStopEventSchema = z.object({
+    t: z.literal('stop'),
 });
 
 export const sessionEventSchema = z.discriminatedUnion('t', [
     sessionTextEventSchema,
+    sessionServiceMessageEventSchema,
     sessionToolCallStartEventSchema,
     sessionToolCallEndEventSchema,
     sessionFileEventSchema,
     sessionPhotoEventSchema,
     sessionTurnStartEventSchema,
+    sessionStartEventSchema,
     sessionTurnEndEventSchema,
+    sessionStopEventSchema,
 ]);
 
 export type SessionEvent = z.infer<typeof sessionEventSchema>;
@@ -63,8 +84,23 @@ export const sessionEnvelopeSchema = z.object({
     time: z.number(),
     role: sessionRoleSchema,
     turn: z.string().optional(),
-    invoke: z.string().optional(),
+    subagent: z.string().optional(),
     ev: sessionEventSchema,
+}).superRefine((envelope, ctx) => {
+    if (envelope.ev.t === 'service' && envelope.role !== 'agent') {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'service events must use role "agent"',
+            path: ['role'],
+        });
+    }
+    if ((envelope.ev.t === 'start' || envelope.ev.t === 'stop') && envelope.role !== 'agent') {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `${envelope.ev.t} events must use role "agent"`,
+            path: ['role'],
+        });
+    }
 });
 
 export type SessionEnvelope = z.infer<typeof sessionEnvelopeSchema>;
@@ -73,7 +109,7 @@ export type CreateEnvelopeOptions = {
     id?: string;
     time?: number;
     turn?: string;
-    invoke?: string;
+    subagent?: string;
 };
 
 export function createEnvelope(role: SessionRole, ev: SessionEvent, opts: CreateEnvelopeOptions = {}): SessionEnvelope {
@@ -82,7 +118,7 @@ export function createEnvelope(role: SessionRole, ev: SessionEvent, opts: Create
         time: opts.time ?? Date.now(),
         role,
         ...(opts.turn ? { turn: opts.turn } : {}),
-        ...(opts.invoke ? { invoke: opts.invoke } : {}),
+        ...(opts.subagent ? { subagent: opts.subagent } : {}),
         ev,
     };
 }

@@ -382,8 +382,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         session.clearSessionId();
                     },
                     onReady: () => {
+                        session.client.closeClaudeSessionTurn('completed');
                         if (!pending && session.queue.size() === 0) {
-                            session.client.sendSessionEvent({ type: 'ready' });
                             session.api.push().sendToAllDevices(
                                 'It\'s ready!',
                                 `Claude is waiting for your command`,
@@ -398,11 +398,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 session.consumeOneTimeFlags();
                 
                 if (!exitReason && abortController.signal.aborted) {
+                    session.client.closeClaudeSessionTurn('cancelled');
                     session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                 }
             } catch (e) {
                 logger.debug('[remote]: launch error', e);
                 if (!exitReason) {
+                    session.client.closeClaudeSessionTurn('failed');
                     session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                     continue;
                 }

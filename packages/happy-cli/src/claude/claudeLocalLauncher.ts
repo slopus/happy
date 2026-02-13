@@ -52,6 +52,8 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                 exitReason = { type: 'switch' };
             }
 
+            session.client.closeClaudeSessionTurn('cancelled');
+
             // Reset sent messages
             session.queue.reset();
 
@@ -66,6 +68,8 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
             if (!exitReason) {
                 exitReason = { type: 'switch' };
             }
+
+            session.client.closeClaudeSessionTurn('cancelled');
 
             // Abort
             await abort();
@@ -120,6 +124,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
                 // Normal exit
                 if (!exitReason) {
+                    session.client.closeClaudeSessionTurn('completed');
                     exitReason = { type: 'exit', code: 0 };
                     break;
                 }
@@ -127,6 +132,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                 logger.debug('[local]: launch error', e);
                 // If Claude exited with non-zero exit code, propagate it
                 if (e instanceof ExitCodeError) {
+                    session.client.closeClaudeSessionTurn('failed');
                     exitReason = { type: 'exit', code: e.exitCode };
                     break;
                 }

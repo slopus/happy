@@ -71,7 +71,7 @@ export interface TracerState {
     
     // Sidechain tracking - maps message UUIDs to their originating Task message ID
     uuidToSidechainId: Map<string, string>;  // uuid -> sidechain ID (originating task message ID)
-    toolCallToMessageId: Map<string, string>; // tool call id -> parent message ID (session-protocol invoke support)
+    toolCallToMessageId: Map<string, string>; // tool call id -> parent message ID (session-protocol subagent support)
     
     // Buffering for out-of-order messages that arrive before their parent
     orphanMessages: Map<string, NormalizedMessage[]>;  // parentUuid -> orphan messages waiting for parent
@@ -112,6 +112,10 @@ function getParentUuid(message: NormalizedMessage): string | null {
         }
     }
     return null;
+}
+
+function isUuidLike(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 // Process orphan messages recursively when their parent becomes available
@@ -172,10 +176,10 @@ export function traceMessages(state: TracerState, messages: NormalizedMessage[])
                     state.toolCallToMessageId.set(content.id, message.id);
 
                     // Session protocol sidechain messages can arrive before their parent tool call.
-                    // If we already buffered children keyed by invoke/tool id, flush them now.
-                    const invokeOrphans = processOrphans(state, content.id, message.id);
-                    if (invokeOrphans.length > 0) {
-                        results.push(...invokeOrphans);
+                    // If we already buffered children keyed by subagent/tool id, flush them now.
+                    const subagentOrphans = processOrphans(state, content.id, message.id);
+                    if (subagentOrphans.length > 0) {
+                        results.push(...subagentOrphans);
                     }
                 }
                 if (content.type === 'tool-call' && content.name === 'Task') {
@@ -260,6 +264,18 @@ export function traceMessages(state: TracerState, messages: NormalizedMessage[])
                     results.push(...orphanResults);
                 }
             } else {
+                // For non-UUID parent references (e.g. subagent ids), treat as standalone
+                // when no parent mapping exists. CLI mapper is expected to resolve/sequence
+                // subagent ownership, so app should not permanently orphan these messages.
+                if (!isUuidLike(parentUuid)) {
+                    state.processedIds.add(message.id);
+                    const tracedMessage: TracedMessage = {
+                        ...message
+                    };
+                    results.push(tracedMessage);
+                    continue;
+                }
+
                 // Parent not yet processed - buffer this message as an orphan
                 const orphans = state.orphanMessages.get(parentUuid) || [];
                 orphans.push(message);

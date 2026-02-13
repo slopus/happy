@@ -1507,6 +1507,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         id: 'env-1',
                         time: 1700,
                         role: 'agent',
+                        turn: 'turn-1',
                         ev: { t: 'text', text: 'hello session' }
                     }
                 }
@@ -1535,6 +1536,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         id: 'env-2',
                         time: 1701,
                         role: 'agent',
+                        turn: 'turn-1',
                         ev: { t: 'text', text: 'thinking...', thinking: true }
                     }
                 }
@@ -1546,6 +1548,33 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'thinking',
                     thinking: 'thinking...',
                     uuid: 'env-2',
+                    parentUUID: null
+                });
+            }
+        });
+
+        it('normalizes service events to visible agent text', () => {
+            const normalized = normalizeRawMessage('db-service-1', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-service-1',
+                        time: 17015,
+                        role: 'agent',
+                        turn: 'turn-service-1',
+                        ev: { t: 'service', text: '**Service:** Connection restored' }
+                    }
+                }
+            });
+
+            expect(normalized).toBeTruthy();
+            expect(normalized?.role).toBe('agent');
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content[0]).toMatchObject({
+                    type: 'text',
+                    text: '**Service:** Connection restored',
+                    uuid: 'env-service-1',
                     parentUUID: null
                 });
             }
@@ -1618,6 +1647,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         id: 'env-5',
                         time: 1704,
                         role: 'agent',
+                        turn: 'turn-5',
                         ev: { t: 'turn-start' }
                     }
                 }
@@ -1632,8 +1662,8 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         id: 'env-6',
                         time: 1705,
                         role: 'agent',
-                        turn: 'env-5',
-                        ev: { t: 'turn-end' }
+                        turn: 'turn-5',
+                        ev: { t: 'turn-end', status: 'completed' }
                     }
                 }
             });
@@ -1644,7 +1674,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             });
         });
 
-        it('marks invoke-linked messages as sidechain messages', () => {
+        it('marks subagent-linked messages as sidechain messages', () => {
             const normalized = normalizeRawMessage('db-7', null, 1, {
                 ...base,
                 content: {
@@ -1653,7 +1683,8 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         id: 'env-7',
                         time: 1706,
                         role: 'agent',
-                        invoke: 'call-parent',
+                        turn: 'turn-2',
+                        subagent: 'subagent-1',
                         ev: { t: 'text', text: 'subagent output' }
                     }
                 }
@@ -1663,9 +1694,43 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             expect(normalized?.isSidechain).toBe(true);
             if (normalized && normalized.role === 'agent') {
                 expect(normalized.content[0]).toMatchObject({
-                    parentUUID: 'call-parent'
+                    parentUUID: 'subagent-1'
                 });
             }
+        });
+
+        it('drops start/stop lifecycle markers', () => {
+            const start = normalizeRawMessage('db-start-1', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-start-1',
+                        time: 1711,
+                        role: 'agent',
+                        turn: 'turn-1',
+                        subagent: 'subagent-1',
+                        ev: { t: 'start', title: 'Research agent' }
+                    }
+                }
+            });
+            expect(start).toBeNull();
+
+            const stop = normalizeRawMessage('db-stop-1', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-stop-1',
+                        time: 1712,
+                        role: 'agent',
+                        turn: 'turn-1',
+                        subagent: 'subagent-1',
+                        ev: { t: 'stop' }
+                    }
+                }
+            });
+            expect(stop).toBeNull();
         });
 
         it('returns null for malformed session payloads', () => {
@@ -1682,6 +1747,58 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                             call: 'call-1',
                             name: 'Bash'
                         }
+                    }
+                }
+            } as any);
+
+            expect(normalized).toBeNull();
+        });
+
+        it('returns null for agent session events without turn', () => {
+            const normalized = normalizeRawMessage('db-9', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-9',
+                        time: 1708,
+                        role: 'agent',
+                        ev: { t: 'text', text: 'missing turn' }
+                    }
+                }
+            });
+
+            expect(normalized).toBeNull();
+        });
+
+        it('returns null for turn-end session events without status', () => {
+            const normalized = normalizeRawMessage('db-10', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-10',
+                        time: 1709,
+                        role: 'agent',
+                        turn: 'turn-5',
+                        ev: { t: 'turn-end' }
+                    }
+                }
+            } as any);
+
+            expect(normalized).toBeNull();
+        });
+
+        it('returns null for service events from user role', () => {
+            const normalized = normalizeRawMessage('db-11', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-11',
+                        time: 1710,
+                        role: 'user',
+                        ev: { t: 'service', text: 'not allowed' }
                     }
                 }
             } as any);

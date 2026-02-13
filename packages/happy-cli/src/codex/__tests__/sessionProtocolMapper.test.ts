@@ -10,13 +10,31 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
 
         expect(started.envelopes).toHaveLength(1);
         expect(started.envelopes[0].ev.t).toBe('turn-start');
-        expect(started.currentTurnId).toBe(started.envelopes[0].id);
+        expect(started.envelopes[0].turn).toBe(started.currentTurnId);
+        expect(started.envelopes[0].turn).not.toBe(started.envelopes[0].id);
 
         const ended = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_complete' }, { currentTurnId: started.currentTurnId });
         expect(ended.envelopes).toHaveLength(1);
         expect(ended.envelopes[0].ev.t).toBe('turn-end');
+        if (ended.envelopes[0].ev.t === 'turn-end') {
+            expect(ended.envelopes[0].ev.status).toBe('completed');
+        }
         expect(ended.envelopes[0].turn).toBe(started.currentTurnId);
         expect(ended.currentTurnId).toBeNull();
+    });
+
+    it('maps abort lifecycle with cancelled turn-end status', () => {
+        const result = mapCodexMcpMessageToSessionEnvelopes(
+            { type: 'turn_aborted' },
+            { currentTurnId: 'turn-1' }
+        );
+
+        expect(result.envelopes).toHaveLength(1);
+        expect(result.envelopes[0].ev).toEqual({
+            t: 'turn-end',
+            status: 'cancelled',
+        });
+        expect(result.currentTurnId).toBeNull();
     });
 
     it('maps agent text messages with turn context', () => {
@@ -28,6 +46,39 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         expect(result.envelopes).toHaveLength(1);
         expect(result.envelopes[0].turn).toBe('turn-1');
         expect(result.envelopes[0].ev).toEqual({ t: 'text', text: 'hello' });
+    });
+
+    it('maps parent call linkage to subagent field', () => {
+        const result = mapCodexMcpMessageToSessionEnvelopes(
+            { type: 'agent_message', message: 'subagent hello', parent_call_id: 'parent-call-1' },
+            { currentTurnId: 'turn-1' }
+        );
+
+        expect(result.envelopes).toHaveLength(2);
+        expect(result.envelopes[0]).toMatchObject({
+            subagent: 'parent-call-1',
+            ev: { t: 'start' },
+        });
+        expect(result.envelopes[1].subagent).toBe('parent-call-1');
+    });
+
+    it('emits stop for active subagents before turn-end', () => {
+        const activeSubagents = new Set<string>(['subagent-1']);
+        const startedSubagents = new Set<string>(['subagent-1']);
+        const result = mapCodexMcpMessageToSessionEnvelopes(
+            { type: 'task_complete' },
+            { currentTurnId: 'turn-1', activeSubagents, startedSubagents }
+        );
+
+        expect(result.envelopes).toHaveLength(2);
+        expect(result.envelopes[0]).toMatchObject({
+            subagent: 'subagent-1',
+            ev: { t: 'stop' },
+        });
+        expect(result.envelopes[1].ev).toEqual({
+            t: 'turn-end',
+            status: 'completed',
+        });
     });
 
     it('maps exec command begin to tool-call-start', () => {
