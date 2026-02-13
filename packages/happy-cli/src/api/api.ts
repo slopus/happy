@@ -9,6 +9,7 @@ import { configuration } from '@/configuration';
 import chalk from 'chalk';
 import { Credentials } from '@/persistence';
 import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
+import { getAxiosProxyAgents } from '@/utils/proxy';
 
 export class ApiClient {
 
@@ -57,6 +58,9 @@ export class ApiClient {
 
     // Create session
     try {
+      // Get proxy agents if configured
+      const proxyAgents = getAxiosProxyAgents(configuration.serverUrl);
+
       const response = await axios.post<CreateSessionResponse>(
         `${configuration.serverUrl}/v1/sessions`,
         {
@@ -70,7 +74,9 @@ export class ApiClient {
             'Authorization': `Bearer ${this.credential.token}`,
             'Content-Type': 'application/json'
           },
-          timeout: 60000 // 1 minute timeout for very bad network connections
+          timeout: 60000, // 1 minute timeout for very bad network connections
+          ...proxyAgents,
+          proxy: proxyAgents ? false : undefined // Disable native proxy when using agent
         }
       )
 
@@ -177,6 +183,9 @@ export class ApiClient {
 
     // Create machine
     try {
+      // Get proxy agents if configured
+      const proxyAgents = getAxiosProxyAgents(configuration.serverUrl);
+
       const response = await axios.post(
         `${configuration.serverUrl}/v1/machines`,
         {
@@ -190,7 +199,9 @@ export class ApiClient {
             'Authorization': `Bearer ${this.credential.token}`,
             'Content-Type': 'application/json'
           },
-          timeout: 60000 // 1 minute timeout for very bad network connections
+          timeout: 60000, // 1 minute timeout for very bad network connections
+          ...proxyAgents,
+          proxy: proxyAgents ? false : undefined
         }
       );
 
@@ -291,6 +302,9 @@ export class ApiClient {
    */
   async registerVendorToken(vendor: 'openai' | 'anthropic' | 'gemini', apiKey: any): Promise<void> {
     try {
+      // Get proxy agents if configured
+      const proxyAgents = getAxiosProxyAgents(configuration.serverUrl);
+
       const response = await axios.post(
         `${configuration.serverUrl}/v1/connect/${vendor}/register`,
         {
@@ -301,7 +315,9 @@ export class ApiClient {
             'Authorization': `Bearer ${this.credential.token}`,
             'Content-Type': 'application/json'
           },
-          timeout: 5000
+          timeout: 5000,
+          ...proxyAgents,
+          proxy: proxyAgents ? false : undefined
         }
       );
 
@@ -322,6 +338,9 @@ export class ApiClient {
    */
   async getVendorToken(vendor: 'openai' | 'anthropic' | 'gemini'): Promise<any | null> {
     try {
+      // Get proxy agents if configured
+      const proxyAgents = getAxiosProxyAgents(configuration.serverUrl);
+
       const response = await axios.get(
         `${configuration.serverUrl}/v1/connect/${vendor}/token`,
         {
@@ -329,7 +348,9 @@ export class ApiClient {
             'Authorization': `Bearer ${this.credential.token}`,
             'Content-Type': 'application/json'
           },
-          timeout: 5000
+          timeout: 5000,
+          ...proxyAgents,
+          proxy: proxyAgents ? false : undefined
         }
       );
 

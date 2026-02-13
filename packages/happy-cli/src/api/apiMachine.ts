@@ -11,6 +11,7 @@ import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from 
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+import { createHttpsProxyAgent } from '@/utils/proxy';
 
 interface ServerToDaemonEvents {
     update: (data: Update) => void;
@@ -217,6 +218,9 @@ export class ApiMachineClient {
         const serverUrl = configuration.serverUrl.replace(/^http/, 'ws');
         logger.debug(`[API MACHINE] Connecting to ${serverUrl}`);
 
+        // Configure proxy agent if environment variables are set
+        const proxyAgent = createHttpsProxyAgent(configuration.serverUrl);
+
         this.socket = io(serverUrl, {
             transports: ['websocket'],
             auth: {
@@ -227,7 +231,9 @@ export class ApiMachineClient {
             path: '/v1/updates',
             reconnection: true,
             reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000
+            reconnectionDelayMax: 5000,
+            // Use proxy agent if configured (type cast needed as engine.io-client types are incomplete for Node.js agents)
+            ...(proxyAgent && { agent: proxyAgent as unknown as boolean })
         });
 
         this.socket.on('connect', () => {
