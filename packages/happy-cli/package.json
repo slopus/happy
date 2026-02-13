@@ -65,6 +65,7 @@
     "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
     "test": "$npm_execpath run build && vitest run",
     "start": "$npm_execpath run build && node ./bin/happy.mjs",
+    "cli": "tsx src/index.ts",
     "dev": "tsx src/index.ts",
     "dev:local-server": "$npm_execpath run build && tsx --env-file .env.dev-local-server src/index.ts",
     "dev:integration-test-env": "$npm_execpath run build && tsx --env-file .env.integration-test src/index.ts",
@@ -93,6 +94,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.8.0",
+    "@anthropic-ai/sandbox-runtime": "^0.0.37",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
@@ -112,6 +114,7 @@
     "http-proxy": "^1.18.1",
     "http-proxy-middleware": "^3.0.5",
     "ink": "^6.5.1",
+    "inquirer": "^13.2.2",
     "open": "^10.2.0",
     "ps-list": "^8.1.1",
     "qrcode-terminal": "^0.12.0",
@@ -124,6 +127,7 @@
   },
   "devDependencies": {
     "@eslint/compat": "^1",
+    "@types/inquirer": "^9.0.9",
     "@types/node": ">=20",
     "cross-env": "^10.1.0",
     "dotenv": "^16.6.1",

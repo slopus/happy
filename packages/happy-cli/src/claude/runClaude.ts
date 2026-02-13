@@ -40,6 +40,7 @@ export interface StartOptions {
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
     startedBy?: 'daemon' | 'terminal'
+    noSandbox?: boolean
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
 }
@@ -72,6 +73,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Get machine ID from settings (should already be set up)
     const settings = await readSettings();
     let machineId = settings?.machineId
+    const sandboxConfig = options.noSandbox ? undefined : settings?.sandboxConfig;
     if (!machineId) {
         console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);
         process.exit(1);
@@ -139,7 +141,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 claudeEnvVars: options.claudeEnvVars,
                 claudeArgs: options.claudeArgs,
                 mcpServers: {},
-                allowedTools: []
+                allowedTools: [],
+                sandboxConfig,
             });
         } finally {
             reconnection.cancel();
@@ -511,6 +514,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         session,
         claudeEnvVars: options.claudeEnvVars,
         claudeArgs: options.claudeArgs,
+        sandboxConfig,
         hookSettingsPath,
         jsRuntime: options.jsRuntime,
         startedBy: options.startedBy

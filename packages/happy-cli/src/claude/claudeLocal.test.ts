@@ -2,9 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { claudeLocal } from './claudeLocal';
 
 // Use vi.hoisted to ensure mock functions are available when vi.mock factory runs
-const { mockSpawn, mockClaudeFindLastSession } = vi.hoisted(() => ({
+const {
+    mockSpawn,
+    mockClaudeFindLastSession,
+    mockInitializeSandbox,
+    mockWrapCommand,
+    mockSandboxCleanup,
+} = vi.hoisted(() => ({
     mockSpawn: vi.fn(),
-    mockClaudeFindLastSession: vi.fn()
+    mockClaudeFindLastSession: vi.fn(),
+    mockInitializeSandbox: vi.fn(),
+    mockWrapCommand: vi.fn(),
+    mockSandboxCleanup: vi.fn(),
 }));
 
 vi.mock('node:child_process', () => ({
@@ -13,7 +22,9 @@ vi.mock('node:child_process', () => ({
 
 vi.mock('@/ui/logger', () => ({
     logger: {
-        debug: vi.fn()
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
     }
 }));
 
@@ -36,6 +47,11 @@ vi.mock('node:fs', () => ({
 
 vi.mock('./utils/claudeCheckSession', () => ({
     claudeCheckSession: vi.fn(() => true) // Always return true (session exists)
+}));
+
+vi.mock('@/sandbox/manager', () => ({
+    initializeSandbox: mockInitializeSandbox,
+    wrapCommand: mockWrapCommand,
 }));
 
 describe('claudeLocal --continue handling', () => {
@@ -66,6 +82,8 @@ describe('claudeLocal --continue handling', () => {
 
         // Reset mocks
         vi.clearAllMocks();
+        mockInitializeSandbox.mockResolvedValue(mockSandboxCleanup);
+        mockWrapCommand.mockResolvedValue('wrapped claude command');
     });
 
     it('should convert --continue to --resume with last session ID', async () => {
@@ -228,5 +246,73 @@ describe('claudeLocal --continue handling', () => {
 
         const spawnArgs = mockSpawn.mock.calls[0][1];
         expect(spawnArgs).toContain('-r');
+    });
+
+    it('should initialize sandbox, wrap command, and cleanup on exit', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp/workspace',
+            onSessionFound,
+            claudeArgs: [],
+            sandboxConfig: {
+                enabled: true,
+                workspaceRoot: '~/projects',
+                sessionIsolation: 'workspace',
+                customWritePaths: [],
+                denyReadPaths: ['~/.ssh'],
+                extraWritePaths: ['/tmp'],
+                denyWritePaths: ['.env'],
+                networkMode: 'allowed',
+                allowedDomains: [],
+                deniedDomains: [],
+                allowLocalBinding: true,
+            },
+        });
+
+        expect(mockInitializeSandbox).toHaveBeenCalledWith(
+            expect.objectContaining({ enabled: true }),
+            '/tmp/workspace',
+        );
+        expect(mockWrapCommand).toHaveBeenCalledWith(expect.stringContaining('--dangerously-skip-permissions'));
+        expect(mockSpawn).toHaveBeenCalledWith(
+            'wrapped claude command',
+            [],
+            expect.objectContaining({ shell: true, cwd: '/tmp/workspace' }),
+        );
+        expect(mockSandboxCleanup).toHaveBeenCalledTimes(1);
+    });
+
+    it('should continue without sandbox when initialization fails', async () => {
+        mockInitializeSandbox.mockRejectedValue(new Error('sandbox failed'));
+
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+            sandboxConfig: {
+                enabled: true,
+                sessionIsolation: 'workspace',
+                customWritePaths: [],
+                denyReadPaths: ['~/.ssh'],
+                extraWritePaths: ['/tmp'],
+                denyWritePaths: ['.env'],
+                networkMode: 'allowed',
+                allowedDomains: [],
+                deniedDomains: [],
+                allowLocalBinding: true,
+            },
+        });
+
+        expect(mockWrapCommand).not.toHaveBeenCalled();
+        expect(mockSpawn).toHaveBeenCalledWith(
+            'node',
+            expect.any(Array),
+            expect.objectContaining({ shell: false }),
+        );
+        const spawnedArgs = mockSpawn.mock.calls[0][1];
+        expect(spawnedArgs).not.toContain('--dangerously-skip-permissions');
     });
 });

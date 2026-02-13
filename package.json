@@ -1,6 +1,9 @@
 {
     "name": "monorepo",
     "private": true,
+    "scripts": {
+        "cli": "yarn workspace happy-coder cli"
+    },
     "workspaces": {
         "packages": [
             "packages/happy-app",
