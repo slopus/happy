@@ -35,6 +35,7 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     CodexBash: CodexBashView,
     CodexPatch: CodexPatchView,
     CodexDiff: CodexDiffView,
+    GeminiDiff: CodexDiffView,
     Write: WriteView,
     TodoWrite: TodoView,
     ExitPlanMode: ExitPlanToolView,

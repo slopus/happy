@@ -853,33 +853,32 @@ export const knownTools = {
     'GeminiDiff': {
         title: t('tools.names.viewDiff'),
         icon: ICON_EDIT,
-        minimal: false,  // Show full diff view
+        minimal: false,
         hideDefaultError: true,
-        noStatus: true,  // Always successful, stateless like Task
+        noStatus: true,
         input: z.object({
-            unified_diff: z.string().optional().describe('Unified diff content'),
-            filePath: z.string().optional().describe('File path'),
+            files: z.array(z.string()).optional().describe('Changed file paths'),
+            stats: z.object({
+                additions: z.number(),
+                deletions: z.number()
+            }).optional().describe('Line change stats'),
             description: z.string().optional().describe('Edit description')
         }).partial().passthrough(),
         result: z.object({
             status: z.literal('completed').describe('Always completed')
         }).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Try to extract filename from filePath first
-            if (opts.tool.input?.filePath && typeof opts.tool.input.filePath === 'string') {
-                const basename = opts.tool.input.filePath.split('/').pop() || opts.tool.input.filePath;
-                return basename;
-            }
-            // Fall back to extracting from unified diff
-            if (opts.tool.input?.unified_diff && typeof opts.tool.input.unified_diff === 'string') {
-                const diffLines = opts.tool.input.unified_diff.split('\n');
-                for (const line of diffLines) {
-                    if (line.startsWith('+++ b/') || line.startsWith('+++ ')) {
-                        const fileName = line.replace(/^\+\+\+ (b\/)?/, '');
-                        const basename = fileName.split('/').pop() || fileName;
-                        return basename;
-                    }
+            const files = opts.tool.input?.files;
+            if (Array.isArray(files) && files.length > 0) {
+                const path = resolvePath(files[0], opts.metadata);
+                const basename = path.split('/').pop() || path;
+                if (files.length > 1) {
+                    return t('tools.desc.modifyingMultipleFiles', {
+                        file: basename,
+                        count: files.length - 1
+                    });
                 }
+                return basename;
             }
             return null;
         },

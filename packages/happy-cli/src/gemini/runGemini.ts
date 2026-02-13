@@ -782,10 +782,16 @@ export async function runGemini(opts: {
           messageBuffer.addMessage(`Result: ${truncatedResult}`, 'result');
         }
         
+        // Trim large payloads for GeminiBash — app only needs exit_code
+        let trimmedResult = msg.result;
+        if (msg.toolName === 'GeminiBash' && typeof msg.result === 'object' && msg.result !== null) {
+          trimmedResult = { exit_code: (msg.result as any).exit_code ?? 0 };
+        }
+
         session.sendAgentMessage('gemini', {
           type: 'tool-result',
           callId: msg.callId,
-          output: msg.result,
+          output: trimmedResult,
           id: randomUUID(),
         });
         sessionWriter.writeToolResult(msg.callId, msg.result, !!isError);
@@ -798,10 +804,10 @@ export async function runGemini(opts: {
         // msg.diff is optional (diff?: string), so it can be undefined
         diffProcessor.processFsEdit(msg.path || '', msg.description, msg.diff);
         
+        // Don't send full diff content to app — description + path is enough
         session.sendAgentMessage('gemini', {
           type: 'file-edit',
           description: msg.description,
-          diff: msg.diff,
           filePath: msg.path || 'unknown',
           id: randomUUID(),
         });
@@ -824,12 +830,7 @@ export async function runGemini(opts: {
         break;
 
       case 'terminal-output':
-        messageBuffer.addMessage(msg.data, 'result');
-        session.sendAgentMessage('gemini', {
-          type: 'terminal-output',
-          data: msg.data,
-          callId: (msg as any).callId || randomUUID(),
-        });
+        // Streaming command output - skip sending to app (too noisy, large payload)
         break;
 
       case 'permission-request':
@@ -877,13 +878,25 @@ export async function runGemini(opts: {
         messageBuffer.addMessage(`Modifying ${filesMsg}...`, 'tool');
         logger.debug(`[gemini] Patch apply begin: ${patchCallId}, files: ${changeCount}`);
         
+        // Trim file contents — app only needs file paths + operation types
+        const trimmedChanges: Record<string, Record<string, boolean>> = {};
+        if (changes && typeof changes === 'object') {
+          for (const [filePath, change] of Object.entries(changes as Record<string, any>)) {
+            const ops: Record<string, boolean> = {};
+            if (change.add) ops.add = true;
+            if (change.modify) ops.modify = true;
+            if (change.delete) ops.delete = true;
+            trimmedChanges[filePath] = ops;
+          }
+        }
+
         session.sendAgentMessage('gemini', {
           type: 'tool-call',
-          name: 'GeminiPatch', // Similar to Codex's CodexPatch
+          name: 'GeminiPatch',
           callId: patchCallId,
           input: {
             auto_approved,
-            changes
+            changes: trimmedChanges
           },
           id: randomUUID(),
         });

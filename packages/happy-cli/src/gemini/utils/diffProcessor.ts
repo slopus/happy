@@ -1,11 +1,11 @@
 /**
  * Diff Processor for Gemini - Handles file edit events and tracks unified_diff changes
- * 
+ *
  * This processor tracks changes from fs-edit events and tool_call results that contain
- * file modification information, converting them to GeminiDiff tool calls similar to Codex.
- * 
- * Note: Gemini ACP doesn't have direct turn_diff events like Codex, so we track
- * file changes through fs-edit events and tool results that may contain diff information.
+ * file modification information, converting them to GeminiDiff tool calls.
+ *
+ * Sends only a lightweight summary (file path + stats) instead of full diff content,
+ * to avoid large payloads to the mobile app.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -16,8 +16,8 @@ export interface DiffToolCall {
     name: 'GeminiDiff';
     callId: string;
     input: {
-        unified_diff?: string;
-        path?: string;
+        files: string[];
+        stats: { additions: number; deletions: number };
         description?: string;
     };
     id: string;
@@ -30,6 +30,30 @@ export interface DiffToolResult {
         status: 'completed';
     };
     id: string;
+}
+
+/**
+ * Parse a unified diff string to extract file names and line stats.
+ */
+function summarizeUnifiedDiff(unifiedDiff: string): { files: string[]; stats: { additions: number; deletions: number } } {
+    const files: string[] = [];
+    let additions = 0;
+    let deletions = 0;
+
+    for (const line of unifiedDiff.split('\n')) {
+        if (line.startsWith('+++ b/') || line.startsWith('+++ ')) {
+            const fileName = line.replace(/^\+\+\+ (b\/)?/, '');
+            if (fileName && !files.includes(fileName)) {
+                files.push(fileName);
+            }
+        } else if (line.startsWith('+') && !line.startsWith('+++')) {
+            additions++;
+        } else if (line.startsWith('-') && !line.startsWith('---')) {
+            deletions++;
+        }
+    }
+
+    return { files, stats: { additions, deletions } };
 }
 
 export class GeminiDiffProcessor {
@@ -45,15 +69,11 @@ export class GeminiDiffProcessor {
      */
     processFsEdit(path: string, description?: string, diff?: string): void {
         logger.debug(`[GeminiDiffProcessor] Processing fs-edit for path: ${path}`);
-        
-        // If we have a diff, process it
+
         if (diff) {
             this.processDiff(path, diff, description);
         } else {
-            // Even without diff, we can track that a file was edited
-            // Generate a simple diff representation
-            const simpleDiff = `File edited: ${path}${description ? ` - ${description}` : ''}`;
-            this.processDiff(path, simpleDiff, description);
+            this.processDiff(path, `File edited: ${path}`, description);
         }
     }
 
@@ -61,19 +81,16 @@ export class GeminiDiffProcessor {
      * Process a tool result that may contain diff information
      */
     processToolResult(toolName: string, result: any, callId: string): void {
-        // Check if result contains diff information
         if (result && typeof result === 'object') {
-            // Look for common diff fields
             const diff = result.diff || result.unified_diff || result.patch;
             const path = result.path || result.file;
-            
+
             if (diff && path) {
                 logger.debug(`[GeminiDiffProcessor] Found diff in tool result: ${toolName} (${callId})`);
                 this.processDiff(path, diff, result.description);
             } else if (result.changes && typeof result.changes === 'object') {
-                // Handle multiple file changes (like patch operations)
                 for (const [filePath, change] of Object.entries(result.changes)) {
-                    const changeDiff = (change as any).diff || (change as any).unified_diff || 
+                    const changeDiff = (change as any).diff || (change as any).unified_diff ||
                                      JSON.stringify(change);
                     this.processDiff(filePath, changeDiff, (change as any).description);
                 }
@@ -82,34 +99,32 @@ export class GeminiDiffProcessor {
     }
 
     /**
-     * Process a unified diff and check if it has changed from the previous value
+     * Process a unified diff and send lightweight summary if changed
      */
     private processDiff(path: string, unifiedDiff: string, description?: string): void {
         const previousDiff = this.previousDiffs.get(path);
-        
-        // Check if the diff has changed from the previous value
+
         if (previousDiff !== unifiedDiff) {
             logger.debug(`[GeminiDiffProcessor] Unified diff changed for ${path}, sending GeminiDiff tool call`);
-            
-            // Generate a unique call ID for this diff
+
+            const { files, stats } = summarizeUnifiedDiff(unifiedDiff);
+            // Ensure the path is included in files list
+            if (!files.includes(path) && path) {
+                files.unshift(path);
+            }
+
             const callId = randomUUID();
-            
-            // Send tool call for the diff change
+
             const toolCall: DiffToolCall = {
                 type: 'tool-call',
                 name: 'GeminiDiff',
                 callId: callId,
-                input: {
-                    unified_diff: unifiedDiff,
-                    path: path,
-                    description: description
-                },
+                input: { files, stats, description },
                 id: randomUUID()
             };
-            
+
             this.onMessage?.(toolCall);
-            
-            // Immediately send the tool result to mark it as completed
+
             const toolResult: DiffToolResult = {
                 type: 'tool-call-result',
                 callId: callId,
@@ -118,11 +133,10 @@ export class GeminiDiffProcessor {
                 },
                 id: randomUUID()
             };
-            
+
             this.onMessage?.(toolResult);
         }
-        
-        // Update the stored diff value
+
         this.previousDiffs.set(path, unifiedDiff);
         logger.debug(`[GeminiDiffProcessor] Updated stored diff for ${path}`);
     }
