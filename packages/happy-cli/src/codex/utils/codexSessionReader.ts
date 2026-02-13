@@ -15,7 +15,7 @@
 import fs from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { logger } from '@/ui/logger';
 
@@ -36,16 +36,19 @@ export function findCodexSessionFile(codexSessionId: string): string | null {
     const codexHomeDir = process.env.CODEX_HOME || join(os.homedir(), '.codex');
     const rootDir = join(codexHomeDir, 'sessions');
 
+    const query = codexSessionId.trim();
     const candidates = collectFilesRecursive(rootDir)
-      .filter(full => full.endsWith(`-${codexSessionId}.jsonl`))
       .filter(full => {
-        try { return fs.statSync(full).isFile(); } catch { return false; }
+        try {
+          if (!fs.statSync(full).isFile()) return false;
+        } catch {
+          return false;
+        }
+        const rawId = extractSessionIdFromFilename(full);
+        if (!rawId) return false;
+        return rawId === query || rawId.endsWith(query);
       })
-      .sort((a, b) => {
-        const sa = fs.statSync(a).mtimeMs;
-        const sb = fs.statSync(b).mtimeMs;
-        return sb - sa;
-      });
+      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
     return candidates[0] || null;
   } catch {
     return null;
@@ -68,6 +71,21 @@ function collectFilesRecursive(dir: string, acc: string[] = []): string[] {
     }
   }
   return acc;
+}
+
+function extractSessionIdFromFilename(filePath: string): string | null {
+  const name = basename(filePath);
+  const uuidSuffix = name.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i);
+  if (uuidSuffix?.[1]) return uuidSuffix[1];
+
+  const fallback = name.match(/^rollout-(.+)\.jsonl$/);
+  if (!fallback?.[1]) return null;
+  return fallback[1].trim() || null;
+}
+
+function extractDisplaySessionId(rawSessionId: string): string {
+  const lastSegment = rawSessionId.split('-').filter(Boolean).at(-1) || rawSessionId;
+  return lastSegment.slice(-6);
 }
 
 /**
@@ -215,6 +233,7 @@ export async function listCodexSessions(): Promise<CodexSessionIndexEntry[]> {
     }
 
     const lines = content.split('\n');
+    const fileSessionId = extractSessionIdFromFilename(filePath);
     let sessionId: string | null = null;
     let originalPath: string | null = null;
     let updatedAt: number | undefined;
@@ -257,11 +276,10 @@ export async function listCodexSessions(): Promise<CodexSessionIndexEntry[]> {
       }
     }
 
-    // Fallback: extract sessionId from filename if not in metadata
-    if (!sessionId) {
-      const match = filePath.match(/-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/);
-      if (match) sessionId = match[1];
-    }
+    // Codex filenames carry the real unique conversation id.
+    // session_meta.payload.id may be reused after forks/restarts.
+    const rawSessionId = fileSessionId || sessionId;
+    sessionId = rawSessionId ? extractDisplaySessionId(rawSessionId) : null;
 
     if (!sessionId || messageCount === 0) continue;
 
