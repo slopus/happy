@@ -33,6 +33,8 @@ export interface CreateSessionMetadataOptions {
     startedBy?: 'daemon' | 'terminal';
     /** Active sandbox config for the session, or undefined when not used */
     sandbox?: SandboxConfig;
+    /** Whether the backend runs with "dangerously skip permissions" behavior */
+    dangerouslySkipPermissions?: boolean;
 }
 
 /**
@@ -87,6 +89,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         lifecycleStateSince: Date.now(),
         flavor: opts.flavor,
         sandbox: opts.sandbox?.enabled ? opts.sandbox : null,
+        dangerouslySkipPermissions: opts.dangerouslySkipPermissions ?? null,
     };
 
     return { state, metadata };

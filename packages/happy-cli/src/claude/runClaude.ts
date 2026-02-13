@@ -27,6 +27,7 @@ import { startOfflineReconnection, connectionState } from '@/utils/serverConnect
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
+import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -73,6 +74,16 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const settings = await readSettings();
     let machineId = settings?.machineId
     const sandboxConfig = options.noSandbox ? undefined : settings?.sandboxConfig;
+    const sandboxEnabled = Boolean(sandboxConfig?.enabled);
+    const initialPermissionMode = applySandboxPermissionPolicy(
+        resolveInitialClaudePermissionMode(options.permissionMode, options.claudeArgs),
+        sandboxEnabled,
+    );
+    const dangerouslySkipPermissions =
+        initialPermissionMode === 'bypassPermissions' ||
+        initialPermissionMode === 'yolo' ||
+        sandboxEnabled ||
+        Boolean(options.claudeArgs?.includes('--dangerously-skip-permissions'));
     if (!machineId) {
         console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);
         process.exit(1);
@@ -103,6 +114,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         lifecycleStateSince: Date.now(),
         flavor: 'claude',
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
+        dangerouslySkipPermissions,
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 
@@ -244,7 +256,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Forward messages to the queue
     // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
-    let currentPermissionMode: PermissionMode | undefined = options.permissionMode;
+    let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
     let currentModel = options.model; // Track current model state
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
@@ -256,7 +268,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
         let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
         if (message.meta?.permissionMode) {
-            messagePermissionMode = message.meta.permissionMode;
+            messagePermissionMode = applySandboxPermissionPolicy(message.meta.permissionMode, sandboxEnabled);
             currentPermissionMode = messagePermissionMode;
             logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
         } else {
@@ -435,7 +447,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const exitCode = await loop({
         path: workingDirectory,
         model: options.model,
-        permissionMode: options.permissionMode,
+        permissionMode: initialPermissionMode,
         startingMode: options.startingMode,
         messageQueue,
         api,

@@ -328,6 +328,7 @@ export type Metadata = {
   archiveReason?: string,
   flavor?: string
   sandbox?: SandboxConfig | null
+  dangerouslySkipPermissions?: boolean | null
 };
 
 export type AgentState = {

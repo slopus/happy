@@ -39,6 +39,12 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { initializeTodoSync } from '../-zen/model/ops';
+import type { PermissionMode } from '@/components/PermissionModeSelector';
+
+function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boolean {
+    const sandbox = metadata?.sandbox;
+    return !!sandbox && typeof sandbox === 'object' && (sandbox as { enabled?: unknown }).enabled === true;
+}
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -223,11 +229,16 @@ class Sync {
             return;
         }
 
-        // Read permission mode from session state
-        const permissionMode = session.permissionMode || 'default';
-        
-        // Read model mode - for Gemini, default to gemini-2.5-pro if not set
         const flavor = session.metadata?.flavor;
+        const sandboxEnabled = isSandboxEnabled(session.metadata);
+        // Read permission mode from session state.
+        // If sandbox is enabled and mode is default/missing, force bypassPermissions.
+        const permissionMode: PermissionMode =
+            session.permissionMode && session.permissionMode !== 'default'
+                ? session.permissionMode
+                : (sandboxEnabled ? 'bypassPermissions' : 'default');
+
+        // Read model mode - for Gemini, default to gemini-2.5-pro if not set
         const isGemini = flavor === 'gemini';
         const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
 
@@ -268,7 +279,7 @@ class Sync {
             },
             meta: {
                 sentFrom,
-                permissionMode: permissionMode || 'default',
+                permissionMode,
                 model,
                 fallbackModel,
                 appendSystemPrompt: systemPrompt,
@@ -295,7 +306,7 @@ class Sync {
             message: encryptedRawRecord,
             localId,
             sentFrom,
-            permissionMode: permissionMode || 'default'
+            permissionMode
         });
     }
 

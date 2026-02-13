@@ -60,6 +60,66 @@ function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: 
     );
 }
 
+function formatSandboxMetadata(sandbox: unknown, homeDir?: string): string {
+    if (sandbox === null || sandbox === undefined) {
+        return 'Disabled';
+    }
+
+    if (typeof sandbox === 'string') {
+        return sandbox;
+    }
+
+    if (typeof sandbox !== 'object') {
+        return String(sandbox);
+    }
+
+    const value = sandbox as Record<string, unknown>;
+    if (value.enabled === false) {
+        return 'Disabled';
+    }
+
+    const parts: string[] = ['Enabled'];
+    const isolation = typeof value.sessionIsolation === 'string' ? value.sessionIsolation : undefined;
+    const networkMode = typeof value.networkMode === 'string' ? value.networkMode : undefined;
+    const workspaceRoot = typeof value.workspaceRoot === 'string' ? value.workspaceRoot : undefined;
+
+    if (isolation) {
+        parts.push(`isolation=${isolation}`);
+    }
+    if (networkMode) {
+        parts.push(`network=${networkMode}`);
+    }
+    if (workspaceRoot) {
+        parts.push(`workspace=${formatPathRelativeToHome(workspaceRoot, homeDir)}`);
+    }
+
+    return parts.join(' | ');
+}
+
+function formatDangerouslySkipPermissionsMetadata(
+    value: unknown,
+    flavor: string | null | undefined,
+    permissionMode: Session['permissionMode'],
+    sandbox: unknown,
+): string {
+    if (typeof value === 'boolean') {
+        return value ? 'Enabled' : 'Disabled';
+    }
+
+    if (permissionMode === 'bypassPermissions' || permissionMode === 'yolo') {
+        return 'Enabled';
+    }
+
+    if (flavor === 'claude' && sandbox && typeof sandbox === 'object') {
+        const sandboxValue = sandbox as Record<string, unknown>;
+        if (sandboxValue.enabled === true) {
+            return 'Enabled';
+        }
+    }
+
+    return 'Unknown';
+}
+
 function SessionInfoContent({ session }: { session: Session }) {
     const { theme } = useUnistyles();
     const router = useRouter();
@@ -317,6 +377,23 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 return flavor;
                             })()}
                             icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
+                            showChevron={false}
+                        />
+                        <Item
+                            title="Sandbox"
+                            subtitle={formatSandboxMetadata(session.metadata.sandbox, session.metadata.homeDir)}
+                            icon={<Ionicons name="shield-outline" size={29} color="#5856D6" />}
+                            showChevron={false}
+                        />
+                        <Item
+                            title="Dangerously Skip Permissions"
+                            subtitle={formatDangerouslySkipPermissionsMetadata(
+                                session.metadata.dangerouslySkipPermissions,
+                                session.metadata.flavor,
+                                session.permissionMode,
+                                session.metadata.sandbox,
+                            )}
+                            icon={<Ionicons name="warning-outline" size={29} color="#5856D6" />}
                             showChevron={false}
                         />
                         {session.metadata.hostPid && (

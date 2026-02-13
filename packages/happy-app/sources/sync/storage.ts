@@ -43,6 +43,11 @@ function isSessionActive(session: { active: boolean; activeAt: number }): boolea
     return session.active;
 }
 
+function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boolean {
+    const sandbox = metadata?.sandbox;
+    return !!sandbox && typeof sandbox === 'object' && (sandbox as { enabled?: unknown }).enabled === true;
+}
+
 // Known entitlement IDs
 export type KnownEntitlements = 'pro';
 
@@ -317,11 +322,18 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedDraft = savedDrafts[session.id];
                 const existingPermissionMode = state.sessions[session.id]?.permissionMode;
                 const savedPermissionMode = savedPermissionModes[session.id];
+                const defaultPermissionMode: PermissionMode = isSandboxEnabled(session.metadata) ? 'bypassPermissions' : 'default';
+                const resolvedPermissionMode: PermissionMode =
+                    (existingPermissionMode && existingPermissionMode !== 'default' ? existingPermissionMode : undefined) ||
+                    (savedPermissionMode && savedPermissionMode !== 'default' ? savedPermissionMode : undefined) ||
+                    (session.permissionMode && session.permissionMode !== 'default' ? session.permissionMode : undefined) ||
+                    defaultPermissionMode;
+
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default'
+                    permissionMode: resolvedPermissionMode
                 };
             });
 

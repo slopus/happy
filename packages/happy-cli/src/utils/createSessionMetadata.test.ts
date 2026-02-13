@@ -52,4 +52,23 @@ describe('createSessionMetadata', () => {
 
         expect(metadata.sandbox).toBeNull();
     });
+
+    it('sets metadata.dangerouslySkipPermissions to null when not provided', () => {
+        const { metadata } = createSessionMetadata({
+            flavor: 'codex',
+            machineId: 'machine-4',
+        });
+
+        expect(metadata.dangerouslySkipPermissions).toBeNull();
+    });
+
+    it('sets metadata.dangerouslySkipPermissions when provided', () => {
+        const { metadata } = createSessionMetadata({
+            flavor: 'claude',
+            machineId: 'machine-5',
+            dangerouslySkipPermissions: true,
+        });
+
+        expect(metadata.dangerouslySkipPermissions).toBe(true);
+    });
 });
