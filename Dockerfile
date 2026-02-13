@@ -10,12 +10,13 @@ WORKDIR /repo
 
 COPY package.json yarn.lock ./
 
-RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-agent
+RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-agent packages/happy-wire
 
 COPY packages/happy-app/package.json packages/happy-app/
 COPY packages/happy-server/package.json packages/happy-server/
 COPY packages/happy-cli/package.json packages/happy-cli/
 COPY packages/happy-agent/package.json packages/happy-agent/
+COPY packages/happy-wire/package.json packages/happy-wire/
 
 # Workspace postinstall requirements
 COPY packages/happy-app/patches packages/happy-app/patches
@@ -28,8 +29,10 @@ RUN yarn install --frozen-lockfile --ignore-engines
 # Stage 2: copy source and type-check
 FROM deps AS builder
 
+COPY packages/happy-wire ./packages/happy-wire
 COPY packages/happy-server ./packages/happy-server
 
+RUN yarn workspace @slopus/happy-wire build
 RUN yarn workspace happy-server build
 
 # Stage 3: runtime
@@ -44,6 +47,7 @@ ENV DATA_DIR=/data
 ENV PGLITE_DIR=/data/pglite
 
 COPY --from=builder /repo/node_modules /repo/node_modules
+COPY --from=builder /repo/packages/happy-wire /repo/packages/happy-wire
 COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
 
 VOLUME /data

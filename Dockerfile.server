@@ -12,12 +12,34 @@ COPY packages/happy-server/package.json ./
 COPY packages/happy-server/prisma ./prisma
 COPY yarn.lock ./
 
-RUN yarn install --production --frozen-lockfile --ignore-engines
+RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-wire
 
-# Stage 2: runtime
-FROM node:20-slim AS runner
+COPY packages/happy-app/package.json packages/happy-app/
+COPY packages/happy-server/package.json packages/happy-server/
+COPY packages/happy-cli/package.json packages/happy-cli/
+COPY packages/happy-wire/package.json packages/happy-wire/
 
-WORKDIR /repo/packages/happy-server
+# Workspace postinstall requirements
+COPY packages/happy-app/patches packages/happy-app/patches
+COPY packages/happy-server/prisma packages/happy-server/prisma
+COPY packages/happy-cli/scripts packages/happy-cli/scripts
+COPY packages/happy-cli/tools packages/happy-cli/tools
+
+RUN yarn install --frozen-lockfile --ignore-engines
+
+# Stage 2: build the server
+FROM deps AS builder
+
+COPY packages/happy-wire ./packages/happy-wire
+COPY packages/happy-server ./packages/happy-server
+
+RUN yarn workspace @slopus/happy-wire build
+RUN yarn workspace happy-server build
+
+# Stage 3: runtime
+FROM node:20 AS runner
+
+WORKDIR /repo
 
 # Runtime dependencies
 RUN apt-get update && apt-get install -y python3 ffmpeg && rm -rf /var/lib/apt/lists/*
@@ -25,18 +47,10 @@ RUN apt-get update && apt-get install -y python3 ffmpeg && rm -rf /var/lib/apt/l
 # Set environment to production
 ENV NODE_ENV=production
 
-# Copy production dependencies from deps stage
-COPY --from=deps --chown=node:node /repo/packages/happy-server/node_modules ./node_modules
-
-# Copy package.json (required for yarn to work)
-COPY --from=deps --chown=node:node /repo/packages/happy-server/package.json ./
-
-# Copy tsconfig, source code and prisma schema
-COPY --chown=node:node packages/happy-server/tsconfig.json ./
-COPY --chown=node:node packages/happy-server/sources ./sources
-COPY --chown=node:node packages/happy-server/prisma ./prisma
-
-USER node
+# Copy necessary files from the builder stage
+COPY --from=builder /repo/node_modules /repo/node_modules
+COPY --from=builder /repo/packages/happy-wire /repo/packages/happy-wire
+COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
 
 # Expose the port the app will run on
 EXPOSE 3005

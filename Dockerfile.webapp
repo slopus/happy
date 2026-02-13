@@ -5,11 +5,12 @@ WORKDIR /repo
 
 COPY package.json yarn.lock ./
 
-RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli
+RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-wire
 
 COPY packages/happy-app/package.json packages/happy-app/
 COPY packages/happy-server/package.json packages/happy-server/
 COPY packages/happy-cli/package.json packages/happy-cli/
+COPY packages/happy-wire/package.json packages/happy-wire/
 
 # Workspace postinstall requirements
 COPY packages/happy-app/patches packages/happy-app/patches
@@ -30,8 +31,10 @@ ENV APP_ENV=production
 ENV EXPO_PUBLIC_POSTHOG_API_KEY=$POSTHOG_API_KEY
 ENV EXPO_PUBLIC_REVENUE_CAT_STRIPE=$REVENUE_CAT_STRIPE
 
+COPY packages/happy-wire ./packages/happy-wire
 COPY packages/happy-app ./packages/happy-app
 
+RUN yarn workspace @slopus/happy-wire build
 RUN yarn workspace happy-app expo export --platform web --output-dir dist
 
 # Stage 3: runtime with Nginx (non-root)
