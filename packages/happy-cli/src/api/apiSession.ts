@@ -56,6 +56,7 @@ export class ApiSessionClient extends EventEmitter {
     readonly rpcHandlerManager: RpcHandlerManager;
     private agentStateLock = new AsyncLock();
     private metadataLock = new AsyncLock();
+    private syncedModel: string | null;
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
 
@@ -67,6 +68,7 @@ export class ApiSessionClient extends EventEmitter {
         this.metadataVersion = session.metadataVersion;
         this.agentState = session.agentState;
         this.agentStateVersion = session.agentStateVersion;
+        this.syncedModel = session.metadata?.model?.trim() || null;
         this.encryptionKey = session.encryptionKey;
         this.encryptionVariant = session.encryptionVariant;
 
@@ -155,6 +157,7 @@ export class ApiSessionClient extends EventEmitter {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
                         this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
                         this.metadataVersion = data.body.metadata.version;
+                        this.syncedModel = this.metadata?.model?.trim() || null;
                     }
                     if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
                         this.agentState = data.body.agentState.value ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.agentState.value)) : null;
@@ -404,6 +407,10 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - The message payload (type: 'message' | 'reasoning' | 'tool-call' | 'tool-result')
      */
     sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'opencode', body: ACPMessageData) {
+        if (body.type === 'token_count' && typeof body.model === 'string') {
+            this.updateModelMetadata(body.model);
+        }
+
         let content = {
             role: 'agent',
             content: {
@@ -475,6 +482,8 @@ export class ApiSessionClient extends EventEmitter {
      * Send usage data to the server
      */
     sendUsageData(usage: Usage, model?: string) {
+        this.updateModelMetadata(model);
+
         // Calculate total tokens
         const totalTokens = usage.input_tokens + usage.output_tokens + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
 
@@ -501,6 +510,27 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.emit('usage-report', usageReport);
     }
 
+    private updateModelMetadata(model?: string | null): void {
+        const normalized = typeof model === 'string' ? model.trim() : '';
+        if (!normalized) {
+            return;
+        }
+        if (normalized === this.syncedModel && this.metadata?.model?.trim() === normalized) {
+            return;
+        }
+
+        this.syncedModel = normalized;
+        this.updateMetadata((currentMetadata) => {
+            if (currentMetadata.model === normalized) {
+                return currentMetadata;
+            }
+            return {
+                ...currentMetadata,
+                model: normalized,
+            };
+        });
+    }
+
     /**
      * Update session metadata
      * @param handler - Handler function that returns the updated metadata
@@ -513,10 +543,12 @@ export class ApiSessionClient extends EventEmitter {
                 if (answer.result === 'success') {
                     this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
                     this.metadataVersion = answer.version;
+                    this.syncedModel = this.metadata?.model?.trim() || null;
                 } else if (answer.result === 'version-mismatch') {
                     if (answer.version > this.metadataVersion) {
                         this.metadataVersion = answer.version;
                         this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
+                        this.syncedModel = this.metadata?.model?.trim() || null;
                     }
                     throw new Error('Metadata version mismatch');
                 } else if (answer.result === 'error') {

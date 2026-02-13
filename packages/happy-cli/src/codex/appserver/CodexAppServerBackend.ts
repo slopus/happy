@@ -372,6 +372,14 @@ export class CodexAppServerBackend implements AgentBackend {
       this.sessionId = p.sessionId as string;
     }
     logger.debug(`[CodexBackend] Session configured: model=${p?.model}, sessionId=${p?.sessionId}`);
+    this.emit({
+      type: 'event',
+      name: 'session_configured',
+      payload: {
+        sessionId: p?.sessionId,
+        model: p?.model,
+      },
+    });
   }
 
   // ─── Event Mapping ──────────────────────────────────────────

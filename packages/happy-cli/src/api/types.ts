@@ -332,6 +332,7 @@ export type Metadata = {
   version?: string,
   name?: string,
   os?: string,
+  model?: string,
   summary?: {
     text: string,
     updatedAt: number

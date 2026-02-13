@@ -595,6 +595,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             subtitle={(() => {
                                 const flavor = session.metadata.flavor || 'claude';
                                 if (flavor === 'claude') return 'Claude';
+                                if (flavor === 'codex') return 'Codex';
                                 if (flavor === 'gpt' || flavor === 'openai') return 'Codex';
                                 if (flavor === 'gemini') return 'Gemini';
                                 return flavor;
@@ -602,6 +603,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                             icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
                             showChevron={false}
                         />
+                        {session.metadata.model && (
+                            <Item
+                                title={t('sessionInfo.model')}
+                                subtitle={session.metadata.model}
+                                icon={<Ionicons name="options-outline" size={29} color="#5856D6" />}
+                                showChevron={false}
+                            />
+                        )}
                         {session.metadata.hostPid && (
                             <Item
                                 title={t('sessionInfo.processId')}

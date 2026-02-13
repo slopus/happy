@@ -195,6 +195,32 @@ export async function runCodex(opts: {
     // Track current overrides to apply per message
     let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
+    let currentSessionModel: string | undefined = undefined;
+
+    const normalizeModel = (model: unknown): string | undefined => {
+        if (typeof model !== 'string') {
+            return undefined;
+        }
+        const trimmed = model.trim();
+        return trimmed.length > 0 ? trimmed : undefined;
+    };
+
+    const syncSessionModel = (model: unknown): void => {
+        const normalized = normalizeModel(model);
+        if (!normalized || normalized === currentSessionModel) {
+            return;
+        }
+        currentSessionModel = normalized;
+        session.updateMetadata((currentMetadata) => {
+            if (currentMetadata.model === normalized) {
+                return currentMetadata;
+            }
+            return {
+                ...currentMetadata,
+                model: normalized,
+            };
+        });
+    };
 
     session.onUserMessage((message) => {
         // Resolve permission mode
@@ -213,6 +239,7 @@ export async function runCodex(opts: {
             messageModel = message.meta.model || undefined;
             currentModel = messageModel;
             logger.debug(`[Codex] Model updated from user message: ${messageModel || 'reset to default'}`);
+            syncSessionModel(messageModel);
         } else {
             logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
         }
@@ -577,6 +604,7 @@ export async function runCodex(opts: {
                 session.sendAgentMessage('codex', {
                     type: 'token_count',
                     ...tokenData,
+                    ...(currentSessionModel ? { model: currentSessionModel } : {}),
                 });
                 break;
             }
@@ -603,6 +631,9 @@ export async function runCodex(opts: {
                         type: 'message',
                         message: `[Plan Update] ${JSON.stringify(msg.payload)}`,
                     });
+                } else if (msg.name === 'session_configured') {
+                    const payload = msg.payload as { model?: string };
+                    syncSessionModel(payload.model);
                 }
                 break;
             }

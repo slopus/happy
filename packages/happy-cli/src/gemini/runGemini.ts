@@ -207,6 +207,32 @@ export async function runGemini(opts: {
   // Track current overrides to apply per message
   let currentPermissionMode: PermissionMode | undefined = undefined;
   let currentModel: string | undefined = undefined;
+  let currentSessionModel: string | undefined = undefined;
+
+  const normalizeModel = (model: unknown): string | undefined => {
+    if (typeof model !== 'string') {
+      return undefined;
+    }
+    const trimmed = model.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  };
+
+  const syncSessionModel = (model: unknown): void => {
+    const normalized = normalizeModel(model);
+    if (!normalized || normalized === currentSessionModel) {
+      return;
+    }
+    currentSessionModel = normalized;
+    session.updateMetadata((currentMetadata) => {
+      if (currentMetadata.model === normalized) {
+        return currentMetadata;
+      }
+      return {
+        ...currentMetadata,
+        model: normalized,
+      };
+    });
+  };
 
   session.onUserMessage((message) => {
     // Resolve permission mode (validate) - same as Codex
@@ -446,6 +472,7 @@ export async function runGemini(opts: {
     const oldModel = displayedModel;
     displayedModel = model;
     logger.debug(`[gemini] updateDisplayedModel called: oldModel=${oldModel}, newModel=${model}, saveToConfig=${saveToConfig}`);
+    syncSessionModel(model);
     
     // Save to config file if requested (when user changes model via mobile app)
     if (saveToConfig) {
@@ -776,6 +803,7 @@ export async function runGemini(opts: {
           session.sendAgentMessage('gemini', {
             type: 'token_count',
             ...(msg as any),
+            ...(currentSessionModel ? { model: currentSessionModel } : {}),
             id: randomUUID(),
           });
         }

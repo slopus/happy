@@ -401,6 +401,7 @@ export const ru: TranslationStructure = {
         claudeCodeSessionId: 'ID сессии Claude Code',
         claudeCodeSessionIdCopied: 'ID сессии Claude Code скопирован в буфер обмена',
         aiProvider: 'Поставщик ИИ',
+        model: 'Модель',
         failedToCopyClaudeCodeSessionId: 'Не удалось скопировать ID сессии Claude Code',
         metadataCopied: 'Метаданные скопированы в буфер обмена',
         failedToCopyMetadata: 'Не удалось скопировать метаданные',

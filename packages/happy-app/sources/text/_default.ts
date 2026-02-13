@@ -449,6 +449,7 @@ export const en = {
         claudeCodeSessionId: 'Claude Code Session ID',
         claudeCodeSessionIdCopied: 'Claude Code Session ID copied to clipboard',
         aiProvider: 'AI Provider',
+        model: 'Model',
         failedToCopyClaudeCodeSessionId: 'Failed to copy Claude Code Session ID',
         metadataCopied: 'Metadata copied to clipboard',
         failedToCopyMetadata: 'Failed to copy metadata',
