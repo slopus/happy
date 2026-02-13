@@ -54,7 +54,29 @@ function findTarget(targets, input) {
   );
 }
 
+function getReleaseItPath(baseDir) {
+  const binName = process.platform === "win32" ? "release-it.cmd" : "release-it";
+  return path.join(baseDir, "node_modules", ".bin", binName);
+}
+
+function ensureReleaseToolingInstalled(target) {
+  const rootReleaseIt = getReleaseItPath(repoRoot);
+  const workspaceReleaseIt = getReleaseItPath(path.join(repoRoot, target.workspacePath));
+
+  if (fs.existsSync(rootReleaseIt) || fs.existsSync(workspaceReleaseIt)) {
+    return;
+  }
+
+  console.error(
+    "Missing release tooling: `release-it` is not installed in this checkout."
+  );
+  console.error("Run `yarn install` from repository root, then run `yarn release` again.");
+  process.exit(1);
+}
+
 function runRelease(target) {
+  ensureReleaseToolingInstalled(target);
+
   console.log(
     `Running release pipeline for ${target.id} (workspace: ${target.workspaceName})`
   );
