@@ -209,6 +209,7 @@ export const pt: TranslationStructure = {
         history: 'History',
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',
+        agentHistorySubtitle: 'Browse Claude, Gemini, and Codex session history',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Conta ${service} conectada`,
@@ -400,6 +401,16 @@ export const pt: TranslationStructure = {
         resumeFailed: 'Failed to resume Claude session',
     },
 
+    agentHistory: {
+        title: 'Agent Sessions',
+        loadFailed: 'Failed to load sessions',
+        empty: 'No sessions found',
+        resumeFailed: 'Failed to resume session',
+        tabClaude: 'Claude',
+        tabGemini: 'Gemini',
+        tabCodex: 'Codex',
+    },
+
     sessionPreview: {
         noMessages: 'Sem mensagens para visualizar',
         olderMessagesHint: 'Mensagens anteriores não são exibidas na visualização',
@@ -526,6 +537,14 @@ export const pt: TranslationStructure = {
             archiveWorktreeConfirm: 'Esta sessão usa um worktree do Git. Deseja limpá-lo?',
             archiveAndCleanup: 'Arquivar e limpar',
             archiveKeepWorktree: 'Apenas arquivar',
+            prLink: 'Pull Request',
+            requestReview: 'Solicitar revisão de código',
+            requestReviewSubtitle: 'Ter um agente IA a rever as alterações do PR',
+            reviewSelectAgent: 'Selecionar revisor',
+            reviewSelectAgentMessage: 'Escolha qual agente IA deve rever o pull request',
+            reviewNoPR: 'Pull request não encontrado. Crie um PR primeiro.',
+            reviewDiffFailed: 'Falha ao obter o diff do PR',
+            reviewSpawnFailed: 'Falha ao iniciar a sessão de revisão',
         },
 
     },

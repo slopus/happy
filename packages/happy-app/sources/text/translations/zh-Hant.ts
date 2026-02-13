@@ -210,6 +210,7 @@ export const zhHant: TranslationStructure = {
         history: '歷史',
         sessionHistorySubtitle: '查看過去的 Happy 工作階段',
         claudeSessionsSubtitle: '瀏覽此裝置上的 Claude CLI 工作階段',
+        agentHistorySubtitle: '瀏覽 Claude、Gemini 和 Codex 的工作階段歷史',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已連結 ${service} 帳戶`,
@@ -401,6 +402,16 @@ export const zhHant: TranslationStructure = {
         resumeFailed: '無法繼續 Claude 工作階段',
     },
 
+    agentHistory: {
+        title: '智慧體工作階段',
+        loadFailed: '無法載入工作階段',
+        empty: '未找到工作階段',
+        resumeFailed: '無法繼續工作階段',
+        tabClaude: 'Claude',
+        tabGemini: 'Gemini',
+        tabCodex: 'Codex',
+    },
+
     sessionPreview: {
         noMessages: '暫無訊息預覽',
         olderMessagesHint: '較早的訊息未在預覽中顯示',
@@ -527,6 +538,14 @@ export const zhHant: TranslationStructure = {
             archiveWorktreeConfirm: '此會話使用了 Git worktree，是否要清理？',
             archiveAndCleanup: '封存並清理',
             archiveKeepWorktree: '僅封存',
+            prLink: '拉取請求',
+            requestReview: '請求代碼審查',
+            requestReviewSubtitle: '讓 AI 代理審查你的 PR 變更',
+            reviewSelectAgent: '選擇審查者',
+            reviewSelectAgentMessage: '選擇哪個 AI 代理來審查此拉取請求',
+            reviewNoPR: '未找到拉取請求。請先建立 PR。',
+            reviewDiffFailed: '取得 PR 差異失敗',
+            reviewSpawnFailed: '啟動審查工作階段失敗',
         },
 
     },

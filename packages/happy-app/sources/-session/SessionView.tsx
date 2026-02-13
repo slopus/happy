@@ -16,7 +16,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort, machineGetClaudeSessionUserMessages, machineDuplicateClaudeSession, machineSpawnNewSession, ClaudeUserMessageWithUuid } from '@/sync/ops';
+import { sessionAbort, machineGetClaudeSessionUserMessages, machineDuplicateClaudeSession, machineSpawnNewSession, machineGetGeminiSessionUserMessages, machineDuplicateGeminiSession, machineGetCodexSessionUserMessages, machineDuplicateCodexSession, type UserMessageWithUuid } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
@@ -369,7 +369,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     // Duplicate sheet state
     const [duplicateSheetVisible, setDuplicateSheetVisible] = React.useState(false);
-    const [duplicateMessages, setDuplicateMessages] = React.useState<ClaudeUserMessageWithUuid[] | null>(null);
+    const [duplicateMessages, setDuplicateMessages] = React.useState<UserMessageWithUuid[] | null>(null);
     const [duplicateLoading, setDuplicateLoading] = React.useState(false);
     const [duplicateConfirming, setDuplicateConfirming] = React.useState(false);
     const duplicateProjectIdRef = React.useRef<string | null>(null);
@@ -403,15 +403,18 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         storage.getState().updateSessionPermissionMode(sessionId, mode);
     }, [sessionId]);
 
-    // Function to update model mode (for Gemini sessions)
-    const updateModelMode = React.useCallback((mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => {
+    // Function to update model mode
+    const updateModelMode = React.useCallback((mode: string) => {
         storage.getState().updateSessionModelMode(sessionId, mode);
     }, [sessionId]);
 
-    // Handle opening the duplicate sheet - loads user messages from the Claude session
+    // Handle opening the duplicate sheet - loads user messages from the session
     const handleOpenDuplicateSheet = React.useCallback(async () => {
+        const flavor = session.metadata?.flavor;
         const claudeSessionId = session.metadata?.claudeSessionId;
-        if (!machineId || !claudeSessionId) {
+        const codexSessionId = session.metadata?.codexSessionId;
+        const canDuplicate = Boolean(claudeSessionId || flavor === 'gemini' || codexSessionId);
+        if (!machineId || !canDuplicate) {
             Modal.alert(t('common.error'), t('duplicate.notAvailable'));
             return;
         }
@@ -424,9 +427,17 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         setDuplicateMessages(null);
 
         try {
-            const result = await machineGetClaudeSessionUserMessages(machineId, claudeSessionId);
-            setDuplicateMessages(result.messages);
-            duplicateProjectIdRef.current = result.projectId;
+            if (flavor === 'gemini') {
+                const result = await machineGetGeminiSessionUserMessages(machineId, session.id);
+                setDuplicateMessages(result.messages);
+            } else if (flavor === 'codex' && codexSessionId) {
+                const result = await machineGetCodexSessionUserMessages(machineId, codexSessionId);
+                setDuplicateMessages(result.messages);
+            } else if (claudeSessionId) {
+                const result = await machineGetClaudeSessionUserMessages(machineId, claudeSessionId);
+                setDuplicateMessages(result.messages);
+                duplicateProjectIdRef.current = result.projectId;
+            }
         } catch (error) {
             console.error('Failed to load duplicate messages:', error);
             Modal.alert(t('common.error'), t('duplicate.loadFailed'));
@@ -434,30 +445,52 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         } finally {
             setDuplicateLoading(false);
         }
-    }, [machineId, session.metadata?.claudeSessionId]);
+    }, [machineId, session.id, session.metadata?.flavor, session.metadata?.claudeSessionId, session.metadata?.codexSessionId]);
 
     // Handle selecting a message to duplicate from
     const handleDuplicateSelect = React.useCallback(async (uuid: string) => {
+        const flavor = session.metadata?.flavor;
         const claudeSessionId = session.metadata?.claudeSessionId;
+        const codexSessionId = session.metadata?.codexSessionId;
         const sessionPath = session.metadata?.path;
-        if (!machineId || !claudeSessionId || !sessionPath) {
-            return;
-        }
+        if (!machineId || !sessionPath) return;
 
         // Start confirming state - keep sheet open with loading button
         setDuplicateConfirming(true);
 
         try {
-            // Step 1: Fork and truncate the Claude session
-            const duplicateResult = await machineDuplicateClaudeSession(
-                machineId,
-                claudeSessionId,
-                uuid
-            );
+            let resumeSessionId: string | undefined;
+            let agent: 'claude' | 'gemini' | 'codex' = 'claude';
 
-            if (!duplicateResult.success || !duplicateResult.newSessionId) {
+            if (flavor === 'gemini') {
+                const duplicateResult = await machineDuplicateGeminiSession(machineId, session.id, uuid);
+                if (!duplicateResult.success || !duplicateResult.newSessionId) {
+                    setDuplicateConfirming(false);
+                    Modal.alert(t('common.error'), duplicateResult.errorMessage || t('duplicate.failed'));
+                    return;
+                }
+                resumeSessionId = duplicateResult.newSessionId;
+                agent = 'gemini';
+            } else if (flavor === 'codex' && codexSessionId) {
+                const duplicateResult = await machineDuplicateCodexSession(machineId, codexSessionId, uuid);
+                if (!duplicateResult.success || !duplicateResult.newFilePath) {
+                    setDuplicateConfirming(false);
+                    Modal.alert(t('common.error'), duplicateResult.errorMessage || t('duplicate.failed'));
+                    return;
+                }
+                resumeSessionId = duplicateResult.newFilePath;
+                agent = 'codex';
+            } else if (claudeSessionId) {
+                const duplicateResult = await machineDuplicateClaudeSession(machineId, claudeSessionId, uuid);
+                if (!duplicateResult.success || !duplicateResult.newSessionId) {
+                    setDuplicateConfirming(false);
+                    Modal.alert(t('common.error'), duplicateResult.errorMessage || t('duplicate.failed'));
+                    return;
+                }
+                resumeSessionId = duplicateResult.newSessionId;
+                agent = 'claude';
+            } else {
                 setDuplicateConfirming(false);
-                Modal.alert(t('common.error'), duplicateResult.errorMessage || t('duplicate.failed'));
                 return;
             }
 
@@ -467,7 +500,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             const spawnResult = await machineSpawnNewSession({
                 machineId,
                 directory: sessionPath,
-                resumeSessionId: duplicateResult.newSessionId,
+                agent,
+                resumeSessionId,
                 sessionTitle: newSessionTitle,
                 skipForkSession: true,
             });
@@ -486,7 +520,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             setDuplicateConfirming(false);
             Modal.alert(t('common.error'), t('duplicate.failed'));
         }
-    }, [machineId, session.metadata?.claudeSessionId, session.metadata?.path, router]);
+    }, [machineId, session.id, session.metadata?.flavor, session.metadata?.claudeSessionId, session.metadata?.codexSessionId, session.metadata?.path, router]);
 
     // Handle closing the duplicate sheet (prevent closing while confirming)
     const handleCloseDuplicateSheet = React.useCallback(() => {

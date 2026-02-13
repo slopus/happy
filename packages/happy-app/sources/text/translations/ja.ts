@@ -241,6 +241,7 @@ export const ja: TranslationStructure = {
         history: 'History',
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',
+        agentHistorySubtitle: 'Claude、Gemini、Codex のセッション履歴を閲覧',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service}アカウントが接続されました`,
@@ -432,6 +433,16 @@ export const ja: TranslationStructure = {
         resumeFailed: 'Failed to resume Claude session',
     },
 
+    agentHistory: {
+        title: 'エージェントセッション',
+        loadFailed: 'セッションの読み込みに失敗しました',
+        empty: 'セッションが見つかりません',
+        resumeFailed: 'セッションの再開に失敗しました',
+        tabClaude: 'Claude',
+        tabGemini: 'Gemini',
+        tabCodex: 'Codex',
+    },
+
     sessionPreview: {
         noMessages: 'プレビューするメッセージがありません',
         olderMessagesHint: '古いメッセージはプレビューに表示されません',
@@ -558,6 +569,14 @@ export const ja: TranslationStructure = {
             archiveWorktreeConfirm: 'このセッションは Git worktree を使用しています。クリーンアップしますか？',
             archiveAndCleanup: 'アーカイブしてクリーンアップ',
             archiveKeepWorktree: 'アーカイブのみ',
+            prLink: 'プルリクエスト',
+            requestReview: 'コードレビューをリクエスト',
+            requestReviewSubtitle: 'AIエージェントにPRの変更をレビューさせる',
+            reviewSelectAgent: 'レビュアーを選択',
+            reviewSelectAgentMessage: 'プルリクエストをレビューするAIエージェントを選択してください',
+            reviewNoPR: 'プルリクエストが見つかりません。先にPRを作成してください。',
+            reviewDiffFailed: 'PRの差分取得に失敗しました',
+            reviewSpawnFailed: 'レビューセッションの開始に失敗しました',
         },
 
     },

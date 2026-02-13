@@ -288,7 +288,6 @@ function NewSessionWizard() {
     const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
-    const experimentsEnabled = useSetting('experiments');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
     const [favoriteDirectories, setFavoriteDirectories] = useSettingMutable('favoriteDirectories');
@@ -315,17 +314,9 @@ function NewSessionWizard() {
     const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
         // Check if agent type was provided in temp data
         if (tempSessionData?.agentType) {
-            // Only allow gemini if experiments are enabled
-            if (tempSessionData.agentType === 'gemini' && !experimentsEnabled) {
-                return 'claude';
-            }
             return tempSessionData.agentType;
         }
-        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
-            return lastUsedAgent;
-        }
-        // Only allow gemini if experiments are enabled
-        if (lastUsedAgent === 'gemini' && experimentsEnabled) {
+        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex' || lastUsedAgent === 'gemini') {
             return lastUsedAgent;
         }
         return 'claude';
@@ -335,12 +326,12 @@ function NewSessionWizard() {
     // Note: Does NOT persist immediately - persistence is handled by useEffect below
     const handleAgentClick = React.useCallback(() => {
         setAgentType(prev => {
-            // Cycle: claude -> codex -> gemini (if experiments) -> claude
+            // Cycle: claude -> codex -> gemini -> claude
             if (prev === 'claude') return 'codex';
-            if (prev === 'codex') return experimentsEnabled ? 'gemini' : 'claude';
+            if (prev === 'codex') return 'gemini';
             return 'claude';
         });
-    }, [experimentsEnabled]);
+    }, []);
 
     // Persist agent selection changes (separate from setState to avoid race condition)
     // This runs after agentType state is updated, ensuring the value is stable
@@ -523,13 +514,13 @@ function NewSessionWizard() {
             const availableAgent: 'claude' | 'codex' | 'gemini' =
                 cliAvailability.claude === true ? 'claude' :
                 cliAvailability.codex === true ? 'codex' :
-                (cliAvailability.gemini === true && experimentsEnabled) ? 'gemini' :
+                cliAvailability.gemini === true ? 'gemini' :
                 'claude'; // Fallback to claude (will fail at spawn with clear error)
 
             console.warn(`[AgentSelection] ${agentType} not available, switching to ${availableAgent}`);
             setAgentType(availableAgent);
         }
-    }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, agentType, experimentsEnabled]);
+    }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, agentType]);
 
     // Extract all ${VAR} references from profiles to query daemon environment
     const envVarRefs = React.useMemo(() => {
@@ -729,14 +720,13 @@ function NewSessionWizard() {
 
             if (supportedCLIs.length === 1) {
                 const requiredAgent = supportedCLIs[0] as 'claude' | 'codex' | 'gemini';
-                // Check if this agent is available and allowed
+                // Check if this agent is available
                 const isAvailable = cliAvailability[requiredAgent] !== false;
-                const isAllowed = requiredAgent !== 'gemini' || experimentsEnabled;
 
-                if (isAvailable && isAllowed) {
+                if (isAvailable) {
                     setAgentType(requiredAgent);
                 }
-                // If the required CLI is unavailable or not allowed, keep current agent (profile will show as unavailable)
+                // If the required CLI is unavailable, keep current agent (profile will show as unavailable)
             }
             // If supportedCLIs.length > 1, profile supports multiple CLIs - don't force agent switch
 
@@ -749,7 +739,7 @@ function NewSessionWizard() {
                 setPermissionMode(profile.defaultPermissionMode as PermissionMode);
             }
         }
-    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, experimentsEnabled]);
+    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini]);
 
     // Reset permission mode to 'default' when agent type changes and current mode is invalid for new agent
     React.useEffect(() => {
@@ -1085,7 +1075,7 @@ function NewSessionWizard() {
             // Get environment variables from selected profile
             let environmentVariables = undefined;
             if (selectedProfileId) {
-                const selectedProfile = profileMap.get(selectedProfileId);
+                const selectedProfile = profileMap.get(selectedProfileId) || getBuiltInProfile(selectedProfileId);
                 if (selectedProfile) {
                     environmentVariables = transformProfileToEnvironmentVars(selectedProfile, agentType);
                 }
@@ -1112,8 +1102,8 @@ function NewSessionWizard() {
 
                 // Set permission mode and model mode on the session
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
-                if (agentType === 'gemini' && modelMode && modelMode !== 'default') {
-                    storage.getState().updateSessionModelMode(result.sessionId, modelMode as 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite');
+                if (modelMode && modelMode !== 'default') {
+                    storage.getState().updateSessionModelMode(result.sessionId, modelMode);
                 }
 
                 // Send initial message if provided
@@ -1163,10 +1153,10 @@ function NewSessionWizard() {
             cliStatus: includeCLI ? {
                 claude: cliAvailability.claude,
                 codex: cliAvailability.codex,
-                ...(experimentsEnabled && { gemini: cliAvailability.gemini }),
+                gemini: cliAvailability.gemini,
             } : undefined,
         };
-    }, [selectedMachine, selectedMachineId, cliAvailability, experimentsEnabled, theme]);
+    }, [selectedMachine, selectedMachineId, cliAvailability, theme]);
 
     // Persist the current wizard state so it survives remounts and screen navigation
     // Uses debouncing to avoid excessive writes
@@ -1345,16 +1335,14 @@ function NewSessionWizard() {
                                                 codex
                                             </Text>
                                         </View>
-                                        {experimentsEnabled && (
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                    {cliAvailability.gemini ? '✓' : '✗'}
-                                                </Text>
-                                                <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                    gemini
-                                                </Text>
-                                            </View>
-                                        )}
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                            <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                {cliAvailability.gemini ? '✓' : '✗'}
+                                            </Text>
+                                            <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                gemini
+                                            </Text>
+                                        </View>
                                     </View>
                                 </View>
                             )}
@@ -1514,7 +1502,7 @@ function NewSessionWizard() {
                                 </View>
                             )}
 
-                            {selectedMachineId && cliAvailability.gemini === false && experimentsEnabled && !isWarningDismissed('gemini') && !hiddenBanners.gemini && (
+                            {selectedMachineId && cliAvailability.gemini === false && !isWarningDismissed('gemini') && !hiddenBanners.gemini && (
                                 <View style={{
                                     backgroundColor: theme.colors.box.warning.background,
                                     borderRadius: 10,

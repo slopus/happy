@@ -305,16 +305,10 @@ export const SettingsView = React.memo(function SettingsView() {
                     onPress={() => router.push('/session/recent')}
                 />
                 <Item
-                    title={t('claudeHistory.title')}
-                    subtitle={t('settings.claudeSessionsSubtitle')}
-                    icon={(
-                        <Image
-                            source={require('@/assets/images/icon-claude.png')}
-                            style={{ width: 29, height: 29 }}
-                            contentFit="contain"
-                        />
-                    )}
-                    onPress={() => router.push('/session/claude')}
+                    title={t('agentHistory.title')}
+                    subtitle={t('settings.agentHistorySubtitle')}
+                    icon={<Ionicons name="albums-outline" size={29} color="#007AFF" />}
+                    onPress={() => router.push('/session/history')}
                 />
             </ItemGroup>
 

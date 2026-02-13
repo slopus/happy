@@ -173,6 +173,7 @@ export const ru: TranslationStructure = {
         history: 'History',
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',
+        agentHistorySubtitle: 'Browse Claude, Gemini, and Codex session history',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,
@@ -364,6 +365,16 @@ export const ru: TranslationStructure = {
         resumeFailed: 'Failed to resume Claude session',
     },
 
+    agentHistory: {
+        title: 'Agent Sessions',
+        loadFailed: 'Failed to load sessions',
+        empty: 'No sessions found',
+        resumeFailed: 'Failed to resume session',
+        tabClaude: 'Claude',
+        tabGemini: 'Gemini',
+        tabCodex: 'Codex',
+    },
+
     sessionPreview: {
         noMessages: 'Нет сообщений для предпросмотра',
         olderMessagesHint: 'Старые сообщения не отображаются в предпросмотре',
@@ -479,6 +490,14 @@ export const ru: TranslationStructure = {
             archiveWorktreeConfirm: 'Эта сессия использует worktree Git. Хотите очистить его?',
             archiveAndCleanup: 'Архивировать и очистить',
             archiveKeepWorktree: 'Только архивировать',
+            prLink: 'Пул-реквест',
+            requestReview: 'Запросить код-ревью',
+            requestReviewSubtitle: 'Попросить ИИ-агента проверить изменения в PR',
+            reviewSelectAgent: 'Выбрать ревьюера',
+            reviewSelectAgentMessage: 'Выберите ИИ-агента для проверки пул-реквеста',
+            reviewNoPR: 'Пул-реквест не найден. Сначала создайте PR.',
+            reviewDiffFailed: 'Не удалось получить diff PR',
+            reviewSpawnFailed: 'Не удалось запустить сессию ревью',
         },
     },
 

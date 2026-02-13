@@ -334,9 +334,16 @@ export async function startDaemon(): Promise<void> {
           if (skipForkSession) {
             extraEnv.HAPPY_CLAUDE_SKIP_FORK_SESSION = '1';
           }
-          if (sessionTitle) {
-            extraEnv.HAPPY_SESSION_TITLE = sessionTitle;
-          }
+        }
+        if (resumeSessionId && options.agent === 'gemini') {
+          extraEnv.HAPPY_GEMINI_RESUME_SESSION_ID = resumeSessionId;
+        }
+        if (resumeSessionId && options.agent === 'codex') {
+          extraEnv.HAPPY_CODEX_RESUME_FILE = resumeSessionId;
+        }
+        // Session title - passed to all agents (Claude, Codex, Gemini)
+        if (sessionTitle) {
+          extraEnv.HAPPY_SESSION_TITLE = sessionTitle;
         }
         // Worktree metadata - passed to agent process so initial metadata includes it
         if (options.worktreeBasePath) {

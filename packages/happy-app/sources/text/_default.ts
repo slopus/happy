@@ -209,6 +209,7 @@ export const en = {
         history: 'History',
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',
+        agentHistorySubtitle: 'Browse Claude, Gemini, and Codex session history',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service} account connected`,
@@ -400,6 +401,16 @@ export const en = {
         resumeFailed: 'Failed to resume Claude session',
     },
 
+    agentHistory: {
+        title: 'Agent Sessions',
+        loadFailed: 'Failed to load sessions',
+        empty: 'No sessions found',
+        resumeFailed: 'Failed to resume session',
+        tabClaude: 'Claude',
+        tabGemini: 'Gemini',
+        tabCodex: 'Codex',
+    },
+
     sessionPreview: {
         // Used by session preview sheet
         noMessages: 'No messages to preview',
@@ -529,6 +540,15 @@ export const en = {
             archiveWorktreeConfirm: 'This session uses a Git worktree. Would you like to clean it up?',
             archiveAndCleanup: 'Archive & Clean Up',
             archiveKeepWorktree: 'Archive Only',
+            // Code Review
+            prLink: 'Pull Request',
+            requestReview: 'Request Code Review',
+            requestReviewSubtitle: 'Have an AI agent review your PR changes',
+            reviewSelectAgent: 'Select Reviewer',
+            reviewSelectAgentMessage: 'Choose which AI agent should review the pull request',
+            reviewNoPR: 'No pull request found. Create a PR first.',
+            reviewDiffFailed: 'Failed to fetch the PR diff',
+            reviewSpawnFailed: 'Failed to start the review session',
         },
 
     },

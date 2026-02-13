@@ -211,6 +211,7 @@ export const zhHans: TranslationStructure = {
         history: '历史记录',
         sessionHistorySubtitle: '查看过去的 Happy 会话',
         claudeSessionsSubtitle: '浏览设备上的 Claude CLI 会话',
+        agentHistorySubtitle: '浏览 Claude、Gemini 和 Codex 的会话历史',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已连接 ${service} 账户`,
@@ -402,6 +403,16 @@ export const zhHans: TranslationStructure = {
         resumeFailed: '恢复 Claude 会话失败',
     },
 
+    agentHistory: {
+        title: '智能体会话',
+        loadFailed: '加载会话失败',
+        empty: '未找到会话',
+        resumeFailed: '恢复会话失败',
+        tabClaude: 'Claude',
+        tabGemini: 'Gemini',
+        tabCodex: 'Codex',
+    },
+
     sessionPreview: {
         noMessages: '暂无消息预览',
         olderMessagesHint: '较早的消息未在预览中显示',
@@ -528,6 +539,14 @@ export const zhHans: TranslationStructure = {
             archiveWorktreeConfirm: '此会话使用了 Git worktree，是否要清理？',
             archiveAndCleanup: '归档并清理',
             archiveKeepWorktree: '仅归档',
+            prLink: '拉取请求',
+            requestReview: '请求代码审查',
+            requestReviewSubtitle: '让 AI 代理审查你的 PR 更改',
+            reviewSelectAgent: '选择审查者',
+            reviewSelectAgentMessage: '选择哪个 AI 代理来审查此拉取请求',
+            reviewNoPR: '未找到拉取请求。请先创建 PR。',
+            reviewDiffFailed: '获取 PR 差异失败',
+            reviewSpawnFailed: '启动审查会话失败',
         },
 
     },

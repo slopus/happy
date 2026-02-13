@@ -12,6 +12,10 @@ import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from 
 import { registerOpenClawHandlers, openClawTunnelManager } from '../modules/openclaw';
 import { listClaudeSessionsFromIndex, getClaudeSessionPreview, findClaudeProjectId, getClaudeSessionUserMessages } from '@/claude/utils/claudeSessionIndex';
 import { forkAndTruncateSession, forkSession } from '@/claude/utils/claudeSessionFork';
+import { readGeminiSessionLog, listGeminiSessions, getGeminiSessionPreview } from '@/gemini/utils/sessionReader';
+import { forkGeminiSession, forkAndTruncateGeminiSession } from '@/gemini/utils/sessionFork';
+import { readCodexSessionUserMessages, listCodexSessions, getCodexSessionPreview } from '@/codex/utils/codexSessionReader';
+import { forkCodexSession, forkAndTruncateCodexSession } from '@/codex/utils/codexSessionFork';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -276,6 +280,126 @@ export class ApiMachineClient {
 
             const result = await forkSession(projectId, sessionId);
             return result;
+        });
+
+        // --- Gemini session handlers ---
+
+        // Get user messages from a Gemini session JSONL
+        this.rpcHandlerManager.registerHandler('gemini-session-user-messages', async (params: any) => {
+            const { sessionId, limit = 50 } = params || {};
+            if (!sessionId || typeof sessionId !== 'string') {
+                throw new Error('sessionId is required');
+            }
+            const messageLimit = typeof limit === 'number' && limit > 0 ? Math.min(Math.floor(limit), 100) : 50;
+            const lines = await readGeminiSessionLog(sessionId);
+            let userIndex = 0;
+            const messages = lines
+                .filter(l => l.type === 'user')
+                .map(l => ({
+                    uuid: l.uuid,
+                    content: l.message.length > 500 ? l.message.substring(0, 500) + '...' : l.message,
+                    timestamp: new Date(l.timestamp).toISOString(),
+                    index: userIndex++,
+                }))
+                .slice(-messageLimit);
+            return { messages };
+        });
+
+        // Fork and truncate a Gemini session for duplicate
+        this.rpcHandlerManager.registerHandler('gemini-duplicate-session', async (params: any) => {
+            const { sessionId, truncateBeforeUuid } = params || {};
+            if (!sessionId || typeof sessionId !== 'string') {
+                throw new Error('sessionId is required');
+            }
+            if (!truncateBeforeUuid || typeof truncateBeforeUuid !== 'string') {
+                throw new Error('truncateBeforeUuid is required');
+            }
+            return await forkAndTruncateGeminiSession(sessionId, truncateBeforeUuid);
+        });
+
+        // Fork a Gemini session without truncation (resume)
+        this.rpcHandlerManager.registerHandler('gemini-fork-session', async (params: any) => {
+            const { sessionId } = params || {};
+            if (!sessionId || typeof sessionId !== 'string') {
+                throw new Error('sessionId is required');
+            }
+            return await forkGeminiSession(sessionId);
+        });
+
+        // --- Codex session handlers ---
+
+        // Get user messages from a Codex session JSONL
+        this.rpcHandlerManager.registerHandler('codex-session-user-messages', async (params: any) => {
+            const { codexSessionId, limit = 50 } = params || {};
+            if (!codexSessionId || typeof codexSessionId !== 'string') {
+                throw new Error('codexSessionId is required');
+            }
+            const messageLimit = typeof limit === 'number' && limit > 0 ? Math.min(Math.floor(limit), 100) : 50;
+            const messages = await readCodexSessionUserMessages(codexSessionId, messageLimit);
+            return { messages };
+        });
+
+        // Fork and truncate a Codex session for duplicate
+        this.rpcHandlerManager.registerHandler('codex-duplicate-session', async (params: any) => {
+            const { codexSessionId, truncateBeforeUuid } = params || {};
+            if (!codexSessionId || typeof codexSessionId !== 'string') {
+                throw new Error('codexSessionId is required');
+            }
+            if (!truncateBeforeUuid || typeof truncateBeforeUuid !== 'string') {
+                throw new Error('truncateBeforeUuid is required');
+            }
+            return await forkAndTruncateCodexSession(codexSessionId, truncateBeforeUuid);
+        });
+
+        // Fork a Codex session without truncation (resume)
+        this.rpcHandlerManager.registerHandler('codex-fork-session', async (params: any) => {
+            const { codexSessionId } = params || {};
+            if (!codexSessionId || typeof codexSessionId !== 'string') {
+                throw new Error('codexSessionId is required');
+            }
+            return await forkCodexSession(codexSessionId);
+        });
+
+        // --- Gemini session listing & preview ---
+
+        this.rpcHandlerManager.registerHandler('gemini-list-sessions', async (params: any) => {
+            const offset = typeof params?.offset === 'number' && params.offset >= 0 ? Math.floor(params.offset) : 0;
+            const limit = typeof params?.limit === 'number' && params.limit > 0 ? Math.floor(params.limit) : 50;
+            const sessions = await listGeminiSessions();
+            const total = sessions.length;
+            const paged = sessions.slice(offset, offset + limit);
+            return { sessions: paged, total, offset, limit };
+        });
+
+        this.rpcHandlerManager.registerHandler('gemini-session-preview', async (params: any) => {
+            const { sessionId, limit = 10 } = params || {};
+            if (!sessionId || typeof sessionId !== 'string') {
+                throw new Error('sessionId is required');
+            }
+            const messageLimit = typeof limit === 'number' && limit > 0 ? Math.min(Math.floor(limit), 50) : 10;
+            const messages = await getGeminiSessionPreview(sessionId, messageLimit);
+            return { messages };
+        });
+
+        // --- Codex session listing & preview ---
+
+        this.rpcHandlerManager.registerHandler('codex-list-sessions', async (params: any) => {
+            const offset = typeof params?.offset === 'number' && params.offset >= 0 ? Math.floor(params.offset) : 0;
+            const limit = typeof params?.limit === 'number' && params.limit > 0 ? Math.floor(params.limit) : 50;
+            const sessions = await listCodexSessions();
+            const total = sessions.length;
+            const paged = sessions.slice(offset, offset + limit);
+            return { sessions: paged, total, offset, limit };
+        });
+
+        this.rpcHandlerManager.registerHandler('codex-session-preview', async (params: any) => {
+            const { codexSessionId, limit = 10 } = params || {};
+            if (!codexSessionId || typeof codexSessionId !== 'string') {
+                throw new Error('codexSessionId is required');
+            }
+            const messageLimit = typeof limit === 'number' && limit > 0 ? Math.min(Math.floor(limit), 50) : 10;
+            const messages = await getCodexSessionPreview(codexSessionId, messageLimit);
+            return { messages };
         });
     }
 

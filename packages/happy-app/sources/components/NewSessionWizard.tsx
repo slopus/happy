@@ -531,7 +531,6 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const router = useRouter();
     const machines = useAllMachines();
     const sessions = useSessions();
-    const experimentsEnabled = useSetting('experiments');
     const recentMachinePaths = useSetting('recentMachinePaths');
     const lastUsedAgent = useSetting('lastUsedAgent');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
@@ -542,8 +541,8 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     // Wizard state
     const [currentStep, setCurrentStep] = useState<WizardStep>('profile');
     const [sessionType, setSessionType] = useState<'simple' | 'worktree'>('simple');
-    const [agentType, setAgentType] = useState<'claude' | 'codex'>(() => {
-        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
+    const [agentType, setAgentType] = useState<'claude' | 'codex' | 'gemini'>(() => {
+        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex' || lastUsedAgent === 'gemini') {
             return lastUsedAgent;
         }
         return 'claude';
@@ -702,9 +701,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 
     // Dynamic steps based on whether profile needs configuration
     const steps: WizardStep[] = React.useMemo(() => {
-        const baseSteps: WizardStep[] = experimentsEnabled
-            ? ['profile', 'sessionType', 'agent', 'options', 'machine', 'path', 'prompt']
-            : ['profile', 'agent', 'options', 'machine', 'path', 'prompt'];
+        const baseSteps: WizardStep[] = ['profile', 'sessionType', 'agent', 'options', 'machine', 'path', 'prompt'];
 
         // Insert profileConfig step after profile if needed
         if (profileNeedsConfiguration(selectedProfileId)) {
@@ -719,7 +716,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         }
 
         return baseSteps;
-    }, [experimentsEnabled, selectedProfileId]);
+    }, [selectedProfileId]);
 
     // Helper function to check if profile needs API keys
     const profileNeedsConfiguration = (profileId: string | null): boolean => {

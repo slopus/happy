@@ -18,6 +18,7 @@ export const MetadataSchema = z.object({
     summaryPinned: z.boolean().optional(),
     machineId: z.string().optional(),
     claudeSessionId: z.string().optional(), // Claude Code session ID
+    codexSessionId: z.string().optional(), // Codex CLI conversation ID
     tools: z.array(z.string()).optional(),
     slashCommands: z.array(z.string()).optional(),
     homeDir: z.string().optional(), // User's home directory on the machine
@@ -26,7 +27,9 @@ export const MetadataSchema = z.object({
     flavor: z.string().nullish(), // Session flavor/variant identifier
     isWorktree: z.boolean().optional(), // Whether this session uses a git worktree
     worktreeBasePath: z.string().optional(), // Original repository path before worktree
-    worktreeBranchName: z.string().optional() // Branch name created for the worktree
+    worktreeBranchName: z.string().optional(), // Branch name created for the worktree
+    worktreePrUrl: z.string().optional(), // GitHub PR URL for this worktree
+    reviewOfSessionId: z.string().optional(), // Links review session to the session being reviewed
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;
@@ -78,7 +81,7 @@ export interface Session {
     }>;
     draft?: string | null; // Local draft message, not synced to server
     permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | null; // Local permission mode, not synced to server
-    modelMode?: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | null; // Local model mode, not synced to server
+    modelMode?: string | null; // Local model mode, not synced to server
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.
     // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.

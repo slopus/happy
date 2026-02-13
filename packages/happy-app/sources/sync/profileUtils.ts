@@ -339,6 +339,23 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                 updatedAt: Date.now(),
                 version: '1.0.0',
             };
+        case 'google-ai':
+            // Google AI profile: Uses Gemini CLI with Google's AI models
+            // Authentication: Run 'happy connect gemini' for OAuth, or set GEMINI_API_KEY in daemon env
+            // Model selection: GEMINI_MODEL env var (defaults to gemini-2.5-pro)
+            return {
+                id: 'google-ai',
+                name: 'Google AI (Gemini)',
+                environmentVariables: [
+                    { name: 'GEMINI_MODEL', value: '${GEMINI_MODEL:-gemini-2.5-pro}' },
+                ],
+                defaultPermissionMode: 'default',
+                compatibility: { claude: false, codex: false, gemini: true },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
+            };
         default:
             return null;
     }
@@ -372,6 +389,11 @@ export const DEFAULT_PROFILES = [
     {
         id: 'azure-openai',
         name: 'Azure OpenAI',
+        isBuiltIn: true,
+    },
+    {
+        id: 'google-ai',
+        name: 'Google AI (Gemini)',
         isBuiltIn: true,
     }
 ];

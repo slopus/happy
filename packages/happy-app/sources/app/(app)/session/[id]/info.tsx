@@ -7,12 +7,13 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
-import { useSession, useIsDataReady } from '@/sync/storage';
+import { useSession, useIsDataReady, storage } from '@/sync/storage';
 import { generateCopyTitle, getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete, machineForkClaudeSession, machineSpawnNewSession, sessionUpdateSummary } from '@/sync/ops';
+import { sessionKill, sessionDelete, machineForkClaudeSession, machineForkGeminiSession, machineForkCodexSession, machineSpawnNewSession, sessionUpdateSummary, sessionUpdateMetadataFields } from '@/sync/ops';
 import { isWorktreeSession, getWorktreeInfo, pushWorktreeBranch, mergeWorktreeBranch, createWorktreePR, cleanupWorktree } from '@/utils/worktreeOps';
+import { buildReviewPrompt } from '@/utils/reviewPrompt';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -176,10 +177,14 @@ function SessionInfoContent({ session }: { session: Session }) {
     const [forkingSession, setForkingSession] = React.useState(false);
     const handleForkSession = useCallback(async () => {
         if (forkingSession) return;
+        const flavor = session.metadata?.flavor;
         const claudeSessionId = session.metadata?.claudeSessionId;
+        const codexSessionId = session.metadata?.codexSessionId;
         const machineId = session.metadata?.machineId;
         const directory = session.metadata?.path;
-        if (!claudeSessionId || !directory || !machineId) return;
+
+        const hasForkableId = claudeSessionId || flavor === 'gemini' || codexSessionId;
+        if (!hasForkableId || !directory || !machineId) return;
 
         const isOnline = session.active;
         const confirmTitle = isOnline ? t('sessionHistory.copyConfirmTitle') : t('sessionHistory.resumeConfirmTitle');
@@ -197,17 +202,44 @@ function SessionInfoContent({ session }: { session: Session }) {
             if (isOnline) {
                 sessionTitle = generateCopyTitle(originalTitle);
             }
-            const forkResult = await machineForkClaudeSession(machineId, claudeSessionId);
-            if (!forkResult.success || !forkResult.newSessionId) {
-                Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+
+            let resumeSessionId: string | undefined;
+            let agent: 'claude' | 'gemini' | 'codex' = 'claude';
+
+            if (flavor === 'gemini') {
+                const forkResult = await machineForkGeminiSession(machineId, session.id);
+                if (!forkResult.success || !forkResult.newSessionId) {
+                    Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                    return;
+                }
+                resumeSessionId = forkResult.newSessionId;
+                agent = 'gemini';
+            } else if (flavor === 'codex' && codexSessionId) {
+                const forkResult = await machineForkCodexSession(machineId, codexSessionId);
+                if (!forkResult.success || !forkResult.newFilePath) {
+                    Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                    return;
+                }
+                resumeSessionId = forkResult.newFilePath;
+                agent = 'codex';
+            } else if (claudeSessionId) {
+                const forkResult = await machineForkClaudeSession(machineId, claudeSessionId);
+                if (!forkResult.success || !forkResult.newSessionId) {
+                    Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                    return;
+                }
+                resumeSessionId = forkResult.newSessionId;
+                agent = 'claude';
+            } else {
                 return;
             }
+
             const result = await machineSpawnNewSession({
                 machineId,
                 directory,
                 approvedNewDirectoryCreation: false,
-                agent: 'claude',
-                resumeSessionId: forkResult.newSessionId,
+                agent,
+                resumeSessionId,
                 sessionTitle,
                 skipForkSession: true,
             });
@@ -319,6 +351,19 @@ function SessionInfoContent({ session }: { session: Session }) {
             }
             throw new HappyError(result.error || t('sessionInfo.worktree.createPRFailed'), false);
         }
+        // Persist PR URL in session metadata
+        if (result.prUrl && session.metadata) {
+            try {
+                await sessionUpdateMetadataFields(
+                    session.id,
+                    session.metadata,
+                    { worktreePrUrl: result.prUrl },
+                    session.metadataVersion
+                );
+            } catch (e) {
+                console.warn('Failed to save PR URL to metadata:', e);
+            }
+        }
         Modal.alert(t('common.success'), t('sessionInfo.worktree.createPRSuccess', { url: result.prUrl || '' }));
     });
 
@@ -351,6 +396,71 @@ function SessionInfoContent({ session }: { session: Session }) {
             throw new HappyError(result.error || t('sessionInfo.worktree.cleanupFailed'), false);
         }
         Modal.alert(t('common.success'), t('sessionInfo.worktree.cleanupSuccess'));
+    });
+
+    const [requestingReview, handleRequestReview] = useHappyAction(async () => {
+        if (!worktreeMachineId || !worktreeBranch || !worktreePath) return;
+        const prUrl = session.metadata?.worktreePrUrl;
+        if (!prUrl) {
+            throw new HappyError(t('sessionInfo.worktree.reviewNoPR'), false);
+        }
+
+        // Agent selection dialog
+        const agentChoice = await new Promise<'claude' | 'codex' | 'gemini' | null>((resolve) => {
+            Modal.alert(
+                t('sessionInfo.worktree.reviewSelectAgent'),
+                t('sessionInfo.worktree.reviewSelectAgentMessage'),
+                [
+                    { text: 'Claude', onPress: () => resolve('claude') },
+                    { text: 'Codex', onPress: () => resolve('codex') },
+                    { text: 'Gemini', onPress: () => resolve('gemini') },
+                    { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(null) },
+                ]
+            );
+        });
+        if (!agentChoice) return;
+
+        // Spawn review session in same worktree
+        const originalTitle = session.metadata?.summary?.text || getSessionName(session);
+        const result = await machineSpawnNewSession({
+            machineId: worktreeMachineId,
+            directory: worktreePath,
+            approvedNewDirectoryCreation: false,
+            agent: agentChoice,
+            sessionTitle: `Review: ${originalTitle}`,
+            worktreeBasePath,
+            worktreeBranchName: worktreeBranch,
+        });
+        if (result.type === 'error') {
+            throw new HappyError(result.errorMessage || t('sessionInfo.worktree.reviewSpawnFailed'), false);
+        }
+        if (result.type !== 'success') {
+            throw new HappyError(t('sessionInfo.worktree.reviewSpawnFailed'), false);
+        }
+
+        await sync.refreshSessions();
+
+        // Link review session back to the original session
+        const reviewSession = storage.getState().sessions[result.sessionId];
+        if (reviewSession?.metadata) {
+            try {
+                await sessionUpdateMetadataFields(
+                    result.sessionId,
+                    reviewSession.metadata,
+                    { reviewOfSessionId: session.id, worktreePrUrl: prUrl },
+                    reviewSession.metadataVersion
+                );
+            } catch (e) {
+                console.warn('Failed to set reviewOfSessionId on review session:', e);
+            }
+        }
+
+        // Send review prompt as first message
+        const reviewPrompt = buildReviewPrompt(prUrl, worktreeBranch, agentChoice);
+        await sync.sendMessage(result.sessionId, reviewPrompt);
+
+        // Navigate to the review session
+        router.push(`/session/${result.sessionId}`);
     });
 
     return (
@@ -473,7 +583,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
                         />
                     )}
-                    {session.metadata?.claudeSessionId && session.metadata?.machineId && session.metadata?.path && (
+                    {(session.metadata?.claudeSessionId || session.metadata?.flavor === 'gemini' || session.metadata?.codexSessionId) && session.metadata?.machineId && session.metadata?.path && (
                         <Item
                             title={session.active ? t('sessionInfo.copySession') : t('sessionInfo.resumeSession')}
                             subtitle={session.active ? t('sessionInfo.copySessionSubtitle') : t('sessionInfo.resumeSessionSubtitle')}
@@ -519,6 +629,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 showChevron={false}
                             />
                         )}
+                        {session.metadata?.worktreePrUrl && (
+                            <Item
+                                title={t('sessionInfo.worktree.prLink')}
+                                subtitle={session.metadata.worktreePrUrl}
+                                icon={<Ionicons name="git-pull-request-outline" size={29} color="#34C759" />}
+                                showChevron={false}
+                            />
+                        )}
                     </ItemGroup>
                 )}
                 {isWorktree && worktreeMachineId && worktreeBranch && (
@@ -539,6 +657,16 @@ function SessionInfoContent({ session }: { session: Session }) {
                             loading={creatingPR}
                             disabled={creatingPR}
                         />
+                        {session.metadata?.worktreePrUrl && (
+                            <Item
+                                title={t('sessionInfo.worktree.requestReview')}
+                                subtitle={t('sessionInfo.worktree.requestReviewSubtitle')}
+                                icon={<Ionicons name="eye-outline" size={29} color="#5856D6" />}
+                                onPress={handleRequestReview}
+                                loading={requestingReview}
+                                disabled={requestingReview}
+                            />
+                        )}
                         <Item
                             title={t('sessionInfo.worktree.mergeBranch')}
                             subtitle={t('sessionInfo.worktree.mergeBranchSubtitle')}

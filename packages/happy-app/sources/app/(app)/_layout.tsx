@@ -371,6 +371,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="session/history"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('agentHistory.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="settings/connect/claude"
                 options={{
                     headerShown: true,

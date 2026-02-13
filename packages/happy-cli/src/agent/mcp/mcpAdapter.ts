@@ -1,0 +1,114 @@
+/**
+ * MCP Adapter - Single source of truth for MCP server configuration
+ *
+ * Each AI agent requires a different MCP config format:
+ * - Claude: HTTP direct  → { type: 'http', url }
+ * - Codex:  STDIO bridge → { command, args }
+ * - Gemini: STDIO bridge → { command, args }
+ *
+ * This module defines a canonical format and adapts it per-agent,
+ * so adding a new MCP server only requires a change in one place.
+ */
+
+import { join } from 'node:path';
+import { projectPath } from '@/projectPath';
+import { startHappyServer } from '@/claude/utils/startHappyServer';
+import type { ApiSessionClient } from '@/api/apiSession';
+import type { McpServerConfig } from '@/agent/core/AgentBackend';
+
+/** Canonical MCP server definition - the single source of truth */
+interface McpServerDefinition {
+    /** HTTP URL of the running MCP server */
+    url: string;
+    /** Tool names this server provides (without prefix) */
+    toolNames: string[];
+    /** Cleanup function to stop the server */
+    stop: () => void;
+}
+
+/** Claude-specific MCP server config (HTTP direct) */
+interface ClaudeMcpServerConfig {
+    type: 'http';
+    url: string;
+}
+
+/** Result of creating all MCP servers - provides per-agent adapted config */
+export interface McpContext {
+    /** Get MCP config adapted for Claude (HTTP direct) */
+    configForClaude(): Record<string, ClaudeMcpServerConfig>;
+    /** Get MCP config adapted for STDIO-based agents (Codex, Gemini, etc.) */
+    configForStdio(): Record<string, McpServerConfig>;
+    /** Get all allowed tool names prefixed as mcp__<server>__<tool> */
+    allowedToolNames(): string[];
+    /** Stop all MCP servers and release resources */
+    stop(): void;
+}
+
+/** Build the STDIO bridge command path */
+const getBridgeCommand = () => join(projectPath(), 'bin', 'happy-mcp.mjs');
+
+/** Adapt a server for Claude: pass HTTP URL directly */
+function adaptForClaude(def: McpServerDefinition): ClaudeMcpServerConfig {
+    return { type: 'http', url: def.url };
+}
+
+/** Adapt a server for STDIO-based agents: use the HTTP→STDIO bridge */
+function adaptForStdio(def: McpServerDefinition): McpServerConfig {
+    return { command: getBridgeCommand(), args: ['--url', def.url] };
+}
+
+/**
+ * Create the MCP context with all servers started and ready.
+ *
+ * Usage:
+ * ```ts
+ * const mcp = await createMcpContext(session);
+ * // For Claude:
+ * mcpServers: mcp.configForClaude()
+ * // For Codex/Gemini:
+ * mcpServers: mcp.configForStdio()
+ * // Cleanup:
+ * mcp.stop()
+ * ```
+ */
+export async function createMcpContext(session: ApiSessionClient): Promise<McpContext> {
+    const happyServer = await startHappyServer(session);
+
+    const servers: Record<string, McpServerDefinition> = {
+        happy: {
+            url: happyServer.url,
+            toolNames: happyServer.toolNames,
+            stop: () => happyServer.stop(),
+        },
+    };
+
+    return {
+        configForClaude() {
+            const result: Record<string, ClaudeMcpServerConfig> = {};
+            for (const [name, def] of Object.entries(servers)) {
+                result[name] = adaptForClaude(def);
+            }
+            return result;
+        },
+
+        configForStdio() {
+            const result: Record<string, McpServerConfig> = {};
+            for (const [name, def] of Object.entries(servers)) {
+                result[name] = adaptForStdio(def);
+            }
+            return result;
+        },
+
+        allowedToolNames() {
+            return Object.entries(servers).flatMap(
+                ([name, def]) => def.toolNames.map(tool => `mcp__${name}__${tool}`)
+            );
+        },
+
+        stop() {
+            for (const def of Object.values(servers)) {
+                def.stop();
+            }
+        },
+    };
+}
