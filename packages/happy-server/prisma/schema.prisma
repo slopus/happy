@@ -3,7 +3,7 @@
 
 generator client {
     provider        = "prisma-client-js"
-    previewFeatures = ["metrics", "relationJoins"]
+    previewFeatures = ["metrics", "relationJoins", "driverAdapters"]
 }
 
 generator json {
