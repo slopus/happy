@@ -1489,4 +1489,204 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
     });
+
+    describe('Session protocol normalization', () => {
+        const base = {
+            role: 'agent' as const,
+            content: {
+                type: 'session' as const,
+            }
+        };
+
+        it('normalizes text events to agent text content', () => {
+            const normalized = normalizeRawMessage('db-1', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-1',
+                        time: 1700,
+                        role: 'agent',
+                        ev: { t: 'text', text: 'hello session' }
+                    }
+                }
+            });
+
+            expect(normalized).toBeTruthy();
+            expect(normalized?.id).toBe('env-1');
+            expect(normalized?.createdAt).toBe(1700);
+            expect(normalized?.role).toBe('agent');
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content[0]).toMatchObject({
+                    type: 'text',
+                    text: 'hello session',
+                    uuid: 'env-1',
+                    parentUUID: null
+                });
+            }
+        });
+
+        it('normalizes thinking text events', () => {
+            const normalized = normalizeRawMessage('db-2', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-2',
+                        time: 1701,
+                        role: 'agent',
+                        ev: { t: 'text', text: 'thinking...', thinking: true }
+                    }
+                }
+            });
+
+            expect(normalized).toBeTruthy();
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content[0]).toMatchObject({
+                    type: 'thinking',
+                    thinking: 'thinking...',
+                    uuid: 'env-2',
+                    parentUUID: null
+                });
+            }
+        });
+
+        it('normalizes tool-call lifecycle events', () => {
+            const start = normalizeRawMessage('db-3', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-3',
+                        time: 1702,
+                        role: 'agent',
+                        turn: 'turn-1',
+                        ev: {
+                            t: 'tool-call-start',
+                            call: 'call-1',
+                            name: 'CodexBash',
+                            title: 'Run `ls`',
+                            description: 'Run command',
+                            args: { command: 'ls' }
+                        }
+                    }
+                }
+            });
+            expect(start).toBeTruthy();
+            if (start && start.role === 'agent') {
+                expect(start.content[0]).toMatchObject({
+                    type: 'tool-call',
+                    id: 'call-1',
+                    name: 'CodexBash',
+                    input: { command: 'ls' }
+                });
+            }
+
+            const end = normalizeRawMessage('db-4', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-4',
+                        time: 1703,
+                        role: 'agent',
+                        turn: 'turn-1',
+                        ev: {
+                            t: 'tool-call-end',
+                            call: 'call-1'
+                        }
+                    }
+                }
+            });
+            expect(end).toBeTruthy();
+            if (end && end.role === 'agent') {
+                expect(end.content[0]).toMatchObject({
+                    type: 'tool-result',
+                    tool_use_id: 'call-1',
+                    content: null,
+                    is_error: false
+                });
+            }
+        });
+
+        it('maps turn-end to ready event and drops turn-start', () => {
+            const turnStart = normalizeRawMessage('db-5', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-5',
+                        time: 1704,
+                        role: 'agent',
+                        ev: { t: 'turn-start' }
+                    }
+                }
+            });
+            expect(turnStart).toBeNull();
+
+            const turnEnd = normalizeRawMessage('db-6', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-6',
+                        time: 1705,
+                        role: 'agent',
+                        turn: 'env-5',
+                        ev: { t: 'turn-end' }
+                    }
+                }
+            });
+            expect(turnEnd).toMatchObject({
+                id: 'env-6',
+                role: 'event',
+                content: { type: 'ready' }
+            });
+        });
+
+        it('marks invoke-linked messages as sidechain messages', () => {
+            const normalized = normalizeRawMessage('db-7', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-7',
+                        time: 1706,
+                        role: 'agent',
+                        invoke: 'call-parent',
+                        ev: { t: 'text', text: 'subagent output' }
+                    }
+                }
+            });
+
+            expect(normalized).toBeTruthy();
+            expect(normalized?.isSidechain).toBe(true);
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content[0]).toMatchObject({
+                    parentUUID: 'call-parent'
+                });
+            }
+        });
+
+        it('returns null for malformed session payloads', () => {
+            const normalized = normalizeRawMessage('db-8', null, 1, {
+                role: 'agent',
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-8',
+                        time: 1707,
+                        role: 'agent',
+                        ev: {
+                            t: 'tool-call-start',
+                            call: 'call-1',
+                            name: 'Bash'
+                        }
+                    }
+                }
+            } as any);
+
+            expect(normalized).toBeNull();
+        });
+    });
 });

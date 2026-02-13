@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApiSessionClient } from './apiSession';
+import { decodeBase64, decrypt } from './encryption';
 
 // Use vi.hoisted to ensure mock function is available when vi.mock factory runs
 const { mockIo } = vi.hoisted(() => ({
@@ -20,9 +21,11 @@ describe('ApiSessionClient connection handling', () => {
 
         // Mock socket.io client
         mockSocket = {
+            connected: true,
             connect: vi.fn(),
             on: vi.fn(),
             off: vi.fn(),
+            emit: vi.fn(),
             disconnect: vi.fn()
         };
 
@@ -63,6 +66,41 @@ describe('ApiSessionClient connection handling', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('connect', expect.any(Function));
         expect(mockSocket.on).toHaveBeenCalledWith('disconnect', expect.any(Function));
         expect(mockSocket.on).toHaveBeenCalledWith('error', expect.any(Function));
+    });
+
+    it('should send session protocol messages wrapped in session content envelope', () => {
+        const client = new ApiSessionClient('fake-token', mockSession);
+        const envelope = {
+            id: 'env-1',
+            time: 1000,
+            role: 'agent' as const,
+            turn: 'turn-1',
+            ev: { t: 'text' as const, text: 'Hello from session protocol' },
+        };
+
+        client.sendSessionProtocolMessage(envelope);
+
+        expect(mockSocket.emit).toHaveBeenCalledTimes(1);
+        const [eventName, payload] = mockSocket.emit.mock.calls[0];
+        expect(eventName).toBe('message');
+        expect(payload.sid).toBe('test-session-id');
+
+        const decrypted = decrypt(
+            mockSession.encryptionKey,
+            mockSession.encryptionVariant,
+            decodeBase64(payload.message)
+        );
+
+        expect(decrypted).toEqual({
+            role: 'agent',
+            content: {
+                type: 'session',
+                data: envelope
+            },
+            meta: {
+                sentFrom: 'cli'
+            }
+        });
     });
 
     afterEach(() => {

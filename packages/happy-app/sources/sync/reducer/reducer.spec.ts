@@ -2833,4 +2833,80 @@ describe('reducer', () => {
             expect(toolMsgId).toBe(permMsgId); // Same message - properly matched!
         });
     });
+
+    describe('session protocol lifecycle and invoke sidechains', () => {
+        it('sets hasReadyEvent for ready events without creating visible messages', () => {
+            const state = createReducer();
+            const result = reducer(state, [{
+                id: 'ready-1',
+                localId: null,
+                createdAt: 1000,
+                role: 'event',
+                content: { type: 'ready' },
+                isSidechain: false
+            }]);
+
+            expect(result.messages).toHaveLength(0);
+            expect(result.hasReadyEvent).toBe(true);
+        });
+
+        it('hides turn-start lifecycle messages', () => {
+            const state = createReducer();
+            const result = reducer(state, [{
+                id: 'turn-start-1',
+                localId: null,
+                createdAt: 1000,
+                role: 'event',
+                content: { type: 'message', message: 'Turn started' },
+                isSidechain: false
+            }]);
+
+            expect(result.messages).toHaveLength(0);
+        });
+
+        it('nests invoke-linked sidechain messages under parent tool calls', () => {
+            const state = createReducer();
+            const result = reducer(state, [
+                {
+                    id: 'parent-msg',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-parent',
+                        name: 'Task',
+                        input: { prompt: 'Inspect auth flow' },
+                        description: null,
+                        uuid: 'parent-uuid',
+                        parentUUID: null
+                    }]
+                },
+                {
+                    id: 'child-msg',
+                    localId: null,
+                    createdAt: 1100,
+                    role: 'agent',
+                    isSidechain: true,
+                    content: [{
+                        type: 'text',
+                        text: 'Subagent output',
+                        uuid: 'child-uuid',
+                        parentUUID: 'tool-parent'
+                    }]
+                }
+            ]);
+
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0].kind).toBe('tool-call');
+            if (result.messages[0].kind === 'tool-call') {
+                expect(result.messages[0].children).toHaveLength(1);
+                expect(result.messages[0].children[0].kind).toBe('agent-text');
+                if (result.messages[0].children[0].kind === 'agent-text') {
+                    expect(result.messages[0].children[0].text).toBe('Subagent output');
+                }
+            }
+        });
+    });
 });
