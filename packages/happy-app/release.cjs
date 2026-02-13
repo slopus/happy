@@ -8,23 +8,19 @@ const actions = [
   {
     id: "all",
     label: "All",
-    description: "Developer build, App Store build, OTA preview, OTA release",
+    description: "Developer build and App Store build",
     scripts: [
       "release:build:developer",
       "release:build:appstore",
-      "release:ota:preview",
-      "release:ota:release",
     ],
   },
   {
     id: "all-interactive",
     label: "All interactive",
-    description: "All release steps with interactive builds when prompts are needed",
+    description: "All build steps with interactive prompts when needed",
     scripts: [
       "release:build:developer:interactive",
       "release:build:appstore:interactive",
-      "release:ota:preview",
-      "release:ota:release",
     ],
   },
   {
