@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapToClaudeMode } from './permissionMode';
+import { applySandboxPermissionPolicy, extractPermissionModeFromClaudeArgs, mapToClaudeMode, resolveInitialClaudePermissionMode } from './permissionMode';
 import type { PermissionMode } from '@/api/types';
 
 describe('mapToClaudeMode', () => {
@@ -49,5 +49,48 @@ describe('mapToClaudeMode', () => {
                 expect(validClaudeModes).toContain(result);
             });
         });
+    });
+});
+
+describe('extractPermissionModeFromClaudeArgs', () => {
+    it('extracts mode from --permission-mode VALUE', () => {
+        expect(extractPermissionModeFromClaudeArgs(['--permission-mode', 'bypassPermissions'])).toBe('bypassPermissions');
+    });
+
+    it('extracts mode from --permission-mode=VALUE', () => {
+        expect(extractPermissionModeFromClaudeArgs(['--foo', '--permission-mode=plan'])).toBe('plan');
+    });
+
+    it('returns undefined for invalid mode', () => {
+        expect(extractPermissionModeFromClaudeArgs(['--permission-mode', 'invalid'])).toBeUndefined();
+    });
+});
+
+describe('resolveInitialClaudePermissionMode', () => {
+    it('uses --dangerously-skip-permissions as highest priority', () => {
+        expect(resolveInitialClaudePermissionMode('default', ['--permission-mode', 'plan', '--dangerously-skip-permissions'])).toBe('bypassPermissions');
+    });
+
+    it('uses mode from claude args when present', () => {
+        expect(resolveInitialClaudePermissionMode('default', ['--permission-mode', 'acceptEdits'])).toBe('acceptEdits');
+    });
+
+    it('falls back to option mode when claude args have no mode', () => {
+        expect(resolveInitialClaudePermissionMode('bypassPermissions', ['--foo'])).toBe('bypassPermissions');
+    });
+});
+
+describe('applySandboxPermissionPolicy', () => {
+    it('forces bypassPermissions when sandbox is enabled', () => {
+        expect(applySandboxPermissionPolicy('default', true)).toBe('bypassPermissions');
+        expect(applySandboxPermissionPolicy(undefined, true)).toBe('bypassPermissions');
+    });
+
+    it('forces bypassPermissions for plan mode when sandbox is enabled', () => {
+        expect(applySandboxPermissionPolicy('plan', true)).toBe('bypassPermissions');
+    });
+
+    it('returns original mode when sandbox is disabled', () => {
+        expect(applySandboxPermissionPolicy('acceptEdits', false)).toBe('acceptEdits');
     });
 });
