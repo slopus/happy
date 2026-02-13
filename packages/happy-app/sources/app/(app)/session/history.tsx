@@ -605,6 +605,7 @@ export default function AgentHistoryPage() {
                                             source={agentIcons[entry.agent]}
                                             style={{ width: 48, height: 48 }}
                                             contentFit="contain"
+                                            tintColor={entry.agent === 'codex' ? theme.colors.text : undefined}
                                         />
                                     )}
                                     rightElement={!isResuming ? (
