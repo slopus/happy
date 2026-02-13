@@ -566,7 +566,7 @@ export default function AgentHistoryPage() {
                 {/* Session list grouped by date */}
                 {!loading && groupedSessions.map((group) => (
                     <ItemGroup key={`date-${group.key}`} title={group.label}>
-                        {group.entries.map((entry) => {
+                        {group.entries.map((entry, entryIndex) => {
                             const time = formatTime(entry.updatedAt);
                             const displayPath = entry.originalPath
                                 ? formatPathRelativeToHome(entry.originalPath, selectedMachine?.metadata?.homeDir)
@@ -581,7 +581,7 @@ export default function AgentHistoryPage() {
                             const isResuming = resumingSessionId === entry.sessionId;
                             return (
                                 <Item
-                                    key={`${entry.agent}-${entry.sessionId}`}
+                                    key={`${entry.agent}-${entry.sessionId}-${entryIndex}`}
                                     title={title}
                                     subtitle={subtitle}
                                     subtitleLines={2}
