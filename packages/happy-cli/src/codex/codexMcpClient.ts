@@ -10,6 +10,8 @@ import { z } from 'zod';
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { execSync } from 'child_process';
+import type { SandboxConfig } from '@/persistence';
+import { initializeSandbox, wrapForMcpTransport } from '@/sandbox/manager';
 
 const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days, which is the half of the maximum possible timeout (~28 days for int32 value in NodeJS)
 
@@ -55,8 +57,12 @@ export class CodexMcpClient {
     private conversationId: string | null = null;
     private handler: ((event: any) => void) | null = null;
     private permissionHandler: CodexPermissionHandler | null = null;
+    private sandboxConfig?: SandboxConfig;
+    private sandboxCleanup: (() => Promise<void>) | null = null;
+    public sandboxEnabled: boolean = false;
 
-    constructor() {
+    constructor(sandboxConfig?: SandboxConfig) {
+        this.sandboxConfig = sandboxConfig;
         this.client = new Client(
             { name: 'happy-codex-client', version: '1.0.0' },
             { capabilities: { elicitation: {} } }
@@ -104,21 +110,67 @@ export class CodexMcpClient {
 
         logger.debug(`[CodexMCP] Connecting to Codex MCP server using command: codex ${mcpCommand}`);
 
-        this.transport = new StdioClientTransport({
-            command: 'codex',
-            args: [mcpCommand],
-            env: Object.keys(process.env).reduce((acc, key) => {
+        let transportCommand = 'codex';
+        let transportArgs = [mcpCommand];
+        this.sandboxEnabled = false;
+
+        if (this.sandboxConfig?.enabled) {
+            if (process.platform === 'win32') {
+                logger.warn('[CodexMCP] Sandbox is not supported on Windows; continuing without sandbox.');
+            } else {
+                try {
+                    this.sandboxCleanup = await initializeSandbox(this.sandboxConfig, process.cwd());
+                    const wrappedTransport = await wrapForMcpTransport('codex', [mcpCommand]);
+                    transportCommand = wrappedTransport.command;
+                    transportArgs = wrappedTransport.args;
+                    this.sandboxEnabled = true;
+                    logger.info(
+                        `[CodexMCP] Sandbox enabled: workspace=${this.sandboxConfig.workspaceRoot ?? process.cwd()}, network=${this.sandboxConfig.networkMode}`,
+                    );
+                } catch (error) {
+                    logger.warn('[CodexMCP] Failed to initialize sandbox; continuing without sandbox.', error);
+                    this.sandboxCleanup = null;
+                    this.sandboxEnabled = false;
+                }
+            }
+        }
+
+        try {
+            const transportEnv = Object.keys(process.env).reduce((acc, key) => {
                 const value = process.env[key];
                 if (typeof value === 'string') acc[key] = value;
                 return acc;
-            }, {} as Record<string, string>)
-        });
+            }, {} as Record<string, string>);
 
-        // Register request handlers for Codex permission methods
-        this.registerPermissionHandlers();
+            if (this.sandboxEnabled) {
+                // Codex uses this flag to disable proxy auto-discovery that can panic under seatbelt-like sandboxes.
+                transportEnv.CODEX_SANDBOX = 'seatbelt';
+            }
 
-        await this.client.connect(this.transport);
-        this.connected = true;
+            this.transport = new StdioClientTransport({
+                command: transportCommand,
+                args: transportArgs,
+                env: transportEnv,
+            });
+
+            // Register request handlers for Codex permission methods
+            this.registerPermissionHandlers();
+
+            await this.client.connect(this.transport);
+            this.connected = true;
+        } catch (error) {
+            if (this.sandboxCleanup) {
+                try {
+                    await this.sandboxCleanup();
+                } catch (cleanupError) {
+                    logger.warn('[CodexMCP] Failed to reset sandbox after connection error.', cleanupError);
+                } finally {
+                    this.sandboxCleanup = null;
+                }
+            }
+            this.sandboxEnabled = false;
+            throw error;
+        }
 
         logger.debug('[CodexMCP] Connected to Codex');
     }
@@ -359,6 +411,16 @@ export class CodexMcpClient {
 
         this.transport = null;
         this.connected = false;
+        if (this.sandboxCleanup) {
+            try {
+                await this.sandboxCleanup();
+            } catch (error) {
+                logger.warn('[CodexMCP] Failed to reset sandbox during disconnect.', error);
+            } finally {
+                this.sandboxCleanup = null;
+            }
+        }
+        this.sandboxEnabled = false;
         // Preserve session/conversation identifiers for potential reconnection / recovery flows.
         logger.debug(`[CodexMCP] Disconnected; session ${this.sessionId ?? 'none'} preserved`);
     }

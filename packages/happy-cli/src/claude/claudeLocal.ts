@@ -9,6 +9,8 @@ import { claudeFindLastSession } from "./utils/claudeFindLastSession";
 import { getProjectPath } from "./utils/path";
 import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
+import type { SandboxConfig } from "@/persistence";
+import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
 
 /**
  * Error thrown when the Claude process exits with a non-zero exit code.
@@ -27,6 +29,10 @@ export class ExitCodeError extends Error {
 // Get Claude CLI path from project root
 export const claudeCliPath = resolve(join(projectPath(), 'scripts', 'claude_local_launcher.cjs'))
 
+function quoteShellArg(value: string): string {
+    return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 export async function claudeLocal(opts: {
     abort: AbortSignal,
     sessionId: string | null,
@@ -38,7 +44,8 @@ export async function claudeLocal(opts: {
     claudeArgs?: string[],
     allowedTools?: string[],
     /** Path to temporary settings file with SessionStart hook (optional - for session tracking) */
-    hookSettingsPath?: string
+    hookSettingsPath?: string,
+    sandboxConfig?: SandboxConfig,
 }) {
 
     // Ensure project directory exists
@@ -238,96 +245,148 @@ export async function claudeLocal(opts: {
             logger.debug(`[ClaudeLocal] Spawning launcher: ${claudeCliPath}`);
             logger.debug(`[ClaudeLocal] Args: ${JSON.stringify(args)}`);
 
-            const child = spawn('node', [claudeCliPath, ...args], {
-                stdio: ['inherit', 'inherit', 'inherit', 'pipe'],
-                signal: opts.abort,
-                cwd: opts.path,
-                env,
-            });
+            (async () => {
+                let cleanupSandbox: (() => Promise<void>) | null = null;
+                let spawnCommand: string | null = null;
+                let spawnArgs: string[] = [claudeCliPath, ...args];
+                let spawnWithShell = false;
 
-            // Listen to the custom fd (fd 3) for thinking state tracking
-            if (child.stdio[3]) {
-                const rl = createInterface({
-                    input: child.stdio[3] as any,
-                    crlfDelay: Infinity
-                });
+                if (opts.sandboxConfig?.enabled) {
+                    if (process.platform === 'win32') {
+                        logger.warn('[ClaudeLocal] Sandbox is not supported on Windows; continuing without sandbox.');
+                    } else {
+                        try {
+                            cleanupSandbox = await initializeSandbox(opts.sandboxConfig, opts.path);
 
-                // Track active fetches for thinking state
-                const activeFetches = new Map<number, { hostname: string, path: string, startTime: number }>();
+                            if (!spawnArgs.includes('--dangerously-skip-permissions')) {
+                                spawnArgs = [...spawnArgs, '--dangerously-skip-permissions'];
+                            }
 
-                rl.on('line', (line) => {
-                    try {
-                        const message = JSON.parse(line);
+                            const fullCommand = [
+                                'node',
+                                ...spawnArgs.map((arg) => quoteShellArg(arg)),
+                            ].join(' ');
 
-                        switch (message.type) {
-                            case 'fetch-start':
-                                activeFetches.set(message.id, {
-                                    hostname: message.hostname,
-                                    path: message.path,
-                                    startTime: message.timestamp
-                                });
+                            spawnCommand = await wrapCommand(fullCommand);
+                            spawnWithShell = true;
 
-                                // Clear any pending stop timeout
-                                if (stopThinkingTimeout) {
-                                    clearTimeout(stopThinkingTimeout);
-                                    stopThinkingTimeout = null;
-                                }
-
-                                // Start thinking
-                                updateThinking(true);
-                                break;
-
-                            case 'fetch-end':
-                                activeFetches.delete(message.id);
-
-                                // Stop thinking when no active fetches
-                                if (activeFetches.size === 0 && thinking && !stopThinkingTimeout) {
-                                    stopThinkingTimeout = setTimeout(() => {
-                                        if (activeFetches.size === 0) {
-                                            updateThinking(false);
-                                        }
-                                        stopThinkingTimeout = null;
-                                    }, 500); // Small delay to avoid flickering
-                                }
-                                break;
-
-                            default:
-                                logger.debug(`[ClaudeLocal] Unknown message type: ${message.type}`);
+                            logger.info(
+                                `[ClaudeLocal] Sandbox enabled: workspace=${opts.sandboxConfig.workspaceRoot ?? opts.path}, network=${opts.sandboxConfig.networkMode}`,
+                            );
+                        } catch (error) {
+                            logger.warn('[ClaudeLocal] Failed to initialize sandbox; continuing without sandbox.', error);
+                            cleanupSandbox = null;
+                            spawnCommand = null;
+                            spawnWithShell = false;
+                            spawnArgs = [claudeCliPath, ...args];
                         }
-                    } catch (e) {
-                        // Not JSON, ignore (could be other output)
-                        logger.debug(`[ClaudeLocal] Non-JSON line from fd3: ${line}`);
                     }
-                });
-
-                rl.on('error', (err) => {
-                    console.error('Error reading from fd 3:', err);
-                });
-
-                // Cleanup on child exit
-                child.on('exit', () => {
-                    if (stopThinkingTimeout) {
-                        clearTimeout(stopThinkingTimeout);
-                    }
-                    updateThinking(false);
-                });
-            }
-            child.on('error', (error) => {
-                // Ignore
-            });
-            child.on('exit', (code, signal) => {
-                if (signal === 'SIGTERM' && opts.abort.aborted) {
-                    // Normal termination due to abort signal
-                    r();
-                } else if (signal) {
-                    reject(new Error(`Process terminated with signal: ${signal}`));
-                } else if (code !== 0 && code !== null) {
-                    // Non-zero exit code - propagate it
-                    reject(new ExitCodeError(code));
-                } else {
-                    r();
                 }
-            });
+
+                const child = spawn(
+                    spawnWithShell && spawnCommand ? spawnCommand : 'node',
+                    spawnWithShell ? [] : spawnArgs,
+                    {
+                        stdio: ['inherit', 'inherit', 'inherit', 'pipe'],
+                        signal: opts.abort,
+                        cwd: opts.path,
+                        env,
+                        shell: spawnWithShell,
+                    },
+                );
+
+                // Listen to the custom fd (fd 3) for thinking state tracking
+                if (child.stdio[3]) {
+                    const rl = createInterface({
+                        input: child.stdio[3] as any,
+                        crlfDelay: Infinity
+                    });
+
+                    // Track active fetches for thinking state
+                    const activeFetches = new Map<number, { hostname: string, path: string, startTime: number }>();
+
+                    rl.on('line', (line) => {
+                        try {
+                            const message = JSON.parse(line);
+
+                            switch (message.type) {
+                                case 'fetch-start':
+                                    activeFetches.set(message.id, {
+                                        hostname: message.hostname,
+                                        path: message.path,
+                                        startTime: message.timestamp
+                                    });
+
+                                    // Clear any pending stop timeout
+                                    if (stopThinkingTimeout) {
+                                        clearTimeout(stopThinkingTimeout);
+                                        stopThinkingTimeout = null;
+                                    }
+
+                                    // Start thinking
+                                    updateThinking(true);
+                                    break;
+
+                                case 'fetch-end':
+                                    activeFetches.delete(message.id);
+
+                                    // Stop thinking when no active fetches
+                                    if (activeFetches.size === 0 && thinking && !stopThinkingTimeout) {
+                                        stopThinkingTimeout = setTimeout(() => {
+                                            if (activeFetches.size === 0) {
+                                                updateThinking(false);
+                                            }
+                                            stopThinkingTimeout = null;
+                                        }, 500); // Small delay to avoid flickering
+                                    }
+                                    break;
+
+                                default:
+                                    logger.debug(`[ClaudeLocal] Unknown message type: ${message.type}`);
+                            }
+                        } catch (e) {
+                            // Not JSON, ignore (could be other output)
+                            logger.debug(`[ClaudeLocal] Non-JSON line from fd3: ${line}`);
+                        }
+                    });
+
+                    rl.on('error', (err) => {
+                        console.error('Error reading from fd 3:', err);
+                    });
+
+                    // Cleanup on child exit
+                    child.on('exit', () => {
+                        if (stopThinkingTimeout) {
+                            clearTimeout(stopThinkingTimeout);
+                        }
+                        updateThinking(false);
+                    });
+                }
+                child.on('error', (error) => {
+                    // Ignore
+                });
+                child.on('exit', async (code, signal) => {
+                    if (cleanupSandbox) {
+                        try {
+                            await cleanupSandbox();
+                        } catch (error) {
+                            logger.warn('[ClaudeLocal] Failed to reset sandbox after session exit.', error);
+                        }
+                    }
+
+                    if (signal === 'SIGTERM' && opts.abort.aborted) {
+                        // Normal termination due to abort signal
+                        r();
+                    } else if (signal) {
+                        reject(new Error(`Process terminated with signal: ${signal}`));
+                    } else if (code !== 0 && code !== null) {
+                        // Non-zero exit code - propagate it
+                        reject(new ExitCodeError(code));
+                    } else {
+                        r();
+                    }
+                });
+            })().catch(reject);
         });
     } finally {
         process.stdin.resume();

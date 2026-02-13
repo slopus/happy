@@ -56,10 +56,26 @@ const EnvironmentVariableSchema = z.object({
 
 // Profile compatibility schema (matching GUI exactly)
 const ProfileCompatibilitySchema = z.object({
-    claude: z.boolean().default(true),
-    codex: z.boolean().default(true),
-    gemini: z.boolean().default(true),
+  claude: z.boolean().default(true),
+  codex: z.boolean().default(true),
+  gemini: z.boolean().default(true),
 });
+
+export const SandboxConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  workspaceRoot: z.string().optional(),
+  sessionIsolation: z.enum(['strict', 'workspace', 'custom']).default('workspace'),
+  customWritePaths: z.array(z.string()).default([]),
+  denyReadPaths: z.array(z.string()).default(['~/.ssh', '~/.aws', '~/.gnupg']),
+  extraWritePaths: z.array(z.string()).default(['/tmp']),
+  denyWritePaths: z.array(z.string()).default(['.env']),
+  networkMode: z.enum(['blocked', 'allowed', 'custom']).default('allowed'),
+  allowedDomains: z.array(z.string()).default([]),
+  deniedDomains: z.array(z.string()).default([]),
+  allowLocalBinding: z.boolean().default(true),
+});
+
+export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
 
 // AIBackendProfile schema - EXACT MATCH with GUI schema
 export const AIBackendProfileSchema = z.object({
@@ -207,6 +223,7 @@ interface Settings {
   // Profile management settings (synced with happy app)
   activeProfileId?: string
   profiles: AIBackendProfile[]
+  sandboxConfig?: SandboxConfig
   // CLI-local environment variable cache (not synced)
   localEnvironmentVariables: Record<string, Record<string, string>> // profileId -> env vars
 }
@@ -215,6 +232,7 @@ const defaultSettings: Settings = {
   schemaVersion: SUPPORTED_SCHEMA_VERSION,
   onboardingCompleted: false,
   profiles: [],
+  sandboxConfig: undefined,
   localEnvironmentVariables: {}
 }
 
@@ -298,6 +316,15 @@ export async function readSettings(): Promise<Settings> {
         }
       }
       migrated.profiles = validProfiles;
+    }
+
+    if (migrated.sandboxConfig !== undefined) {
+      try {
+        migrated.sandboxConfig = SandboxConfigSchema.parse(migrated.sandboxConfig);
+      } catch (error: any) {
+        logger.warn(`⚠️ Invalid sandbox config - skipping. Error: ${error.message}`);
+        migrated.sandboxConfig = undefined;
+      }
     }
 
     // Merge with defaults to ensure all required fields exist
@@ -704,4 +731,3 @@ export async function getEnvironmentVariable(profileId: string, key: string): Pr
 
   return undefined;
 }
-

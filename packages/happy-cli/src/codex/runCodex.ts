@@ -31,6 +31,7 @@ import { stopCaffeinate } from "@/utils/caffeinate";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
+import { resolveCodexExecutionPolicy } from './executionPolicy';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -66,6 +67,7 @@ export function emitReadyIfIdle({ pending, queueSize, shouldExit, sendReady, not
 export async function runCodex(opts: {
     credentials: Credentials;
     startedBy?: 'daemon' | 'terminal';
+    noSandbox?: boolean;
 }): Promise<void> {
     // Use shared PermissionMode type for cross-agent compatibility
     type PermissionMode = import('@/api/types').PermissionMode;
@@ -94,6 +96,7 @@ export async function runCodex(opts: {
 
     const settings = await readSettings();
     let machineId = settings?.machineId;
+    const sandboxConfig = opts.noSandbox ? undefined : settings?.sandboxConfig;
     if (!machineId) {
         console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);
         process.exit(1);
@@ -352,7 +355,7 @@ export async function runCodex(opts: {
     // Start Context 
     //
 
-    const client = new CodexMcpClient();
+    const client = new CodexMcpClient(sandboxConfig);
 
     // Helper: find Codex session transcript for a given sessionId
     function findCodexResumeFile(sessionId: string | null): string | null {
@@ -632,40 +635,17 @@ export async function runCodex(opts: {
 
             try {
                 // Map permission mode to approval policy and sandbox for startSession
-                const approvalPolicy = (() => {
-                    switch (message.mode.permissionMode) {
-                        // Codex native modes
-                        case 'default': return 'untrusted' as const;                    // Ask for non-trusted commands
-                        case 'read-only': return 'never' as const;                      // Never ask, read-only enforced by sandbox
-                        case 'safe-yolo': return 'on-failure' as const;                 // Auto-run, ask only on failure
-                        case 'yolo': return 'on-failure' as const;                      // Auto-run, ask only on failure
-                        // Defensive fallback for Claude-specific modes (backward compatibility)
-                        case 'bypassPermissions': return 'on-failure' as const;         // Full access: map to yolo behavior
-                        case 'acceptEdits': return 'on-request' as const;               // Let model decide (closest to auto-approve edits)
-                        case 'plan': return 'untrusted' as const;                       // Conservative: ask for non-trusted
-                        default: return 'untrusted' as const;                           // Safe fallback
-                    }
-                })();
-                const sandbox = (() => {
-                    switch (message.mode.permissionMode) {
-                        // Codex native modes
-                        case 'default': return 'workspace-write' as const;              // Can write in workspace
-                        case 'read-only': return 'read-only' as const;                  // Read-only filesystem
-                        case 'safe-yolo': return 'workspace-write' as const;            // Can write in workspace
-                        case 'yolo': return 'danger-full-access' as const;              // Full system access
-                        // Defensive fallback for Claude-specific modes
-                        case 'bypassPermissions': return 'danger-full-access' as const; // Full access: map to yolo
-                        case 'acceptEdits': return 'workspace-write' as const;          // Can edit files in workspace
-                        case 'plan': return 'workspace-write' as const;                 // Can write for planning
-                        default: return 'workspace-write' as const;                     // Safe default
-                    }
-                })();
+                const sandboxManagedByHappy = client.sandboxEnabled;
+                const executionPolicy = resolveCodexExecutionPolicy(
+                    message.mode.permissionMode,
+                    sandboxManagedByHappy,
+                );
 
                 if (!wasCreated) {
                     const startConfig: CodexSessionConfig = {
                         prompt: first ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION : message.message,
-                        sandbox,
-                        'approval-policy': approvalPolicy,
+                        sandbox: executionPolicy.sandbox,
+                        'approval-policy': executionPolicy.approvalPolicy,
                         config: { mcp_servers: mcpServers }
                     };
                     if (message.mode.model) {
