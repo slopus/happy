@@ -410,9 +410,9 @@ export const en: TranslationStructure = {
             default: 'Default',
             acceptEdits: 'Accept Edits',
             plan: 'Plan Mode',
-            bypassPermissions: 'Yolo Mode',
+            bypassPermissions: 'Yolo',
             badgeAcceptAllEdits: 'Accept All Edits',
-            badgeBypassAllPermissions: 'Bypass All Permissions',
+            badgeBypassAllPermissions: 'Yolo',
             badgePlanMode: 'Plan Mode',
         },
         agent: {

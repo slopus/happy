@@ -305,6 +305,29 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
     const isCodex = props.metadata?.flavor === 'codex' || props.agentType === 'codex';
     const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
+    const isSandboxEnabled = React.useMemo(() => {
+        const sandbox = props.metadata?.sandbox as unknown;
+        if (!sandbox) {
+            return false;
+        }
+        if (typeof sandbox === 'object' && sandbox !== null && 'enabled' in sandbox) {
+            return Boolean((sandbox as { enabled?: unknown }).enabled);
+        }
+        return true;
+    }, [props.metadata?.sandbox]);
+    const isSandboxedYoloMode = isSandboxEnabled && (
+        props.permissionMode === 'bypassPermissions' || props.permissionMode === 'yolo'
+    );
+
+    const withSandboxSuffix = React.useCallback((label: string, mode: PermissionMode | undefined) => {
+        if (!isSandboxEnabled) {
+            return label;
+        }
+        if (mode === 'bypassPermissions' || mode === 'yolo') {
+            return `${label} (sandboxed)`;
+        }
+        return label;
+    }, [isSandboxEnabled]);
 
     // Profile data
     const profiles = useSetting('profiles');
@@ -586,7 +609,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             default: { label: t('agentInput.permissionMode.default') },
                                             acceptEdits: { label: t('agentInput.permissionMode.acceptEdits') },
                                             plan: { label: t('agentInput.permissionMode.plan') },
-                                            bypassPermissions: { label: t('agentInput.permissionMode.bypassPermissions') },
+                                            bypassPermissions: { label: withSandboxSuffix(t('agentInput.permissionMode.bypassPermissions'), 'bypassPermissions') },
                                         };
                                         const config = modeConfig[mode as keyof typeof modeConfig];
                                         if (!config) return null;
@@ -628,7 +651,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     color: isSelected ? theme.colors.radio.active : theme.colors.text,
                                                     ...Typography.default()
                                                 }}>
-                                                    {config.label}
+                                                    {withSandboxSuffix(config.label, mode as PermissionMode)}
                                                 </Text>
                                             </Pressable>
                                         );
@@ -850,16 +873,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             {props.permissionMode && (
                                 <Text style={{
                                     fontSize: 11,
-                                    color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
-                                        props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
-                                            props.permissionMode === 'plan' ? theme.colors.permission.plan :
-                                                props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
-                                                    props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
-                                                        props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
-                                                            theme.colors.textSecondary, // Use secondary text color for default
+                                    color: isSandboxedYoloMode ? '#4169E1' :
+                                        props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
+                                            props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
+                                                props.permissionMode === 'plan' ? theme.colors.permission.plan :
+                                                    props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
+                                                        props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
+                                                            props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
+                                                                theme.colors.textSecondary, // Use secondary text color for default
                                     ...Typography.default()
                                 }}>
-                                    {isCodex ? (
+                                    {withSandboxSuffix(isCodex ? (
                                         props.permissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
                                             props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
                                                 props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
@@ -874,7 +898,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
                                                 props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
                                                     props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
-                                    )}
+                                    ), props.permissionMode)}
                                 </Text>
                             )}
                         </View>
