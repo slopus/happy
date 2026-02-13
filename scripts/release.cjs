@@ -34,10 +34,13 @@ function getReleaseTargets() {
       continue;
     }
 
+    const releaseScript = workspacePackageJson.scripts.release;
     targets.push({
       id: path.basename(workspacePath),
       workspaceName: workspacePackageJson.name,
       workspacePath,
+      releaseScript,
+      requiresReleaseIt: /\brelease-it\b/.test(releaseScript),
     });
   }
 
@@ -59,6 +62,10 @@ function getReleaseItPath(baseDir) {
 }
 
 function ensureReleaseToolingInstalled(target) {
+  if (!target.requiresReleaseIt) {
+    return;
+  }
+
   const rootReleaseIt = getReleaseItPath(repoRoot);
   const workspaceReleaseIt = getReleaseItPath(path.join(repoRoot, target.workspacePath));
 
@@ -73,7 +80,7 @@ function ensureReleaseToolingInstalled(target) {
   process.exit(1);
 }
 
-function runRelease(target) {
+function runRelease(target, releaseArgs = []) {
   ensureReleaseToolingInstalled(target);
 
   console.log(
@@ -92,18 +99,19 @@ function runRelease(target) {
     .filter(Boolean)
     .join(path.delimiter);
 
-  const result = spawnSync(
-    "yarn",
-    ["workspace", target.workspaceName, "run", "release"],
-    {
-      cwd: repoRoot,
-      stdio: "inherit",
-      env: {
-        ...process.env,
-        PATH: releasePath,
-      },
-    }
-  );
+  const commandArgs = ["workspace", target.workspaceName, "run", "release"];
+  if (releaseArgs.length > 0) {
+    commandArgs.push(...releaseArgs);
+  }
+
+  const result = spawnSync("yarn", commandArgs, {
+    cwd: repoRoot,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      PATH: releasePath,
+    },
+  });
 
   if (result.error) {
     throw result.error;
@@ -119,7 +127,7 @@ async function promptForTarget(targets) {
     for (const target of targets) {
       console.error(`- ${target.id} (workspace: ${target.workspaceName})`);
     }
-    console.error("Run `yarn release -- <target>` in non-interactive mode.");
+    console.error("Run `yarn release -- <target> [args...]` in non-interactive mode.");
     process.exit(1);
   }
 
@@ -133,7 +141,7 @@ async function promptForTarget(targets) {
   }
 
   const targetId = await select({
-    message: "Select library to release:",
+    message: "Select workspace to release:",
     pageSize: 10,
     choices: targets.map((target) => ({
       name: `${target.id} (${target.workspaceName})`,
@@ -159,6 +167,7 @@ async function main() {
   }
 
   const input = process.argv[2];
+  const releaseArgs = process.argv.slice(3);
   if (input) {
     const target = findTarget(targets, input);
     if (!target) {
@@ -171,7 +180,7 @@ async function main() {
       }
       process.exit(1);
     }
-    runRelease(target);
+    runRelease(target, releaseArgs);
     return;
   }
 
