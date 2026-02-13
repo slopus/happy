@@ -1,12 +1,10 @@
 import { GitHubProfile as GitHubProfileType, GitHubOrg as GitHubOrgType } from "../app/api/types";
 import { ImageRef as ImageRefType } from "./files";
+import type { SessionMessageContent as WireSessionMessageContent } from "@slopus/happy-wire";
 declare global {
     namespace PrismaJson {
         // Session message content types
-        type SessionMessageContent = {
-            t: 'encrypted';
-            c: string; // Base64 encoded encrypted content
-        };
+        type SessionMessageContent = WireSessionMessageContent;
 
         // Usage report data structure
         type UsageReportData = {

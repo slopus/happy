@@ -1,34 +1,26 @@
 import { z } from 'zod';
+import {
+    ApiMessageSchema,
+    ApiUpdateMachineStateSchema,
+    ApiUpdateNewMessageSchema,
+    ApiUpdateSessionStateSchema,
+    type ApiMessage,
+} from '@slopus/happy-wire';
 import { GitHubProfileSchema, ImageRefSchema } from './profile';
 import { RelationshipStatusSchema, UserProfileSchema } from './friendTypes';
 import { FeedBodySchema } from './feedTypes';
 
-//
-// Encrypted message
-//
-
-export const ApiMessageSchema = z.object({
-    id: z.string(),
-    seq: z.number(),
-    localId: z.string().nullish(),
-    content: z.object({
-        t: z.literal('encrypted'),
-        c: z.string(), // Base64 encoded encrypted content
-    }),
-    createdAt: z.number(),
-});
-
-export type ApiMessage = z.infer<typeof ApiMessageSchema>;
+export {
+    ApiMessageSchema,
+    ApiUpdateMachineStateSchema,
+    ApiUpdateNewMessageSchema,
+    ApiUpdateSessionStateSchema,
+};
+export type { ApiMessage };
 
 //
 // Updates
 //
-
-export const ApiUpdateNewMessageSchema = z.object({
-    t: z.literal('new-message'),
-    sid: z.string(), // Session ID
-    message: ApiMessageSchema
-});
 
 export const ApiUpdateNewSessionSchema = z.object({
     t: z.literal('new-session'),
@@ -42,19 +34,6 @@ export const ApiDeleteSessionSchema = z.object({
     sid: z.string(), // Session ID
 });
 
-export const ApiUpdateSessionStateSchema = z.object({
-    t: z.literal('update-session'),
-    id: z.string(),
-    agentState: z.object({
-        version: z.number(),
-        value: z.string()
-    }).nullish(),
-    metadata: z.object({
-        version: z.number(),
-        value: z.string()
-    }).nullish(),
-});
-
 export const ApiUpdateAccountSchema = z.object({
     t: z.literal('update-account'),
     id: z.string(),
@@ -66,21 +45,6 @@ export const ApiUpdateAccountSchema = z.object({
     lastName: z.string().nullish(),
     avatar: ImageRefSchema.nullish(),
     github: GitHubProfileSchema.nullish(),
-});
-
-export const ApiUpdateMachineStateSchema = z.object({
-    t: z.literal('update-machine'),
-    machineId: z.string(),  // Changed from 'id' to 'machineId' for clarity
-    metadata: z.object({
-        version: z.number(),
-        value: z.string() // Encrypted, client decrypts
-    }).nullish(),
-    daemonState: z.object({
-        version: z.number(),
-        value: z.string() // Encrypted, client decrypts
-    }).nullish(),
-    active: z.boolean().optional(),
-    activeAt: z.number().optional()
 });
 
 // Artifact update schemas
@@ -147,7 +111,9 @@ export const ApiKvBatchUpdateSchema = z.object({
     }))
 });
 
-export const ApiUpdateSchema = z.discriminatedUnion('t', [
+// Use a plain union here to avoid runtime discriminator extraction issues
+// when some schemas come from shared package exports.
+export const ApiUpdateSchema = z.union([
     ApiUpdateNewMessageSchema,
     ApiUpdateNewSessionSchema,
     ApiDeleteSessionSchema,

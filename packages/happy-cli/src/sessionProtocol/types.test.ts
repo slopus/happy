@@ -22,8 +22,14 @@ describe('session protocol schemas', () => {
                 args: { command: 'ls -la' },
             },
             { t: 'tool-call-end', call: 'call-1' },
-            { t: 'file', ref: 'upload-1', name: 'report.txt' },
-            { t: 'photo', ref: 'upload-2', thumbhash: 'abc', width: 100, height: 80 },
+            { t: 'file', ref: 'upload-1', name: 'report.txt', size: 1024 },
+            {
+                t: 'file',
+                ref: 'upload-2',
+                name: 'image.png',
+                size: 2048,
+                image: { thumbhash: 'abc', width: 100, height: 80 },
+            },
             { t: 'turn-start' },
             { t: 'start', title: 'Research agent' },
             { t: 'turn-end', status: 'completed' },
@@ -37,7 +43,8 @@ describe('session protocol schemas', () => {
 
     it('rejects malformed events', () => {
         expect(sessionEventSchema.safeParse({ t: 'tool-call-start', call: '1' }).success).toBe(false);
-        expect(sessionEventSchema.safeParse({ t: 'photo', ref: 'x', width: 10, height: 10 }).success).toBe(false);
+        expect(sessionEventSchema.safeParse({ t: 'file', ref: 'x', name: 'x' }).success).toBe(false);
+        expect(sessionEventSchema.safeParse({ t: 'file', ref: 'x', name: 'x', size: 1, image: { width: 10, height: 10 } }).success).toBe(false);
         expect(sessionEventSchema.safeParse({ t: 'turn-end' }).success).toBe(false);
         expect(sessionEventSchema.safeParse({ t: 'turn-end', status: 'canceled' }).success).toBe(false);
         expect(sessionEventSchema.safeParse({ t: 'start', title: 1 }).success).toBe(false);
@@ -49,7 +56,7 @@ describe('session protocol schemas', () => {
         const subagent = createId();
         const envelope = {
             id: 'msg-1',
-            time: 123,
+            time: 1234,
             role: 'agent' as const,
             turn: 'turn-1',
             subagent,
@@ -60,10 +67,19 @@ describe('session protocol schemas', () => {
         expect(parsed.success).toBe(true);
     });
 
+    it('rejects session role envelopes for text events', () => {
+        const parsed = sessionEnvelopeSchema.safeParse({
+            id: 'msg-session-1',
+            role: 'session',
+            ev: { t: 'text', text: 'shadow copy of user message' },
+        });
+
+        expect(parsed.success).toBe(false);
+    });
+
     it('rejects service from non-agent role', () => {
         const parsed = sessionEnvelopeSchema.safeParse({
             id: 'msg-2',
-            time: 124,
             role: 'user',
             ev: { t: 'service', text: 'internal event' },
         });
@@ -75,7 +91,6 @@ describe('session protocol schemas', () => {
         const subagent = createId();
         const parsed = sessionEnvelopeSchema.safeParse({
             id: 'msg-3',
-            time: 125,
             role: 'user',
             subagent,
             ev: { t: 'start', title: 'Research agent' },
@@ -87,7 +102,6 @@ describe('session protocol schemas', () => {
     it('rejects non-cuid subagent values', () => {
         const parsed = sessionEnvelopeSchema.safeParse({
             id: 'msg-4',
-            time: 126,
             role: 'agent',
             turn: 'turn-1',
             subagent: 'provider-tool-id',
@@ -99,11 +113,11 @@ describe('session protocol schemas', () => {
 });
 
 describe('createEnvelope', () => {
-    it('creates id/time by default', () => {
+    it('creates id by default', () => {
         const envelope = createEnvelope('agent', { t: 'turn-start' });
         expect(typeof envelope.id).toBe('string');
-        expect(envelope.id.length).toBeGreaterThan(0);
         expect(typeof envelope.time).toBe('number');
+        expect(envelope.id.length).toBeGreaterThan(0);
         expect(envelope.role).toBe('agent');
         expect(envelope.ev.t).toBe('turn-start');
     });
@@ -115,7 +129,7 @@ describe('createEnvelope', () => {
             { t: 'tool-call-end', call: 'call-1' },
             {
                 id: 'fixed-id',
-                time: 999,
+                time: 12345,
                 turn: 'turn-1',
                 subagent,
             }
@@ -123,7 +137,7 @@ describe('createEnvelope', () => {
 
         expect(envelope).toEqual({
             id: 'fixed-id',
-            time: 999,
+            time: 12345,
             role: 'agent',
             turn: 'turn-1',
             subagent,

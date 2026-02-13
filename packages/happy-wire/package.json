@@ -1,16 +1,13 @@
 {
-  "name": "@slopus/agent",
+  "name": "@slopus/happy-wire",
   "version": "0.1.0",
-  "description": "CLI client for controlling Happy Coder agents remotely",
+  "description": "Shared message wire types and Zod schemas for Happy clients and services",
   "author": "Kirill Dubovitskiy",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/slopus/happy/tree/main/packages/happy-agent",
+  "homepage": "https://github.com/slopus/happy/tree/main/packages/happy-wire",
   "bugs": "https://github.com/slopus/happy/issues",
   "repository": "slopus/happy",
-  "bin": {
-    "happy-agent": "./bin/happy-agent.mjs"
-  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
@@ -28,33 +25,25 @@
   },
   "files": [
     "dist",
-    "bin",
-    "package.json"
+    "package.json",
+    "README.md"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
     "test": "$npm_execpath run build && vitest run",
-    "dev": "tsx src/index.ts",
-    "prepublishOnly": "$npm_execpath run build && $npm_execpath test",
+    "prepublishOnly": "$npm_execpath run build && $npm_execpath run test",
     "release": "npx --no-install release-it"
   },
   "dependencies": {
-    "@slopus/happy-wire": "^0.1.0",
-    "axios": "^1.13.2",
-    "chalk": "^5.6.2",
-    "commander": "^13.1.0",
-    "qrcode-terminal": "^0.12.0",
-    "socket.io-client": "^4.8.1",
-    "tweetnacl": "^1.0.3"
+    "@paralleldrive/cuid2": "^2.2.2",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/node": ">=20",
-    "@types/qrcode-terminal": "^0.12.2",
     "pkgroll": "^2.14.2",
     "release-it": "^19.0.6",
     "shx": "^0.3.3",
-    "tsx": "^4.20.6",
     "typescript": "5.9.3",
     "vitest": "^3.2.4"
   },

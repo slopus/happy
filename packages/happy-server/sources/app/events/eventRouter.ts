@@ -3,6 +3,7 @@ import { log } from "@/utils/log";
 import { GitHubProfile } from "@/app/api/types";
 import { AccountProfile } from "@/types";
 import { getPublicUrl } from "@/storage/files";
+import type { SessionMessageContent } from "@slopus/happy-wire";
 
 // === CONNECTION TYPES ===
 
@@ -44,7 +45,7 @@ export type UpdateEvent = {
     message: {
         id: string;
         seq: number;
-        content: any;
+        content: SessionMessageContent;
         localId: string | null;
         createdAt: number;
         updatedAt: number;
@@ -369,7 +370,7 @@ export function buildNewSessionUpdate(session: {
 export function buildNewMessageUpdate(message: {
     id: string;
     seq: number;
-    content: any;
+    content: SessionMessageContent;
     localId: string | null;
     createdAt: Date;
     updatedAt: Date;

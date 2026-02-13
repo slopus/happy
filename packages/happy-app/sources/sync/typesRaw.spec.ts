@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect } from 'vitest';
 import { createId } from '@paralleldrive/cuid2';
 import { normalizeRawMessage } from './typesRaw';
 
@@ -1492,6 +1492,29 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
     });
 
     describe('Session protocol normalization', () => {
+        let originalEnableSessionProtocolSend: string | undefined;
+        let originalExpoEnableSessionProtocolSend: string | undefined;
+
+        beforeEach(() => {
+            originalEnableSessionProtocolSend = process.env.ENABLE_SESSION_PROTOCOL_SEND;
+            originalExpoEnableSessionProtocolSend = process.env.EXPO_PUBLIC_ENABLE_SESSION_PROTOCOL_SEND;
+            delete process.env.ENABLE_SESSION_PROTOCOL_SEND;
+            delete process.env.EXPO_PUBLIC_ENABLE_SESSION_PROTOCOL_SEND;
+        });
+
+        afterEach(() => {
+            if (originalEnableSessionProtocolSend === undefined) {
+                delete process.env.ENABLE_SESSION_PROTOCOL_SEND;
+            } else {
+                process.env.ENABLE_SESSION_PROTOCOL_SEND = originalEnableSessionProtocolSend;
+            }
+            if (originalExpoEnableSessionProtocolSend === undefined) {
+                delete process.env.EXPO_PUBLIC_ENABLE_SESSION_PROTOCOL_SEND;
+            } else {
+                process.env.EXPO_PUBLIC_ENABLE_SESSION_PROTOCOL_SEND = originalExpoEnableSessionProtocolSend;
+            }
+        });
+
         const base = {
             role: 'agent' as const,
             content: {
@@ -1506,7 +1529,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-1',
-                        time: 1700,
+                        time: 1,
                         role: 'agent',
                         turn: 'turn-1',
                         ev: { t: 'text', text: 'hello session' }
@@ -1516,13 +1539,39 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
 
             expect(normalized).toBeTruthy();
             expect(normalized?.id).toBe('env-1');
-            expect(normalized?.createdAt).toBe(1700);
+            expect(normalized?.createdAt).toBe(1);
             expect(normalized?.role).toBe('agent');
             if (normalized && normalized.role === 'agent') {
                 expect(normalized.content[0]).toMatchObject({
                     type: 'text',
                     text: 'hello session',
                     uuid: 'env-1',
+                    parentUUID: null
+                });
+            }
+        });
+
+        it('normalizes new direct session-role envelope shape', () => {
+            const normalized = normalizeRawMessage('db-1-direct', null, 1, {
+                role: 'session',
+                content: {
+                    id: 'env-1-direct',
+                    time: 1,
+                    role: 'agent',
+                    turn: 'turn-1',
+                    ev: { t: 'text', text: 'hello direct session envelope' }
+                }
+            } as any);
+
+            expect(normalized).toBeTruthy();
+            expect(normalized?.id).toBe('env-1-direct');
+            expect(normalized?.createdAt).toBe(1);
+            expect(normalized?.role).toBe('agent');
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content[0]).toMatchObject({
+                    type: 'text',
+                    text: 'hello direct session envelope',
+                    uuid: 'env-1-direct',
                     parentUUID: null
                 });
             }
@@ -1535,7 +1584,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-2',
-                        time: 1701,
+                        time: 1,
                         role: 'agent',
                         turn: 'turn-1',
                         ev: { t: 'text', text: 'thinking...', thinking: true }
@@ -1554,6 +1603,57 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
+        it('drops modern user session envelopes when send flag is disabled', () => {
+            const normalized = normalizeRawMessage('db-modern-user-flag-off-1', null, 1, {
+                role: 'session',
+                content: {
+                    id: 'env-modern-user-flag-off-1',
+                    time: 1,
+                    role: 'user',
+                    ev: { t: 'text', text: 'modern user envelope' }
+                }
+            } as any);
+
+            expect(normalized).toBeNull();
+        });
+
+        it('uses modern user session envelopes for user content when send flag is enabled', () => {
+            process.env.ENABLE_SESSION_PROTOCOL_SEND = 'true';
+
+            const normalized = normalizeRawMessage('db-modern-user-flag-on', null, 1, {
+                role: 'session',
+                content: {
+                    id: 'env-modern-user-flag-on',
+                    time: 1,
+                    role: 'user',
+                    ev: { t: 'text', text: 'new user protocol' }
+                }
+            } as any);
+
+            expect(normalized).toBeTruthy();
+            expect(normalized?.role).toBe('user');
+            if (normalized && normalized.role === 'user') {
+                expect(normalized.content).toEqual({
+                    type: 'text',
+                    text: 'new user protocol'
+                });
+            }
+        });
+
+        it('drops legacy user text envelopes when send flag is enabled', () => {
+            process.env.ENABLE_SESSION_PROTOCOL_SEND = 'true';
+
+            const normalized = normalizeRawMessage('db-user-legacy-flag-on', null, 1, {
+                role: 'user',
+                content: {
+                    type: 'text',
+                    text: 'legacy user protocol'
+                }
+            } as any);
+
+            expect(normalized).toBeNull();
+        });
+
         it('normalizes service events to visible agent text', () => {
             const normalized = normalizeRawMessage('db-service-1', null, 1, {
                 ...base,
@@ -1561,7 +1661,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-service-1',
-                        time: 17015,
+                        time: 1,
                         role: 'agent',
                         turn: 'turn-service-1',
                         ev: { t: 'service', text: '**Service:** Connection restored' }
@@ -1588,7 +1688,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-3',
-                        time: 1702,
+                        time: 1,
                         role: 'agent',
                         turn: 'turn-1',
                         ev: {
@@ -1618,7 +1718,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-4',
-                        time: 1703,
+                        time: 1,
                         role: 'agent',
                         turn: 'turn-1',
                         ev: {
@@ -1646,7 +1746,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-5',
-                        time: 1704,
+                        time: 1,
                         role: 'agent',
                         turn: 'turn-5',
                         ev: { t: 'turn-start' }
@@ -1661,7 +1761,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-6',
-                        time: 1705,
+                        time: 1,
                         role: 'agent',
                         turn: 'turn-5',
                         ev: { t: 'turn-end', status: 'completed' }
@@ -1675,6 +1775,106 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             });
         });
 
+        it('normalizes file events with required size and optional image metadata', () => {
+            const fileOnly = normalizeRawMessage('db-file-1', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-file-1',
+                        time: 1,
+                        role: 'agent',
+                        turn: 'turn-file-1',
+                        ev: {
+                            t: 'file',
+                            ref: 'upload-file-1',
+                            name: 'report.pdf',
+                            size: 1234
+                        }
+                    }
+                }
+            });
+
+            expect(fileOnly).toBeTruthy();
+            if (fileOnly && fileOnly.role === 'agent') {
+                expect(fileOnly.content[0]).toMatchObject({
+                    type: 'tool-call',
+                    name: 'file',
+                    input: {
+                        ref: 'upload-file-1',
+                        name: 'report.pdf',
+                        size: 1234
+                    },
+                    description: 'Attached file: report.pdf'
+                });
+            }
+
+            const imageFile = normalizeRawMessage('db-file-2', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-file-2',
+                        time: 1,
+                        role: 'agent',
+                        turn: 'turn-file-2',
+                        ev: {
+                            t: 'file',
+                            ref: 'upload-file-2',
+                            name: 'photo.png',
+                            size: 4567,
+                            image: {
+                                width: 800,
+                                height: 600,
+                                thumbhash: 'abc'
+                            }
+                        }
+                    }
+                }
+            });
+
+            expect(imageFile).toBeTruthy();
+            if (imageFile && imageFile.role === 'agent') {
+                expect(imageFile.content[0]).toMatchObject({
+                    type: 'tool-call',
+                    name: 'file',
+                    input: {
+                        ref: 'upload-file-2',
+                        name: 'photo.png',
+                        size: 4567,
+                        image: {
+                            width: 800,
+                            height: 600,
+                            thumbhash: 'abc'
+                        }
+                    },
+                    description: 'Attached image: photo.png (800x600)'
+                });
+            }
+        });
+
+        it('rejects file events without required size', () => {
+            const normalized = normalizeRawMessage('db-file-missing-size', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-file-missing-size',
+                        time: 1,
+                        role: 'agent',
+                        turn: 'turn-file-3',
+                        ev: {
+                            t: 'file',
+                            ref: 'upload-file-3',
+                            name: 'broken.bin'
+                        }
+                    }
+                }
+            } as any);
+
+            expect(normalized).toBeNull();
+        });
+
         it('marks subagent-linked messages as sidechain messages', () => {
             const subagent = createId();
             const normalized = normalizeRawMessage('db-7', null, 1, {
@@ -1683,7 +1883,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-7',
-                        time: 1706,
+                        time: 1,
                         role: 'agent',
                         turn: 'turn-2',
                         subagent,
@@ -1709,7 +1909,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-start-1',
-                        time: 1711,
+                        time: 1,
                         role: 'agent',
                         turn: 'turn-1',
                         subagent,
@@ -1725,7 +1925,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-stop-1',
-                        time: 1712,
+                        time: 1,
                         role: 'agent',
                         turn: 'turn-1',
                         subagent,
@@ -1743,7 +1943,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-subagent-invalid',
-                        time: 1713,
+                        time: 1,
                         role: 'agent',
                         turn: 'turn-1',
                         subagent: 'toolu_provider_id',
@@ -1762,7 +1962,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-8',
-                        time: 1707,
+                        time: 1,
                         role: 'agent',
                         ev: {
                             t: 'tool-call-start',
@@ -1783,7 +1983,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-9',
-                        time: 1708,
+                        time: 1,
                         role: 'agent',
                         ev: { t: 'text', text: 'missing turn' }
                     }
@@ -1800,7 +2000,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-10',
-                        time: 1709,
+                        time: 1,
                         role: 'agent',
                         turn: 'turn-5',
                         ev: { t: 'turn-end' }
@@ -1818,7 +2018,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'session',
                     data: {
                         id: 'env-11',
-                        time: 1710,
+                        time: 1,
                         role: 'user',
                         ev: { t: 'service', text: 'not allowed' }
                     }

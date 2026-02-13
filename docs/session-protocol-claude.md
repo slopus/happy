@@ -95,7 +95,7 @@ Implemented in:
 | `assistant` tool_use block (`Task`) | no parent tool-call envelope; registers provider->session subagent mapping and flushes buffered subagent messages |
 | `user` tool_result block (non-Task) | `agent:tool-call-end` |
 | `user` tool_result block (`Task` parent result) | `agent:stop` for the subagent (no parent `tool-call-end`) |
-| `user` plain string (non-sidechain) | `turn-end(completed)` (if open), then `user:text` |
+| `user` plain string (non-sidechain) | `turn-end(completed)` (if open), then emit both `user:text` (legacy) and `session:text` (migration shadow copy) |
 | `user` plain string (sidechain) | `agent:start` (once) then `agent:text` (`subagent` set to session cuid2) |
 | `system` | ignored for protocol output |
 | `summary` | ignored for protocol output (metadata update only) |

@@ -11,7 +11,8 @@
             "packages/happy-app",
             "packages/happy-agent",
             "packages/happy-cli",
-            "packages/happy-server"
+            "packages/happy-server",
+            "packages/happy-wire"
         ],
         "nohoist": [
             "**/zod",

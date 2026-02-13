@@ -97,6 +97,7 @@
     "@anthropic-ai/sandbox-runtime": "^0.0.37",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@paralleldrive/cuid2": "^2.2.2",
+    "@slopus/happy-wire": "^0.1.0",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
     "@types/cross-spawn": "^6.0.6",

@@ -13,9 +13,9 @@ The real [Agent Communication Protocol](https://agentcommunicationprotocol.dev) 
 | Purpose | Agent-to-agent interop (REST) | Encrypted chat with agent sessions |
 | Transport | REST + SSE | Encrypted payloads over WebSocket |
 | Message model | `Message { role, parts[] }` with MIME types | Flat event stream, discriminated by `t` |
-| Content typing | MIME types (`text/plain`, `image/png`) | Explicit event types (`text`, `service`, `photo`, `file`) |
+| Content typing | MIME types (`text/plain`, `image/png`) | Explicit event types (`text`, `service`, `file`, etc.) |
 | Files | `content_url` or base64 with MIME type | Upload-first, referenced by `ref` |
-| Images | Same as files (MIME-typed part) | First-class `photo` with thumbhash + dimensions |
+| Images | Same as files (MIME-typed part) | `file` event with optional image metadata (`width`, `height`, `thumbhash`) |
 | Tool calls | TrajectoryMetadata on parts | First-class `tool-call-start` / `tool-call-end` |
 | Lifecycle | 7 run states, 11 SSE event types | `turn-start` / `turn-end` + agent `start` / `stop` |
 | Event identity | UUID on runs, created_at on messages | `id` (cuid2) + `time` (ms) on every message |
@@ -24,8 +24,8 @@ The real [Agent Communication Protocol](https://agentcommunicationprotocol.dev) 
 
 1. **Encryption** — ACP assumes plaintext REST. Our payloads are end-to-end encrypted.
 2. **Tool calls are UI-visible** — ACP models tools as metadata for debugging. We render them with spinners, descriptions, and permission dialogs.
-3. **Instant image rendering** — ACP has no thumbhash or dimensions. Our `photo` event gives clients everything for instant placeholder layout.
-4. **Simplicity** — 10 event types total. A client implements the full protocol in a single `switch`.
+3. **Instant image rendering** — ACP has no thumbhash or dimensions. Our `file` event can carry image metadata for instant placeholder layout.
+4. **Simplicity** — 9 event types total. A client implements the full protocol in a single `switch`.
 
 **What we take from ACP:**
 
@@ -134,34 +134,18 @@ Tool invocation completes. Matches a prior `tool-call-start` by `call`.
 File attachment. The file must be uploaded to the server first.
 
 ```json
-{ "t": "file", "ref": "upload_def", "name": "report.pdf" }
+{ "t": "file", "ref": "upload_def", "name": "report.pdf", "size": 524288 }
 ```
 
 | Field | Type | Description |
 |---|---|---|
 | `ref` | string | Server upload ID |
 | `name` | string | Display filename |
-
-### `photo`
-
-Image attachment. The image must be uploaded to the server first.
-
-```json
-{
-  "t": "photo",
-  "ref": "upload_ghi",
-  "thumbhash": "3OcRJYB4d3h/iIeHeEh3eIhw+j2w",
-  "width": 1920,
-  "height": 1080
-}
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `ref` | string | Server upload ID |
-| `thumbhash` | string | Base64-encoded [ThumbHash](https://evanw.github.io/thumbhash/) for instant placeholder |
-| `width` | number | Original width in pixels |
-| `height` | number | Original height in pixels |
+| `size` | number | Required file size in bytes |
+| `image` | object? | Optional image metadata when the file is an image |
+| `image.width` | number | Image width in pixels |
+| `image.height` | number | Image height in pixels |
+| `image.thumbhash` | string | Base64-encoded [ThumbHash](https://evanw.github.io/thumbhash/) for instant placeholder |
 
 ### `turn-start`
 
@@ -233,19 +217,19 @@ Agent spawning a subagent:
 
 All messages carry `turn: "t2"` — they all belong to the same turn. Messages `c2`–`c7` also carry the same cuid2 `subagent` value, linking them to the same subagent.
 
-User sending a photo:
+User sending an image file:
 
 ```
-← { id: "b1", time: 2000, role: "user", ev: { t: "photo", ref: "up_1", thumbhash: "...", width: 800, height: 600 } }
+← { id: "b1", time: 2000, role: "user", ev: { t: "file", ref: "up_1", name: "screenshot.png", size: 153249, image: { width: 800, height: 600, thumbhash: "..." } } }
 ← { id: "b2", time: 2001, role: "user", ev: { t: "text", text: "What's in this screenshot?" } }
 ```
 
 ## Design rules
 
 1. **Flat stream** — no nesting; tool boundaries are markers in the stream
-2. **Upload-first** — files and photos are uploaded to the server, then referenced by `ref`
+2. **Upload-first** — files are uploaded to the server, then referenced by `ref`
 3. **Every message has identity** — `id` (cuid2) + `time` (ms) on the envelope
-4. **10 event types** — simple `switch(ev.t)` in any client
+4. **9 event types** — simple `switch(ev.t)` in any client
 5. **Provider-agnostic** — no agent backend leaks into the protocol
 6. **Consistent naming** — all `kebab-case`, no mixed conventions
 7. **Inline markdown** — `title` and `description` support `` `code` ``, **bold**, *italic*, [links]
