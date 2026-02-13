@@ -569,10 +569,17 @@ export async function runCodex(opts: {
                     `Result: ${truncated}${output.length > 200 ? '...' : ''}`,
                     'result'
                 );
+
+                // Trim large payloads for CodexBash — app only needs exit_code
+                let trimmedResult = msg.result;
+                if (msg.toolName === 'CodexBash' && typeof msg.result === 'object' && msg.result !== null) {
+                    trimmedResult = { exit_code: (msg.result as any).exit_code ?? 0 };
+                }
+
                 session.sendAgentMessage('codex', {
                     type: 'tool-result',
                     callId: msg.callId,
-                    output: msg.result,
+                    output: trimmedResult,
                     id: randomUUID(),
                 });
                 messageSentThisTurn = true;
@@ -600,11 +607,22 @@ export async function runCodex(opts: {
                 const changeCount = Object.keys(msg.changes).length;
                 const filesMsg = changeCount === 1 ? '1 file' : `${changeCount} files`;
                 messageBuffer.addMessage(`Modifying ${filesMsg}...`, 'tool');
+
+                // Trim file contents — app only needs file paths + operation types
+                const trimmedChanges: Record<string, Record<string, boolean>> = {};
+                for (const [filePath, change] of Object.entries(msg.changes as Record<string, any>)) {
+                    const ops: Record<string, boolean> = {};
+                    if (change.add) ops.add = true;
+                    if (change.modify) ops.modify = true;
+                    if (change.delete) ops.delete = true;
+                    trimmedChanges[filePath] = ops;
+                }
+
                 session.sendAgentMessage('codex', {
                     type: 'tool-call',
                     callId: msg.call_id,
                     name: 'CodexPatch',
-                    input: { auto_approved: msg.auto_approved, changes: msg.changes },
+                    input: { auto_approved: msg.auto_approved, changes: trimmedChanges },
                     id: randomUUID(),
                 });
                 messageSentThisTurn = true;

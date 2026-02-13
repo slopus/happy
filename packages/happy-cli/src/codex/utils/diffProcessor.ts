@@ -1,8 +1,9 @@
 /**
  * Diff Processor - Handles turn_diff messages and tracks unified_diff changes
- * 
+ *
  * This processor tracks changes to the unified_diff field in turn_diff messages
- * and sends CodexDiff tool calls when the diff changes from its previous value.
+ * and sends CodexDiff tool calls with a lightweight summary (file names + stats)
+ * instead of the full diff content, to avoid large payloads to the mobile app.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -13,7 +14,8 @@ export interface DiffToolCall {
     name: 'CodexDiff';
     callId: string;
     input: {
-        unified_diff: string;
+        files: string[];
+        stats: { additions: number; deletions: number };
     };
     id: string;
 }
@@ -25,6 +27,30 @@ export interface DiffToolResult {
         status: 'completed';
     };
     id: string;
+}
+
+/**
+ * Parse a unified diff string to extract file names and line stats.
+ */
+function summarizeUnifiedDiff(unifiedDiff: string): { files: string[]; stats: { additions: number; deletions: number } } {
+    const files: string[] = [];
+    let additions = 0;
+    let deletions = 0;
+
+    for (const line of unifiedDiff.split('\n')) {
+        if (line.startsWith('+++ b/') || line.startsWith('+++ ')) {
+            const fileName = line.replace(/^\+\+\+ (b\/)?/, '');
+            if (fileName && !files.includes(fileName)) {
+                files.push(fileName);
+            }
+        } else if (line.startsWith('+') && !line.startsWith('+++')) {
+            additions++;
+        } else if (line.startsWith('-') && !line.startsWith('---')) {
+            deletions++;
+        }
+    }
+
+    return { files, stats: { additions, deletions } };
 }
 
 export class DiffProcessor {
@@ -42,23 +68,23 @@ export class DiffProcessor {
         // Check if the diff has changed from the previous value
         if (this.previousDiff !== unifiedDiff) {
             logger.debug('[DiffProcessor] Unified diff changed, sending CodexDiff tool call');
-            
+
+            const { files, stats } = summarizeUnifiedDiff(unifiedDiff);
+
             // Generate a unique call ID for this diff
             const callId = randomUUID();
-            
-            // Send tool call for the diff change
+
+            // Send tool call with lightweight summary instead of full diff
             const toolCall: DiffToolCall = {
                 type: 'tool-call',
                 name: 'CodexDiff',
                 callId: callId,
-                input: {
-                    unified_diff: unifiedDiff
-                },
+                input: { files, stats },
                 id: randomUUID()
             };
-            
+
             this.onMessage?.(toolCall);
-            
+
             // Immediately send the tool result to mark it as completed
             const toolResult: DiffToolResult = {
                 type: 'tool-call-result',
@@ -68,10 +94,10 @@ export class DiffProcessor {
                 },
                 id: randomUUID()
             };
-            
+
             this.onMessage?.(toolResult);
         }
-        
+
         // Update the stored diff value
         this.previousDiff = unifiedDiff;
         logger.debug('[DiffProcessor] Updated stored diff');
