@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { createId } from '@paralleldrive/cuid2';
 import { normalizeRawMessage } from './typesRaw';
 
 /**
@@ -1675,6 +1676,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
         });
 
         it('marks subagent-linked messages as sidechain messages', () => {
+            const subagent = createId();
             const normalized = normalizeRawMessage('db-7', null, 1, {
                 ...base,
                 content: {
@@ -1684,7 +1686,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         time: 1706,
                         role: 'agent',
                         turn: 'turn-2',
-                        subagent: 'subagent-1',
+                        subagent,
                         ev: { t: 'text', text: 'subagent output' }
                     }
                 }
@@ -1694,12 +1696,13 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             expect(normalized?.isSidechain).toBe(true);
             if (normalized && normalized.role === 'agent') {
                 expect(normalized.content[0]).toMatchObject({
-                    parentUUID: 'subagent-1'
+                    parentUUID: subagent
                 });
             }
         });
 
         it('drops start/stop lifecycle markers', () => {
+            const subagent = createId();
             const start = normalizeRawMessage('db-start-1', null, 1, {
                 ...base,
                 content: {
@@ -1709,7 +1712,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         time: 1711,
                         role: 'agent',
                         turn: 'turn-1',
-                        subagent: 'subagent-1',
+                        subagent,
                         ev: { t: 'start', title: 'Research agent' }
                     }
                 }
@@ -1725,12 +1728,31 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         time: 1712,
                         role: 'agent',
                         turn: 'turn-1',
-                        subagent: 'subagent-1',
+                        subagent,
                         ev: { t: 'stop' }
                     }
                 }
             });
             expect(stop).toBeNull();
+        });
+
+        it('returns null for non-cuid subagent identifiers', () => {
+            const normalized = normalizeRawMessage('db-subagent-invalid', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-subagent-invalid',
+                        time: 1713,
+                        role: 'agent',
+                        turn: 'turn-1',
+                        subagent: 'toolu_provider_id',
+                        ev: { t: 'text', text: 'should be dropped' }
+                    }
+                }
+            } as any);
+
+            expect(normalized).toBeNull();
         });
 
         it('returns null for malformed session payloads', () => {

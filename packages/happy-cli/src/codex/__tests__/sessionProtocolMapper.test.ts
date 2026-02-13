@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createId, isCuid } from '@paralleldrive/cuid2';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
@@ -55,16 +56,20 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         );
 
         expect(result.envelopes).toHaveLength(2);
+        const subagent = result.envelopes[1].subagent;
+        expect(typeof subagent).toBe('string');
+        expect(isCuid(subagent!)).toBe(true);
         expect(result.envelopes[0]).toMatchObject({
-            subagent: 'parent-call-1',
+            subagent,
             ev: { t: 'start' },
         });
-        expect(result.envelopes[1].subagent).toBe('parent-call-1');
+        expect(subagent).not.toBe('parent-call-1');
     });
 
     it('emits stop for active subagents before turn-end', () => {
-        const activeSubagents = new Set<string>(['subagent-1']);
-        const startedSubagents = new Set<string>(['subagent-1']);
+        const subagent = createId();
+        const activeSubagents = new Set<string>([subagent]);
+        const startedSubagents = new Set<string>([subagent]);
         const result = mapCodexMcpMessageToSessionEnvelopes(
             { type: 'task_complete' },
             { currentTurnId: 'turn-1', activeSubagents, startedSubagents }
@@ -72,7 +77,7 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
 
         expect(result.envelopes).toHaveLength(2);
         expect(result.envelopes[0]).toMatchObject({
-            subagent: 'subagent-1',
+            subagent,
             ev: { t: 'stop' },
         });
         expect(result.envelopes[1].ev).toEqual({

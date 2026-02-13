@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createId } from '@paralleldrive/cuid2';
 import {
     createEnvelope,
     sessionEnvelopeSchema,
@@ -45,12 +46,13 @@ describe('session protocol schemas', () => {
     });
 
     it('validates envelopes that include turn/subagent', () => {
+        const subagent = createId();
         const envelope = {
             id: 'msg-1',
             time: 123,
             role: 'agent' as const,
             turn: 'turn-1',
-            subagent: 'subagent-1',
+            subagent,
             ev: { t: 'text', text: 'hello' } as const,
         };
 
@@ -70,12 +72,26 @@ describe('session protocol schemas', () => {
     });
 
     it('rejects start from non-agent role', () => {
+        const subagent = createId();
         const parsed = sessionEnvelopeSchema.safeParse({
             id: 'msg-3',
             time: 125,
             role: 'user',
-            subagent: 'subagent-1',
+            subagent,
             ev: { t: 'start', title: 'Research agent' },
+        });
+
+        expect(parsed.success).toBe(false);
+    });
+
+    it('rejects non-cuid subagent values', () => {
+        const parsed = sessionEnvelopeSchema.safeParse({
+            id: 'msg-4',
+            time: 126,
+            role: 'agent',
+            turn: 'turn-1',
+            subagent: 'provider-tool-id',
+            ev: { t: 'text', text: 'hello' },
         });
 
         expect(parsed.success).toBe(false);
@@ -93,6 +109,7 @@ describe('createEnvelope', () => {
     });
 
     it('respects explicit options', () => {
+        const subagent = createId();
         const envelope = createEnvelope(
             'agent',
             { t: 'tool-call-end', call: 'call-1' },
@@ -100,7 +117,7 @@ describe('createEnvelope', () => {
                 id: 'fixed-id',
                 time: 999,
                 turn: 'turn-1',
-                subagent: 'subagent-1',
+                subagent,
             }
         );
 
@@ -109,7 +126,7 @@ describe('createEnvelope', () => {
             time: 999,
             role: 'agent',
             turn: 'turn-1',
-            subagent: 'subagent-1',
+            subagent,
             ev: { t: 'tool-call-end', call: 'call-1' },
         });
     });

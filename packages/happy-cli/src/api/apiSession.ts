@@ -63,10 +63,10 @@ export class ApiSessionClient extends EventEmitter {
     private encryptionVariant: 'legacy' | 'dataKey';
     private claudeSessionProtocolState: ClaudeSessionProtocolState = {
         currentTurnId: null,
-        uuidToSubagent: new Map<string, string>(),
+        uuidToProviderSubagent: new Map<string, string>(),
         taskPromptToSubagents: new Map<string, string[]>(),
+        providerSubagentToSessionSubagent: new Map<string, string>(),
         subagentTitles: new Map<string, string>(),
-        knownSubagents: new Set<string>(),
         bufferedSubagentMessages: new Map<string, RawJSONLines[]>(),
         hiddenParentToolCalls: new Set<string>(),
         startedSubagents: new Set<string>(),
