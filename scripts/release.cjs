@@ -2,7 +2,6 @@
 
 const fs = require("fs");
 const path = require("path");
-const readline = require("readline");
 const { spawnSync } = require("child_process");
 
 const repoRoot = path.resolve(__dirname, "..");
@@ -113,32 +112,46 @@ function runRelease(target) {
   process.exit(result.status ?? 1);
 }
 
-function promptForTarget(targets) {
-  console.log("Select library to release:");
-  for (let i = 0; i < targets.length; i += 1) {
-    const target = targets[i];
-    console.log(`${i + 1}. ${target.id} (${target.workspaceName})`);
+async function promptForTarget(targets) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    console.error("Interactive release selection requires a TTY.");
+    console.error("Available targets:");
+    for (const target of targets) {
+      console.error(`- ${target.id} (workspace: ${target.workspaceName})`);
+    }
+    console.error("Run `yarn release -- <target>` in non-interactive mode.");
+    process.exit(1);
   }
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
+  let select;
+  try {
+    ({ select } = await import("@inquirer/prompts"));
+  } catch (error) {
+    console.error("Missing interactive prompt dependency: `@inquirer/prompts`.");
+    console.error("Run `yarn install` from repository root, then run `yarn release` again.");
+    process.exit(1);
+  }
+
+  const targetId = await select({
+    message: "Select library to release:",
+    pageSize: 10,
+    choices: targets.map((target) => ({
+      name: `${target.id} (${target.workspaceName})`,
+      value: target.id,
+      description: target.workspacePath,
+    })),
   });
 
-  rl.question("Enter number: ", (answer) => {
-    rl.close();
-    const index = Number.parseInt(answer, 10);
+  const target = findTarget(targets, targetId);
+  if (!target) {
+    console.error("Invalid selection.");
+    process.exit(1);
+  }
 
-    if (!Number.isInteger(index) || index < 1 || index > targets.length) {
-      console.error("Invalid selection.");
-      process.exit(1);
-    }
-
-    runRelease(targets[index - 1]);
-  });
+  runRelease(target);
 }
 
-function main() {
+async function main() {
   const targets = getReleaseTargets();
   if (targets.length === 0) {
     console.error("No releasable workspace packages found.");
@@ -162,7 +175,10 @@ function main() {
     return;
   }
 
-  promptForTarget(targets);
+  await promptForTarget(targets);
 }
 
-main();
+main().catch((error) => {
+  console.error(error.message || String(error));
+  process.exit(1);
+});
