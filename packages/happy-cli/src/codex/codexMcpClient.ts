@@ -142,6 +142,16 @@ export class CodexMcpClient {
                 return acc;
             }, {} as Record<string, string>);
 
+            // Codex currently logs noisy rollout fallback messages at ERROR level during
+            // state-db migration. Keep all other logs intact, only mute this module.
+            const rolloutListFilter = 'codex_core::rollout::list=off';
+            const existingRustLog = transportEnv.RUST_LOG?.trim();
+            if (!existingRustLog) {
+                transportEnv.RUST_LOG = rolloutListFilter;
+            } else if (!existingRustLog.includes('codex_core::rollout::list=')) {
+                transportEnv.RUST_LOG = `${existingRustLog},${rolloutListFilter}`;
+            }
+
             if (this.sandboxEnabled) {
                 // Codex uses this flag to disable proxy auto-discovery that can panic under seatbelt-like sandboxes.
                 transportEnv.CODEX_SANDBOX = 'seatbelt';

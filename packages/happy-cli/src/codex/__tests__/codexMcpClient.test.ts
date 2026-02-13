@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SandboxConfig } from '@/persistence';
 import { CodexMcpClient } from '../codexMcpClient';
 
@@ -73,13 +73,20 @@ const sandboxConfig: SandboxConfig = {
 };
 
 describe('CodexMcpClient sandbox integration', () => {
+    const originalRustLog = process.env.RUST_LOG;
+
     beforeEach(() => {
         vi.clearAllMocks();
+        process.env.RUST_LOG = originalRustLog;
         mockExecSync.mockReturnValue('codex-cli 0.43.0');
         mockClientConnect.mockResolvedValue(undefined);
         mockClientClose.mockResolvedValue(undefined);
         mockInitializeSandbox.mockResolvedValue(mockSandboxCleanup);
         mockWrapForMcpTransport.mockResolvedValue({ command: 'sh', args: ['-c', 'wrapped codex mcp'] });
+    });
+
+    afterAll(() => {
+        process.env.RUST_LOG = originalRustLog;
     });
 
     it('wraps MCP transport when sandbox is enabled', async () => {
@@ -95,6 +102,7 @@ describe('CodexMcpClient sandbox integration', () => {
                 args: ['-c', 'wrapped codex mcp'],
                 env: expect.objectContaining({
                     CODEX_SANDBOX: 'seatbelt',
+                    RUST_LOG: expect.stringContaining('codex_core::rollout::list=off'),
                 }),
             }),
         );
@@ -112,6 +120,9 @@ describe('CodexMcpClient sandbox integration', () => {
             expect.objectContaining({
                 command: 'codex',
                 args: ['mcp-server'],
+                env: expect.objectContaining({
+                    RUST_LOG: expect.stringContaining('codex_core::rollout::list=off'),
+                }),
             }),
         );
         expect(client.sandboxEnabled).toBe(false);
@@ -125,5 +136,20 @@ describe('CodexMcpClient sandbox integration', () => {
 
         expect(mockSandboxCleanup).toHaveBeenCalledTimes(1);
         expect(client.sandboxEnabled).toBe(false);
+    });
+
+    it('appends rollout log filter to existing RUST_LOG', async () => {
+        process.env.RUST_LOG = 'info,codex_core=warn';
+        const client = new CodexMcpClient(sandboxConfig);
+
+        await client.connect();
+
+        expect(mockStdioCtor).toHaveBeenCalledWith(
+            expect.objectContaining({
+                env: expect.objectContaining({
+                    RUST_LOG: 'info,codex_core=warn,codex_core::rollout::list=off',
+                }),
+            }),
+        );
     });
 });

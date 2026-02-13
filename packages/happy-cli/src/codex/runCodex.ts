@@ -116,7 +116,8 @@ export async function runCodex(opts: {
     const { state, metadata } = createSessionMetadata({
         flavor: 'codex',
         machineId,
-        startedBy: opts.startedBy
+        startedBy: opts.startedBy,
+        sandbox: sandboxConfig,
     });
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 

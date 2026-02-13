@@ -25,10 +25,8 @@ import { SandboxManager, type SandboxRuntimeConfig } from '@anthropic-ai/sandbox
 
 const config: SandboxRuntimeConfig = {
   network: {
-    allowedDomains: ['*'],      // allow all by default
+    allowedDomains: undefined,
     deniedDomains: [],
-    allowLocalBinding: true,
-    allowUnixSockets: [],
   },
   filesystem: {
     denyRead: ['~/.ssh', '~/.aws'],
@@ -124,7 +122,8 @@ The sandbox provides a strict OS-level security boundary (filesystem + network).
     - `'custom'` → `allowWrite: [...customWritePaths, ...extraWritePaths]`
   - For `networkMode`:
     - `'blocked'` → `allowedDomains: []` (block all)
-    - `'allowed'` → `allowedDomains: ['*']` (allow all)
+    - `'allowed'` → `allowedDomains: undefined` (no network isolation)
+      - Also set `enableWeakerNetworkIsolation: true` to allow `com.apple.trustd.agent` on macOS, which Codex needs for stable TLS in seatbelt mode
     - `'custom'` → use `allowedDomains` and `deniedDomains` from config
   - Maps `denyReadPaths` → `filesystem.denyRead`
   - Maps `denyWritePaths` → `filesystem.denyWrite`

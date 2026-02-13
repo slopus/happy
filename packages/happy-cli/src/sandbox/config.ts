@@ -45,7 +45,7 @@ export function buildSandboxRuntimeConfig(
                 const workspaceRoot = sandboxConfig.workspaceRoot
                     ? expandPath(sandboxConfig.workspaceRoot, sessionPath)
                     : resolve(sessionPath);
-                return uniquePaths([workspaceRoot, ...extraWritePaths, ...sharedAgentStatePaths]);
+                return uniquePaths([workspaceRoot, resolve(sessionPath), ...extraWritePaths, ...sharedAgentStatePaths]);
             }
             case 'custom':
                 return uniquePaths([
@@ -67,7 +67,7 @@ export function buildSandboxRuntimeConfig(
                 };
             case 'allowed':
                 return {
-                    allowedDomains: ['*'],
+                    allowedDomains: undefined as unknown as string[],
                     deniedDomains: [] as string[],
                     allowLocalBinding: sandboxConfig.allowLocalBinding,
                     allowUnixSockets: [] as string[],
@@ -82,8 +82,13 @@ export function buildSandboxRuntimeConfig(
         }
     })();
 
+    const enableWeakerNetworkIsolation = sandboxConfig.networkMode === 'allowed'
+        ? true
+        : undefined;
+
     return {
         allowPty: true,
+        enableWeakerNetworkIsolation,
         network,
         filesystem: {
             denyRead: resolvePaths(sandboxConfig.denyReadPaths, sessionPath),
