@@ -127,6 +127,7 @@ interface StorageState {
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
+    updateSessionActivity: (sessionId: string, active: boolean) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
     updateSessionModelMode: (sessionId: string, mode: string) => void;
     // Artifact methods
@@ -862,6 +863,31 @@ export const storage = create<StorageState>()((set, get) => {
             const sessionListViewData = buildSessionListViewData(
                 updatedSessions
             );
+
+            return {
+                ...state,
+                sessions: updatedSessions,
+                sessionListViewData
+            };
+        }),
+        updateSessionActivity: (sessionId: string, active: boolean) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+
+            const nextActiveAt = active ? session.activeAt : Math.max(Date.now(), session.activeAt);
+            const updatedSession: Session = {
+                ...session,
+                active,
+                activeAt: nextActiveAt,
+                presence: resolveSessionOnlineState({ active, activeAt: nextActiveAt }),
+            };
+
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: updatedSession
+            };
+
+            const sessionListViewData = buildSessionListViewData(updatedSessions);
 
             return {
                 ...state,

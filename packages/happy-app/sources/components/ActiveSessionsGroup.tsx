@@ -354,9 +354,19 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const swipeEnabled = Platform.OS !== 'web';
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
+        const previousActive = storage.getState().sessions[session.id]?.active ?? session.active;
+        storage.getState().updateSessionActivity(session.id, false);
+
         const result = await sessionKill(session.id);
+        const errorMessage = result.message || t('sessionInfo.failedToArchiveSession');
+
+        if (!result.success && /RPC method not available/i.test(errorMessage)) {
+            return;
+        }
+
         if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+            storage.getState().updateSessionActivity(session.id, previousActive);
+            throw new HappyError(errorMessage, false);
         }
     });
 
