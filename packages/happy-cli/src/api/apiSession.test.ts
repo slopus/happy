@@ -547,6 +547,26 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect((client as any).lastSeq).toBe(4);
     });
 
+    it('fetchMessages stops pagination when hasMore is true but seq cursor does not advance', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        (client as any).lastSeq = 2;
+
+        mockAxiosGet
+            .mockResolvedValueOnce({
+                data: {
+                    messages: [],
+                    hasMore: true
+                }
+            })
+            .mockRejectedValueOnce(new Error('should not request another page when cursor is stalled'));
+
+        await expect((client as any).fetchMessages()).resolves.toBeUndefined();
+
+        expect(mockAxiosGet).toHaveBeenCalledTimes(1);
+        expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(2);
+        expect((client as any).lastSeq).toBe(2);
+    });
+
     it('routes non-user fetched messages through EventEmitter message event', async () => {
         const client = new ApiSessionClient('fake-token', session);
         const onUserMessage = vi.fn();
@@ -714,6 +734,23 @@ describe('ApiSessionClient v3 messages API migration', () => {
             expect(mockAxiosPost).toHaveBeenCalledTimes(2);
         });
         expect((client as any).lastSeq).toBe(11);
+    });
+
+    it('flushOutbox tolerates missing response.data.messages and keeps lastSeq unchanged', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        (client as any).lastSeq = 7;
+
+        mockAxiosPost.mockResolvedValueOnce({
+            data: {}
+        });
+
+        client.sendCodexMessage({ type: 'no-messages-field' });
+        await waitForCheck(() => {
+            expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+        });
+
+        expect((client as any).lastSeq).toBe(7);
+        expect((client as any).pendingOutbox).toHaveLength(0);
     });
 
     it('triggers receive catch-up fetch on socket reconnect', async () => {
