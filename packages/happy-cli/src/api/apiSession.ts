@@ -1,7 +1,7 @@
 import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
 import { io, Socket } from 'socket.io-client'
-import { AgentState, ClientToServerEvents, MessageContent, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
+import { AgentState, ClientToServerEvents, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { configuration } from '@/configuration';
@@ -12,6 +12,12 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
 import type { SessionEnvelope } from '@/sessionProtocol/types';
+import type { SessionTurnEndStatus } from '@/sessionProtocol/types';
+import {
+    closeClaudeTurnWithStatus,
+    mapClaudeLogMessageToSessionEnvelopes,
+    type ClaudeSessionProtocolState,
+} from '@/claude/utils/sessionProtocolMapper';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -55,6 +61,17 @@ export class ApiSessionClient extends EventEmitter {
     private metadataLock = new AsyncLock();
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
+    private claudeSessionProtocolState: ClaudeSessionProtocolState = {
+        currentTurnId: null,
+        uuidToSubagent: new Map<string, string>(),
+        taskPromptToSubagents: new Map<string, string[]>(),
+        subagentTitles: new Map<string, string>(),
+        knownSubagents: new Set<string>(),
+        bufferedSubagentMessages: new Map<string, RawJSONLines[]>(),
+        hiddenParentToolCalls: new Set<string>(),
+        startedSubagents: new Set<string>(),
+        activeSubagents: new Set<string>(),
+    };
 
     constructor(token: string, session: Session) {
         super()
@@ -201,47 +218,11 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
-        let content: MessageContent;
-
-        // Check if body is already a MessageContent (has role property)
-        if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {
-            content = {
-                role: 'user',
-                content: {
-                    type: 'text',
-                    text: body.message.content
-                },
-                meta: {
-                    sentFrom: 'cli'
-                }
-            }
-        } else {
-            // Wrap Claude messages in the expected format
-            content = {
-                role: 'agent',
-                content: {
-                    type: 'output',
-                    data: body  // This wraps the entire Claude message
-                },
-                meta: {
-                    sentFrom: 'cli'
-                }
-            };
+        const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
+        this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
+        for (const envelope of mapped.envelopes) {
+            this.sendSessionProtocolMessage(envelope);
         }
-
-        logger.debugLargeJson('[SOCKET] Sending message through socket:', content)
-
-        // Check if socket is connected before sending
-        if (!this.socket.connected) {
-            logger.debug('[API] Socket not connected, cannot send Claude session message. Message will be lost:', { type: body.type });
-            return;
-        }
-
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted
-        });
 
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
@@ -261,6 +242,14 @@ export class ApiSessionClient extends EventEmitter {
                     updatedAt: Date.now()
                 }
             }));
+        }
+    }
+
+    closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed') {
+        const mapped = closeClaudeTurnWithStatus(this.claudeSessionProtocolState, status);
+        this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
+        for (const envelope of mapped.envelopes) {
+            this.sendSessionProtocolMessage(envelope);
         }
     }
 

@@ -9,6 +9,8 @@ This folder documents how Happy works internally, with a focus on protocol, back
 - backend-architecture.md: Internal backend structure, data flow, and key subsystems.
 - deployment.md: How to deploy the backend and required infrastructure.
 - cli-architecture.md: CLI and daemon architecture and how they interact with the server.
+- session-protocol.md: Unified encrypted chat event protocol.
+- session-protocol-claude.md: Claude-specific session-protocol flow (local vs remote launchers, dedupe/restarts).
 - permission-resolution.md: State-based permission mode resolution across app and CLI (including sandbox behavior).
 
 ## Conventions

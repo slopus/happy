@@ -36,6 +36,11 @@ const sessionTextEventSchema = z.object({
     thinking: z.boolean().optional(),
 });
 
+const sessionServiceMessageEventSchema = z.object({
+    t: z.literal('service'),
+    text: z.string(),
+});
+
 const sessionToolCallStartEventSchema = z.object({
     t: z.literal('tool-call-start'),
     call: z.string(),
@@ -68,18 +73,31 @@ const sessionTurnStartEventSchema = z.object({
     t: z.literal('turn-start'),
 });
 
+const sessionStartEventSchema = z.object({
+    t: z.literal('start'),
+    title: z.string().optional(),
+});
+
 const sessionTurnEndEventSchema = z.object({
     t: z.literal('turn-end'),
+    status: z.enum(['completed', 'failed', 'cancelled']),
+});
+
+const sessionStopEventSchema = z.object({
+    t: z.literal('stop'),
 });
 
 const sessionEventSchema = z.discriminatedUnion('t', [
     sessionTextEventSchema,
+    sessionServiceMessageEventSchema,
     sessionToolCallStartEventSchema,
     sessionToolCallEndEventSchema,
     sessionFileEventSchema,
     sessionPhotoEventSchema,
     sessionTurnStartEventSchema,
+    sessionStartEventSchema,
     sessionTurnEndEventSchema,
+    sessionStopEventSchema,
 ]);
 
 const sessionEnvelopeSchema = z.object({
@@ -87,8 +105,23 @@ const sessionEnvelopeSchema = z.object({
     time: z.number(),
     role: z.enum(['user', 'agent']),
     turn: z.string().optional(),
-    invoke: z.string().optional(),
+    subagent: z.string().optional(),
     ev: sessionEventSchema,
+}).superRefine((envelope, ctx) => {
+    if (envelope.ev.t === 'service' && envelope.role !== 'agent') {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'service events must use role "agent"',
+            path: ['role'],
+        });
+    }
+    if ((envelope.ev.t === 'start' || envelope.ev.t === 'stop') && envelope.role !== 'agent') {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `${envelope.ev.t} events must use role "agent"`,
+            path: ['role'],
+        });
+    }
 });
 
 const rawTextContentSchema = z.object({
@@ -705,13 +738,25 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
         }
         if (raw.content.type === 'session') {
             const envelope = raw.content.data;
+
+            // Session protocol requires turn id on all agent-originated envelopes.
+            // Drop malformed agent events without turn to avoid attaching stray messages.
+            if (envelope.role === 'agent' && !envelope.turn) {
+                return null;
+            }
+
             const messageId = envelope.id;
             const messageCreatedAt = envelope.time;
-            const parentUUID = envelope.invoke ?? null;
+            const parentUUID = envelope.subagent ?? null;
             const isSidechain = parentUUID !== null;
             const contentUUID = envelope.id;
 
             if (envelope.ev.t === 'turn-start') {
+                return null;
+            }
+
+            if (envelope.ev.t === 'start' || envelope.ev.t === 'stop') {
+                // Lifecycle marker for subagent boundaries; currently not rendered as chat content.
                 return null;
             }
 
@@ -723,6 +768,27 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     role: 'event',
                     isSidechain: false,
                     content: { type: 'ready' },
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+
+            if (envelope.ev.t === 'service') {
+                if (envelope.role !== 'agent') {
+                    return null;
+                }
+
+                return {
+                    id: messageId,
+                    localId,
+                    createdAt: messageCreatedAt,
+                    role: 'agent',
+                    isSidechain,
+                    content: [{
+                        type: 'text',
+                        text: envelope.ev.text,
+                        uuid: contentUUID,
+                        parentUUID
+                    }],
                     meta: raw.meta
                 } satisfies NormalizedMessage;
             }

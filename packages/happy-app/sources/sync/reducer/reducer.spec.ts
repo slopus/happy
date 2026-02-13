@@ -2834,7 +2834,7 @@ describe('reducer', () => {
         });
     });
 
-    describe('session protocol lifecycle and invoke sidechains', () => {
+    describe('session protocol lifecycle and subagent sidechains', () => {
         it('sets hasReadyEvent for ready events without creating visible messages', () => {
             const state = createReducer();
             const result = reducer(state, [{
@@ -2864,7 +2864,7 @@ describe('reducer', () => {
             expect(result.messages).toHaveLength(0);
         });
 
-        it('nests invoke-linked sidechain messages under parent tool calls', () => {
+        it('nests subagent-linked sidechain messages under parent tool calls', () => {
             const state = createReducer();
             const result = reducer(state, [
                 {

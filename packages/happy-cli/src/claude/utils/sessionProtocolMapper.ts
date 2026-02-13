@@ -1,0 +1,581 @@
+import { createId } from '@paralleldrive/cuid2';
+import type { RawJSONLines } from '@/claude/types';
+import {
+    createEnvelope,
+    type SessionEnvelope,
+    type SessionTurnEndStatus,
+} from '@/sessionProtocol/types';
+
+export type ClaudeSessionProtocolState = {
+    currentTurnId: string | null;
+    uuidToSubagent?: Map<string, string>;
+    taskPromptToSubagents?: Map<string, string[]>;
+    subagentTitles?: Map<string, string>;
+    knownSubagents?: Set<string>;
+    bufferedSubagentMessages?: Map<string, RawJSONLines[]>;
+    hiddenParentToolCalls?: Set<string>;
+    startedSubagents?: Set<string>;
+    activeSubagents?: Set<string>;
+};
+
+type ClaudeMapperResult = {
+    currentTurnId: string | null;
+    envelopes: SessionEnvelope[];
+};
+
+function pickTimestamp(message: RawJSONLines): number {
+    const rawTimestamp = (message as { timestamp?: unknown }).timestamp;
+    if (typeof rawTimestamp === 'string') {
+        const parsed = Date.parse(rawTimestamp);
+        if (!Number.isNaN(parsed)) {
+            return parsed;
+        }
+    }
+    return Date.now();
+}
+
+function pickInvoke(message: RawJSONLines): string | undefined {
+    const raw = message as { parent_tool_use_id?: unknown; parentToolUseId?: unknown };
+    if (typeof raw.parent_tool_use_id === 'string' && raw.parent_tool_use_id.length > 0) {
+        return raw.parent_tool_use_id;
+    }
+    if (typeof raw.parentToolUseId === 'string' && raw.parentToolUseId.length > 0) {
+        return raw.parentToolUseId;
+    }
+    return undefined;
+}
+
+function getUuidToSubagent(state: ClaudeSessionProtocolState): Map<string, string> {
+    if (!state.uuidToSubagent) {
+        state.uuidToSubagent = new Map<string, string>();
+    }
+    return state.uuidToSubagent;
+}
+
+function getTaskPromptToSubagents(state: ClaudeSessionProtocolState): Map<string, string[]> {
+    if (!state.taskPromptToSubagents) {
+        state.taskPromptToSubagents = new Map<string, string[]>();
+    }
+    return state.taskPromptToSubagents;
+}
+
+function getSubagentTitles(state: ClaudeSessionProtocolState): Map<string, string> {
+    if (!state.subagentTitles) {
+        state.subagentTitles = new Map<string, string>();
+    }
+    return state.subagentTitles;
+}
+
+function getKnownSubagents(state: ClaudeSessionProtocolState): Set<string> {
+    if (!state.knownSubagents) {
+        state.knownSubagents = new Set<string>();
+    }
+    return state.knownSubagents;
+}
+
+function getBufferedSubagentMessages(state: ClaudeSessionProtocolState): Map<string, RawJSONLines[]> {
+    if (!state.bufferedSubagentMessages) {
+        state.bufferedSubagentMessages = new Map<string, RawJSONLines[]>();
+    }
+    return state.bufferedSubagentMessages;
+}
+
+function getHiddenParentToolCalls(state: ClaudeSessionProtocolState): Set<string> {
+    if (!state.hiddenParentToolCalls) {
+        state.hiddenParentToolCalls = new Set<string>();
+    }
+    return state.hiddenParentToolCalls;
+}
+
+function bufferSubagentMessage(state: ClaudeSessionProtocolState, subagent: string, message: RawJSONLines): void {
+    const buffer = getBufferedSubagentMessages(state);
+    const queue = buffer.get(subagent) ?? [];
+    queue.push(message);
+    buffer.set(subagent, queue);
+}
+
+function consumeBufferedSubagentMessages(state: ClaudeSessionProtocolState, subagent: string): RawJSONLines[] {
+    const buffer = getBufferedSubagentMessages(state);
+    const queue = buffer.get(subagent) ?? [];
+    buffer.delete(subagent);
+    return queue;
+}
+
+function getStartedSubagents(state: ClaudeSessionProtocolState): Set<string> {
+    if (!state.startedSubagents) {
+        state.startedSubagents = new Set<string>();
+    }
+    return state.startedSubagents;
+}
+
+function getActiveSubagents(state: ClaudeSessionProtocolState): Set<string> {
+    if (!state.activeSubagents) {
+        state.activeSubagents = new Set<string>();
+    }
+    return state.activeSubagents;
+}
+
+function pickUuid(message: RawJSONLines): string | undefined {
+    const raw = message as { uuid?: unknown };
+    if (typeof raw.uuid === 'string' && raw.uuid.length > 0) {
+        return raw.uuid;
+    }
+    return undefined;
+}
+
+function pickParentUuid(message: RawJSONLines): string | undefined {
+    const raw = message as { parentUuid?: unknown; parentUUID?: unknown };
+    if (typeof raw.parentUuid === 'string' && raw.parentUuid.length > 0) {
+        return raw.parentUuid;
+    }
+    if (typeof raw.parentUUID === 'string' && raw.parentUUID.length > 0) {
+        return raw.parentUUID;
+    }
+    return undefined;
+}
+
+function isSidechainMessage(message: RawJSONLines): boolean {
+    const raw = message as { isSidechain?: unknown };
+    return raw.isSidechain === true;
+}
+
+function normalizePrompt(prompt: string): string {
+    return prompt.trim();
+}
+
+function queueTaskPromptSubagent(state: ClaudeSessionProtocolState, prompt: string, subagent: string): void {
+    const normalized = normalizePrompt(prompt);
+    if (normalized.length === 0) {
+        return;
+    }
+
+    const promptMap = getTaskPromptToSubagents(state);
+    const queue = promptMap.get(normalized) ?? [];
+    if (!queue.includes(subagent)) {
+        queue.push(subagent);
+    }
+    promptMap.set(normalized, queue);
+}
+
+function consumeTaskPromptSubagent(state: ClaudeSessionProtocolState, prompt: string): string | undefined {
+    const normalized = normalizePrompt(prompt);
+    if (normalized.length === 0) {
+        return undefined;
+    }
+
+    const promptMap = getTaskPromptToSubagents(state);
+    const queue = promptMap.get(normalized);
+    if (!queue || queue.length === 0) {
+        return undefined;
+    }
+
+    const subagent = queue.shift();
+    if (queue.length === 0) {
+        promptMap.delete(normalized);
+    }
+    return subagent;
+}
+
+function consumeSinglePendingTaskSubagent(state: ClaudeSessionProtocolState): string | undefined {
+    const promptMap = getTaskPromptToSubagents(state);
+    let candidateKey: string | null = null;
+    let candidateSubagent: string | null = null;
+
+    for (const [prompt, queue] of promptMap.entries()) {
+        if (queue.length === 0) {
+            continue;
+        }
+
+        if (candidateKey !== null) {
+            return undefined;
+        }
+
+        candidateKey = prompt;
+        candidateSubagent = queue[0] ?? null;
+    }
+
+    if (!candidateKey || !candidateSubagent) {
+        return undefined;
+    }
+
+    const queue = promptMap.get(candidateKey);
+    if (!queue || queue.length === 0) {
+        return undefined;
+    }
+
+    queue.shift();
+    if (queue.length === 0) {
+        promptMap.delete(candidateKey);
+    }
+
+    return candidateSubagent;
+}
+
+function pickSidechainRootPrompt(message: RawJSONLines): string | undefined {
+    if (message.type !== 'user') {
+        return undefined;
+    }
+
+    if (typeof message.message?.content === 'string') {
+        const normalized = normalizePrompt(message.message.content);
+        return normalized.length > 0 ? normalized : undefined;
+    }
+
+    return undefined;
+}
+
+function resolveSubagent(message: RawJSONLines, state: ClaudeSessionProtocolState): string | undefined {
+    const explicitSubagent = pickInvoke(message);
+    if (explicitSubagent) {
+        return explicitSubagent;
+    }
+
+    const parentUuid = pickParentUuid(message);
+    if (parentUuid) {
+        const inheritedSubagent = getUuidToSubagent(state).get(parentUuid);
+        if (inheritedSubagent) {
+            return inheritedSubagent;
+        }
+    }
+
+    if (!isSidechainMessage(message)) {
+        return undefined;
+    }
+
+    const prompt = pickSidechainRootPrompt(message);
+    if (prompt) {
+        const matchedSubagent = consumeTaskPromptSubagent(state, prompt);
+        if (matchedSubagent) {
+            return matchedSubagent;
+        }
+    }
+
+    if (!parentUuid) {
+        return consumeSinglePendingTaskSubagent(state);
+    }
+
+    return undefined;
+}
+
+function rememberSubagentForMessage(message: RawJSONLines, state: ClaudeSessionProtocolState, subagent: string | undefined): void {
+    if (!subagent) {
+        return;
+    }
+
+    const uuid = pickUuid(message);
+    if (!uuid) {
+        return;
+    }
+
+    getUuidToSubagent(state).set(uuid, subagent);
+}
+
+function pickTaskPrompt(input: unknown): string | undefined {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+        return undefined;
+    }
+
+    const prompt = (input as { prompt?: unknown }).prompt;
+    if (typeof prompt !== 'string') {
+        return undefined;
+    }
+
+    const normalized = normalizePrompt(prompt);
+    return normalized.length > 0 ? normalized : undefined;
+}
+
+function pickTaskTitle(input: unknown): string | undefined {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+        return undefined;
+    }
+
+    const candidateKeys = ['description', 'title', 'subagent_type'];
+    for (const key of candidateKeys) {
+        const value = (input as Record<string, unknown>)[key];
+        if (typeof value === 'string' && value.trim().length > 0) {
+            return value.trim();
+        }
+    }
+
+    return undefined;
+}
+
+function setSubagentTitle(state: ClaudeSessionProtocolState, subagent: string, title: string | undefined): void {
+    if (!title || title.trim().length === 0) {
+        return;
+    }
+    getSubagentTitles(state).set(subagent, title.trim());
+}
+
+function maybeEmitSubagentStart(
+    state: ClaudeSessionProtocolState,
+    turn: string,
+    subagent: string | undefined,
+    time: number,
+    envelopes: SessionEnvelope[],
+): void {
+    if (!subagent) {
+        return;
+    }
+
+    const started = getStartedSubagents(state);
+    if (started.has(subagent)) {
+        return;
+    }
+
+    const title = getSubagentTitles(state).get(subagent);
+    envelopes.push(createEnvelope('agent', {
+        t: 'start',
+        ...(title ? { title } : {}),
+    }, { turn, subagent, time }));
+    started.add(subagent);
+    getActiveSubagents(state).add(subagent);
+}
+
+function maybeEmitSubagentStop(
+    state: ClaudeSessionProtocolState,
+    turn: string,
+    subagent: string,
+    time: number,
+    envelopes: SessionEnvelope[],
+): void {
+    const active = getActiveSubagents(state);
+    if (!active.has(subagent)) {
+        return;
+    }
+
+    envelopes.push(createEnvelope('agent', { t: 'stop' }, { turn, subagent, time }));
+    active.delete(subagent);
+}
+
+function clearSubagentTracking(state: ClaudeSessionProtocolState): void {
+    getUuidToSubagent(state).clear();
+    getTaskPromptToSubagents(state).clear();
+    getSubagentTitles(state).clear();
+    getKnownSubagents(state).clear();
+    getBufferedSubagentMessages(state).clear();
+    getHiddenParentToolCalls(state).clear();
+    getStartedSubagents(state).clear();
+    getActiveSubagents(state).clear();
+}
+
+function ensureTurn(state: ClaudeSessionProtocolState, time: number, envelopes: SessionEnvelope[]): string {
+    if (state.currentTurnId) {
+        return state.currentTurnId;
+    }
+
+    const turnId = createId();
+    envelopes.push(createEnvelope('agent', { t: 'turn-start' }, { turn: turnId, time }));
+    state.currentTurnId = turnId;
+    return turnId;
+}
+
+function closeTurn(
+    state: ClaudeSessionProtocolState,
+    time: number,
+    status: SessionTurnEndStatus,
+    envelopes: SessionEnvelope[],
+): void {
+    if (!state.currentTurnId) {
+        return;
+    }
+
+    envelopes.push(createEnvelope('agent', { t: 'turn-end', status }, { turn: state.currentTurnId, time }));
+    state.currentTurnId = null;
+    clearSubagentTracking(state);
+}
+
+function toolTitle(name: string, input: unknown): string {
+    if (input && typeof input === 'object') {
+        const description = (input as { description?: unknown }).description;
+        if (typeof description === 'string' && description.trim().length > 0) {
+            return description.length > 80 ? `${description.slice(0, 77)}...` : description;
+        }
+    }
+    return `${name} call`;
+}
+
+function toToolArgs(input: unknown): Record<string, unknown> {
+    if (input && typeof input === 'object' && !Array.isArray(input)) {
+        return input as Record<string, unknown>;
+    }
+    if (input === undefined) {
+        return {};
+    }
+    return { input };
+}
+
+export function closeClaudeTurnWithStatus(
+    state: ClaudeSessionProtocolState,
+    status: SessionTurnEndStatus,
+): ClaudeMapperResult {
+    const envelopes: SessionEnvelope[] = [];
+    closeTurn(state, Date.now(), status, envelopes);
+    return {
+        currentTurnId: state.currentTurnId,
+        envelopes,
+    };
+}
+
+export function mapClaudeLogMessageToSessionEnvelopes(
+    message: RawJSONLines,
+    state: ClaudeSessionProtocolState,
+): ClaudeMapperResult {
+    return mapClaudeLogMessageToSessionEnvelopesInternal(message, state);
+}
+
+function mapClaudeLogMessageToSessionEnvelopesInternal(
+    message: RawJSONLines,
+    state: ClaudeSessionProtocolState,
+): ClaudeMapperResult {
+    const envelopes: SessionEnvelope[] = [];
+    const time = pickTimestamp(message);
+    const subagent = resolveSubagent(message, state);
+    rememberSubagentForMessage(message, state, subagent);
+
+    if (subagent && !getKnownSubagents(state).has(subagent)) {
+        bufferSubagentMessage(state, subagent, message);
+        return {
+            currentTurnId: state.currentTurnId,
+            envelopes: [],
+        };
+    }
+
+    if (message.type === 'summary') {
+        return {
+            currentTurnId: state.currentTurnId,
+            envelopes,
+        };
+    }
+
+    if (message.type === 'system') {
+        return {
+            currentTurnId: state.currentTurnId,
+            envelopes,
+        };
+    }
+
+    if (message.type === 'assistant') {
+        const turnId = ensureTurn(state, time, envelopes);
+        maybeEmitSubagentStart(state, turnId, subagent, time, envelopes);
+        const blocks = Array.isArray(message.message?.content) ? message.message.content : [];
+
+        for (const block of blocks) {
+            if (block.type === 'text' && typeof block.text === 'string') {
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, time }));
+                continue;
+            }
+
+            if (block.type === 'thinking' && typeof block.thinking === 'string') {
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent, time }));
+                continue;
+            }
+
+            if (block.type === 'tool_use') {
+                const call = typeof block.id === 'string' && block.id.length > 0 ? block.id : createId();
+                const name = typeof block.name === 'string' && block.name.length > 0 ? block.name : 'unknown';
+                const args = toToolArgs(block.input);
+                const title = toolTitle(name, block.input);
+                if (name === 'Task') {
+                    const prompt = pickTaskPrompt(block.input);
+                    if (prompt) {
+                        queueTaskPromptSubagent(state, prompt, call);
+                    }
+                    setSubagentTitle(state, call, pickTaskTitle(block.input) ?? prompt);
+                    getKnownSubagents(state).add(call);
+                    getHiddenParentToolCalls(state).add(call);
+
+                    const buffered = consumeBufferedSubagentMessages(state, call);
+                    for (const bufferedMessage of buffered) {
+                        const replay = mapClaudeLogMessageToSessionEnvelopesInternal(bufferedMessage, state);
+                        envelopes.push(...replay.envelopes);
+                    }
+                    continue;
+                }
+
+                envelopes.push(createEnvelope('agent', {
+                    t: 'tool-call-start',
+                    call,
+                    name,
+                    title,
+                    description: title,
+                    args,
+                }, { turn: turnId, subagent, time }));
+                getKnownSubagents(state).add(call);
+
+                const buffered = consumeBufferedSubagentMessages(state, call);
+                for (const bufferedMessage of buffered) {
+                    const replay = mapClaudeLogMessageToSessionEnvelopesInternal(bufferedMessage, state);
+                    envelopes.push(...replay.envelopes);
+                }
+            }
+        }
+
+        return {
+            currentTurnId: state.currentTurnId,
+            envelopes,
+        };
+    }
+
+    if (message.type === 'user') {
+        if (typeof message.message.content === 'string') {
+            if (message.isSidechain) {
+                const turnId = ensureTurn(state, time, envelopes);
+                maybeEmitSubagentStart(state, turnId, subagent, time, envelopes);
+                envelopes.push(createEnvelope('agent', { t: 'text', text: message.message.content }, { turn: turnId, subagent, time }));
+            } else {
+                closeTurn(state, time, 'completed', envelopes);
+                envelopes.push(createEnvelope('user', { t: 'text', text: message.message.content }, { time }));
+            }
+
+            return {
+                currentTurnId: state.currentTurnId,
+                envelopes,
+            };
+        }
+
+        const blocks = Array.isArray(message.message.content) ? message.message.content : [];
+        if (blocks.length === 0) {
+            return {
+                currentTurnId: state.currentTurnId,
+                envelopes,
+            };
+        }
+
+        const turnId = ensureTurn(state, time, envelopes);
+        if (message.isSidechain) {
+            maybeEmitSubagentStart(state, turnId, subagent, time, envelopes);
+        }
+        for (const block of blocks) {
+            if (block.type === 'tool_result' && typeof block.tool_use_id === 'string' && block.tool_use_id.length > 0) {
+                if (!message.isSidechain) {
+                    if (getHiddenParentToolCalls(state).has(block.tool_use_id)) {
+                        maybeEmitSubagentStop(state, turnId, block.tool_use_id, time, envelopes);
+                        getHiddenParentToolCalls(state).delete(block.tool_use_id);
+                        continue;
+                    }
+                    maybeEmitSubagentStop(state, turnId, block.tool_use_id, time, envelopes);
+                }
+                envelopes.push(createEnvelope('agent', {
+                    t: 'tool-call-end',
+                    call: block.tool_use_id,
+                }, { turn: turnId, subagent, time }));
+                continue;
+            }
+
+            if (block.type === 'text' && typeof block.text === 'string' && block.text.trim().length > 0) {
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, time }));
+            }
+        }
+
+        return {
+            currentTurnId: state.currentTurnId,
+            envelopes,
+        };
+    }
+
+    return {
+        currentTurnId: state.currentTurnId,
+        envelopes,
+    };
+}

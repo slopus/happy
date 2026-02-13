@@ -112,7 +112,8 @@ export class SDKToLogConverter {
                 logMessage = {
                     ...baseFields,
                     type: 'user',
-                    message: userMsg.message
+                    message: userMsg.message,
+                    ...(userMsg.parent_tool_use_id ? { parent_tool_use_id: userMsg.parent_tool_use_id } : {}),
                 }
 
                 // Check if this is a tool result and add mode if available
@@ -138,7 +139,8 @@ export class SDKToLogConverter {
                     type: 'assistant',
                     message: assistantMsg.message,
                     // Assistant messages often have additional fields
-                    requestId: (assistantMsg as any).requestId
+                    requestId: (assistantMsg as any).requestId,
+                    ...(assistantMsg.parent_tool_use_id ? { parent_tool_use_id: assistantMsg.parent_tool_use_id } : {}),
                 }
                 // if (assistantMsg.message.content && Array.isArray(assistantMsg.message.content)) {
                 //     for (const content of assistantMsg.message.content) {
@@ -245,6 +247,7 @@ export class SDKToLogConverter {
         return {
             parentUuid: null,
             isSidechain: true,
+            parent_tool_use_id: toolUseId,
             userType: 'external' as const,
             cwd: this.context.cwd,
             sessionId: this.context.sessionId,
@@ -286,6 +289,7 @@ export class SDKToLogConverter {
         const logMessage: RawJSONLines = {
             type: 'user',
             isSidechain: isSidechain,
+            ...(parentToolUseId ? { parent_tool_use_id: parentToolUseId } : {}),
             uuid,
             message: {
                 role: 'user',

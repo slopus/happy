@@ -11,6 +11,7 @@ describe('session protocol schemas', () => {
         const events: SessionEvent[] = [
             { t: 'text', text: 'hello' },
             { t: 'text', text: 'thinking', thinking: true },
+            { t: 'service', text: '**Service:** restarting MCP bridge' },
             {
                 t: 'tool-call-start',
                 call: 'call-1',
@@ -23,7 +24,9 @@ describe('session protocol schemas', () => {
             { t: 'file', ref: 'upload-1', name: 'report.txt' },
             { t: 'photo', ref: 'upload-2', thumbhash: 'abc', width: 100, height: 80 },
             { t: 'turn-start' },
-            { t: 'turn-end' },
+            { t: 'start', title: 'Research agent' },
+            { t: 'turn-end', status: 'completed' },
+            { t: 'stop' },
         ];
 
         for (const event of events) {
@@ -34,21 +37,48 @@ describe('session protocol schemas', () => {
     it('rejects malformed events', () => {
         expect(sessionEventSchema.safeParse({ t: 'tool-call-start', call: '1' }).success).toBe(false);
         expect(sessionEventSchema.safeParse({ t: 'photo', ref: 'x', width: 10, height: 10 }).success).toBe(false);
+        expect(sessionEventSchema.safeParse({ t: 'turn-end' }).success).toBe(false);
+        expect(sessionEventSchema.safeParse({ t: 'turn-end', status: 'canceled' }).success).toBe(false);
+        expect(sessionEventSchema.safeParse({ t: 'start', title: 1 }).success).toBe(false);
+        expect(sessionEventSchema.safeParse({ t: 'service' }).success).toBe(false);
         expect(sessionEventSchema.safeParse({ t: 'not-real' }).success).toBe(false);
     });
 
-    it('validates envelopes that include turn/invoke', () => {
+    it('validates envelopes that include turn/subagent', () => {
         const envelope = {
             id: 'msg-1',
             time: 123,
             role: 'agent' as const,
             turn: 'turn-1',
-            invoke: 'tool-1',
+            subagent: 'subagent-1',
             ev: { t: 'text', text: 'hello' } as const,
         };
 
         const parsed = sessionEnvelopeSchema.safeParse(envelope);
         expect(parsed.success).toBe(true);
+    });
+
+    it('rejects service from non-agent role', () => {
+        const parsed = sessionEnvelopeSchema.safeParse({
+            id: 'msg-2',
+            time: 124,
+            role: 'user',
+            ev: { t: 'service', text: 'internal event' },
+        });
+
+        expect(parsed.success).toBe(false);
+    });
+
+    it('rejects start from non-agent role', () => {
+        const parsed = sessionEnvelopeSchema.safeParse({
+            id: 'msg-3',
+            time: 125,
+            role: 'user',
+            subagent: 'subagent-1',
+            ev: { t: 'start', title: 'Research agent' },
+        });
+
+        expect(parsed.success).toBe(false);
     });
 });
 
@@ -70,7 +100,7 @@ describe('createEnvelope', () => {
                 id: 'fixed-id',
                 time: 999,
                 turn: 'turn-1',
-                invoke: 'parent-call',
+                subagent: 'subagent-1',
             }
         );
 
@@ -79,8 +109,9 @@ describe('createEnvelope', () => {
             time: 999,
             role: 'agent',
             turn: 'turn-1',
-            invoke: 'parent-call',
+            subagent: 'subagent-1',
             ev: { t: 'tool-call-end', call: 'call-1' },
         });
     });
+
 });

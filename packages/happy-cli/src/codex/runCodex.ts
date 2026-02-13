@@ -196,6 +196,8 @@ export async function runCodex(opts: {
     });
     let thinking = false;
     let currentTurnId: string | null = null;
+    let codexStartedSubagents = new Set<string>();
+    let codexActiveSubagents = new Set<string>();
     session.keepAlive(thinking, 'remote');
     // Periodic keep-alive; store handle so we can clear on exit
     const keepAliveInterval = setInterval(() => {
@@ -507,8 +509,14 @@ export async function runCodex(opts: {
         // Convert Codex MCP events into the unified session-protocol envelope stream.
         // Reasoning deltas are handled by ReasoningProcessor to avoid duplicate text output.
         if (msg.type !== 'agent_reasoning_delta' && msg.type !== 'agent_reasoning' && msg.type !== 'agent_reasoning_section_break' && msg.type !== 'turn_diff') {
-            const mapped = mapCodexMcpMessageToSessionEnvelopes(msg, { currentTurnId });
+            const mapped = mapCodexMcpMessageToSessionEnvelopes(msg, {
+                currentTurnId,
+                startedSubagents: codexStartedSubagents,
+                activeSubagents: codexActiveSubagents,
+            });
             currentTurnId = mapped.currentTurnId;
+            codexStartedSubagents = mapped.startedSubagents;
+            codexActiveSubagents = mapped.activeSubagents;
             for (const envelope of mapped.envelopes) {
                 session.sendSessionProtocolMessage(envelope);
             }

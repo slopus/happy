@@ -54,6 +54,8 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
             }
             switchRequested = true;
 
+            session.client.closeClaudeSessionTurn('cancelled');
+
             // Reset sent messages
             session.queue.reset();
 
@@ -69,6 +71,8 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                 exitReason = { type: 'switch' };
             }
             switchRequested = true;
+
+            session.client.closeClaudeSessionTurn('cancelled');
 
             // Abort
             await abort();
@@ -123,6 +127,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
                 // Normal exit
                 if (!exitReason) {
+                    session.client.closeClaudeSessionTurn('completed');
                     exitReason = { type: 'exit', code: 0 };
                     break;
                 }
@@ -135,6 +140,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                     if (switchRequested) {
                         break;
                     }
+                    session.client.closeClaudeSessionTurn('failed');
                     exitReason = { type: 'exit', code: e.exitCode };
                     break;
                 }
