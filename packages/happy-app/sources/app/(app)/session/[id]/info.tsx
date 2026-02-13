@@ -76,6 +76,7 @@ function SessionInfoContent({ session }: { session: Session }) {
         const reasoningEffort = localModelDisplay.reasoningEffort || session.metadata?.reasoningEffort;
         return formatModelDisplay(model, reasoningEffort);
     }, [localModelDisplay.model, localModelDisplay.reasoningEffort, session.metadata?.model, session.metadata?.reasoningEffort]);
+    const geminiSessionId = session.metadata?.flavor === 'gemini' ? session.id : undefined;
     
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
@@ -100,12 +101,58 @@ function SessionInfoContent({ session }: { session: Session }) {
         }
     }, [session]);
 
+    const handleCopyClaudeSessionId = useCallback(async () => {
+        const claudeSessionId = session.metadata?.claudeSessionId;
+        if (!claudeSessionId) return;
+        try {
+            await Clipboard.setStringAsync(claudeSessionId);
+            Modal.alert(t('common.success'), t('sessionInfo.claudeCodeSessionIdCopied'));
+        } catch (error) {
+            Modal.alert(t('common.error'), t('sessionInfo.failedToCopyClaudeCodeSessionId'));
+        }
+    }, [session.metadata?.claudeSessionId]);
+
+    const handleCopyCodexSessionId = useCallback(async () => {
+        const codexSessionId = session.metadata?.codexSessionId;
+        if (!codexSessionId) return;
+        try {
+            await Clipboard.setStringAsync(codexSessionId);
+            Modal.alert(t('common.success'), t('sessionInfo.codexSessionIdCopied'));
+        } catch (error) {
+            Modal.alert(t('common.error'), t('sessionInfo.failedToCopyCodexSessionId'));
+        }
+    }, [session.metadata?.codexSessionId]);
+
+    const handleCopyGeminiSessionId = useCallback(async () => {
+        if (!geminiSessionId) return;
+        try {
+            await Clipboard.setStringAsync(geminiSessionId);
+            Modal.alert(t('common.success'), t('sessionInfo.geminiSessionIdCopied'));
+        } catch (error) {
+            Modal.alert(t('common.error'), t('sessionInfo.failedToCopyGeminiSessionId'));
+        }
+    }, [geminiSessionId]);
+
     // Use HappyAction for archiving - it handles errors automatically
     const [archivingSession, performArchive] = useHappyAction(async () => {
+        const previousActive = storage.getState().sessions[session.id]?.active ?? session.active;
+        storage.getState().updateSessionActivity(session.id, false);
+
         const result = await sessionKill(session.id);
-        if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+        const errorMessage = result.message || t('sessionInfo.failedToArchiveSession');
+
+        // Archiving is idempotent: if RPC target is gone, session is effectively already archived.
+        if (!result.success && /RPC method not available/i.test(errorMessage)) {
+            router.back();
+            router.back();
+            return;
         }
+
+        if (!result.success) {
+            storage.getState().updateSessionActivity(session.id, previousActive);
+            throw new HappyError(errorMessage, false);
+        }
+
         // Success - navigate back
         router.back();
         router.back();
@@ -545,14 +592,23 @@ function SessionInfoContent({ session }: { session: Session }) {
                             title={t('sessionInfo.claudeCodeSessionId')}
                             subtitle={`${session.metadata.claudeSessionId.substring(0, 8)}...${session.metadata.claudeSessionId.substring(session.metadata.claudeSessionId.length - 8)}`}
                             icon={<Ionicons name="code-outline" size={29} color="#9C27B0" />}
-                            onPress={async () => {
-                                try {
-                                    await Clipboard.setStringAsync(session.metadata!.claudeSessionId!);
-                                    Modal.alert(t('common.success'), t('sessionInfo.claudeCodeSessionIdCopied'));
-                                } catch (error) {
-                                    Modal.alert(t('common.error'), t('sessionInfo.failedToCopyClaudeCodeSessionId'));
-                                }
-                            }}
+                            onPress={handleCopyClaudeSessionId}
+                        />
+                    )}
+                    {session.metadata?.codexSessionId && (
+                        <Item
+                            title={t('sessionInfo.codexSessionId')}
+                            subtitle={`${session.metadata.codexSessionId.substring(0, 8)}...${session.metadata.codexSessionId.substring(session.metadata.codexSessionId.length - 8)}`}
+                            icon={<Ionicons name="code-outline" size={29} color="#9C27B0" />}
+                            onPress={handleCopyCodexSessionId}
+                        />
+                    )}
+                    {geminiSessionId && (
+                        <Item
+                            title={t('sessionInfo.geminiSessionId')}
+                            subtitle={`${geminiSessionId.substring(0, 8)}...${geminiSessionId.substring(geminiSessionId.length - 8)}`}
+                            icon={<Ionicons name="code-outline" size={29} color="#9C27B0" />}
+                            onPress={handleCopyGeminiSessionId}
                         />
                     )}
                     <Item
