@@ -100,6 +100,7 @@ export interface ResumeConversationParams {
 export interface ResumeConversationResponse {
   conversationId: string;
   model: string;
+  reasoningEffort?: string | null;
   initialMessages?: EventMsg[] | null;
   rolloutPath: string;
 }

@@ -205,6 +205,7 @@ export async function runCodex(opts: {
     let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
     let currentSessionModel: string | undefined = undefined;
+    let currentSessionReasoningEffort: string | undefined = undefined;
 
     const normalizeModel = (model: unknown): string | undefined => {
         if (typeof model !== 'string') {
@@ -214,19 +215,37 @@ export async function runCodex(opts: {
         return trimmed.length > 0 ? trimmed : undefined;
     };
 
-    const syncSessionModel = (model: unknown): void => {
-        const normalized = normalizeModel(model);
-        if (!normalized || normalized === currentSessionModel) {
+    const normalizeReasoningEffort = (reasoningEffort: unknown): string | undefined => {
+        if (typeof reasoningEffort !== 'string') {
+            return undefined;
+        }
+        const trimmed = reasoningEffort.trim();
+        return trimmed.length > 0 ? trimmed : undefined;
+    };
+
+    const syncSessionModelInfo = (opts: { model: unknown; reasoningEffort?: unknown }): void => {
+        const normalizedModel = normalizeModel(opts.model);
+        if (!normalizedModel) {
             return;
         }
-        currentSessionModel = normalized;
+
+        const normalizedEffort = normalizeReasoningEffort(opts.reasoningEffort);
+        if (normalizedModel === currentSessionModel && normalizedEffort === currentSessionReasoningEffort) {
+            return;
+        }
+
+        currentSessionModel = normalizedModel;
+        currentSessionReasoningEffort = normalizedEffort;
         session.updateMetadata((currentMetadata) => {
-            if (currentMetadata.model === normalized) {
+            const currentModelValue = normalizeModel(currentMetadata.model);
+            const currentEffortValue = normalizeReasoningEffort(currentMetadata.reasoningEffort);
+            if (currentModelValue === normalizedModel && currentEffortValue === normalizedEffort) {
                 return currentMetadata;
             }
             return {
                 ...currentMetadata,
-                model: normalized,
+                model: normalizedModel,
+                reasoningEffort: normalizedEffort,
             };
         });
     };
@@ -248,7 +267,7 @@ export async function runCodex(opts: {
             messageModel = message.meta.model || undefined;
             currentModel = messageModel;
             logger.debug(`[Codex] Model updated from user message: ${messageModel || 'reset to default'}`);
-            syncSessionModel(messageModel);
+            syncSessionModelInfo({ model: messageModel, reasoningEffort: undefined });
         } else {
             logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
         }
@@ -638,8 +657,8 @@ export async function runCodex(opts: {
                         message: `[Plan Update] ${JSON.stringify(msg.payload)}`,
                     });
                 } else if (msg.name === 'session_configured') {
-                    const payload = msg.payload as { model?: string };
-                    syncSessionModel(payload.model);
+                    const payload = msg.payload as { model?: string; reasoningEffort?: string };
+                    syncSessionModelInfo({ model: payload.model, reasoningEffort: payload.reasoningEffort });
                 }
                 break;
             }

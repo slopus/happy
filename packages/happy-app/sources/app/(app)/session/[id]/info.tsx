@@ -734,7 +734,9 @@ function SessionInfoContent({ session }: { session: Session }) {
                         {session.metadata.model && (
                             <Item
                                 title={t('sessionInfo.model')}
-                                subtitle={session.metadata.model}
+                                subtitle={session.metadata.reasoningEffort
+                                    ? `${session.metadata.model} (${session.metadata.reasoningEffort})`
+                                    : session.metadata.model}
                                 icon={<Ionicons name="options-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
                             />

@@ -11,6 +11,7 @@ export const MetadataSchema = z.object({
     name: z.string().optional(),
     os: z.string().optional(),
     model: z.string().optional(),
+    reasoningEffort: z.string().optional(),
     summary: z.object({
         text: z.string(),
         updatedAt: z.number()

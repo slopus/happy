@@ -333,6 +333,7 @@ export type Metadata = {
   name?: string,
   os?: string,
   model?: string,
+  reasoningEffort?: string,
   summary?: {
     text: string,
     updatedAt: number

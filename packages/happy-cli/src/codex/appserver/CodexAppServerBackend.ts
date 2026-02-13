@@ -148,6 +148,7 @@ export class CodexAppServerBackend implements AgentBackend {
         } satisfies ResumeConversationParams
       );
       convId = resumeResult.conversationId;
+      this.handleSessionConfigured({ sessionId: convId, model: resumeResult.model, reasoningEffort: resumeResult.reasoningEffort });
     } else {
       const newResult = await this.peer.request<NewConversationResponse>(
         Methods.NEW_CONVERSATION,
@@ -155,6 +156,7 @@ export class CodexAppServerBackend implements AgentBackend {
       );
       convId = newResult.conversationId;
       logger.info(`[CodexBackend] New conversation: id=${convId}, model=${newResult.model}`);
+      this.handleSessionConfigured({ sessionId: convId, model: newResult.model, reasoningEffort: newResult.reasoningEffort });
     }
 
     this.conversationId = convId;
@@ -368,16 +370,31 @@ export class CodexAppServerBackend implements AgentBackend {
 
   private handleSessionConfigured(params: unknown): void {
     const p = params as Record<string, unknown>;
-    if (p?.sessionId) {
-      this.sessionId = p.sessionId as string;
+    const sessionId =
+      typeof p?.sessionId === 'string'
+        ? p.sessionId
+        : typeof p?.session_id === 'string'
+          ? p.session_id
+          : undefined;
+    const model = typeof p?.model === 'string' ? p.model : undefined;
+    const reasoningEffort =
+      typeof p?.reasoningEffort === 'string'
+        ? p.reasoningEffort
+        : typeof p?.reasoning_effort === 'string'
+          ? p.reasoning_effort
+          : undefined;
+
+    if (sessionId) {
+      this.sessionId = sessionId;
     }
-    logger.debug(`[CodexBackend] Session configured: model=${p?.model}, sessionId=${p?.sessionId}`);
+    logger.debug(`[CodexBackend] Session configured: model=${model}, sessionId=${sessionId}`);
     this.emit({
       type: 'event',
       name: 'session_configured',
       payload: {
-        sessionId: p?.sessionId,
-        model: p?.model,
+        sessionId,
+        model,
+        reasoningEffort,
       },
     });
   }
