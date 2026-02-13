@@ -81,13 +81,28 @@ function runRelease(target) {
     `Running release pipeline for ${target.id} (workspace: ${target.workspaceName})`
   );
 
+  const workspaceBin = path.join(
+    repoRoot,
+    target.workspacePath,
+    "node_modules",
+    ".bin"
+  );
+  const rootBin = path.join(repoRoot, "node_modules", ".bin");
+  const existingPath = process.env.PATH || "";
+  const releasePath = [workspaceBin, rootBin, existingPath]
+    .filter(Boolean)
+    .join(path.delimiter);
+
   const result = spawnSync(
     "yarn",
     ["workspace", target.workspaceName, "run", "release"],
     {
       cwd: repoRoot,
       stdio: "inherit",
-      env: process.env,
+      env: {
+        ...process.env,
+        PATH: releasePath,
+      },
     }
   );
 
