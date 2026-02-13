@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { Client } from 'minio';
 
 const useLocalStorage = !process.env.S3_HOST;
 const dataDir = process.env.DATA_DIR || './data';
@@ -12,11 +13,10 @@ let s3host: string = '';
 let s3public: string = '';
 
 if (!useLocalStorage) {
-    const Minio = require('minio');
     const s3Port = process.env.S3_PORT ? parseInt(process.env.S3_PORT, 10) : undefined;
     const s3UseSSL = process.env.S3_USE_SSL ? process.env.S3_USE_SSL === 'true' : true;
     const s3Region = process.env.S3_REGION || 'us-east-1';
-    s3client = new Minio.Client({
+    s3client = new Client({
         endPoint: process.env.S3_HOST!,
         port: s3Port,
         useSSL: s3UseSSL,
