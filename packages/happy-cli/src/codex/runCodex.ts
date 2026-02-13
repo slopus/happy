@@ -236,9 +236,17 @@ export async function runCodex(opts: {
         messageQueue.push(messageText, enhancedMode);
     });
     let thinking = false;
-    session.keepAlive(thinking, 'remote');
+    let isTerminating = false;
+    let killInProgress = false;
+    const sendRemoteKeepAlive = (currentThinking: boolean) => {
+        if (isTerminating) {
+            return;
+        }
+        session.keepAlive(currentThinking, 'remote');
+    };
+    sendRemoteKeepAlive(thinking);
     const keepAliveInterval = setInterval(() => {
-        session.keepAlive(thinking, 'remote');
+        sendRemoteKeepAlive(thinking);
     }, 2000);
 
     const sendReady = () => {
@@ -308,9 +316,18 @@ export async function runCodex(opts: {
     };
 
     const handleKillSession = async () => {
+        if (killInProgress) {
+            logger.debug('[Codex] Kill session already in progress');
+            return;
+        }
+        killInProgress = true;
+
         logger.debug('[Codex] Kill session requested - terminating process');
-        await handleAbort();
-        logger.debug('[Codex] Abort completed, proceeding with termination');
+        isTerminating = true;
+        shouldExit = true;
+        thinking = false;
+        clearInterval(keepAliveInterval);
+        messageQueue.reset();
 
         try {
             if (session) {
@@ -325,7 +342,18 @@ export async function runCodex(opts: {
                 await session.flush();
                 await session.close();
             }
+        } catch (error) {
+            logger.debug('[Codex] Error while ending session during termination', error);
+        }
 
+        try {
+            await handleAbort();
+            logger.debug('[Codex] Abort completed, proceeding with backend disposal');
+        } catch (error) {
+            logger.debug('[Codex] Error during abort in termination flow', error);
+        }
+
+        try {
             try {
                 await backend?.dispose();
             } catch (e) {
@@ -425,7 +453,7 @@ export async function runCodex(opts: {
                     messageSentThisTurn = false;
                     if (!thinking) {
                         thinking = true;
-                        session.keepAlive(thinking, 'remote');
+                        sendRemoteKeepAlive(thinking);
                     }
                     session.sendAgentMessage('codex', { type: 'task_started', id: randomUUID() });
                 } else if (msg.status === 'idle') {
@@ -446,7 +474,7 @@ export async function runCodex(opts: {
 
                     if (thinking) {
                         thinking = false;
-                        session.keepAlive(thinking, 'remote');
+                        sendRemoteKeepAlive(thinking);
                     }
                     diffProcessor.reset();
                     // Note: sendReady() is called by emitReadyIfIdle() in the finally block
@@ -717,7 +745,7 @@ export async function runCodex(opts: {
                 reasoningProcessor.abort();
                 diffProcessor.reset();
                 thinking = false;
-                session.keepAlive(thinking, 'remote');
+                sendRemoteKeepAlive(thinking);
                 continue;
             }
 
@@ -830,7 +858,7 @@ export async function runCodex(opts: {
                 reasoningProcessor.abort();
                 diffProcessor.reset();
                 thinking = false;
-                session.keepAlive(thinking, 'remote');
+                sendRemoteKeepAlive(thinking);
                 emitReadyIfIdle({
                     pending,
                     queueSize: () => messageQueue.size(),
