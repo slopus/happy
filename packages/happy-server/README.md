@@ -28,6 +28,50 @@ Your Claude Code clients generate encryption keys locally and use Happy Server a
 
 That said, Happy Server is open source and self-hostable if you prefer running your own infrastructure. The security model is identical whether you use our servers or your own.
 
+## Self-Hosting with Docker
+
+The standalone Docker image runs everything in a single container with no external dependencies (no Postgres, no Redis, no S3).
+
+```bash
+docker build -t happy-server -f Dockerfile .
+```
+
+Run from the monorepo root:
+
+```bash
+docker run -p 3005:3005 \
+  -e HANDY_MASTER_SECRET=<your-secret> \
+  -v happy-data:/data \
+  happy-server
+```
+
+This uses:
+- **PGlite** - embedded PostgreSQL (data stored in `/data/pglite`)
+- **Local filesystem** - for file uploads (stored in `/data/files`)
+- **In-memory event bus** - no Redis needed
+
+Data persists in the `happy-data` Docker volume across container restarts.
+
+### Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `HANDY_MASTER_SECRET` | Yes | - | Master secret for auth/encryption |
+| `PUBLIC_URL` | No | `http://localhost:3005` | Public base URL for file URLs sent to clients |
+| `PORT` | No | `3005` | Server port |
+| `DATA_DIR` | No | `/data` | Base data directory |
+| `PGLITE_DIR` | No | `/data/pglite` | PGlite database directory |
+
+### Optional: External Services
+
+To use external Postgres or Redis instead of the embedded defaults, set:
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection URL (bypasses PGlite) |
+| `REDIS_URL` | Redis connection URL |
+| `S3_HOST` | S3/MinIO host (bypasses local file storage) |
+
 ## License
 
 MIT - Use it, modify it, deploy it anywhere.

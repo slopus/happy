@@ -35,8 +35,14 @@ function formatLocalTime(timestamp?: number) {
 
 const transports: any[] = [];
 
+// Resolve pino-pretty target - use absolute path for bundled binaries
+let pinoPrettyTarget: string = 'pino-pretty';
+try {
+    pinoPrettyTarget = require.resolve('pino-pretty');
+} catch {}
+
 transports.push({
-    target: 'pino-pretty',
+    target: pinoPrettyTarget,
     options: {
         colorize: true,
         translateTime: 'HH:MM:ss.l',
