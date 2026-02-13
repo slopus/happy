@@ -98,14 +98,14 @@ const styles = StyleSheet.create((theme) => ({
     },
 }));
 
-// Tab header configuration (zen excluded as that tab is disabled)
+// Tab header configuration
 const TAB_TITLES = {
     sessions: 'tabs.sessions',
     inbox: 'tabs.inbox',
     settings: 'tabs.settings',
 } as const;
 
-// Active tabs (excludes zen which is disabled)
+// Active tabs
 type ActiveTabType = 'sessions' | 'inbox' | 'settings';
 
 // Header title component with connection status

@@ -38,7 +38,6 @@ import { getFriendsList, getUserProfile } from './apiFriends';
 import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
-import { initializeTodoSync } from '../-zen/model/ops';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 
 function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boolean {
@@ -94,7 +93,6 @@ class Sync {
     private friendsSync: InvalidateSync;
     private friendRequestsSync: InvalidateSync;
     private feedSync: InvalidateSync;
-    private todosSync: InvalidateSync;
     private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     private appState: AppStateStatus = AppState.currentState;
@@ -118,7 +116,6 @@ class Sync {
         this.friendsSync = new InvalidateSync(this.fetchFriends);
         this.friendRequestsSync = new InvalidateSync(this.fetchFriendRequests);
         this.feedSync = new InvalidateSync(this.fetchFeed);
-        this.todosSync = new InvalidateSync(this.fetchTodos);
 
         const registerPushToken = async () => {
             if (__DEV__) {
@@ -154,7 +151,6 @@ class Sync {
                 this.friendsSync.invalidate();
                 this.friendRequestsSync.invalidate();
                 this.feedSync.invalidate();
-                this.todosSync.invalidate();
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
                 this.maybeStartBackgroundSendWatchdog();
@@ -217,8 +213,7 @@ class Sync {
         this.friendRequestsSync.invalidate();
         this.artifactsSync.invalidate();
         this.feedSync.invalidate();
-        this.todosSync.invalidate();
-        log.log('🔄 #init: All syncs invalidated, including artifacts and todos');
+        log.log('🔄 #init: All syncs invalidated, including artifacts');
 
         // Wait for both sessions and machines to load, then mark as ready
         Promise.all([
@@ -1191,87 +1186,6 @@ class Sync {
         log.log('👥 fetchFriendRequests called - now handled by fetchFriends');
     }
 
-    private fetchTodos = async () => {
-        if (!this.credentials) return;
-
-        try {
-            log.log('📝 Fetching todos...');
-            await initializeTodoSync(this.credentials);
-            log.log('📝 Todos loaded');
-        } catch (error) {
-            log.log('📝 Failed to fetch todos:');
-        }
-    }
-
-    private applyTodoSocketUpdates = async (changes: any[]) => {
-        if (!this.credentials || !this.encryption) return;
-
-        const currentState = storage.getState();
-        const todoState = currentState.todoState;
-        if (!todoState) {
-            // No todo state yet, just refetch
-            this.todosSync.invalidate();
-            return;
-        }
-
-        const { todos, undoneOrder, doneOrder, versions } = todoState;
-        let updatedTodos = { ...todos };
-        let updatedVersions = { ...versions };
-        let indexUpdated = false;
-        let newUndoneOrder = undoneOrder;
-        let newDoneOrder = doneOrder;
-
-        // Process each change
-        for (const change of changes) {
-            try {
-                const key = change.key;
-                const version = change.version;
-
-                // Update version tracking
-                updatedVersions[key] = version;
-
-                if (change.value === null) {
-                    // Item was deleted
-                    if (key.startsWith('todo.') && key !== 'todo.index') {
-                        const todoId = key.substring(5); // Remove 'todo.' prefix
-                        delete updatedTodos[todoId];
-                        newUndoneOrder = newUndoneOrder.filter(id => id !== todoId);
-                        newDoneOrder = newDoneOrder.filter(id => id !== todoId);
-                    }
-                } else {
-                    // Item was added or updated
-                    const decrypted = await this.encryption.decryptRaw(change.value);
-
-                    if (key === 'todo.index') {
-                        // Update the index
-                        const index = decrypted as any;
-                        newUndoneOrder = index.undoneOrder || [];
-                        newDoneOrder = index.completedOrder || []; // Map completedOrder to doneOrder
-                        indexUpdated = true;
-                    } else if (key.startsWith('todo.')) {
-                        // Update a todo item
-                        const todoId = key.substring(5);
-                        if (todoId && todoId !== 'index') {
-                            updatedTodos[todoId] = decrypted as any;
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error(`Failed to process todo change for key ${change.key}:`, error);
-            }
-        }
-
-        // Apply the updated state
-        storage.getState().applyTodos({
-            todos: updatedTodos,
-            undoneOrder: newUndoneOrder,
-            doneOrder: newDoneOrder,
-            versions: updatedVersions
-        });
-
-        log.log('📝 Applied todo socket updates successfully');
-    }
-
     private fetchFeed = async () => {
         if (!this.credentials) return;
 
@@ -2233,29 +2147,6 @@ class Sync {
             
             // Apply to storage (will handle repeatKey replacement)
             storage.getState().applyFeedItems([feedItem]);
-        } else if (updateData.body.t === 'kv-batch-update') {
-            log.log('📝 Received kv-batch-update');
-            const kvUpdate = updateData.body;
-
-            // Process KV changes for todos
-            if (kvUpdate.changes && Array.isArray(kvUpdate.changes)) {
-                const todoChanges = kvUpdate.changes.filter(change =>
-                    change.key && change.key.startsWith('todo.')
-                );
-
-                if (todoChanges.length > 0) {
-                    log.log(`📝 Processing ${todoChanges.length} todo KV changes from socket`);
-
-                    // Apply the changes directly to avoid unnecessary refetch
-                    try {
-                        await this.applyTodoSocketUpdates(todoChanges);
-                    } catch (error) {
-                        console.error('Failed to apply todo socket updates:', error);
-                        // Fallback to refetch on error
-                        this.todosSync.invalidate();
-                    }
-                }
-            }
         }
     }
 
