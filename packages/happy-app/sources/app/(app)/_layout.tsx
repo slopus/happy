@@ -325,28 +325,6 @@ export default function RootLayout() {
                     headerBackTitle: t('common.back'),
                 }}
             />
-            <Stack.Screen
-                name="zen/index"
-                options={{
-                    headerShown: false
-                }}
-            />
-            <Stack.Screen
-                name="zen/new"
-                options={{
-                    presentation: 'modal',
-                    headerTitle: 'New Task',
-                    headerBackTitle: t('common.cancel'),
-                }}
-            />
-            <Stack.Screen
-                name="zen/view"
-                options={{
-                    presentation: 'modal',
-                    headerTitle: 'Task Details',
-                    headerBackTitle: t('common.back'),
-                }}
-            />
         </Stack>
     );
 }

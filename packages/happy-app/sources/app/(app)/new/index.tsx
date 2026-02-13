@@ -19,7 +19,6 @@ import { sync } from '@/sync/sync';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
-import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
 import { PermissionMode, ModelMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
