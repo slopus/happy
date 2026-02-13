@@ -27,6 +27,7 @@ import { config } from '@/config';
 import { log } from '@/log';
 import { gitStatusSync } from './gitStatusSync';
 import { projectManager } from './projectManager';
+import { AsyncLock } from '@/utils/lock';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
@@ -80,6 +81,7 @@ class Sync {
     private pendingOutbox = new Map<string, OutboxMessage[]>();
     private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
     private sessionQueueProcessing = new Set<string>();
+    private sessionMessageLocks = new Map<string, AsyncLock>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
@@ -270,20 +272,41 @@ class Sync {
         }
         queue.push(...messages);
 
+        this.scheduleQueuedMessagesProcessing(sessionId);
+    }
+
+    private getSessionMessageLock(sessionId: string): AsyncLock {
+        let lock = this.sessionMessageLocks.get(sessionId);
+        if (!lock) {
+            lock = new AsyncLock();
+            this.sessionMessageLocks.set(sessionId, lock);
+        }
+        return lock;
+    }
+
+    private scheduleQueuedMessagesProcessing(sessionId: string) {
         if (this.sessionQueueProcessing.has(sessionId)) {
             return;
         }
 
         this.sessionQueueProcessing.add(sessionId);
-        while (true) {
-            const pending = this.sessionMessageQueue.get(sessionId);
-            if (!pending || pending.length === 0) {
-                this.sessionQueueProcessing.delete(sessionId);
-                break;
+        const lock = this.getSessionMessageLock(sessionId);
+        void lock.inLock(() => {
+            while (true) {
+                const pending = this.sessionMessageQueue.get(sessionId);
+                if (!pending || pending.length === 0) {
+                    break;
+                }
+                const batch = pending.splice(0, pending.length);
+                this.applyMessages(sessionId, batch);
             }
-            const batch = pending.splice(0, pending.length);
-            this.applyMessages(sessionId, batch);
-        }
+        }).finally(() => {
+            this.sessionQueueProcessing.delete(sessionId);
+            const pending = this.sessionMessageQueue.get(sessionId);
+            if (pending && pending.length > 0) {
+                this.scheduleQueuedMessagesProcessing(sessionId);
+            }
+        });
     }
 
     private hasPendingOutboxMessages() {
@@ -1590,61 +1613,63 @@ class Sync {
 
     private fetchMessages = async (sessionId: string) => {
         log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
-
-        const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) {
-            log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
-            throw new Error(`Session encryption not ready for ${sessionId}`);
-        }
-
-        let afterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
-        let hasMore = true;
-        let totalNormalized = 0;
-
-        while (hasMore) {
-            const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
-            if (!response.ok) {
-                throw new Error(`Failed to fetch messages for ${sessionId}: ${response.status}`);
+        const lock = this.getSessionMessageLock(sessionId);
+        await lock.inLock(async () => {
+            const encryption = this.encryption.getSessionEncryption(sessionId);
+            if (!encryption) {
+                log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
+                throw new Error(`Session encryption not ready for ${sessionId}`);
             }
-            const data = await response.json() as V3GetSessionMessagesResponse;
-            const messages = Array.isArray(data.messages) ? data.messages : [];
 
-            let maxSeq = afterSeq;
-            for (const message of messages) {
-                if (message.seq > maxSeq) {
-                    maxSeq = message.seq;
+            let afterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+            let hasMore = true;
+            let totalNormalized = 0;
+
+            while (hasMore) {
+                const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch messages for ${sessionId}: ${response.status}`);
                 }
-            }
+                const data = await response.json() as V3GetSessionMessagesResponse;
+                const messages = Array.isArray(data.messages) ? data.messages : [];
 
-            const decryptedMessages = await encryption.decryptMessages(messages);
-            const normalizedMessages: NormalizedMessage[] = [];
-            for (let i = 0; i < decryptedMessages.length; i++) {
-                const decrypted = decryptedMessages[i];
-                if (!decrypted) {
-                    continue;
+                let maxSeq = afterSeq;
+                for (const message of messages) {
+                    if (message.seq > maxSeq) {
+                        maxSeq = message.seq;
+                    }
                 }
-                const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
-                if (normalized) {
-                    normalizedMessages.push(normalized);
+
+                const decryptedMessages = await encryption.decryptMessages(messages);
+                const normalizedMessages: NormalizedMessage[] = [];
+                for (let i = 0; i < decryptedMessages.length; i++) {
+                    const decrypted = decryptedMessages[i];
+                    if (!decrypted) {
+                        continue;
+                    }
+                    const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                    if (normalized) {
+                        normalizedMessages.push(normalized);
+                    }
                 }
+
+                if (normalizedMessages.length > 0) {
+                    totalNormalized += normalizedMessages.length;
+                    this.enqueueMessages(sessionId, normalizedMessages);
+                }
+
+                this.sessionLastSeq.set(sessionId, maxSeq);
+                hasMore = !!data.hasMore;
+                if (hasMore && maxSeq === afterSeq) {
+                    log.log(`💬 fetchMessages: pagination stalled for ${sessionId}, stopping to avoid infinite loop`);
+                    break;
+                }
+                afterSeq = maxSeq;
             }
 
-            if (normalizedMessages.length > 0) {
-                totalNormalized += normalizedMessages.length;
-                this.enqueueMessages(sessionId, normalizedMessages);
-            }
-
-            this.sessionLastSeq.set(sessionId, maxSeq);
-            hasMore = !!data.hasMore;
-            if (hasMore && maxSeq === afterSeq) {
-                log.log(`💬 fetchMessages: pagination stalled for ${sessionId}, stopping to avoid infinite loop`);
-                break;
-            }
-            afterSeq = maxSeq;
-        }
-
-        storage.getState().applyMessagesLoaded(sessionId);
-        log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${totalNormalized} messages`);
+            storage.getState().applyMessagesLoaded(sessionId);
+            log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${totalNormalized} messages`);
+        });
     }
 
     private registerPushToken = async () => {
@@ -1839,6 +1864,7 @@ class Sync {
             this.sendSync.delete(sessionId);
             this.pendingOutbox.delete(sessionId);
             this.sessionLastSeq.delete(sessionId);
+            this.sessionMessageLocks.delete(sessionId);
             this.sessionMessageQueue.delete(sessionId);
             this.sessionQueueProcessing.delete(sessionId);
 
