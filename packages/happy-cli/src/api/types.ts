@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { UsageSchema } from '@/claude/types'
+import type { SandboxConfig } from '@/persistence'
 
 /**
  * Permission mode type - includes both Claude and Codex modes
@@ -326,6 +327,7 @@ export type Metadata = {
   archivedBy?: string,
   archiveReason?: string,
   flavor?: string
+  sandbox?: SandboxConfig | null
 };
 
 export type AgentState = {

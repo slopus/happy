@@ -22,7 +22,7 @@ export async function wrapForMcpTransport(
     command: string,
     args: string[],
 ): Promise<{ command: 'sh'; args: ['-c', string] }> {
-    const wrappedCommand = await SandboxManager.wrapWithSandbox(`${command} ${args.join(' ')}`.trim());
+    const wrappedCommand = await wrapCommand(`${command} ${args.join(' ')}`.trim());
     return {
         command: 'sh',
         args: ['-c', wrappedCommand],

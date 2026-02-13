@@ -59,6 +59,7 @@ describe('buildSandboxRuntimeConfig', () => {
         const withWorkspaceRoot = buildSandboxRuntimeConfig(createConfig(), sessionPath);
         expect(withWorkspaceRoot.filesystem?.allowWrite).toEqual([
             `${homedir()}/projects`,
+            resolve(sessionPath),
             '/tmp',
             ...expectedSharedAgentStatePaths(),
         ]);
@@ -101,13 +102,15 @@ describe('buildSandboxRuntimeConfig', () => {
         expect(blocked.network?.allowedDomains).toEqual([]);
         expect(blocked.network?.deniedDomains).toEqual([]);
         expect(blocked.network?.allowLocalBinding).toBe(false);
+        expect(blocked.enableWeakerNetworkIsolation).toBeUndefined();
 
         const allowed = buildSandboxRuntimeConfig(
             createConfig({ networkMode: 'allowed' }),
             sessionPath,
         );
-        expect(allowed.network?.allowedDomains).toEqual(['*']);
+        expect(allowed.network?.allowedDomains).toBeUndefined();
         expect(allowed.network?.deniedDomains).toEqual([]);
+        expect(allowed.enableWeakerNetworkIsolation).toBe(true);
     });
 
     it('maps custom network mode from user lists', () => {

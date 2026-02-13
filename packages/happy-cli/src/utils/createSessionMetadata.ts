@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import type { AgentState, Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
+import type { SandboxConfig } from '@/persistence';
 import packageJson from '../../package.json';
 
 /**
@@ -30,6 +31,8 @@ export interface CreateSessionMetadataOptions {
     machineId: string;
     /** How the session was started */
     startedBy?: 'daemon' | 'terminal';
+    /** Active sandbox config for the session, or undefined when not used */
+    sandbox?: SandboxConfig;
 }
 
 /**
@@ -82,7 +85,8 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         startedBy: opts.startedBy || 'terminal',
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),
-        flavor: opts.flavor
+        flavor: opts.flavor,
+        sandbox: opts.sandbox?.enabled ? opts.sandbox : null,
     };
 
     return { state, metadata };

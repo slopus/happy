@@ -52,7 +52,7 @@ describe('sandbox manager', () => {
         mockWrapWithSandbox.mockResolvedValue('sandbox wrapped command');
     });
 
-    it('initializes sandbox and returns cleanup function', async () => {
+    it('initializes sandbox for allowed network mode and returns cleanup function', async () => {
         const sandboxConfig: SandboxConfig = {
             enabled: true,
             sessionIsolation: 'workspace',
@@ -75,6 +75,25 @@ describe('sandbox manager', () => {
         expect(mockReset).toHaveBeenCalledTimes(1);
     });
 
+    it('initializes sandbox runtime for blocked network mode', async () => {
+        const sandboxConfig: SandboxConfig = {
+            enabled: true,
+            sessionIsolation: 'workspace',
+            customWritePaths: [],
+            denyReadPaths: [],
+            extraWritePaths: ['/tmp'],
+            denyWritePaths: [],
+            networkMode: 'blocked',
+            allowedDomains: [],
+            deniedDomains: [],
+            allowLocalBinding: false,
+        };
+
+        await initializeSandbox(sandboxConfig, '/workspace/session');
+
+        expect(mockInitialize).toHaveBeenCalledWith(runtimeConfig);
+    });
+
     it('wrapCommand delegates to SandboxManager.wrapWithSandbox', async () => {
         const wrapped = await wrapCommand('node script.js');
 
@@ -93,4 +112,5 @@ describe('sandbox manager', () => {
             args: ['-c', 'sandbox codex command'],
         });
     });
+
 });
