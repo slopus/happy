@@ -29,6 +29,9 @@ const mocks = vi.hoisted(() => {
   const backendState = {
     listeners: [] as Array<(message: any) => void>,
     prompts: [] as Array<{ sessionId: string; prompt: string }>,
+    setConfigOptionCalls: [] as Array<{ configId: string; value: string }>,
+    setModeCalls: [] as string[],
+    setModelCalls: [] as string[],
     startSessionMessages: [] as any[],
     startSessionCalls: 0,
     cancelCalls: [] as string[],
@@ -150,6 +153,21 @@ vi.mock('./AcpBackend', () => ({
       }
     }
 
+    async setSessionConfigOption(configId: string, value: string) {
+      mocks.backendState.setConfigOptionCalls.push({ configId, value });
+      return true;
+    }
+
+    async setSessionMode(modeId: string) {
+      mocks.backendState.setModeCalls.push(modeId);
+      return true;
+    }
+
+    async setSessionModel(modelId: string) {
+      mocks.backendState.setModelCalls.push(modelId);
+      return true;
+    }
+
     async cancel(sessionId: string) {
       mocks.backendState.cancelCalls.push(sessionId);
       for (const listener of mocks.backendState.listeners) {
@@ -175,6 +193,9 @@ describe('runAcp', () => {
     mocks.setKillHandler(null);
     mocks.backendState.listeners = [];
     mocks.backendState.prompts = [];
+    mocks.backendState.setConfigOptionCalls = [];
+    mocks.backendState.setModeCalls = [];
+    mocks.backendState.setModelCalls = [];
     mocks.backendState.startSessionMessages = [];
     mocks.backendState.startSessionCalls = 0;
     mocks.backendState.cancelCalls = [];
@@ -390,5 +411,140 @@ describe('runAcp', () => {
         }),
       ]),
     );
+  });
+
+  it('switches ACP model and permission mode when requested values match config options', async () => {
+    mocks.backendState.startSessionMessages = [
+      {
+        type: 'event',
+        name: 'config_options_update',
+        payload: {
+          configOptions: [
+            {
+              type: 'select',
+              id: 'permission-mode',
+              name: 'Permission Mode',
+              category: 'mode',
+              currentValue: 'ask',
+              options: [
+                { value: 'ask', name: 'Ask' },
+                { value: 'code', name: 'Code' },
+              ],
+            },
+            {
+              type: 'select',
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              currentValue: 'claude-sonnet',
+              options: [
+                { value: 'claude-sonnet', name: 'Claude Sonnet' },
+                { value: 'claude-opus', name: 'Claude Opus' },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'opencode',
+      command: 'opencode',
+      args: ['acp'],
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+    });
+
+    mocks.getUserMessageHandler()!({
+      role: 'user',
+      content: { type: 'text', text: 'Apply settings then run' },
+      meta: {
+        permissionMode: 'Code',
+        model: 'claude-opus',
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.prompts).toHaveLength(1);
+    });
+
+    await mocks.getKillHandler()!();
+    await runPromise;
+
+    expect(mocks.backendState.setConfigOptionCalls).toEqual([
+      { configId: 'permission-mode', value: 'code' },
+      { configId: 'model', value: 'claude-opus' },
+    ]);
+    expect(mocks.backendState.setModeCalls).toEqual([]);
+    expect(mocks.backendState.setModelCalls).toEqual([]);
+  });
+
+  it('ignores ACP model and permission mode requests when values do not match advertised options', async () => {
+    mocks.backendState.startSessionMessages = [
+      {
+        type: 'event',
+        name: 'config_options_update',
+        payload: {
+          configOptions: [
+            {
+              type: 'select',
+              id: 'permission-mode',
+              name: 'Permission Mode',
+              category: 'mode',
+              currentValue: 'ask',
+              options: [
+                { value: 'ask', name: 'Ask' },
+                { value: 'code', name: 'Code' },
+              ],
+            },
+            {
+              type: 'select',
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              currentValue: 'claude-sonnet',
+              options: [
+                { value: 'claude-sonnet', name: 'Claude Sonnet' },
+                { value: 'claude-opus', name: 'Claude Opus' },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'opencode',
+      command: 'opencode',
+      args: ['acp'],
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+    });
+
+    mocks.getUserMessageHandler()!({
+      role: 'user',
+      content: { type: 'text', text: 'Run without switching' },
+      meta: {
+        permissionMode: 'invalid-mode',
+        model: 'invalid-model',
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.prompts).toHaveLength(1);
+    });
+
+    await mocks.getKillHandler()!();
+    await runPromise;
+
+    expect(mocks.backendState.setConfigOptionCalls).toEqual([]);
+    expect(mocks.backendState.setModeCalls).toEqual([]);
+    expect(mocks.backendState.setModelCalls).toEqual([]);
   });
 });
