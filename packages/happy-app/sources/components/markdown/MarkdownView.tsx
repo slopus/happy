@@ -148,7 +148,7 @@ function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: b
 function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean }) {
     const s = (style as any)[`header${props.level}`];
     const headerStyle = [style.header, s, props.first && style.first, props.last && style.last];
-    return <Text selectable={props.selectable} style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} /></Text>;
+    return <Text selectable={props.selectable} style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} isHeader={true} /></Text>;
 }
 
 function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean, selectable: boolean }) {
@@ -332,13 +332,19 @@ function RenderOptionsBlock(props: {
     );
 }
 
-function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
+function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any, isHeader?: boolean }) {
     return (<>
         {props.spans.map((span, index) => {
+            const spanStyles = span.styles.map((s) => {
+                if (props.isHeader && s === 'code') {
+                    return style.codeHeader;
+                }
+                return (style as any)[s];
+            });
             if (span.url) {
-                return <Link key={index} href={span.url as any} target="_blank" style={[style.link, span.styles.map(s => style[s])]}>{span.text}</Link>
+                return <Link key={index} href={span.url as any} target="_blank" style={[style.link, spanStyles]}>{span.text}</Link>
             } else {
-                return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
+                return <Text key={index} selectable style={[props.baseStyle, spanStyles]}>{span.text}</Text>
             }
         })}
     </>)
@@ -535,6 +541,12 @@ const style = StyleSheet.create((theme) => ({
         ...Typography.mono(),
         fontSize: 16,
         lineHeight: 21,  // Reduced from 24 to 21
+        backgroundColor: theme.colors.surfaceHighest,
+        color: theme.colors.text,
+    },
+    codeHeader: {
+        ...Typography.mono(),
+        fontSize: 16,
         backgroundColor: theme.colors.surfaceHighest,
         color: theme.colors.text,
     },
