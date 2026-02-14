@@ -33,6 +33,7 @@ import {
     CodexReasoningEffort,
     GEMINI_MODEL_OPTIONS,
     getCodexReasoningOptions,
+    getMaxContextSize,
     MODEL_MODE_DEFAULT,
     parseCodexModelMode,
 } from '@/constants/modelCatalog';
@@ -94,8 +95,6 @@ interface AgentInputProps {
     isUploadingImages?: boolean;
     onImageDrop?: (files: File[]) => void;
 }
-
-const MAX_CONTEXT_SIZE = 190000;
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -320,8 +319,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
 }));
 
-const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
-    const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
+const getContextWarning = (contextSize: number, maxContextSize: number, alwaysShow: boolean = false, theme: Theme) => {
+    const percentageUsed = (contextSize / maxContextSize) * 100;
     const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
 
     if (percentageRemaining <= 5) {
@@ -389,8 +388,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [profiles, props.profileId]);
 
     // Calculate context warning
+    const agentFlavor = props.metadata?.flavor || props.agentType || null;
+    const maxContextSize = getMaxContextSize(props.modelMode, agentFlavor);
     const contextWarning = props.usageData?.contextSize
-        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
+        ? getContextWarning(props.usageData.contextSize, maxContextSize, props.alwaysShowContextSize ?? false, theme)
         : null;
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');

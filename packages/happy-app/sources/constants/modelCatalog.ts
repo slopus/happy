@@ -264,3 +264,54 @@ export function formatModelDisplay(model: string | null | undefined, reasoningEf
     const effortLabel = formatReasoningEffortLabel(reasoningEffort);
     return effortLabel ? `${modelLabel} (${effortLabel})` : modelLabel;
 }
+
+// ─── Context Window Sizes ──────────────────────────────────────
+
+const DEFAULT_CONTEXT_WINDOW = 200_000;
+
+const AGENT_DEFAULT_CONTEXT_WINDOWS: Record<AgentFlavor, number> = {
+    claude: 200_000,
+    codex: 192_000,
+    gemini: 1_000_000,
+};
+
+const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+    // Claude models
+    'claude-opus-4-6': 200_000,
+    'claude-opus-4-5': 200_000,
+    'claude-sonnet-4-5': 200_000,
+    'claude-haiku-4-5': 200_000,
+    // Codex models
+    'gpt-5.3-codex': 192_000,
+    'gpt-5.2-codex': 192_000,
+    'gpt-5.2': 192_000,
+    'gpt-5.1-codex-max': 192_000,
+    'gpt-5.1-codex-mini': 192_000,
+    // Gemini models
+    'gemini-3-pro-preview': 1_000_000,
+    'gemini-3-flash-preview': 1_000_000,
+    'gemini-2.5-pro': 1_000_000,
+};
+
+/**
+ * Get the max context window size for a given model mode and agent flavor.
+ * Falls back to agent default, then global default.
+ */
+export function getMaxContextSize(modelMode: string | null | undefined, agentFlavor: AgentFlavor | string | null | undefined): number {
+    // Try exact model mode match (for composite codex modes, extract family)
+    if (modelMode && modelMode !== MODEL_MODE_DEFAULT) {
+        if (MODEL_CONTEXT_WINDOWS[modelMode]) return MODEL_CONTEXT_WINDOWS[modelMode];
+        // For codex composite modes like "gpt-5.3-codex-high", extract family
+        if (isModelMode(modelMode)) {
+            const parsed = parseCodexModelMode(modelMode);
+            if (parsed.family !== MODEL_MODE_DEFAULT && MODEL_CONTEXT_WINDOWS[parsed.family]) {
+                return MODEL_CONTEXT_WINDOWS[parsed.family];
+            }
+        }
+    }
+    // Fall back to agent default
+    if (agentFlavor && agentFlavor in AGENT_DEFAULT_CONTEXT_WINDOWS) {
+        return AGENT_DEFAULT_CONTEXT_WINDOWS[agentFlavor as AgentFlavor];
+    }
+    return DEFAULT_CONTEXT_WINDOW;
+}
