@@ -169,7 +169,6 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@expo/config-plugins": "~54.0.1",
-    "@expo/ngrok": "^4.1.0",
     "@material/material-color-utilities": "^0.3.0",
     "@stablelib/hex": "^2.0.1",
     "@types/react": "~19.1.10",
