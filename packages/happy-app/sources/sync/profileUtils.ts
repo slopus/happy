@@ -86,7 +86,7 @@ export DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
         case 'zai':
             return {
                 setupGuideUrl: 'https://docs.z.ai/devpack/tool/claude',
-                description: 'Z.AI GLM-4.6 API proxied through Anthropic-compatible interface',
+                description: 'Z.AI GLM-4.7 API proxied through Anthropic-compatible interface',
                 environmentVariables: [
                     {
                         name: 'Z_AI_BASE_URL',
@@ -108,20 +108,20 @@ export DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
                     },
                     {
                         name: 'Z_AI_MODEL',
-                        expectedValue: 'GLM-4.6',
+                        expectedValue: 'GLM-4.7',
                         description: 'Default model',
                         isSecret: false,
                     },
                     {
                         name: 'Z_AI_OPUS_MODEL',
-                        expectedValue: 'GLM-4.6',
-                        description: 'Model for "Opus" tasks (maps to GLM-4.6)',
+                        expectedValue: 'GLM-4.7',
+                        description: 'Model for "Opus" tasks (maps to GLM-4.7)',
                         isSecret: false,
                     },
                     {
                         name: 'Z_AI_SONNET_MODEL',
-                        expectedValue: 'GLM-4.6',
-                        description: 'Model for "Sonnet" tasks (maps to GLM-4.6)',
+                        expectedValue: 'GLM-4.7',
+                        description: 'Model for "Sonnet" tasks (maps to GLM-4.7)',
                         isSecret: false,
                     },
                     {
@@ -135,15 +135,15 @@ export DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
 export Z_AI_BASE_URL="https://api.z.ai/api/anthropic"
 export Z_AI_AUTH_TOKEN="sk-YOUR_ZAI_API_KEY"
 export Z_AI_API_TIMEOUT_MS="3000000"
-export Z_AI_MODEL="GLM-4.6"
-export Z_AI_OPUS_MODEL="GLM-4.6"
-export Z_AI_SONNET_MODEL="GLM-4.6"
+export Z_AI_MODEL="GLM-4.7"
+export Z_AI_OPUS_MODEL="GLM-4.7"
+export Z_AI_SONNET_MODEL="GLM-4.7"
 export Z_AI_HAIKU_MODEL="GLM-4.5-Air"`,
             };
         case 'openai':
             return {
                 setupGuideUrl: 'https://platform.openai.com/docs/api-reference',
-                description: 'OpenAI GPT-5.2 Codex API for code generation and completion',
+                description: 'OpenAI GPT-5.3 Codex API for code generation and completion',
                 environmentVariables: [
                     {
                         name: 'OPENAI_BASE_URL',
@@ -159,13 +159,13 @@ export Z_AI_HAIKU_MODEL="GLM-4.5-Air"`,
                     },
                     {
                         name: 'OPENAI_MODEL',
-                        expectedValue: 'gpt-5.2-codex-high',
+                        expectedValue: 'gpt-5.3-codex-high',
                         description: 'Default model for code tasks',
                         isSecret: false,
                     },
                     {
                         name: 'OPENAI_SMALL_FAST_MODEL',
-                        expectedValue: 'gpt-5.2-codex-low',
+                        expectedValue: 'gpt-5.3-codex-low',
                         description: 'Fast model for quick responses',
                         isSecret: false,
                     },
@@ -173,8 +173,8 @@ export Z_AI_HAIKU_MODEL="GLM-4.5-Air"`,
                 shellConfigExample: `# Add to ~/.zshrc or ~/.bashrc:
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 export OPENAI_API_KEY="sk-YOUR_OPENAI_API_KEY"
-export OPENAI_MODEL="gpt-5.2-codex-high"
-export OPENAI_SMALL_FAST_MODEL="gpt-5.2-codex-low"`,
+export OPENAI_MODEL="gpt-5.3-codex-high"
+export OPENAI_SMALL_FAST_MODEL="gpt-5.3-codex-low"`,
             };
         case 'azure-openai':
             return {
@@ -201,7 +201,7 @@ export OPENAI_SMALL_FAST_MODEL="gpt-5.2-codex-low"`,
                     },
                     {
                         name: 'AZURE_OPENAI_DEPLOYMENT_NAME',
-                        expectedValue: 'gpt-5-codex',
+                        expectedValue: 'gpt-5.3-codex',
                         description: 'Your deployment name for the model',
                         isSecret: false,
                     },
@@ -210,7 +210,7 @@ export OPENAI_SMALL_FAST_MODEL="gpt-5.2-codex-low"`,
 export AZURE_OPENAI_ENDPOINT="https://YOUR_RESOURCE.openai.azure.com"
 export AZURE_OPENAI_API_KEY="YOUR_AZURE_API_KEY"
 export AZURE_OPENAI_API_VERSION="2024-02-15-preview"
-export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-5-codex"`,
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-5.3-codex"`,
             };
         default:
             return null;
@@ -279,21 +279,21 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
         case 'zai':
             // Z.AI profile: Maps Z_AI_* daemon environment to ANTHROPIC_* for Claude CLI
             // Launch daemon with: Z_AI_AUTH_TOKEN=sk-... Z_AI_BASE_URL=https://api.z.ai/api/anthropic
-            // Model mappings: Z_AI_OPUS_MODEL=GLM-4.6, Z_AI_SONNET_MODEL=GLM-4.6, Z_AI_HAIKU_MODEL=GLM-4.5-Air
+            // Model mappings: Z_AI_OPUS_MODEL=GLM-4.7, Z_AI_SONNET_MODEL=GLM-4.7, Z_AI_HAIKU_MODEL=GLM-4.5-Air
             // Uses ${VAR:-default} format for fallback values (bash parameter expansion)
             // Secrets use ${VAR} without fallback for security
             // NOTE: anthropicConfig left empty so environmentVariables aren't overridden
             return {
                 id: 'zai',
-                name: 'Z.AI (GLM-4.6)',
+                name: 'Z.AI (GLM-4.7)',
                 anthropicConfig: {},
                 environmentVariables: [
                     { name: 'ANTHROPIC_BASE_URL', value: '${Z_AI_BASE_URL:-https://api.z.ai/api/anthropic}' },
                     { name: 'ANTHROPIC_AUTH_TOKEN', value: '${Z_AI_AUTH_TOKEN}' }, // Secret - no fallback
                     { name: 'API_TIMEOUT_MS', value: '${Z_AI_API_TIMEOUT_MS:-3000000}' },
-                    { name: 'ANTHROPIC_MODEL', value: '${Z_AI_MODEL:-GLM-4.6}' },
-                    { name: 'ANTHROPIC_DEFAULT_OPUS_MODEL', value: '${Z_AI_OPUS_MODEL:-GLM-4.6}' },
-                    { name: 'ANTHROPIC_DEFAULT_SONNET_MODEL', value: '${Z_AI_SONNET_MODEL:-GLM-4.6}' },
+                    { name: 'ANTHROPIC_MODEL', value: '${Z_AI_MODEL:-GLM-4.7}' },
+                    { name: 'ANTHROPIC_DEFAULT_OPUS_MODEL', value: '${Z_AI_OPUS_MODEL:-GLM-4.7}' },
+                    { name: 'ANTHROPIC_DEFAULT_SONNET_MODEL', value: '${Z_AI_SONNET_MODEL:-GLM-4.7}' },
                     { name: 'ANTHROPIC_DEFAULT_HAIKU_MODEL', value: '${Z_AI_HAIKU_MODEL:-GLM-4.5-Air}' },
                 ],
                 defaultPermissionMode: 'default',
@@ -306,15 +306,15 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
         case 'openai':
             return {
                 id: 'openai',
-                name: 'OpenAI (GPT-5.2)',
+                name: 'OpenAI (GPT-5.3)',
                 openaiConfig: {},
                 environmentVariables: [
                     { name: 'OPENAI_BASE_URL', value: 'https://api.openai.com/v1' },
-                    { name: 'OPENAI_MODEL', value: 'gpt-5.2-codex-high' },
+                    { name: 'OPENAI_MODEL', value: 'gpt-5.3-codex-high' },
                     { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
-                    { name: 'OPENAI_SMALL_FAST_MODEL', value: 'gpt-5.2-codex-low' },
+                    { name: 'OPENAI_SMALL_FAST_MODEL', value: 'gpt-5.3-codex-low' },
                     { name: 'API_TIMEOUT_MS', value: '600000' },
-                    { name: 'CODEX_SMALL_FAST_MODEL', value: 'gpt-5.2-codex-low' },
+                    { name: 'CODEX_SMALL_FAST_MODEL', value: 'gpt-5.3-codex-low' },
                 ],
                 compatibility: { claude: false, codex: true, gemini: false },
                 isBuiltIn: true,
@@ -329,7 +329,7 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                 azureOpenAIConfig: {},
                 environmentVariables: [
                     { name: 'AZURE_OPENAI_API_VERSION', value: '2024-02-15-preview' },
-                    { name: 'AZURE_OPENAI_DEPLOYMENT_NAME', value: 'gpt-5-codex' },
+                    { name: 'AZURE_OPENAI_DEPLOYMENT_NAME', value: 'gpt-5.3-codex' },
                     { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
                     { name: 'API_TIMEOUT_MS', value: '600000' },
                 ],
@@ -342,12 +342,12 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
         case 'google-ai':
             // Google AI profile: Uses Gemini CLI with Google's AI models
             // Authentication: Run 'happy connect gemini' for OAuth, or set GEMINI_API_KEY in daemon env
-            // Model selection: GEMINI_MODEL env var (defaults to gemini-2.5-pro)
+            // Model selection: GEMINI_MODEL env var (defaults to gemini-3-pro-preview)
             return {
                 id: 'google-ai',
                 name: 'Google AI (Gemini)',
                 environmentVariables: [
-                    { name: 'GEMINI_MODEL', value: '${GEMINI_MODEL:-gemini-2.5-pro}' },
+                    { name: 'GEMINI_MODEL', value: '${GEMINI_MODEL:-gemini-3-pro-preview}' },
                 ],
                 defaultPermissionMode: 'default',
                 compatibility: { claude: false, codex: false, gemini: true },
@@ -378,12 +378,12 @@ export const DEFAULT_PROFILES = [
     },
     {
         id: 'zai',
-        name: 'Z.AI (GLM-4.6)',
+        name: 'Z.AI (GLM-4.7)',
         isBuiltIn: true,
     },
     {
         id: 'openai',
-        name: 'OpenAI (GPT-5.2)',
+        name: 'OpenAI (GPT-5.3)',
         isBuiltIn: true,
     },
     {

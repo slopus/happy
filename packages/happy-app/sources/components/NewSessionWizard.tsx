@@ -655,11 +655,11 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         },
         {
             id: 'zai',
-            name: 'Z.ai (GLM-4.6)',
-            description: 'Z.ai GLM-4.6 model with proxy to Anthropic API',
+            name: 'Z.ai (GLM-4.7)',
+            description: 'Z.ai GLM-4.7 model with proxy to Anthropic API',
             anthropicConfig: {
                 baseUrl: 'https://api.z.ai/api/anthropic',
-                model: 'glm-4.6',
+                model: 'glm-4.7',
             },
             environmentVariables: [],
             compatibility: { claude: true, codex: false, gemini: false },
