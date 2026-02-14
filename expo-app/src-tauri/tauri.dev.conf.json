@@ -1,11 +1,11 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Happy (dev)",
-  "identifier": "com.slopus.happy.dev",
+  "productName": "Runline (dev local)",
+  "identifier": "com.runline.arc.dev",
   "app": {
     "windows": [
       {
-        "title": "Happy (dev)"
+        "title": "Runline (dev local)"
       }
     ]
   }

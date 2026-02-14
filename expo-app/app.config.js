@@ -1,11 +1,13 @@
 const variant = process.env.APP_ENV || 'development';
 const name = {
-    development: "Runline (dev)",
+    development: "Runline (dev local)",
+    "development-store": "Runline (dev)",
     preview: "Runline (preview)",
     production: "Runline"
 }[variant];
 const bundleId = {
     development: "com.runline.arc.dev",
+    "development-store": "com.runline.arc.devstore",
     preview: "com.runline.arc.preview",
     production: "com.runline.arc"
 }[variant];

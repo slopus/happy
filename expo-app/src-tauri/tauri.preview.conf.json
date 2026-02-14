@@ -1,11 +1,11 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Happy (preview)",
-  "identifier": "com.slopus.happy.preview",
+  "productName": "Runline (preview)",
+  "identifier": "com.runline.arc.preview",
   "app": {
     "windows": [
       {
-        "title": "Happy (preview)"
+        "title": "Runline (preview)"
       }
     ]
   }

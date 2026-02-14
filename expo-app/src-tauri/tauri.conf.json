@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Arc",
+  "productName": "Runline",
   "version": "0.1.0",
   "identifier": "com.runline.arc",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Arc",
+        "title": "Runline",
         "width": 800,
         "height": 600,
         "resizable": true,

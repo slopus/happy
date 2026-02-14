@@ -19,7 +19,7 @@
       "distribution": "store",
       "channel": "development",
       "env": {
-        "APP_ENV": "development"
+        "APP_ENV": "development-store"
       }
     },
     "preview": {
@@ -47,6 +47,16 @@
     }
   },
   "submit": {
+    "development-store": {
+      "ios": {
+        "appleId": "sean@concreit.com"
+      }
+    },
+    "preview-store": {
+      "ios": {
+        "appleId": "sean@concreit.com"
+      }
+    },
     "production": {
       "ios": {
         "appleId": "sean@concreit.com"
