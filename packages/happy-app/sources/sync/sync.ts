@@ -276,8 +276,29 @@ class Sync {
                 if (freshSession) {
                     this.applySessions([{ ...freshSession, agentStateVersion: result.version! }]);
                 }
+            } else if (result.result === 'version-mismatch' && result.version && result.agentState) {
+                // Retry once with the server's current version
+                const serverState = await sessionEncryption.decryptAgentState(result.version, result.agentState);
+                const mergedState = { ...serverState, taskCompleted: null };
+                const reEncrypted = await sessionEncryption.encryptAgentState(mergedState);
+
+                const retry = await apiSocket.emitWithAck<{
+                    result: 'success' | 'version-mismatch' | 'error';
+                    version?: number;
+                }>('update-state', {
+                    sid: sessionId,
+                    agentState: reEncrypted,
+                    expectedVersion: result.version
+                });
+
+                if (retry.result === 'success') {
+                    const freshSession = storage.getState().sessions[sessionId];
+                    if (freshSession) {
+                        this.applySessions([{ ...freshSession, agentState: mergedState, agentStateVersion: retry.version! }]);
+                    }
+                }
+                // If retry also fails, give up - next session view will try again
             }
-            // version-mismatch: the server update-session event will arrive and overwrite local state
         } catch (e) {
             console.error('Failed to clear taskCompleted on server:', e);
         }
@@ -788,6 +809,16 @@ class Sync {
                 agentState
             };
             decryptedSessions.push(processedSession);
+        }
+
+        // Strip taskCompleted for the session user is currently viewing (same as update-session handler)
+        if (this.viewingSessionId) {
+            for (let i = 0; i < decryptedSessions.length; i++) {
+                const s = decryptedSessions[i];
+                if (s.id === this.viewingSessionId && s.agentState?.taskCompleted) {
+                    decryptedSessions[i] = { ...s, agentState: { ...s.agentState, taskCompleted: null } };
+                }
+            }
         }
 
         // Apply to storage

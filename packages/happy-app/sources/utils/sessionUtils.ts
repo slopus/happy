@@ -36,7 +36,8 @@ export function useSessionStatus(session: Session): SessionStatus {
             statusText: t('status.lastSeen', { time: formatLastSeen(session.activeAt, false) }),
             shouldShowStatus: true,
             statusColor: '#999',
-            statusDotColor: '#999'
+            statusDotColor: '#999',
+            hasUnreadCompletion: !!session.agentState?.taskCompleted
         };
     }
 

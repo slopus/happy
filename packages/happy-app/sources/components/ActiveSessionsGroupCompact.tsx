@@ -418,7 +418,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                         }
                         
                         // Show blue unread dot for completed tasks
-                        if (sessionStatus.state === 'waiting' && sessionStatus.hasUnreadCompletion) {
+                        if (sessionStatus.hasUnreadCompletion) {
                             return (
                                 <View style={[styles.unreadDot, { marginRight: 8 }]} />
                             );
