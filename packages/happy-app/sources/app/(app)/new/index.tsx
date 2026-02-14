@@ -1128,21 +1128,13 @@ function NewSessionWizard() {
         if (!selectedMachine) return undefined;
         const isOnline = isMachineOnline(selectedMachine);
 
-        // Include CLI status only when in wizard AND detection completed
-        const includeCLI = selectedMachineId && cliAvailability.timestamp > 0;
-
         return {
             text: isOnline ? 'online' : 'offline',
             color: isOnline ? theme.colors.success : theme.colors.textDestructive,
             dotColor: isOnline ? theme.colors.success : theme.colors.textDestructive,
             isPulsing: isOnline,
-            cliStatus: includeCLI ? {
-                claude: cliAvailability.claude,
-                codex: cliAvailability.codex,
-                gemini: cliAvailability.gemini,
-            } : undefined,
         };
-    }, [selectedMachine, selectedMachineId, cliAvailability, theme]);
+    }, [selectedMachine, theme]);
 
     // Persist the current wizard state so it survives remounts and screen navigation
     // Uses debouncing to avoid excessive writes
@@ -1303,30 +1295,6 @@ function NewSessionWizard() {
                                             />
                                             <Text style={{ fontSize: 11, color: connectionStatus.color, ...Typography.default() }}>
                                                 {connectionStatus.text}
-                                            </Text>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                {cliAvailability.claude ? '✓' : '✗'}
-                                            </Text>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                claude
-                                            </Text>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                {cliAvailability.codex ? '✓' : '✗'}
-                                            </Text>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                codex
-                                            </Text>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                {cliAvailability.gemini ? '✓' : '✗'}
-                                            </Text>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                gemini
                                             </Text>
                                         </View>
                                     </View>
