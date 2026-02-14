@@ -329,7 +329,7 @@ export async function runCodex(opts: {
     //
 
     const messageBuffer = new MessageBuffer();
-    const hasTTY = process.stdout.isTTY && process.stdin.isTTY;
+    const hasTTY = process.stdout.isTTY && process.stdin.isTTY && opts.startedBy !== 'daemon';
     let inkInstance: any = null;
 
     if (hasTTY) {
