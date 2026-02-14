@@ -15,7 +15,7 @@ export default {
         name,
         slug: "happy",
         version: "1.6.2",
-        runtimeVersion: "19",
+        runtimeVersion: "20",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
         scheme: "happy",
