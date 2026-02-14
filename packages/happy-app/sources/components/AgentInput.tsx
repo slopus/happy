@@ -520,13 +520,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         hapticsLight();
     }, [suggestions, inputState, props.autocompletePrefixes]);
 
-    // Settings modal state
-    const [showSettings, setShowSettings] = React.useState(false);
+    // Settings modal state: 'model' shows model picker, 'permission' shows permission picker, false = closed
+    const [showSettings, setShowSettings] = React.useState<'model' | 'permission' | false>(false);
 
-    // Handle settings button press
+    // Handle settings button press (gear icon → permission mode)
     const handleSettingsPress = React.useCallback(() => {
         hapticsLight();
-        setShowSettings(prev => !prev);
+        setShowSettings(prev => prev ? false : 'permission');
+    }, []);
+
+    // Handle permission mode text press (right-side text → permission mode selection)
+    const handlePermissionPress = React.useCallback(() => {
+        hapticsLight();
+        setShowSettings(prev => prev === 'permission' ? false : 'permission');
     }, []);
 
     // Handle settings selection
@@ -677,11 +683,78 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
                         ]}>
                             <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
+                                {/* Tab bar - segmented control style */}
+                                <View style={{
+                                    flexDirection: 'row',
+                                    borderRadius: 10,
+                                    overflow: 'hidden',
+                                    padding: 2,
+                                    backgroundColor: theme.colors.surfaceHighest,
+                                    margin: 8,
+                                    marginBottom: 4,
+                                }}>
+                                    {(() => {
+                                        const permissionLabel = isCodex
+                                            ? (props.permissionMode === 'default' ? t('agentInput.codexPermissionMode.default') : props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.readOnly') : props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.safeYolo') : props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.yolo') : '')
+                                            : isGemini
+                                                ? (props.permissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') : props.permissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.readOnly') : props.permissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.safeYolo') : props.permissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.yolo') : '')
+                                                : (props.permissionMode === 'default' ? t('agentInput.permissionMode.default') : props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.acceptEdits') : props.permissionMode === 'plan' ? t('agentInput.permissionMode.plan') : props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.bypassPermissions') : props.permissionMode === 'yolo' ? t('agentInput.permissionMode.yolo') : '');
+                                        const currentModelLabel = isCodex
+                                            ? (codexFamilyOptions.find(o => o.value === codexSelection.family)?.label ?? '') + (codexSelection.family !== 'default' ? ` (${codexReasoningOptions.find(o => o.value === codexSelection.effort)?.label ?? codexSelection.effort})` : '')
+                                            : modelOptions.find(o => o.value === selectedModelMode)?.label ?? '';
+                                        const tabs = [
+                                            { key: 'permission' as const, label: isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title'), subtitle: permissionLabel },
+                                            { key: 'model' as const, label: t('agentInput.model.title'), subtitle: currentModelLabel },
+                                        ];
+                                        return tabs.map((tab) => {
+                                            const isActive = showSettings === tab.key;
+                                            return (
+                                                <Pressable
+                                                    key={tab.key}
+                                                    onPress={() => {
+                                                        if (showSettings === tab.key) return;
+                                                        hapticsLight();
+                                                        setShowSettings(tab.key);
+                                                    }}
+                                                    style={[{
+                                                        flex: 1,
+                                                        alignItems: 'center',
+                                                        paddingVertical: 6,
+                                                        borderRadius: 8,
+                                                    }, isActive && {
+                                                        backgroundColor: theme.colors.surface,
+                                                        shadowColor: '#000',
+                                                        shadowOffset: { width: 0, height: 1 },
+                                                        shadowOpacity: 0.1,
+                                                        shadowRadius: 2,
+                                                        elevation: 2,
+                                                    }]}
+                                                >
+                                                    <Text style={{
+                                                        fontSize: 13,
+                                                        color: isActive ? theme.colors.text : theme.colors.textSecondary,
+                                                        ...Typography.default(isActive ? 'semiBold' : 'regular'),
+                                                    }}>
+                                                        {tab.label}
+                                                    </Text>
+                                                    {tab.subtitle ? (
+                                                        <Text style={{
+                                                            fontSize: 10,
+                                                            color: theme.colors.textSecondary,
+                                                            marginTop: 1,
+                                                            ...Typography.default(),
+                                                        }} numberOfLines={1}>
+                                                            {tab.subtitle}
+                                                        </Text>
+                                                    ) : null}
+                                                </Pressable>
+                                            );
+                                        });
+                                    })()}
+                                </View>
+
                                 {/* Permission Mode Section */}
-                                <View style={styles.overlaySection}>
-                                    <Text style={styles.overlaySectionTitle}>
-                                        {isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title')}
-                                    </Text>
+                                {showSettings === 'permission' && <View style={styles.overlaySection}>
                                     {((isCodex || isGemini)
                                         ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
                                         : (['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'] as const)
@@ -748,27 +821,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             </Pressable>
                                         );
                                     })}
-                                </View>
-
-                                {/* Divider */}
-                                <View style={{
-                                    height: 1,
-                                    backgroundColor: theme.colors.divider,
-                                    marginHorizontal: 16
-                                }} />
+                                </View>}
 
                                 {/* Model Section */}
-                                <View style={{ paddingVertical: 8 }}>
-                                    <Text style={{
-                                        fontSize: 12,
-                                        fontWeight: '600',
-                                        color: theme.colors.textSecondary,
-                                        paddingHorizontal: 16,
-                                        paddingBottom: 4,
-                                        ...Typography.default('semiBold')
-                                    }}>
-                                        {t('agentInput.model.title')}
-                                    </Text>
+                                {showSettings === 'model' && <View style={{ paddingVertical: 8 }}>
                                     {isCodex ? (
                                         <>
                                             {codexFamilyOptions.map((option) => {
@@ -951,7 +1007,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             );
                                         })
                                     )}
-                                </View>
+                                </View>}
+
                             </FloatingOverlay>
                         </View>
                     </>
@@ -1073,35 +1130,37 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             minWidth: 150, // Fixed minimum width to prevent layout shift
                         }}>
                             {props.permissionMode && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
-                                        props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
-                                            props.permissionMode === 'plan' ? theme.colors.permission.plan :
-                                                props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
-                                                    props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
-                                                        props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
-                                                            theme.colors.textSecondary, // Use secondary text color for default
-                                    ...Typography.default()
-                                }}>
-                                    {isCodex ? (
-                                        props.permissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
-                                            props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
-                                                props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
-                                                    props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
-                                    ) : isGemini ? (
-                                        props.permissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') :
-                                            props.permissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.badgeReadOnly') :
-                                                props.permissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.badgeSafeYolo') :
-                                                    props.permissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.badgeYolo') : ''
-                                    ) : (
-                                        props.permissionMode === 'default' ? t('agentInput.permissionMode.default') :
-                                            props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
-                                                props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
-                                                    props.permissionMode === 'yolo' ? t('agentInput.permissionMode.badgeYolo') :
-                                                        props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
-                                    )}
-                                </Text>
+                                <Pressable onPress={handlePermissionPress} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+                                    <Text style={{
+                                        fontSize: 11,
+                                        color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
+                                            props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
+                                                props.permissionMode === 'plan' ? theme.colors.permission.plan :
+                                                    props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
+                                                        props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
+                                                            props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
+                                                                theme.colors.textSecondary, // Use secondary text color for default
+                                        ...Typography.default()
+                                    }}>
+                                        {isCodex ? (
+                                            props.permissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
+                                                props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
+                                                    props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
+                                                        props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
+                                        ) : isGemini ? (
+                                            props.permissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') :
+                                                props.permissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.badgeReadOnly') :
+                                                    props.permissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.badgeSafeYolo') :
+                                                        props.permissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.badgeYolo') : ''
+                                        ) : (
+                                            props.permissionMode === 'default' ? t('agentInput.permissionMode.default') :
+                                                props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
+                                                    props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
+                                                        props.permissionMode === 'yolo' ? t('agentInput.permissionMode.badgeYolo') :
+                                                            props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
+                                        )}
+                                    </Text>
+                                </Pressable>
                             )}
                         </View>
                     </View>
