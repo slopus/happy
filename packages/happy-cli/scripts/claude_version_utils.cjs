@@ -497,6 +497,17 @@ function runClaudeCli(cliPath) {
             stdio: 'inherit',
             env: process.env
         });
+
+        // Forward termination signals to child process
+        // Without this, killing the launcher orphans the Claude binary (PPID becomes 1)
+        const forwardSignal = (signal) => {
+            if (!child.killed) {
+                child.kill(signal);
+            }
+        };
+        process.on('SIGTERM', () => forwardSignal('SIGTERM'));
+        process.on('SIGINT', () => forwardSignal('SIGINT'));
+
         child.on('exit', (code) => {
             process.exit(code || 0);
         });
