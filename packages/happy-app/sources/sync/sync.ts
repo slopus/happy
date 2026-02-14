@@ -39,12 +39,7 @@ import { getFriendsList, getUserProfile } from './apiFriends';
 import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
-import type { PermissionMode } from '@/components/PermissionModeSelector';
-
-function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boolean {
-    const sandbox = metadata?.sandbox;
-    return !!sandbox && typeof sandbox === 'object' && (sandbox as { enabled?: unknown }).enabled === true;
-}
+import { resolveMessageModeMeta } from './messageMeta';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -459,18 +454,7 @@ class Sync {
             return;
         }
 
-        const flavor = session.metadata?.flavor;
-        const sandboxEnabled = isSandboxEnabled(session.metadata);
-        // Read permission mode from session state.
-        // If sandbox is enabled and mode is default/missing, force bypassPermissions.
-        const permissionMode: PermissionMode =
-            session.permissionMode && session.permissionMode !== 'default'
-                ? session.permissionMode
-                : (sandboxEnabled ? 'bypassPermissions' : 'default');
-
-        // Read model mode - for Gemini, default to gemini-2.5-pro if not set
-        const isGemini = flavor === 'gemini';
-        const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
+        const { permissionMode, model } = resolveMessageModeMeta(session);
 
         // Generate local ID
         const localId = randomUUID();
@@ -492,12 +476,6 @@ class Sync {
             sentFrom = 'web'; // fallback
         }
 
-        // Model settings - for Gemini, we pass the selected model; for others, CLI handles it
-        let model: string | null = null;
-        if (isGemini && modelMode !== 'default') {
-            // For Gemini ACP, pass the selected model to CLI
-            model = modelMode;
-        }
         const fallbackModel: string | null = null;
 
         // Create user message content with metadata

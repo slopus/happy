@@ -19,7 +19,14 @@ import { sync } from '@/sync/sync';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
-import { PermissionMode, ModelMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
+import type { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
+import {
+    getAvailableModels,
+    getAvailablePermissionModes,
+    getDefaultModelKey,
+    getDefaultPermissionModeKey,
+    resolveCurrentOption,
+} from '@/components/modelModeOptions';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
 import { AgentInput } from '@/components/AgentInput';
@@ -346,41 +353,27 @@ function NewSessionWizard() {
     }, [agentType]);
 
     const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
-    const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
-        // Initialize with last used permission mode if valid, otherwise default to 'default'
-        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-        const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+    const availableModes = React.useMemo(() => (
+        getAvailablePermissionModes(agentType, null, t)
+    ), [agentType]);
+    const availableModels = React.useMemo(() => (
+        getAvailableModels(agentType, null, t)
+    ), [agentType]);
 
-        if (lastUsedPermissionMode) {
-            if ((agentType === 'codex' || agentType === 'gemini') && validCodexGeminiModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
-            }
-        }
-        return 'default';
+    const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
+        const modes = getAvailablePermissionModes(agentType, null, t);
+        return resolveCurrentOption(modes, [
+            lastUsedPermissionMode,
+            getDefaultPermissionModeKey(agentType),
+        ]) ?? modes[0];
     });
 
-    // NOTE: Permission mode reset on agentType change is handled by the validation useEffect below (lines ~670-681)
-    // which intelligently resets only when the current mode is invalid for the new agent type.
-    // A duplicate unconditional reset here was removed to prevent race conditions.
-
-    const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
-        const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
-        const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
-        // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-        const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-
-        if (lastUsedModelMode) {
-            if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            } else if (agentType === 'gemini' && validGeminiModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            }
-        }
-        return agentType === 'codex' ? 'gpt-5-codex-high' : agentType === 'gemini' ? 'gemini-2.5-pro' : 'default';
+    const [modelMode, setModelMode] = React.useState<ModelMode | null>(() => {
+        const models = getAvailableModels(agentType, null, t);
+        return resolveCurrentOption(models, [
+            lastUsedModelMode,
+            getDefaultModelKey(agentType),
+        ]);
     });
 
     // Session details state
@@ -401,7 +394,12 @@ function NewSessionWizard() {
     const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
         setPermissionMode(mode);
         // Save the new selection immediately
-        sync.applySettings({ lastUsedPermissionMode: mode });
+        sync.applySettings({ lastUsedPermissionMode: mode.key });
+    }, []);
+
+    const handleModelModeChange = React.useCallback((mode: ModelMode) => {
+        setModelMode(mode);
+        sync.applySettings({ lastUsedModelMode: mode.key });
     }, []);
 
     //
@@ -698,52 +696,38 @@ function NewSessionWizard() {
             }
             // Set permission mode from profile's default
             if (profile.defaultPermissionMode) {
-                setPermissionMode(profile.defaultPermissionMode as PermissionMode);
+                const profileMode = resolveCurrentOption(availableModes, [
+                    profile.defaultPermissionMode,
+                    getDefaultPermissionModeKey(agentType),
+                ]);
+                if (profileMode) {
+                    setPermissionMode(profileMode);
+                }
             }
         }
-    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, experimentsEnabled]);
+    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, experimentsEnabled, availableModes, agentType]);
 
-    // Reset permission mode to 'default' when agent type changes and current mode is invalid for new agent
+    // Ensure permission mode is valid for current agent, falling back when needed.
     React.useEffect(() => {
-        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-        const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
-
-        const isValidForCurrentAgent = (agentType === 'codex' || agentType === 'gemini')
-            ? validCodexGeminiModes.includes(permissionMode)
-            : validClaudeModes.includes(permissionMode);
-
-        if (!isValidForCurrentAgent) {
-            setPermissionMode('default');
+        const resolvedPermissionMode = resolveCurrentOption(availableModes, [
+            permissionMode?.key,
+            getDefaultPermissionModeKey(agentType),
+        ]);
+        if (resolvedPermissionMode && resolvedPermissionMode.key !== permissionMode?.key) {
+            setPermissionMode(resolvedPermissionMode);
         }
-    }, [agentType, permissionMode]);
+    }, [agentType, permissionMode?.key, availableModes]);
 
-    // Reset model mode when agent type changes to appropriate default
+    // Ensure model mode is valid for current agent, falling back when needed.
     React.useEffect(() => {
-        const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
-        const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
-        // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-        const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-
-        let isValidForCurrentAgent = false;
-        if (agentType === 'codex') {
-            isValidForCurrentAgent = validCodexModes.includes(modelMode);
-        } else if (agentType === 'gemini') {
-            isValidForCurrentAgent = validGeminiModes.includes(modelMode);
-        } else {
-            isValidForCurrentAgent = validClaudeModes.includes(modelMode);
+        const resolvedModelMode = resolveCurrentOption(availableModels, [
+            modelMode?.key,
+            getDefaultModelKey(agentType),
+        ]);
+        if (resolvedModelMode?.key !== modelMode?.key) {
+            setModelMode(resolvedModelMode);
         }
-
-        if (!isValidForCurrentAgent) {
-            // Set appropriate default for each agent type
-            if (agentType === 'codex') {
-                setModelMode('gpt-5-codex-high');
-            } else if (agentType === 'gemini') {
-                setModelMode('gemini-2.5-pro');
-            } else {
-                setModelMode('default');
-            }
-        }
-    }, [agentType, modelMode]);
+    }, [agentType, modelMode?.key, availableModels]);
 
     // Scroll to section helpers - for AgentInput button clicks
     const scrollToSection = React.useCallback((ref: React.RefObject<View | Text | null>) => {
@@ -779,6 +763,7 @@ function NewSessionWizard() {
 
     const handleAgentInputPermissionChange = React.useCallback((mode: PermissionMode) => {
         setPermissionMode(mode);
+        sync.applySettings({ lastUsedPermissionMode: mode.key });
         scrollToSection(permissionSectionRef);
     }, [scrollToSection]);
 
@@ -1033,8 +1018,8 @@ function NewSessionWizard() {
                 recentMachinePaths: updatedPaths,
                 lastUsedAgent: agentType,
                 lastUsedProfile: selectedProfileId,
-                lastUsedPermissionMode: permissionMode,
-                lastUsedModelMode: modelMode,
+                lastUsedPermissionMode: permissionMode.key,
+                lastUsedModelMode: modelMode?.key ?? null,
             });
 
             // Get environment variables from selected profile
@@ -1061,9 +1046,9 @@ function NewSessionWizard() {
                 await sync.refreshSessions();
 
                 // Set permission mode and model mode on the session
-                storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
-                if (agentType === 'gemini' && modelMode && modelMode !== 'default') {
-                    storage.getState().updateSessionModelMode(result.sessionId, modelMode as 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite');
+                storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode.key);
+                if (modelMode) {
+                    storage.getState().updateSessionModelMode(result.sessionId, modelMode.key);
                 }
 
                 // Send initial message if provided
@@ -1130,7 +1115,7 @@ function NewSessionWizard() {
                 selectedMachineId,
                 selectedPath,
                 agentType,
-                permissionMode,
+                permissionMode: permissionMode.key,
                 sessionType,
                 updatedAt: Date.now(),
             });
@@ -1140,7 +1125,7 @@ function NewSessionWizard() {
                 clearTimeout(draftSaveTimerRef.current);
             }
         };
-    }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType]);
+    }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode.key, sessionType]);
 
     // ========================================================================
     // CONTROL A: Simpler AgentInput-driven layout (flag OFF)
@@ -1181,9 +1166,11 @@ function NewSessionWizard() {
                                 agentType={agentType}
                                 onAgentClick={handleAgentClick}
                                 permissionMode={permissionMode}
+                                availableModes={availableModes}
                                 onPermissionModeChange={handlePermissionModeChange}
                                 modelMode={modelMode}
-                                onModelModeChange={setModelMode}
+                                availableModels={availableModels}
+                                onModelModeChange={handleModelModeChange}
                                 connectionStatus={connectionStatus}
                                 machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                                 onMachineClick={handleMachineClick}
@@ -1841,49 +1828,48 @@ function NewSessionWizard() {
                                 <Text style={styles.sectionHeader}>4. Permission Mode</Text>
                             </View>
                             <ItemGroup title="">
-                                {(agentType === 'codex'
-                                    ? [
-                                        { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                                        { value: 'read-only' as PermissionMode, label: 'Read Only', description: 'Read-only mode', icon: 'eye-outline' },
-                                        { value: 'safe-yolo' as PermissionMode, label: 'Safe YOLO', description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
-                                        { value: 'yolo' as PermissionMode, label: 'YOLO', description: 'Full access, skip permissions', icon: 'flash-outline' },
-                                    ]
-                                    : [
-                                        { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                                        { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                                        { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                                        { value: 'bypassPermissions' as PermissionMode, label: 'Yolo', description: 'Skip all permissions', icon: 'flash-outline' },
-                                    ]
-                                ).map((option, index, array) => (
+                                {availableModes.map((option, index, array) => {
+                                    const iconByKey: Record<string, string> = {
+                                        default: 'shield-outline',
+                                        acceptEdits: 'checkmark-outline',
+                                        plan: 'list-outline',
+                                        bypassPermissions: 'flash-outline',
+                                        'read-only': 'eye-outline',
+                                        'safe-yolo': 'shield-checkmark-outline',
+                                        yolo: 'flash-outline',
+                                    };
+                                    const isSelected = permissionMode.key === option.key;
+                                    return (
                                     <Item
-                                        key={option.value}
-                                        title={option.label}
-                                        subtitle={option.description}
+                                        key={option.key}
+                                        title={option.name}
+                                        subtitle={option.description ?? undefined}
                                         leftElement={
                                             <Ionicons
-                                                name={option.icon as any}
+                                                name={(iconByKey[option.key] ?? 'settings-outline') as any}
                                                 size={24}
-                                                color={permissionMode === option.value ? theme.colors.button.primary.tint : theme.colors.textSecondary}
+                                                color={isSelected ? theme.colors.button.primary.tint : theme.colors.textSecondary}
                                             />
                                         }
-                                        rightElement={permissionMode === option.value ? (
+                                        rightElement={isSelected ? (
                                             <Ionicons
                                                 name="checkmark-circle"
                                                 size={20}
                                                 color={theme.colors.button.primary.tint}
                                             />
                                         ) : null}
-                                        onPress={() => setPermissionMode(option.value)}
+                                        onPress={() => handlePermissionModeChange(option)}
                                         showChevron={false}
-                                        selected={permissionMode === option.value}
+                                        selected={isSelected}
                                         showDivider={index < array.length - 1}
-                                        style={permissionMode === option.value ? {
+                                        style={isSelected ? {
                                             borderWidth: 2,
                                             borderColor: theme.colors.button.primary.tint,
                                             borderRadius: Platform.select({ ios: 10, default: 16 }),
                                         } : undefined}
                                     />
-                                ))}
+                                );
+                                })}
                             </ItemGroup>
 
                             {/* Section 5: Advanced Options (Collapsible) */}
@@ -1931,9 +1917,11 @@ function NewSessionWizard() {
                             agentType={agentType}
                             onAgentClick={handleAgentInputAgentClick}
                             permissionMode={permissionMode}
+                            availableModes={availableModes}
                             onPermissionModeChange={handleAgentInputPermissionChange}
                             modelMode={modelMode}
-                            onModelModeChange={setModelMode}
+                            availableModels={availableModels}
+                            onModelModeChange={handleModelModeChange}
                             connectionStatus={connectionStatus}
                             machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                             onMachineClick={handleAgentInputMachineClick}

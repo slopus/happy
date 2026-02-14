@@ -11,7 +11,7 @@ import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
-import type { PermissionMode } from '@/components/PermissionModeSelector';
+import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -117,8 +117,8 @@ interface StorageState {
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
-    updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
-    updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => void;
+    updateSessionPermissionMode: (sessionId: string, mode: string) => void;
+    updateSessionModelMode: (sessionId: string, mode: string) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
     addArtifact: (artifact: DecryptedArtifact) => void;
@@ -316,8 +316,8 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedDraft = savedDrafts[session.id];
                 const existingPermissionMode = state.sessions[session.id]?.permissionMode;
                 const savedPermissionMode = savedPermissionModes[session.id];
-                const defaultPermissionMode: PermissionMode = isSandboxEnabled(session.metadata) ? 'bypassPermissions' : 'default';
-                const resolvedPermissionMode: PermissionMode =
+                const defaultPermissionMode: PermissionModeKey = isSandboxEnabled(session.metadata) ? 'bypassPermissions' : 'default';
+                const resolvedPermissionMode: PermissionModeKey =
                     (existingPermissionMode && existingPermissionMode !== 'default' ? existingPermissionMode : undefined) ||
                     (savedPermissionMode && savedPermissionMode !== 'default' ? savedPermissionMode : undefined) ||
                     (session.permissionMode && session.permissionMode !== 'default' ? session.permissionMode : undefined) ||
@@ -777,7 +777,7 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
-        updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => set((state) => {
+        updateSessionPermissionMode: (sessionId: string, mode: string) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
 
@@ -791,7 +791,7 @@ export const storage = create<StorageState>()((set, get) => {
             };
 
             // Collect all permission modes for persistence
-            const allModes: Record<string, PermissionMode> = {};
+            const allModes: Record<string, string> = {};
             Object.entries(updatedSessions).forEach(([id, sess]) => {
                 if (sess.permissionMode && sess.permissionMode !== 'default') {
                     allModes[id] = sess.permissionMode;
@@ -807,7 +807,7 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: updatedSessions
             };
         }),
-        updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => set((state) => {
+        updateSessionModelMode: (sessionId: string, mode: string) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
 

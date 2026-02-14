@@ -5,7 +5,7 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
-import { PermissionModeSelector, PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
+import type { PermissionModeKey, ModelModeKey } from '@/components/PermissionModeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { useAllMachines, useSessions, useSetting, storage } from '@/sync/storage';
@@ -514,8 +514,8 @@ interface NewSessionWizardProps {
         sessionType: 'simple' | 'worktree';
         profileId: string | null;
         agentType: 'claude' | 'codex';
-        permissionMode: PermissionMode;
-        modelMode: ModelMode;
+        permissionMode: PermissionModeKey;
+        modelMode: ModelModeKey;
         machineId: string;
         path: string;
         prompt: string;
@@ -548,8 +548,8 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         }
         return 'claude';
     });
-    const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
-    const [modelMode, setModelMode] = useState<ModelMode>('default');
+    const [permissionMode, setPermissionMode] = useState<PermissionModeKey>('default');
+    const [modelMode, setModelMode] = useState<ModelModeKey>('default');
     const [selectedProfileId, setSelectedProfileId] = useState<string | null>(() => {
         return lastUsedProfile;
     });
@@ -1616,7 +1616,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                             color={theme.colors.button.primary.background}
                                         />
                                     ) : null}
-                                    onPress={() => setPermissionMode(option.value as PermissionMode)}
+                                    onPress={() => setPermissionMode(option.value)}
                                     showChevron={false}
                                     selected={permissionMode === option.value}
                                     showDivider={index < array.length - 1}
@@ -1653,7 +1653,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                             color={theme.colors.button.primary.background}
                                         />
                                     ) : null}
-                                    onPress={() => setModelMode(option.value as ModelMode)}
+                                    onPress={() => setModelMode(option.value)}
                                     showChevron={false}
                                     selected={modelMode === option.value}
                                     showDivider={index < array.length - 1}
