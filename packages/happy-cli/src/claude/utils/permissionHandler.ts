@@ -141,11 +141,15 @@ export class PermissionHandler {
         // Handle special cases
         //
 
-        if (this.permissionMode === 'bypassPermissions') {
+        // Use mode parameter to avoid race condition where tool call happens
+        // before handleModeChange() is called (fixes #521)
+        const effectiveMode = mode?.permissionMode ?? this.permissionMode;
+
+        if (effectiveMode === 'bypassPermissions') {
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
-        if (this.permissionMode === 'acceptEdits' && descriptor.edit) {
+        if (effectiveMode === 'acceptEdits' && descriptor.edit) {
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
@@ -342,6 +346,7 @@ export class PermissionHandler {
         this.allowedTools.clear();
         this.allowedBashLiterals.clear();
         this.allowedBashPrefixes.clear();
+        this.permissionMode = 'default';
 
         // Cancel all pending requests
         for (const [, pending] of this.pendingRequests.entries()) {
