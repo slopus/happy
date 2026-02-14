@@ -4,7 +4,6 @@
     "appVersionSource": "remote"
   },
   "build": {
-    "base": "packages/happy-app",
     "development": {
       "autoIncrement": true,
       "developmentClient": true,
