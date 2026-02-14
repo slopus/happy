@@ -102,28 +102,28 @@ export function getValidModelModesForAgent(agent: AgentFlavor): readonly ModelMo
 }
 
 export const CLAUDE_MODEL_OPTIONS = [
-    { value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', description: 'Use profile/CLI defaults' },
-    { value: 'claude-opus-4-6', label: 'Claude Opus 4.6', description: 'Most capable' },
-    { value: 'claude-opus-4-5', label: 'Claude Opus 4.5', description: 'Most capable' },
-    { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', description: 'Balanced speed and quality' },
-    { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', description: 'Fastest' },
+    { value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', shortLabel: 'CLI', description: 'Use profile/CLI defaults' },
+    { value: 'claude-opus-4-6', label: 'Claude Opus 4.6', shortLabel: 'Opus 4.6', description: 'Most capable' },
+    { value: 'claude-opus-4-5', label: 'Claude Opus 4.5', shortLabel: 'Opus 4.5', description: 'Most capable' },
+    { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', shortLabel: 'Sonnet 4.5', description: 'Balanced speed and quality' },
+    { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', shortLabel: 'Haiku 4.5', description: 'Fastest' },
 ] as const;
 
 export const GEMINI_MODEL_OPTIONS = [
-    { value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', description: 'Use profile/CLI defaults' },
-    { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Preview)', description: 'Most capable' },
-    { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Preview)', description: 'Fast and efficient' },
-    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Most capable' },
+    { value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', shortLabel: 'CLI', description: 'Use profile/CLI defaults' },
+    { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Preview)', shortLabel: '3 Pro', description: 'Most capable' },
+    { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Preview)', shortLabel: '3 Flash', description: 'Fast and efficient' },
+    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', shortLabel: '2.5 Pro', description: 'Most capable' },
 ] as const;
 
 export const CODEX_MODEL_FAMILY_OPTIONS = [
-    { value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', description: 'Use profile/CLI defaults' },
-    { value: 'gpt-5.3-codex', label: 'GPT-5.3-Codex', description: 'Code-optimized model' },
-    { value: 'gpt-5.2-codex', label: 'GPT-5.2-Codex', description: 'Code-optimized model' },
-    { value: 'gpt-5.2', label: 'GPT-5.2', description: 'General-purpose model' },
-    { value: 'gpt-5.1-codex-max', label: 'GPT-5.1-Codex-Max', description: 'Code-optimized model' },
-    { value: 'gpt-5.1-codex-mini', label: 'GPT-5.1-Codex-Mini', description: 'Fast code-focused model' },
-] as const satisfies readonly { value: CodexModelFamily; label: string; description: string }[];
+    { value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', shortLabel: 'CLI', description: 'Use profile/CLI defaults' },
+    { value: 'gpt-5.3-codex', label: 'GPT-5.3-Codex', shortLabel: '5.3-Codex', description: 'Code-optimized model' },
+    { value: 'gpt-5.2-codex', label: 'GPT-5.2-Codex', shortLabel: '5.2-Codex', description: 'Code-optimized model' },
+    { value: 'gpt-5.2', label: 'GPT-5.2', shortLabel: '5.2', description: 'General-purpose model' },
+    { value: 'gpt-5.1-codex-max', label: 'GPT-5.1-Codex-Max', shortLabel: '5.1-Max', description: 'Code-optimized model' },
+    { value: 'gpt-5.1-codex-mini', label: 'GPT-5.1-Codex-Mini', shortLabel: '5.1-Mini', description: 'Fast code-focused model' },
+] as const satisfies readonly { value: CodexModelFamily; label: string; shortLabel: string; description: string }[];
 
 export const CODEX_MODEL_OPTIONS = [
     { value: MODEL_MODE_DEFAULT, label: 'Default', description: 'Use CLI default model' },

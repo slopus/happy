@@ -350,7 +350,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const codexSelection = React.useMemo<{ family: CodexModelFamily; effort: CodexReasoningEffort }>(() => {
         return parseCodexModelMode(selectedModelMode);
     }, [selectedModelMode]);
-    const codexFamilyOptions = React.useMemo<Array<{ value: CodexModelFamily; label: string; description: string }>>(
+    const codexFamilyOptions = React.useMemo<Array<{ value: CodexModelFamily; label: string; shortLabel: string; description: string }>>(
         () => [...CODEX_MODEL_FAMILY_OPTIONS],
         [],
     );
@@ -371,9 +371,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         if (!props.onModelModeChange || codexSelection.family === MODEL_MODE_DEFAULT) return;
         props.onModelModeChange(buildCodexModelMode(codexSelection.family, effort));
     }, [codexSelection.family, props.onModelModeChange]);
-    const modelOptions = React.useMemo<Array<{ value: ModelMode; label: string; description: string }>>(() => {
+    const modelOptions = React.useMemo<Array<{ value: ModelMode; label: string; shortLabel: string; description: string }>>(() => {
         if (isGemini) return [...GEMINI_MODEL_OPTIONS];
-        if (isCodex) return [{ value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', description: 'Use profile/CLI defaults' }];
+        if (isCodex) return [{ value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', shortLabel: 'CLI', description: 'Use profile/CLI defaults' }];
         return [...CLAUDE_MODEL_OPTIONS];
     }, [isCodex, isGemini]);
 
@@ -523,10 +523,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Settings modal state: 'model' shows model picker, 'permission' shows permission picker, false = closed
     const [showSettings, setShowSettings] = React.useState<'model' | 'permission' | false>(false);
 
-    // Handle settings button press (gear icon → permission mode)
+    // Handle settings button press (gear icon → model selection)
     const handleSettingsPress = React.useCallback(() => {
         hapticsLight();
-        setShowSettings(prev => prev ? false : 'permission');
+        setShowSettings(prev => prev === 'model' ? false : 'model');
     }, []);
 
     // Handle permission mode text press (right-side text → permission mode selection)
@@ -700,11 +700,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 ? (props.permissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') : props.permissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.readOnly') : props.permissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.safeYolo') : props.permissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.yolo') : '')
                                                 : (props.permissionMode === 'default' ? t('agentInput.permissionMode.default') : props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.acceptEdits') : props.permissionMode === 'plan' ? t('agentInput.permissionMode.plan') : props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.bypassPermissions') : props.permissionMode === 'yolo' ? t('agentInput.permissionMode.yolo') : '');
                                         const currentModelLabel = isCodex
-                                            ? (codexFamilyOptions.find(o => o.value === codexSelection.family)?.label ?? '') + (codexSelection.family !== 'default' ? ` (${codexReasoningOptions.find(o => o.value === codexSelection.effort)?.label ?? codexSelection.effort})` : '')
-                                            : modelOptions.find(o => o.value === selectedModelMode)?.label ?? '';
+                                            ? (codexFamilyOptions.find(o => o.value === codexSelection.family)?.shortLabel ?? '') + (codexSelection.family !== 'default' ? ` (${codexReasoningOptions.find(o => o.value === codexSelection.effort)?.label ?? codexSelection.effort})` : '')
+                                            : modelOptions.find(o => o.value === selectedModelMode)?.shortLabel ?? '';
                                         const tabs = [
-                                            { key: 'permission' as const, label: isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title'), subtitle: permissionLabel },
                                             { key: 'model' as const, label: t('agentInput.model.title'), subtitle: currentModelLabel },
+                                            { key: 'permission' as const, label: isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title'), subtitle: permissionLabel },
                                         ];
                                         return tabs.map((tab) => {
                                             const isActive = showSettings === tab.key;
@@ -1125,10 +1125,24 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             )}
                         </View>
                         <View style={{
-                            flexDirection: 'column',
-                            alignItems: 'flex-end',
-                            minWidth: 150, // Fixed minimum width to prevent layout shift
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                            zIndex: 1001,
                         }}>
+                            {props.onModelModeChange && (
+                                <Pressable onPress={() => { hapticsLight(); setShowSettings(prev => prev === 'model' ? false : 'model'); }} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+                                    <Text style={{
+                                        fontSize: 11,
+                                        color: theme.colors.textSecondary,
+                                        ...Typography.default()
+                                    }}>
+                                        {isCodex
+                                            ? (codexFamilyOptions.find(o => o.value === codexSelection.family)?.shortLabel ?? '') + (codexSelection.family !== 'default' ? ` (${codexReasoningOptions.find(o => o.value === codexSelection.effort)?.label ?? codexSelection.effort})` : '')
+                                            : (modelOptions.find(o => o.value === selectedModelMode)?.shortLabel ?? '')}
+                                    </Text>
+                                </Pressable>
+                            )}
                             {props.permissionMode && (
                                 <Pressable onPress={handlePermissionPress} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
                                     <Text style={{
@@ -1139,7 +1153,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
                                                         props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
                                                             props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
-                                                                theme.colors.textSecondary, // Use secondary text color for default
+                                                                theme.colors.textSecondary,
                                         ...Typography.default()
                                     }}>
                                         {isCodex ? (
