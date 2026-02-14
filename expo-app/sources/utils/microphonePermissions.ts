@@ -84,8 +84,8 @@ export async function checkMicrophonePermission(): Promise<MicrophonePermissionR
 export function showMicrophonePermissionDeniedAlert(canAskAgain: boolean = false) {
   const title = 'Microphone Access Required';
   const message = canAskAgain
-    ? 'Happy needs access to your microphone for voice chat. Please grant permission when prompted.'
-    : 'Happy needs access to your microphone for voice chat. Please enable microphone access in your device settings.';
+    ? 'Runline needs access to your microphone for voice chat. Please grant permission when prompted.'
+    : 'Runline needs access to your microphone for voice chat. Please enable microphone access in your device settings.';
 
   if (Platform.OS === 'web') {
     // Web: Show browser-specific instructions

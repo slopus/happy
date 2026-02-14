@@ -71,7 +71,7 @@ export default function TypographyScreen() {
                     <TextSample 
                         title="Bold (700) - Logo Only" 
                         style={{ fontSize: 28, ...Typography.logo() }}
-                        text="Happy"
+                        text="Runline"
                     />
                     <Text style={styles.note}>
                         Note: This font should only be used for the app logo and branding

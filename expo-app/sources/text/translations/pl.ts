@@ -379,7 +379,7 @@ export const pl: TranslationStructure = {
         cliVersionOutdated: 'Wymagana aktualizacja CLI',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Zainstalowana wersja ${currentVersion}. Zaktualizuj do ${requiredVersion} lub nowszej`,
-        updateCliInstructions: 'Proszę uruchomić npm install -g happy-coder@latest',
+        updateCliInstructions: 'Proszę uruchomić npm install -g @runline/arc@latest',
         deleteSession: 'Usuń sesję',
         deleteSessionSubtitle: 'Trwale usuń tę sesję',
         deleteSessionConfirm: 'Usunąć sesję na stałe?',
@@ -728,7 +728,7 @@ export const pl: TranslationStructure = {
 
     machine: {
         offlineUnableToSpawn: 'Launcher wyłączony, gdy maszyna jest offline',
-        offlineHelp: '• Upewnij się, że komputer jest online\n• Uruchom `happy daemon status`, aby zdiagnozować\n• Czy używasz najnowszej wersji CLI? Zaktualizuj poleceniem `npm install -g happy-coder@latest`',
+        offlineHelp: '• Upewnij się, że komputer jest online\n• Uruchom `runline daemon status`, aby zdiagnozować\n• Czy używasz najnowszej wersji CLI? Zaktualizuj poleceniem `npm install -g @runline/arc@latest`',
         launchNewSessionInDirectory: 'Uruchom nową sesję w katalogu',
         daemon: 'Daemon',
         status: 'Status',

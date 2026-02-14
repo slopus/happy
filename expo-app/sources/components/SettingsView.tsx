@@ -182,7 +182,7 @@ export const SettingsView = React.memo(function SettingsView() {
                                 t('modals.authenticateTerminal'),
                                 t('modals.pasteUrlFromTerminal'),
                                 {
-                                    placeholder: 'happy://terminal?...',
+                                    placeholder: 'runline://terminal?...',
                                     confirmText: t('common.authenticate')
                                 }
                             );
@@ -362,7 +362,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     title={t('settings.privacyPolicy')}
                     icon={<Ionicons name="shield-checkmark-outline" size={29} color="#007AFF" />}
                     onPress={async () => {
-                        const url = 'https://happy.engineering/privacy/';
+                        const url = 'https://runline.ai/privacy/';
                         const supported = await Linking.canOpenURL(url);
                         if (supported) {
                             await Linking.openURL(url);

@@ -21,14 +21,14 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
     const checkScannerPermissions = useCheckScannerPermissions();
 
     const processAuthUrl = React.useCallback(async (url: string) => {
-        if (!url.startsWith('happy://terminal?')) {
+        if (!url.startsWith('runline://terminal?')) {
             Modal.alert(t('common.error'), t('modals.invalidAuthUrl'), [{ text: t('common.ok') }]);
             return false;
         }
         
         setIsLoading(true);
         try {
-            const tail = url.slice('happy://terminal?'.length);
+            const tail = url.slice('runline://terminal?'.length);
             const publicKey = decodeBase64(tail, 'base64url');
             const responseV1 = encryptBox(decodeBase64(auth.credentials!.secret, 'base64url'), publicKey);
             let responseV2Bundle = new Uint8Array(sync.encryption.contentDataKey.length + 1);
@@ -73,7 +73,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
     React.useEffect(() => {
         if (CameraView.isModernBarcodeScannerAvailable) {
             const subscription = CameraView.onModernBarcodeScanned(async (event) => {
-                if (event.data.startsWith('happy://terminal?')) {
+                if (event.data.startsWith('runline://terminal?')) {
                     // Dismiss scanner on Android is called automatically when barcode is scanned
                     if (Platform.OS === 'ios') {
                         await CameraView.dismissScanner();

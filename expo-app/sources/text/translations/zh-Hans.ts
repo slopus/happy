@@ -370,7 +370,7 @@ export const zhHans: TranslationStructure = {
         cliVersionOutdated: '需要更新 CLI',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `已安装版本 ${currentVersion}。请更新到 ${requiredVersion} 或更高版本`,
-        updateCliInstructions: '请运行 npm install -g happy-coder@latest',
+        updateCliInstructions: '请运行 npm install -g @runline/arc@latest',
         deleteSession: '删除会话',
         deleteSessionSubtitle: '永久删除此会话',
         deleteSessionConfirm: '永久删除会话？',
@@ -721,7 +721,7 @@ export const zhHans: TranslationStructure = {
     machine: {
         launchNewSessionInDirectory: '在目录中启动新会话',
         offlineUnableToSpawn: '设备离线时无法启动',
-        offlineHelp: '• 确保您的计算机在线\n• 运行 `happy daemon status` 进行诊断\n• 您是否在运行最新的 CLI 版本？请使用 `npm install -g happy-coder@latest` 升级',
+        offlineHelp: '• 确保您的计算机在线\n• 运行 `runline daemon status` 进行诊断\n• 您是否在运行最新的 CLI 版本？请使用 `npm install -g @runline/arc@latest` 升级',
         daemon: '守护进程',
         status: '状态',
         stopDaemon: '停止守护进程',

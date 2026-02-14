@@ -355,7 +355,7 @@ export const OAuthViewUnsupported = React.memo((props: {
     name: string;
     command?: string;
 }) => {
-    const command = props.command || `happy connect ${props.name.toLowerCase()}`;
+    const command = props.command || `runline connect ${props.name.toLowerCase()}`;
 
     return (
         <View style={styles.unsupportedContainer}>
