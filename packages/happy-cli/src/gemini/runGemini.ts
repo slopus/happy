@@ -27,6 +27,7 @@ import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { stopCaffeinate } from '@/utils/caffeinate';
+import { createNonBlockingStdout } from '@/utils/nonBlockingStdout';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
@@ -470,9 +471,11 @@ export async function runGemini(opts: {
       });
     };
     
+    const inkStdout = createNonBlockingStdout();
     inkInstance = render(React.createElement(DisplayComponent), {
       exitOnCtrlC: false,
-      patchConsole: false
+      patchConsole: false,
+      stdout: inkStdout
     });
     
     // Send initial model to UI so it displays correctly from start

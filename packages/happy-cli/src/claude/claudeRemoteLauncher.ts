@@ -15,6 +15,7 @@ import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
+import { createNonBlockingStdout } from "@/utils/nonBlockingStdout";
 
 interface PermissionsField {
     date: number;
@@ -36,6 +37,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     if (hasTTY) {
         console.clear();
+        // Use non-blocking stdout wrapper to prevent event loop blocking
+        // when tmux detaches and the PTY buffer fills up
+        const inkStdout = createNonBlockingStdout();
         inkInstance = render(React.createElement(RemoteModeDisplay, {
             messageBuffer,
             logPath: process.env.DEBUG ? session.logPath : undefined,
@@ -54,7 +58,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             }
         }), {
             exitOnCtrlC: false,
-            patchConsole: false
+            patchConsole: false,
+            stdout: inkStdout
         });
     }
 

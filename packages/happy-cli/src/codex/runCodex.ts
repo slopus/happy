@@ -28,6 +28,7 @@ import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { delay } from "@/utils/time";
 import { stopCaffeinate } from "@/utils/caffeinate";
+import { createNonBlockingStdout } from "@/utils/nonBlockingStdout";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
@@ -334,6 +335,7 @@ export async function runCodex(opts: {
 
     if (hasTTY) {
         console.clear();
+        const inkStdout = createNonBlockingStdout();
         inkInstance = render(React.createElement(CodexDisplay, {
             messageBuffer,
             logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
@@ -345,7 +347,8 @@ export async function runCodex(opts: {
             }
         }), {
             exitOnCtrlC: false,
-            patchConsole: false
+            patchConsole: false,
+            stdout: inkStdout
         });
     }
 
