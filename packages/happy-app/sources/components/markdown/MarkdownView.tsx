@@ -352,11 +352,18 @@ function useWebHorizontalScroll() {
     const containerWidthRef = React.useRef(0);
     const handleWheel = React.useCallback((e: any) => {
         if (Platform.OS !== 'web' || !scrollRef.current) return;
-        const delta = e.deltaX || e.deltaY;
+        const deltaX = Number(e.deltaX || 0);
+        const deltaY = Number(e.deltaY || 0);
+        const hasHorizontalIntent = Math.abs(deltaX) > Math.abs(deltaY) || !!e.shiftKey;
+        if (!hasHorizontalIntent) return;
+
+        const delta = Math.abs(deltaX) > Math.abs(deltaY) ? deltaX : deltaY;
         if (delta === 0) return;
-        e.preventDefault();
         const maxScroll = Math.max(0, contentWidthRef.current - containerWidthRef.current);
+        if (maxScroll <= 0) return;
         const next = Math.min(maxScroll, Math.max(0, scrollOffsetRef.current + delta));
+        if (next === scrollOffsetRef.current) return;
+        e.preventDefault();
         scrollOffsetRef.current = next;
         (scrollRef.current as any).scrollTo({ x: next, animated: false });
     }, []);
@@ -388,25 +395,50 @@ function RenderTableBlock(props: {
     const measuredRef = React.useRef<number[][]>(
         Array.from({ length: totalRows }, () => new Array(columnCount).fill(0))
     );
+    const containerWidthRef = React.useRef(0);
 
-    // Lazily ensure the measurement grid is the right size
-    if (measuredRef.current.length !== totalRows || (measuredRef.current[0] && measuredRef.current[0].length !== columnCount)) {
+    const resetMeasurements = React.useCallback(() => {
         const arr: number[][] = [];
         for (let i = 0; i < totalRows; i++) arr.push(new Array(columnCount).fill(0));
         measuredRef.current = arr;
-    }
+        setRowHeights(new Array(totalRows).fill(undefined));
+    }, [totalRows, columnCount]);
+
+    // Reset measurement state whenever table shape changes
+    React.useEffect(() => {
+        resetMeasurements();
+    }, [resetMeasurements]);
+
+    const handleContainerLayout = React.useCallback((e: any) => {
+        const width = Math.round(e.nativeEvent.layout.width || 0);
+        if (width <= 0) {
+            containerWidthRef.current = 0;
+            return;
+        }
+
+        // A width change indicates a new layout pass context; re-measure from scratch.
+        if (containerWidthRef.current !== width) {
+            containerWidthRef.current = width;
+            resetMeasurements();
+        }
+    }, [resetMeasurements]);
 
     const handleCellLayout = React.useCallback((rowIndex: number, colIndex: number, height: number) => {
+        if (containerWidthRef.current <= 0) return;
+        const normalizedHeight = Math.ceil(height);
+        if (normalizedHeight <= 0) return;
+
         const grid = measuredRef.current;
         if (!grid[rowIndex]) return;
         const prev = grid[rowIndex][colIndex];
-        if (prev === height) return;
-        grid[rowIndex][colIndex] = height;
+        // Ignore transient smaller measurements; they can happen during route transitions on web.
+        if (normalizedHeight <= prev) return;
+        grid[rowIndex][colIndex] = normalizedHeight;
 
         // Compute max height for this row
         const maxH = Math.max(...grid[rowIndex]);
         setRowHeights(old => {
-            if (old[rowIndex] === maxH) return old;
+            if ((old[rowIndex] ?? 0) >= maxH) return old;
             const next = [...old];
             next[rowIndex] = maxH;
             return next;
@@ -419,6 +451,7 @@ function RenderTableBlock(props: {
     return (
         <View
             style={[style.tableContainer, props.first && style.first, props.last && style.last]}
+            onLayout={handleContainerLayout}
             {...wheelProps}
         >
             <ScrollView
