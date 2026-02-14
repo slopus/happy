@@ -93,7 +93,7 @@
     "unlink:dev": "node scripts/link-dev.cjs unlink"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "^0.8.0",
+    "@agentclientprotocol/sdk": "^0.14.1",
     "@anthropic-ai/sandbox-runtime": "^0.0.37",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@paralleldrive/cuid2": "^2.2.2",

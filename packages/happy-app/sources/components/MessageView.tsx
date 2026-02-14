@@ -100,7 +100,7 @@ function AgentTextBlock(props: {
   }
 
   return (
-    <View style={styles.agentMessageContainer}>
+    <View style={[styles.agentMessageContainer, props.message.isThinking && { opacity: 0.3 }]}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
     </View>
   );
